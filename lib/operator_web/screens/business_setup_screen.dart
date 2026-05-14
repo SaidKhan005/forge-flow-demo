@@ -195,7 +195,14 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Business setup',
+                  // Wave 2 U-FU-hp11-account — HP #11 nav-title scope
+                  // hint. Business setup is a location-scoped surface
+                  // (the screen edits one location's timing at a
+                  // time), so the title carries the location name in
+                  // plain English so the operator always sees what
+                  // they are editing.
+                  'Business setup • ${_locationName()}',
+                  key: const Key('operator_web_business_setup_nav_title'),
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
               ),

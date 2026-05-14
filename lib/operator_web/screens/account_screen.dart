@@ -14,6 +14,29 @@
 //
 // UX writing standard: every label / explainer reads as if training
 // the operator. Plain English, em-dash-free.
+//
+// Wave 2 U-FU-hp11-account — HP #11 (`CLAUDE.md` Hard Promise #11)
+// requires every settings surface to show Selected scope / Inherited
+// from / Effective value. The shell's top-bar Managing picker drives
+// the active scope; the router forwards the choice here through
+// [AccountScreen.selectedScope]. Per the operator decision logged
+// 2026-05-14, business account settings are "per-location with
+// business-wide fallback":
+//
+//   * Business scope selected — the operator edits the business
+//     defaults. Each card's notice says "Set here. Does not inherit
+//     from a higher scope." Edit affordances stay live.
+//   * Location (or org-unit) scope selected — the schema does not yet
+//     carry per-location overrides for region / business day /
+//     identity (`db/migrations/202605070000_phase_11W_7_operator_
+//     account_fields.sql` stores those on `public.operators` only;
+//     `locations.business_day_rollover_hour` is the only per-location
+//     override that exists). Until the U-FU-hp11-account-schema
+//     follow-up lands, the notice tells the operator "Inherits the
+//     business default from Business" + a backend-only explainer
+//     pointing them at the Business scope. Edit affordances stay
+//     disabled. HP #11's final clause is honoured by naming the gap
+//     in plain English instead of rendering a silent omission.
 
 import 'dart:async';
 
@@ -28,6 +51,7 @@ import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/web_app_shell.dart';
 
 const Set<String> _kAccountEditRoles = <String>{
   'operator_owner',
@@ -43,6 +67,7 @@ class AccountScreen extends StatefulWidget {
     this.gateway,
     this.logoUploadGateway,
     this.logoFilePicker,
+    this.selectedScope,
   });
 
   final OperatorWebSession session;
@@ -64,9 +89,80 @@ class AccountScreen extends StatefulWidget {
   /// web picker.
   final BusinessLogoFilePickerFn? logoFilePicker;
 
+  /// Wave 2 U-FU-hp11-account — current management scope from the
+  /// shell's top-bar Managing picker. When null (no router wiring,
+  /// older test, or isolated preview), the screen assumes Business
+  /// scope so existing affordances render and edits stay live. HP #11
+  /// honours the operator's selected scope by rendering the per-card
+  /// inheritance notice + gating edits when the schema does not yet
+  /// support per-scope overrides.
+  final OperatorWebManagementScopeOption? selectedScope;
+
   bool get canEdit =>
       session.roles.any(_kAccountEditRoles.contains) ||
       session.permissions.contains(_kAccountEditPermission);
+
+  /// HP #11 — true when the operator picked a non-Business scope in
+  /// the shell's Managing picker. The schema today only stores
+  /// region / business-day / identity at the operator (business)
+  /// scope, so at non-business scopes the screen shows the
+  /// inheritance line and disables edits. See the file header for the
+  /// full PUNT rationale + U-FU-hp11-account-schema follow-up.
+  bool get scopeBelowBusiness {
+    final scope = selectedScope;
+    if (scope == null) return false;
+    return scope.kind != OperatorWebManagementScopeKind.operator;
+  }
+
+  /// Plain-English name of the scope target ("Brio Main", "East
+  /// Region"). Falls back to the session's business name when the
+  /// router has not wired a scope through (older tests, isolated
+  /// previews).
+  String get scopeName {
+    final scope = selectedScope;
+    if (scope == null) return session.businessName;
+    return scope.label;
+  }
+
+  /// Maps the management-picker scope kind onto the [HierarchyScopeLevel]
+  /// the notice widget understands. The shell's `operator` kind is
+  /// HP #11's "Business"; `orgUnit` aligns with Region; `location`
+  /// stays Location.
+  HierarchyScopeLevel get scopeLevel {
+    final scope = selectedScope;
+    if (scope == null) return HierarchyScopeLevel.business;
+    switch (scope.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return HierarchyScopeLevel.business;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return HierarchyScopeLevel.region;
+      case OperatorWebManagementScopeKind.location:
+        return HierarchyScopeLevel.location;
+    }
+  }
+
+  /// HP #11 inheritance line for the per-field cards when the
+  /// operator is below the business scope. The Account screen's
+  /// region / business-day / identity values currently live at the
+  /// operator (business) level only, so a non-business scope inherits
+  /// them downward. Returns null at Business scope (nothing to
+  /// inherit from).
+  String? inheritedLabelForBusinessDefault() {
+    return scopeBelowBusiness
+        ? 'Inherits the business default from Business.'
+        : null;
+  }
+
+  /// HP #11 backend-only explainer surfaced inside each notice when
+  /// the operator is below business scope. Names the gap in plain
+  /// English so the operator does not see a silent omission. Returns
+  /// null at Business scope.
+  String? backendOnlyExplainerForBusinessDefault() {
+    if (!scopeBelowBusiness) return null;
+    return 'Per-location overrides for this field are not on file yet. '
+        'Switch the Managing picker to Business to update the default '
+        'every location inherits.';
+  }
 
   @override
   State<AccountScreen> createState() => _AccountScreenState();
@@ -304,6 +400,16 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Wave 2 U-FU-hp11-account — per-card edits stay live at Business
+    // scope; at non-business scopes the schema has no override path,
+    // so we disable the affordance and the notice explains why.
+    final scopeBelowBusiness = widget.scopeBelowBusiness;
+    final identityEnabled =
+        widget.canEdit && !_submitting && !scopeBelowBusiness;
+    final regionEnabled =
+        widget.canEdit && !_submitting && !scopeBelowBusiness;
+    final businessDayEnabled =
+        widget.canEdit && !_submitting && !scopeBelowBusiness;
     return SingleChildScrollView(
       key: const Key('operator_web_account_screen'),
       padding: const EdgeInsets.all(28),
@@ -322,7 +428,7 @@ class _AccountScreenState extends State<AccountScreen> {
             logoLivePreviewUrl: _logoUrl.text.trim().isEmpty
                 ? null
                 : _logoUrl.text.trim(),
-            enabled: widget.canEdit && !_submitting,
+            enabled: identityEnabled,
             onChanged: () => setState(() {}),
             logoUploadGateway: widget.logoUploadGateway,
             logoFilePicker: widget.logoFilePicker,
@@ -335,6 +441,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 _logoUrl.text = url;
               });
             },
+            scopeLevel: widget.scopeLevel,
+            scopeName: widget.scopeName,
+            inheritedLabel: widget.inheritedLabelForBusinessDefault(),
+            backendOnlyExplainer:
+                widget.backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _RegionSection(
@@ -342,19 +453,29 @@ class _AccountScreenState extends State<AccountScreen> {
             localeTag: _localeTag,
             currencies: _currencies,
             locales: _locales,
-            enabled: widget.canEdit && !_submitting,
+            enabled: regionEnabled,
             onCurrencyChanged: (value) => setState(() => _currencyCode = value),
             onLocaleChanged: (value) => setState(() => _localeTag = value),
+            scopeLevel: widget.scopeLevel,
+            scopeName: widget.scopeName,
+            inheritedLabel: widget.inheritedLabelForBusinessDefault(),
+            backendOnlyExplainer:
+                widget.backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _BusinessDaySection(
             weekStartDay: _weekStartDay,
             rolloverHour: _rolloverHour,
             weekStartDays: _weekStartDays,
-            enabled: widget.canEdit && !_submitting,
+            enabled: businessDayEnabled,
             onWeekStartChanged: (value) =>
                 setState(() => _weekStartDay = value),
             onRolloverChanged: (value) => setState(() => _rolloverHour = value),
+            scopeLevel: widget.scopeLevel,
+            scopeName: widget.scopeName,
+            inheritedLabel: widget.inheritedLabelForBusinessDefault(),
+            backendOnlyExplainer:
+                widget.backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _LocationTimezoneSection(
@@ -437,7 +558,10 @@ class _AccountScreenState extends State<AccountScreen> {
               height: 42,
               child: FilledButton(
                 key: const Key('operator_web_account_save'),
-                onPressed: widget.canEdit && _hasGateway && !_submitting
+                onPressed: widget.canEdit &&
+                        _hasGateway &&
+                        !_submitting &&
+                        !scopeBelowBusiness
                     ? _handleSave
                     : null,
                 style: FilledButton.styleFrom(
@@ -556,8 +680,12 @@ class _BusinessIdentitySection extends StatelessWidget {
     required this.enabled,
     required this.onChanged,
     required this.onLogoUploaded,
+    required this.scopeLevel,
+    required this.scopeName,
     this.logoUploadGateway,
     this.logoFilePicker,
+    this.inheritedLabel,
+    this.backendOnlyExplainer,
   });
 
   final TextEditingController businessNameController;
@@ -569,8 +697,25 @@ class _BusinessIdentitySection extends StatelessWidget {
   final BusinessLogoUploadGateway? logoUploadGateway;
   final BusinessLogoFilePickerFn? logoFilePicker;
 
+  /// HP #11 plumbing — current management scope level + display name.
+  final HierarchyScopeLevel scopeLevel;
+  final String scopeName;
+
+  /// HP #11 "Inherited from" line. Null at Business scope; populated
+  /// when the operator picked a lower scope and the screen is reading
+  /// the business default.
+  final String? inheritedLabel;
+
+  /// HP #11 backend-only explainer surfaced below the notice when the
+  /// per-scope override path is not on file yet. Null at Business
+  /// scope.
+  final String? backendOnlyExplainer;
+
   @override
   Widget build(BuildContext context) {
+    final identityValueSummary = businessNameController.text.trim().isEmpty
+        ? 'Business name is not on file yet.'
+        : 'Business name is ${businessNameController.text.trim()}.';
     return _Card(
       cardKey: const Key('operator_web_account_section_identity'),
       icon: Icons.badge_outlined,
@@ -582,6 +727,15 @@ class _BusinessIdentitySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          HierarchyScopeNotice(
+            keyName: 'operator_web_account_identity_scope',
+            selectedScope: scopeLevel,
+            scopeName: scopeName,
+            effectiveValueSummary: identityValueSummary,
+            inheritedFromLabel: inheritedLabel,
+            backendOnlyExplainer: backendOnlyExplainer,
+          ),
+          const SizedBox(height: 12),
           TextField(
             key: const Key('operator_web_account_business_name'),
             controller: businessNameController,
@@ -693,6 +847,10 @@ class _RegionSection extends StatelessWidget {
     required this.enabled,
     required this.onCurrencyChanged,
     required this.onLocaleChanged,
+    required this.scopeLevel,
+    required this.scopeName,
+    this.inheritedLabel,
+    this.backendOnlyExplainer,
   });
 
   final String? currencyCode;
@@ -703,8 +861,23 @@ class _RegionSection extends StatelessWidget {
   final ValueChanged<String?> onCurrencyChanged;
   final ValueChanged<String?> onLocaleChanged;
 
+  /// HP #11 plumbing — see [_BusinessIdentitySection] for the long
+  /// rationale.
+  final HierarchyScopeLevel scopeLevel;
+  final String scopeName;
+  final String? inheritedLabel;
+  final String? backendOnlyExplainer;
+
   @override
   Widget build(BuildContext context) {
+    final currencyDisplay = currencyCode == null || currencyCode!.isEmpty
+        ? 'no currency on file'
+        : currencyCode!;
+    final localeDisplay = localeTag == null || localeTag!.isEmpty
+        ? 'no locale on file'
+        : localeTag!;
+    final regionValueSummary =
+        'Currency is $currencyDisplay; locale is $localeDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_region'),
       icon: Icons.public_outlined,
@@ -716,6 +889,15 @@ class _RegionSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          HierarchyScopeNotice(
+            keyName: 'operator_web_account_region_scope',
+            selectedScope: scopeLevel,
+            scopeName: scopeName,
+            effectiveValueSummary: regionValueSummary,
+            inheritedFromLabel: inheritedLabel,
+            backendOnlyExplainer: backendOnlyExplainer,
+          ),
+          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             key: const Key('operator_web_account_currency'),
             initialValue: currencyCode,
@@ -763,6 +945,10 @@ class _BusinessDaySection extends StatelessWidget {
     required this.enabled,
     required this.onWeekStartChanged,
     required this.onRolloverChanged,
+    required this.scopeLevel,
+    required this.scopeName,
+    this.inheritedLabel,
+    this.backendOnlyExplainer,
   });
 
   final String? weekStartDay;
@@ -772,8 +958,24 @@ class _BusinessDaySection extends StatelessWidget {
   final ValueChanged<String?> onWeekStartChanged;
   final ValueChanged<int?> onRolloverChanged;
 
+  /// HP #11 plumbing — see [_BusinessIdentitySection] for the long
+  /// rationale.
+  final HierarchyScopeLevel scopeLevel;
+  final String scopeName;
+  final String? inheritedLabel;
+  final String? backendOnlyExplainer;
+
   @override
   Widget build(BuildContext context) {
+    final weekStartDisplay = weekStartDay == null || weekStartDay!.isEmpty
+        ? 'no first day of week on file'
+        : _titleCase(weekStartDay!);
+    final rolloverDisplay = rolloverHour == null
+        ? 'no rollover hour on file'
+        : '${rolloverHour!.toString().padLeft(2, '0')}:00 local';
+    final businessDayValueSummary =
+        'Week starts $weekStartDisplay; business day rolls over at '
+        '$rolloverDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_business_day'),
       icon: Icons.calendar_today_outlined,
@@ -786,6 +988,15 @@ class _BusinessDaySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          HierarchyScopeNotice(
+            keyName: 'operator_web_account_business_day_scope',
+            selectedScope: scopeLevel,
+            scopeName: scopeName,
+            effectiveValueSummary: businessDayValueSummary,
+            inheritedFromLabel: inheritedLabel,
+            backendOnlyExplainer: backendOnlyExplainer,
+          ),
+          const SizedBox(height: 12),
           DropdownButtonFormField<String>(
             key: const Key('operator_web_account_week_start'),
             initialValue: weekStartDay,
@@ -829,6 +1040,15 @@ class _BusinessDaySection extends StatelessWidget {
     if (hour == 0) return '$hh:00 (midnight)';
     if (hour == 4) return '$hh:00 (recommended)';
     return '$hh:00';
+  }
+
+  /// Title-cases a single lowercase day token ("monday" → "Monday").
+  /// UX writing standard mandates Title Case in plain-English
+  /// summaries. Kept local to this section so the helper does not
+  /// leak.
+  static String _titleCase(String value) {
+    if (value.isEmpty) return value;
+    return value[0].toUpperCase() + value.substring(1);
   }
 }
 

@@ -40,7 +40,16 @@ void main() {
       find.byKey(const Key('operator_web_business_setup_screen')),
       findsOneWidget,
     );
-    expect(find.text('Business setup'), findsOneWidget);
+    // Wave 2 U-FU-hp11-account — nav title carries the active
+    // location-scope hint per HP #11.
+    expect(
+      find.byKey(const Key('operator_web_business_setup_nav_title')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Business setup • Demo Main Street'),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('operator_web_business_timing_inheritance_card')),
       findsOneWidget,

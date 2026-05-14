@@ -1201,7 +1201,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               );
         break;
       default:
-        body = AccountScreen(session: session, gateway: _webAccountGateway);
+        body = AccountScreen(
+          session: session,
+          gateway: _webAccountGateway,
+          // Wave 2 U-FU-hp11-account — forward the shell's current
+          // Managing scope so the screen can render the HP #11
+          // Selected scope / Inherited from / Effective value triple
+          // per card. At non-business scopes the screen reads the
+          // business default + disables edits (no schema overrides
+          // on file yet for region / business day / identity).
+          selectedScope: managementScope,
+        );
     }
     return WebAppShell(
       session: session,

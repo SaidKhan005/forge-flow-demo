@@ -15,6 +15,7 @@ import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/account_screen.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
 import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
+import 'package:forge_and_flow/operator_web/widgets/web_app_shell.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 class _FakeAccountGateway implements WebAccountGateway {
@@ -200,6 +201,13 @@ void main() {
       find.byKey(const Key('operator_web_account_business_name')),
       'Brio Restaurants',
     );
+    // Wave 2 U-FU-hp11-account — three new HP #11 scope notices
+    // pushed the Save button below the 1600px viewport; scroll it
+    // into view before tapping.
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_account_save')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('operator_web_account_save')));
     await tester.pumpAndSettle();
 
@@ -224,6 +232,12 @@ void main() {
     await tester.pumpWidget(
       wrap(AccountScreen(session: session, gateway: gateway)),
     );
+    // Wave 2 U-FU-hp11-account — scope notices pushed Save out of
+    // the default viewport; scroll first.
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_account_save')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('operator_web_account_save')));
     await tester.pumpAndSettle();
     expect(
@@ -290,6 +304,13 @@ void main() {
       await tester.pumpWidget(
         wrap(AccountScreen(session: session, gateway: gateway)),
       );
+      // Wave 2 U-FU-hp11-account — three new HP #11 notices pushed
+      // the timezone shortlist below the 1600px viewport; scroll it
+      // into view before driving the dropdown.
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_timezone_shortlist')),
+      );
+      await tester.pumpAndSettle();
 
       // Open the dropdown and pick a different shortlist option.
       await tester.tap(
@@ -300,6 +321,10 @@ void main() {
           .tap(find.text('London / Dublin').last);
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_timezone_save')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_account_timezone_save')),
       );
@@ -328,6 +353,13 @@ void main() {
       await tester.pumpWidget(
         wrap(AccountScreen(session: session, gateway: gateway)),
       );
+      // Wave 2 U-FU-hp11-account — three new HP #11 scope notices
+      // pushed the timezone save button below the 1600px viewport.
+      // Scroll it into view before tapping.
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_timezone_save')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_account_timezone_save')),
       );
@@ -360,4 +392,157 @@ void main() {
       );
     },
   );
+
+  // Wave 2 U-FU-hp11-account — HP #11 (Selected scope / Inherited
+  // from / Effective value) coverage for the three operator-set
+  // sections: Business identity, Region, Business day.
+
+  group('HP #11 scope notices', () {
+    const businessScope = OperatorWebManagementScopeOption(
+      key: 'operator:op-1',
+      kind: OperatorWebManagementScopeKind.operator,
+      id: 'op-1',
+      label: 'Brio Restaurants',
+      helper: 'All locations',
+    );
+    const locationScope = OperatorWebManagementScopeOption(
+      key: 'location:loc-1',
+      kind: OperatorWebManagementScopeKind.location,
+      id: 'loc-1',
+      label: 'Brio Main',
+      helper: 'Location',
+    );
+
+    testWidgets(
+      'Business scope renders Selected/Inherited/Effective without inheritance',
+      (tester) async {
+        await _sizeViewport(tester);
+        final session = sessionWithRole('operator_owner');
+        await tester.pumpWidget(
+          wrap(
+            AccountScreen(
+              session: session,
+              gateway: _FakeAccountGateway(),
+              selectedScope: businessScope,
+            ),
+          ),
+        );
+        // All three operator-set cards expose the scope notice.
+        expect(
+          find.byKey(const Key('operator_web_account_identity_scope')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_account_region_scope')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_account_business_day_scope')),
+          findsOneWidget,
+        );
+        // "Set here" (no inheritance) is rendered for every card at
+        // Business scope (Business identity + Region + Business day),
+        // plus the pre-existing Location-scoped timezone card (Wave 2
+        // W-6) that always renders the same "Set here" copy because
+        // timezone lives on `locations.timezone` natively.
+        expect(
+          find.text('Set here. Does not inherit from a higher scope.'),
+          findsNWidgets(4),
+        );
+        // Save stays enabled at Business scope when the gateway is
+        // wired + the operator has edit permission.
+        final saveButton = tester.widget<ButtonStyleButton>(
+          find.byKey(const Key('operator_web_account_save')),
+        );
+        expect(saveButton.onPressed, isNotNull);
+      },
+    );
+
+    testWidgets(
+      'Location scope with no override renders the inheritance line + disables edit',
+      (tester) async {
+        await _sizeViewport(tester);
+        final session = sessionWithRole('operator_owner');
+        await tester.pumpWidget(
+          wrap(
+            AccountScreen(
+              session: session,
+              gateway: _FakeAccountGateway(),
+              selectedScope: locationScope,
+            ),
+          ),
+        );
+        // The three cards show the inheritance copy.
+        expect(
+          find.text('Inherits the business default from Business.'),
+          findsNWidgets(3),
+        );
+        // Backend-only explainer surfaces the schema gap in plain
+        // English.
+        expect(
+          find.textContaining(
+            'Per-location overrides for this field are not on file yet.',
+          ),
+          findsNWidgets(3),
+        );
+        // Save is disabled at non-business scope because the schema
+        // has no override path yet.
+        final saveButton = tester.widget<ButtonStyleButton>(
+          find.byKey(const Key('operator_web_account_save')),
+        );
+        expect(saveButton.onPressed, isNull);
+        // The editable fields disable their input handlers.
+        final businessNameField = tester.widget<TextField>(
+          find.byKey(const Key('operator_web_account_business_name')),
+        );
+        expect(businessNameField.enabled, isFalse);
+      },
+    );
+
+    testWidgets('Region card carries the effective value summary',
+        (tester) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: _FakeAccountGateway(),
+            selectedScope: businessScope,
+          ),
+        ),
+      );
+      expect(
+        find.textContaining('Currency is USD'),
+        findsWidgets,
+      );
+      expect(
+        find.textContaining('locale is en-US'),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('Business day card carries the effective value summary',
+        (tester) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: _FakeAccountGateway(),
+            selectedScope: businessScope,
+          ),
+        ),
+      );
+      expect(
+        find.textContaining('Week starts Monday'),
+        findsWidgets,
+      );
+      expect(
+        find.textContaining('04:00 local'),
+        findsWidgets,
+      );
+    });
+  });
 }
