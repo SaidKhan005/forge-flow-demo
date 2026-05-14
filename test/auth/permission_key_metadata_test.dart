@@ -50,6 +50,37 @@ void main() {
       },
     );
 
+    // Wave 2 R-2L — every metadata entry MUST carry a Title Case English
+    // humanLabel per memory/project_ux_writing_standard.md. The label is
+    // rendered in the R-2L role editor + permission explainer surfaces
+    // in place of the raw dotted key.
+    test(
+      'every key in PermissionKeys.all has a non-empty humanLabel '
+      'with no underscores (R-2L UX naming standard)',
+      () {
+        for (final key in PermissionKeys.all) {
+          final meta = PermissionKeyMetadataCatalog.byKey[key];
+          expect(meta, isNotNull, reason: 'no metadata for $key');
+          expect(
+            meta!.humanLabel,
+            isNotEmpty,
+            reason:
+                '$key has an empty humanLabel. Set a Title Case '
+                'English label per memory/project_ux_writing_standard.md.',
+          );
+          expect(
+            meta.humanLabel.contains('_'),
+            isFalse,
+            reason:
+                '$key humanLabel "\${meta.humanLabel}" contains an '
+                'underscore. Operator-facing labels must be Title Case '
+                'English with spaces; no underscores or engineering '
+                'jargon.',
+          );
+        }
+      },
+    );
+
     test(
       'every key flagged org_wide in the metadata mirror is also '
       'listed in kOrgWidePermissionKeys (validator + schema agree)',

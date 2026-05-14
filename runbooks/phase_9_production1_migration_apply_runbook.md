@@ -99,6 +99,7 @@ Pending follow-up scope (47 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605131900_c_2_d_vendor_sync_outage_state.sql`
 - `db/migrations/202605140000_w_3_self_profile_perm_key.sql`
 - `db/migrations/202605142100_phase_R_1L_roles_schema_rewrite.sql`
+- `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`
 
 Out of scope:
 
@@ -108,7 +109,7 @@ Out of scope:
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
-  anything later than `202605142100_phase_R_1L_roles_schema_rewrite.sql`
+  anything later than `202605150000_phase_r2l_default_role_catalog_v2.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

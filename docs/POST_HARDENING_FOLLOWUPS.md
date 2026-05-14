@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**48 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605142100_phase_R_1L_roles_schema_rewrite.sql`; staging/preview
+**49 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605150000_phase_r2l_default_role_catalog_v2.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
@@ -86,7 +86,7 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605140000_w_3_self_profile_perm_key.sql` | Wave 2 W-3 `team.users.self_update` permission key + baseline grants to every seeded operator role and super_admin. Backs the new `PATCH /v1/auth/self/profile` self-service profile editor on operator-web and admin My Account surfaces. | code-ready |
 | `202605142100_phase_R_1L_roles_schema_rewrite.sql` | Wave 2 R-1L Roles schema rewrite: `permission_keys.product_label` + `category_label` + `scope_kind` (CHECK `org_wide`/`location_scoped`/`either`) + `implies text[]` columns added NULLABLE with inline backfill; defers NOT-NULL flip to R-1L-FU follow-up per expand-contract discipline. Backfill mirrors `lib/services/auth/custom_role_validator.dart`'s `kOrgWidePermissionKeys` + `kViewRequiredForWrite` + `kTeamUsersWriteKeys`. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` METADATA pass. Resolver imply walk in `lib/auth/permission_resolution.dart`. | code-ready |
 
-**Action:** apply all 47 in next Production1 event per
+**Action:** apply all 48 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

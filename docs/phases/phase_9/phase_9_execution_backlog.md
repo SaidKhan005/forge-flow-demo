@@ -176,7 +176,7 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605142100_phase_R_1L_roles_schema_rewrite.sql`, which adds the
+  `202605150000_phase_r2l_default_role_catalog_v2.sql`, which adds the
   Wave 2 R-1L Roles schema rewrite (`permission_keys.product_label` +
   `category_label` + `scope_kind` + `implies` columns, NULLABLE with
   inline backfill, NOT-NULL flip deferred to R-1L-FU per
