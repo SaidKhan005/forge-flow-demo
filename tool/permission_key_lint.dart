@@ -165,6 +165,11 @@ enum PermissionKeyFindingCode {
   catalogDrift,
   catalogMissing,
   rawLiteral,
+  // Wave 2 R-1L — metadata gates. Mirror discipline for the four
+  // metadata columns added by migration
+  // `202605142100_phase_R_1L_roles_schema_rewrite.sql`.
+  metadataMissing,
+  metadataInvalid,
 }
 
 /// Declaration shape for a parsed constant.
@@ -208,6 +213,10 @@ class PermissionKeyFinding {
         return 'CATALOG_MISSING';
       case PermissionKeyFindingCode.rawLiteral:
         return 'RAW_LITERAL';
+      case PermissionKeyFindingCode.metadataMissing:
+        return 'METADATA_MISSING';
+      case PermissionKeyFindingCode.metadataInvalid:
+        return 'METADATA_INVALID';
     }
   }
 
@@ -256,6 +265,12 @@ class PermissionKeyLintResult {
   Iterable<PermissionKeyFinding> get rawLiterals =>
       findings.where((f) => f.code == PermissionKeyFindingCode.rawLiteral);
 
+  Iterable<PermissionKeyFinding> get metadataMissing => findings
+      .where((f) => f.code == PermissionKeyFindingCode.metadataMissing);
+
+  Iterable<PermissionKeyFinding> get metadataInvalid => findings
+      .where((f) => f.code == PermissionKeyFindingCode.metadataInvalid);
+
   bool get isClean => findings.isEmpty;
 }
 
@@ -266,6 +281,7 @@ class PermissionKeyLintRunner {
     required this.permissionKeysSource,
     required this.referenceFiles,
     required this.catalogMarkdown,
+    this.permissionKeyMetadataSource,
     Set<String>? exemptKeys,
     Set<String>? rawLiteralScanScope,
     Set<String>? rawLiteralFileAllowlist,
@@ -287,6 +303,12 @@ class PermissionKeyLintRunner {
 
   /// Raw markdown of `docs/contracts/auth_permission_key_catalog.md`.
   final String catalogMarkdown;
+
+  /// Wave 2 R-1L — source body of
+  /// `lib/auth/permission_key_metadata.dart`. Optional; when null the
+  /// metadata-coverage pass is skipped (legacy callers that only care
+  /// about the catalog ↔ constants pair).
+  final String? permissionKeyMetadataSource;
 
   /// Constant names exempt from ORPHAN findings.
   final Set<String> exemptKeys;
@@ -393,6 +415,71 @@ class PermissionKeyLintRunner {
       fileAllowlist: rawLiteralFileAllowlist,
     ));
 
+    // Wave 2 R-1L — METADATA pass. Every constant in
+    // `PermissionKeys.all` (i.e. shipped to the runtime resolver)
+    // must carry an entry in
+    // `PermissionKeyMetadataCatalog.byKey` with non-empty
+    // `productLabel` + `categoryLabel` and a recognised
+    // `scopeKind`. The pass is skipped when the metadata source
+    // body is not supplied so legacy callers (and tests that only
+    // care about the catalog ↔ constants pair) stay green.
+    final metadataSource = permissionKeyMetadataSource;
+    if (metadataSource != null) {
+      // Build a name-keyed view of the parsed metadata entries.
+      final parsedMetadata = _parsePermissionKeyMetadata(metadataSource);
+      for (final c in constants) {
+        if (c.shape != PermissionKeyShape.classMember) continue;
+        // Skip orphans — those already fire ORPHAN. Metadata is only
+        // required for keys actually exposed via PermissionKeys.all.
+        if (!allSetMembers.contains(c.name)) continue;
+        final meta = parsedMetadata[c.name];
+        if (meta == null) {
+          findings.add(PermissionKeyFinding(
+            code: PermissionKeyFindingCode.metadataMissing,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: 'add a PermissionKeyMetadata entry for '
+                '`${c.value}` to lib/auth/permission_key_metadata.dart '
+                'with productLabel + categoryLabel + scopeKind. '
+                'Wave 2 R-1L requires every grantable permission key '
+                'to carry product / category / scope metadata so the '
+                'R-2L editor can group + scope-validate it.',
+          ));
+          continue;
+        }
+        if (meta.productLabel.isEmpty) {
+          findings.add(PermissionKeyFinding(
+            code: PermissionKeyFindingCode.metadataInvalid,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: 'metadata entry for `${c.value}` carries empty '
+                'productLabel. Set the product grouping (e.g. '
+                "'forgeflow', 'team', 'integration').",
+          ));
+        }
+        if (meta.categoryLabel.isEmpty) {
+          findings.add(PermissionKeyFinding(
+            code: PermissionKeyFindingCode.metadataInvalid,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: 'metadata entry for `${c.value}` carries empty '
+                'categoryLabel. Set the UI grouping label (e.g. '
+                "'Team management').",
+          ));
+        }
+        if (!_validScopeKinds.contains(meta.scopeKind)) {
+          findings.add(PermissionKeyFinding(
+            code: PermissionKeyFindingCode.metadataInvalid,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: 'metadata entry for `${c.value}` has scopeKind '
+                "'${meta.scopeKind}' which is not one of "
+                "${_validScopeKinds.join(', ')}.",
+          ));
+        }
+      }
+    }
+
     return PermissionKeyLintResult(
       findings: findings,
       parsedConstantCount: constants.length,
@@ -403,6 +490,83 @@ class PermissionKeyLintRunner {
       exemptCount: exemptKeys.length,
     );
   }
+}
+
+/// Wave 2 R-1L — parsed metadata entry from
+/// `lib/auth/permission_key_metadata.dart`. The lint cares only
+/// about coverage (every PermissionKeys.all member has an entry) and
+/// validity (productLabel + categoryLabel non-empty, scopeKind is one
+/// of [_validScopeKinds]).
+class _ParsedPermissionKeyMetadata {
+  const _ParsedPermissionKeyMetadata({
+    required this.productLabel,
+    required this.categoryLabel,
+    required this.scopeKind,
+  });
+
+  final String productLabel;
+  final String categoryLabel;
+  final String scopeKind;
+}
+
+/// Accepted values for `PermissionScopeKind`. The lint enforces the
+/// runtime `enum` and the migration's CHECK stay in sync.
+const Set<String> _validScopeKinds = <String>{
+  'orgWide',
+  'locationScoped',
+  'either',
+};
+
+/// Matches a `PermissionKeyMetadataCatalog.byKey` map entry:
+///
+///   PermissionKeys.foo: PermissionKeyMetadata(
+///     productLabel: 'foo',
+///     categoryLabel: 'Foo group',
+///     scopeKind: PermissionScopeKind.either,
+///     implies: <String>[...],
+///   ),
+///
+/// Captured groups:
+///   1 — PermissionKeys constant name (e.g. `foo`).
+///   2 — body of the PermissionKeyMetadata constructor call.
+final RegExp _metadataEntryPattern = RegExp(
+  r'PermissionKeys\.([A-Za-z_][A-Za-z0-9_]*)\s*:\s*'
+  r'PermissionKeyMetadata\s*\(([\s\S]*?)\)\s*,',
+);
+
+final RegExp _productLabelPattern = RegExp(
+  r"""productLabel\s*:\s*['"]([^'"]*)['"]""",
+);
+final RegExp _categoryLabelPattern = RegExp(
+  r"""categoryLabel\s*:\s*['"]([^'"]*)['"]""",
+);
+final RegExp _scopeKindPattern = RegExp(
+  r'scopeKind\s*:\s*PermissionScopeKind\.([A-Za-z_]+)\b',
+);
+
+/// Parses every `PermissionKeys.<name>: PermissionKeyMetadata(...)`
+/// entry in `permission_key_metadata.dart` and returns a map keyed by
+/// the bare constant name (e.g. `forgeflowShiftView`). The values
+/// carry only the three lint-relevant fields; the `implies` field is
+/// ignored — its correctness is enforced separately via the migration
+/// + the runtime resolver tests.
+Map<String, _ParsedPermissionKeyMetadata> _parsePermissionKeyMetadata(
+  String source,
+) {
+  final out = <String, _ParsedPermissionKeyMetadata>{};
+  for (final m in _metadataEntryPattern.allMatches(source)) {
+    final name = m.group(1)!;
+    final body = m.group(2)!;
+    final productMatch = _productLabelPattern.firstMatch(body);
+    final categoryMatch = _categoryLabelPattern.firstMatch(body);
+    final scopeMatch = _scopeKindPattern.firstMatch(body);
+    out[name] = _ParsedPermissionKeyMetadata(
+      productLabel: productMatch?.group(1) ?? '',
+      categoryLabel: categoryMatch?.group(1) ?? '',
+      scopeKind: scopeMatch?.group(1) ?? '',
+    );
+  }
+  return out;
 }
 
 /// Returns true iff [relPath] (forward-slash form) falls under any
@@ -597,6 +761,8 @@ Future<void> main(List<String> args) async {
   final permissionKeysFile = File('lib/auth/permission_keys.dart');
   final catalogFile =
       File('docs/contracts/auth_permission_key_catalog.md');
+  // Wave 2 R-1L — metadata mirror.
+  final metadataFile = File('lib/auth/permission_key_metadata.dart');
 
   if (!permissionKeysFile.existsSync()) {
     stderr.writeln('permission_key_lint: '
@@ -608,6 +774,13 @@ Future<void> main(List<String> args) async {
   if (!catalogFile.existsSync()) {
     stderr.writeln('permission_key_lint: '
         'docs/contracts/auth_permission_key_catalog.md not found '
+        '(run from repository root).');
+    exitCode = 2;
+    return;
+  }
+  if (!metadataFile.existsSync()) {
+    stderr.writeln('permission_key_lint: '
+        'lib/auth/permission_key_metadata.dart not found '
         '(run from repository root).');
     exitCode = 2;
     return;
@@ -632,6 +805,7 @@ Future<void> main(List<String> args) async {
     permissionKeysSource: permissionKeysFile.readAsStringSync(),
     referenceFiles: referenceFiles,
     catalogMarkdown: catalogFile.readAsStringSync(),
+    permissionKeyMetadataSource: metadataFile.readAsStringSync(),
   );
   final result = runner.run();
 
@@ -649,7 +823,8 @@ Future<void> main(List<String> args) async {
 
   if (result.isClean) {
     stdout.writeln('permission_key_lint: clean — no orphans / drift / '
-        'missing entries / raw literals.');
+        'missing entries / raw literals / missing or invalid '
+        'PermissionKeyMetadata entries.');
     return;
   }
 
