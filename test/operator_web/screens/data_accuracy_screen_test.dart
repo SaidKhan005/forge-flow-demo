@@ -21,6 +21,7 @@ import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row_record.dart';
 import 'package:forge_and_flow/operator_web/screens/data_accuracy_screen.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_tier_email_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_wage_authority_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_vendor_applicability_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
@@ -461,6 +462,162 @@ void main() {
       expect(
         find.byKey(const Key('polling_tier_change_request_dialog')),
         findsOneWidget,
+      );
+    });
+
+    // Wave 2 U-FU-tier-email — dialog submit invokes the gateway and
+    // renders the success toast. The gateway is the demo
+    // in-memory variant so no network traffic happens.
+    testWidgets(
+        'dialog submit invokes tier-email gateway and shows "emailed" toast',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = InMemoryOperatorWebTierEmailGateway();
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
+            tierEmailGateway: gateway,
+            tierEmailIdempotencyKeyFactory: () => 'idem-test-1',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.tap(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('polling_tier_change_request_reason_field')),
+        'Dinner rush needs faster numbers — please review.',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('polling_tier_change_request_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.submissions, hasLength(1));
+      final submitted = gateway.submissions.single;
+      expect(submitted.currentTier, 'Standard');
+      expect(submitted.requestedCadence, 'Faster than current tier');
+      expect(
+        submitted.businessReason,
+        'Dinner rush needs faster numbers — please review.',
+      );
+      expect(gateway.idempotencyKeys, equals(<String>['idem-test-1']));
+
+      expect(
+        find.byKey(const Key('polling_tier_email_toast_sent')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Request submitted and emailed to F&F support.'),
+        findsOneWidget,
+      );
+    });
+
+    // Wave 2 U-FU-tier-email — email failure path: the gateway is
+    // wired but returns `emailFailed`. The dialog renders the muted
+    // toast so the operator knows the request is durable even if
+    // SendGrid did not accept the send.
+    testWidgets('dialog submit shows muted toast when gateway reports email failure',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = InMemoryOperatorWebTierEmailGateway(
+        defaultKind: OperatorTierEmailResultKind.emailFailed,
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
+            tierEmailGateway: gateway,
+            tierEmailIdempotencyKeyFactory: () => 'idem-test-2',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.tap(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('polling_tier_change_request_reason_field')),
+        'A reason',
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('polling_tier_change_request_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      // The gateway was still invoked — audit-row write happens
+      // upstream, the email failure is the muted-toast case.
+      expect(gateway.submissions, hasLength(1));
+      expect(
+        find.byKey(const Key('polling_tier_email_toast_failed')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Request submitted to F&F support.'),
+        findsOneWidget,
+      );
+    });
+
+    // Wave 2 U-FU-tier-email — cancelling the dialog must NOT call
+    // the gateway. The submit button stays disabled on empty input
+    // so this exercise the cancel path explicitly.
+    testWidgets('dialog cancel does NOT invoke the gateway', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = InMemoryOperatorWebTierEmailGateway();
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
+            tierEmailGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.tap(
+        find.byKey(const Key('polling_tier_request_change_button')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('polling_tier_change_request_cancel')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.submissions, isEmpty);
+      expect(
+        find.byKey(const Key('polling_tier_email_toast_sent')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('polling_tier_email_toast_failed')),
+        findsNothing,
       );
     });
   });
