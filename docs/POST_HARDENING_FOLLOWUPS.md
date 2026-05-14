@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**51 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql`;
+**52 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -89,8 +89,9 @@ Production1 apply.
 | `202605150000_phase_r2l_default_role_catalog_v2.sql` | Wave 2 R-2L Default Role Catalog v2 redesign: adds `permission_keys.human_label` NULLABLE with inline backfill, seeds 7 v2 role rows (general_manager / location_manager / supervisor / finance_analyst / auditor_compliance / training_lead / team_admin) + Owner v2 wording refresh, auto-migrates v1 user_roles (`operator_manager` -> `operator_general_manager`; `operator_supervisor` / `operator_staff` -> `supervisor` with location fan-out), soft-deletes v1 retired roles, emits `auth.role.seeded_catalog_v2_published` audit rows. Defers NOT-NULL flip on `human_label` to R-1L-FU follow-up. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` HUMAN_LABEL_INVALID pass. | code-ready |
 | `202605150100_phase_r_followup_not_null_flip.sql` | Wave 2 R-1L-FU + R-2L-FU contract migration: flips `permission_keys.product_label` + `category_label` + `scope_kind` + `human_label` from NULLABLE to NOT NULL after R-1L + R-2L inline backfills hydrated every row, and re-asserts `implies text[]` default of `'{}'::text[]` + NOT NULL. Defensive pre-flight DO block raises with the offending row count if any of the five columns is still NULL before the flip (never silently tightens). Idempotent: each `SET NOT NULL` no-ops on already-tight columns. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` METADATA + HUMAN_LABEL_INVALID passes, so the inline backfills are guaranteed to find a non-NULL value in every row before this flip applies. | code-ready |
 | `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql` | Wave 2 U-FU-hp11-account per-location override schema for the three AccountScreen settings (region, business-day rollover, identity contact email + phone). Adds `public.location_account_overrides` keyed by `(operator_id, location_id)` with NULL columns inheriting the business defaults from `public.operators`. RLS via `app_current_operator()` wrapper + operator-leading B-tree index per HP #4. Reuses the existing operator_owner / operator_admin role gate — no new permission key. Business display name stays operator-wide (single business name doctrine); the location-scoped Identity card edits contact email + phone only. | code-ready |
+| `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql` | Wave 2 RP-9 `team.roles.default_catalog.view` + `team.roles.default_catalog.edit` permission keys + baseline grants (F&F super_admin write; super_admin + ff_support read). Promotes the role-tier gate on `default_role_catalog_admin_screen.dart` + `tool/advisor_proxy/admin_default_role_catalog_routes.dart` to a granular permission key registered in the catalog. F&F-internal admin scope — NOT widened to operator-tier roles. | code-ready |
 
-**Action:** apply all 51 in next Production1 event per
+**Action:** apply all 52 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
