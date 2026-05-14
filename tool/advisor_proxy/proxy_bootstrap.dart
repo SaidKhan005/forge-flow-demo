@@ -124,6 +124,7 @@ import 'health_producers/producer_registry.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
 import 'email_soak_probe_routes.dart';
+import 'firebase_test_lab_webhook_routes.dart';
 import 'sendgrid_events_webhook.dart';
 import 'vendor_admin_status_catalog.dart' as vendor_status;
 import 'vendor_capability_index.dart';
@@ -255,6 +256,7 @@ class ProxyProductionBindings {
     required this.operatorWebAuditLogHierarchyGateway,
     required this.sendGridEventsWebhookRouter,
     required this.emailSoakProbeRouter,
+    required this.firebaseTestLabWebhookRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
@@ -588,6 +590,18 @@ class ProxyProductionBindings {
   /// `email_event` rows by `provider_message_id` so the harness can
   /// poll for `delivered` events end-to-end.
   final EmailSoakProbeRouter emailSoakProbeRouter;
+
+  /// Wave 2 Q-2c — Firebase Test Lab matrix-completion webhook
+  /// receiver. Mounted as a pre-check in `main.dart`. The router is
+  /// env-gated-inert: when `FIREBASE_TEST_LAB_WEBHOOK_SECRET` is unset
+  /// (the production posture), the route returns 503
+  /// `firebase_test_lab_webhook_disabled` and rejects all callers.
+  /// Auth posture: shared-secret header only — no Firebase JWT and
+  /// no operator permission key (test-time-only infrastructure;
+  /// Test Lab is a server-to-server caller). The in-memory store
+  /// behind the router lets the soak orchestrator poll for outcomes
+  /// by matrix id.
+  final FirebaseTestLabWebhookRouter firebaseTestLabWebhookRouter;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
   /// password-reset / magic-link request endpoint. Keyed by
@@ -1091,6 +1105,16 @@ ProxyProductionBindings buildProxyProductionBindings(
   final emailSoakProbeRouter = EmailSoakProbeRouter(
     repository: emailEventRepository,
   );
+  // Wave 2 Q-2c — Firebase Test Lab matrix-completion webhook
+  // receiver. Env-gated-inert by default: production deploys leave
+  // `FIREBASE_TEST_LAB_WEBHOOK_SECRET` UNSET, so the route returns
+  // 503 `firebase_test_lab_webhook_disabled` on every call and the
+  // in-memory store is never touched. Auth posture is a shared-secret
+  // header validated against the env var; no operator permission key
+  // (test-time-only infra, server-to-server caller). The in-memory
+  // store is process-local; soak runs that span a proxy restart are
+  // out of scope for the V1 receiver.
+  final firebaseTestLabWebhookRouter = FirebaseTestLabWebhookRouter();
   // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
   // Wired through tenant-pool repository so RLS + per-operator
   // isolation hold; the read path stays in `fetchWageRoleRows`
@@ -1561,6 +1585,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     // only). Mounted as a pre-check in `main.dart`. The router is
     // env-gated-inert: `EMAIL_SOAK_PROBE_TOKEN` unset → 503.
     emailSoakProbeRouter: emailSoakProbeRouter,
+    // Wave 2 Q-2c — Firebase Test Lab matrix-completion webhook
+    // receiver (test-time only). Mounted as a pre-check in `main.dart`.
+    // The router is env-gated-inert: `FIREBASE_TEST_LAB_WEBHOOK_SECRET`
+    // unset → 503. Shared-secret header gates the route — no Firebase
+    // JWT, no operator permission key.
+    firebaseTestLabWebhookRouter: firebaseTestLabWebhookRouter,
     // Slice A11.1 — production session-record gauge. Single shared
     // instance per proxy process; the route handler increments it on
     // every 2xx from POST /v1/auth/session/login, the deep-health
