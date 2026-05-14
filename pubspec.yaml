@@ -98,6 +98,18 @@ dev_dependencies:
   integration_test:
     sdk: flutter
 
+  # Wave 2 Q-2b — Patrol native UI driver for the in-app notification
+  # surface soak harness under `integration_test/in_app_notifications/`
+  # and the driver at `tool/in_app_notification_soak/`. Test-only;
+  # never ships in a release binary. Bumps `flutter_test`-shaped tests
+  # with native gesture + push-notification hooks Patrol exposes that
+  # the stock `WidgetTester` lacks (lockscreen-shade interaction,
+  # cross-process FCM delivery). Pinned to a stable major; the
+  # in-tree harness gates the actual on-device runs behind an env var
+  # so a missing Android SDK / iOS toolchain does not break unrelated
+  # `dart analyze` or `flutter test` invocations.
+  patrol: ^4.5.0
+
   # Phase 10a.0 — virtualized clock for the realtime back-off /
   # poll-tick tests. Bundled transitively by flutter_test; promoted to
   # a direct dev dep so depend_on_referenced_packages stays clean.
