@@ -403,6 +403,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
+                  // MO-1-FU (Wave 2) — operator master Demo→Live switch
+                  // moved here from the Data tab. MO-1 (PR #661) gated
+                  // the Data tab to F&F admin users only, which left
+                  // operator-tier users (operator_owner /
+                  // operator_manager) unable to reach this switch.
+                  // Per Demo Mode carve-out #4 (`CLAUDE.md`),
+                  // `SettingsDemoLiveSwitch` is the operator-approved
+                  // master switch and semantically belongs to
+                  // operators, not F&F-internal diagnostics. Setup is
+                  // gated by `showAdminTabs` (operator_owner /
+                  // operator_manager / super_admin / ff_support), so
+                  // the switch stays available to demo operators while
+                  // the Data tab remains F&F-internal. F&F admins also
+                  // reach the Setup tab, so the switch is reachable
+                  // for them too via this single placement.
+                  _settingsSection(
+                    title: 'Demo vs live data',
+                    description:
+                        'Switch this location from demo facts to live vendor facts.',
+                    child: const SettingsDemoLiveSwitch(),
+                  ),
                 ],
               ),
             if (showDataTab)
@@ -415,12 +436,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     description:
                         'See whether this device has the local data it needs.',
                     child: SettingsDataStatusSection(status: _status),
-                  ),
-                  _settingsSection(
-                    title: 'Integrations',
-                    description:
-                        'Switch this location from demo facts to live vendor facts.',
-                    child: const SettingsDemoLiveSwitch(),
                   ),
                   // Phase 10a.UX.1 â€” per-table last-sync timestamps
                   // surfacing the realtime push channel from the
