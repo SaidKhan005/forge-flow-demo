@@ -18,8 +18,10 @@ import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
+import 'package:forge_and_flow/domain/models/wage_role_row_record.dart';
 import 'package:forge_and_flow/operator_web/screens/data_accuracy_screen.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_wage_authority_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_vendor_applicability_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -950,6 +952,252 @@ void main() {
       },
     );
   });
+
+  // Wave 2 S-2 (`debug.md:220`, OW-13c) — Wage Authority folded under
+  // the Data Accuracy page. The section embeds inside the screen with
+  // every S-1 affordance intact (blended-wage summary card, FOH/BOH/
+  // Management bands, hierarchy-scope notice). Full unit coverage for
+  // the calculator + label widgets still lives next to those files; the
+  // screen test only asserts the embed is mounted + wires through to
+  // the gateway.
+  group('DataAccuracyScreen embedded wage authority section', () {
+    testWidgets(
+      'wage authority section mounts inside the Data accuracy page',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 2400));
+        final wageGateway = _FakeWageAuthorityGateway()
+          ..seed(<WageRoleRowRecord>[
+            _wageRowFor(
+              id: 'row-foh',
+              roleName: 'Server',
+              laborBucket: 'foh',
+            ),
+            _wageRowFor(
+              id: 'row-mgr',
+              roleName: 'GM',
+              laborBucket: 'manager',
+              hourlyRate: 30.0,
+            ),
+          ]);
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              wageAuthorityGateway: wageGateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The embedded wage section is mounted under Data accuracy.
+        expect(
+          find.byKey(
+            const Key('operator_web_data_accuracy_wage_authority_section'),
+          ),
+          findsOneWidget,
+        );
+        // S-1 blended-wage summary card renders inside the embed.
+        expect(
+          find.byKey(const Key('wage_authority_blended_summary_card')),
+          findsOneWidget,
+        );
+        // Three labor bands present.
+        expect(
+          find.byKey(const Key('wage_authority_bucket_foh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('wage_authority_bucket_boh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('wage_authority_bucket_manager')),
+          findsOneWidget,
+        );
+        // Seeded rows render in the right bands.
+        expect(
+          find.byKey(const Key('wage_authority_row_display_row-foh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('wage_authority_row_display_row-mgr')),
+          findsOneWidget,
+        );
+        // S-1 hierarchy-scope notice (HP #11) renders at the top of
+        // the embedded section.
+        expect(
+          find.byKey(const Key('wage_authority_hierarchy_scope')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'wage authority embed saves through the supplied gateway',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 2400));
+        final wageGateway = _FakeWageAuthorityGateway();
+        var idemSeq = 0;
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId,
+              gateway: InMemoryVendorConnectionsGateway(),
+              wageAuthorityGateway: wageGateway,
+              wageAuthorityIdempotencyKeyFactory: () {
+                idemSeq += 1;
+                return 'test-idem-$idemSeq';
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Open the FOH add-row form inside the embedded section.
+        await tester.ensureVisible(
+          find.byKey(const Key('wage_authority_add_button_foh')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('wage_authority_add_button_foh')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('wage_authority_form_role_name_add')),
+          'Server',
+        );
+        await tester.enterText(
+          find.byKey(const Key('wage_authority_form_hourly_rate_add')),
+          '18.50',
+        );
+        await tester.enterText(
+          find.byKey(const Key('wage_authority_form_weighted_hours_add')),
+          '32',
+        );
+        await tester.ensureVisible(
+          find.byKey(const Key('wage_authority_form_save_add')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('wage_authority_form_save_add')));
+        await tester.pumpAndSettle();
+
+        // Save round-tripped through the gateway with the embed's
+        // idempotency-key factory.
+        expect(wageGateway.upsertCalls, hasLength(1));
+        final call = wageGateway.upsertCalls.single;
+        expect(call.request.roleName, 'Server');
+        expect(call.request.laborBucket, 'foh');
+        expect(call.request.hourlyRate, 18.5);
+        expect(call.idempotencyKey, 'test-idem-1');
+      },
+    );
+  });
+}
+
+class _UpsertCallFixture {
+  const _UpsertCallFixture({
+    required this.request,
+    required this.idempotencyKey,
+  });
+
+  final WageRoleRowUpsert request;
+  final String idempotencyKey;
+}
+
+class _FakeWageAuthorityGateway implements OperatorWebWageAuthorityGateway {
+  final List<WageRoleRowRecord> _rows = <WageRoleRowRecord>[];
+  final List<_UpsertCallFixture> upsertCalls = <_UpsertCallFixture>[];
+
+  void seed(Iterable<WageRoleRowRecord> rows) {
+    _rows
+      ..clear()
+      ..addAll(rows);
+  }
+
+  @override
+  Future<List<WageRoleRowRecord>> list({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    return List<WageRoleRowRecord>.unmodifiable(
+      _rows.where((r) => r.isActive),
+    );
+  }
+
+  @override
+  Future<WageRoleRowRecord> upsert({
+    required WageRoleRowUpsert request,
+    required String idempotencyKey,
+  }) async {
+    upsertCalls.add(
+      _UpsertCallFixture(request: request, idempotencyKey: idempotencyKey),
+    );
+    final now = DateTime.utc(2026, 5, 14, 12);
+    final record = WageRoleRowRecord(
+      wageRoleRowId: 'fake-${upsertCalls.length}',
+      operatorId: 'brio-operator',
+      locationId: 'brio-chicago-loop',
+      restaurantId: request.restaurantId,
+      roleName: request.roleName,
+      laborBucket: request.laborBucket,
+      hourlyRate: request.hourlyRate,
+      weightedHours: request.weightedHours,
+      jobCode: request.jobCode,
+      vendorId: request.vendorId,
+      vendorRoleId: request.vendorRoleId,
+      source: request.source ?? WageRoleRowSource.operatorManual,
+      isActive: true,
+      effectiveAt: now,
+      metadata: request.metadata,
+      createdAt: now,
+      updatedAt: now,
+    );
+    _rows.add(record);
+    return record;
+  }
+
+  @override
+  Future<bool> delete({
+    required String wageRoleRowId,
+    required String idempotencyKey,
+  }) async {
+    _rows.removeWhere((r) => r.wageRoleRowId == wageRoleRowId);
+    return true;
+  }
+}
+
+WageRoleRowRecord _wageRowFor({
+  required String id,
+  required String roleName,
+  required String laborBucket,
+  double hourlyRate = 18.50,
+  double weightedHours = 32.0,
+  String operatorId = 'brio-operator',
+  String locationId = 'brio-chicago-loop',
+}) {
+  final now = DateTime.utc(2026, 5, 14, 12);
+  return WageRoleRowRecord(
+    wageRoleRowId: id,
+    operatorId: operatorId,
+    locationId: locationId,
+    restaurantId: locationId,
+    roleName: roleName,
+    laborBucket: laborBucket,
+    hourlyRate: hourlyRate,
+    weightedHours: weightedHours,
+    source: WageRoleRowSource.operatorManual,
+    isActive: true,
+    effectiveAt: now,
+    metadata: const <String, Object?>{},
+    createdAt: now,
+    updatedAt: now,
+  );
 }
 
 class _ServicePeriodSaveCall {
