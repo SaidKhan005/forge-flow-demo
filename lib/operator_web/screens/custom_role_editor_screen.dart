@@ -29,6 +29,7 @@ import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../services/auth/custom_role_validator.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../../theme/app_theme.dart';
@@ -53,10 +54,28 @@ class CustomRoleEditorScreen extends StatefulWidget {
     this.onSaved,
     this.onClose,
     this.readOnly = false,
+    this.roleScope = RoleScope.location,
+    this.validator = const CustomRoleValidator(),
   });
 
   final OperatorWebSession session;
   final WebTeamRolesGateway gateway;
+
+  /// Hierarchy scope this role is being authored at. The operator-web
+  /// custom role flow today is implicitly location-scoped (the
+  /// session carries a `primaryLocationId`); a future business-scope
+  /// editor surface can pass `RoleScope.business` to suppress the
+  /// org-wide-key-at-location-scope advisory.
+  ///
+  /// Defaults to [RoleScope.location] so the warning surface is on by
+  /// default for the current operator-web shell.
+  final RoleScope roleScope;
+
+  /// Advisory validator that produces the inline warning list. Pure
+  /// Dart; the editor calls it on every selection change. Override in
+  /// tests to pin a specific warning set without seeding permission
+  /// keys.
+  final CustomRoleValidator validator;
 
   /// Existing role to edit. `null` means "create a new custom role".
   final TeamRoleCatalogEntry? existing;
@@ -361,6 +380,17 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                   barrioPlanIncluded: _barrioPlanIncluded,
                   onToggle: _togglePermission,
                 ),
+                Builder(builder: (context) {
+                  final warnings = widget.validator.validate(
+                    _selectedPermissions,
+                    scope: widget.roleScope,
+                  );
+                  if (warnings.isEmpty) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: _RoleWarningPanel(warnings: warnings),
+                  );
+                }),
                 if (_saveError != null) ...<Widget>[
                   const SizedBox(height: 14),
                   _SaveErrorPanel(message: _saveError!),
@@ -866,6 +896,127 @@ class _PermissionCheckbox extends StatelessWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inline advisory panel for [RoleWarning]s emitted by
+/// [CustomRoleValidator]. Warnings are advisory only - the save
+/// button stays enabled regardless of how many warnings render.
+class _RoleWarningPanel extends StatelessWidget {
+  const _RoleWarningPanel({required this.warnings});
+
+  final List<RoleWarning> warnings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('operator_web_custom_role_editor_warnings'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.warning.withValues(alpha: 0.45),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(
+                Icons.info_outline,
+                size: 18,
+                color: AppColors.warning,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Heads up: this role has ${warnings.length} '
+                  '${warnings.length == 1 ? 'thing' : 'things'} '
+                  'worth a second look',
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'You can save anyway. These notes call out permission '
+            'combinations that may hide the screen the role needs.',
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          for (final warning in warnings)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _RoleWarningRow(warning: warning),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoleWarningRow extends StatelessWidget {
+  const _RoleWarningRow({required this.warning});
+
+  final RoleWarning warning;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key(
+        'operator_web_custom_role_editor_warning_${warning.code.name}',
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            warning.message,
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: <Widget>[
+              for (final key in warning.affectedKeys)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardGlow,
+                    border: Border.all(
+                      color: AppColors.borderSubtle,
+                      width: 1,
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    key,
+                    style: AppTextStyles.mono10(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ],
       ),

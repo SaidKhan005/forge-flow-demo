@@ -433,6 +433,113 @@ void main() {
         'forgeflow.shift.view',
       ]);
     });
+
+    // Wave 2 Q-4 - inline advisory warning panel. Pins debug.md:78-80
+    // (AC-2) member-management chain rule: selecting any team.users.*
+    // write key without team.users.view surfaces the
+    // memberManagementMissingUsersView warning.
+    testWidgets(
+      'renders advisory warning when team.users.invite is selected '
+      'without team.users.view',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 8000));
+        await tester.pumpWidget(
+          wrapBare(
+            CustomRoleEditorScreen(
+              session: sessionWithRole('operator_owner'),
+              gateway: DemoWebTeamRolesGateway(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Fill name + role key so Save can flip enabled once a
+        // permission is picked (advisory warnings must not gate it).
+        await tester.enterText(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_display_name'),
+          ),
+          'Floor Lead',
+        );
+        await tester.enterText(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_role_key'),
+          ),
+          'floor_lead',
+        );
+        await tester.pumpAndSettle();
+
+        // No warnings before any permission is selected.
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_warnings'),
+          ),
+          findsNothing,
+        );
+
+        // Tick team.users.invite without ticking team.users.view.
+        final permRow = find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_team.users.invite',
+          ),
+        );
+        await tester.ensureVisible(permRow);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: permRow, matching: find.byType(Checkbox)),
+        );
+        await tester.pumpAndSettle();
+
+        // Advisory panel renders + the member-management warning row
+        // is keyed by RoleWarningCode.name.
+        expect(
+          find.byKey(
+            const Key('operator_web_custom_role_editor_warnings'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_warning_'
+              'memberManagementMissingUsersView',
+            ),
+          ),
+          findsOneWidget,
+        );
+
+        // Save remains enabled - advisory warnings never gate save.
+        final save = find.byKey(
+          const Key('operator_web_custom_role_editor_save'),
+        );
+        expect(
+          tester.widget<FilledButton>(save).onPressed,
+          isNotNull,
+          reason: 'Advisory warnings must not disable Save.',
+        );
+
+        // Once team.users.view is added, the warning clears.
+        final viewRow = find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_perm_team.users.view',
+          ),
+        );
+        await tester.ensureVisible(viewRow);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: viewRow, matching: find.byType(Checkbox)),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_custom_role_editor_warning_'
+              'memberManagementMissingUsersView',
+            ),
+          ),
+          findsNothing,
+        );
+    });
   });
 
   group('DemoWebTeamRolesGateway business rules', () {
