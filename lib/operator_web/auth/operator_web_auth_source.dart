@@ -815,6 +815,30 @@ class TosVersionFixture {
   final String bodyMarkdown;
 }
 
+/// Wave 2 W-5 — demo placeholder logo URL.
+///
+/// Demo mode invariant (HP #2): the reader code path is identical in
+/// demo and live. The shell's `_OperatorBrandMark` reads
+/// `session.logoUrl` and renders it via `Image.network` with the
+/// F&F splash icon as a graceful fallback. Setting a demo URL here
+/// exercises the propagation path end-to-end during the demo
+/// walkthrough; if the URL fails to load (browser offline, CORS,
+/// etc.) the shell falls back to the splash and the walkthrough
+/// stays usable.
+///
+/// We use a `data:image/png;base64,...` URI so the demo logo
+/// renders without any network round-trip — the demo walkthrough
+/// works on a fresh laptop with no internet. The encoded image is a
+/// 16x16 sunset-coloured PNG (F&F brand orange). This is NOT a
+/// `kDemoMode` reader-side carve-out: production operators see
+/// their uploaded URL through the exact same `session.logoUrl`
+/// projection.
+const String kDemoOperatorWebPlaceholderLogoUrl =
+    'data:image/png;base64,'
+    'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAOklEQVR42mNk+M9A'
+    'C2AcNWjUoFGDRg0aNWjUoFGDhrJBjP8ZGGgADIyMjAyMjGz/Gf8z/B8FowAA1l8C'
+    'TyFprO0AAAAASUVORK5CYII=';
+
 /// Shared demo session so `signedOut → completed` factories return the
 /// same identity payload — important because widget tests assert on
 /// the fields.
@@ -827,6 +851,9 @@ const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
   primaryLocationId: 'demo-location',
   primaryLocationName: 'Demo Main Street',
   roles: <String>['operator_owner'],
+  // Wave 2 W-5 — demo placeholder logo. See
+  // [kDemoOperatorWebPlaceholderLogoUrl] for the demo-mode rationale.
+  logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
 );
 
 /// Demo session for the `location_manager` read-only branch. Drives
@@ -843,6 +870,7 @@ const OperatorWebSession kDemoOperatorWebLocationManagerSession =
       primaryLocationId: 'demo-location',
       primaryLocationName: 'Demo Main Street',
       roles: <String>['location_manager'],
+      logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
     );
 
 String _maskPhoneNumber(String raw) {

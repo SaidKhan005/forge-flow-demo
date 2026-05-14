@@ -23,8 +23,10 @@ import 'package:flutter/services.dart';
 import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
+import '../services/business_logo_upload_gateway.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
+import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
 
 const Set<String> _kAccountEditRoles = <String>{
@@ -35,7 +37,13 @@ const Set<String> _kAccountEditRoles = <String>{
 const String _kAccountEditPermission = PermissionKeys.accountConfigure;
 
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({super.key, required this.session, this.gateway});
+  const AccountScreen({
+    super.key,
+    required this.session,
+    this.gateway,
+    this.logoUploadGateway,
+    this.logoFilePicker,
+  });
 
   final OperatorWebSession session;
 
@@ -44,6 +52,17 @@ class AccountScreen extends StatefulWidget {
   /// live gateway). The router wires this up when the live source
   /// implements `OperatorWebAccountGatewayProvider`.
   final WebAccountGateway? gateway;
+
+  /// Wave 2 W-5 — optional logo upload gateway. When null the
+  /// upload section renders an explainer banner that the URL-paste
+  /// field still works. The router wires this up when the live
+  /// source provides an Azure Blob-backed uploader.
+  final BusinessLogoUploadGateway? logoUploadGateway;
+
+  /// Wave 2 W-5 — widget-test seam for the file picker. Production
+  /// leaves null and the upload section uses the conditional-imported
+  /// web picker.
+  final BusinessLogoFilePickerFn? logoFilePicker;
 
   bool get canEdit =>
       session.roles.any(_kAccountEditRoles.contains) ||
@@ -305,6 +324,17 @@ class _AccountScreenState extends State<AccountScreen> {
                 : _logoUrl.text.trim(),
             enabled: widget.canEdit && !_submitting,
             onChanged: () => setState(() {}),
+            logoUploadGateway: widget.logoUploadGateway,
+            logoFilePicker: widget.logoFilePicker,
+            onLogoUploaded: (url) {
+              // Wave 2 W-5: the upload section uploaded the file to
+              // Azure Blob and got back a URL. Drop it into the
+              // existing controller so the next "Save business
+              // account" PATCH commits it to public.operators.
+              setState(() {
+                _logoUrl.text = url;
+              });
+            },
           ),
           const SizedBox(height: 14),
           _RegionSection(
@@ -525,6 +555,9 @@ class _BusinessIdentitySection extends StatelessWidget {
     required this.logoLivePreviewUrl,
     required this.enabled,
     required this.onChanged,
+    required this.onLogoUploaded,
+    this.logoUploadGateway,
+    this.logoFilePicker,
   });
 
   final TextEditingController businessNameController;
@@ -532,6 +565,9 @@ class _BusinessIdentitySection extends StatelessWidget {
   final String? logoLivePreviewUrl;
   final bool enabled;
   final VoidCallback onChanged;
+  final ValueChanged<String> onLogoUploaded;
+  final BusinessLogoUploadGateway? logoUploadGateway;
+  final BusinessLogoFilePickerFn? logoFilePicker;
 
   @override
   Widget build(BuildContext context) {
@@ -542,7 +578,7 @@ class _BusinessIdentitySection extends StatelessWidget {
       subtitle:
           'How your business shows up across Forge & Flow. The name '
           'appears on every dashboard heading; the logo shows in the '
-          'console header.',
+          'console header and the mobile app header.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -561,6 +597,18 @@ class _BusinessIdentitySection extends StatelessWidget {
             onChanged: (_) => onChanged(),
           ),
           const SizedBox(height: 12),
+          // Wave 2 W-5 — file upload section. Sits above the URL
+          // paste field so the upload UX reads as the recommended
+          // path. After a successful upload the resulting URL is
+          // copied into [logoUrlController] and the regular Save
+          // button persists it.
+          BusinessLogoUploadSection(
+            gateway: logoUploadGateway,
+            enabled: enabled,
+            onUploaded: onLogoUploaded,
+            filePicker: logoFilePicker,
+          ),
+          const SizedBox(height: 10),
           TextField(
             key: const Key('operator_web_account_logo_url'),
             controller: logoUrlController,
@@ -572,8 +620,8 @@ class _BusinessIdentitySection extends StatelessWidget {
               labelText: 'Logo URL (https only)',
               border: OutlineInputBorder(),
               helperText:
-                  'Paste a public https link to your logo. Leave empty '
-                  'to clear it.',
+                  'Or paste a public https link to your logo. Leave '
+                  'empty to clear it.',
             ),
             onChanged: (_) => onChanged(),
           ),
