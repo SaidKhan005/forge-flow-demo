@@ -34,6 +34,7 @@ import 'screens/feature_flags_admin_screen.dart';
 import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
 import 'screens/members_admin_screen.dart';
+import 'screens/my_account_admin_screen.dart';
 import 'screens/observability_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
@@ -176,7 +177,7 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring }
+enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring, account }
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -264,6 +265,13 @@ const String kAdminAuditedSupportActionsRouteId = 'audited-support-actions';
 /// and route observers have a stable name to refer to the modal
 /// target.
 const String kAdminOperatorPickerRouteId = 'operator-picker';
+
+/// Wave 2 W-4 — Admin "My Account" parity surface. Mirrors the
+/// customer operator-web `MyAccountScreen` for the admin actor
+/// (`super_admin` / `ff_support`). Read-only today (no admin gateway
+/// for MFA / sessions mutations); future slices can light up the
+/// mutate paths once those gateways exist.
+const String kAdminMyAccountRouteId = 'my-account';
 
 /// The admin route table. Order is the side-nav order.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
@@ -473,6 +481,16 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildAuditedSupportActions,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
+  ),
+  AdminRoute(
+    id: kAdminMyAccountRouteId,
+    title: 'My account',
+    path: '/admin/my-account',
+    icon: Icons.person_outline,
+    section: AdminRouteSection.account,
+    subtitle:
+        'Review your admin sign-in details, 2FA status, and current session.',
+    builder: _buildMyAccount,
   ),
 ];
 
@@ -2470,6 +2488,84 @@ Widget _buildDebugConsole(BuildContext context) {
           ),
     functionBuilder: buildFunction,
   );
+}
+
+/// Wave 2 W-4 — admin "My Account" parity surface builder. Streams the
+/// admin session off [AdminConsoleServicesScope.adminAuthSource] so the
+/// rendered identity card stays in sync with sign-in / sign-out events.
+///
+/// When the source is null (legacy demo wiring with no scope, or
+/// widget-test harnesses that bypass the gate) we fall back to a
+/// minimal "Sign in required" surface rather than fabricate a session.
+Widget _buildMyAccount(BuildContext context) {
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return const _MyAccountUnauthenticatedFallback();
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      if (state is AdminAuthAuthenticated) {
+        return MyAccountAdminScreen(
+          session: state.session,
+          authSource: source,
+        );
+      }
+      return const _MyAccountUnauthenticatedFallback();
+    },
+  );
+}
+
+/// Calm placeholder rendered when the admin auth source has not
+/// resolved an authenticated session. The shell only mounts the My
+/// Account route on the authenticated branch, so this is intentionally
+/// a defensive fallback — never the primary path.
+class _MyAccountUnauthenticatedFallback extends StatelessWidget {
+  const _MyAccountUnauthenticatedFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      key: const Key('admin_my_account_unauthenticated_fallback'),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(
+                    Icons.person_outline,
+                    size: 22,
+                    color: AppColors.sunsetDark,
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'My account',
+                    style: TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 18,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Sign in to the admin console to see your account details.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// Inherited services scope for the admin console. Production wires

@@ -537,6 +537,15 @@ class _AdminSideNav extends StatelessWidget {
       icon: Icons.settings_input_component_outlined,
       accentColor: AppColors.ocean,
     ),
+    // Wave 2 W-4 — admin "My Account" parity section. Renders the
+    // My Account row at the bottom of the side nav, mirroring the
+    // operator-web shape where the account row anchors the navigation.
+    _NavSectionMeta(
+      section: AdminRouteSection.account,
+      label: 'Your account',
+      icon: Icons.person_outline,
+      accentColor: AppColors.peacock,
+    ),
   ];
 
   @override
