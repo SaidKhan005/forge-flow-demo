@@ -1816,6 +1816,21 @@ Future<void> _runProxy(List<String> args) async {
             return;
           }
           // endregion
+          // region: wave_2_q_2c_firebase_test_lab_webhook
+          // Wave 2 Q-2c — Firebase Test Lab matrix-completion webhook.
+          // Handles POST /v1/test-lab/webhook/matrix-complete. Test-time
+          // only; env-gated-inert by `FIREBASE_TEST_LAB_WEBHOOK_SECRET`
+          // (production deploys leave the env var unset so the route
+          // returns 503). Auth posture: shared-secret header only — no
+          // Firebase JWT and no operator permission key. The router
+          // writes its own JSON response and closes the HTTP response;
+          // we early-return so `routeRequest` (which would 401 on the
+          // lack of a Firebase JWT) does not fire.
+          if (await productionBindings.firebaseTestLabWebhookRouter
+              .tryHandle(request)) {
+            return;
+          }
+          // endregion
           // region: lane_b_b8_audit_log_hierarchy_filter
           // Lane B B8 — hierarchy-scoped audit log filter. Handles
           // GET /v1/admin/auth/audit-log/hierarchy. The router does
