@@ -159,7 +159,7 @@ class _HeaderBar extends StatelessWidget {
             managementScopeOptions.isNotEmpty || managementScopeLoading;
         return Container(
           key: const Key('operator_web_header_bar'),
-          height: 64,
+          height: 80,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
@@ -182,8 +182,8 @@ class _HeaderBar extends StatelessWidget {
               ClipOval(
                 child: Image.asset(
                   'assets/images/forge_flow_splash_icon.png',
-                  width: 32,
-                  height: 32,
+                  width: 40,
+                  height: 40,
                   fit: BoxFit.cover,
                 ),
               ),
@@ -204,7 +204,7 @@ class _HeaderBar extends StatelessWidget {
                     Text(
                       session.businessName,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.mono8(color: AppColors.sunsetDark),
+                      style: AppTextStyles.mono10(color: AppColors.sunsetDark),
                     ),
                   ],
                 ),
@@ -231,16 +231,34 @@ class _HeaderBar extends StatelessWidget {
                 Flexible(child: _IdentityChip(session: session)),
               ],
               const SizedBox(width: 8),
-              IconButton(
-                key: const Key('operator_web_header_signout'),
-                tooltip:
+              Tooltip(
+                message:
                     'Sign out — ends this browser session and returns '
                     'you to the welcome screen.',
-                onPressed: onSignOut,
-                icon: const Icon(
-                  Icons.logout_outlined,
-                  size: 18,
-                  color: AppColors.textSecondary,
+                child: TextButton.icon(
+                  key: const Key('operator_web_header_signout'),
+                  onPressed: onSignOut,
+                  icon: const Icon(
+                    Icons.logout_outlined,
+                    size: 22,
+                    color: AppColors.textSecondary,
+                  ),
+                  label: Text(
+                    'Sign out',
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    foregroundColor: AppColors.textSecondary,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -487,7 +505,7 @@ class _IdentityChip extends StatelessWidget {
       label,
       key: const Key('operator_web_header_identity'),
       overflow: TextOverflow.ellipsis,
-      style: AppTextStyles.mono11(color: AppColors.textSecondary),
+      style: AppTextStyles.mono14(color: AppColors.textSecondary),
     );
   }
 }
