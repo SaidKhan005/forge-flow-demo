@@ -574,17 +574,14 @@ class _RoleTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    var allowCount = 0;
-    var denyCount = 0;
-    var mfaCount = 0;
-    for (final rule in role.permissions) {
-      if (rule.effect == 'allow') allowCount += 1;
-      if (rule.effect == 'deny') denyCount += 1;
-      if (PermissionKeys.requiresMfa.contains(rule.permissionKey)) {
-        mfaCount += 1;
-      }
-    }
+    // Wave 2 S-3 (RP-8) — simplified tile. Roles list shows ONLY the
+    // role's display name, a short description (first sentence of the
+    // description), and an Edit / View button. Permission counts,
+    // role_key chips, Default / Custom badges, MFA chips, and the
+    // F&F-managed annotation are intentionally hidden here. The
+    // editor screen carries the long-form metadata.
     final mutable = canWrite && !role.isSeeded && role.isEditable;
+    final shortDescription = _shortRoleDescription(role.description);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
@@ -593,215 +590,90 @@ class _RoleTile extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Row(
-                      children: <Widget>[
-                        Flexible(
-                          child: Text(
-                            role.displayName,
-                            style: AppTextStyles.body14(
-                              color: AppColors.textPrimary,
-                            ).copyWith(fontWeight: FontWeight.w700),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _RoleBadge(
-                          // Lane B B2.2 — seeded roles surface as the
-                          // Forge & Flow "Default" catalog rather than
-                          // engineering-flavored "Seeded". The plain-
-                          // English wording mirrors the B2.2 admin
-                          // catalog editor surface.
-                          label: role.isSeeded ? 'Default' : 'Custom',
-                          color: role.isSeeded
-                              ? AppColors.peacockDark
-                              : AppColors.sunsetDark,
-                        ),
-                        if (role.isSeeded || !role.isEditable) ...<Widget>[
-                          const SizedBox(width: 6),
-                          _RoleBadge(
-                            label: 'Read-only',
-                            color: AppColors.textMuted,
-                          ),
-                        ],
-                      ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  role.displayName,
+                  style: AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+                if (shortDescription.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 4),
+                  Text(
+                    shortDescription,
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
                     ),
-                    if (role.isSeeded) ...<Widget>[
-                      const SizedBox(height: 4),
-                      Text(
-                        // Lane B B2.2 + B2.4 — operator-facing
-                        // annotation for catalog-sourced roles.
-                        //
-                        // B2.4 closed the date-half gap B2.2 flagged:
-                        // the proxy now projects
-                        // `catalog_published_at` (the
-                        // `default_role_catalog_versions.published_at`
-                        // of the version the operator is following)
-                        // onto every seeded row. When that timestamp
-                        // is non-null we render "Updated by F&F on
-                        // <Mon D, YYYY>" so operators see when the
-                        // last default-catalog refresh shipped. When
-                        // it is null (genesis state — no catalog
-                        // version published yet, or a legacy proxy
-                        // build that doesn't carry the field) we
-                        // fall back to the B2.2 "Managed by Forge &
-                        // Flow" copy so the row never blanks out.
-                        _defaultAnnotationCopy(role.catalogPublishedAt),
-                        key: Key(
-                          'operator_web_role_default_annotation_${role.roleId}',
-                        ),
-                        style: AppTextStyles.mono10(
-                          color: AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 2),
-                    Text(
-                      role.roleKey,
-                      style: AppTextStyles.mono12(color: AppColors.textMuted),
-                    ),
-                    if (role.description.trim().isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 6),
-                      Text(
-                        role.description,
-                        style: AppTextStyles.body13(
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: <Widget>[
-                        _CountChip(
-                          keyValue: Key(
-                            'operator_web_role_allow_${role.roleId}',
-                          ),
-                          label: '$allowCount allow',
-                          color: AppColors.positive,
-                        ),
-                        if (denyCount > 0)
-                          _CountChip(
-                            keyValue: Key(
-                              'operator_web_role_deny_${role.roleId}',
-                            ),
-                            label: '$denyCount deny',
-                            color: AppColors.negative,
-                          ),
-                        if (mfaCount > 0)
-                          _CountChip(
-                            keyValue: Key(
-                              'operator_web_role_mfa_${role.roleId}',
-                            ),
-                            label: '$mfaCount MFA',
-                            color: AppColors.warning,
-                          ),
-                      ],
-                    ),
-                  ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (busy)
+            const Padding(
+              padding: EdgeInsets.only(left: 8, right: 4),
+              child: SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.sunsetDark,
                 ),
               ),
-              if (busy)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8, top: 2),
-                  child: SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppColors.sunsetDark,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: <Widget>[
-              if (!mutable && onEdit != null)
-                TextButton(
-                  key: Key('operator_web_role_view_${role.roleId}'),
-                  onPressed: busy ? null : () => onEdit?.call(role),
-                  child: const Text('View'),
-                ),
-              if (mutable) ...<Widget>[
-                TextButton(
-                  key: Key('operator_web_role_edit_${role.roleId}'),
-                  onPressed: busy ? null : () => onEdit?.call(role),
-                  child: const Text('Edit'),
-                ),
-                const SizedBox(width: 4),
-                TextButton(
-                  key: Key('operator_web_role_delete_${role.roleId}'),
-                  onPressed: busy ? null : () => onDelete?.call(role),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.negative,
-                  ),
-                  child: const Text('Delete'),
-                ),
-              ],
-            ],
-          ),
+            ),
+          if (!mutable && onEdit != null)
+            TextButton(
+              key: Key('operator_web_role_view_${role.roleId}'),
+              onPressed: busy ? null : () => onEdit?.call(role),
+              child: const Text('View'),
+            ),
+          if (mutable) ...<Widget>[
+            TextButton(
+              key: Key('operator_web_role_edit_${role.roleId}'),
+              onPressed: busy ? null : () => onEdit?.call(role),
+              child: const Text('Edit'),
+            ),
+            const SizedBox(width: 4),
+            TextButton(
+              key: Key('operator_web_role_delete_${role.roleId}'),
+              onPressed: busy ? null : () => onDelete?.call(role),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.negative,
+              ),
+              child: const Text('Delete'),
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _RoleBadge extends StatelessWidget {
-  const _RoleBadge({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
-        borderRadius: BorderRadius.circular(2),
-      ),
-      child: Text(label, style: AppTextStyles.mono7(color: color)),
-    );
-  }
+/// Wave 2 S-3 (RP-8). Trims a role's description to the first
+/// sentence so the simplified row stays compact. Returns an empty
+/// string when the description is empty.
+@visibleForTesting
+String shortRoleDescriptionForTest(String description) {
+  return _shortRoleDescription(description);
 }
 
-class _CountChip extends StatelessWidget {
-  const _CountChip({
-    required this.keyValue,
-    required this.label,
-    required this.color,
-  });
-
-  final Key keyValue;
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      key: keyValue,
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(label, style: AppTextStyles.mono8(color: color)),
-    );
-  }
+String _shortRoleDescription(String description) {
+  final trimmed = description.trim();
+  if (trimmed.isEmpty) return '';
+  // First period/exclamation/question mark followed by whitespace or
+  // end-of-string ends the sentence. We avoid splitting on periods
+  // inside abbreviations like "e.g." by requiring trailing whitespace
+  // or end-of-input.
+  final sentenceEnd = RegExp(r'([.!?])(\s|$)');
+  final match = sentenceEnd.firstMatch(trimmed);
+  if (match == null) return trimmed;
+  return trimmed.substring(0, match.end).trim();
 }
 
 class _EmptyCustomRolesPanel extends StatelessWidget {

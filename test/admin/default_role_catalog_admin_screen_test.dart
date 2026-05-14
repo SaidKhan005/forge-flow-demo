@@ -182,10 +182,16 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Add role → publish should still be disabled (empty role_key / name).
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_add_role')),
+    // Wave 2 S-3 (RP-14) — each draft row now embeds the picker,
+    // which makes the panel tall enough that affordances at the
+    // bottom need an ensureVisible scroll before tapping.
+    final addRoleFinder = find.byKey(
+      const Key('admin_default_role_catalog_add_role'),
     );
+    await tester.ensureVisible(addRoleFinder);
+    await tester.pumpAndSettle();
+    // Add role → publish should still be disabled (empty role_key / name).
+    await tester.tap(addRoleFinder);
     await tester.pumpAndSettle();
     final afterAdd = tester.widget<FilledButton>(
       find.byKey(const Key('admin_default_role_catalog_publish_button')),
@@ -193,16 +199,18 @@ void main() {
     expect(afterAdd.onPressed, isNull);
 
     // Fill the new row's required fields.
-    await tester.enterText(
-      find.byKey(const Key('admin_default_role_catalog_draft_role_key_2')),
-      'operator_manager',
+    final roleKeyField = find.byKey(
+      const Key('admin_default_role_catalog_draft_role_key_2'),
     );
-    await tester.enterText(
-      find.byKey(
-        const Key('admin_default_role_catalog_draft_display_name_2'),
-      ),
-      'Operator Manager',
+    await tester.ensureVisible(roleKeyField);
+    await tester.pumpAndSettle();
+    await tester.enterText(roleKeyField, 'operator_manager');
+    final displayNameField = find.byKey(
+      const Key('admin_default_role_catalog_draft_display_name_2'),
     );
+    await tester.ensureVisible(displayNameField);
+    await tester.pumpAndSettle();
+    await tester.enterText(displayNameField, 'Operator Manager');
     await tester.pump();
 
     // Now publish is enabled.
@@ -216,9 +224,12 @@ void main() {
     );
 
     // Remove the row again.
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_draft_remove_2')),
+    final removeFinder = find.byKey(
+      const Key('admin_default_role_catalog_draft_remove_2'),
     );
+    await tester.ensureVisible(removeFinder);
+    await tester.pumpAndSettle();
+    await tester.tap(removeFinder);
     await tester.pumpAndSettle();
 
     // Publish disabled again (draft now equals current).
@@ -255,12 +266,14 @@ void main() {
       findsNothing,
     );
 
-    // Tap the row toggle.
-    await tester.tap(
-      find.byKey(
-        const Key('admin_default_role_catalog_history_toggle_v1-id'),
-      ),
+    // Tap the row toggle. The picker per draft row pushes the
+    // history panel below the visible area so scroll first.
+    final historyToggle = find.byKey(
+      const Key('admin_default_role_catalog_history_toggle_v1-id'),
     );
+    await tester.ensureVisible(historyToggle);
+    await tester.pumpAndSettle();
+    await tester.tap(historyToggle);
     await tester.pumpAndSettle();
     expect(
       find.byKey(
@@ -333,27 +346,37 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Add and fill a new role to enable publish.
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_add_role')),
+    // Add and fill a new role to enable publish. The picker per draft
+    // row now pushes the add / publish affordances down the panel
+    // so each tap needs an ensureVisible scroll first.
+    final addRole = find.byKey(
+      const Key('admin_default_role_catalog_add_role'),
     );
+    await tester.ensureVisible(addRole);
     await tester.pumpAndSettle();
-    await tester.enterText(
-      find.byKey(const Key('admin_default_role_catalog_draft_role_key_2')),
-      'operator_manager',
+    await tester.tap(addRole);
+    await tester.pumpAndSettle();
+    final roleKeyField = find.byKey(
+      const Key('admin_default_role_catalog_draft_role_key_2'),
     );
-    await tester.enterText(
-      find.byKey(
-        const Key('admin_default_role_catalog_draft_display_name_2'),
-      ),
-      'Operator Manager',
+    await tester.ensureVisible(roleKeyField);
+    await tester.pumpAndSettle();
+    await tester.enterText(roleKeyField, 'operator_manager');
+    final displayNameField = find.byKey(
+      const Key('admin_default_role_catalog_draft_display_name_2'),
     );
+    await tester.ensureVisible(displayNameField);
+    await tester.pumpAndSettle();
+    await tester.enterText(displayNameField, 'Operator Manager');
     await tester.pump();
 
     // Tap Publish → dialog opens.
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_publish_button')),
+    final publishButton = find.byKey(
+      const Key('admin_default_role_catalog_publish_button'),
     );
+    await tester.ensureVisible(publishButton);
+    await tester.pumpAndSettle();
+    await tester.tap(publishButton);
     await tester.pumpAndSettle();
 
     expect(
@@ -383,10 +406,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Add a row to dirty the draft.
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_add_role')),
+    // Add a row to dirty the draft. The picker per draft row pushes
+    // the buttons below the visible viewport so each tap needs an
+    // ensureVisible scroll.
+    final addRole = find.byKey(
+      const Key('admin_default_role_catalog_add_role'),
     );
+    await tester.ensureVisible(addRole);
+    await tester.pumpAndSettle();
+    await tester.tap(addRole);
     await tester.pumpAndSettle();
     expect(
       find.byKey(const Key('admin_default_role_catalog_draft_row_2')),
@@ -398,9 +426,12 @@ void main() {
     );
 
     // Discard.
-    await tester.tap(
-      find.byKey(const Key('admin_default_role_catalog_discard_draft')),
+    final discard = find.byKey(
+      const Key('admin_default_role_catalog_discard_draft'),
     );
+    await tester.ensureVisible(discard);
+    await tester.pumpAndSettle();
+    await tester.tap(discard);
     await tester.pumpAndSettle();
 
     // Row 2 gone; draft equals current pill.
@@ -413,6 +444,89 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets(
+    'Wave 2 S-3 (RP-14): each draft row renders the product/category '
+    'permission picker',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway(
+        now: () => DateTime.utc(2026, 5, 13, 12, 0),
+        versionIdGenerator: () => 'v1-id',
+      );
+      await seedOneVersion(gateway);
+
+      await tester.pumpWidget(
+        wrap(DefaultRoleCatalogAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      // Picker mounts inside the first draft row.
+      expect(
+        find.byKey(
+          const Key('admin_default_role_catalog_draft_permissions_0'),
+        ),
+        findsOneWidget,
+      );
+      // Picker exposes the Forge & Flow product section keyed with
+      // the per-row prefix.
+      expect(
+        find.byKey(
+          const Key(
+            'admin_default_role_catalog_draft_picker_0_product_forgeflow',
+          ),
+        ),
+        findsOneWidget,
+      );
+      // Search box rendered per row.
+      expect(
+        find.byKey(
+          const Key('admin_default_role_catalog_draft_picker_0_search'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Wave 2 S-3 (RP-14): admin picker is business-scoped (no scope notice)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 4000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway(
+        now: () => DateTime.utc(2026, 5, 13, 12, 0),
+        versionIdGenerator: () => 'v1-id',
+      );
+      await seedOneVersion(gateway);
+
+      await tester.pumpWidget(
+        wrap(DefaultRoleCatalogAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
+
+      // Default-catalog roles are business-scoped — the scope-conflict
+      // notice does not render in the admin surface.
+      expect(
+        find.byKey(
+          const Key(
+            'admin_default_role_catalog_draft_picker_0_scope_notice',
+          ),
+        ),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets('load error: surfaces friendly error banner', (tester) async {
     final gateway = _ThrowingListGateway(
