@@ -18,6 +18,7 @@ import 'package:provider/provider.dart';
 import 'package:forge_and_flow/auth/auth_session.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings/settings_data_sections.dart';
+import 'package:forge_and_flow/screens/settings/settings_demo_live_switch.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/services/auth_login_service.dart';
 import 'package:forge_and_flow/services/secure_session_storage.dart';
@@ -352,6 +353,85 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'Setup tab renders Demo→Live switch for operator_owner (MO-1-FU)',
+    (tester) async {
+      // MO-1-FU — the operator master Demo→Live switch moved from the
+      // Data tab to the Setup tab after MO-1 (PR #661) gated the Data
+      // tab to F&F admin users only. operator_owner is the demo
+      // operator role; they MUST be able to reach the switch through
+      // Setup. Asserts:
+      //   (a) Setup tab is present
+      //   (b) Data tab is hidden (MO-1 gate still strict)
+      //   (c) the SettingsDemoLiveSwitch widget mounts in the Setup
+      //       tab body
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final notifier = _notifier();
+      await tester.pumpWidget(
+        _wrap(
+          notifier: notifier,
+          child: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            teamActor: _ownerActor,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+      expect(find.byKey(const Key('settings_tab_data')), findsNothing);
+
+      await tester.tap(find.byKey(const Key('settings_tab_authority')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      expect(
+        find.byType(SettingsDemoLiveSwitch, skipOffstage: false),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Setup tab renders Demo→Live switch for F&F support actor (MO-1-FU)',
+    (tester) async {
+      // MO-1-FU — F&F admin retains Data tab visibility but the
+      // master Demo→Live switch lives only on the Setup tab after the
+      // move. Confirm the switch mounts (single global instance)
+      // when an F&F admin views the settings screen.
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final notifier = _notifier();
+      await tester.pumpWidget(
+        _wrap(
+          notifier: notifier,
+          child: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            teamActor: _ffSupportActor,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(find.byKey(const Key('settings_tab_authority')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Exactly one SettingsDemoLiveSwitch across the whole settings
+      // screen (TabBarView mounts all tab bodies); the move from Data
+      // to Setup is a relocation, not a duplication.
+      expect(
+        find.byType(SettingsDemoLiveSwitch, skipOffstage: false),
+        findsOneWidget,
+      );
     },
   );
 }
