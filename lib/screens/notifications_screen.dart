@@ -7,11 +7,14 @@
 // Opened from the notification icon in the AppShell top bar.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../domain/models/notification_event_catalog.dart';
 import '../services/app_notification_service.dart';
 import '../services/restaurant_scope_service.dart';
 import '../domain/models/app_notification.dart';
+import '../state/auth_session_notifier.dart';
 import '../theme/app_theme.dart';
+import '../widgets/operator_brand_mark.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -66,6 +69,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Wave 2 W-5-mobile-FU — read `session.logoUrl` for the AppBar
+    // brand-mark. Falls back to the F&F splash icon when no session is
+    // wired (e.g. widget-test mounts without a notifier) or when the
+    // operator has not uploaded a logo. HP #2: no `kDemoMode` reader
+    // branch — demo and live read from the same projection.
+    String? sessionLogoUrl;
+    try {
+      sessionLogoUrl = Provider.of<AuthSessionNotifier>(
+        context,
+        listen: false,
+      ).session?.logoUrl;
+    } on ProviderNotFoundException {
+      sessionLogoUrl = null;
+    }
     return Scaffold(
       backgroundColor: AppColors.backgroundDeep,
       appBar: AppBar(
@@ -74,14 +91,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         elevation: 0,
         title: Row(
           children: [
-            ClipOval(
-              child: Image.asset(
-                'assets/images/forge_flow_splash_icon.png',
-                width: 36,
-                height: 36,
-                fit: BoxFit.cover,
-              ),
-            ),
+            OperatorBrandMark(logoUrl: sessionLogoUrl),
             const SizedBox(width: 12),
             Text('Notifications', style: AppTextStyles.display20()),
           ],

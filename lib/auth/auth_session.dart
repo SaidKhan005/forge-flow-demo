@@ -25,6 +25,7 @@ class AuthSession {
     required this.lastFreshAuthAt,
     required this.roles,
     required this.mfaEnrolled,
+    this.logoUrl,
   });
 
   /// App-scope user identifier (`users.user_id` / Firebase `sub`).
@@ -65,6 +66,19 @@ class AuthSession {
   /// enrollment gate when MFA is required for the user's tier.
   final bool mfaEnrolled;
 
+  /// Wave 2 W-5-mobile-FU — optional https URL (or `data:` URI in
+  /// demo mode) for the operator's uploaded brand-mark. Mirrors the
+  /// operator-web [OperatorWebSession.logoUrl] field and powers the
+  /// mobile shell header brand-mark + the post-login Notifications
+  /// and Settings AppBar brand-marks. Null when the operator has not
+  /// uploaded a logo; consumers render the F&F splash icon fallback.
+  ///
+  /// Surface comes from the JWT custom claim `logo_url` (projected
+  /// on the proxy side from `public.operators.logo_url`). The mobile
+  /// reader path is identical for demo and live (HP #2 — no
+  /// `kDemoMode` reader-side branch).
+  final String? logoUrl;
+
   /// True iff [lastFreshAuthAt] is within [window] of [now]. Used by
   /// sensitive-operation step-up checks (role changes, billing, MFA
   /// enrollment, GDPR erasure). The locked freshness window is
@@ -91,6 +105,7 @@ class AuthSession {
     DateTime? lastFreshAuthAt,
     List<String>? roles,
     bool? mfaEnrolled,
+    String? logoUrl,
   }) {
     return AuthSession(
       userId: userId ?? this.userId,
@@ -102,6 +117,7 @@ class AuthSession {
       lastFreshAuthAt: lastFreshAuthAt ?? this.lastFreshAuthAt,
       roles: roles ?? this.roles,
       mfaEnrolled: mfaEnrolled ?? this.mfaEnrolled,
+      logoUrl: logoUrl ?? this.logoUrl,
     );
   }
 
@@ -120,9 +136,14 @@ class AuthSession {
     'last_fresh_auth_at': lastFreshAuthAt.toIso8601String(),
     'roles': roles,
     'mfa_enrolled': mfaEnrolled,
+    // Wave 2 W-5-mobile-FU — persist `logo_url` so the brand-mark
+    // appears on cold-start before the next refresh repopulates the
+    // session from JWT claims.
+    'logo_url': logoUrl,
   };
 
   static AuthSession fromJson(Map<String, Object?> json) {
+    final rawLogoUrl = json['logo_url'];
     return AuthSession(
       userId: json['user_id'] as String,
       operatorId: json['operator_id'] as String,
@@ -133,6 +154,12 @@ class AuthSession {
       lastFreshAuthAt: DateTime.parse(json['last_fresh_auth_at'] as String),
       roles: (json['roles'] as List<Object?>).cast<String>(),
       mfaEnrolled: json['mfa_enrolled'] as bool,
+      // Older envelopes (predating the W-5-mobile-FU follow-up) do not
+      // carry `logo_url`; treat as null so cold-start rehydrate stays
+      // forward-compatible.
+      logoUrl: rawLogoUrl is String && rawLogoUrl.isNotEmpty
+          ? rawLogoUrl
+          : null,
     );
   }
 

@@ -227,6 +227,7 @@ class FirebaseAuthLoginService implements AuthLoginService {
       );
     }
     final mfaEnrolled = _extractMfaEnrolled(credential.customClaims);
+    final logoUrl = _extractLogoUrl(credential.customClaims);
     return AuthSession(
       userId: userId,
       operatorId: operatorId ?? '',
@@ -237,6 +238,7 @@ class FirebaseAuthLoginService implements AuthLoginService {
       lastFreshAuthAt: credential.lastFreshAuthAt,
       roles: roles,
       mfaEnrolled: mfaEnrolled,
+      logoUrl: logoUrl,
     );
   }
 
@@ -263,6 +265,18 @@ class FirebaseAuthLoginService implements AuthLoginService {
     // it into a top-level `mfa_enrolled` boolean for us.
     final value = claims['mfa_enrolled'];
     return value == true;
+  }
+
+  /// Wave 2 W-5-mobile-FU — pull the operator's uploaded brand-mark
+  /// URL off the JWT custom claim `logo_url`. The proxy projects this
+  /// from `public.operators.logo_url` when it mints the post-login
+  /// custom claims; absent / blank / non-string values become null
+  /// and the mobile shell falls back to the F&F splash icon.
+  static String? _extractLogoUrl(Map<String, Object?> claims) {
+    final value = claims['logo_url'];
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 }
 

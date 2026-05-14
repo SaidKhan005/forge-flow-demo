@@ -19,6 +19,7 @@ import '../state/permission_context.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../services/team/team_scope_visibility_policy.dart';
 import '../theme/app_theme.dart';
+import '../widgets/operator_brand_mark.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
 import 'settings/settings_covers_setup_section.dart';
@@ -255,13 +256,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           titleSpacing: 4,
           title: Row(
             children: [
-              ClipOval(
-                child: Image.asset(
-                  'assets/images/forge_flow_splash_icon.png',
-                  width: 36,
-                  height: 36,
-                  fit: BoxFit.cover,
-                ),
+              // Wave 2 W-5-mobile-FU — render the operator's uploaded
+              // logo from the session, falling back to the F&F splash
+              // when the operator has not uploaded one. Reuses the
+              // same `OperatorBrandMark` widget the mobile shell +
+              // Notifications header use so the brand-mark is
+              // consistent across post-login surfaces. Widget tests
+              // mount this screen without an AuthSessionNotifier
+              // provider (settings_screen_collapse_test.dart), so the
+              // lookup tolerates a missing provider and renders the
+              // splash fallback in that case.
+              Builder(
+                builder: (context) {
+                  String? logoUrl;
+                  try {
+                    logoUrl = Provider.of<AuthSessionNotifier>(
+                      context,
+                    ).session?.logoUrl;
+                  } on ProviderNotFoundException {
+                    logoUrl = null;
+                  }
+                  return OperatorBrandMark(logoUrl: logoUrl);
+                },
               ),
               const SizedBox(width: 12),
               Text('Settings', style: AppTextStyles.display20()),
