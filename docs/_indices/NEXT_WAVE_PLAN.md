@@ -469,19 +469,28 @@ merges when it's back. **Use sparingly** — safety valve, not habit.
 
 Updated as Phase 2 progresses. Detail: `docs/_indices/WAVE_2_LEDGER.md`.
 
-| Lane | Owner | Slices | Merged | Open |
-|---|---|---|---|---|
-| U  | Second Claude  | ~7 (UX polish bundle is multi-screen) | 0 | 7 |
-| V  | Second Claude  | 1 | 0 | 1 |
-| D  | Second Claude  | 2 | 0 | 2 |
-| M-Poll | Second Claude | 1 | 0 | 1 |
-| W  | Main orchestrator | 6 | 0 | 6 |
-| H  | Main orchestrator | 3 | 0 | 3 |
-| R  | Main orchestrator | 2 | 0 | 2 |
-| S  | Main orchestrator | 3 | 0 | 3 |
-| B  | Main orchestrator | 4 | 0 | 4 |
-| Q  | Main orchestrator | 4 | 0 | 4 |
-| M-Other | Main orchestrator | 2 | 0 | 2 |
-| **Total** | | **35** | **0** | **35** |
+**2026-05-14 closeout sweep:** the bulk of Wave 2 is merged. Items 4
+(Roles screen UX), 6 (Cancel pending invite), 7 (Default Role Catalog
+v2), and 8 (Profile self-service + mobile deep-link) from the
+"New slices to add" list at `DEBUG_MD_IMPLEMENTATION_STATUS.md` lines
+482-512 are now DONE — see `WAVE_2_LEDGER.md` "2026-05-14: Wave 2 closeout
+sweep" for the per-slice PR map. Remaining open work is enumerated below.
 
-(Slice count includes the 29 from the audit + 4 bug fixes + 2 deferred-but-tracked items SOPs/vendor outreach. Final-final count after ledger groomed: see `WAVE_2_LEDGER.md`.)
+| Lane | Owner | Slices | Merged | Open / Parked |
+|---|---|---|---|---|
+| U  | Second Claude  | 7 polish + 4 FU + 2 V1.1 FU (added 2026-05-14) | 11 | 2 (V1.1 schema FUs parked) |
+| V  | Second Claude  | 1 | 1 | 0 |
+| D  | Second Claude  | 2 | 2 | 0 |
+| M-Poll | Second Claude | 1 | 1 | 0 |
+| W  | Main orchestrator | 10 (6 main + 4 FU) | 8 | 2 (W-3 + W-5-mobile-FU still assigned) |
+| H  | Main orchestrator | 3 | 2 | 1 (H-2 in-progress) |
+| R  | Main orchestrator | 3 (2 main + 1 FU) | 2 | 1 (R-1L row stale-label; PR #699 merged on master, row not flipped — see operator-decision) |
+| S  | Main orchestrator | 3 | 3 | 0 |
+| B  | Main orchestrator | 6 (4 main + 2 FU) | 5 | 1 (R-1L-FU-pre-fail parked) |
+| Q  | Main orchestrator | 7 (4 main + 2 Q-2 sub + 1 FU) | 5 | 2 (Q-1-FU parked; Q-2 parent assigned) |
+| M-Other | Main orchestrator | 4 (3 main + 1 FU) | 3 | 1 (MO-2-FU parked) |
+| **Total** | | **53** | **43** | **10** |
+
+(Counts include follow-up rows added during Wave 2 execution + the
+2 new V1.1 follow-up rows from the 2026-05-14 closeout sweep. Detail
+per slice: `WAVE_2_LEDGER.md`.)

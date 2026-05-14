@@ -62,10 +62,12 @@ mega-PR or split into per-screen PRs.
 | U-5 | Ops Console — Locations + My Account + Team Members + Roles + Sign-in-Security + Active Sessions UX cleanup (subtitles + tiles across 6 screens) | Claude2 | auto | merged | #670 | – | debug.md:141-181 (OW-4..OW-9) |
 | U-6 | Ops Console — Audit Log + Vendor Connections (rename to Vendor Integration is V-1) + Data Accuracy + Wage Authority + Notifications UX cleanup | Claude2 | auto | merged | #673 | – | debug.md:181-256 (OW-10, OW-11b/c, OW-12, OW-13a-c minus formula UI, OW-14) |
 | U-7 | Mobile UX cleanup (Settings tab reorder + Setup section + Wage Setup + 2FA + Sign-in-details + Active Sessions subtitles/tiles) | Claude2 | auto | merged | #678 | – | debug.md:259-306 (MO-3a/b, MO-4, MO-5a/d, MO-6, MO-7c/d, MO-S) |
-| U-FU-hp11-account | Lane U | Claude2 | operator | parked | – | U-1+U-3+U-4 | PR #663 worker disclosed: AccountScreen settings widgets (region, business day, identity) miss the HP #11 scope+inherited+effective triple. OW-2b / OW-2e / OW-3a scope-sensitive labels also skipped — needs scope provider plumbing into AccountScreen + BusinessSetupScreen router nav title. |
-| U-FU-mobile-deeplink | Lane U | Claude2 | operator | parked | – | U-7 | PR #678 + PR #693 disclosed: MO-3c / MO-4b / MO-6d mobile deep-link patterns explicitly skipped pending B11.1. Dedicated slice to wire mobile deep-link contract once B11.1 lands. |
-| U-FU-tier-email | Lane U | Claude2 | operator | parked | – | U-6 | PR #673 worker disclosed: "Request faster data freshness" dialog (OW-12h) writes audit row + toast but no email yet. Wire actual email send. Phase 9 / notification routing dependency. |
-| U-FU-summary-strip-cleanup | Lane U | Claude2 | operator | parked | – | U-5 | PR #670 worker disclosed: `lib/operator_web/widgets/operator_web_summary_strip.dart` left as-is despite 3 of 5 consumers removed in U-5. Migrate or remove the remaining 2 consumers (hierarchy + audit_log + data_accuracy mount it; check current state) and delete the widget. |
+| U-FU-hp11-account | Lane U | Claude2 | operator | merged | #712 | U-1+U-3+U-4 | PR #663 worker disclosed: AccountScreen settings widgets (region, business day, identity) miss the HP #11 scope+inherited+effective triple. OW-2b / OW-2e / OW-3a scope-sensitive labels also skipped — needs scope provider plumbing into AccountScreen + BusinessSetupScreen router nav title. Shipped 2026-05-14 via PR #712 in PUNT mode (schema doesn't yet support per-location overrides for region/business-day/identity — see follow-up U-FU-hp11-account-schema). |
+| U-FU-mobile-deeplink | Lane U | Claude2 | operator | merged | #600 | U-7 | PR #678 + PR #693 disclosed: MO-3c / MO-4b / MO-6d mobile deep-link patterns explicitly skipped pending B11.1. Dedicated slice to wire mobile deep-link contract once B11.1 lands. Shipped via PR #600 (Codex C-5 handoff-code deeplink, commit `161e6b85`). |
+| U-FU-tier-email | Lane U | Claude2 | operator | merged | #713 | U-6 | PR #673 worker disclosed: "Request faster data freshness" dialog (OW-12h) writes audit row + toast but no email yet. Wire actual email send. Phase 9 / notification routing dependency. Shipped 2026-05-14 via PR #713 (router not yet mounted in main.dart — see follow-up U-FU-tier-email-wire). |
+| U-FU-summary-strip-cleanup | Lane U | Claude2 | operator | merged | #710 | U-5 | PR #670 worker disclosed: `lib/operator_web/widgets/operator_web_summary_strip.dart` left as-is despite 3 of 5 consumers removed in U-5. Migrate or remove the remaining 2 consumers (hierarchy + audit_log + data_accuracy mount it; check current state) and delete the widget. Shipped 2026-05-14 via PR #710. |
+| U-FU-hp11-account-schema | Lane U | Main | operator | parked | – | U-FU-hp11-account | PR #712 worker disclosed: AccountScreen ships HP #11 scope notice in PUNT mode because the `operators` / `restaurant_locations` schema today only supports per-location override for `locations.business_day_rollover_hour`. Per-location overrides for `region`, `formatting`, `business identity` (name, contact email, contact phone) need new nullable columns on `restaurant_locations` (or a `location_account_overrides` table) before AccountScreen's location-scope Save can be enabled. Defer to V1.1. |
+| U-FU-tier-email-wire | Lane U | Main | operator | parked | – | U-FU-tier-email | PR #713 worker disclosed: the `/v1/operator/tier-email/data-freshness-request` router is tested via the test seam (`tryHandle`) but not yet mounted in `tool/advisor_proxy/main.dart`. Small mount-block addition similar to `OperatorBenchmarkOverridesRouter` at `tool/advisor_proxy/main.dart:1300-1371`. Production sends are gated on this slice landing. |
 
 ### Lane V — Vendor Connection → Vendor Integration rename sweep (Claude2)
 
@@ -97,9 +99,9 @@ mega-PR or split into per-screen PRs.
 | W-4 | Admin console My Account parity (full surface on admin-side, currently missing) | Main | operator | merged | #688 | – | debug.md:52 (P-5) |
 | W-5 | Business logo upload + propagation (operator-web → console header + mobile dashboard header, PNG format) | Main | operator | merged | #686 | – | debug.md:118 (OW-2d) |
 | W-5-mobile-FU | W-5 follow-up: mobile dashboard header logo propagation (W-5 worker explicitly deferred mobile dashboard header logo propagation) | Claude2 | operator | assigned | – | W-5 | handoff doc `docs/_indices/CLAUDE2_HELP_QUEUE_2026_05_14.md` |
-| W-5-mobile-FU-2 | Lane W | Claude2 | operator | parked | – | W-5-mobile-FU | PR #695 worker disclosed: proxy `AccountInfoGateway` does not yet serialize `logo_url` in its wire format. Client `fromJson` is forward-compatible so this is non-blocking, but the proxy half should ship for full round-trip. |
+| W-5-mobile-FU-2 | Lane W | Claude2 | operator | merged | #714 | W-5-mobile-FU | PR #695 worker disclosed: proxy `AccountInfoGateway` does not yet serialize `logo_url` in its wire format. Client `fromJson` is forward-compatible so this is non-blocking, but the proxy half should ship for full round-trip. Shipped 2026-05-14 via PR #714. |
 | W-6 | Account screen — timezone + missing-field exposure (location/business settings audit + write paths) | Main | operator | merged | #682 | – | debug.md:122 (OW-2g) |
-| W-6-backend | W-6 backend: proxy handler for `PATCH /v1/operator/location-timezone` (W-6 worker shipped frontend wire contract; backend parked for future slot) | Main | operator | parked | – | W-6 | W-6 follow-up 2026-05-14 |
+| W-6-backend | W-6 backend: proxy handler for `PATCH /v1/operator/location-timezone` (W-6 worker shipped frontend wire contract; backend parked for future slot) | Main | operator | merged | #705 | W-6 | W-6 follow-up 2026-05-14; shipped 2026-05-14 via PR #705 |
 
 ### Lane H — Hierarchy visualization + HP #11 sweep (Main)
 
@@ -114,8 +116,8 @@ mega-PR or split into per-screen PRs.
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
 | R-1L | Roles hierarchy-scoped infrastructure — schema migration + RLS posture + role inheritance resolver (per locked decision: hierarchy-scoped) | Main | operator | assigned | – | – | debug.md:28, audit RP-4 / RP-6 |
-| R-1L-FU | Lane R | Main | operator | parked | – | R-1L | PR #699 worker disclosed: R-1L shipped `permission_keys.product_label` / `category_label` / `scope_kind` as NULLABLE with inline backfill (expand-contract escape hatch per slice prompt). After one clean apply cycle on staging, flip to NOT NULL via a follow-up migration. Defense-in-depth Dart-side NOT-NULL-at-source lint already in `tool/permission_key_lint.dart` (METADATA pass). |
-| R-2L | Default Role Catalog v2 redesign — operator suggests seeded roles based on audit; redesign default permission set; admin selects + adjusts per-role across F&F | Main | operator | assigned | – | R-1L | debug.md:30-32 (RP-3); 161-167 (OW-7) |
+| R-1L-FU | Lane R | Main | operator | merged | #715 | R-1L | PR #699 worker disclosed: R-1L shipped `permission_keys.product_label` / `category_label` / `scope_kind` as NULLABLE with inline backfill (expand-contract escape hatch per slice prompt). After one clean apply cycle on staging, flip to NOT NULL via a follow-up migration. Defense-in-depth Dart-side NOT-NULL-at-source lint already in `tool/permission_key_lint.dart` (METADATA pass). Shipped 2026-05-14 via PR #715 (R-1L-FU + R-2L-FU NOT NULL flip). |
+| R-2L | Default Role Catalog v2 redesign — operator suggests seeded roles based on audit; redesign default permission set; admin selects + adjusts per-role across F&F | Main | operator | merged | #711 | R-1L | debug.md:30-32 (RP-3); 161-167 (OW-7); shipped 2026-05-14 via PR #711 |
 
 (Lane label `R` for Roles overlaps with the refactor item names R-1 / R-2 in NEXT_WAVE_PLAN. To disambiguate, Wave 2 Lane R slices are suffixed `R-1L` / `R-2L` — the `L` is for "role lane".)
 
@@ -125,7 +127,7 @@ mega-PR or split into per-screen PRs.
 |---|---|---|---|---|---|---|---|
 | S-1 | Wage Authority — blended-mix formula UI rewrite (FOH/BOH/Management role list with @/hr inputs + blended-mix calc display + vendor-applicability label) | Main | operator | merged | #679 | – | debug.md:198-220 (OW-13a, OW-13b) |
 | S-2 | Wage Authority + Data Accuracy unified IA on single Data Accuracy page | Main | operator | merged | #684 | S-1 | debug.md:220 (OW-13c) |
-| S-3 | Roles screen UX simplification (name + short description + edit button only) + role categorization by product → functionality with dependency auto-select | Main | operator | assigned | – | R-2L | debug.md:31-32, 38-39 (RP-8, RP-12, RP-14, OW-7a..g) |
+| S-3 | Roles screen UX simplification (name + short description + edit button only) + role categorization by product → functionality with dependency auto-select | Main | operator | merged | #717 | R-2L | debug.md:31-32, 38-39 (RP-8, RP-12, RP-14, OW-7a..g) |
 
 ### Lane B — Bug fixes (Main)
 
@@ -133,28 +135,30 @@ mega-PR or split into per-screen PRs.
 |---|---|---|---|---|---|---|---|
 | B-W1 | W-1 fix: create Phase 8 base-schema migration for the 4 legacy fact tables (`shift_records`, `cover_facts`, `labor_punches`, `reservation_facts`) — must lex-order before `202605061700_phase_8_timing_provenance_shift_records.sql` | Main | operator | merged | #662 | – | POST_HARDENING_FOLLOWUPS "Wave bugs surfaced 2026-05-13" W-1 |
 | B-W2 | W-2 fix: tagged dollar-quote in `db/migrations/202605081100_partman_maintenance_hourly_cron.sql` (`do $partman$ ... $partman$;`) | Main | operator | merged | #655 | – | POST_HARDENING_FOLLOWUPS "Wave bugs surfaced 2026-05-13" W-2 |
-| B-1B | BUG-1 triage: proxy returned incomplete session record after support-check sign-in — reproduce + fix + regression test | Main | operator | assigned | – | – | debug.md:14 (BUG-1) |
+| B-1B | BUG-1 triage: proxy returned incomplete session record after support-check sign-in — reproduce + fix + regression test | Main | operator | merged | #677 | – | debug.md:14 (BUG-1); shipped via PR #476 + regression tests PR #677 (commit `b0477670`) |
 | B-2B | BUG-2 triage: proxy crash after some time — reproduce + root cause + fix (likely needs soak-harness assist from Q-1) | Main | operator | merged | #683 | Q-1 | debug.md:15 (BUG-2) |
 | R-1L-FU-pre-fail | Lane B | Main | operator | parked | – | – | PR #699 worker disclosed: `test/role_admin_live_binding_test.dart` 'listVisibleRoles' expects SQL without the `r.` table alias prefix; reproduced on master `14b72714` WITHOUT R-1L changes, so it's a pre-existing master failure not introduced by R-1L. NOT in `docs/KNOWN_FAILING_TESTS.md` yet. Either: (a) add to KNOWN_FAILING_TESTS with a note pointing at the SQL alias drift, or (b) sweep slice fixes the test expectation. Out of scope for R-1L. |
-| B-FU-proxy-analyze-infos | Lane B | Main | operator | parked | – | – | R-1L rebase worker disclosed: two pre-existing `dart analyze --fatal-infos` infos surfaced during R-1L rebase verification, both predate R-1L on master: (1) `tool/advisor_proxy/main.dart:64` duplicate import of `permission_effect.dart` introduced by commit `f651f05c` (Lane B B8.b, 2026-05-13); (2) `tool/advisor_proxy/integration_oauth_routes.dart:84` unnecessary `log.dart` import introduced by commit `363160e6` (2026-05-09). Janitorial only — delete the duplicate + the unused import. |
+| B-FU-proxy-analyze-infos | Lane B | Main | operator | merged | #709 | – | R-1L rebase worker disclosed: two pre-existing `dart analyze --fatal-infos` infos surfaced during R-1L rebase verification, both predate R-1L on master: (1) `tool/advisor_proxy/main.dart:64` duplicate import of `permission_effect.dart` introduced by commit `f651f05c` (Lane B B8.b, 2026-05-13); (2) `tool/advisor_proxy/integration_oauth_routes.dart:84` unnecessary `log.dart` import introduced by commit `363160e6` (2026-05-09). Janitorial only — delete the duplicate + the unused import. Shipped 2026-05-14 via PR #709. |
 
 ### Lane Q — Quality + longer-running (Main)
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
-| Q-1 | Soak harness completion + Azure Blob swap (replace GCS uploader; expose heap-snapshot capture for live multi-pod use) | Main | operator | in-progress | – | – | debug.md:16, POST_HARDENING_FOLLOWUPS "Soak Heap-Snapshot Uploader" |
+| Q-1 | Soak harness completion + Azure Blob swap (replace GCS uploader; expose heap-snapshot capture for live multi-pod use) | Main | operator | merged | #672 | – | debug.md:16, POST_HARDENING_FOLLOWUPS "Soak Heap-Snapshot Uploader"; shipped via PR #672 (commit `a33fb80a`) |
 | Q-1-FU | Q-1 follow-up: multi-pod live capture endpoint (Q-1 worker shipped Azure Blob heap-snapshot uploader; multi-pod live capture endpoint parked) | Main | operator | parked | – | Q-1 | Q-1 follow-up 2026-05-14 |
-| Q-2 | Email/notification soak harness (Patrol + Firebase Test Lab + Mailosaur + SendGrid event webhook) for end-to-end loopback testing of all email + push + in-app scenarios | Main | operator | assigned | – | – | debug.md:58-67 (EN-5), 322-325 (BC-3) |
+| Q-2 | Email/notification soak harness (Patrol + Firebase Test Lab + Mailosaur + SendGrid event webhook) for end-to-end loopback testing of all email + push + in-app scenarios | Main | operator | assigned | – | – | debug.md:58-67 (EN-5), 322-325 (BC-3); split into Q-2a/Q-2b/Q-2c sub-slices |
+| Q-2b | Patrol harness for in-app notification surface (sub-slice of Q-2) | Claude2 | operator | merged | #704 | Q-2 | Q-2 sub-slice; shipped 2026-05-14 via PR #704 |
+| Q-2c | Firebase Test Lab integration for mobile push delivery (sub-slice of Q-2) | Claude2 | operator | merged | #708 | Q-2 | Q-2 sub-slice; shipped 2026-05-14 via PR #708 |
 | Q-3 | Scaffold audit lane — orphan email template purge + dispatcher cleanup + dormant invite path resolution (wire dedicated invite template OR remove + commit to Firebase password-reset path) | Main | operator | merged | #658 | – | debug.md:308-320 (BC-1, EN-2, EN-4) |
-| Q-4 | Custom role editor — orphan permission lint + product-rule warnings (warn when "can manage members" excludes team.users.view; warn on location-scoped roles attempting org-wide actions; warn on orphan permission combos) | Main | operator | assigned | – | – | debug.md:78-80 (AC-2) |
+| Q-4 | Custom role editor — orphan permission lint + product-rule warnings (warn when "can manage members" excludes team.users.view; warn on location-scoped roles attempting org-wide actions; warn on orphan permission combos) | Main | operator | merged | #716 | – | debug.md:78-80 (AC-2); shipped 2026-05-14 via PR #716 |
 
 ### Lane M-Other — Mobile rest (Main)
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
 | MO-1 | Mobile Data tab role-gated visibility (only F&F admin users see it; seeded role check) | Main | operator | merged | #661 | – | debug.md:260 (MO-2) |
-| MO-1-FU | MO-1 follow-up: move `SettingsDemoLiveSwitch` out of the F&F-internal Data tab into the operator-visible Setup tab so the demo operator can still reach the master Demo→Live switch on mobile (operator picked option C 2026-05-13) | Main | operator | in-progress | – | MO-1 | MO-1 audit fallout 2026-05-13 |
-| MO-2 | Mobile covers manual entry — first item on Covers Setup screen; vendor-fallback when reservation system doesn't support covers | Main | operator | in-progress | – | – | debug.md:283-285 (MO-6) |
+| MO-1-FU | MO-1 follow-up: move `SettingsDemoLiveSwitch` out of the F&F-internal Data tab into the operator-visible Setup tab so the demo operator can still reach the master Demo→Live switch on mobile (operator picked option C 2026-05-13) | Main | operator | merged | #667 | MO-1 | MO-1 audit fallout 2026-05-13; shipped via PR #667 (commit `e73228f5`) |
+| MO-2 | Mobile covers manual entry — first item on Covers Setup screen; vendor-fallback when reservation system doesn't support covers | Main | operator | merged | #676 | – | debug.md:283-285 (MO-6); shipped via PR #676 (commit `e16dff45`) |
 | MO-2-FU | MO-2 follow-up: aggregator projection of `manual_cover_entries` into `ShiftRecord.covers` reader path — needs operator design input | Main | operator | parked | – | MO-2 | MO-2 audit fallout 2026-05-14 |
 
 ### Phase-7 deferred but tracked (no Wave 2 engineering)
@@ -171,12 +175,13 @@ mega-PR or split into per-screen PRs.
 - 4 lanes × ~3 slices = **11 Claude2 slices**
 - 7 lanes × ~3 slices = **20 Main slices**
 - **2 Phase-7 deferred** (SOPs, vendor outreach)
-- **33 total rows**
+- **33 base rows + follow-up rows accreted during execution (FU, FU-2, sub-slices, V1.1) — see live row count**
 
-(Slight delta vs the "29 + 4 bug fixes = 33" napkin math because Lane U bundles multiple debug.md ✗ NOT DONE UX rows into per-section slices, which expanded from 1 conceptual "UX polish bundle" to 7 sub-slices.)
+(Slight delta vs the "29 + 4 bug fixes = 33" napkin math because Lane U bundles multiple debug.md ✗ NOT DONE UX rows into per-section slices, which expanded from 1 conceptual "UX polish bundle" to 7 sub-slices. As of 2026-05-14 closeout sweep, the ledger carries Wave 2's 33 base rows plus accreted follow-up rows: Q-2 sub-slices (Q-2b, Q-2c), V1.1 FU rows (U-FU-hp11-account-schema, U-FU-tier-email-wire), and earlier-added FU rows. Detailed snapshot: `docs/_indices/NEXT_WAVE_PLAN.md` "Wave 2 status snapshot".)
 
 ## Changelog
 
+- 2026-05-14: Wave 2 closeout sweep: 18 rows flipped to merged (5 stale-label, 13 newly-merged), 2 V1.1 follow-up rows added (U-FU-hp11-account-schema, U-FU-tier-email-wire). Stale-label rows: Q-1 (#672), MO-1-FU (#667), MO-2 (#676), U-FU-mobile-deeplink (#600 via Codex C-5), B-1B (#677). Newly-merged from this session: B-FU-proxy-analyze-infos (#709), U-FU-summary-strip-cleanup (#710), R-2L (#711), U-FU-hp11-account (#712, PUNT mode), U-FU-tier-email (#713, router not yet mounted), W-5-mobile-FU-2 (#714), R-1L-FU NOT NULL flip (#715), Q-4 (#716), S-3 (#717), Q-2b (#704, new row), W-6-backend (#705), Q-2c (#708, new row). DEBUG_MD_IMPLEMENTATION_STATUS synced; NEXT_WAVE_PLAN completed items removed; 4 pre-existing test failures added to KNOWN_FAILING_TESTS.
 - 2026-05-14: R-1L merged (PR #699, commit `c92ba2e8`). Added 3 follow-up rows for disclosed gaps: R-1L-FU (NOT NULL flip on `permission_keys.product_label` / `category_label` / `scope_kind` after one clean staging apply cycle), R-1L-FU-pre-fail (pre-existing `role_admin_live_binding_test.dart` 'listVisibleRoles' SQL alias drift on master, not introduced by R-1L), B-FU-proxy-analyze-infos (2 pre-existing `dart analyze --fatal-infos` infos in `tool/advisor_proxy/` predating R-1L). None V1-blocking, all parked for after demo-validate.
 - 2026-05-14: Orchestrator audited all Claude #2 merged PRs (657, 663, 664, 670, 673, 678, 685, 687, 693, 695). Added 5 follow-up rows for legitimate disclosed gaps: U-FU-hp11-account, U-FU-mobile-deeplink, U-FU-tier-email, W-5-mobile-FU-2, U-FU-summary-strip-cleanup. None V1-blocking.
 - 2026-05-14: Wave 2 batch 2 flips — Main lane 10 slices (S-1, S-2, H-3, W-6, B-2B, W-1, W-1-FU, W-4, W-5, W-2) and Claude2 lane bundle merged. Added 5 follow-up rows (W-1-FU now merged; W-5-mobile-FU handed to Claude #2; W-6-backend, MO-2-FU, Q-1-FU parked). 21 of 22 Main slices merged. W-3 in flight.
