@@ -67,6 +67,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
+import 'package:forge_and_flow/auth/permission_key_metadata.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/auth/permission_resolution.dart';
 import 'package:forge_and_flow/domain/models/business_timing_profile.dart';
@@ -8748,11 +8749,32 @@ class RepositoryProxyPermissionSnapshotResolver
         operatorId: scope.operatorId,
         locationId: scope.locationId,
         now: evaluatedAt,
+        // Wave 2 R-1L — expand implied keys (e.g. team.users.invite
+        // auto-grants team.users.view). Mirrors the
+        // `permission_keys.implies` column.
+        implies: _permissionKeyImpliesMap(),
       ),
       requiresMfaKeys: _requiresMfaKeys,
     );
   }
 }
+
+/// Wave 2 R-1L — project the metadata catalog's imply edges into the
+/// shape the resolver expects (key → list of implied keys). Computed
+/// lazily on first call and memoised in [_cachedImpliesMap] so the
+/// expansion runs once per process.
+Map<String, List<String>> _permissionKeyImpliesMap() {
+  final cached = _cachedImpliesMap;
+  if (cached != null) return cached;
+  final fresh = <String, List<String>>{};
+  PermissionKeyMetadataCatalog.byKey.forEach((key, meta) {
+    if (meta.implies.isEmpty) return;
+    fresh[key] = List<String>.unmodifiable(meta.implies);
+  });
+  return _cachedImpliesMap = Map<String, List<String>>.unmodifiable(fresh);
+}
+
+Map<String, List<String>>? _cachedImpliesMap;
 
 class RepositoryProxyAdminPermissionGuard implements ProxyAdminPermissionGuard {
   RepositoryProxyAdminPermissionGuard({
@@ -8822,6 +8844,10 @@ class RepositoryProxyAdminPermissionGuard implements ProxyAdminPermissionGuard {
       operatorId: context.operatorId,
       locationId: context.locationId,
       now: requestedAt,
+      // Wave 2 R-1L — admin guard honours implied grants the same way
+      // the snapshot resolver does, so a role with e.g.
+      // admin.users.deactivate auto-passes the admin.users.view gate.
+      implies: _permissionKeyImpliesMap(),
     );
     return effect == PermissionEffect.allow
         ? const ProxyAdminAllowed()

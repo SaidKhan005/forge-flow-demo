@@ -146,7 +146,7 @@ Do not re-open stale findings unless the repo regresses:
   `location_id` to the fact/webhook idempotency keys and switch all 17
   vendor sinks to a DO UPDATE WHERE `vendor_modified_at >=` guard. The
   follow-up queue now continues through
-  `202605131900_c_2_d_vendor_sync_outage_state.sql`, including permission-cache,
+  `202605142100_phase_R_1L_roles_schema_rewrite.sql`, including permission-cache,
   webhook-secret, demo-counter, audit-anchor, auth-version,
   OAuth-refresh-lock, outbox NOTIFY split hardening, cron maintenance,
   KMS flag seeding, PII erasure, retention sweep, and admin hierarchy
@@ -176,10 +176,15 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605140000_w_3_self_profile_perm_key.sql`, which adds the Wave 2
-  W-3 `team.users.self_update` permission key + baseline grants
-  backing the new `PATCH /v1/auth/self/profile` self-service profile
-  editor on the operator-web and admin My Account surfaces.
+  `202605142100_phase_R_1L_roles_schema_rewrite.sql`, which adds the
+  Wave 2 R-1L Roles schema rewrite (`permission_keys.product_label` +
+  `category_label` + `scope_kind` + `implies` columns, NULLABLE with
+  inline backfill, NOT-NULL flip deferred to R-1L-FU per
+  expand-contract discipline). Prior cutoff
+  `202605140000_w_3_self_profile_perm_key.sql` adds the Wave 2 W-3
+  `team.users.self_update` permission key + baseline grants backing
+  the new `PATCH /v1/auth/self/profile` self-service profile editor on
+  the operator-web and admin My Account surfaces.
 
   Lane C C-2-D (`202605131900_c_2_d_vendor_sync_outage_state.sql`)
   adds the per-(operator_id, location_id, connection_id) state surface
