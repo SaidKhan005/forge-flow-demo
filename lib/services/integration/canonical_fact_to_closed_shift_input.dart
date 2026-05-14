@@ -37,12 +37,18 @@
 //       Manual covers VALUES still come from the legacy
 //       `covers_manual_entries` jsonb (manual-entry storage migration
 //       is a future slice).
-//   3. Resolves covers via the 5-way decision per
+//   3. Resolves covers via the decision chain per
 //      `data_accuracy_settings_contract.md` (manual / vendor /
-//      reservation+walk-in / forecast / unavailable) — stage 3
-//      (reservation+walk-in Pattern A/B/C) is implemented from the
-//      durable walk-in fields on `data_accuracy_settings`; explicit
-//      [ReservationWalkInOverride] remains a test/backfill seam.
+//      reservation+walk-in / manual-pos-fallback / forecast /
+//      unavailable). Stage 3 (reservation+walk-in Pattern A/B/C) is
+//      implemented from the durable walk-in fields on
+//      `data_accuracy_settings`; explicit [ReservationWalkInOverride]
+//      remains a test/backfill seam. Stage 3.5 (Wave 2 MO-2-FU,
+//      Option A — fallback-only) projects operator manual covers into
+//      the model ONLY when the active POS does NOT expose covers; POS
+//      remains the source of truth for vendors with
+//      `VendorCapabilityProfile.coversFieldExposed=true` (Toast, Aloha,
+//      Lightspeed K-Series, Oracle MICROS Simphony, Revel).
 //   4. Resolves labor wage via the 4-way decision keyed by
 //      `LaborWageSourceClass` (manual_mix override / per-employee
 //      dollars / per-position rates / per-employee rates / hours-only
@@ -79,6 +85,7 @@ import '../../infrastructure/persistence/postgres/postgres_executor.dart';
 import '../../infrastructure/persistence/postgres/tenant_context.dart';
 import 'iana_timezone_converter.dart';
 import 'labor_wage_source_class.dart';
+import 'pos_covers_capability.dart';
 
 /// Optional walk-in inputs the aggregator consumes when resolving
 /// covers via the reservation+walk-in pattern. The operator-walk-in
@@ -404,6 +411,41 @@ class CanonicalFactToClosedShiftInputAggregator
       }
     }
 
+    // Stage 3.5 — Wave 2 MO-2-FU (Option A, fallback-only) — operator
+    // manual entries fall back into the projection ONLY when the active
+    // POS does NOT expose a covers field on its canonical sales rows
+    // (e.g. Square, Clover, or an unknown vendor F&F cannot classify).
+    //
+    // When POS DOES expose covers (Toast, Aloha, Lightspeed K-Series,
+    // Oracle MICROS Simphony, Revel — see
+    // `lib/services/integration/pos_covers_capability.dart`), the POS
+    // feed is the source of truth and manual entries are ignored at
+    // this stage (stage 2 already returned above). The Settings ->
+    // Setup form may still surface historical manual entries for the
+    // operator, but they do NOT contribute to the model.
+    //
+    // This matches `docs/contracts/data_accuracy_settings_contract.md`
+    // "vendor-fallback" framing: manual is the primary path when POS
+    // cannot supply covers, and the forecast substitution (stage 4
+    // below) is the secondary fallback when neither vendor nor manual
+    // values are available.
+    //
+    // Provenance string differs from stage 1's
+    // `operator_manual_entry_per_daypart` so the renderer can
+    // disambiguate: stage 1 is the operator-elected manual path
+    // (operator picked `CoversSource.manual` in Data Accuracy);
+    // stage 3.5 is the automatic POS-capability fallback.
+    if (_posLacksCoversCapability(posVendorId)) {
+      final manual = settings.manualCoversFor(isoBusinessDate, daypart);
+      if (manual != null) {
+        return _CoversResolution(
+          covers: manual,
+          provenance: 'operator_manual_entry_fallback_pos_not_exposed',
+          sourceSystem: 'operator_manual_entry',
+        );
+      }
+    }
+
     // Stage 4 — forecast substitution (POS missing covers, forecast
     // available). Allocates the resolved weekly forecast across the
     // 7 days of the week; per the contract this is the F&F-derived
@@ -428,6 +470,25 @@ class CanonicalFactToClosedShiftInputAggregator
 
     // Stage 5 — unavailable.
     return null;
+  }
+
+  /// Wave 2 MO-2-FU — POS-capability fallback predicate.
+  ///
+  /// Returns true when the active POS vendor is known to NOT expose a
+  /// covers field on its canonical sales rows (Square, Clover today),
+  /// OR when there is no active POS at all / the vendor is unknown to
+  /// F&F's capability mirror. The mirror lives in
+  /// `lib/services/integration/pos_covers_capability.dart` and is
+  /// kept in sync with the per-adapter `VendorCapabilityProfile`
+  /// declarations (one entry per Wave B POS adapter; a contract test
+  /// pins the mirror to adapter truth).
+  ///
+  /// "Unknown" vendors are treated as "lacks coverage" because the
+  /// safer assumption when F&F cannot classify the vendor is that POS
+  /// covers cannot be trusted; manual entries (if any) take the
+  /// fallback slot ahead of forecast substitution.
+  static bool _posLacksCoversCapability(String? posVendorId) {
+    return posVendorExposesCovers(posVendorId) != true;
   }
 
   static ReservationWalkInOverride? _walkInOverrideFromSettings(

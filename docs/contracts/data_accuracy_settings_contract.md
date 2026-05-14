@@ -612,10 +612,20 @@ Given (operator, location, business_date, service_period_key):
     sourceSystem = vendor_<id>
 
   elif setting == 'vendor' AND vendor doesn't expose covers (capabilityProfile.coversFieldExposed=false):
-    // Falls through to forecast substitution.
-    covers = forecastSnapshot.coversFor(business_date, service_period_key)
-    coversSource = 'vendor_<id>_covers_unavailable_app_forecast_substituted'
-    sourceSystem = vendor_<id>
+    // Wave 2 MO-2-FU (Option A, fallback-only):
+    //   Manual entries take priority over forecast substitution when
+    //   POS lacks covers. POS exposing covers always wins (above);
+    //   this branch only fires for Square / Clover / unknown vendors.
+    manual_value = covers_manual_entries[business_date][service_period_key]
+    if manual_value is not null:
+      covers = manual_value
+      coversSource = 'operator_manual_entry_fallback_pos_not_exposed'
+      sourceSystem = 'operator_manual_entry'
+    else:
+      // Falls through to forecast substitution.
+      covers = forecastSnapshot.coversFor(business_date, service_period_key)
+      coversSource = 'vendor_<id>_covers_unavailable_app_forecast_substituted'
+      sourceSystem = vendor_<id>
 
   elif setting == 'forecast':
     // Operator explicitly chose forecast even when vendor exposes covers.
@@ -630,6 +640,17 @@ Given (operator, location, business_date, service_period_key):
 The forecast itself is **F&F-app-computed** per
 `core_app_architecture.md` Layer 6 - never vendor-supplied. The
 provenance string makes the substitution path explicit.
+
+**Wave 2 MO-2-FU (Option A — fallback only).** Manual covers from
+`covers_manual_entries` count toward `ShiftRecord.covers` only when
+the operator's active POS does NOT expose covers (Square, Clover, or
+an unknown vendor F&F cannot classify). When POS DOES expose covers
+(Toast, Aloha, Lightspeed K-Series, Oracle MICROS Simphony, Revel),
+the POS feed is the source of truth and manual entries are ignored
+by the aggregator. The capability mirror is
+`lib/services/integration/pos_covers_capability.dart`; a contract
+test pins it to per-adapter `VendorCapabilityProfile.coversFieldExposed`
+truth.
 
 ### Wage source resolution
 

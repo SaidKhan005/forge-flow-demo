@@ -445,6 +445,290 @@ void main() {
     });
   });
 
+  // ───────── D-FU — Wave 2 MO-2-FU (Option A, fallback-only) ──────────────
+  //
+  // Manual entries in `covers_manual_entries` project into
+  // `ShiftRecord.covers` ONLY when the active POS does NOT expose
+  // covers (Square, Clover, or unknown vendor). When POS DOES expose
+  // covers (Toast, Aloha, Lightspeed K-Series, Oracle MICROS Simphony,
+  // Revel), the POS feed is the source of truth and manual entries are
+  // ignored.
+  group(
+    'aggregator — D-FU. POS-fallback manual entries (Option A, MO-2-FU)',
+    () {
+      test(
+        'POS exposes covers (Toast) + manual entries present -> manual '
+        'IGNORED; vendor wins',
+        () async {
+          final pool = _FakePool()..seedLocation(_opA, _locA);
+          // Toast row carries covers; capability mirror says Toast
+          // exposes covers, so stage 2 must win even though the
+          // operator typed a manual entry for the same slot.
+          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+            <String, Object?>{
+              'vendor_id': 'toast',
+              'vendor_entity_id': 'check_toast_001',
+              'vendor_modified_at': _dinnerInstantUtc,
+              'covers': 92,
+              'covers_source': 'direct',
+              'opened_at': _dinnerInstantUtc.subtract(
+                const Duration(hours: 1),
+              ),
+              'closed_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+              'actual_sales': 2310.50,
+            },
+          ];
+          // Operator typed a manual entry for the same slot. Operator
+          // preference is the default ('vendor'), so stage 1 does not
+          // fire. The new stage 3.5 also does not fire because Toast
+          // exposes covers (capability mirror).
+          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] =
+              <String, Object?>{
+                'setting_id': 'das_002',
+                'operator_id': _opA,
+                'location_id': _locA,
+                'covers_source_lunch': 'vendor',
+                'covers_source_dinner': 'vendor',
+                'covers_source_late_night': 'vendor',
+                'covers_manual_entries': <String, Map<String, int>>{
+                  _businessDateIso: <String, int>{'dinner': 500},
+                },
+                'wage_source': 'vendor',
+                'created_at': DateTime.utc(2026, 5, 1),
+                'updated_at': DateTime.utc(2026, 5, 4),
+                'updated_by': null,
+              };
+
+          final aggregator = CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          );
+
+          final result = await aggregator.aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            daypart: Daypart.dinner,
+            periodDefinition: _dinnerPeriod,
+          );
+
+          expect(result, isNotNull);
+          expect(
+            result!.input.covers,
+            92,
+            reason: 'Toast (coversFieldExposed=true) wins; manual ignored',
+          );
+          expect(result.input.sourceSystem, 'toast');
+          expect(result.provenance.coversProvenance, 'vendor_toast');
+        },
+      );
+
+      test(
+        'POS does NOT expose covers (Square) + manual entries present -> '
+        'manual projected with operator_manual_entry_fallback_pos_not_exposed',
+        () async {
+          final pool = _FakePool()..seedLocation(_opA, _locA);
+          // Square row exists but POS does not expose covers
+          // (coversFieldExposed=false); stage 2 short-circuits because
+          // summed covers == 0. Stage 3.5 (new) fires because the
+          // operator typed a manual entry for the slot.
+          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+            <String, Object?>{
+              'vendor_id': 'square',
+              'vendor_entity_id': 'order_sq_001',
+              'vendor_modified_at': _dinnerInstantUtc,
+              'covers': 0,
+              'covers_source': 'forecast_fallback',
+              'opened_at': _dinnerInstantUtc,
+              'closed_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+              'actual_sales': 850.00,
+            },
+          ];
+          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] =
+              <String, Object?>{
+                'setting_id': 'das_003',
+                'operator_id': _opA,
+                'location_id': _locA,
+                'covers_source_lunch': 'vendor',
+                'covers_source_dinner': 'vendor',
+                'covers_source_late_night': 'vendor',
+                'covers_manual_entries': <String, Map<String, int>>{
+                  _businessDateIso: <String, int>{'dinner': 73},
+                },
+                'wage_source': 'vendor',
+                'created_at': DateTime.utc(2026, 5, 1),
+                'updated_at': DateTime.utc(2026, 5, 4),
+                'updated_by': null,
+              };
+
+          final aggregator = CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          );
+
+          // Seed a forecast context too; the new stage 3.5 must beat
+          // stage 4 (forecast substitution) when manual entries are
+          // present.
+          final forecast = DemandForecastContext(
+            restaurantId: _restaurantA,
+            anchorBusinessDate: _businessDateIso,
+            baselineTotalCovers: 1500,
+            baselineWeeklyAvgCovers: 175,
+            baselineWeeksRepresented: 60 / 7,
+            recentThreeWeekTotalCovers: 525,
+            recentThreeWeekWeeklyAvgCovers: 175,
+            recentTrendDeltaCovers: 0,
+            resolvedWeeklyForecastCovers: 210,
+            coversSource:
+                ForecastDemandSource.appDerivedFromHistoricalAverage,
+            builtAt: _businessDateIso,
+          );
+
+          final result = await aggregator.aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            daypart: Daypart.dinner,
+            periodDefinition: _dinnerPeriod,
+            forecastContext: forecast,
+          );
+
+          expect(result, isNotNull);
+          expect(
+            result!.input.covers,
+            73,
+            reason:
+                'Square (coversFieldExposed=false) + manual entry -> manual',
+          );
+          expect(result.input.sourceSystem, 'operator_manual_entry');
+          expect(
+            result.provenance.coversProvenance,
+            'operator_manual_entry_fallback_pos_not_exposed',
+          );
+        },
+      );
+
+      test(
+        'POS does NOT expose covers (Square) + NO manual entries -> '
+        'existing forecast substitution still wins',
+        () async {
+          final pool = _FakePool()..seedLocation(_opA, _locA);
+          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+            <String, Object?>{
+              'vendor_id': 'square',
+              'vendor_entity_id': 'order_sq_002',
+              'vendor_modified_at': _dinnerInstantUtc,
+              'covers': 0,
+              'covers_source': 'forecast_fallback',
+              'opened_at': _dinnerInstantUtc,
+              'closed_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+              'actual_sales': 612.40,
+            },
+          ];
+          // No manual entries seeded; default DataAccuracySettings
+          // (covers_manual_entries empty) is constructed by the
+          // aggregator when no row exists for the tenant.
+          final forecast = DemandForecastContext(
+            restaurantId: _restaurantA,
+            anchorBusinessDate: _businessDateIso,
+            baselineTotalCovers: 1500,
+            baselineWeeklyAvgCovers: 175,
+            baselineWeeksRepresented: 60 / 7,
+            recentThreeWeekTotalCovers: 525,
+            recentThreeWeekWeeklyAvgCovers: 175,
+            recentTrendDeltaCovers: 0,
+            resolvedWeeklyForecastCovers: 210,
+            coversSource:
+                ForecastDemandSource.appDerivedFromHistoricalAverage,
+            builtAt: _businessDateIso,
+          );
+
+          final aggregator = CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          );
+
+          final result = await aggregator.aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            daypart: Daypart.dinner,
+            periodDefinition: _dinnerPeriod,
+            forecastContext: forecast,
+          );
+
+          expect(result, isNotNull);
+          // Forecast substitution still wins when no manual entries
+          // are present.
+          expect(
+            result!.provenance.coversProvenance,
+            'vendor_square_covers_unavailable_app_forecast_substituted',
+          );
+          expect(result.input.sourceSystem, 'square');
+        },
+      );
+
+      test(
+        'Unknown POS vendor (no cover_facts rows) + manual entries -> '
+        'manual projected; POS-fallback also covers the "no POS" case',
+        () async {
+          final pool = _FakePool()..seedLocation(_opA, _locA);
+          // No cover_facts seeded — posVendorId resolves to null;
+          // capability lookup returns null which the aggregator treats
+          // as "lacks coverage" (safer assumption).
+          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] =
+              <String, Object?>{
+                'setting_id': 'das_004',
+                'operator_id': _opA,
+                'location_id': _locA,
+                'covers_source_lunch': 'vendor',
+                'covers_source_dinner': 'vendor',
+                'covers_source_late_night': 'vendor',
+                'covers_manual_entries': <String, Map<String, int>>{
+                  _businessDateIso: <String, int>{'dinner': 41},
+                },
+                'wage_source': 'vendor',
+                'created_at': DateTime.utc(2026, 5, 1),
+                'updated_at': DateTime.utc(2026, 5, 4),
+                'updated_by': null,
+              };
+
+          final aggregator = CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          );
+
+          final result = await aggregator.aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            daypart: Daypart.dinner,
+            periodDefinition: _dinnerPeriod,
+          );
+
+          expect(result, isNotNull);
+          expect(result!.input.covers, 41);
+          expect(result.input.sourceSystem, 'operator_manual_entry');
+          expect(
+            result.provenance.coversProvenance,
+            'operator_manual_entry_fallback_pos_not_exposed',
+          );
+        },
+      );
+    },
+  );
+
   // ─────────────────── E — reservation + walk-in Pattern A ────────────────
   group('aggregator — E. reservation+walk-in (Square + Libro)', () {
     test('seated party_size sum + operator walk-in count -> '
