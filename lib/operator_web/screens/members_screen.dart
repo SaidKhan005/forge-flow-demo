@@ -1112,7 +1112,11 @@ class _MembersTableHeader extends StatelessWidget {
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
           ),
-          const SizedBox(width: 40),
+          // OW-6d — Trailing affordance column reservation. Width
+          // matches the inline Edit text button + smaller 3-dot
+          // overflow footprint introduced by the row affordance
+          // change so the header columns stay aligned with the row.
+          const SizedBox(width: 112),
         ],
       ),
     );
@@ -1193,19 +1197,16 @@ class _MembersTableRow extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(
-            width: 40,
-            child: _MembersRowActionsButton(
-              user: user,
-              canWrite: canWrite,
-              busy: busy,
-              onEdit: onEdit,
-              onSuspend: onSuspend,
-              onReactivate: onReactivate,
-              onSoftDelete: onSoftDelete,
-              onResetPassword: onResetPassword,
-              onResetMfa: onResetMfa,
-            ),
+          _MembersRowActionsButton(
+            user: user,
+            canWrite: canWrite,
+            busy: busy,
+            onEdit: onEdit,
+            onSuspend: onSuspend,
+            onReactivate: onReactivate,
+            onSoftDelete: onSoftDelete,
+            onResetPassword: onResetPassword,
+            onResetMfa: onResetMfa,
           ),
         ],
       ),
@@ -1297,19 +1298,16 @@ class _MembersCompactCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 6),
-          SizedBox(
-            width: 40,
-            child: _MembersRowActionsButton(
-              user: user,
-              canWrite: canWrite,
-              busy: busy,
-              onEdit: onEdit,
-              onSuspend: onSuspend,
-              onReactivate: onReactivate,
-              onSoftDelete: onSoftDelete,
-              onResetPassword: onResetPassword,
-              onResetMfa: onResetMfa,
-            ),
+          _MembersRowActionsButton(
+            user: user,
+            canWrite: canWrite,
+            busy: busy,
+            onEdit: onEdit,
+            onSuspend: onSuspend,
+            onReactivate: onReactivate,
+            onSoftDelete: onSoftDelete,
+            onResetPassword: onResetPassword,
+            onResetMfa: onResetMfa,
           ),
         ],
       ),
@@ -1376,86 +1374,113 @@ class _MembersRowActionsButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (busy) {
       return const SizedBox(
-        width: 18,
-        height: 18,
-        child: CircularProgressIndicator(
-          strokeWidth: 2,
-          color: AppColors.sunsetDark,
+        width: 40,
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.sunsetDark,
+            ),
+          ),
         ),
       );
     }
     if (!canWrite || user.status == 'soft_deleted') {
       return const SizedBox.shrink();
     }
-    return PopupMenuButton<_MembersRowAction>(
-      key: Key('operator_web_members_row_actions_${user.userId}'),
-      icon: const Icon(Icons.more_vert, size: 18),
-      onSelected: (action) {
-        switch (action) {
-          case _MembersRowAction.edit:
-            onEdit(user);
-          case _MembersRowAction.suspend:
-            onSuspend(user);
-          case _MembersRowAction.reactivate:
-            onReactivate(user);
-          case _MembersRowAction.softDelete:
-            onSoftDelete(user);
-          case _MembersRowAction.resetPassword:
-            onResetPassword(user);
-          case _MembersRowAction.resetMfa:
-            onResetMfa(user);
-        }
-      },
-      itemBuilder: (context) {
-        final isSuspended = user.status == 'suspended';
-        final isSoftDeleted = user.status == 'soft_deleted';
-        return <PopupMenuEntry<_MembersRowAction>>[
-          if (!isSoftDeleted)
-            // Wave 2 W-1 — Members edit-user write path. Edit lives at
-            // the top of the row menu so the affordance is the first
-            // option the operator-admin reaches for.
-            const PopupMenuItem<_MembersRowAction>(
-              key: Key('members_row_action_edit'),
-              value: _MembersRowAction.edit,
-              child: Text('Edit member'),
-            ),
-          if (!isSuspended && !isSoftDeleted)
-            const PopupMenuItem<_MembersRowAction>(
-              key: Key('members_row_action_suspend'),
-              value: _MembersRowAction.suspend,
-              child: Text('Suspend'),
-            ),
-          if (isSuspended)
-            const PopupMenuItem<_MembersRowAction>(
-              key: Key('members_row_action_reactivate'),
-              value: _MembersRowAction.reactivate,
-              child: Text('Reactivate'),
-            ),
-          if (!isSoftDeleted) ...<PopupMenuEntry<_MembersRowAction>>[
-            const PopupMenuItem<_MembersRowAction>(
-              key: Key('members_row_action_reset_password'),
-              value: _MembersRowAction.resetPassword,
-              child: Text('Reset password'),
-            ),
-            const PopupMenuItem<_MembersRowAction>(
-              key: Key('members_row_action_reset_mfa'),
-              value: _MembersRowAction.resetMfa,
-              child: Text('Reset two-factor sign-in'),
-            ),
-            const PopupMenuItem<_MembersRowAction>(
-              key: Key('members_row_action_soft_delete'),
-              value: _MembersRowAction.softDelete,
-              child: Text('Remove from team'),
-            ),
-          ],
-        ];
-      },
+    // OW-6d — Row trailing affordance: inline "Edit" text button (the
+    // primary edit-user write path per the operator decision) +
+    // smaller 3-dot overflow that holds only the destructive actions
+    // (Suspend / Reactivate / Reset password / Reset two-factor sign-
+    // in / Remove from team). The earlier all-in-one 3-dot menu hid
+    // the most-reached-for action behind a click; pulling Edit inline
+    // honors the debug.md 156 literal ask while keeping the
+    // destructive options discoverable but visually de-emphasized.
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        TextButton.icon(
+          key: Key('operator_web_members_row_edit_${user.userId}'),
+          icon: const Icon(Icons.edit_outlined, size: 16),
+          label: const Text('Edit'),
+          style: TextButton.styleFrom(
+            foregroundColor: AppColors.sunsetDark,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            minimumSize: const Size(0, 32),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
+          onPressed: () => onEdit(user),
+        ),
+        const SizedBox(width: 4),
+        SizedBox(
+          width: 32,
+          height: 32,
+          child: PopupMenuButton<_MembersRowAction>(
+            key: Key('operator_web_members_row_actions_${user.userId}'),
+            tooltip: 'More actions',
+            padding: EdgeInsets.zero,
+            iconSize: 18,
+            icon: const Icon(Icons.more_vert, size: 18),
+            onSelected: (action) {
+              switch (action) {
+                case _MembersRowAction.suspend:
+                  onSuspend(user);
+                case _MembersRowAction.reactivate:
+                  onReactivate(user);
+                case _MembersRowAction.softDelete:
+                  onSoftDelete(user);
+                case _MembersRowAction.resetPassword:
+                  onResetPassword(user);
+                case _MembersRowAction.resetMfa:
+                  onResetMfa(user);
+              }
+            },
+            itemBuilder: (context) {
+              final isSuspended = user.status == 'suspended';
+              final isSoftDeleted = user.status == 'soft_deleted';
+              return <PopupMenuEntry<_MembersRowAction>>[
+                if (!isSuspended && !isSoftDeleted)
+                  const PopupMenuItem<_MembersRowAction>(
+                    key: Key('members_row_action_suspend'),
+                    value: _MembersRowAction.suspend,
+                    child: Text('Suspend'),
+                  ),
+                if (isSuspended)
+                  const PopupMenuItem<_MembersRowAction>(
+                    key: Key('members_row_action_reactivate'),
+                    value: _MembersRowAction.reactivate,
+                    child: Text('Reactivate'),
+                  ),
+                if (!isSoftDeleted) ...<PopupMenuEntry<_MembersRowAction>>[
+                  const PopupMenuItem<_MembersRowAction>(
+                    key: Key('members_row_action_reset_password'),
+                    value: _MembersRowAction.resetPassword,
+                    child: Text('Reset password'),
+                  ),
+                  const PopupMenuItem<_MembersRowAction>(
+                    key: Key('members_row_action_reset_mfa'),
+                    value: _MembersRowAction.resetMfa,
+                    child: Text('Reset two-factor sign-in'),
+                  ),
+                  const PopupMenuItem<_MembersRowAction>(
+                    key: Key('members_row_action_soft_delete'),
+                    value: _MembersRowAction.softDelete,
+                    child: Text('Remove from team'),
+                  ),
+                ],
+              ];
+            },
+          ),
+        ),
+      ],
     );
   }
 }
 
 enum _MembersRowAction {
-  edit,
   suspend,
   reactivate,
   softDelete,
