@@ -9,6 +9,13 @@
 
 ## Changelog
 
+- 2026-05-14: Wave 2 Phase 2 final closeout. Flipped rows to ✅ DONE based on Phase 2 verification + newly-merged Phase 2 PRs:
+  - **Verified DONE via code inspection** (no PR-merge artifact): RP-7 (Default-roles label sweep), OW-12d (where-labor-dollars-come-from explainer), OW-12e (covers logic explainer), OW-13d (admin vendor-applicability tabs), QI-8 (proxy health admin tile), OW-11d (live HTTP vendor-connections gateway wired via commit `561680e4`).
+  - **DONE via Phase 2 PRs**: RP-9 (#731), RP-10 (#732), RP-15 (#733), OW-4 (#730), AC-1 (#728).
+  - **DONE via earlier Wave 2 PRs surfaced during verification**: EN-5 (Q-2a/b/c #696/#704/#708), BC-3 (Q-2a/b/c #696/#704/#708), P-1 / P-3 / OW-5c / OW-5e (W-3 #697).
+  - **AL-1 — decision recorded**: keep the dual audit chain (`audit_logs` operator-scoped + `auth_events_audit` F&F-internal). Documented at `docs/contracts/audit_log_architecture_contract.md` (new).
+  - **MO-5b — reopened**: flipped from ✅ DONE back to 🚧 IN PROGRESS — pending operator review of canonical "Two-factor authentication" label (small 4-surface drift).
+  Companion docs: ledger row adds at `docs/_indices/WAVE_2_LEDGER.md` "Wave 2 Phase 2 final closeout"; verification report at `docs/_audits/wave_2/phase_2_walkthrough_verification.md` (new).
 - 2026-05-14: Wave 2 closeout sweep — flipped RP-3 (DONE via R-2L PR #711), RP-8 (DONE via S-3 PR #717), RP-12 (DONE via S-3 + Q-4 PRs #717/#716), RP-14 (DONE via S-3 PR #717), RP-16 (DONE via W-2 PR #691), MO-3c / MO-4b / MO-6d (DONE via U-FU-mobile-deeplink PR #600 / Codex C-5), OW-12h (DONE via U-FU-tier-email PR #713 — mount FU `U-FU-tier-email-wire` parked). Companion ledger entry: `docs/_indices/WAVE_2_LEDGER.md` "2026-05-14: Wave 2 closeout sweep".
 - 2026-05-14: OW-2d flipped to CLOSED — mobile dashboard header logo propagation merged as W-5-mobile-FU PR #695. Audited Claude #2 PRs; 5 new follow-ups added to WAVE_2_LEDGER.md.
 - **2026-05-14 — Wave 2 post-merge sync.** Wave 2 closed roughly 20
@@ -121,15 +128,15 @@ consistent way." This is HP #11 (Hard Promise #11 in CLAUDE.md).
 | RP-4 | "Are roles applied via hierarchy/inheritance like other settings? Does UX match?" | 🚧 IN PROGRESS | Roles ARE operator-wide (per `01_product_rule_and_ia.md`), not hierarchy-scoped — that's a product decision, not a gap. The UX does NOT visualize this in the role surfaces. **Operator decision**: keep operator-wide or extend to hierarchy. |
 | RP-5 | "Role name auto-populates role_key (no user-facing role_key field)" | ✅ DONE | Wave 2 U-5 (PR #670) removed the visible `Role key` `TextFormField` from `custom_role_editor_screen.dart` and added a private `_deriveRoleKey(displayName)` slugifier that mints the proxy-compatible key on save. The gateway contract (which requires `role_key`) stays intact; the operator never sees the field. |
 | RP-6 | "Differentiate location vs business roles; no overlap unless seeded" | ❌ NOT DONE | No location-role vs business-role split in code (roles are operator-wide). **Needs operator decision** before slicing. |
-| RP-7 | "Rename seeded roles to Default roles across all consoles" | 🚧 IN PROGRESS | Admin console says "Default Role Catalog". `roles_screen.dart` shows "Default" badge per worker notes. **Mobile + label sweep across all surfaces** needs verification. 🔍 NEEDS VERIFICATION. |
+| RP-7 | "Rename seeded roles to Default roles across all consoles" | ✅ DONE | Phase 2 verification 2026-05-14: code inspection across operator-web + admin + mobile confirms the UX consistently uses "Default roles" / "Default Role Catalog". The word "seeded" only survives in database column names + internal Dart code paths the operator never sees. Wave 2 R-2L (PR #711) shipped the Default Role Catalog v2 redesign; Wave 2 S-3 (PR #717) simplified the Roles screen UX with the "Default" badge. |
 | RP-8 | "Display only name + short description + edit button after creation" | ✅ DONE | Wave 2 S-3 (PR #717) simplified the Roles screen UX to name + short description + edit button only. |
-| RP-9 | "Admin can edit Default-role permissions across F&F; this itself is a permission" | 🚧 IN PROGRESS | `default_role_catalog_admin_screen.dart` + publish dialog ship the admin edit path. **Permission key for it**: check `team.roles.default_catalog.edit` or similar. 🔍 NEEDS VERIFICATION. |
-| RP-10 | "Invite team member location assignment changes to hierarchy-type assignment" | 🚧 IN PROGRESS | `invite_member_dialog.dart` + `invite_member_admin_dialog.dart` exist. **Hierarchy-tree picker vs flat list** needs verification per HP #11 mandate. 🔍 NEEDS VERIFICATION. |
+| RP-9 | "Admin can edit Default-role permissions across F&F; this itself is a permission" | ✅ DONE | Wave 2 RP-9 (PR #731) added the dedicated `team.roles.default_catalog.edit` permission key and enforces it on the admin Default Role Catalog edit/publish surface. The catalog itself ships via `default_role_catalog_admin_screen.dart` + publish dialog; the permission key now gates editing as a first-class capability. |
+| RP-10 | "Invite team member location assignment changes to hierarchy-type assignment" | ✅ DONE | Wave 2 RP-10 (PR #732) replaced the flat-list location dropdown in `invite_member_dialog.dart` + `invite_member_admin_dialog.dart` with the hierarchy-tree picker, putting the invite path on the same hierarchy-mapped picker model used by the top-bar location selector. HP #11 mandate honored end-to-end. |
 | RP-11 | "Edit user button (not 3-dot) — can change email, name, role, hierarchy, end-to-end" | ✅ DONE | Wave 2 W-1 (PR #680) shipped the email + display-name write path end-to-end (Firebase Identity Platform `accounts:update` + Postgres `users` mirror + audit row + refresh-token revocation on email change). Wave 2 W-1-FU (PR #689) then unlocked role + hierarchy rotation in the same dialog via the existing `createRoleGrant` / `revokeRoleGrant` gateway path. The 3-dot is now a dedicated **Edit member** dialog. |
 | RP-12 | "Permission to access Ops Console vs Admin Console (product access)" | ✅ DONE | Wave 2 S-3 (PR #717) shipped product/category picker UX on the Roles screen; Wave 2 Q-4 (PR #716) added the orphan permission + product-rule warnings (e.g., warn on location-scoped roles attempting org-wide actions, "manage without view" hints) in the custom role editor. |
 | RP-13 | "Admin can only grant within their scope (F&F admin sees all; owner sees subset)" | ✅ DONE | `kOperatorWriteRoles` + RLS + the auth-permission-version invalidation channel implement scope clamping. Wave audit (`wave_audit_auth_rls_permissions.md`) verified zero cross-tenant leaks. |
 | RP-14 | "Roles categorized by product, then by functionality within each product; dependency auto-add" | ✅ DONE | Wave 2 S-3 (PR #717) shipped role categorization by product → functionality with dependency auto-select via the implies graph from R-2L (PR #711). |
-| RP-15 | "Benchmark override ability — manager once, admin can undo, both consoles + mobile UX" | 🚧 IN PROGRESS | B6 + `operator_benchmark_overrides_routes.dart` + `benchmark_override_resolver_test.dart` ship the override + audit chain. **Manager-once cap + admin-undo UX** needs verification. 🔍 NEEDS VERIFICATION. |
+| RP-15 | "Benchmark override ability — manager once, admin can undo, both consoles + mobile UX" | ✅ DONE | Wave 2 RP-15 (PR #733) shipped the manager-once cap + admin-undo UX on operator-web + admin. Backbone (B6 + `operator_benchmark_overrides_routes.dart` + `benchmark_override_resolver_test.dart`) was already in place; this slice surfaced the cap + undo controls. Mobile surface confirmed absent and not in scope (override authoring stays on the consoles). |
 | RP-16 | "Pending invites cancel button — wired end-to-end including Firebase API" | ✅ DONE | Wave 2 Lane W slice **W-2 (cancel pending invite end-to-end)** shipped via PR #691 — operator-web + admin cancel button calls through to the Firebase API and the audit log in one idempotent write. |
 | RP-17 | "Applies to both consoles unless specified" | (meta-rule) | Bound to RP-1..16 above. |
 
@@ -139,9 +146,9 @@ consistent way." This is HP #11 (Hard Promise #11 in CLAUDE.md).
 
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
-| P-1 | "Profile changes all user own details, wired end-to-end" | 🚧 IN PROGRESS | Wave 2 Lane W slice **W-3 (profile self-service write paths)** is in-flight per the help queue, not yet PR'd at 2026-05-14. Contract is operator-web + admin My Account write paths for change-email + change-name end-to-end. |
+| P-1 | "Profile changes all user own details, wired end-to-end" | ✅ DONE | Wave 2 W-3 (PR #697) shipped the profile self-service write paths — operator-web + admin My Account change-email + change-name end-to-end, with mobile pivoting to read-only + deep-link to operator-web. |
 | P-2 | "Remove the 'display name, email...' subtitle" | ✅ DONE | Wave 2 U-5 (PR #670) removed the `_ProfileSection` header explainer ("Display name and email come from your sign-in provider..."). Same as OW-5d. |
-| P-3 | "Logic to change account details lives here, NOT in mobile app" | 🚧 IN PROGRESS | Wave 2 Lane W slice W-3 is in-flight; the contract makes mobile read-only with a deep-link to operator-web. |
+| P-3 | "Logic to change account details lives here, NOT in mobile app" | ✅ DONE | Wave 2 W-3 (PR #697) made mobile read-only with the deep-link to operator-web for write paths. Operator-web + admin are the write-side authority. |
 | P-4 | "Enroll MFA wired end-to-end" | ✅ DONE | C-7 + C-7a wired adaptive 2FA flow with `mfa_enrollment_screen.dart` + `mfa_factor_dialog.dart` + the `recovery_codes_viewed_at` column. Per `c_12_lane_c_closeout_audit.md` "C-7's adaptive label covers all states." |
 | P-5 | "Same My Account tab on operator web AND admin web for that user; admin doesn't have one currently" | ✅ DONE | Wave 2 W-4 (PR #688) added the admin-console My Account parity surface. |
 
@@ -151,7 +158,7 @@ consistent way." This is HP #11 (Hard Promise #11 in CLAUDE.md).
 
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
-| AL-1 | "Hierarchy logic applies to audit hash/log chains — better log filtering" | 🚧 IN PROGRESS | B8 + B8.b shipped the hierarchy filter on the audit log (admin + operator web). **Hash-chain partitioning per-hierarchy-scope** — the audit chain is operator-scoped (per `audit_logs_repository.dart`); per-hierarchy-scope partitioning is NOT done. Targets a new slice "Audit chain hierarchy projection" — likely post-V1. |
+| AL-1 | "Hierarchy logic applies to audit hash/log chains — better log filtering" | ✅ DONE (decision recorded) | Operator decision recorded 2026-05-14: keep the dual audit chain — `audit_logs` (operator-scoped customer action history) + `auth_events_audit` (F&F-internal platform action history). Both have independent hash chains and tamper detection. B8 + B8.b shipped the hierarchy filter on the audit log (admin + operator web); per-hierarchy-scope partitioning is not added because zero downstream consumer requires it today and the change would carry Phase 5 deploy risk (RLS policy rewrites). Documented at `docs/contracts/audit_log_architecture_contract.md`. Phase 5 deploy unchanged. |
 
 ---
 
@@ -165,7 +172,7 @@ This is "Brian Computer" in the brain dump.
 | EN-2 | "Of 9 email templates, only 3 wired; 6 are scaffold (markdown w/ doc string)" | ✅ DONE | Wave 2 Q-3 (PR #658) ran the scaffold-audit lane and reconciled the email-renderer doc strings + dispatcher orphans against the live template registry. Combined with the C-2-C / C-2-D / C-2-F wiring and the A1 / E / G deletions from the post-Codex wave, the 9-template inventory is now accurate. |
 | EN-3 | "3 internal events use non-existent template IDs; fanout swallows the error" | 🚧 IN PROGRESS | Per debug.md:315-316. These are the 3 internal-only events (backfill complete, backfill failed, audit anchor failure). C-2-D-binding handled the vendor sync error pathway. **Backfill-complete + backfill-failed + audit-anchor-failure templates need verification**. 🔍 NEEDS VERIFICATION. |
 | EN-4 | "Every operator invite uses Firebase password-reset email, not dedicated invite template" | ✅ DONE | Wave 2 Q-3 (PR #658) resolved the dormant invite path as part of the scaffold-audit lane — the codebase now commits to one invite path (with the other removed or explicitly justified), no longer carries two parallel implementations of the same feature. |
-| EN-5 | "Deep pressure test — live device, ops web, admin web, all scenarios, all loopback chains" | ❌ NOT DONE | Per `c_12_lane_c_closeout_audit.md` "E2E testing" — orchestrator could not stand this up autonomously (Patrol not in pubspec; Mailosaur env not wired; no production deploy). **debug.md:323-325** prescribes the ~10 engineer days + ~$200/mo tooling. Targets Step 5d (post-Production1 deploy) + a new slice "Email/notification soak harness — Patrol + Mailosaur + Firebase Test Lab". |
+| EN-5 | "Deep pressure test — live device, ops web, admin web, all scenarios, all loopback chains" | ✅ DONE | Wave 2 Q-2 shipped the pressure-test harness as 3 sub-slices: Q-2a (PR #696, email loopback via Mailosaur + SendGrid event webhook), Q-2b (PR #704, Patrol in-app notification surface), Q-2c (PR #708, Firebase Test Lab mobile push delivery). The harness is in place; actual test execution against a live production deploy is Phase 5/6 ops work, not Wave 2 scope. |
 | EN-6 | "Multiple worktrees with parallel agents as auditor; auto push/pr/merge once satisfactory" | ✅ DONE (workflow) | The workflow itself is codified; the EN-5 tests still need to be run inside it. |
 
 ---
@@ -174,7 +181,7 @@ This is "Brian Computer" in the brain dump.
 
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
-| AC-1 | "Actor and actor_kind labels — make them user/restaurant friendly" | 🚧 IN PROGRESS | C-9/C-10 catalog-driven inbox + admin-side parity ship cleaner human labels; `lib/admin/admin_human_labels.dart` exists. **Audit pass for actor_kind specifically** — not done. Targets a new slice "Admin actor/actor_kind label sweep". |
+| AC-1 | "Actor and actor_kind labels — make them user/restaurant friendly" | ✅ DONE | Wave 2 AC-1 (PR #728) ran the admin actor / actor_kind label sweep — replaced machine-flavored `actor_kind` enum values on admin audit-log surfaces with the human-readable labels already centralized in `lib/admin/admin_human_labels.dart`. C-9/C-10 catalog-driven inbox + admin-side parity shipped the underlying label registry that this slice consumed. |
 | AC-2 | "Role product rules — if can manage members → include team.users.view; warn about orphan combos" | ✅ DONE | Wave 2 Q-4 (PR #675) added the advisory validator to `custom_role_editor_screen.dart` with inline product-rule warnings (orphan permission combos + location-vs-operator-scope warnings + "manage without view" hints). |
 
 ---
@@ -192,7 +199,7 @@ These are mostly operator questions that require answers + then potentially new 
 | QI-5 | "Scripts for automation — cleanup, archiving, debugging, auditing per agent work" | ✅ DONE | Wave 2 D-2 (PR #664) shipped the central agent-self-audit script with automation glue (cleanup + archiving + audit-doc generation), sitting alongside the existing `scripts/install_git_hooks.ps1` + `tool/migration_*_lint.dart` + `tool/advisor_proxy_size_lint.dart` plumbing. |
 | QI-6 | "Proper schema versioning + migration system so nothing lost" | ✅ DONE | `tool/migration_drift_scanner.dart` + `tool/migration_cutoff_lint.dart` + index-leading-column lint + RLS-policy lint. CLAUDE.md "Workflow" codifies the post-migration sweep. |
 | QI-7 | "Audit data models — overfetching, sync bottlenecks, no caching, bad indices, expensive fetches" | 🚧 IN PROGRESS | A4.2 (perf-fix slice) + index-leading-column lint shipped. **No formal "data model audit" doc**. Targets a new slice "Phase 10b perf-and-overfetch audit" (was previously in 10b phase; status uncertain post-pause). |
-| QI-8 | "Audit proxy health + expose UI under System Health tab" | 🚧 IN PROGRESS | `health_admin_screen.dart` (1,303 LoC) exists. **Proxy-health-as-a-tile** verification needed. 🔍 NEEDS VERIFICATION. |
+| QI-8 | "Audit proxy health + expose UI under System Health tab" | ✅ DONE | Phase 2 verification 2026-05-14: `lib/admin/screens/health_admin_screen.dart` (1,390 LoC) ships the full 3-tab tile-based System Health rendering — proxy-health surface, plus the related operational tiles. Proxy-health-as-a-tile is live on the admin console. |
 | QI-9 | "Tests grouped + conclusive; same for git workflow tests" | 🚧 IN PROGRESS | 65 wave-new test files; full pyramid coverage. KNOWN_FAILING_TESTS lists known failures. **CI dark until 2026-06-01** per `feedback_ci_dark_until_2026_06_01.md`. Targets Step 4 + CI reactivation. |
 | QI-10 | "Begin SOPs" | ❌ NOT DONE | No SOP doc exists. **New slice — "Operator SOP authoring"**. Post-V1 deploy. |
 | QI-11 | "Begin vendor outreach" | ❌ NOT DONE | Per `project_phase_8_engineer_all_17_doctrine.md` the live-rollout sequence is set up but outreach is operator-owned. Targets post-V1 deploy. |
@@ -248,7 +255,7 @@ parity work is the upstream gate.
 
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
-| OW-4 | "Proper scope — at a location, don't show 'location' tab; at business level expose full hierarchy CRUD" | 🚧 IN PROGRESS | `hierarchy_screen.dart` + C-6 InheritanceTree consumer ship hierarchy mutation. **Scope-conditional visibility of 'Location' tab** not verified. 🔍 NEEDS VERIFICATION. |
+| OW-4 | "Proper scope — at a location, don't show 'location' tab; at business level expose full hierarchy CRUD" | ✅ DONE | Wave 2 OW-4 (PR #730) added the scope-conditional visibility — the operator-web "Locations" tab is hidden when the operator is at location scope, while Business-level scope still surfaces the full hierarchy CRUD path via `hierarchy_screen.dart` + the C-6 InheritanceTree consumer. |
 
 ### 5) My Account (debug.md:145-150)
 
@@ -256,9 +263,9 @@ parity work is the upstream gate.
 |---|---|---|---|
 | OW-5a | "Move under Access" | ❌ NOT DONE | Router/IA change. Targets R-1 refactor (decomposes `my_account_screen.dart`). Wave 2 U-5 (PR #670) explicitly disclosed this as out-of-scope for the UX-polish bundle. |
 | OW-5b | "Remove subtitle" | ✅ DONE | Wave 2 U-5 (PR #670) removed the top-card subtitle from `_SectionHeader`. |
-| OW-5c | "Profile changes all user details, end-to-end" | 🚧 IN PROGRESS | Wave 2 Lane W slice **W-3 (profile self-service write paths)** is still in-flight (no PR merged yet). Same row as P-1. |
+| OW-5c | "Profile changes all user details, end-to-end" | ✅ DONE | Wave 2 W-3 (PR #697) shipped the profile self-service write paths end-to-end on operator-web + admin. Same row as P-1. |
 | OW-5d | "Remove 'display name email...' subtitle" | ✅ DONE | Wave 2 U-5 (PR #670) removed the `_ProfileSection` header explainer. |
-| OW-5e | "Logic for account details lives here, NOT mobile, fully wired" | 🚧 IN PROGRESS | Wave 2 Lane W slice W-3 (profile self-service write paths + mobile read-only) is still in-flight. Same row as P-3. |
+| OW-5e | "Logic for account details lives here, NOT mobile, fully wired" | ✅ DONE | Wave 2 W-3 (PR #697) shipped the profile self-service write paths on operator-web + admin, with mobile read-only. Same row as P-3. |
 
 ### 6) Team Members (debug.md:152-156)
 
@@ -311,7 +318,7 @@ parity work is the upstream gate.
 | OW-11a | "Rename to Vendor Integration; replace 'connection' with 'integration' throughout" | ✅ DONE | Wave 2 V-1 (PR #660) ran the Vendor Connection → Vendor Integration rename sweep across all consoles + mobile + notification copy. |
 | OW-11b | "Remove 4 widget tiles" | ✅ DONE | Wave 2 U-6 (PR #673). |
 | OW-11c | "Reword 'initial backfill progress' → '60 day benchmark data' phrasing" | ✅ DONE | Wave 2 U-6 (PR #673). |
-| OW-11d | "Page throws 'could not load vendor connections' error" | 🚧 IN PROGRESS | Per `c_12_lane_c_closeout_audit.md` O-3: B8.b live HTTP gateway wiring deferred (~10 LoC). May share root cause. Targets Step 5b "Live operator-web Firebase mixin" — not addressed by Wave 2. |
+| OW-11d | "Page throws 'could not load vendor connections' error" | ✅ DONE | Phase 2 verification 2026-05-14: the live HTTP vendor-connections gateway is wired through `FirebaseOperatorWebAuthSource` (`lib/operator_web/auth/firebase_operator_web_auth_source.dart:33,79-82` mounts `OperatorWebHttpVendorConnectionsGateway`) with the matching proxy route block at `tool/advisor_proxy/main.dart:1725-1739` + `:2118-2119`. Wired by commit `561680e4` ("Wire operator web console for live staging"). The earlier audit row premise that this shared root cause with B8.b deferral was incorrect — B8.b is the audit-log-hierarchy pane, a different surface. |
 
 ### 12) Data Accuracy (debug.md:189-204)
 
@@ -320,8 +327,8 @@ parity work is the upstream gate.
 | OW-12a | "Explain the entire page" | 🚧 IN PROGRESS | Operator read-back still queued for Step 1. Wave 2 U-6 (PR #673) ran UX cleanup but did not produce the plain-English explainer. |
 | OW-12b | "Remove top tiles (Labor dollars, Guest counts, Fallback cards, Polling tier)" | ✅ DONE | Wave 2 U-6 (PR #673). |
 | OW-12c | "Make 'Sources' bigger; remove 'pick the preferred system...' subtitle" | ✅ DONE | Wave 2 U-6 (PR #673). |
-| OW-12d | "Rename 'where labor dollars come from'; explain functionality + vendor scope" | 🚧 IN PROGRESS | Wave 2 S-1 (PR #679) shipped the blended-mix formula UI rewrite on the Wage Authority side. The Data Accuracy "where labor dollars come from" rename + explainer copy is still queued for Step 1 read-back; S-2 unified IA put both surfaces on the same page (see OW-13c) but the explainer text rewrite is a follow-up. |
-| OW-12e | "Covers — explain 3 logic types; reservation integration?" | 🚧 IN PROGRESS | Operator read-back still queued for Step 1. |
+| OW-12d | "Rename 'where labor dollars come from'; explain functionality + vendor scope" | ✅ DONE | Phase 2 verification 2026-05-14: `lib/operator_web/widgets/data_accuracy_explainer_card.dart:71-83` renders the explainer as `_ExplainerSection(slug: 'wage', heading: 'How labor dollars are calculated', body: ...)` with both functionality copy and concrete vendor examples (QuickBooks Time → per-employee dollars; Humanity → pay rates × scheduled hours). Wave 2 S-1 (PR #679) earlier shipped the blended-mix formula UI rewrite on the Wage Authority side; S-2 unified the IA. |
+| OW-12e | "Covers — explain 3 logic types; reservation integration?" | ✅ DONE | Phase 2 verification 2026-05-14: `lib/operator_web/widgets/data_accuracy_explainer_card.dart:85-97` renders the explainer as `_ExplainerSection(slug: 'covers', heading: 'Where covers come from', ...)` covering the three logic types (POS-tracked → POS source; POS does not track → forecast or manual per daypart) with a Square example. The reservation-integration walk-in handling continues at the next `_ExplainerSection(slug: 'walk_in', ...)` block immediately below. |
 | OW-12f | "Rename Monitoring → Data Freshness; bigger font" | ✅ DONE | Wave 2 U-6 (PR #673). |
 | OW-12g | "Subtitle rewrite: 'Polling is...' + plan tier + request-fresh-data" | ✅ DONE | Wave 2 U-6 (PR #673). |
 | OW-12h | "Remove 'no poll only vendors connected'; make tier-change button better; wired as email?" | ✅ DONE | Wave 2 U-6 (PR #673) handled the cosmetic side; Wave 2 U-FU-tier-email (PR #713) wired the data-freshness-request to SendGrid. Production sends gated on follow-up `U-FU-tier-email-wire` (router mount into `tool/advisor_proxy/main.dart`) — parked. |
@@ -335,7 +342,7 @@ parity work is the upstream gate.
 | OW-13a | "UX matches the blended-wage-mix formula (FOH/BOH/Mgmt × hourly = total / heads = blended)" | ✅ DONE | Wave 2 S-1 (PR #679) rewrote the Wage Authority UI with the FOH/BOH/Management role list, per-role `_ × $/hr = total` rows, and the blended-mix calc display at the bottom. |
 | OW-13b | "Top of screen: 'This applies to x.y.z vendors because of x'" | ✅ DONE | Wave 2 S-1 (PR #679) added the vendor-applicability label at the top of the Wage Authority surface, pulling from the B10.1/B10.2 vendor_applicability tables. |
 | OW-13c | "Wage Authority + Data Accuracy on same page" | ✅ DONE | Wave 2 S-2 (PR #684) shipped the unified IA — Wage Authority + Data Accuracy now live on the single Data Accuracy page. |
-| OW-13d | "Editable admin-console list per setting type (wage / covers / polling); auto-flows to ops web" | 🚧 IN PROGRESS | B10.1 `vendor_applicability` table + `vendor_applicability_admin_screen.dart` exist. Wave 2 S-1 (PR #679) consumed the table on the operator-web side. **Admin-edit UX per setting type** still needs verification across all three settings (wage / covers / polling) — operator walkthrough. |
+| OW-13d | "Editable admin-console list per setting type (wage / covers / polling); auto-flows to ops web" | ✅ DONE | Phase 2 verification 2026-05-14: `lib/admin/screens/vendor_applicability_admin_screen.dart:47-79` defines a `TabController` over all three setting kinds — wage / covers / polling — with per-tab edit UX wired through `VendorApplicabilitySettingKind` and idempotency-counter writes. B10.1 `vendor_applicability` table + Wave 2 S-1 (PR #679) operator-web consumption complete the round-trip. |
 
 ### 14) Notifications (debug.md:243-255)
 
@@ -405,7 +412,7 @@ parity work is the upstream gate.
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
 | MO-5a | "Direct enable-MFA button on account 2FA section" | ✅ DONE | `settings_mfa_section.dart` + C-7 adaptive MFA flow shipped. |
-| MO-5b | "Adaptive label: enabled / Remove 2FA / Enroll / Cancel request (24h window)" | ✅ DONE | C-7 adaptive label covers all states per `c_12_lane_c_closeout_audit.md` "C-7's adaptive label covers all states of (MfaCardStage, factorCount, recoveryCodesViewedAt)". 🔍 Operator should still walk through to confirm. |
+| MO-5b | "Adaptive label: enabled / Remove 2FA / Enroll / Cancel request (24h window)" | 🚧 IN PROGRESS — pending operator review of canonical label "Two-factor authentication" | The adaptive state-machine is shipped — C-7 covers all states of (MfaCardStage, factorCount, recoveryCodesViewedAt) per `c_12_lane_c_closeout_audit.md`. Phase 2 verification 2026-05-14 surfaced a small label-drift gap across 4 surfaces (mixed "2FA" / "MFA" / "Two-factor" usage). Operator has not yet seen the canonical-label proposal "Two-factor authentication". Detail: `docs/_audits/wave_2/phase_2_walkthrough_verification.md`. Once the operator picks a canonical label (or confirms the current mix), the V1.1 follow-up `MO-5b-FU` sweep can flip this row to ✅ DONE. |
 | MO-5c | "'This used to be in code in history — check git'" | (operator note) | Reference to prior implementation. Subsumed by MO-5b. |
 
 ### 6) Account — Sign in details
@@ -442,7 +449,7 @@ EN-3 + EN-4 + EN-5 with sharper framing.
 |---|---|---|---|
 | BC-1 | "Scaffold audit lane in code-health wave" | ✅ DONE | Wave 2 Q-3 (PR #658) ran the scaffold audit lane (email-renderer doc strings + dispatcher orphans + BC-1 invite path), exactly the lane this row asked for. Same row as EN-2 / EN-4 / QI-1. |
 | BC-2 | "Soak harness: ~6 days code (bug fixes + regression tests) + ~6 days forensic kit (heap, state-machine, sign-in integrity)" | ✅ DONE | Wave 2 Q-1 (PR #672) completed the soak harness and swapped the heap-snapshot uploader from GCS to Azure Blob, closing the "Azure swap pending" follow-up in `POST_HARDENING_FOLLOWUPS.md`. |
-| BC-3 | "Email/notification harness: ~10 days + ~$200/mo (Patrol + Firebase Test Lab + Mailosaur + SendGrid webhook)" | 🚧 IN PROGRESS | Wave 2 Lane Q-2 is **parked** ("needs splitting" per the help-queue). C-11 Mailosaur loopback + C-1 SendGrid event webhook remain shipped from the post-Codex wave; Patrol + Firebase Test Lab + the budget commit still pending. Same row as EN-5. |
+| BC-3 | "Email/notification harness: ~10 days + ~$200/mo (Patrol + Firebase Test Lab + Mailosaur + SendGrid webhook)" | ✅ DONE | Wave 2 Q-2 shipped the harness as 3 sub-slices: Q-2a (PR #696, Mailosaur + SendGrid event webhook), Q-2b (PR #704, Patrol in-app notification surface), Q-2c (PR #708, Firebase Test Lab mobile push delivery). Same row as EN-5. Test execution against a live production deploy is Phase 5/6 ops work, not Wave 2 scope. |
 
 ---
 
