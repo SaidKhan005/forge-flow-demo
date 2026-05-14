@@ -246,7 +246,12 @@ String? _navIdFromRaw(String? raw) {
     'vendor_connections' => kOperatorWebNavVendorConnections,
     'data_accuracy' => kOperatorWebNavDataAccuracy,
     'notifications' => kOperatorWebNavNotifications,
-    'wage_authority' => kOperatorWebNavWageAuthority,
+    // Wave 2 S-2 (`debug.md:220`, OW-13c) folded Wage Authority under
+    // the Data Accuracy page. Map any stored `wage_authority` nav id
+    // (deep links, bookmarks, prior handoff target paths) to
+    // `kOperatorWebNavDataAccuracy` so existing entry points keep
+    // landing on the wage section without 404ing.
+    'wage_authority' => kOperatorWebNavDataAccuracy,
     'schedule' => kOperatorWebNavSchedule,
     'security' || 'sign_in_security' => kOperatorWebNavMyAccount,
     _ => null,
@@ -995,12 +1000,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.tune_outlined,
         group: 'Data & integrations',
       ),
-      OperatorWebNavItem(
-        id: kOperatorWebNavWageAuthority,
-        title: 'Wage authority',
-        icon: Icons.payments_outlined,
-        group: 'Data & integrations',
-      ),
+      // Wave 2 S-2 (`debug.md:220`, OW-13c) — the standalone Wage
+      // authority nav row is gone; the surface now folds under Data
+      // accuracy. Deep links and the `kOperatorWebNavWageAuthority`
+      // constant still resolve (via `_navIdFromRaw`) but redirect to
+      // the Data accuracy page.
       OperatorWebNavItem(
         id: kOperatorWebNavNotifications,
         title: 'Notifications',
@@ -1129,6 +1133,16 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 locationName: locationScope.label,
                 dataAccuracyGateway: _dataAccuracyGateway,
                 vendorApplicabilityGateway: _vendorApplicabilityGateway,
+                // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
+                // Authority section now mounts inside Data Accuracy.
+                // Re-use the same gateway resolution the standalone
+                // Wage Authority case below uses so the embedded
+                // section saves through the live proxy when wired and
+                // the in-memory demo gateway otherwise.
+                wageAuthorityGateway:
+                    _wageAuthorityGateway ??
+                    (_routerOwnedDemoWageAuthorityGateway ??=
+                        OperatorWebDemoWageAuthorityGateway()),
               );
         break;
       case kOperatorWebNavWageAuthority:

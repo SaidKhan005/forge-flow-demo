@@ -36,6 +36,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_data_accuracy_gateway.dart';
+import '../services/operator_web_wage_authority_gateway.dart';
 import '../services/web_vendor_applicability_gateway.dart';
 import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
@@ -46,6 +47,7 @@ import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
 import '../widgets/walk_in_handling_card.dart';
+import 'wage_authority_screen.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
@@ -115,6 +117,8 @@ class DataAccuracyScreen extends StatefulWidget {
     this.walkInModeOverride,
     this.onSaveSettings,
     this.onRequestTierChange,
+    this.wageAuthorityGateway,
+    this.wageAuthorityIdempotencyKeyFactory,
   });
 
   final OperatorWebSession session;
@@ -155,6 +159,18 @@ class DataAccuracyScreen extends StatefulWidget {
   /// Optional ticket-flow opener. Default opens
   /// [showPollingTierChangeRequestDialog].
   final Future<String?> Function(BuildContext)? onRequestTierChange;
+
+  /// Wave 2 S-2 (`debug.md:220`, OW-13c): the Wage Authority surface
+  /// folds under the Data Accuracy page. When wired, the section saves
+  /// and reads wage rows through this gateway; when null the embedded
+  /// section renders honest read-only state (same fallback the
+  /// standalone screen used at S-1).
+  final OperatorWebWageAuthorityGateway? wageAuthorityGateway;
+
+  /// Test-injectable idempotency-key factory passed through to the
+  /// embedded [WageAuthoritySection]. Production wires the live
+  /// random-bytes generator; tests pass a deterministic counter.
+  final String Function()? wageAuthorityIdempotencyKeyFactory;
 
   bool get _canEditDataAccuracy =>
       session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
@@ -782,6 +798,35 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             status: tier,
             bundle: _bundle,
             onRequestTierChange: _handleRequestTierChange,
+          ),
+          const SizedBox(height: 18),
+          // Wave 2 S-2 (`debug.md:220`, OW-13c) — Wage Authority folds
+          // under the Data Accuracy page so the operator stops bouncing
+          // between two nav items. The embedded section keeps every
+          // S-1 affordance (blended-wage summary card, FOH/BOH/Mgmt
+          // bands, vendor-applicability labels, hierarchy-aware empty
+          // state) and saves through the same gateway the standalone
+          // screen used.
+          const _DataAccuracySectionHeading(
+            title: 'Wage authority',
+          ),
+          const SizedBox(height: 12),
+          Container(
+            key: const Key('operator_web_data_accuracy_wage_authority_section'),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundSurface,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: WageAuthoritySection(
+              session: widget.session,
+              locationId: widget.locationId,
+              locationName: locationLabel,
+              gateway: widget.wageAuthorityGateway,
+              idempotencyKeyFactory: widget.wageAuthorityIdempotencyKeyFactory,
+              showHeader: false,
+            ),
           ),
           const SizedBox(height: 14),
           const DataAccuracyExplainerCard(),

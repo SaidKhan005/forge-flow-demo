@@ -75,7 +75,19 @@ class _BucketSpec {
   final String helper;
 }
 
-class WageAuthorityScreen extends StatefulWidget {
+/// Thin screen wrapper around [WageAuthoritySection].
+///
+/// Wave 2 S-2 (`debug.md:220`, OW-13c) folded the Wage Authority surface
+/// under the Data Accuracy page, so the editable content moved into
+/// [WageAuthoritySection] (a `Column`-returning widget that any host can
+/// embed inside its own scrollable). This screen keeps its scroll view
+/// + page-level header so existing tests, deep links, and the
+/// `kOperatorWebNavWageAuthority` constant continue to mount the same
+/// surface without router changes; the production router now routes
+/// `wage_authority` deep links to the Data Accuracy page, but the
+/// screen stays available for direct mounts (tests, future standalone
+/// surfaces).
+class WageAuthorityScreen extends StatelessWidget {
   const WageAuthorityScreen({
     super.key,
     required this.session,
@@ -110,10 +122,63 @@ class WageAuthorityScreen extends StatefulWidget {
   final Set<String> connectedLaborVendorIds;
 
   @override
-  State<WageAuthorityScreen> createState() => _WageAuthorityScreenState();
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      key: const Key('wage_authority_screen'),
+      padding: const EdgeInsets.all(28),
+      child: WageAuthoritySection(
+        session: session,
+        locationId: locationId,
+        locationName: locationName,
+        gateway: gateway,
+        idempotencyKeyFactory: idempotencyKeyFactory,
+        connectedLaborVendorIds: connectedLaborVendorIds,
+        showHeader: true,
+      ),
+    );
+  }
 }
 
-class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
+/// Wage Authority content as an embeddable section.
+///
+/// Returns a `Column` so the host (the standalone [WageAuthorityScreen]
+/// scroll view, or the Data Accuracy page from Wave 2 S-2 onward) owns
+/// scrolling. Save / add / delete flows still hit
+/// [OperatorWebWageAuthorityGateway].
+///
+/// The S-1 surfaces (HierarchyScopeNotice, BlendedWageSummaryCard,
+/// FOH/BOH/Management bands, vendor-applicability labels) all live
+/// inside this widget so embedding does not regress those affordances.
+class WageAuthoritySection extends StatefulWidget {
+  const WageAuthoritySection({
+    super.key,
+    required this.session,
+    required this.locationId,
+    required this.locationName,
+    this.gateway,
+    this.idempotencyKeyFactory,
+    this.connectedLaborVendorIds = const <String>{},
+    this.showHeader = true,
+  });
+
+  final OperatorWebSession session;
+  final String locationId;
+  final String locationName;
+  final OperatorWebWageAuthorityGateway? gateway;
+  final String Function()? idempotencyKeyFactory;
+  final Set<String> connectedLaborVendorIds;
+
+  /// Whether to render the inline "Wage authority" header row inside
+  /// the section. The standalone screen passes `true` so the page
+  /// keeps its title; the Data Accuracy embed passes `false` because
+  /// the host renders its own section heading.
+  final bool showHeader;
+
+  @override
+  State<WageAuthoritySection> createState() => _WageAuthoritySectionState();
+}
+
+class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   /// Current rows, keyed by `wage_role_row_id`. Mirrors what the
   /// gateway returned on the most recent list call.
   final Map<String, WageRoleRowRecord> _rowsById = <String, WageRoleRowRecord>{};
@@ -381,141 +446,143 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
     if (_loading) {
       return const Center(
         key: Key('wage_authority_loading'),
-        child: CircularProgressIndicator(),
+        child: Padding(
+          padding: EdgeInsets.symmetric(vertical: 24),
+          child: CircularProgressIndicator(),
+        ),
       );
     }
-    return SingleChildScrollView(
-      key: const Key('wage_authority_screen'),
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
+    return Column(
+      key: const Key('wage_authority_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        if (widget.showHeader) ...<Widget>[
           const _Header(),
           const SizedBox(height: 14),
-          // HP #11 (`CLAUDE.md`): every settings / pricing / accuracy
-          // surface declares its selected scope, inherited source, and
-          // effective value. Wage authority writes the operator-scoped
-          // `wage_role_rows` fact table; rows are keyed by
-          // (operator_id, location_id, restaurant_id, role_name) per
-          // db/migrations/202605080200_phase_8_wage_role_rows_server_
-          // truth.sql, so the scope is Location with no higher-level
-          // inheritance yet.
-          //
-          // When the wage table grows hierarchy-aware columns (e.g.
-          // `scope_kind` + `inherited_from_scope_id`) each row will
-          // carry its own inheritance badge inside the bucket section
-          // — the same pattern Business setup's `_EffectiveFieldRow`
-          // already follows. Until then the surface renders the scope
-          // triple at the top of the screen and each bucket row stays
-          // value-only.
-          // TODO(wave-3+ hierarchy wages): replace the screen-level
-          // notice with per-row inheritance badges once `wage_role_
-          // rows` carries hierarchy columns.
-          HierarchyScopeNotice(
-            keyName: 'wage_authority_hierarchy_scope',
-            selectedScope: HierarchyScopeLevel.location,
-            scopeName: widget.locationName,
-            inheritedFromLabel: null,
-            effectiveValueSummary:
-                "These wage rows apply only to ${widget.locationName}. "
-                "Other locations carry their own wage rows.",
-            backendOnlyExplainer:
-                "Region- and brand-level wage floors (e.g. a corporate "
-                "minimum that every location inherits unless overridden) "
-                "are coming in a later wave. For now every wage row is "
-                "set at the Location scope.",
-          ),
-          if (_loadError != null) ...<Widget>[
-            const SizedBox(height: 12),
-            _ErrorBanner(message: _loadError!),
-          ],
-          if (!_canWrite && widget.gateway != null) ...<Widget>[
-            const SizedBox(height: 12),
-            _ReadOnlyBanner(
-              message:
-                  'Only operator owners and operator admins can change wage rows. '
-                  'Ask one of them to make the change for you.',
-            ),
-          ],
-          if (widget.gateway == null) ...<Widget>[
-            const SizedBox(height: 12),
-            _ReadOnlyBanner(
-              message:
-                  'Wage row editing is unavailable in this preview. Sign in to '
-                  'a live operator account to edit wage rows.',
-            ),
-          ],
-          const SizedBox(height: 14),
-          // Live blended-wage preview. Wave 2 S-1 — computes Σ(hours ×
-          // rate) / Σ(hours) across saved rows plus any open in-flight
-          // draft, so the operator sees the mix update before they
-          // save. Anchored to debug.md:198-235 (OW-13a + OW-13b).
-          BlendedWageSummaryCard(
-            summary: computeBlendedWageSummary(
-              rows: _summaryInputs(),
-              bucketOrder: <String>[
-                for (final b in _kBuckets) b.wire,
-              ],
-            ),
-          ),
-          const SizedBox(height: 18),
-          for (final bucket in _kBuckets) ...<Widget>[
-            _BucketSection(
-              bucket: bucket,
-              rows: _rowsForBucket(bucket.wire),
-              canWrite: _canWrite,
-              isEditing: (id) => _editingIds.contains(id),
-              isAdding: _addingForBuckets.contains(bucket.wire),
-              connectedLaborVendorIds: _effectiveLaborVendorIds(),
-              onStartEdit: (id) {
-                setState(() {
-                  _editingIds.add(id);
-                  _addingForBuckets.remove(bucket.wire);
-                  _draftAdds.remove(bucket.wire);
-                });
-              },
-              onCancelEdit: (id) {
-                setState(() {
-                  _editingIds.remove(id);
-                  _draftEdits.remove(id);
-                });
-              },
-              onStartAdd: () {
-                setState(() {
-                  _addingForBuckets.add(bucket.wire);
-                });
-              },
-              onCancelAdd: () {
-                setState(() {
-                  _addingForBuckets.remove(bucket.wire);
-                  _draftAdds.remove(bucket.wire);
-                });
-              },
-              onEditDraftChanged: (id, draft) {
-                setState(() {
-                  _draftEdits[id] = draft;
-                });
-              },
-              onAddDraftChanged: (draft) {
-                setState(() {
-                  _draftAdds[bucket.wire] = draft;
-                });
-              },
-              onSaveEdit: (row, form) => _saveRow(
-                laborBucket: bucket.wire,
-                form: form,
-                existingRowId: row.wageRoleRowId,
-              ),
-              onSaveAdd: (form) => _saveRow(
-                laborBucket: bucket.wire,
-                form: form,
-              ),
-              onDelete: _confirmAndDelete,
-            ),
-            const SizedBox(height: 14),
-          ],
         ],
-      ),
+        // HP #11 (`CLAUDE.md`): every settings / pricing / accuracy
+        // surface declares its selected scope, inherited source, and
+        // effective value. Wage authority writes the operator-scoped
+        // `wage_role_rows` fact table; rows are keyed by
+        // (operator_id, location_id, restaurant_id, role_name) per
+        // db/migrations/202605080200_phase_8_wage_role_rows_server_
+        // truth.sql, so the scope is Location with no higher-level
+        // inheritance yet.
+        //
+        // When the wage table grows hierarchy-aware columns (e.g.
+        // `scope_kind` + `inherited_from_scope_id`) each row will
+        // carry its own inheritance badge inside the bucket section
+        // — the same pattern Business setup's `_EffectiveFieldRow`
+        // already follows. Until then the surface renders the scope
+        // triple at the top of the screen and each bucket row stays
+        // value-only.
+        // TODO(wave-3+ hierarchy wages): replace the screen-level
+        // notice with per-row inheritance badges once `wage_role_
+        // rows` carries hierarchy columns.
+        HierarchyScopeNotice(
+          keyName: 'wage_authority_hierarchy_scope',
+          selectedScope: HierarchyScopeLevel.location,
+          scopeName: widget.locationName,
+          inheritedFromLabel: null,
+          effectiveValueSummary:
+              "These wage rows apply only to ${widget.locationName}. "
+              "Other locations carry their own wage rows.",
+          backendOnlyExplainer:
+              "Region- and brand-level wage floors (e.g. a corporate "
+              "minimum that every location inherits unless overridden) "
+              "are coming in a later wave. For now every wage row is "
+              "set at the Location scope.",
+        ),
+        if (_loadError != null) ...<Widget>[
+          const SizedBox(height: 12),
+          _ErrorBanner(message: _loadError!),
+        ],
+        if (!_canWrite && widget.gateway != null) ...<Widget>[
+          const SizedBox(height: 12),
+          _ReadOnlyBanner(
+            message:
+                'Only operator owners and operator admins can change wage rows. '
+                'Ask one of them to make the change for you.',
+          ),
+        ],
+        if (widget.gateway == null) ...<Widget>[
+          const SizedBox(height: 12),
+          _ReadOnlyBanner(
+            message:
+                'Wage row editing is unavailable in this preview. Sign in to '
+                'a live operator account to edit wage rows.',
+          ),
+        ],
+        const SizedBox(height: 14),
+        // Live blended-wage preview. Wave 2 S-1 — computes Σ(hours ×
+        // rate) / Σ(hours) across saved rows plus any open in-flight
+        // draft, so the operator sees the mix update before they
+        // save. Anchored to debug.md:198-235 (OW-13a + OW-13b).
+        BlendedWageSummaryCard(
+          summary: computeBlendedWageSummary(
+            rows: _summaryInputs(),
+            bucketOrder: <String>[
+              for (final b in _kBuckets) b.wire,
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        for (final bucket in _kBuckets) ...<Widget>[
+          _BucketSection(
+            bucket: bucket,
+            rows: _rowsForBucket(bucket.wire),
+            canWrite: _canWrite,
+            isEditing: (id) => _editingIds.contains(id),
+            isAdding: _addingForBuckets.contains(bucket.wire),
+            connectedLaborVendorIds: _effectiveLaborVendorIds(),
+            onStartEdit: (id) {
+              setState(() {
+                _editingIds.add(id);
+                _addingForBuckets.remove(bucket.wire);
+                _draftAdds.remove(bucket.wire);
+              });
+            },
+            onCancelEdit: (id) {
+              setState(() {
+                _editingIds.remove(id);
+                _draftEdits.remove(id);
+              });
+            },
+            onStartAdd: () {
+              setState(() {
+                _addingForBuckets.add(bucket.wire);
+              });
+            },
+            onCancelAdd: () {
+              setState(() {
+                _addingForBuckets.remove(bucket.wire);
+                _draftAdds.remove(bucket.wire);
+              });
+            },
+            onEditDraftChanged: (id, draft) {
+              setState(() {
+                _draftEdits[id] = draft;
+              });
+            },
+            onAddDraftChanged: (draft) {
+              setState(() {
+                _draftAdds[bucket.wire] = draft;
+              });
+            },
+            onSaveEdit: (row, form) => _saveRow(
+              laborBucket: bucket.wire,
+              form: form,
+              existingRowId: row.wageRoleRowId,
+            ),
+            onSaveAdd: (form) => _saveRow(
+              laborBucket: bucket.wire,
+              form: form,
+            ),
+            onDelete: _confirmAndDelete,
+          ),
+          const SizedBox(height: 14),
+        ],
+      ],
     );
   }
 }

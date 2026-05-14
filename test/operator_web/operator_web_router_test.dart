@@ -387,7 +387,21 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(gateway.codes, <String>['CODE123']);
-      expect(find.byKey(const Key('wage_authority_screen')), findsOneWidget);
+      // Wave 2 S-2 (`debug.md:220`, OW-13c) folded Wage authority under
+      // Data accuracy. Legacy `/wage-authority` handoff targets now
+      // resolve to the Data accuracy page, and the wage section mounts
+      // inside it (key
+      // `operator_web_data_accuracy_wage_authority_section`).
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_data_accuracy_wage_authority_section'),
+        ),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('operator_web_account_screen')),
         findsNothing,
