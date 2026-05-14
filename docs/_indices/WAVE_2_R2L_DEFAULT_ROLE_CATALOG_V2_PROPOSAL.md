@@ -83,14 +83,14 @@ Source: `db/migrations/202604250008_auth_schema_foundation.sql:914-1083`.
 | `shift_lead` | Shift Lead | Location | Leads shifts at one location. Edits short-term schedule, marks shift covers, sees variance for shifts they ran. | No |
 | `finance_analyst` | Finance Analyst | Business | Reviews invoices and usage, adjusts usage caps. Cannot change the subscription plan or connect billing integrations. | Yes |
 | `auditor_compliance` | Auditor / Compliance | Business | Read-only audit trail and PII oversight. Sees who did what and when, exports the audit log, cannot mutate data. | Yes |
-| `barrio_instructor` | Barrio Instructor | Either | Edits the operator's Barrio supervisor content and interview playbook. Does not edit the F&F handbook. | No |
+| `training_lead` | Training Lead | Either | Manages employee training and onboarding content. Edits supervisor content and the interview playbook; does not edit the F&F handbook source. | No |
 | `team_admin` | Team Admin | Either | Manages the team roster, role assignments, MFA, and password resets. Does not see operational dashboards. | Yes |
 
 **Locked decisions (2026-05-14):**
 1. **Retire v1 + auto-migrate** — `operator_manager` → `operator_general_manager`; `operator_supervisor` → `location_manager` at each existing location grant; `operator_staff` → `shift_lead` at each existing location grant.
 2. **Finance Analyst is read-only on billing** — `billing.subscription.manage` stays Owner-only. Finance has `billing.invoice.view`, `billing.usage.view`, `billing.usage_caps.edit`.
 3. **Auditor / Compliance and Team Admin both ship as seeded core roles.** Operators don't have to mint them as custom.
-4. **Barrio Instructor scope** — supervisor content + interview playbook only; F&F handbook stays Owner-only.
+4. **Training Lead is product-agnostic, not Barrio-specific** — role name and description avoid the product surface name so the role survives future training surface additions. Today the role grants Barrio supervisor content + interview playbook edit (no handbook); future training surfaces (quizzing, certification tracking, SOP authoring) plug into the same role.
 
 ---
 
@@ -154,10 +154,12 @@ MFA-required. No `billing.subscription.manage`, no `billing.payment_method.manag
 
 MFA-required. Strictly read-only.
 
-### `barrio_instructor` (Barrio Instructor) — Either scope, ~5 keys
+### `training_lead` (Training Lead) — Either scope, ~5 keys today
 
 - **product**: barrio access
 - **barrio**: barrio.supervisor_content.edit, barrio.interview_playbook.edit, barrio.preston_lee.view (no handbook edit per locked decision 4)
+
+**Forward-compatibility note:** the role is named generically so future training surfaces can plug in without renaming. If F&F adds a quizzing module, a certification tracker, or an SOP authoring tool, those keys go here without changing the role's `role_key` or `display_name`. The current Barrio-only key set is a snapshot of today's training surface, not a definition of the role.
 
 ### `team_admin` (Team Admin) — Either scope, ~10 keys + MFA
 
@@ -261,6 +263,6 @@ These don't block R-2L but should be picked up by S-3 (Roles screen UX simplific
 | Retire v1 + auto-migrate | Approved | 2026-05-14 |
 | Finance read-only on billing | Approved | 2026-05-14 |
 | Include Auditor + Team Admin | Approved | 2026-05-14 |
-| Barrio Instructor: no handbook edit | Approved | 2026-05-14 |
+| Training Lead (renamed from Barrio Instructor): product-agnostic name; today edits Barrio supervisor content + interview playbook, no handbook | Approved | 2026-05-14 |
 | UX naming standard (Title Case, no underscores, no engineering jargon) | Approved | 2026-05-14 |
 | Add `permission_keys.human_label` for per-key UX labels | Approved | 2026-05-14 |
