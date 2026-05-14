@@ -37,6 +37,7 @@ import 'package:forge_and_flow/services/rollups/rollup_models.dart';
 import 'package:forge_and_flow/services/rollups/rollup_worker.dart';
 
 import 'mobile_push_notifications.dart';
+import 'worker_heartbeats.dart';
 
 /// Env var that, when set to `'true'`, requires the audit-anchor
 /// Azure-Blob credentials to be present at proxy startup. Mirrors
@@ -247,6 +248,12 @@ WorkerStartupHandle wireProductionWorkers({
     required List<String> channels,
     PgCronNotifyConsumerLogger? logger,
   })? consumerFactory,
+  // B-2B — optional worker heartbeat observability surface. When
+  // supplied, every tick (per channel) records start/success/failure
+  // through the registry so `/v1/health/workers` can report whether
+  // workers are still ticking. Defaults to null so existing wiring
+  // tests do not need to thread the registry through every call site.
+  WorkerHeartbeatRegistry? heartbeatRegistry,
 }) {
   final consumers = <PgCronNotifyConsumer>[];
   PgCronNotifyConsumer build(String channel) {
@@ -283,6 +290,51 @@ WorkerStartupHandle wireProductionWorkers({
     piiErasureConsumer = build(kPiiErasureGraceTickChannel);
   }
 
+  // B-2B — register heartbeat channels up-front so the snapshot
+  // surface always lists every wired worker, even before the first
+  // tick fires. The per-channel `expectedTickIntervalSeconds` reflects
+  // the matching pg_cron cadence; channels with slower cadences get
+  // proportionally larger staleness floors so `/v1/health/workers`
+  // does not false-alarm on a worker that is healthy but hasn't ticked
+  // yet because its cadence is long.
+  if (heartbeatRegistry != null) {
+    heartbeatRegistry.register(
+      kAuditAnchorTickChannel,
+      // audit_anchor_tick runs daily at 02:00 UTC.
+      expectedTickIntervalSeconds: 24 * 60 * 60,
+    );
+    heartbeatRegistry.register(
+      kRollupsTickChannel,
+      // rollups_tick runs every 60 s.
+      expectedTickIntervalSeconds: 60,
+    );
+    heartbeatRegistry.register(
+      kEmailOutboxTickChannel,
+      // forge_email_outbox_tick runs every 60 s.
+      expectedTickIntervalSeconds: 60,
+    );
+    heartbeatRegistry.register(
+      kMobilePushOutboxChannel,
+      // mobile_push_outbox tick runs every 60 s.
+      expectedTickIntervalSeconds: 60,
+    );
+    if (piiErasureConsumer != null) {
+      heartbeatRegistry.register(
+        kPiiErasureGraceTickChannel,
+        // pii_erasure_grace tick runs every minute but is bursty: the
+        // sweep is a no-op when no rows are due. Treat staleness floor
+        // as the longer pg_cron expectation (6 h) so the snapshot does
+        // not false-alarm on quiet windows.
+        expectedTickIntervalSeconds: 6 * 60 * 60,
+      );
+    }
+    heartbeatRegistry.register(
+      kHeartbeatChannelTripwirePoller,
+      // OutboxTripwirePoller fetches every 60 s.
+      expectedTickIntervalSeconds: 60,
+    );
+  }
+
   // audit_anchor_tick — single concurrent sweep guard. The sweep
   // already serializes via `pg_advisory_xact_lock`, but skipping a
   // second tick that fires while the first is still running keeps
@@ -292,11 +344,14 @@ WorkerStartupHandle wireProductionWorkers({
   auditAnchorConsumer.ticks.listen((tick) {
     if (auditSweepInFlight) return;
     auditSweepInFlight = true;
+    heartbeatRegistry?.recordStart(tick.channel);
     unawaited(
       Future<void>(() async {
         try {
           await auditAnchorHandler();
+          heartbeatRegistry?.recordSuccess(tick.channel);
         } catch (error, stack) {
+          heartbeatRegistry?.recordFailure(tick.channel, error);
           onTickError?.call(tick.channel, error, stack);
         } finally {
           auditSweepInFlight = false;
@@ -306,25 +361,38 @@ WorkerStartupHandle wireProductionWorkers({
   });
 
   rollupsConsumer.ticks.listen((tick) {
+    heartbeatRegistry?.recordStart(tick.channel);
     unawaited(
       Future<void>(() async {
+        var anyFailure = false;
+        Object? lastError;
         for (final grain in RollupGrain.values) {
           try {
             await rollupTickHandler(grain);
           } catch (error, stack) {
+            anyFailure = true;
+            lastError = error;
             onTickError?.call(tick.channel, error, stack);
           }
+        }
+        if (anyFailure && lastError != null) {
+          heartbeatRegistry?.recordFailure(tick.channel, lastError);
+        } else {
+          heartbeatRegistry?.recordSuccess(tick.channel);
         }
       }),
     );
   });
 
   emailOutboxConsumer.ticks.listen((tick) {
+    heartbeatRegistry?.recordStart(tick.channel);
     unawaited(
       Future<void>(() async {
         try {
           await emailTickHandler();
+          heartbeatRegistry?.recordSuccess(tick.channel);
         } catch (error, stack) {
+          heartbeatRegistry?.recordFailure(tick.channel, error);
           onTickError?.call(tick.channel, error, stack);
         }
       }),
@@ -332,11 +400,14 @@ WorkerStartupHandle wireProductionWorkers({
   });
 
   mobilePushConsumer.ticks.listen((tick) {
+    heartbeatRegistry?.recordStart(tick.channel);
     unawaited(
       Future<void>(() async {
         try {
           await mobilePushHandler();
+          heartbeatRegistry?.recordSuccess(tick.channel);
         } catch (error, stack) {
+          heartbeatRegistry?.recordFailure(tick.channel, error);
           onTickError?.call(tick.channel, error, stack);
         }
       }),
@@ -353,11 +424,14 @@ WorkerStartupHandle wireProductionWorkers({
     piiErasureConsumer.ticks.listen((tick) {
       if (piiErasureSweepInFlight) return;
       piiErasureSweepInFlight = true;
+      heartbeatRegistry?.recordStart(tick.channel);
       unawaited(
         Future<void>(() async {
           try {
             await handler();
+            heartbeatRegistry?.recordSuccess(tick.channel);
           } catch (error, stack) {
+            heartbeatRegistry?.recordFailure(tick.channel, error);
             onTickError?.call(tick.channel, error, stack);
           } finally {
             piiErasureSweepInFlight = false;
@@ -381,8 +455,18 @@ WorkerStartupHandle wireProductionWorkers({
   // operator can grep proxy logs for tripwire transitions.
   final tripwirePoller = OutboxTripwirePoller(
     fetcher: () async {
-      final result = await tripwireFetcher();
-      return result;
+      heartbeatRegistry?.recordStart(kHeartbeatChannelTripwirePoller);
+      try {
+        final result = await tripwireFetcher();
+        heartbeatRegistry?.recordSuccess(kHeartbeatChannelTripwirePoller);
+        return result;
+      } catch (error) {
+        heartbeatRegistry?.recordFailure(
+          kHeartbeatChannelTripwirePoller,
+          error,
+        );
+        rethrow;
+      }
     },
     onError: (error, stack) {
       onTickError?.call('outbox_tripwire_tick', error, stack);
