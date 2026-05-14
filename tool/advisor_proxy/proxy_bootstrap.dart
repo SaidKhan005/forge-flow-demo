@@ -37,6 +37,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/handoff_codes_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/step_up_challenges_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/location_account_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
@@ -116,6 +117,7 @@ import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'audit_log_hierarchy_routes.dart';
 import 'business_logo_upload_routes.dart';
+import 'operator_location_account_overrides_routes.dart';
 import 'operator_location_timezone_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
@@ -917,6 +919,18 @@ ProxyProductionBindings buildProxyProductionBindings(
       repository: LocationsRepository(tenantWrapper),
     ),
   );
+  // Wave 2 U-FU-hp11-account — per-location account overrides handler.
+  // Wraps the new `LocationAccountOverridesRepository` so the
+  // operator-web Account screen can save below-Business-scope edits.
+  // HP #4 operator-scoped write defence is enforced by the repository's
+  // `withTenant` SET LOCAL flow + the composite PK / FK; RLS on
+  // `public.location_account_overrides` is the backup defence.
+  final locationAccountOverridesHandler =
+      OperatorLocationAccountOverridesHandler(
+    gateway: _RepositoryLocationAccountOverridesWriteGateway(
+      repository: LocationAccountOverridesRepository(tenantWrapper),
+    ),
+  );
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
@@ -926,6 +940,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     mutationListener: timingMutationListener,
     businessLogoUploadHandler: businessLogoUploadHandler,
     locationTimezoneHandler: locationTimezoneHandler,
+    locationAccountOverridesHandler: locationAccountOverridesHandler,
   );
   final adminBusinessTimingRouter = AdminBusinessTimingRouter(
     businessTimingGateway: operatorBusinessTimingWriteGateway,
@@ -9472,6 +9487,118 @@ class _RepositoryOperatorLocationTimezoneWriteGateway
         previousIanaTimezone: row.previousIanaTimezone,
         updatedAt: row.updatedAt,
       ),
+    );
+  }
+}
+
+/// Wave 2 U-FU-hp11-account — production
+/// [LocationAccountOverridesWriteGateway] over the new
+/// `public.location_account_overrides` table. HP #4 operator-scoped
+/// write defence is enforced by the repository's `withTenant` SET
+/// LOCAL flow; the composite FK in the migration is the database-
+/// layer guarantee. RLS on `public.location_account_overrides` is the
+/// backup defence.
+class _RepositoryLocationAccountOverridesWriteGateway
+    implements LocationAccountOverridesWriteGateway {
+  _RepositoryLocationAccountOverridesWriteGateway({
+    required LocationAccountOverridesRepository repository,
+  }) : _repository = repository;
+
+  final LocationAccountOverridesRepository _repository;
+
+  @override
+  Future<LocationAccountOverridesOutcome> loadOverrides({
+    required String operatorId,
+    required String actorUserId,
+    required String locationId,
+    required String adminReason,
+  }) async {
+    final resolved = await _repository.loadEffective(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+    );
+    return _outcomeFrom(resolved);
+  }
+
+  @override
+  Future<LocationAccountOverridesOutcome> patchOverrides({
+    required String operatorId,
+    required String actorUserId,
+    required String locationId,
+    required ValidatedLocationAccountOverridesPatch patch,
+    required String adminReason,
+  }) async {
+    // Resolve the prior effective triple first so we can confirm the
+    // location belongs to the operator (and is not soft-deleted)
+    // BEFORE writing. This mirrors W-6 backend's locationNotFound /
+    // noPrimaryLocation pattern.
+    final prior = await _repository.loadEffective(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+    );
+    if (prior == null || !prior.locationFound) {
+      return const LocationAccountOverridesOutcome.locationNotFound();
+    }
+    // Upsert.
+    await _repository.upsertOverrides(
+      operatorId: operatorId,
+      locationId: locationId,
+      patch: LocationAccountOverridesPatch(
+        ianaTimezone: patch.ianaTimezone,
+        clearIanaTimezone: patch.clearIanaTimezone,
+        localeCode: patch.localeCode,
+        clearLocaleCode: patch.clearLocaleCode,
+        currencyCode: patch.currencyCode,
+        clearCurrencyCode: patch.clearCurrencyCode,
+        businessDayRolloverHour: patch.businessDayRolloverHour,
+        clearBusinessDayRolloverHour: patch.clearBusinessDayRolloverHour,
+        contactEmail: patch.contactEmail,
+        clearContactEmail: patch.clearContactEmail,
+        contactPhone: patch.contactPhone,
+        clearContactPhone: patch.clearContactPhone,
+      ),
+      actorUserId: actorUserId,
+    );
+    // Re-resolve the effective triple so the route response carries
+    // the post-write state.
+    final resolved = await _repository.loadEffective(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+    );
+    return _outcomeFrom(resolved);
+  }
+
+  LocationAccountOverridesOutcome _outcomeFrom(
+    LocationAccountOverridesResolved? resolved,
+  ) {
+    if (resolved == null || !resolved.locationFound) {
+      return const LocationAccountOverridesOutcome.locationNotFound();
+    }
+    return LocationAccountOverridesOutcome.ok(
+      LocationAccountOverridesRecord(
+        operatorId: resolved.operatorId,
+        locationId: resolved.locationId,
+        effective: _fieldSetFrom(resolved.effective),
+        override: _fieldSetFrom(resolved.override),
+        businessDefault: _fieldSetFrom(resolved.businessDefault),
+        updatedAt: resolved.updatedAt,
+      ),
+    );
+  }
+
+  LocationAccountOverridesFieldSet _fieldSetFrom(
+    LocationAccountOverridesDefaults defaults,
+  ) {
+    return LocationAccountOverridesFieldSet(
+      ianaTimezone: defaults.ianaTimezone,
+      localeCode: defaults.localeCode,
+      currencyCode: defaults.currencyCode,
+      businessDayRolloverHour: defaults.businessDayRolloverHour,
+      contactEmail: defaults.contactEmail,
+      contactPhone: defaults.contactPhone,
     );
   }
 }

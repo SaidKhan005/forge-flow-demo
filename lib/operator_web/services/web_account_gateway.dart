@@ -66,6 +66,23 @@ abstract class WebAccountGateway {
   /// from the verified bearer token; a client never supplies a target
   /// user id.
   Future<SelfProfilePatchResult> patchSelfProfile(SelfProfilePatchPayload patch);
+
+  /// Wave 2 U-FU-hp11-account — load the resolved effective / override
+  /// / businessDefault triple for [locationId]. The AccountScreen
+  /// uses this to render the HP #11 inheritance line at non-Business
+  /// scope.
+  Future<LocationAccountOverridesEnvelope> getLocationAccountOverrides({
+    required String locationId,
+  });
+
+  /// Wave 2 U-FU-hp11-account — patch the override row for
+  /// [locationId]. Every field on [patch] is optional; the backend
+  /// treats absent keys as "leave alone" and explicit null as
+  /// "clear the override (revert to business default)".
+  Future<LocationAccountOverridesEnvelope> patchLocationAccountOverrides({
+    required String locationId,
+    required LocationAccountOverridesPatchPayload patch,
+  });
 }
 
 /// User-scoped account session surface for My Account. Reuses the
@@ -130,6 +147,17 @@ class HttpWebAccountGateway
   /// Wave 2 W-3 — self-service profile editor route. The proxy
   /// resolves the target user from the verified bearer token.
   static const String selfProfilePath = '/v1/auth/self/profile';
+
+  /// Wave 2 U-FU-hp11-account — per-location override path prefix.
+  /// The location id is appended as a single path segment by
+  /// [operatorLocationAccountOverridesPath].
+  static const String operatorLocationAccountOverridesPathPrefix =
+      '/v1/operator/location-account-overrides/';
+
+  /// Wave 2 U-FU-hp11-account — builds the per-location override
+  /// path for [locationId].
+  static String operatorLocationAccountOverridesPath(String locationId) =>
+      '$operatorLocationAccountOverridesPathPrefix$locationId';
   static const Duration _freshMfaWindow = Duration(hours: 1);
   static const String _freshMfaRedirectUri =
       '/auth/login?reason=fresh_mfa_required';
@@ -220,6 +248,41 @@ class HttpWebAccountGateway
       body: patch.toJson(),
     );
     return SelfProfilePatchResult.fromJson(response.body);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getLocationAccountOverrides({
+    required String locationId,
+  }) async {
+    final path = operatorLocationAccountOverridesPath(locationId);
+    if (path.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to load this location\'s account overrides.',
+    );
+    final response = await _client.getJson(path, idToken: token);
+    return LocationAccountOverridesEnvelope.fromJson(response.body);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchLocationAccountOverrides({
+    required String locationId,
+    required LocationAccountOverridesPatchPayload patch,
+  }) async {
+    final path = operatorLocationAccountOverridesPath(locationId);
+    if (path.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to update this location\'s account overrides.',
+    );
+    final response = await _client.patchJson(
+      path,
+      idToken: token,
+      body: patch.toJson(),
+    );
+    return LocationAccountOverridesEnvelope.fromJson(response.body);
   }
 
   @override
@@ -719,4 +782,184 @@ class _AdminRouteForbidden implements Exception {
   const _AdminRouteForbidden();
   @override
   String toString() => 'WebAccountGateway must never resolve an /admin/ path.';
+}
+
+/// Wave 2 U-FU-hp11-account — patch payload for
+/// [WebAccountGateway.patchLocationAccountOverrides]. Every field is
+/// optional. Use the matching `clear*` flag to send `"<field>": null`
+/// (which the backend treats as "reset the override, inherit the
+/// business default").
+@immutable
+class LocationAccountOverridesPatchPayload {
+  const LocationAccountOverridesPatchPayload({
+    this.ianaTimezone,
+    this.localeCode,
+    this.currencyCode,
+    this.businessDayRolloverHour,
+    this.contactEmail,
+    this.contactPhone,
+    this.clearIanaTimezone = false,
+    this.clearLocaleCode = false,
+    this.clearCurrencyCode = false,
+    this.clearBusinessDayRolloverHour = false,
+    this.clearContactEmail = false,
+    this.clearContactPhone = false,
+  });
+
+  final String? ianaTimezone;
+  final String? localeCode;
+  final String? currencyCode;
+  final int? businessDayRolloverHour;
+  final String? contactEmail;
+  final String? contactPhone;
+
+  final bool clearIanaTimezone;
+  final bool clearLocaleCode;
+  final bool clearCurrencyCode;
+  final bool clearBusinessDayRolloverHour;
+  final bool clearContactEmail;
+  final bool clearContactPhone;
+
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{};
+    if (ianaTimezone != null) {
+      json['ianaTimezone'] = ianaTimezone;
+    } else if (clearIanaTimezone) {
+      json['ianaTimezone'] = null;
+    }
+    if (localeCode != null) {
+      json['localeCode'] = localeCode;
+    } else if (clearLocaleCode) {
+      json['localeCode'] = null;
+    }
+    if (currencyCode != null) {
+      json['currencyCode'] = currencyCode;
+    } else if (clearCurrencyCode) {
+      json['currencyCode'] = null;
+    }
+    if (businessDayRolloverHour != null) {
+      json['businessDayRolloverHour'] = businessDayRolloverHour;
+    } else if (clearBusinessDayRolloverHour) {
+      json['businessDayRolloverHour'] = null;
+    }
+    if (contactEmail != null) {
+      json['contactEmail'] = contactEmail;
+    } else if (clearContactEmail) {
+      json['contactEmail'] = null;
+    }
+    if (contactPhone != null) {
+      json['contactPhone'] = contactPhone;
+    } else if (clearContactPhone) {
+      json['contactPhone'] = null;
+    }
+    return json;
+  }
+}
+
+/// Wave 2 U-FU-hp11-account — wire response from the per-location
+/// override route. Carries the effective / override / businessDefault
+/// triple the AccountScreen renders as the HP #11 inheritance line.
+@immutable
+class LocationAccountOverridesEnvelope {
+  const LocationAccountOverridesEnvelope({
+    required this.operatorId,
+    required this.locationId,
+    required this.effective,
+    required this.override,
+    required this.businessDefault,
+    required this.updatedAt,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final LocationAccountOverridesFieldSet effective;
+  final LocationAccountOverridesFieldSet override;
+  final LocationAccountOverridesFieldSet businessDefault;
+  final DateTime updatedAt;
+
+  static LocationAccountOverridesEnvelope fromJson(
+    Map<String, Object?> json,
+  ) {
+    final operatorId = AccountIdentity._readString(json['operatorId']);
+    final locationId = AccountIdentity._readString(json['locationId']);
+    final updatedAtRaw = AccountIdentity._readString(json['updatedAt']);
+    final effectiveRaw = json['effective'];
+    final overrideRaw = json['override'];
+    final businessDefaultRaw = json['businessDefault'];
+    if (operatorId == null ||
+        locationId == null ||
+        updatedAtRaw == null ||
+        effectiveRaw is! Map ||
+        overrideRaw is! Map ||
+        businessDefaultRaw is! Map) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_location_account_overrides',
+        message:
+            'The proxy returned an incomplete location account overrides record.',
+      );
+    }
+    return LocationAccountOverridesEnvelope(
+      operatorId: operatorId,
+      locationId: locationId,
+      effective: LocationAccountOverridesFieldSet._fromJson(
+        Map<String, Object?>.from(effectiveRaw),
+      ),
+      override: LocationAccountOverridesFieldSet._fromJson(
+        Map<String, Object?>.from(overrideRaw),
+      ),
+      businessDefault: LocationAccountOverridesFieldSet._fromJson(
+        Map<String, Object?>.from(businessDefaultRaw),
+      ),
+      updatedAt: DateTime.parse(updatedAtRaw).toUtc(),
+    );
+  }
+}
+
+/// Wire sub-record carried inside the envelope. Every field is
+/// nullable; null means "no value at this level" (and for `override`,
+/// null means "no override is set, so the field inherits from the
+/// business default").
+@immutable
+class LocationAccountOverridesFieldSet {
+  const LocationAccountOverridesFieldSet({
+    this.ianaTimezone,
+    this.localeCode,
+    this.currencyCode,
+    this.businessDayRolloverHour,
+    this.contactEmail,
+    this.contactPhone,
+  });
+
+  final String? ianaTimezone;
+  final String? localeCode;
+  final String? currencyCode;
+  final int? businessDayRolloverHour;
+  final String? contactEmail;
+  final String? contactPhone;
+
+  static LocationAccountOverridesFieldSet _fromJson(
+    Map<String, Object?> json,
+  ) {
+    final raw = json['businessDayRolloverHour'];
+    final int? rollover;
+    if (raw == null) {
+      rollover = null;
+    } else if (raw is int) {
+      rollover = raw;
+    } else if (raw is num) {
+      rollover = raw.toInt();
+    } else if (raw is String) {
+      rollover = int.tryParse(raw);
+    } else {
+      rollover = null;
+    }
+    return LocationAccountOverridesFieldSet(
+      ianaTimezone: AccountIdentity._readString(json['ianaTimezone']),
+      localeCode: AccountIdentity._readString(json['localeCode']),
+      currencyCode: AccountIdentity._readString(json['currencyCode']),
+      businessDayRolloverHour: rollover,
+      contactEmail: AccountIdentity._readString(json['contactEmail']),
+      contactPhone: AccountIdentity._readString(json['contactPhone']),
+    );
+  }
 }
