@@ -56,12 +56,12 @@ mega-PR or split into per-screen PRs.
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
 | U-1 | Ops Console — Login screen cleanup (green-logo + subtitle removal) | Claude2 | auto | merged | #663 | – | debug.md:102-107 (OW-0a, OW-0b) |
-| U-2 | Ops Console — Top bar redesign + hierarchy-map location selector | Claude2 | auto | assigned | – | – | debug.md:102-107 (OW-0c) |
+| U-2 | Ops Console — Top bar redesign + hierarchy-map location selector | Claude2 | auto | merged | #687 | – | debug.md:102-107 (OW-0c) |
 | U-3 | Ops Console — Business Account screen UX cleanup (subtitle + 4-tile removal + scope-sensitive labels) | Claude2 | auto | merged | #663 | – | debug.md:116-124 (OW-2b, OW-2c, OW-2e) |
 | U-4 | Ops Console — Business Setup screen UX cleanup (subtitles, tiles, scope-sensitive tab names, simplify hierarchy labels, service-period note) | Claude2 | auto | merged | #663 | – | debug.md:127-140 (OW-3a..g) |
-| U-5 | Ops Console — Locations + My Account + Team Members + Roles + Sign-in-Security + Active Sessions UX cleanup (subtitles + tiles across 6 screens) | Claude2 | auto | assigned | – | – | debug.md:141-181 (OW-4..OW-9) |
-| U-6 | Ops Console — Audit Log + Vendor Connections (rename to Vendor Integration is V-1) + Data Accuracy + Wage Authority + Notifications UX cleanup | Claude2 | auto | assigned | – | – | debug.md:181-256 (OW-10, OW-11b/c, OW-12, OW-13a-c minus formula UI, OW-14) |
-| U-7 | Mobile UX cleanup (Settings tab reorder + Setup section + Wage Setup + 2FA + Sign-in-details + Active Sessions subtitles/tiles) | Claude2 | auto | assigned | – | – | debug.md:259-306 (MO-3a/b, MO-4, MO-5a/d, MO-6, MO-7c/d, MO-S) |
+| U-5 | Ops Console — Locations + My Account + Team Members + Roles + Sign-in-Security + Active Sessions UX cleanup (subtitles + tiles across 6 screens) | Claude2 | auto | merged | #670 | – | debug.md:141-181 (OW-4..OW-9) |
+| U-6 | Ops Console — Audit Log + Vendor Connections (rename to Vendor Integration is V-1) + Data Accuracy + Wage Authority + Notifications UX cleanup | Claude2 | auto | merged | #673 | – | debug.md:181-256 (OW-10, OW-11b/c, OW-12, OW-13a-c minus formula UI, OW-14) |
+| U-7 | Mobile UX cleanup (Settings tab reorder + Setup section + Wage Setup + 2FA + Sign-in-details + Active Sessions subtitles/tiles) | Claude2 | auto | merged | #678 | – | debug.md:259-306 (MO-3a/b, MO-4, MO-5a/d, MO-6, MO-7c/d, MO-S) |
 
 ### Lane V — Vendor Connection → Vendor Integration rename sweep (Claude2)
 
@@ -73,25 +73,28 @@ mega-PR or split into per-screen PRs.
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
-| D-1 | Frameworks → runbooks conversion + cross-ref updates in PROJECT_TRACKER + CLAUDE.md | Claude2 | auto | assigned | – | – | debug.md:88 (QI-4) |
+| D-1 | Frameworks → runbooks conversion + cross-ref updates in PROJECT_TRACKER + CLAUDE.md | Claude2 | auto | merged | #657 | – | debug.md:88 (QI-4) |
 | D-2 | Central agent-self-audit script + automation glue (cleanup + archiving + audit-doc generation) | Claude2 | auto | merged | #664 | – | debug.md:88 (QI-5) |
 
 ### Lane M-Poll — Mobile new feature: Integrations tab (Claude2)
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
-| MP-1 | Mobile new "Integrations" tab (live POS / reservation / labor status + demo-live switch placement + ops-portal deeplink with JWT handoff) | Claude2 | operator | assigned | – | – | debug.md:289-296 (MO-7a, MO-7b) |
+| MP-1 | Mobile new "Integrations" tab (live POS / reservation / labor status + demo-live switch placement + ops-portal deeplink with JWT handoff) | Claude2 | operator | merged | #685 | – | debug.md:289-296 (MO-7a, MO-7b) |
 
 ### Lane W — Write-path completeness (Main)
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
-| W-1 | Members edit-user write path (change email + name + role + hierarchy assignment end-to-end including Firebase API) | Main | operator | assigned | – | – | debug.md:34, 152-156 (RP-11, OW-6d) |
-| W-2 | Cancel pending invite end-to-end (operator-web + admin + Firebase API) | Main | operator | assigned | – | – | debug.md:43 (RP-16) |
+| W-1 | Members edit-user write path (change email + name + role + hierarchy assignment end-to-end including Firebase API) | Main | operator | merged | #680 | – | debug.md:34, 152-156 (RP-11, OW-6d) |
+| W-1-FU | W-1 follow-up: unlock role + hierarchy rotation in edit-member dialog (operator picked option 1 for role + hierarchy lockdown then unlock) | Main | operator | merged | #689 | W-1 | W-1 audit fallout 2026-05-14 |
+| W-2 | Cancel pending invite end-to-end (operator-web + admin + Firebase API) | Main | operator | merged | #691 | – | debug.md:43 (RP-16) |
 | W-3 | Profile self-service write paths (change own email + name + display details on operator-web + admin My Account; mobile becomes read-only with deep-link to operator-web) | Main | operator | assigned | – | – | debug.md:45-52, 297-302 (P-1, P-2, P-3, MO-6c/d) |
-| W-4 | Admin console My Account parity (full surface on admin-side, currently missing) | Main | operator | assigned | – | – | debug.md:52 (P-5) |
-| W-5 | Business logo upload + propagation (operator-web → console header + mobile dashboard header, PNG format) | Main | operator | assigned | – | – | debug.md:118 (OW-2d) |
-| W-6 | Account screen — timezone + missing-field exposure (location/business settings audit + write paths) | Main | operator | assigned | – | – | debug.md:122 (OW-2g) |
+| W-4 | Admin console My Account parity (full surface on admin-side, currently missing) | Main | operator | merged | #688 | – | debug.md:52 (P-5) |
+| W-5 | Business logo upload + propagation (operator-web → console header + mobile dashboard header, PNG format) | Main | operator | merged | #686 | – | debug.md:118 (OW-2d) |
+| W-5-mobile-FU | W-5 follow-up: mobile dashboard header logo propagation (W-5 worker explicitly deferred mobile dashboard header logo propagation) | Claude2 | operator | assigned | – | W-5 | handoff doc `docs/_indices/CLAUDE2_HELP_QUEUE_2026_05_14.md` |
+| W-6 | Account screen — timezone + missing-field exposure (location/business settings audit + write paths) | Main | operator | merged | #682 | – | debug.md:122 (OW-2g) |
+| W-6-backend | W-6 backend: proxy handler for `PATCH /v1/operator/location-timezone` (W-6 worker shipped frontend wire contract; backend parked for future slot) | Main | operator | parked | – | W-6 | W-6 follow-up 2026-05-14 |
 
 ### Lane H — Hierarchy visualization + HP #11 sweep (Main)
 
@@ -99,7 +102,7 @@ mega-PR or split into per-screen PRs.
 |---|---|---|---|---|---|---|---|
 | H-1 | HP #11 (scope/source/value) sweep for `schedule_screen.dart` + `wage_authority_screen.dart` (the 2 surfaces flagged in C-12 closeout F-OW-2) | Main | operator | merged | #659 | – | debug.md:20-25, wave audit M-4 |
 | H-2 | Inheritance tree visualization on identity pages (replace text-based labels with visual hierarchy tree on business_setup_screen + business_timing_editor_screen) | Main | operator | in-progress | – | – | debug.md:131 (OW-3e) |
-| H-3 | Top bar location selector — hierarchy-map picker (NOT a flat list) on operator-web + admin | Main | operator | assigned | – | – | debug.md:106 (OW-0c, deeper part) |
+| H-3 | Top bar location selector — hierarchy-map picker (NOT a flat list) on operator-web + admin | Main | operator | merged | #681 | – | debug.md:106 (OW-0c, deeper part) |
 
 ### Lane R — Roles hierarchy-scoped redesign + Default Role Catalog v2 (Main)
 
@@ -114,8 +117,8 @@ mega-PR or split into per-screen PRs.
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
-| S-1 | Wage Authority — blended-mix formula UI rewrite (FOH/BOH/Management role list with @/hr inputs + blended-mix calc display + vendor-applicability label) | Main | operator | assigned | – | – | debug.md:198-220 (OW-13a, OW-13b) |
-| S-2 | Wage Authority + Data Accuracy unified IA on single Data Accuracy page | Main | operator | assigned | – | S-1 | debug.md:220 (OW-13c) |
+| S-1 | Wage Authority — blended-mix formula UI rewrite (FOH/BOH/Management role list with @/hr inputs + blended-mix calc display + vendor-applicability label) | Main | operator | merged | #679 | – | debug.md:198-220 (OW-13a, OW-13b) |
+| S-2 | Wage Authority + Data Accuracy unified IA on single Data Accuracy page | Main | operator | merged | #684 | S-1 | debug.md:220 (OW-13c) |
 | S-3 | Roles screen UX simplification (name + short description + edit button only) + role categorization by product → functionality with dependency auto-select | Main | operator | assigned | – | R-2L | debug.md:31-32, 38-39 (RP-8, RP-12, RP-14, OW-7a..g) |
 
 ### Lane B — Bug fixes (Main)
@@ -125,13 +128,14 @@ mega-PR or split into per-screen PRs.
 | B-W1 | W-1 fix: create Phase 8 base-schema migration for the 4 legacy fact tables (`shift_records`, `cover_facts`, `labor_punches`, `reservation_facts`) — must lex-order before `202605061700_phase_8_timing_provenance_shift_records.sql` | Main | operator | merged | #662 | – | POST_HARDENING_FOLLOWUPS "Wave bugs surfaced 2026-05-13" W-1 |
 | B-W2 | W-2 fix: tagged dollar-quote in `db/migrations/202605081100_partman_maintenance_hourly_cron.sql` (`do $partman$ ... $partman$;`) | Main | operator | merged | #655 | – | POST_HARDENING_FOLLOWUPS "Wave bugs surfaced 2026-05-13" W-2 |
 | B-1B | BUG-1 triage: proxy returned incomplete session record after support-check sign-in — reproduce + fix + regression test | Main | operator | assigned | – | – | debug.md:14 (BUG-1) |
-| B-2B | BUG-2 triage: proxy crash after some time — reproduce + root cause + fix (likely needs soak-harness assist from Q-1) | Main | operator | assigned | – | Q-1 | debug.md:15 (BUG-2) |
+| B-2B | BUG-2 triage: proxy crash after some time — reproduce + root cause + fix (likely needs soak-harness assist from Q-1) | Main | operator | merged | #683 | Q-1 | debug.md:15 (BUG-2) |
 
 ### Lane Q — Quality + longer-running (Main)
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
 | Q-1 | Soak harness completion + Azure Blob swap (replace GCS uploader; expose heap-snapshot capture for live multi-pod use) | Main | operator | in-progress | – | – | debug.md:16, POST_HARDENING_FOLLOWUPS "Soak Heap-Snapshot Uploader" |
+| Q-1-FU | Q-1 follow-up: multi-pod live capture endpoint (Q-1 worker shipped Azure Blob heap-snapshot uploader; multi-pod live capture endpoint parked) | Main | operator | parked | – | Q-1 | Q-1 follow-up 2026-05-14 |
 | Q-2 | Email/notification soak harness (Patrol + Firebase Test Lab + Mailosaur + SendGrid event webhook) for end-to-end loopback testing of all email + push + in-app scenarios | Main | operator | assigned | – | – | debug.md:58-67 (EN-5), 322-325 (BC-3) |
 | Q-3 | Scaffold audit lane — orphan email template purge + dispatcher cleanup + dormant invite path resolution (wire dedicated invite template OR remove + commit to Firebase password-reset path) | Main | operator | merged | #658 | – | debug.md:308-320 (BC-1, EN-2, EN-4) |
 | Q-4 | Custom role editor — orphan permission lint + product-rule warnings (warn when "can manage members" excludes team.users.view; warn on location-scoped roles attempting org-wide actions; warn on orphan permission combos) | Main | operator | assigned | – | – | debug.md:78-80 (AC-2) |
@@ -143,6 +147,7 @@ mega-PR or split into per-screen PRs.
 | MO-1 | Mobile Data tab role-gated visibility (only F&F admin users see it; seeded role check) | Main | operator | merged | #661 | – | debug.md:260 (MO-2) |
 | MO-1-FU | MO-1 follow-up: move `SettingsDemoLiveSwitch` out of the F&F-internal Data tab into the operator-visible Setup tab so the demo operator can still reach the master Demo→Live switch on mobile (operator picked option C 2026-05-13) | Main | operator | in-progress | – | MO-1 | MO-1 audit fallout 2026-05-13 |
 | MO-2 | Mobile covers manual entry — first item on Covers Setup screen; vendor-fallback when reservation system doesn't support covers | Main | operator | in-progress | – | – | debug.md:283-285 (MO-6) |
+| MO-2-FU | MO-2 follow-up: aggregator projection of `manual_cover_entries` into `ShiftRecord.covers` reader path — needs operator design input | Main | operator | parked | – | MO-2 | MO-2 audit fallout 2026-05-14 |
 
 ### Phase-7 deferred but tracked (no Wave 2 engineering)
 
@@ -164,6 +169,7 @@ mega-PR or split into per-screen PRs.
 
 ## Changelog
 
+- 2026-05-14: Wave 2 batch 2 flips — Main lane 10 slices (S-1, S-2, H-3, W-6, B-2B, W-1, W-1-FU, W-4, W-5, W-2) and Claude2 lane bundle merged. Added 5 follow-up rows (W-1-FU now merged; W-5-mobile-FU handed to Claude #2; W-6-backend, MO-2-FU, Q-1-FU parked). 21 of 22 Main slices merged. W-3 in flight.
 - **2026-05-13** Ledger created. All 33 slices `assigned`. Lane split locked per operator decision.
 - **2026-05-14** Batch 1 merged (10 slices):
   - Main orchestrator: B-W2 (#655), Q-3 (#658), H-1 (#659), MO-1 (#661), B-W1 (#662).
