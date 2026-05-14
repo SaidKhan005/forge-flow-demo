@@ -25,7 +25,6 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 
 const Set<String> _kAccountEditRoles = <String>{
   'operator_owner',
@@ -166,18 +165,6 @@ class _AccountScreenState extends State<AccountScreen> {
     });
   }
 
-  String _valueOrUnset(String value) {
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? 'Not set' : trimmed;
-  }
-
-  String _capitalize(String value) {
-    if (value.isEmpty) return value;
-    return value[0].toUpperCase() + value.substring(1);
-  }
-
-  String _formatRollover(int hour) => '${hour.toString().padLeft(2, '0')}:00';
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -187,40 +174,6 @@ class _AccountScreenState extends State<AccountScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Header(),
-          const SizedBox(height: 18),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_account_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.business_outlined,
-                label: 'Business name',
-                value: _valueOrUnset(_businessName.text),
-                helper: 'shown across the console',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.public_outlined,
-                label: 'Region',
-                value: _currencyCode ?? 'Not set',
-                helper: _localeTag ?? 'locale not set',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.calendar_today_outlined,
-                label: 'Business week',
-                value: _weekStartDay == null
-                    ? 'Not set'
-                    : _capitalize(_weekStartDay!),
-                helper: 'first day of week',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.schedule_outlined,
-                label: 'Rollover',
-                value: _rolloverHour == null
-                    ? 'Not set'
-                    : _formatRollover(_rolloverHour!),
-                helper: 'business day boundary',
-              ),
-            ],
-          ),
           const SizedBox(height: 18),
           if (!_hasGateway) const _UnavailableBanner(),
           if (!_hasGateway) const SizedBox(height: 14),
@@ -352,32 +305,19 @@ class _AccountScreenState extends State<AccountScreen> {
 class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            const Icon(
-              Icons.business_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Business account',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
+        const Icon(
+          Icons.business_outlined,
+          size: 22,
+          color: AppColors.sunsetDark,
         ),
-        const SizedBox(height: 8),
-        Text(
-          'These are the basics every Forge & Flow surface uses to label '
-          'your operator and format numbers. They flow into your '
-          'dashboards, your printable reports, and the brand mark you '
-          'see at the top of the console.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Business account',
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
         ),
       ],
     );

@@ -4,7 +4,6 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 
 const Set<String> kOperatorWebBusinessTimingEditRoles = <String>{
   'operator_owner',
@@ -201,14 +200,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            'Review the timing rules used by Shift views for '
-            '${bundle.locationName}. Inherited values show where each rule '
-            'comes from.',
-            key: const Key('operator_web_business_setup_subtitle'),
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
           const SizedBox(height: 18),
           if (widget._canEditTiming)
             _TimingEditControls(
@@ -224,8 +215,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           else
             const _ReadOnlyTimingBanner(),
           const SizedBox(height: 14),
-          _BusinessTimingSummary(bundle: bundle),
-          const SizedBox(height: 14),
           _InheritanceCard(bundle: bundle),
           const SizedBox(height: 14),
           _EffectiveTimingCard(bundle: bundle),
@@ -234,54 +223,6 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         ],
       ),
     );
-  }
-}
-
-class _BusinessTimingSummary extends StatelessWidget {
-  const _BusinessTimingSummary({required this.bundle});
-
-  final BusinessTimingBundle bundle;
-
-  @override
-  Widget build(BuildContext context) {
-    return OperatorWebSummaryStrip(
-      key: const Key('operator_web_business_timing_summary'),
-      items: [
-        OperatorWebSummaryItem(
-          icon: Icons.place_outlined,
-          label: 'Scope',
-          value: bundle.locationName,
-          helper: bundle.hasLocationOverride
-              ? 'location override'
-              : 'inherited',
-        ),
-        OperatorWebSummaryItem(
-          icon: Icons.today_outlined,
-          label: 'Effective',
-          value: bundle.effectiveDateLabel,
-          helper: _fieldValue('Week starts'),
-        ),
-        OperatorWebSummaryItem(
-          icon: Icons.schedule_outlined,
-          label: 'Business day',
-          value: _fieldValue('Business day starts'),
-          helper: 'local time rollover',
-        ),
-        OperatorWebSummaryItem(
-          icon: Icons.timelapse_outlined,
-          label: 'Service periods',
-          value: bundle.servicePeriods.length.toString(),
-          helper: 'used by Shift views',
-        ),
-      ],
-    );
-  }
-
-  String _fieldValue(String label) {
-    for (final field in bundle.effectiveFields) {
-      if (field.label == label) return field.value;
-    }
-    return 'Not set';
   }
 }
 
@@ -322,8 +263,14 @@ class _TimingEditControls extends StatelessWidget {
           OutlinedButton.icon(
             key: const Key('operator_web_business_timing_edit_button'),
             onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined, size: 15),
-            label: const Text('Edit timing'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            ),
+            icon: const Icon(Icons.edit_outlined, size: 20),
+            label: Text(
+              'Edit Time Settings',
+              style: AppTextStyles.display16(color: AppColors.textPrimary),
+            ),
           ),
           OutlinedButton.icon(
             key: const Key('operator_web_business_timing_schedule_button'),
@@ -411,10 +358,6 @@ class _EffectiveTimingCard extends StatelessWidget {
       keyName: 'operator_web_business_timing_effective_card',
       title: 'Effective timing',
       icon: Icons.schedule_outlined,
-      trailing: _TimingStatusPill(
-        label: bundle.effectiveDateLabel,
-        color: AppColors.peacockDark,
-      ),
       child: Column(
         children: [
           for (final field in bundle.effectiveFields)
@@ -432,14 +375,27 @@ class _ServicePeriodsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasMidnightRollover = bundle.servicePeriods.any(
+      (period) => period.rollsPastMidnight,
+    );
     return _TimingPanel(
       keyName: 'operator_web_business_timing_periods_card',
       title: 'Service periods',
       icon: Icons.segment_outlined,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final period in bundle.servicePeriods)
             _ServicePeriodRow(period: period),
+          if (hasMidnightRollover) ...[
+            const SizedBox(height: 8),
+            Text(
+              key: const Key('operator_web_business_timing_midnight_note'),
+              'One period runs past midnight, so its sales count toward the '
+              'business day it started in.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ],
         ],
       ),
     );
@@ -452,14 +408,12 @@ class _TimingPanel extends StatelessWidget {
     required this.title,
     required this.icon,
     required this.child,
-    this.trailing,
   });
 
   final String keyName;
   final String title;
   final IconData icon;
   final Widget child;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -486,7 +440,6 @@ class _TimingPanel extends StatelessWidget {
                   ),
                 ),
               ),
-              if (trailing != null) trailing!,
             ],
           ),
           const SizedBox(height: 14),
@@ -632,15 +585,6 @@ class _ServicePeriodRow extends StatelessWidget {
           Text(
             '${period.startsAt} - ${period.endsAt}',
             style: AppTextStyles.mono11(color: AppColors.textPrimary),
-          ),
-          const SizedBox(width: 12),
-          _TimingStatusPill(
-            label: period.rollsPastMidnight
-                ? 'Rolls past midnight'
-                : period.sourceLabel,
-            color: period.rollsPastMidnight
-                ? AppColors.sunsetDark
-                : AppColors.textMuted,
           ),
         ],
       ),

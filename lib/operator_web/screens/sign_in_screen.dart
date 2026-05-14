@@ -71,8 +71,7 @@ class _OperatorWebSignInScreenState extends State<OperatorWebSignInScreen> {
     return OnboardingLayout(
       stepLabel: 'Sign in',
       title: 'Operator Web Console',
-      subtitle:
-          'Use the same Forge & Flow operator account you set up from your invite email.',
+      showBrandMark: false,
       errorMessage: error,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
