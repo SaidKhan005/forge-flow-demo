@@ -89,6 +89,60 @@ void main() {
       },
     );
 
+    test(
+      'Wave 2 W-5-mobile-FU-2: GET account info serializes logo_url when set',
+      () async {
+        await _withRealHttp(() async {
+          // Pin the proxy → mobile/operator-web wire contract for
+          // `operators.logo_url`. The W-5-mobile-FU client (PR #695)
+          // already accepts the field forward-compatibly; this test
+          // locks the proxy half so the round-trip cannot regress.
+          final gateway = _RecordingAccountInfoGateway(
+            logoUrl: 'https://cdn.example/op-logo.png',
+          );
+          final harness = await _RouteHarness.start(
+            accountInfoGateway: gateway,
+          );
+          try {
+            final response = await harness.get(authAccountInfoPath);
+            final body = response.json;
+
+            expect(response.statusCode, equals(200));
+            expect(body.containsKey('logo_url'), isTrue);
+            expect(body['logo_url'], equals('https://cdn.example/op-logo.png'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'Wave 2 W-5-mobile-FU-2: GET account info serializes logo_url as null when unset',
+      () async {
+        await _withRealHttp(() async {
+          // Operators that have not uploaded a brand-mark must still
+          // see the field as an explicit `null` in the JSON so the
+          // mobile client renders the F&F splash fallback rather than
+          // tripping a "missing field" malformed_response.
+          final gateway = _RecordingAccountInfoGateway();
+          final harness = await _RouteHarness.start(
+            accountInfoGateway: gateway,
+          );
+          try {
+            final response = await harness.get(authAccountInfoPath);
+            final body = response.json;
+
+            expect(response.statusCode, equals(200));
+            expect(body.containsKey('logo_url'), isTrue);
+            expect(body['logo_url'], isNull);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('GET account info does not require Team permission', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAccountInfoGateway();
@@ -2681,6 +2735,15 @@ class _FixedSnapshotResolver implements ProxyPermissionSnapshotResolver {
 }
 
 class _RecordingAccountInfoGateway implements AccountInfoGateway {
+  _RecordingAccountInfoGateway({this.logoUrl});
+
+  /// Wave 2 W-5-mobile-FU-2 — optional brand-mark URL the recording
+  /// gateway folds into the `AccountInfo` it returns. Null by default
+  /// so existing tests stay byte-identical; the W-5-mobile-FU-2 wire
+  /// tests opt in to a non-null value to pin the proxy → mobile
+  /// round-trip of `operators.logo_url`.
+  final String? logoUrl;
+
   final requests = <AccountInfoRequest>[];
 
   @override
@@ -2696,6 +2759,7 @@ class _RecordingAccountInfoGateway implements AccountInfoGateway {
       lastLoginAt: DateTime.utc(2026, 4, 28, 11),
       lastActiveAt: DateTime.utc(2026, 4, 28, 12),
       passwordUpdatedAt: DateTime.utc(2026, 4, 20, 9),
+      logoUrl: logoUrl,
     );
   }
 }
