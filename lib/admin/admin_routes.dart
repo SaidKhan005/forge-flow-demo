@@ -46,6 +46,7 @@ import 'screens/roles_hierarchy_sessions_admin_screen.dart';
 import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
+import 'services/admin_account_gateway.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -2502,6 +2503,8 @@ Widget _buildMyAccount(BuildContext context) {
   if (source == null) {
     return const _MyAccountUnauthenticatedFallback();
   }
+  final accountGateway =
+      AdminConsoleServicesScope.adminAccountGatewayOf(context);
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
     initialData: source.current,
@@ -2511,6 +2514,7 @@ Widget _buildMyAccount(BuildContext context) {
         return MyAccountAdminScreen(
           session: state.session,
           authSource: source,
+          accountGateway: accountGateway,
         );
       }
       return const _MyAccountUnauthenticatedFallback();
@@ -2591,6 +2595,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.membersAdminGateway,
     this.rolesHierarchySessionsAdminGateway,
     this.auditedSupportActionsAdminGateway,
+    this.adminAccountGateway,
     this.adminAuthSource,
   });
 
@@ -2693,6 +2698,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// gateway. Optional; the default fallback is the seeded in-memory
   /// gateway used by the kDemoMode walkthrough.
   final AuditedSupportActionsAdminGateway? auditedSupportActionsAdminGateway;
+
+  /// Wave 2 W-3 — self-service admin account gateway. Production
+  /// binds the HTTP-backed gateway here; demo / widget-test paths
+  /// pass an `InMemoryAdminAccountGateway`. When null, the My Account
+  /// Identity card renders in read-only mode (the W-4 posture).
+  final AdminAccountGateway? adminAccountGateway;
 
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -2817,6 +2828,15 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.adminAuthSource;
   }
 
+  /// Wave 2 W-3 — admin self-service account gateway accessor. Returns
+  /// null when the scope wasn't provided one; the MyAccount route
+  /// renders the W-4 read-only posture in that case.
+  static AdminAccountGateway? adminAccountGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.adminAccountGateway;
+  }
+
   @override
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
       operatorLocationGateway != oldWidget.operatorLocationGateway ||
@@ -2837,6 +2857,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
           oldWidget.rolesHierarchySessionsAdminGateway ||
       auditedSupportActionsAdminGateway !=
           oldWidget.auditedSupportActionsAdminGateway ||
+      adminAccountGateway != oldWidget.adminAccountGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 

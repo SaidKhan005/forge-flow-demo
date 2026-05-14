@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**46 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605131900_c_2_d_vendor_sync_outage_state.sql`; staging/preview
+**47 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605140000_w_3_self_profile_perm_key.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
@@ -83,8 +83,9 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605131700_c_1a_email_event_provider_id.sql` | Lane C C-1a `email_event.provider_event_id` column + partial UNIQUE INDEX `WHERE provider_event_id IS NOT NULL` (additive expand; backs C-1 receiver's `ON CONFLICT DO NOTHING` for SendGrid event dedupe; no RLS change) | code-ready |
 | `202605131800_c_7a_recovery_codes_viewed_at.sql` | Lane C C-7a `mfa_factors.recovery_codes_viewed_at timestamptz NULL` (additive expand; unblocks Codex's C-7 Adaptive 2FA button compute over `(session.mfaEnrolled, factor_count, recovery_codes_viewed_at)`; no new index, no RLS change) | code-ready |
 | `202605131900_c_2_d_vendor_sync_outage_state.sql` | Lane C C-2-D `vendor_sync_outage_state` per-(operator_id, location_id, connection_id) state surface for the first-failure-of-outage detector that gates the `vendor_sync_error_alert` email (one row per outage window; cleared on next `poll_success`; per-tenant RLS mirroring `connector_sync_log`) | code-ready |
+| `202605140000_w_3_self_profile_perm_key.sql` | Wave 2 W-3 `team.users.self_update` permission key + baseline grants to every seeded operator role and super_admin. Backs the new `PATCH /v1/auth/self/profile` self-service profile editor on operator-web and admin My Account surfaces. | code-ready |
 
-**Action:** apply all 46 in next Production1 event per
+**Action:** apply all 47 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

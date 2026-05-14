@@ -104,6 +104,8 @@ import 'realtime_route.dart'
 import 'session_record_predicate.dart';
 import 'star_target_routes.dart';
 import 'team_users_edit_member_validation.dart' show validateEditMemberRouteBody;
+import 'auth_self_profile_routes.dart' show SelfProfileRouter, authSelfProfilePath, authSelfProfilePermissionKey;
+import 'auth_operations_route_paths.dart' show canonicalAuthOperationPath, AuthOperationPathTranslationEntry;
 import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
@@ -11586,10 +11588,8 @@ Future<void> routeRequest(
               );
               if (inputs.rejection != null) {
                 _writeJson(response, inputs.rejection!.statusCode,
-                    <String, Object?>{
-                      'error': inputs.rejection!.error,
-                      'message': inputs.rejection!.message,
-                    });
+                    <String, Object?>{'error': inputs.rejection!.error,
+                      'message': inputs.rejection!.message});
                 return;
               }
               final idempotencyKey = readIdempotencyKeyOrFail();
@@ -11608,12 +11608,39 @@ Future<void> routeRequest(
                       targetUserId: targetUserId,
                       displayName: inputs.displayName,
                       email: inputs.email,
-                      reason: inputs.reason!,
-                    ),
+                      reason: inputs.reason!),
                   );
                   return CachedProxyResponse(statusCode: 200, body:
                       <String, Object?>{'ok': true,
                         'user': _teamUserToJson(patched.user)});
+                },
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                authOperationPath == authSelfProfilePath) {
+              // W-3 — self-service profile editor. Validation + dispatch
+              // live in `auth_self_profile_routes.dart`.
+              if (!await requirePermission(authSelfProfilePermissionKey)) return;
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await authOpsCache.runOrReplay(
+                route: authSelfProfilePath,
+                key: idempotencyKey,
+                compute: () async {
+                  final r = await SelfProfileRouter(
+                    authOperationsGateway: authOperationsGateway,
+                  ).handleRequest(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    body: body,
+                    nonBlankString: _nonBlankString,
+                  );
+                  return CachedProxyResponse(
+                      statusCode: r.statusCode, body: r.body);
                 },
               );
               _writeJson(response, cached.statusCode, cached.body);
@@ -18810,124 +18837,68 @@ String _freshAuthProofId({
 }
 
 bool _isAdminAuthOperation(String path, String method) {
-  final authOperationPath = _canonicalAuthOperationPath(path);
-  if (method == 'GET' && authOperationPath == adminAuthRolesPath) {
-    return true;
-  }
-  if (method == 'POST' && authOperationPath == adminAuthRolesPath) {
-    return true;
-  }
-  if (method == 'PATCH' && authOperationPath.startsWith(adminAuthRolePrefix)) {
-    return true;
-  }
-  if (method == 'DELETE' && authOperationPath.startsWith(adminAuthRolePrefix)) {
-    return true;
-  }
-  if (method == 'GET' && authOperationPath == adminAuthUsersPath) {
-    return true;
-  }
-  if (method == 'PATCH' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
-    return true;
-  }
+  // Wave 2 W-3 — self-service profile editor. Same dispatch as the
+  // admin auth-ops routes; permission gate is `team.users.self_update`.
+  if (method == 'PATCH' && path == authSelfProfilePath) { return true; }
+  final p = _canonicalAuthOperationPath(path);
+  if (method == 'GET' && p == adminAuthRolesPath) { return true; }
+  if (method == 'POST' && p == adminAuthRolesPath) { return true; }
+  if (method == 'PATCH' && p.startsWith(adminAuthRolePrefix)) { return true; }
+  if (method == 'DELETE' && p.startsWith(adminAuthRolePrefix)) { return true; }
+  if (method == 'GET' && p == adminAuthUsersPath) { return true; }
+  if (method == 'PATCH' && p.startsWith(adminAuthUsersPrefix)) { return true; }
   // CODE_OPS_DEBT Theme B#1 — GET .../erase-pii for status read.
-  if (method == 'GET' &&
-      authOperationPath.startsWith(adminAuthUsersPrefix) &&
-      _piiErasurePathFromAdminAuthUsersPrefix(authOperationPath) != null) {
+  if (method == 'GET' && p.startsWith(adminAuthUsersPrefix) &&
+      _piiErasurePathFromAdminAuthUsersPrefix(p) != null) { return true; }
+  if (method == 'GET' && p == adminAuthSessionsPath) { return true; }
+  if (method == 'GET' && p == adminAuthAuditLogPath) { return true; }
+  if (method == 'GET' && p == adminAuthInvitesPath) { return true; }
+  if (method == 'POST' && p == adminAuthInvitesPath) { return true; }
+  if (method == 'DELETE' && p.startsWith(adminAuthInvitePrefix)) { return true; }
+  if (method == 'POST' && p.startsWith(adminAuthUsersPrefix)) { return true; }
+  if (method == 'POST' && p.startsWith(adminAuthSessionsPrefix)) { return true; }
+  if (method == 'POST' && p == adminAuthRoleGrantsPath) { return true; }
+  if (method == 'DELETE' && p.startsWith(adminAuthRoleGrantPrefix)) {
     return true;
   }
-  if (method == 'GET' && authOperationPath == adminAuthSessionsPath) {
-    return true;
-  }
-  if (method == 'GET' && authOperationPath == adminAuthAuditLogPath) {
-    return true;
-  }
-  if (method == 'GET' && authOperationPath == adminAuthInvitesPath) {
-    return true;
-  }
-  if (method == 'POST' && authOperationPath == adminAuthInvitesPath) {
-    return true;
-  }
-  if (method == 'DELETE' &&
-      authOperationPath.startsWith(adminAuthInvitePrefix)) {
-    return true;
-  }
-  if (method == 'POST' && authOperationPath.startsWith(adminAuthUsersPrefix)) {
-    return true;
-  }
-  if (method == 'POST' &&
-      authOperationPath.startsWith(adminAuthSessionsPrefix)) {
-    return true;
-  }
-  if (method == 'POST' && authOperationPath == adminAuthRoleGrantsPath) {
-    return true;
-  }
-  if (method == 'DELETE' &&
-      authOperationPath.startsWith(adminAuthRoleGrantPrefix)) {
-    return true;
-  }
-  if (method == 'GET' && authOperationPath == adminAuthOrgUnitsPath) {
-    return true;
-  }
-  if (method == 'POST' && authOperationPath == adminAuthOrgUnitsPath) {
-    return true;
-  }
-  if (method == 'PATCH' &&
-      authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
-      authOperationPath.endsWith('/parent')) {
-    return true;
-  }
-  if (authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+  if (method == 'GET' && p == adminAuthOrgUnitsPath) { return true; }
+  if (method == 'POST' && p == adminAuthOrgUnitsPath) { return true; }
+  if (method == 'PATCH' && p.startsWith(adminAuthOrgUnitPrefix) &&
+      p.endsWith('/parent')) { return true; }
+  if (p.startsWith(adminAuthOrgUnitPrefix) &&
       ((method == 'PATCH' &&
-              (authOperationPath.endsWith('/suspend') ||
-                  authOperationPath.endsWith('/reactivate'))) ||
-          (method == 'POST' && authOperationPath.endsWith('/delete')))) {
+              (p.endsWith('/suspend') || p.endsWith('/reactivate'))) ||
+          (method == 'POST' && p.endsWith('/delete')))) {
     return true;
   }
-  if (method == 'PATCH' &&
-      authOperationPath.startsWith(adminAuthLocationsPrefix) &&
-      authOperationPath.endsWith('/org-unit')) {
-    return true;
-  }
-  if (authOperationPath.startsWith(adminAuthLocationsPrefix) &&
+  if (method == 'PATCH' && p.startsWith(adminAuthLocationsPrefix) &&
+      p.endsWith('/org-unit')) { return true; }
+  if (p.startsWith(adminAuthLocationsPrefix) &&
       ((method == 'PATCH' &&
-              (authOperationPath.endsWith('/suspend') ||
-                  authOperationPath.endsWith('/reactivate'))) ||
-          (method == 'POST' && authOperationPath.endsWith('/delete')))) {
+              (p.endsWith('/suspend') || p.endsWith('/reactivate'))) ||
+          (method == 'POST' && p.endsWith('/delete')))) {
     return true;
   }
   return false;
 }
 
-String _canonicalAuthOperationPath(String path) {
-  if (path == authTeamRolesPath) return adminAuthRolesPath;
-  if (path.startsWith(authTeamRolePrefix)) {
-    return '$adminAuthRolePrefix${path.substring(authTeamRolePrefix.length)}';
-  }
-  if (path == authTeamRoleGrantsPath) return adminAuthRoleGrantsPath;
-  if (path.startsWith(authTeamRoleGrantPrefix)) {
-    return '$adminAuthRoleGrantPrefix'
-        '${path.substring(authTeamRoleGrantPrefix.length)}';
-  }
-  if (path == authTeamUsersPath) return adminAuthUsersPath;
-  if (path.startsWith(authTeamUsersPrefix)) {
-    return '$adminAuthUsersPrefix${path.substring(authTeamUsersPrefix.length)}';
-  }
-  if (path == authTeamInvitesPath) return adminAuthInvitesPath;
-  if (path.startsWith(authTeamInvitePrefix)) {
-    return '$adminAuthInvitePrefix'
-        '${path.substring(authTeamInvitePrefix.length)}';
-  }
-  if (path == authTeamOrgUnitsPath) return adminAuthOrgUnitsPath;
-  if (path.startsWith(authTeamOrgUnitPrefix)) {
-    return '$adminAuthOrgUnitPrefix'
-        '${path.substring(authTeamOrgUnitPrefix.length)}';
-  }
-  if (path.startsWith(authTeamLocationsPrefix)) {
-    return '$adminAuthLocationsPrefix'
-        '${path.substring(authTeamLocationsPrefix.length)}';
-  }
-  return path;
-}
+final List<AuthOperationPathTranslationEntry> _authOpsPathTable = <
+    AuthOperationPathTranslationEntry>[
+  (teamPath: authTeamRolesPath, adminPath: adminAuthRolesPath, isPrefix: false),
+  (teamPath: authTeamRolePrefix, adminPath: adminAuthRolePrefix, isPrefix: true),
+  (teamPath: authTeamRoleGrantsPath, adminPath: adminAuthRoleGrantsPath, isPrefix: false),
+  (teamPath: authTeamRoleGrantPrefix, adminPath: adminAuthRoleGrantPrefix, isPrefix: true),
+  (teamPath: authTeamUsersPath, adminPath: adminAuthUsersPath, isPrefix: false),
+  (teamPath: authTeamUsersPrefix, adminPath: adminAuthUsersPrefix, isPrefix: true),
+  (teamPath: authTeamInvitesPath, adminPath: adminAuthInvitesPath, isPrefix: false),
+  (teamPath: authTeamInvitePrefix, adminPath: adminAuthInvitePrefix, isPrefix: true),
+  (teamPath: authTeamOrgUnitsPath, adminPath: adminAuthOrgUnitsPath, isPrefix: false),
+  (teamPath: authTeamOrgUnitPrefix, adminPath: adminAuthOrgUnitPrefix, isPrefix: true),
+  (teamPath: authTeamLocationsPrefix, adminPath: adminAuthLocationsPrefix, isPrefix: true),
+];
+
+String _canonicalAuthOperationPath(String path) =>
+    canonicalAuthOperationPath(path, _authOpsPathTable);
 
 String? _orgUnitIdFromParentPath(String path) {
   if (!path.startsWith(adminAuthOrgUnitPrefix)) return null;

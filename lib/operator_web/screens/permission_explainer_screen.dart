@@ -165,7 +165,7 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
       'provenance row capturing reader, reason, target, and records-read '
       'count. MFA required.',
 
-  // team.* (16)
+  // team.* (17)
   'team.users.view': "View the operator's user list.",
   'team.users.invite': 'Create invites for users in own operator.',
   'team.users.deactivate': 'Suspend a user in own operator.',
@@ -175,6 +175,8 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
       'Admin-initiated password reset for a team member.',
   'team.users.reset_mfa':
       'Start or cancel delayed authenticator-app removal for a team member after fresh authentication.',
+  'team.users.self_update':
+      'Change your own display name or email from My Account. Distinct from team.users.invite which gates editing someone else; every signed-in operator role is granted this key by default.',
   'team.roles.view': "View the operator's role list.",
   'team.roles.create_custom': 'Create operator-scoped custom role.',
   'team.roles.assign': 'Grant role to user within own operator.',

@@ -584,6 +584,13 @@ class _FreshnessRequiredGateway
   }
 
   @override
+  Future<SelfProfilePatchResult> patchSelfProfile(
+    SelfProfilePatchPayload patch,
+  ) {
+    throw const AccountSessionFreshMfaRequiredException();
+  }
+
+  @override
   Future<AccountSessionSignOutOthersResult> signOutOtherSessions({
     required Iterable<String> sessionIds,
   }) {

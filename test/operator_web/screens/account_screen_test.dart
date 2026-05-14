@@ -72,6 +72,23 @@ class _FakeAccountGateway implements WebAccountGateway {
       updatedAt: DateTime.utc(2026, 5, 14, 12),
     );
   }
+
+  @override
+  Future<SelfProfilePatchResult> patchSelfProfile(
+    SelfProfilePatchPayload patch,
+  ) async {
+    // Test default — the account screen test doesn't exercise the
+    // self-profile path. The W-3 dedicated test
+    // (`my_account_screen_test.dart`) drives a real fake.
+    if (failWith != null) throw failWith!;
+    return SelfProfilePatchResult(
+      userId: 'uid-1',
+      email: patch.email ?? 'alex@brio-restaurants.com',
+      displayName: patch.displayName ?? 'Alex Morrison',
+      emailChanged: patch.email != null,
+      displayNameChanged: patch.displayName != null,
+    );
+  }
 }
 
 OperatorWebSession sessionWithRole(

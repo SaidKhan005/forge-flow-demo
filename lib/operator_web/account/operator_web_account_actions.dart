@@ -67,6 +67,26 @@ abstract class OperatorWebAccountActions {
     }
   }
 
+  /// Wave 2 W-3 — self-service profile edit. Routes through the
+  /// account gateway (which owns the freshness gate for email change)
+  /// and surfaces the result so the screen can decide whether to force
+  /// a sign-out.
+  Future<SelfProfilePatchResult?> patchSelfProfile({
+    String? displayName,
+    String? email,
+  }) async {
+    if (this is! OperatorWebAccountGatewayProvider) return null;
+    final gateway = (this as OperatorWebAccountGatewayProvider).accountGateway;
+    try {
+      return await gateway.patchSelfProfile(
+        SelfProfilePatchPayload(displayName: displayName, email: email),
+      );
+    } on AccountSessionFreshMfaRequiredException catch (error) {
+      _dispatchFreshMfaRedirect(error);
+      rethrow;
+    }
+  }
+
   WebAccountSessionGateway? get _accountSessionGateway {
     if (this is OperatorWebAccountGatewayProvider) {
       final gateway =
