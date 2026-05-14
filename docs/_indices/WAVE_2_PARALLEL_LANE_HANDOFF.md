@@ -161,6 +161,59 @@ powershell.exe -ExecutionPolicy Bypass -File scripts/install_git_hooks.ps1
 # already canonical at .githooks/. Proceed.
 ```
 
+# Step 0.5 — Tool readiness check (install missing tools NOW, off the gate)
+
+You're on the operator's other device. We can't assume your CLI tool
+set matches the main orchestrator's machine. Run the checks below
+BEFORE the required reading. Install anything missing immediately
+unless it requires admin elevation (in which case escalate to operator
+via `scope_clarifications.md`).
+
+## Tier 1 — REQUIRED (workflow blocks without these)
+
+| Tool | Check | Install if missing |
+|---|---|---|
+| `git` | `git --version` | Operator must install (admin needed); escalate. |
+| `gh` (GitHub CLI) | `gh --version` | Windows: `winget install GitHub.cli`. Mac: `brew install gh`. Linux: per https://cli.github.com/manual/installation. Then `gh auth login`. |
+| `flutter` | `flutter --version` | https://docs.flutter.dev/get-started/install — full SDK. Required for `dart analyze` + tests. Sets up `dart` automatically. |
+| PowerShell or bash | `powershell.exe -Version` (Win) or `bash --version` (Mac/Linux) | Built-in on every supported OS. Hooks installer uses powershell.exe on Windows; if you're on Mac/Linux the canonical hook install path is via `.githooks/install` bash helper instead — check `scripts/` first. |
+
+## Tier 2 — STRONGLY RECOMMENDED (live UI tests, mobile lane)
+
+| Tool | Check | Install if missing |
+|---|---|---|
+| `adb` (Android platform-tools) | `adb version` OR `$ANDROID_HOME/platform-tools/adb version` | Windows: `winget install Google.AndroidStudio` (full Studio) or download platform-tools only from https://developer.android.com/studio/releases/platform-tools. Mac: `brew install --cask android-platform-tools`. Linux: `apt install android-tools-adb`. **Required for Lane M-Poll and Lane U mobile bundle (U-5..U-7).** |
+| Claude Preview MCP | Listed in tool inventory at session start | Should be available out-of-the-box in Claude Code. If not surfaced, ask operator to enable it in your session. **Required for Live UI check on Lane U Ops Console bundle.** |
+
+## Tier 3 — NICE TO HAVE (fallbacks exist)
+
+| Tool | Check | Install if missing |
+|---|---|---|
+| `rg` (ripgrep) | `rg --version` | Windows: `winget install BurntSushi.ripgrep.MSVC`. Mac: `brew install ripgrep`. Linux: `apt install ripgrep`. (The Grep tool subsumes it in Claude Code, so non-blocking.) |
+| `psql` | `psql --version` | Only needed if you debug Postgres directly. Most Claude2 lanes don't touch the DB. |
+| `node`, `python` | `node --version`, `python --version` | Only needed for specific scripts. Skip unless a worker prompts you. |
+| `docker` | `docker --version` | Only needed if a worker needs local Postgres for integration testing — most Claude2 lanes (U/V/D) don't. M-Poll might want it for end-to-end demo-live state verification. |
+
+## Decision rules
+
+- **Tier 1 missing:** STOP. Install immediately. Escalate to operator only if admin elevation needed.
+- **Tier 2 missing AND your assigned lane needs it:** install immediately. If install fails or needs admin, write a `scope_clarifications.md` row + pick a different lane that doesn't need that tool. Don't fake a Live UI check by skipping it.
+- **Tier 3 missing:** keep going. Note in your first-action announcement what you don't have so the operator can fix later if it bites.
+
+## Sanity-check the install AFTER
+
+After installing, re-run the check command + confirm version is recent
+enough. For `gh`, also run `gh auth status` — if it says "not logged
+in", run `gh auth login --web` and let the operator complete the OAuth
+flow.
+
+## When in doubt
+
+If a tool install fails with a permission error, an unknown package
+manager, or a missing dependency you can't satisfy: stop, write a
+`scope_clarifications.md` row, and pick a lane that doesn't need it.
+Don't burn 30 minutes flailing at toolchain.
+
 # Required reading (in this order, no skipping)
 
 1. `CLAUDE.md` — entire file. Especially "Workflow", "Hard Promises",
@@ -495,14 +548,15 @@ operator pause):
   phantom zeroes. If something can't be computed, say so explicitly
   rather than rendering "0".
 
-# First action (after Step 0 + required reading)
+# First action (after Step 0 + Step 0.5 + required reading)
 
 Announce:
 
-> "Bootstrap complete. Master tip at <hash>. Hooks installed. Read
-> CLAUDE.md, NEXT_WAVE_PLAN, WAVE_2_LEDGER, DEBUG_MD_IMPLEMENTATION_STATUS,
-> Wave 1 closeout, POST_HARDENING_FOLLOWUPS. Phase 0 watch loop armed in
-> background.
+> "Bootstrap complete. Master tip at <hash>. Hooks installed. Tool
+> readiness: Tier 1 ✅ [list checked]; Tier 2 ✅ / ⚠ [list any missing
+> + decision]; Tier 3 noted. Read CLAUDE.md, NEXT_WAVE_PLAN,
+> WAVE_2_LEDGER, DEBUG_MD_IMPLEMENTATION_STATUS, Wave 1 closeout,
+> POST_HARDENING_FOLLOWUPS. Phase 0 watch loop armed in background.
 >
 > Lanes assigned: U (7 slices, bundling to 2 fat PRs), V (1), D (2),
 > M-Poll (1, operator-gated). 11 slices total.
