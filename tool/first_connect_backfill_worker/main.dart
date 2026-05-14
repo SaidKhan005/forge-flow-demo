@@ -101,6 +101,7 @@ import '../advisor_proxy/phase_8_vendor_integration_factories.dart'
         buildPhase8VendorIntegrationFactoriesFromCredentials,
         kPhase8DefaultWebhookPublicBaseUri,
         kPhase8WebhookPublicBaseUriEnvName;
+import '../advisor_proxy/email_dispatch/notif_event_telemetry_hook.dart';
 import '../integration_sync_worker/backfill_dispatch.dart';
 import '../integration_sync_worker/dispatch.dart' show kSyncWorkerServicePrincipalId;
 
@@ -1475,6 +1476,16 @@ Future<int> runCli(
   final workerId =
       '${config.workerIdPrefix}-${pid.toRadixString(16)}-${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16)}';
 
+  // Wave 2 EN-3 — bind the production telemetry hook so backfill
+  // terminal outcomes emit a `notif.event.unwired` warning even
+  // while the full `NotificationEventFanout` Postgres seams are
+  // pending. Tests inject `dispatcherOverride` and bypass the
+  // default. See `tool/advisor_proxy/email_dispatch/notif_event_telemetry_hook.dart`
+  // for the helper.
+  final productionDispatcher = IntegrationSyncWorkerBackfillDispatch(
+    onTerminalOutcome: buildBackfillTerminalTelemetryHook(),
+  );
+
   switch (args.mode) {
     case WorkerMode.runOnce:
       try {
@@ -1486,9 +1497,7 @@ Future<int> runCli(
           workerId: workerId,
           maxJobsPerTick: config.maxJobsPerTick,
           claimStaleAfter: config.claimStaleAfter,
-          dispatcher:
-              dispatcherOverride ??
-              const IntegrationSyncWorkerBackfillDispatch(),
+          dispatcher: dispatcherOverride ?? productionDispatcher,
         );
         stdoutSink.writeln(
           'first_connect_backfill_worker runOnce: '
@@ -1509,9 +1518,7 @@ Future<int> runCli(
         adapterFactory: adapterFactory,
         workerId: workerId,
         config: config,
-        dispatcher:
-            dispatcherOverride ??
-            const IntegrationSyncWorkerBackfillDispatch(),
+        dispatcher: dispatcherOverride ?? productionDispatcher,
         out: stdoutSink,
         err: stderrSink,
       );
