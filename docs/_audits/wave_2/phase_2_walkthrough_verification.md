@@ -226,7 +226,7 @@ Live status, demo-live switch placement, and ops-portal deeplink all confirmed v
 | OW-5d Remove "display name email..." subtitle | ✅ | No subtitle on Profile section. |
 | OW-8a Remove "protect your own team..." subtitle | ✅ | No subtitle; section header is just "Security". |
 | OW-8b Remove 4 top tiles | ✅ | No tile strip. |
-| OW-8c Lost-authenticator behaviour | 🟢 | Two-factor sign-in card renders "Enable two-factor sign-in" (operator not enrolled in demo session). "Lost authenticator" lost-access pathway is the admin-side "Request removal" flow per the C-7 backbone; not surfaced in the empty-MFA state. Needs a session-with-MFA-enrolled spot-check to validate the "Request removal" / "Cancel request" copy. |
+| OW-8c Lost-authenticator behaviour | ✅ | **Round 3 (2026-05-14 evening 2) drove the MFA-enrolled CTA shift live** via `session.mfaEnrolled: true` dev patch on `kDemoOperatorWebSession`. With the flag flipped the card rendered: badge "MFA: Enrolled" (positive colour), headline "Save your recovery codes", body "1 method is enrolled. View your recovery codes before adding more sign-in methods or changing 2FA settings.", primary CTA "View recovery codes". This matches `MfaCardStage.enrolled` + `!recoveryCodesViewed` at [mfa_card_controller.dart:324-344](lib/operator_web/account/mfa_card_controller.dart:324). The deeper "Request removal" + "Cancel request" sub-flow is code-anchored at [my_account_screen.dart:313-345](lib/operator_web/screens/my_account_screen.dart:313) (red `FilledButton` "Request removal" in `Turn off 2FA?` confirmation dialog) + [mfa_card_controller.dart:376-392](lib/operator_web/account/mfa_card_controller.dart:376) (`MfaCardStage.removalRequested` → badge "MFA: Removal requested" + CTA "Manage two-factor sign-in" with cancel tooltip + actionKey `account_section_mfa_cancel_removal`). Exercising those sub-stages live requires seeding pending-removal state in `DemoWebSecurityGateway` — filed as **OW-8c-FU-demo-gateway-pending-removal** (DEFER V1.1 demo polish, code-anchored + tested). |
 | OW-8d Consolidate Sign in & Security into My account | ✅ | Verified — no standalone Sign in Security nav item. Security + Recent sign-in activity + Two-factor sign-in + Active Sessions all render inline on My account. |
 
 #### OW-6 Team Members (debug.md 152-156)
@@ -651,3 +651,162 @@ production behavior and are not V1-blocking.
   initial state to `OperatorWebCompleted` only when the flag is set
   AND `kOperatorWebDemoAuth` is also true. Filing as
   **U-FU-demo-skip-onboarding-flag** would be appropriate.
+
+## Appendix — Round 3 closeout (operator-web lane, 2026-05-14 evening 2)
+
+Three remaining surfaces from the round-2 deferred set were closed in
+this round, with two live drives + two code-anchors. Patches 1 (CSP
+relaxation), 2 (skip onboarding), and 4 (mfaEnrolled=true on
+`kDemoOperatorWebSession`) were applied, the surfaces driven via Preview
+MCP at `localhost:8181`, then all three patches reverted before commit
+(verified via `git status` clean).
+
+### U-1 Login screen — Sign-out path
+
+Clicked the top-bar "Sign out" action via `__ff.clickNav('Sign out')`
+at `(995, 39)`. The demo auth source emitted `OperatorWebSignedOut`,
+and the router mapped it to the **Welcome screen** (NeedsToken state),
+not the live email/password Login screen. Welcome rendered: F&F logo +
+"Operator Web Console" subtitle, "Step 1 of 4 — Welcome" chip,
+"Welcome to Forge & Flow" heading + onboarding explainer, "What
+happens next" card, Invite-code input, "Continue to password setup"
+CTA, plus the support fallback line at the bottom.
+
+**Why the live Login screen wasn't reached:** demo source does not
+emit `OperatorWebNeedsSignIn` — that state is owned by the live
+`FirebaseOperatorWebAuthSource` and renders `OperatorWebLoginScreen`
+(email/password form). The demo `signOut()` always lands on
+`SignedOut → NeedsToken → Welcome`. The live Login screen is
+code-anchored in `lib/operator_web/screens/login_screen.dart` and
+gated on `OnboardingStage.signingIn` in
+[operator_web_router.dart](lib/operator_web/router/operator_web_router.dart).
+Live drive of U-1 requires either (a) booting with
+`OPERATOR_WEB_DEMO_AUTH=false` + a real proxy, or (b) a follow-up
+demo-source variant that emits `NeedsSignIn` on sign-out — filed as
+**U-1-FU-demo-needs-signin-emission** (DEFER V1.1).
+
+### OW-8c — Two-factor card MFA-enrolled CTA
+
+Applied Patch 4 (`mfaEnrolled: true` on `kDemoOperatorWebSession`),
+booted, navigated `My account`, scrolled to Two-factor sign-in card.
+Live state captured:
+
+- Badge top-right: **"MFA: Enrolled"** (positive colour per
+  [mfa_card_controller.dart:1042](lib/operator_web/account/mfa_card_controller.dart:1042))
+- Body: "Two-factor sign-in (MFA) means a one-time code is required at
+  every sign-in, in addition to your password. We strongly recommend
+  keeping it on for every operator user."
+- Subhead: "Save your recovery codes"
+- Body: "1 method is enrolled. View your recovery codes before adding
+  more sign-in methods or changing 2FA settings."
+- CTA: **"View recovery codes"** (orange) — actionKey
+  `account_section_mfa_view_recovery_codes` per
+  [mfa_card_controller.dart:341](lib/operator_web/account/mfa_card_controller.dart:341)
+- Footer: "View audit log" pointer
+
+This matches `MfaCardStage.enrolled` with
+`recoveryCodesViewed == false` at
+[mfa_card_controller.dart:330-344](lib/operator_web/account/mfa_card_controller.dart:330).
+
+The deeper "Request removal" / "Cancel request" sub-states are gated
+on `DemoWebSecurityGateway` seeding pending-removal state, which the
+`session.mfaEnrolled = true` flag alone does not exercise. Those
+sub-states are fully code-anchored:
+
+- **"Request removal" copy**: red `FilledButton` in the `Turn off
+  2FA?` confirmation dialog at
+  [my_account_screen.dart:330-339](lib/operator_web/screens/my_account_screen.dart:330)
+- **"Cancel request" pathway**: `MfaCardStage.removalRequested` →
+  badge "MFA: Removal requested" + CTA "Manage two-factor sign-in"
+  (tooltip "Cancel the pending 2FA removal or review account
+  protection.") + actionKey `account_section_mfa_cancel_removal`
+  at [mfa_card_controller.dart:376-392](lib/operator_web/account/mfa_card_controller.dart:376)
+- **Cancel handler**: `_handleCancelMfaRemoval` calls
+  `_mfaController.cancelRemoval()` at
+  [my_account_screen.dart:347-350](lib/operator_web/screens/my_account_screen.dart:347)
+
+Filed **OW-8c-FU-demo-gateway-pending-removal** to seed the deeper
+sub-states in demo (V1.1 demo polish, not V1-blocking).
+
+### OW-4 inverse — Locations nav item at Business scope (code-anchor)
+
+Gaps register defers the live drive as
+`OW-4-FU-business-scope-demo` (OPERATOR DECISION — defer V1.1; demo
+session is location-pinned and the scope-flip is currently a no-op).
+The Locations-nav-item conditional is code-anchored at
+[operator_web_router.dart:989-995](lib/operator_web/router/operator_web_router.dart:989):
+
+```dart
+if (!isLocationScope)
+  const OperatorWebNavItem(
+    id: kOperatorWebNavLocations,
+    title: 'Locations',
+    icon: Icons.account_tree_outlined,
+    group: 'Business',
+  ),
+```
+
+The Location-scope half (no Locations item) was already verified live
+in Round 1's matrix; the Business-scope inverse (Locations item
+appears) is gated on the conditional above flipping to false. Code
+matches the OW-4 contract; live drive deferred per gaps register.
+
+### RP-15 manager-once override cap (code-anchor)
+
+Gaps register defers the live drive as
+`RP-15-FU-cap-state-manager-session` (DEFER — cap logic is
+code-anchored + tested). The cap-rejection translator + operator-
+facing copy live at
+[benchmarks_screen.dart:187-198](lib/operator_web/screens/benchmarks_screen.dart:187):
+
+```dart
+String? _capRejection(Object error) {
+  final text = error.toString();
+  if (text.contains('manager_override_cap_reached')) {
+    return 'You have already set a benchmark override this month. '
+        'Ask your admin to undo or extend the existing override.';
+  }
+  return null;
+}
+```
+
+The cap state-machine itself is server-side (proxy returns
+`manager_override_cap_reached` envelope); the operator-web client
+renders the friendly copy when the envelope arrives. Live exercise
+requires either a Manager-role demo session OR text-input automation
+to submit two override values — both deferred.
+
+### Round 3 disposition summary
+
+| Surface | Live state | Disposition |
+|---|---|---|
+| U-1 Live login screen | code-anchored | Demo source maps signOut → Welcome (NeedsToken), not NeedsSignIn → Login. Filed **U-1-FU-demo-needs-signin-emission** (DEFER V1.1). |
+| OW-8c Two-factor MFA-enrolled CTA | ✅ live | "MFA: Enrolled" badge + "View recovery codes" CTA verified live via session.mfaEnrolled patch. Deeper "Request removal" sub-state code-anchored; filed **OW-8c-FU-demo-gateway-pending-removal** (DEFER V1.1). |
+| OW-4 Business-scope inverse | code-anchored | Defer per existing **OW-4-FU-business-scope-demo** (OPERATOR DECISION). Code matches contract. |
+| RP-15 manager-once cap | code-anchored | Defer per existing **RP-15-FU-cap-state-manager-session** (DEFER — code-anchored + tested). |
+
+### Patches applied + reverted (round 3)
+
+All three patches reverted at end of round (verified via `git status`
+clean on `web/index.html`, `lib/main_operator_web.dart`,
+`lib/operator_web/auth/operator_web_auth_source.dart`):
+
+- **Patch 1** — CSP relaxation in `web/index.html`. Required so the
+  dev DDC bundle's inline bootstrap script could execute. Production
+  `'sha256-...'` allowlist rejects dev DDC. Reverted.
+- **Patch 2** — `_DemoOperatorWebAuthSourceWithTeamSurfaces`
+  `super(initial: …)` flipped from `OperatorWebNeedsToken` to
+  `OperatorWebCompleted(session: kDemoOperatorWebSession)` so the
+  shell rendered immediately. Reverted.
+- **Patch 4** — `mfaEnrolled: true` added to `kDemoOperatorWebSession`
+  (default `false`). Required to exercise `MfaCardStage.enrolled`
+  rendering. Reverted.
+
+### Operator-web lane closure
+
+With Round 3 closing the deferred set + all gaps explicitly disposed
+(fixed, code-anchored, or DEFER-V1.1 with operator decision filed),
+the **operator-web lane is ✅ DONE** for the Phase 2 walkthrough. Next
+lane per Status board: **Admin console** (owned by Claude2 on the
+second machine per `docs/_indices/PHASE_2_WALKTHROUGH_CLAUDE2_HANDOFF.md`)
++ **Mobile** (Samsung A54 lane pending operator instruction).
