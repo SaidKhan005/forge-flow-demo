@@ -250,6 +250,13 @@ void main() {
         ),
         '19.50',
       );
+      // Wave 2 S-1 adds the blended-wage summary card above the bands,
+      // so the form's save button can fall just below the fold at the
+      // 1280x900 viewport. Scroll to it before tapping.
+      await tester.ensureVisible(
+        find.byKey(const Key('wage_authority_form_save_edit_row-foh')),
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('wage_authority_form_save_edit_row-foh')),
       );
@@ -386,6 +393,175 @@ void main() {
         findsOneWidget,
       );
     });
+
+    // Wave 2 S-1 — 3-band form coverage anchored to debug.md:198-235.
+    testWidgets(
+      'form mounts FOH / BOH / Management bands with the blended-wage '
+      'summary card above them',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 900));
+        final session = sessionWithRoles(<String>['operator_owner']);
+        final gateway = _FakeGateway();
+        await tester.pumpWidget(wrap(WageAuthorityScreen(
+          session: session,
+          locationId: session.primaryLocationId,
+          locationName: session.primaryLocationName,
+          gateway: gateway,
+        )));
+        await tester.pumpAndSettle();
+        // The new blended-wage summary card renders above the bands.
+        expect(
+          find.byKey(const Key('wage_authority_blended_summary_card')),
+          findsOneWidget,
+        );
+        // All three bands present.
+        expect(
+          find.byKey(const Key('wage_authority_bucket_foh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('wage_authority_bucket_boh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('wage_authority_bucket_manager')),
+          findsOneWidget,
+        );
+        // Empty state → card shows the "not enough data yet" line.
+        expect(
+          find.byKey(const Key('wage_authority_blended_empty')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'live blended-wage preview updates as the operator types in the '
+      'rate field (no save round-trip needed)',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 900));
+        final session = sessionWithRoles(<String>['operator_owner']);
+        final existing = recordFor(
+          id: 'row-foh',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 16.00,
+          weightedHours: 8,
+        );
+        final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
+        await tester.pumpWidget(wrap(WageAuthorityScreen(
+          session: session,
+          locationId: session.primaryLocationId,
+          locationName: session.primaryLocationName,
+          gateway: gateway,
+        )));
+        await tester.pumpAndSettle();
+        // Initial blended = 16 × 8 / 8 = \$16.00/hr.
+        expect(find.textContaining('\$16.00/hr'), findsWidgets);
+        // Open edit, change rate to 20.00.
+        await tester.tap(
+          find.byKey(const Key('wage_authority_row_edit_btn_row-foh')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(
+            const Key('wage_authority_form_hourly_rate_edit_row-foh'),
+          ),
+          '20.00',
+        );
+        await tester.pump();
+        // The blended hourly text re-renders live.
+        final blendedText = tester
+            .widget<Text>(
+              find.byKey(const Key('wage_authority_blended_hourly')),
+            )
+            .data;
+        expect(blendedText, contains('\$20.00/hr'));
+        // The save round-trip has not fired — gateway upsert log is
+        // still empty.
+        expect(gateway.upsertCalls, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'each row carries a plain-English vendor applicability label',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 900));
+        final session = sessionWithRoles(<String>['operator_owner']);
+        final humanityRow = recordFor(
+          id: 'row-humanity',
+          roleName: 'Cook',
+          laborBucket: 'boh',
+          vendorId: 'humanity',
+          vendorRoleId: 'Cook',
+        );
+        final manualRow = recordFor(
+          id: 'row-manual',
+          roleName: 'Host',
+          laborBucket: 'foh',
+        );
+        final gateway = _FakeGateway()
+          ..seed(<WageRoleRowRecord>[humanityRow, manualRow]);
+        await tester.pumpWidget(wrap(WageAuthorityScreen(
+          session: session,
+          locationId: session.primaryLocationId,
+          locationName: session.primaryLocationName,
+          gateway: gateway,
+        )));
+        await tester.pumpAndSettle();
+        // Humanity row reads as a sync target.
+        final humanityLabel = tester
+            .widget<Text>(
+              find.byKey(
+                const Key(
+                  'wage_authority_row_vendor_label_row-humanity',
+                ),
+              ),
+            )
+            .data;
+        expect(humanityLabel, contains('Humanity'));
+        expect(humanityLabel, contains('Cook'));
+        // Manual row reads as "no labor vendor connected" (no other
+        // row carries a non-humanity vendor and the screen wasn't
+        // told about connected vendors via the constructor).
+        final manualLabel = tester
+            .widget<Text>(
+              find.byKey(
+                const Key('wage_authority_row_vendor_label_row-manual'),
+              ),
+            )
+            .data;
+        expect(manualLabel, contains('Manual only'));
+      },
+    );
+
+    testWidgets(
+      'empty bucket renders the hierarchy-aware "no wage rates set at '
+      'this scope yet" CTA',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 900));
+        final session = sessionWithRoles(<String>['operator_owner']);
+        final gateway = _FakeGateway();
+        await tester.pumpWidget(wrap(WageAuthorityScreen(
+          session: session,
+          locationId: session.primaryLocationId,
+          locationName: session.primaryLocationName,
+          gateway: gateway,
+        )));
+        await tester.pumpAndSettle();
+        // The empty-state slot still uses the same key so existing
+        // selectors keep working.
+        expect(
+          find.byKey(const Key('wage_authority_empty_foh')),
+          findsOneWidget,
+        );
+        // New copy advertises scope-aware inheritance language.
+        expect(
+          find.textContaining('No wage rates set at this scope yet'),
+          findsWidgets,
+        );
+      },
+    );
 
     testWidgets(
       'renders HP #11 hierarchy scope notice (selected scope, inherited '
