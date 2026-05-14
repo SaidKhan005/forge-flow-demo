@@ -902,7 +902,15 @@ class _AccountInfoSummaryCard extends StatelessWidget {
             ? 'No role label available'
             : info.roleLabels.join(', '),
       ),
-      _AccountInfoDetail('MFA', info.mfaEnabled ? 'Enabled' : 'Not enabled'),
+      // Wave 2 MO-5b — canonical "Two-factor authentication" label.
+      // The 128-px label cell renders mono10 (12 px); this string wraps
+      // to two lines, which matches the existing variable-height row
+      // pattern (`_AccountInfoDetailRow` uses crossAxisAlignment.start
+      // and `softWrap: true` for values).
+      _AccountInfoDetail(
+        'Two-factor authentication',
+        info.mfaEnabled ? 'Enabled' : 'Not enabled',
+      ),
       if (lastLoginAt != null)
         _AccountInfoDetail('Last login', _formatAccountDate(lastLoginAt)),
       if (lastActiveAt != null)

@@ -463,4 +463,87 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'Wave 2 MO-5b — Account tab uses canonical "Two-factor '
+    'authentication" labeling',
+    (tester) async {
+      // MO-5b — normalize the five MFA label variants found across
+      // mobile surfaces ("Two-factor security", "Two-factor
+      // verification", "Two-factor update", "MFA", and the canonical
+      // "Two-factor authentication") to the operator-approved
+      // canonical: "Two-factor authentication".
+      //
+      // This test pins the Account tab surfaces:
+      //   1. Section header (`_settingsSection` title) — was
+      //      "Two-factor security" → now "Two-factor authentication".
+      //   2. Pointer row label — was "Manage two-factor security on
+      //      Ops Web" → now "Manage two-factor authentication on
+      //      Ops Web".
+      //   3. Account info card row label — was "MFA" → now
+      //      "Two-factor authentication" (wraps to 2 lines inside the
+      //      128-px label cell; constraint documented in
+      //      `settings_data_sections.dart`).
+      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+
+      final notifier = _notifier();
+      await tester.pumpWidget(
+        _wrap(
+          notifier: notifier,
+          child: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            teamActor: _ownerActor,
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      // For operator_owner the tab order (post-MP-1) is Setup,
+      // Integrations, Account; the default landing tab is Setup. We
+      // tap Account to mount the surfaces we're pinning.
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+
+      // Canonical label appears (the section sticky header renders
+      // "Two-factor authentication"; the account info row label also
+      // renders "Two-factor authentication" — both mount under the
+      // CustomScrollView's wide cacheExtent, so use findsWidgets).
+      expect(
+        find.text('Two-factor authentication', skipOffstage: false),
+        findsWidgets,
+      );
+      expect(
+        find.text(
+          'Manage two-factor authentication on Ops Web',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+
+      // Old labels removed.
+      expect(
+        find.text('Two-factor security', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text('Two-factor verification', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text(
+          'Manage two-factor security on Ops Web',
+          skipOffstage: false,
+        ),
+        findsNothing,
+      );
+      // The bare "MFA" account-info-row label is gone (other "MFA"
+      // mentions live inside message bodies, not as standalone row
+      // labels, and remain intentional copy on this surface).
+      expect(find.text('MFA', skipOffstage: false), findsNothing);
+    },
+  );
 }

@@ -466,7 +466,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           const SettingsRowDivider(),
           _MfaStatusRow(
             key: const Key('mfa_info_row'),
-            label: 'Two-factor update',
+            label: 'Two-factor authentication update',
             message: _infoMessage!,
             color: AppColors.positive,
           ),

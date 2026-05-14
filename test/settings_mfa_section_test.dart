@@ -200,7 +200,7 @@ void main() {
     expect(find.byKey(const Key('mfa_recovery_codes_row')), findsNothing);
     expect(
       find.text(
-        'Two-factor update: Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.',
+        'Two-factor authentication update: Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.',
       ),
       findsOneWidget,
     );

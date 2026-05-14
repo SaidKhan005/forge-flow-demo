@@ -426,7 +426,7 @@ void main() {
       );
     }
 
-    testWidgets('renders email + "Two-factor verification" title', (
+    testWidgets('renders email + "Two-factor authentication" title', (
       tester,
     ) async {
       final service = _FakeMfaService();
@@ -443,7 +443,11 @@ void main() {
       );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
-      expect(find.text('Two-factor verification'), findsOneWidget);
+      // Wave 2 MO-5b — TOTP challenge title uses the canonical
+      // "Two-factor authentication" label (was "Two-factor
+      // verification"). The legacy variant must be absent.
+      expect(find.text('Two-factor authentication'), findsOneWidget);
+      expect(find.text('Two-factor verification'), findsNothing);
       expect(find.text('mfa@example.test'), findsOneWidget);
       expect(find.byKey(const Key('mfa_recovery_toggle')), findsNothing);
       expect(
