@@ -20,9 +20,10 @@ class OnboardingLayout extends StatelessWidget {
     super.key,
     required this.stepLabel,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.child,
     this.errorMessage,
+    this.showBrandMark = true,
   });
 
   /// Step pill copy (e.g. "Step 2 of 4 — Password").
@@ -31,14 +32,21 @@ class OnboardingLayout extends StatelessWidget {
   /// Display title for the screen.
   final String title;
 
-  /// 1-2 sentence "what this screen is" intro.
-  final String subtitle;
+  /// Optional 1-2 sentence "what this screen is" intro. When null, the
+  /// title sits directly above the body card with no subtitle row.
+  final String? subtitle;
 
   /// Body slot — the per-screen form / explainer column.
   final Widget child;
 
   /// Optional remediation message rendered above the body.
   final String? errorMessage;
+
+  /// When false, the round Forge & Flow brand mark + wordmark above the
+  /// step pill is omitted. The sign-in screen turns this off so the
+  /// returning operator sees a leaner card; the onboarding click path
+  /// keeps the mark on so the first-time operator gets the brand cue.
+  final bool showBrandMark;
 
   @override
   Widget build(BuildContext context) {
@@ -67,8 +75,10 @@ class OnboardingLayout extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _OnboardingBrandMark(),
-                    const SizedBox(height: 24),
+                    if (showBrandMark) ...[
+                      const _OnboardingBrandMark(),
+                      const SizedBox(height: 24),
+                    ],
                     _StepPill(
                       key: const Key('operator_web_step_pill'),
                       label: stepLabel,
@@ -80,13 +90,15 @@ class OnboardingLayout extends StatelessWidget {
                         color: AppColors.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      subtitle,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        subtitle!,
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
                       ),
-                    ),
+                    ],
                     const SizedBox(height: 22),
                     if (errorMessage != null) ...[
                       _ErrorBanner(message: errorMessage!),
