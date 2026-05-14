@@ -491,6 +491,10 @@ class _SettingsActiveSessionsSectionState
   }
 }
 
+/// U-7 MO-7d (debug.md:300) — the parent settings tab now renders the
+/// sticky "Active sessions" title, so the section's own header drops the
+/// duplicate text and keeps only the device icon plus the one-line
+/// description ("Devices currently signed in to your account.").
 class _ActiveSessionsHeader extends StatelessWidget {
   const _ActiveSessionsHeader();
 
@@ -519,22 +523,9 @@ class _ActiveSessionsHeader extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Active sessions',
-                  style: AppTextStyles.mono12(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  'Devices currently signed in to your account.',
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                ),
-              ],
+            child: Text(
+              'Devices currently signed in to your account.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -701,23 +692,12 @@ class _ActiveSessionRow extends StatelessWidget {
     return Icons.devices_other_rounded;
   }
 
+  // U-7 MO-7e (debug.md:301) — mobile rows show "when and what device"
+  // only. IP + geo are intentionally dropped from the meta line; the
+  // device label/icon already identify "what" and `lastSeenAt` covers
+  // "when". `_approximateLocation` was removed alongside the IP segment.
   static String _metaLine(AuthSessionSummary summary) {
-    final segments = <String>[];
-    final approx = _approximateLocation(summary);
-    if (approx != null) segments.add(approx);
-    segments.add('Last active ${_relative(summary.lastSeenAt)}');
-    return segments.join(' - ');
-  }
-
-  static String? _approximateLocation(AuthSessionSummary summary) {
-    final parts = <String>[];
-    if (summary.geoCountry != null && summary.geoCountry!.isNotEmpty) {
-      parts.add(summary.geoCountry!);
-    }
-    if (summary.ip != null && summary.ip!.isNotEmpty) {
-      parts.add(summary.ip!);
-    }
-    return parts.isEmpty ? null : parts.join(' - ');
+    return 'Last active ${_relative(summary.lastSeenAt)}';
   }
 
   static String _relative(DateTime when) {
