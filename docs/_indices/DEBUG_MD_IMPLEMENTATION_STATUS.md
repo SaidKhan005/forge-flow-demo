@@ -9,6 +9,7 @@
 
 ## Changelog
 
+- 2026-05-14: OW-2d flipped to CLOSED — mobile dashboard header logo propagation merged as W-5-mobile-FU PR #695. Audited Claude #2 PRs; 5 new follow-ups added to WAVE_2_LEDGER.md.
 - **2026-05-14 — Wave 2 post-merge sync.** Wave 2 closed roughly 20
   main-lane slices and 11 second-lane slices, each anchored to specific
   `debug.md` line ranges in `docs/_indices/WAVE_2_LEDGER.md`. This pass
@@ -225,7 +226,7 @@ parity work is the upstream gate.
 | OW-2a | "Audit of what's NOT exposed vs editable in setup; 1:1 admin-to-ops translation" | 🚧 IN PROGRESS | Wave 2 W-6 (PR #682) included an Account-screen identity audit + missing-field list as part of the timezone slice. The broader 1:1 admin-to-ops translation audit doc is still not stood up — defer to a dedicated field-coverage audit slice. |
 | OW-2b | "Hierarchy-sensitive label + functionality (location identity ≠ business identity)" | ✅ DONE | Wave 2 U-3 (in bundle PR #663) shipped the scope-sensitive labels on the Business Account screen. Combined with the existing hierarchy backbone in `business_setup_screen.dart` + `account_screen.dart`. |
 | OW-2c | "Remove subtitle 'these are the basics...' + 4 top tiles" | ✅ DONE | Wave 2 U-3 (in bundle PR #663). |
-| OW-2d | "Logo in PNG; replace console header logo + mobile dashboard header" | 🚧 IN PROGRESS | Wave 2 W-5 (PR #686) shipped the operator-web logo upload + operator-web shell header propagation. **The mobile dashboard header half is deferred** to the follow-up slice **W-5-mobile-FU** because plumbing `logo_url` through the mobile session shape would touch roughly 30 test files. |
+| OW-2d | "Logo in PNG; replace console header logo + mobile dashboard header" | ✅ DONE | Wave 2 W-5 (PR #686) shipped the operator-web logo upload + operator-web shell header propagation; closed by W-5-mobile-FU PR #695 (merged 2026-05-14) which propagated `logo_url` through the mobile session shape to the mobile dashboard header. |
 | OW-2e | "Business identity hierarchy-sensitive (location-level → location identity)" | ✅ DONE | Wave 2 U-3 (in bundle PR #663) — same scope-sensitive label fix as OW-2b. |
 | OW-2f | "Explain locale + how it affects everything" | 🚧 IN PROGRESS | `account_screen.dart` carries the locale field. Operator read-back still queued for Step 1 (no Wave 2 slice touched the explainer copy). |
 | OW-2g | "Some location/business settings not exposed (e.g. timezone)" | ✅ DONE | Wave 2 W-6 (PR #682) surfaced timezone on the Account screen + ran the missing-field audit list. |
