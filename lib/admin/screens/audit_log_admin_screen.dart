@@ -37,6 +37,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/models/inheritance_tree_node.dart';
+import '../../services/auth/actor_kind_label_catalog.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../services/audit_log_admin_gateway.dart';
@@ -545,11 +546,16 @@ class _AuditLogRowTile extends StatelessWidget {
   }
 
   static String _actorLabel(AuditLogAdminRow row) {
-    if (row.actorUserId != null) return '${row.actorKind} ${row.actorUserId}';
+    // Wave 2 AC-1 - raw actor_kind enum strings ("user", "forge_admin",
+    // "service_principal", "system", ...) are translated to plain
+    // English via the shared catalog so the admin row reads like UX
+    // copy instead of a wire-format dump.
+    final label = ActorKindLabelCatalog.labelFor(row.actorKind);
+    if (row.actorUserId != null) return '$label ${row.actorUserId}';
     if (row.actorPrincipalId != null) {
-      return '${row.actorKind} ${row.actorPrincipalId}';
+      return '$label ${row.actorPrincipalId}';
     }
-    return row.actorKind;
+    return label;
   }
 
   static String _targetLabel(AuditLogAdminRow row) {

@@ -45,6 +45,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/models/inheritance_tree_node.dart';
+import '../../services/auth/actor_kind_label_catalog.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/inheritance_tree.dart';
@@ -649,11 +650,17 @@ class _HierarchyRowTile extends StatelessWidget {
   }
 
   static String _actorLabel(WebAuditLogHierarchyRow row) {
-    if (row.actorUserId != null) return '${row.actorKind} ${row.actorUserId}';
+    // Wave 2 AC-1 - raw actor_kind enum strings ("user", "forge_admin",
+    // "service_principal", "system", ...) are translated to plain
+    // English via the shared catalog so the operator-web row reads as
+    // UX copy. Falls back to the raw string if the proxy ever ships a
+    // brand-new enum value.
+    final label = ActorKindLabelCatalog.labelFor(row.actorKind);
+    if (row.actorUserId != null) return '$label ${row.actorUserId}';
     if (row.actorPrincipalId != null) {
-      return '${row.actorKind} ${row.actorPrincipalId}';
+      return '$label ${row.actorPrincipalId}';
     }
-    return row.actorKind;
+    return label;
   }
 
   static String _targetLabel(WebAuditLogHierarchyRow row) {

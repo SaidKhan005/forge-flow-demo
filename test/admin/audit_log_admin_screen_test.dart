@@ -208,6 +208,73 @@ void main() {
     expect(controller.text, _locA);
   });
 
+  testWidgets('Wave 2 AC-1: actor_kind raw enum strings render through '
+      'the shared label catalog as plain English copy', (tester) async {
+    // Three rows covering the three distinct label families the
+    // catalog declares (team member, F&F admin, automated service).
+    // The raw row payload still carries the wire enum, but the
+    // rendered text MUST be the human label - never the raw string.
+    final gateway = InMemoryAuditLogAdminGateway(
+      rows: <AuditLogAdminRow>[
+        AuditLogAdminRow(
+          id: 'row-user',
+          operatorId: _opA,
+          occurredAt: DateTime.utc(2026, 5, 13, 12),
+          actorKind: 'user',
+          actorUserId: 'user-1',
+          action: 'auth.password_changed',
+        ),
+        AuditLogAdminRow(
+          id: 'row-admin',
+          operatorId: _opA,
+          occurredAt: DateTime.utc(2026, 5, 13, 13),
+          actorKind: 'forge_admin',
+          actorUserId: 'admin-7',
+          action: 'admin.support_action',
+          adminReason: 'support-ticket-321',
+        ),
+        AuditLogAdminRow(
+          id: 'row-service',
+          operatorId: _opA,
+          occurredAt: DateTime.utc(2026, 5, 13, 14),
+          actorKind: 'service_principal',
+          actorPrincipalId: 'sp-vendor-sync',
+          action: 'integration.backfill.complete',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(AuditLogAdminScreen(gateway: gateway)),
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_audit_log_admin_reason')),
+      'AC-1 label sweep',
+    );
+    await tester.tap(find.byKey(const Key('admin_audit_log_run_button')));
+    await tester.pumpAndSettle();
+
+    // Every row renders the human label - the raw enum strings
+    // (`user`, `forge_admin`, `service_principal`) must never appear
+    // on the rendered surface.
+    expect(
+      find.text('Actor: Team member user-1 • Target: —'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Actor: F&F admin admin-7 • Target: —'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Actor: Automated service sp-vendor-sync • Target: —'),
+      findsOneWidget,
+    );
+    // Defensive: the raw enum strings must not have leaked anywhere
+    // in the row body.
+    expect(find.textContaining('actor_kind'), findsNothing);
+    expect(find.textContaining('forge_admin'), findsNothing);
+    expect(find.textContaining('service_principal'), findsNothing);
+  });
+
   testWidgets('Empty rows render the friendly empty-state copy', (
     tester,
   ) async {
