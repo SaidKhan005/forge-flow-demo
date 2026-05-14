@@ -10,6 +10,12 @@
 // (owner / manager / supervisor / staff) no longer see the tab.
 // Tests covering the Data tab's body therefore use the F&F support
 // actor; the operator_owner test asserts the tab is hidden.
+//
+// MP-1 (Wave 2) — the top-level Integrations tab is now a permanent
+// home for per-category integration status, the operator master
+// Demo→Live switch (moved from Setup per MO-1-FU's interim mount),
+// and the operator-console deep-link. Gated by `showAdminTabs`, so
+// every operator admin role reaches it.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,10 +82,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   testWidgets(
-    'renders Account + Setup tabs for operator_owner (Data tab gated to F&F admin)',
+    'renders Account + Setup + Integrations tabs for operator_owner '
+    '(Data tab gated to F&F admin)',
     (tester) async {
       // MO-1 — operator_owner is admin-tier for Setup but no longer
       // sees the Data tab; that surface is F&F-internal.
+      // MP-1 — operator_owner DOES reach the new Integrations tab;
+      // it's gated by `showAdminTabs` (all operator admins).
       final notifier = _notifier();
       await tester.pumpWidget(
         _wrap(
@@ -94,6 +103,10 @@ void main() {
 
       expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
       expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings_tab_integrations')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('settings_tab_data')), findsNothing);
       expect(find.byKey(const Key('settings_tab_team')), findsNothing);
       expect(find.byKey(const Key('settings_tab_developer')), findsNothing);
@@ -101,10 +114,12 @@ void main() {
   );
 
   testWidgets(
-    'renders all three tabs (Account, Setup, Data) for F&F support actor',
+    'renders all four tabs (Account, Setup, Integrations, Data) for '
+    'F&F support actor',
     (tester) async {
       // MO-1 — F&F support is the seeded role that retains Data tab
       // visibility post-gate.
+      // MP-1 — F&F support also sees the Integrations tab.
       final notifier = _notifier();
       await tester.pumpWidget(
         _wrap(
@@ -119,15 +134,21 @@ void main() {
 
       expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
       expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings_tab_integrations')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
     },
   );
 
   testWidgets(
-    'renders all three tabs (Account, Setup, Data) for super_admin actor',
+    'renders all four tabs (Account, Setup, Integrations, Data) for '
+    'super_admin actor',
     (tester) async {
       // MO-1 — super_admin is the second seeded F&F admin role that
       // retains Data tab visibility.
+      // MP-1 — super_admin also sees the Integrations tab.
       final notifier = _notifier();
       await tester.pumpWidget(
         _wrap(
@@ -142,6 +163,10 @@ void main() {
 
       expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
       expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings_tab_integrations')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
     },
   );
@@ -357,17 +382,18 @@ void main() {
   );
 
   testWidgets(
-    'Setup tab renders Demo→Live switch for operator_owner (MO-1-FU)',
+    'Integrations tab renders Demo→Live switch for operator_owner (MP-1)',
     (tester) async {
-      // MO-1-FU — the operator master Demo→Live switch moved from the
-      // Data tab to the Setup tab after MO-1 (PR #661) gated the Data
-      // tab to F&F admin users only. operator_owner is the demo
-      // operator role; they MUST be able to reach the switch through
-      // Setup. Asserts:
-      //   (a) Setup tab is present
+      // MP-1 — the operator master Demo→Live switch's permanent home
+      // is the new top-level Integrations tab (it had a brief
+      // intermediate mount under Setup per MO-1-FU after MO-1
+      // gated the Data tab to F&F admins). operator_owner is the
+      // primary demo operator role; they MUST reach the switch
+      // through the Integrations tab. Asserts:
+      //   (a) Integrations tab is present
       //   (b) Data tab is hidden (MO-1 gate still strict)
-      //   (c) the SettingsDemoLiveSwitch widget mounts in the Setup
-      //       tab body
+      //   (c) the SettingsDemoLiveSwitch widget mounts in the
+      //       Integrations tab body
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -384,10 +410,13 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings_tab_integrations')),
+        findsOneWidget,
+      );
       expect(find.byKey(const Key('settings_tab_data')), findsNothing);
 
-      await tester.tap(find.byKey(const Key('settings_tab_authority')));
+      await tester.tap(find.byKey(const Key('settings_tab_integrations')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -399,12 +428,12 @@ void main() {
   );
 
   testWidgets(
-    'Setup tab renders Demo→Live switch for F&F support actor (MO-1-FU)',
+    'Integrations tab renders Demo→Live switch for F&F support actor (MP-1)',
     (tester) async {
-      // MO-1-FU — F&F admin retains Data tab visibility but the
-      // master Demo→Live switch lives only on the Setup tab after the
-      // move. Confirm the switch mounts (single global instance)
-      // when an F&F admin views the settings screen.
+      // MP-1 — F&F admin keeps Data tab visibility but the master
+      // Demo→Live switch lives on the Integrations tab. Confirm
+      // exactly one switch mounts (the move is a relocation, not
+      // a duplication).
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -421,13 +450,13 @@ void main() {
       );
       await tester.pump();
 
-      await tester.tap(find.byKey(const Key('settings_tab_authority')));
+      await tester.tap(find.byKey(const Key('settings_tab_integrations')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
       // Exactly one SettingsDemoLiveSwitch across the whole settings
-      // screen (TabBarView mounts all tab bodies); the move from Data
-      // to Setup is a relocation, not a duplication.
+      // screen (TabBarView mounts all tab bodies); the move from
+      // Setup to Integrations is a relocation, not a duplication.
       expect(
         find.byType(SettingsDemoLiveSwitch, skipOffstage: false),
         findsOneWidget,
