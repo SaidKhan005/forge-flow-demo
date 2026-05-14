@@ -1803,6 +1803,19 @@ Future<void> _runProxy(List<String> args) async {
             return;
           }
           // endregion
+          // region: wave_2_q_2a_email_soak_probe
+          // Wave 2 Q-2a — email soak harness probe route. Handles
+          // GET /v1/admin/email-soak/events. Test-time observation
+          // only; env-gated-inert by `EMAIL_SOAK_PROBE_TOKEN`. The
+          // router writes its own JSON response and closes the HTTP
+          // response; we early-return so `routeRequest` (which would
+          // 401 on the lack of a Firebase JWT) does not fire.
+          if (await productionBindings.emailSoakProbeRouter.tryHandle(
+            request,
+          )) {
+            return;
+          }
+          // endregion
           // region: lane_b_b8_audit_log_hierarchy_filter
           // Lane B B8 — hierarchy-scoped audit log filter. Handles
           // GET /v1/admin/auth/audit-log/hierarchy. The router does
