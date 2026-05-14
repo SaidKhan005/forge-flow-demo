@@ -199,8 +199,10 @@ Today's contents:
 - `MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
 - `PERFORMANCE_FRAMEWORK.md`.
 - `UX_ADJUSTMENT_FRAMEWORK.md`.
-- `deployFramework.md`.
 - `README.md`.
+
+The previous `deployFramework.md` was operational and now lives at
+`runbooks/deploy_runbook.md` (Wave 2 D-1).
 
 Cross-reference question: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 references the framework files with two paths

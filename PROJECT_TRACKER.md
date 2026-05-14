@@ -29,7 +29,7 @@ sprint-execution docs live in `docs/archive/_execution/`.
    `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`,
    `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 6. `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape, parallel-lane rules.
-7. `docs/frameworks/deployFramework.md` ·
+7. `runbooks/deploy_runbook.md` ·
    `docs/frameworks/PERFORMANCE_FRAMEWORK.md` ·
    `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` ·
    `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.

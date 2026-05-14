@@ -20,5 +20,6 @@ Frameworks in this folder:
   filter, tooltip, browser-tab, and no-regression admin-console polish.
 - `MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` - end-to-end runtime verification
   across mobile and web console seams.
-- `deployFramework.md` - deploy, redeploy, preview, staging, Cloud Run, CORS,
-  auth, database-mode, and rollback work.
+
+See also the operational deploy procedure at
+`runbooks/deploy_runbook.md` (moved from `docs/frameworks/deployFramework.md`).

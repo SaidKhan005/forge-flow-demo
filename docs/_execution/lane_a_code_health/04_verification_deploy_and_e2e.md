@@ -63,7 +63,7 @@ that need a preview deploy:
 For preview deployment, follow:
 
 - `runbooks/preview_environment_runbook.md` (canonical).
-- `docs/frameworks/deployFramework.md` for the runbook overlay.
+- `runbooks/deploy_runbook.md` for the runbook overlay.
 
 For both A6.1 and A11.1, use:
 
