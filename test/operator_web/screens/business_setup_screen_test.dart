@@ -49,6 +49,32 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_effective_card')),
       findsOneWidget,
     );
+    // Wave 2 H-2: visual hierarchy tree mounts above the existing
+    // text inheritance card.
+    expect(
+      find.byKey(const Key('operator_web_business_setup_hierarchy_tree')),
+      findsOneWidget,
+    );
+    // The location is the current scope on the business setup
+    // screen, so it should be highlighted with the "You are here"
+    // badge.
+    expect(
+      find.byKey(const Key(
+        'operator_web_business_setup_hierarchy_tree_node_location_current_badge',
+      )),
+      findsOneWidget,
+    );
+    // Header pill names the current scope in plain English.
+    expect(
+      find.textContaining('Editing Location'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key(
+        'operator_web_business_setup_hierarchy_tree_currently_editing_pill',
+      )),
+      findsOneWidget,
+    );
     expect(find.text('Inherited from Operator default'), findsWidgets);
     expect(find.text('Lunch'), findsOneWidget);
     expect(find.text('Late night'), findsOneWidget);

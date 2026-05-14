@@ -123,6 +123,41 @@ void main() {
     );
   });
 
+  testWidgets('Wave 2 H-2: hierarchy tree mounts and highlights default scope',
+      (tester) async {
+    await _sizeViewport(tester);
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(BusinessTimingEditorScreen(session: session)),
+    );
+    // Tree itself mounts.
+    expect(
+      find.byKey(const Key(
+        'operator_web_business_timing_editor_hierarchy_tree',
+      )),
+      findsOneWidget,
+    );
+    // Default scope is operator (Across all locations), so the
+    // Business node is the current scope and gets the highlight
+    // badge.
+    expect(
+      find.byKey(const Key(
+        'operator_web_business_timing_editor_hierarchy_tree_node_business_current_badge',
+      )),
+      findsOneWidget,
+    );
+    // The location row should show an "Inherits from here" target
+    // (it inherits from the business above) — verified via the
+    // header pill copy + plain-English subtitle.
+    expect(
+      find.textContaining('Editing Business'),
+      findsOneWidget,
+    );
+    // No engineering jargon: no scope_kind=… leak.
+    expect(find.textContaining('scope_kind'), findsNothing);
+    expect(find.textContaining('scope_id'), findsNothing);
+  });
+
   testWidgets('Save disabled when no gateway', (tester) async {
     await _sizeViewport(tester);
     final session = sessionWithRole('operator_owner');

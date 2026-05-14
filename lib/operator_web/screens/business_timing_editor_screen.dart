@@ -31,6 +31,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_business_timing_gateway.dart';
+import '../widgets/hierarchy_tree_visualization.dart';
 import '../widgets/service_period_editor.dart';
 
 const String _kBusinessTimingEditPermission =
@@ -178,6 +179,45 @@ class _BusinessTimingEditorScreenState
     final label = widget.locationName?.trim();
     if (label != null && label.isNotEmpty) return label;
     return widget.session.primaryLocationName;
+  }
+
+  /// Wave 2 H-2 — builds the visual hierarchy tree's node list from
+  /// the session + the currently-selected scope kind. The editor does
+  /// not call `BusinessTimingGateway.loadTiming`, so we cannot read a
+  /// pre-assembled inheritance chain here — instead we render the two
+  /// anchors the session always carries (business + location) and
+  /// highlight whichever rung the operator has picked in the scope
+  /// dropdown.
+  ///
+  /// TODO(wave-N): wire full tree once hierarchy reachable — the
+  /// session does not carry region / brand identifiers today, so the
+  /// tree is best-effort with what IS available. The [dataGapExplainer]
+  /// rendered below the tree documents the gap to the operator in
+  /// plain English (HP #11 final clause).
+  List<HierarchyTreeNodeView> _buildEditorHierarchyNodes() {
+    final operatorIsCurrent = _scopeKind == 'operator';
+    final locationIsCurrent = _scopeKind == 'location';
+    return <HierarchyTreeNodeView>[
+      HierarchyTreeNodeView(
+        level: HierarchyTreeLevel.business,
+        name: widget.session.businessName,
+        isCurrentScope: operatorIsCurrent,
+        subtitle: operatorIsCurrent
+            ? 'This profile becomes the default for every location.'
+            : 'Default settings every location inherits from.',
+        // When the operator is writing a location override, the
+        // location row "inherits from" the business row above it.
+        inheritsFromHere: locationIsCurrent,
+      ),
+      HierarchyTreeNodeView(
+        level: HierarchyTreeLevel.location,
+        name: _locationLabel,
+        isCurrentScope: locationIsCurrent,
+        subtitle: locationIsCurrent
+            ? 'This profile overrides the business default here only.'
+            : 'Inherits the business default. No local override yet.',
+      ),
+    ];
   }
 
   Future<void> _save() async {
@@ -331,6 +371,20 @@ class _BusinessTimingEditorScreenState
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 18),
+          // Wave 2 H-2: visual hierarchy tree so the operator can see
+          // where the profile being edited will land before they
+          // commit. The scope dropdown below still owns the choice;
+          // this is a read-only visualization of the same selection.
+          HierarchyTreeVisualization(
+            keyName: 'operator_web_business_timing_editor_hierarchy_tree',
+            headline: 'Where this profile will land',
+            nodes: _buildEditorHierarchyNodes(),
+            dataGapExplainer:
+                'Regions and brands will appear here once your hierarchy is '
+                'connected. Today the tree shows the business and the location '
+                'this profile applies to.',
+          ),
+          const SizedBox(height: 14),
           if (!_hasGateway) const _UnavailableBanner(),
           if (!_hasGateway) const SizedBox(height: 14),
           if (!widget.canEdit) const _ReadOnlyBanner(),
