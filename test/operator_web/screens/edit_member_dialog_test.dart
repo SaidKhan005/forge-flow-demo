@@ -662,7 +662,10 @@ void main() {
         // Exactly one active grant remains (revoke half cleaned up the
         // old one).
         expect(updated.grants, hasLength(1));
-        expect(updated.grants.first.roleId, equals('role-operator-supervisor'));
+        // R-2L v2 catalog: tapping "Supervisor" in the picker resolves
+        // to the v2 `role-supervisor` id (v1 `role-operator-supervisor`
+        // was retired by `docs/_indices/WAVE_2_R2L_DEFAULT_ROLE_CATALOG_V2_PROPOSAL.md`).
+        expect(updated.grants.first.roleId, equals('role-supervisor'));
       },
     );
   });

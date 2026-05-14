@@ -779,7 +779,8 @@ void main() {
         find.byKey(const Key('invite_member_dialog_role_field')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Staff').last);
+      // R-2L v2 catalog: "Staff" retired; pick a still-seeded role.
+      await tester.tap(find.text('Supervisor').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('invite_member_dialog_submit')));
       await tester.pumpAndSettle();
@@ -823,12 +824,14 @@ void main() {
     test('createInvite called twice with the same idempotency key returns '
         'the same invite id (no duplicate row)', () async {
       final gateway = DemoWebTeamUsersGateway();
+      // R-2L v2 catalog: `role-operator-staff` retired and folded into
+      // `role-supervisor`. Use the v2 role id for new invites.
       const cmd = TeamInviteCreateCommand(
         actorUserId: 'actor',
         operatorId: kDemoOperatorIdFixture,
         locationId: 'demo-loc-downtown',
         email: 'replay@demobistro.test',
-        roleId: 'role-operator-staff',
+        roleId: 'role-supervisor',
         scopeType: 'location',
         targetLocationId: 'demo-loc-downtown',
       );
