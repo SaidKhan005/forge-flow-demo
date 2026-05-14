@@ -223,10 +223,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       teamActor: effectiveTeamActor,
       showAccount: showAccount,
     );
+    // U-7 (debug.md:304) — Settings tab order is Setup, Data (F&F admins),
+    // Account. A future MP-1 Integrations tab will slot between Setup and
+    // Data once the operator-gated mobile integrations surface is built;
+    // until then the slot is omitted, not stubbed.
     final tabs = <_SettingsTabSpec>[
-      if (showAccount) _accountSettingsTab,
       if (showAdminTabs) _authoritySettingsTab,
       if (showDataTab) _dataSettingsTab,
+      if (showAccount) _accountSettingsTab,
     ];
 
     return DefaultTabController(
@@ -259,90 +263,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         body: TabBarView(
           children: [
-            if (showAccount)
-              _SettingsTabScrollView(
-                tabId: 'account',
-                onRefresh: _handlePullToRefresh,
-                slivers: [
-                  _settingsSection(
-                    title: 'Two-factor security',
-                    description:
-                        'Review the authenticator factors enrolled on your account.',
-                    child: SettingsMfaSection(
-                      gateway: widget.mfaOperationsGateway,
-                      actor:
-                          widget.mfaActor ??
-                          _mfaActorForSession(
-                            session,
-                            restaurant?.restaurantId,
-                          ),
-                      refreshGeneration: _manualRefreshGeneration,
-                      viewOnly: true,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SettingsPointerRow(
-                        label: 'Manage two-factor security on Ops Web',
-                        opWebPath: 'my-account#security',
-                        navId: 'my_account',
-                        handoffCodeGateway: widget.handoffCodeGateway,
-                      ),
-                    ),
-                  ),
-                  _settingsSection(
-                    title: 'Account',
-                    description: 'Review your sign-in details.',
-                    child: SettingsAccountSection(
-                      accountInfoGateway: widget.accountInfoGateway,
-                      passwordChangeGateway: widget.passwordChangeGateway,
-                      refreshGeneration: _manualRefreshGeneration,
-                      viewOnly: true,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SettingsPointerRow(
-                        label: 'Manage Account on Ops Web',
-                        opWebPath: 'my-account',
-                        navId: 'my_account',
-                        handoffCodeGateway: widget.handoffCodeGateway,
-                      ),
-                    ),
-                  ),
-                  _settingsSection(
-                    title: 'Active sessions',
-                    description:
-                        'See where your account is signed in. Sign-out controls live in Operator Web.',
-                    child: SettingsActiveSessionsSection(
-                      gateway: widget.authOperationsGateway,
-                      actor:
-                          widget.activeSessionsActor ??
-                          _activeSessionsActorForSession(
-                            session,
-                            authNotifier?.activeSessionId,
-                          ),
-                      allowDemoGatewayFallback:
-                          widget.allowDemoActiveSessionsFallback,
-                      refreshGeneration: _manualRefreshGeneration,
-                      viewOnly: true,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SettingsPointerRow(
-                        label: 'Manage active sessions on Ops Web',
-                        opWebPath: 'sessions',
-                        navId: 'sessions',
-                        handoffCodeGateway: widget.handoffCodeGateway,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            // U-7 (debug.md:304) — TabBarView children mirror the
+            // bottom-nav `tabs` order: Setup, Data, Account.
             if (showAdminTabs)
               _SettingsTabScrollView(
                 tabId: 'authority',
@@ -382,10 +304,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onAfterSave: _refreshAfterWrite,
                       ),
                     ),
+                    // U-7 MO-3a/MO-3b — description ("Review when business
+                    // days...") dropped per debug.md:264. Business-day-start
+                    // and shift-close-rule consolidation lives inside
+                    // TimingAuthoritySection.
                     _settingsSection(
                       title: 'Business timing',
-                      description:
-                          'Review when business days, weeks, shifts, and service periods start.',
                       child: TimingAuthoritySection(
                         restaurantId: restaurant.restaurantId,
                       ),
@@ -402,10 +326,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ],
+                  // U-7 MO-4a — subtitle "Review the wage mix..." dropped
+                  // per debug.md:268.
                   _settingsSection(
                     title: 'Wage setup',
-                    description:
-                        'Review the wage mix used for labor targets and cost estimates.',
                     child: WageAuthoritySection(
                       onChanged: _refreshAppState,
                       viewOnly: true,
@@ -493,6 +417,92 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'F&F support diagnostics for canonical fact alignment.',
                       child: const SettingsAuditSection(),
                     ),
+                ],
+              ),
+            if (showAccount)
+              _SettingsTabScrollView(
+                tabId: 'account',
+                onRefresh: _handlePullToRefresh,
+                slivers: [
+                  // U-7 MO-5d — subtitle "Review the authenticator..."
+                  // dropped per debug.md:295.
+                  _settingsSection(
+                    title: 'Two-factor security',
+                    child: SettingsMfaSection(
+                      gateway: widget.mfaOperationsGateway,
+                      actor:
+                          widget.mfaActor ??
+                          _mfaActorForSession(
+                            session,
+                            restaurant?.restaurantId,
+                          ),
+                      refreshGeneration: _manualRefreshGeneration,
+                      viewOnly: true,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage two-factor security on Ops Web',
+                        opWebPath: 'my-account#security',
+                        navId: 'my_account',
+                        handoffCodeGateway: widget.handoffCodeGateway,
+                      ),
+                    ),
+                  ),
+                  // U-7 MO-6b — subtitle "Review your sign-in details."
+                  // dropped per debug.md:295.
+                  _settingsSection(
+                    title: 'Account',
+                    child: SettingsAccountSection(
+                      accountInfoGateway: widget.accountInfoGateway,
+                      passwordChangeGateway: widget.passwordChangeGateway,
+                      refreshGeneration: _manualRefreshGeneration,
+                      viewOnly: true,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage Account on Ops Web',
+                        opWebPath: 'my-account',
+                        navId: 'my_account',
+                        handoffCodeGateway: widget.handoffCodeGateway,
+                      ),
+                    ),
+                  ),
+                  // U-7 MO-7c — subtitle "See where your account..."
+                  // dropped per debug.md:299. The section's own header
+                  // already explains the surface.
+                  _settingsSection(
+                    title: 'Active sessions',
+                    child: SettingsActiveSessionsSection(
+                      gateway: widget.authOperationsGateway,
+                      actor:
+                          widget.activeSessionsActor ??
+                          _activeSessionsActorForSession(
+                            session,
+                            authNotifier?.activeSessionId,
+                          ),
+                      allowDemoGatewayFallback:
+                          widget.allowDemoActiveSessionsFallback,
+                      refreshGeneration: _manualRefreshGeneration,
+                      viewOnly: true,
+                    ),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SettingsPointerRow(
+                        label: 'Manage active sessions on Ops Web',
+                        opWebPath: 'sessions',
+                        navId: 'sessions',
+                        handoffCodeGateway: widget.handoffCodeGateway,
+                      ),
+                    ),
+                  ),
                 ],
               ),
           ],

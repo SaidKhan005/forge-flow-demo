@@ -876,7 +876,11 @@ class _AccountInfoSummaryCard extends StatelessWidget {
     final lastActiveAt = info.lastActiveAt;
     final passwordUpdatedAt = info.passwordUpdatedAt;
     final rows = <_AccountInfoDetail>[
-      _AccountInfoDetail('Display name', _valueOrFallback(info.displayName)),
+      // U-7 MO-6c (debug.md:296) — mobile Account card uses "Name"
+      // instead of "Display name"; the operator-web editor that surfaces
+      // the same field keeps the "Display name" label, since edits live
+      // there.
+      _AccountInfoDetail('Name', _valueOrFallback(info.displayName)),
       _AccountInfoDetail('Email', _valueOrFallback(info.email)),
       _AccountInfoDetail('Account status', _valueOrFallback(info.statusLabel)),
       _AccountInfoDetail(
