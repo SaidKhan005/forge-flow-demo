@@ -36,7 +36,6 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_data_accuracy_gateway.dart';
-import '../services/operator_web_tier_email_gateway.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
 import '../services/web_vendor_applicability_gateway.dart';
 import '../widgets/covers_historical_seed_card.dart';
@@ -118,8 +117,6 @@ class DataAccuracyScreen extends StatefulWidget {
     this.walkInModeOverride,
     this.onSaveSettings,
     this.onRequestTierChange,
-    this.tierEmailGateway,
-    this.tierEmailIdempotencyKeyFactory,
     this.wageAuthorityGateway,
     this.wageAuthorityIdempotencyKeyFactory,
   });
@@ -162,20 +159,6 @@ class DataAccuracyScreen extends StatefulWidget {
   /// Optional ticket-flow opener. Default opens
   /// [showPollingTierChangeRequestDialog].
   final Future<String?> Function(BuildContext)? onRequestTierChange;
-
-  /// Wave 2 U-FU-tier-email — gateway for the "Request faster data
-  /// freshness" dialog. When the dialog submits, the screen calls
-  /// [OperatorWebTierEmailGateway.submitDataFreshnessRequest] so the
-  /// proxy emits a hash-chained audit row + attempts a SendGrid send
-  /// to F&F support. Null in widget tests that want the dialog to
-  /// remain inert; production binds the HTTP gateway and demo binds
-  /// the in-memory variant.
-  final OperatorWebTierEmailGateway? tierEmailGateway;
-
-  /// Test-injectable idempotency-key factory for tier-email
-  /// submissions. Production binds the proxy client's random
-  /// generator; tests pass a deterministic counter.
-  final String Function()? tierEmailIdempotencyKeyFactory;
 
   /// Wave 2 S-2 (`debug.md:220`, OW-13c): the Wage Authority surface
   /// folds under the Data Accuracy page. When wired, the section saves
@@ -600,84 +583,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     final opener =
         widget.onRequestTierChange ??
         (BuildContext ctx) => showPollingTierChangeRequestDialog(ctx);
-    final reason = await opener(context);
-    if (reason == null) return;
-    final trimmedReason = reason.trim();
-    if (trimmedReason.isEmpty) return;
-    if (!mounted) return;
-    final gateway = widget.tierEmailGateway;
-    if (gateway == null) {
-      // No gateway wired — capture the request at the dialog level
-      // and surface a muted toast so the operator does not believe
-      // the request was delivered. Production deploys MUST bind the
-      // gateway.
-      _showTierEmailToast(
-        message: 'Request captured. Tell F&F support so they can pick it up.',
-        isSuccess: false,
-      );
-      return;
-    }
-    final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
-    final idempotencyKey =
-        widget.tierEmailIdempotencyKeyFactory?.call() ??
-            _defaultTierEmailIdempotencyKey();
-    final result = await gateway.submitDataFreshnessRequest(
-      request: OperatorTierEmailRequest(
-        currentTier: tier.tierDisplayLabel,
-        requestedCadence: 'Faster than current tier',
-        businessReason: trimmedReason,
-      ),
-      idempotencyKey: idempotencyKey,
-    );
-    if (!mounted) return;
-    switch (result.kind) {
-      case OperatorTierEmailResultKind.emailSent:
-        _showTierEmailToast(
-          message: 'Request submitted and emailed to F&F support.',
-          isSuccess: true,
-        );
-        break;
-      case OperatorTierEmailResultKind.emailFailed:
-      case OperatorTierEmailResultKind.submitFailed:
-        _showTierEmailToast(
-          message: 'Request submitted to F&F support.',
-          isSuccess: false,
-        );
-        break;
-    }
-  }
-
-  /// Per-dialog-session idempotency key. Retries from the dialog
-  /// hash to the same row; production injects the proxy client's
-  /// secure factory via [widget.tierEmailIdempotencyKeyFactory].
-  String _defaultTierEmailIdempotencyKey() {
-    final ts = DateTime.now().toUtc().microsecondsSinceEpoch;
-    final rand = (ts ^ widget.session.uid.hashCode).toRadixString(16);
-    return 'tier-email-$rand';
-  }
-
-  void _showTierEmailToast({
-    required String message,
-    required bool isSuccess,
-  }) {
-    final messenger = ScaffoldMessenger.maybeOf(context);
-    if (messenger == null) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          key: Key(
-            isSuccess
-                ? 'polling_tier_email_toast_sent'
-                : 'polling_tier_email_toast_failed',
-          ),
-          content: Text(message),
-          backgroundColor:
-              isSuccess ? AppColors.peacock : AppColors.sunsetDark,
-          behavior: SnackBarBehavior.floating,
-          duration: const Duration(seconds: 4),
-        ),
-      );
+    await opener(context);
   }
 
   // ── Conditional card visibility ─────────────────────────────────
