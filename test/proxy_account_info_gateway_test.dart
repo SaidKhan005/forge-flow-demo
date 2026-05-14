@@ -30,6 +30,11 @@ void main() {
               20,
               9,
             ).toIso8601String(),
+            // Wave 2 W-5-mobile-FU-2 — the proxy half (PR #695 deferred)
+            // now serializes `logo_url` from `public.operators.logo_url`.
+            // Pin the round-trip here so the field cannot silently drop
+            // out of the wire contract again.
+            'logo_url': 'https://cdn.example/op-logo.png',
           },
         ),
       );
@@ -45,6 +50,7 @@ void main() {
       expect(info.roleLabels, equals(<String>['Kitchen Lead', 'Owner']));
       expect(info.mfaEnabled, isTrue);
       expect(info.lastLoginAt, equals(DateTime.utc(2026, 4, 28, 11)));
+      expect(info.logoUrl, equals('https://cdn.example/op-logo.png'));
       final call = fake.gets.single;
       expect(call.url.path, equals(ProxyAccountInfoGateway.accountPath));
       expect(
@@ -52,6 +58,73 @@ void main() {
         equals('Bearer id-token'),
       );
     });
+
+    test(
+      'Wave 2 W-5-mobile-FU-2: null logo_url surfaces as Dart null '
+      '(no malformed_response)',
+      () async {
+        // The proxy emits `'logo_url': null` for operators that have not
+        // uploaded a brand-mark. Make sure the gateway tolerates that
+        // (mirrors the existing operator-web `AccountIdentity.fromJson`
+        // null carve-out) instead of throwing `malformed_response`.
+        final fake = _FakeAccountInfoHttpClient(
+          getResponse: ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'display_name': 'Jane Operator',
+              'email': 'jane@example.test',
+              'status_label': 'Active',
+              'location_label': 'Downtown',
+              'role_labels': const <Object?>['Kitchen Lead'],
+              'mfa_enabled': false,
+              'logo_url': null,
+            },
+          ),
+        );
+        final gateway = ProxyAccountInfoGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final info = await gateway.load(_request);
+
+        expect(info.logoUrl, isNull);
+        expect(info.displayName, equals('Jane Operator'));
+      },
+    );
+
+    test(
+      'Wave 2 W-5-mobile-FU-2: missing logo_url stays forward-compatible '
+      '(no malformed_response)',
+      () async {
+        // Pre-W-5-mobile-FU-2 proxies will not emit the key at all.
+        // The mobile client must keep parsing those payloads without
+        // throwing so a fleet that lags the proxy roll-out still loads.
+        final fake = _FakeAccountInfoHttpClient(
+          getResponse: const ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'display_name': 'Jane Operator',
+              'email': 'jane@example.test',
+              'status_label': 'Active',
+              'location_label': 'Downtown',
+              'role_labels': <Object?>['Kitchen Lead'],
+              'mfa_enabled': false,
+            },
+          ),
+        );
+        final gateway = ProxyAccountInfoGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final info = await gateway.load(_request);
+
+        expect(info.logoUrl, isNull);
+      },
+    );
 
     test('missing ID token fails before network', () async {
       final fake = _FakeAccountInfoHttpClient();
