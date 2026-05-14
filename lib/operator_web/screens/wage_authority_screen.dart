@@ -309,7 +309,7 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          _Header(locationName: widget.locationName),
+          const _Header(),
           if (_loadError != null) ...<Widget>[
             const SizedBox(height: 12),
             _ErrorBanner(message: _loadError!),
@@ -373,37 +373,23 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.locationName});
-
-  final String locationName;
+  const _Header();
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            const Icon(
-              Icons.payments_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Wage authority',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
+        const Icon(
+          Icons.payments_outlined,
+          size: 22,
+          color: AppColors.sunsetDark,
         ),
-        const SizedBox(height: 8),
-        Text(
-          'These wage rows tell Forge & Flow what an average hour costs in each '
-          'part of the team. Updating them keeps your labor targets and '
-          'variance honest. Editing $locationName.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            'Wage authority',
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
         ),
       ],
     );

@@ -401,8 +401,8 @@ void main() {
       expect(push.operatorId, 'op-1');
       expect(push.userId, 'user-1');
       expect(push.locationId, 'loc-1');
-      expect(push.title, 'Historical sync complete');
-      expect(push.body, contains('60-day historical seed'));
+      expect(push.title, 'First Connect Backfill complete');
+      expect(push.body, contains('60 days of P.O.S. data'));
       expect(push.data['event_key'], 'notif.backfill.complete');
       expect(push.data['vendor_id'], 'toast');
       expect(push.routesToInbox, isFalse);
@@ -590,10 +590,10 @@ NotificationEventEnvelope _backfillCompleteEnvelope() {
   return const NotificationEventEnvelope(
     eventKey: 'notif.backfill.complete',
     dedupeKeyPrefix: 'notif.backfill.complete:op-1:job-x',
-    pushTitle: 'Historical sync complete',
+    pushTitle: 'First Connect Backfill complete',
     pushBody:
-        'Your 60-day historical seed has finished and the connector is '
-        'now live.',
+        '60 days of P.O.S. data has been uploaded and your initial '
+        'benchmark is now live.',
     emailTemplateId: 'backfill_complete',
     emailTemplateData: <String, String>{
       'vendorId': 'toast',

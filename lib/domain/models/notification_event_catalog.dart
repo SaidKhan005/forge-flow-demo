@@ -92,19 +92,19 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
   // Backfill - any operator-web actor
   NotificationCatalogEntry(
     eventKey: 'notif.backfill.complete',
-    title: 'First-connect backfill complete',
-    description: 'Your 60-day historical seed has finished and the '
-        'connector is now live.',
+    title: 'First Connect Backfill complete',
+    description: '60 days of P.O.S. data has been uploaded and your '
+        'initial benchmark is now live.',
     category: NotificationCategory.backfill,
     roleGate: NotificationRoleGate.any,
     defaultChannels: <String>{'push', 'email'},
   ),
   NotificationCatalogEntry(
     eventKey: 'notif.backfill.failed',
-    title: 'First-connect backfill failed',
-    description: 'Your 60-day historical seed could not finish. '
-        'Forge & Flow will retry automatically; we will let you know '
-        'if it needs your attention.',
+    title: 'First Connect Backfill failed',
+    description: 'Forge & Flow could not finish uploading the 60 days of '
+        'P.O.S. data needed for your initial benchmark. We will retry '
+        'automatically and let you know if we need your help.',
     category: NotificationCategory.backfill,
     roleGate: NotificationRoleGate.any,
     defaultChannels: <String>{'push', 'email'},
@@ -122,9 +122,13 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
   // Audit - admins only
   NotificationCatalogEntry(
     eventKey: 'notif.audit.anchor_failure',
-    title: 'Audit chain anchor failed',
-    description: 'A daily audit-log integrity anchor failed to land. '
-        'This is rare and never blocks operations, but you should know.',
+    title: "Daily audit log didn't anchor today",
+    description: "Each night Forge & Flow seals your audit log so its "
+        "history can't be changed without us noticing. Today's seal "
+        "didn't go through. Your audit log itself is still being "
+        "recorded — for example, every team invite, role change, "
+        "password reset, and sign-in is still captured. This is rare "
+        "and never blocks operations, but you should know.",
     category: NotificationCategory.audit,
     roleGate: NotificationRoleGate.adminOnly,
     defaultChannels: <String>{'push', 'email'},
@@ -142,9 +146,10 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
   // Star override - any
   NotificationCatalogEntry(
     eventKey: 'notif.star.override',
-    title: 'Manager override applied',
-    description: 'Someone on your team adjusted a recommendation. '
-        'See who, when, and what changed.',
+    title: 'Benchmark override applied',
+    description: 'Someone on your team replaced a Forge & Flow '
+        'benchmark recommendation with their own number. Open the '
+        'shift to see who changed it, when, and what they entered.',
     category: NotificationCategory.shift,
     roleGate: NotificationRoleGate.any,
     defaultChannels: <String>{'push'},
@@ -152,9 +157,11 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
   // Weekly plan - managers only
   NotificationCatalogEntry(
     eventKey: 'notif.plan.updated',
-    title: 'Weekly plan snapshot updated',
-    description: 'A new weekly plan snapshot was locked in. Open the '
-        'planner to review the latest version.',
+    title: 'New weekly plan locked in',
+    description: 'A new week-in-force plan was locked in for the '
+        'upcoming week. This is the plan Forge & Flow will compare '
+        'your actual results against. Open the planner to review the '
+        'targets, headcount, and dayparts in the new snapshot.',
     category: NotificationCategory.plan,
     roleGate: NotificationRoleGate.managerOnly,
     defaultChannels: <String>{'push'},
@@ -181,7 +188,7 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
 
 const Map<NotificationCategory, String> kNotificationCategoryLabels =
     <NotificationCategory, String>{
-  NotificationCategory.backfill: 'First-connect backfill',
+  NotificationCategory.backfill: 'First Connect Backfill',
   NotificationCategory.vendor: 'Vendor integrations',
   NotificationCategory.audit: 'Audit and integrity',
   NotificationCategory.shift: 'Live shift',

@@ -90,9 +90,11 @@ class PollingTierStatusCard extends StatelessWidget {
       icon: Icons.schedule_outlined,
       title: 'Your data freshness tier',
       headerExplainer:
-          'F&F sets polling frequency at the tier level. Faster cadence '
-          'is available on premium / custom plans — request a change '
-          'and we will reach out.',
+          'Your plan tier sets how often Forge & Flow asks your vendors '
+          'for fresh data. Standard checks every few minutes, Premium '
+          'checks more often. If you need fresher numbers than your tier '
+          'allows, request a tier change below and the F&F team will '
+          'reach out.',
       child: status == null
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
@@ -109,27 +111,26 @@ class PollingTierStatusCard extends StatelessWidget {
                 const SizedBox(height: 14),
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: OutlinedButton(
+                  child: FilledButton.icon(
                     key: const Key('polling_tier_request_change_button'),
                     onPressed: onRequestTierChange,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.sunsetDark,
-                      side: const BorderSide(
-                        color: AppColors.sunsetDark,
-                        width: 1,
-                      ),
+                    icon: const Icon(Icons.bolt_outlined, size: 16),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sunsetDark,
+                      foregroundColor: AppColors.backgroundSurface,
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
+                        horizontal: 18,
+                        vertical: 12,
                       ),
                     ),
-                    child: const Text('Request tier change'),
+                    label: const Text('Request faster data freshness'),
                   ),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Ticket goes to the F&F team. They will reach out to '
-                  'discuss options and walk you through the change.',
+                  'Tap the button and tell us what you need — the F&F team '
+                  'emails you back within one business day to discuss '
+                  'options and walk you through the change.',
                   style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 14),
@@ -208,8 +209,8 @@ class _PerVendorCadenceList extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Text(
-          'No poll-only vendors connected. Everything you have '
-          'connected pushes updates in real time.',
+          'Every vendor you have connected pushes updates to Forge & Flow '
+          'in real time, so your dashboard is always current.',
           style: AppTextStyles.body13(color: AppColors.textMuted),
         ),
       );

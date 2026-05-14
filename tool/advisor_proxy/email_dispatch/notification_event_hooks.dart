@@ -81,10 +81,10 @@ Future<void> emitBackfillComplete({
         eventKey: kNotifBackfillCompleteKey,
         dedupeKeyPrefix:
             '$kNotifBackfillCompleteKey:$operatorId:$jobId',
-        pushTitle: 'Historical sync complete',
+        pushTitle: 'First Connect Backfill complete',
         pushBody:
-            'Your 60-day historical seed has finished and the '
-            'connector is now live.',
+            '60 days of P.O.S. data has been uploaded and your '
+            'initial benchmark is now live.',
         emailTemplateId: kBackfillCompleteEmailTemplateId,
         emailTemplateData: <String, String>{
           'vendorId': vendorId,
@@ -124,10 +124,11 @@ Future<void> emitBackfillFailed({
       envelope: NotificationEventEnvelope(
         eventKey: kNotifBackfillFailedKey,
         dedupeKeyPrefix: '$kNotifBackfillFailedKey:$operatorId:$jobId',
-        pushTitle: 'Historical sync needs attention',
+        pushTitle: 'First Connect Backfill needs attention',
         pushBody:
-            'Your 60-day historical seed could not finish. We will '
-            'retry automatically and let you know if it needs you.',
+            'Forge & Flow could not finish uploading the 60 days of '
+            'P.O.S. data for your initial benchmark. We will retry '
+            'automatically and let you know if we need your help.',
         emailTemplateId: kBackfillFailedEmailTemplateId,
         emailTemplateData: <String, String>{
           'vendorId': vendorId,

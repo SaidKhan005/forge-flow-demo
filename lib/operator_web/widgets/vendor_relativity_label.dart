@@ -65,7 +65,7 @@ class VendorRelativityLabel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'How this applies to your setup',
+            'Note:',
             style: AppTextStyles.mono11(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 6),
@@ -215,23 +215,23 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
 
   if (pollOnlyConnected.isEmpty && webhookConnected.isEmpty) {
     return <String>[
-      'Polling cadence applies to vendors that do not push real-time webhooks (currently: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations).',
-      'Your webhook vendors update in real time regardless of this tier.',
+      'Some vendors push new data to Forge & Flow the moment it happens — others only respond when we ask. Your tier controls how often we ask the ones that do not push.',
+      'Vendors that need to be asked: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations.',
     ];
   }
   final lines = <String>[];
   if (pollOnlyConnected.isNotEmpty) {
     lines.add(
-      'Polling cadence applies to ${pollOnlyConnected.join(' and ')} — F&F asks them for new data on a schedule.',
+      'Forge & Flow checks ${pollOnlyConnected.join(' and ')} for new data on a regular schedule. Your tier sets how often.',
     );
   }
   if (webhookConnected.isNotEmpty) {
     lines.add(
-      '${webhookConnected.join(' and ')} push updates in real time, so polling cadence does not affect them.',
+      '${webhookConnected.join(' and ')} push updates to Forge & Flow in real time, so your tier does not change how fast they refresh.',
     );
   }
   lines.add(
-    'F&F controls cadence at the tier level. Use "Request tier change" below if you need a different cadence.',
+    'Forge & Flow manages the schedule at the tier level. Tap "Request faster data freshness" below if you need a different cadence.',
   );
   return lines;
 }
