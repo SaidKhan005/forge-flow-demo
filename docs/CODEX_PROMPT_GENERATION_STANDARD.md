@@ -28,7 +28,7 @@ Read only what the slice needs:
 - At most one relevant contract under `docs/contracts/**`.
 - `docs/contracts/slice_runtime_acceptance_contract.md` for runtime-exposed
 v  slices.
-- `docs/frameworks/deployFramework.md` for deploy, redeploy, preview,
+- `runbooks/deploy_runbook.md` for deploy, redeploy, preview,
   staging, Cloud Run, CORS, auth, database-mode, and rollback work.
 - `docs/frameworks/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
   responsiveness, web-console timing, load, polling, health, or bundle-size

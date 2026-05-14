@@ -22,10 +22,12 @@ phases and surfaces.
 
 Current active frameworks:
 
-- `docs/frameworks/deployFramework.md`
 - `docs/frameworks/PERFORMANCE_FRAMEWORK.md`
 - `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`
 - `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+
+The deploy procedure is operational and lives under
+`runbooks/deploy_runbook.md`.
 
 ## 3. Contracts
 

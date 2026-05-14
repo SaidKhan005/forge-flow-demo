@@ -11,10 +11,11 @@ case "$repo_root_posix" in
   */.claude/worktrees/*|*/.codex_worktrees/*)
     branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null) || branch=""
     case "$branch" in
-      claude/*|codex/*)
+      claude/*|codex/*|claude2/*|codex2/*)
         # Agent worktree on a legitimate agent branch -- commit allowed.
         # Agents commit + push + open PR; main audits PR against contracts
         # before merging to master. See workflow notes in CLAUDE.md.
+        # `claude2/`/`codex2/` lanes match the Wave 2 orchestrator naming.
         ;;
       *)
         echo "[forge-flow pre-commit] Refusing to commit from an agent worktree on non-agent branch:"
