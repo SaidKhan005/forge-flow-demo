@@ -577,6 +577,151 @@ void main() {
   });
 
   group('MembersScreen row actions', () {
+    testWidgets(
+        'OW-6d: active row exposes inline Edit text button and a smaller '
+        'overflow with only the four destructive actions (no Edit item)',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      // Inline Edit text button renders with the OW-6d key and the
+      // operator-decision label "Edit" (no "Edit user" / "Edit member"
+      // — visual context already conveys who).
+      final editButton = find.byKey(
+        const Key('operator_web_members_row_edit_demo-user-owner'),
+      );
+      expect(editButton, findsOneWidget);
+      expect(
+        find.descendant(of: editButton, matching: find.text('Edit')),
+        findsOneWidget,
+      );
+
+      // The 3-dot overflow stays on the row, but now smaller and
+      // anchored to destructive actions only.
+      await openRowActionMenu(tester, 'demo-user-owner');
+
+      // No Edit member item inside the overflow anymore.
+      expect(find.byKey(const Key('members_row_action_edit')), findsNothing);
+      expect(find.text('Edit member'), findsNothing);
+
+      // The four destructive actions are present (Suspend +
+      // Reset password + Reset two-factor sign-in + Remove from
+      // team). Owner fixture is `active`, so Reactivate is not in
+      // the menu — Suspend is.
+      expect(
+        find.byKey(const Key('members_row_action_suspend')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('members_row_action_reset_password')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('members_row_action_reset_mfa')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('members_row_action_soft_delete')),
+        findsOneWidget,
+      );
+      // Reactivate appears only for suspended rows; the owner is
+      // active so it must not surface here.
+      expect(
+        find.byKey(const Key('members_row_action_reactivate')),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+        'OW-6d: tapping the inline Edit text button opens the Edit member '
+        'dialog (replacing the old menu-item edit affordance)',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      await tester.tap(
+        find.byKey(
+          const Key('operator_web_members_row_edit_demo-user-downtown-manager'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('edit_member_dialog')), findsOneWidget);
+
+      // Dismiss the dialog so the screen tears down cleanly.
+      await tester.tap(find.byKey(const Key('edit_member_dialog_cancel')));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
+        'OW-6d: soft-deleted rows expose neither the inline Edit button '
+        'nor the overflow menu', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      // The soft-deleted Floor Captain fixture is read-only — no
+      // edit, no overflow (Restore lives on the F&F admin path).
+      expect(
+        find.byKey(const Key(
+          'operator_web_members_row_edit_demo-user-downtown-floor-captain',
+        )),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key(
+          'operator_web_members_row_actions_demo-user-downtown-floor-captain',
+        )),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+        'OW-6d: read-only roles (location_manager) hide both the inline '
+        'Edit button and the overflow menu', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('location_manager'));
+
+      expect(
+        find.byKey(
+          const Key('operator_web_members_row_edit_demo-user-owner'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key(
+          'operator_web_members_row_actions_demo-user-owner',
+        )),
+        findsNothing,
+      );
+    });
+
+    testWidgets(
+        'OW-6d: suspended rows surface Reactivate in the overflow (not '
+        'Suspend), and the inline Edit button stays available',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      // Inline Edit stays available on a suspended row so the
+      // operator can still rename / reassign the suspended member.
+      expect(
+        find.byKey(const Key(
+          'operator_web_members_row_edit_demo-user-riverside-supervisor',
+        )),
+        findsOneWidget,
+      );
+
+      await openRowActionMenu(tester, 'demo-user-riverside-supervisor');
+      expect(
+        find.byKey(const Key('members_row_action_reactivate')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('members_row_action_suspend')),
+        findsNothing,
+      );
+    });
+
     testWidgets('suspend action moves the row into the suspended status pill',
         (tester) async {
       await sizeViewport(tester, const Size(1280, 1200));
