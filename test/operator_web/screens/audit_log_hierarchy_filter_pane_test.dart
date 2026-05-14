@@ -259,6 +259,80 @@ void main() {
     );
     expect(find.textContaining('auth.password_changed'), findsAtLeastNWidgets(1));
   });
+
+  testWidgets('Wave 2 AC-1: actor_kind raw enum strings render through '
+      'the shared label catalog as plain English copy', (tester) async {
+    sizeViewport(tester, const Size(1280, 1800));
+    // Three rows covering the three label families
+    // (team member, F&F admin, automated service). The raw row payload
+    // still carries the wire enum, but the rendered text MUST be the
+    // human label - never the raw string.
+    // Rows must occur at or before the pinned clock; the pane's
+    // default `last_7d` window puts `to = pinnedClock`, so anything
+    // after gets filtered out by the in-memory gateway's `to` check.
+    final hierarchyGateway = InMemoryWebAuditLogHierarchyGateway(
+      rows: <WebAuditLogHierarchyRow>[
+        WebAuditLogHierarchyRow(
+          id: 'team-row',
+          operatorId: kDemoOperatorIdFixture,
+          locationId: 'loc-downtown',
+          occurredAt: DateTime.utc(2026, 5, 13, 9),
+          actorKind: 'user',
+          actorUserId: 'user-7',
+          action: 'auth.password_changed',
+        ),
+        WebAuditLogHierarchyRow(
+          id: 'admin-row',
+          operatorId: kDemoOperatorIdFixture,
+          locationId: 'loc-downtown',
+          occurredAt: DateTime.utc(2026, 5, 13, 10),
+          actorKind: 'forge_admin',
+          actorUserId: 'admin-9',
+          action: 'admin.support_action',
+        ),
+        WebAuditLogHierarchyRow(
+          id: 'svc-row',
+          operatorId: kDemoOperatorIdFixture,
+          locationId: 'loc-downtown',
+          occurredAt: DateTime.utc(2026, 5, 13, 11),
+          actorKind: 'service_principal',
+          actorPrincipalId: 'sp-vendor-sync',
+          action: 'integration.backfill.complete',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        AuditLogScreen(
+          session: session(),
+          gateway: DemoWebTeamAuditLogGateway(clock: pinnedClock),
+          hierarchyGateway: hierarchyGateway,
+          teamHierarchyGateway: buildHierarchyGateway(),
+          hierarchyPaneClock: () => pinnedClock,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_audit_log_hierarchy_run')),
+    );
+    await tester.tap(
+      find.byKey(const Key('operator_web_audit_log_hierarchy_run')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Actor: Team member user-7'), findsOneWidget);
+    expect(find.textContaining('Actor: F&F admin admin-9'), findsOneWidget);
+    expect(
+      find.textContaining('Actor: Automated service sp-vendor-sync'),
+      findsOneWidget,
+    );
+    // Defensive: the raw wire enum strings must never reach the
+    // rendered row.
+    expect(find.textContaining('forge_admin'), findsNothing);
+    expect(find.textContaining('service_principal'), findsNothing);
+  });
 }
 
 class _StaticWebTeamHierarchyGateway implements WebTeamHierarchyGateway {
