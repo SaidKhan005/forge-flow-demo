@@ -32,11 +32,44 @@
 // numeric counts. This gap is documented in the slice return summary
 // for a future backend slice to address.
 //
-// Role gate is enforced upstream by `admin_routes.dart`:
+// Permission gate (Wave 2 RP-9, 2026-05-14):
 //
-//   * super_admin sees the full surface (edit + publish enabled).
-//   * ff_support sees the read-only branch (`editingEnabled = false`).
-//   * Anything else cannot reach the route.
+//   Authority: `PermissionKeys.teamRolesDefaultCatalogView` /
+//   `PermissionKeys.teamRolesDefaultCatalogEdit`
+//   (`lib/auth/permission_keys.dart`). The two keys are catalog-
+//   registered (migration
+//   `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`)
+//   so the gate is visible in the audit log + permission resolver.
+//
+//   The admin console's `AdminAuthSession` (`lib/admin/admin_auth_gate.dart`)
+//   only carries role claims at the gate layer, not resolved permission
+//   keys. So the route-level wrapper in `admin_routes.dart` ->
+//   `_buildDefaultRoleCatalog` translates the role tier into the
+//   permission decision: a user is "in" if their role tier is one of
+//   the canonical roles that hold the permission key in the seeded
+//   catalog. This file exposes:
+//
+//     * [kDefaultRoleCatalogScreenViewRoles] -> role tiers granted
+//       `team.roles.default_catalog.view` (super_admin + ff_support).
+//     * [kDefaultRoleCatalogScreenEditRoles] -> role tiers granted
+//       `team.roles.default_catalog.edit` (super_admin only).
+//
+//   Both sets MUST stay in lockstep with the migration seed +
+//   `kDefaultRoleCatalogAdminReadRoles` /
+//   `kDefaultRoleCatalogAdminWriteRoles` in
+//   `tool/advisor_proxy/admin_default_role_catalog_routes.dart`.
+//   `tool/permission_key_lint.dart` keeps the catalog mirror in sync;
+//   the role-tier <-> permission-key mapping here is the defense-in-
+//   depth fallback the screen + route can read without a wired
+//   `PermissionResolver`. When the admin console grows a permission-
+//   resolver wiring, the route builder should switch to
+//   `resolver.has(PermissionKeys.teamRolesDefaultCatalogEdit)` and
+//   drop the role-tier check.
+//
+//   The screen receives only the resolved `editingEnabled` flag (true
+//   iff the user has the edit key). Read access is still enforced one
+//   layer up — the route doesn't mount the screen at all for an actor
+//   that lacks the view key.
 //
 // Tested by:
 //   * test/admin/default_role_catalog_admin_screen_test.dart
@@ -46,6 +79,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_key_metadata.dart';
+import '../../auth/permission_keys.dart';
 import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
@@ -53,6 +87,63 @@ import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../services/default_role_catalog_admin_gateway.dart';
 import 'default_role_catalog_publish_dialog.dart';
+
+/// Role tiers granted `team.roles.default_catalog.view` by the seeded
+/// catalog (migration
+/// `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`).
+/// Mirrors `kDefaultRoleCatalogAdminReadRoles` in
+/// `tool/advisor_proxy/admin_default_role_catalog_routes.dart`. DO NOT
+/// widen this set to operator-tier roles — the surface is F&F-internal.
+const Set<String> kDefaultRoleCatalogScreenViewRoles = <String>{
+  PermissionKeys.roleSuperAdmin,
+  PermissionKeys.roleFfSupport,
+};
+
+/// Role tiers granted `team.roles.default_catalog.edit` by the seeded
+/// catalog. Mirrors `kDefaultRoleCatalogAdminWriteRoles` in
+/// `tool/advisor_proxy/admin_default_role_catalog_routes.dart`. Edit is
+/// `super_admin` ONLY — publishing a new default catalog version
+/// affects every operator in the F&F deployment.
+const Set<String> kDefaultRoleCatalogScreenEditRoles = <String>{
+  PermissionKeys.roleSuperAdmin,
+};
+
+/// Resolves whether [actorRoles] satisfies the
+/// `team.roles.default_catalog.edit` permission key for the admin
+/// surface. Returns true iff any role in the actor's claim set is in
+/// [kDefaultRoleCatalogScreenEditRoles].
+///
+/// Defense-in-depth: when the actor carries a role that holds the view
+/// key but NOT the edit key (e.g. `ff_support`), this helper logs a
+/// `debugPrint` if [actorHasEditKeyHint] disagrees with the role-tier
+/// decision. The mismatch is never silently honoured — the role-tier
+/// check is authoritative here because the admin console does not yet
+/// thread a `PermissionResolver` into the auth session. Removing the
+/// fallback requires wiring the resolver and dropping this helper.
+bool defaultRoleCatalogScreenCanEdit({
+  required Iterable<String> actorRoles,
+  bool? actorHasEditKeyHint,
+}) {
+  final canEditByRole = actorRoles.any(
+    kDefaultRoleCatalogScreenEditRoles.contains,
+  );
+  if (actorHasEditKeyHint != null && actorHasEditKeyHint != canEditByRole) {
+    // Defense-in-depth: warn loudly when a future permission-resolver
+    // wiring disagrees with the role-tier fallback. Either the role
+    // catalog drifted (a new role inherited the edit key without being
+    // added to [kDefaultRoleCatalogScreenEditRoles]) or the resolver
+    // was fed a stale grant. Logged via `debugPrint` so the message
+    // surfaces in the admin console's debug stream without crashing
+    // a live admin session.
+    debugPrint(
+      'default_role_catalog_admin_screen: permission-key vs role-tier '
+      'mismatch — actorHasEditKeyHint=$actorHasEditKeyHint but '
+      'canEditByRole=$canEditByRole for roles=$actorRoles. The role-tier '
+      'check wins until the admin console threads a PermissionResolver.',
+    );
+  }
+  return canEditByRole;
+}
 
 /// Default Role catalog admin editor screen.
 ///

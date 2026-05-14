@@ -28,11 +28,17 @@
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
 //   - admin.*         (28 keys) admin actions
-//   - team.*          (15 keys) operator-self-service team management
+//   - team.*          (17 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
 //                                facing Settings → Team UX; W-3 added
 //                                team.users.self_update for the self-
-//                                service "My Account" editor)
+//                                service "My Account" editor; Wave 2
+//                                RP-9 added team.roles.default_catalog.view
+//                                + team.roles.default_catalog.edit for
+//                                the F&F-internal Default Role Catalog
+//                                admin surface — F&F super_admin only
+//                                for edit, super_admin + ff_support for
+//                                view.)
 //   - account.*       (1 key)   operator account settings
 //   - business_timing.* (1 key) business-timing settings
 //   - billing.*       (5 keys)  billing-related actions
@@ -40,11 +46,12 @@
 //   - integrations.*  (1 key)   Phase 8.0 vendor-connections category gate
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 104 keys (81 baseline + 13 team.* keys + 2 later admin
+// Total: 106 keys (81 baseline + 13 team.* keys + 2 later admin
 // keys added in 9.0Σ.h2/B41 + 1 integrations.configure added in
 // Phase 8.0 + 1 admin.users.reset_mfa_factors added in 11A.14 +
 // 1 team.audit_log.export added in 11W.5 + 2 hierarchy lifecycle
-// keys + 2 B5.b settings keys + 1 team.users.self_update added in W-3).
+// keys + 2 B5.b settings keys + 1 team.users.self_update added in W-3 +
+// 2 team.roles.default_catalog.* keys added in Wave 2 RP-9).
 // Some keys are flagged MFA-required via PermissionKeys.requiresMfa;
 // the migration mirrors that in the permission_keys.requires_mfa
 // column.
@@ -164,6 +171,24 @@ class PermissionKeys {
   static const String teamRolesCreateCustom = 'team.roles.create_custom';
   static const String teamRolesAssign = 'team.roles.assign';
   static const String teamRolesRevoke = 'team.roles.revoke';
+  // Wave 2 RP-9 (2026-05-14). F&F-internal Default Role Catalog admin
+  // surface (`default_role_catalog_admin_screen.dart` +
+  // `kDefaultRoleCatalogAdminReadRoles` /
+  // `kDefaultRoleCatalogAdminWriteRoles` in
+  // `tool/advisor_proxy/admin_default_role_catalog_routes.dart`).
+  // `view` is granted to `super_admin` + `ff_support` (the same read-
+  // only branch that already lands in the admin route);
+  // `edit` is granted to `super_admin` ONLY — publishing a new default
+  // catalog version affects every operator in the F&F deployment, so
+  // the gate is F&F super-admin-only by design. NOT widened to
+  // operator_owner or any other operator-scoped role; do NOT add the
+  // catalog edit grant to operator-tier baseline roles. Defense-in-
+  // depth: the admin route + proxy both still enforce the role-tier
+  // check from the gated role sets above.
+  static const String teamRolesDefaultCatalogView =
+      'team.roles.default_catalog.view';
+  static const String teamRolesDefaultCatalogEdit =
+      'team.roles.default_catalog.edit';
   static const String teamHierarchySuspend = 'team.hierarchy.suspend';
   static const String teamHierarchyDelete = 'team.hierarchy.delete';
   static const String teamAuditLogView = 'team.audit_log.view';
@@ -299,6 +324,8 @@ class PermissionKeys {
     teamRolesCreateCustom,
     teamRolesAssign,
     teamRolesRevoke,
+    teamRolesDefaultCatalogView,
+    teamRolesDefaultCatalogEdit,
     teamHierarchySuspend,
     teamHierarchyDelete,
     teamAuditLogView,

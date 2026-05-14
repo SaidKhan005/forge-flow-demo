@@ -154,7 +154,7 @@ also not by the 9.0 foundation seed.
 | `admin.service_principal.issue_token` | Issue short-lived service-principal JWTs for automation identities. MFA required. | yes |
 | `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
 
-### `team.*` (15)
+### `team.*` (17)
 
 Operator self-service team management. Distinct from `admin.*` —
 `team.*` keys gate the operator-facing Settings → Team UX (lands in
@@ -164,12 +164,14 @@ without touching F&F-side admin paths.
 Added 2026-04-27 by the 9.0a multi-location scale-flow extensions
 slice, with `team.users.reset_mfa` added by the 2026-04-30 MFA
 hardening migration, `team.audit_log.export` added by the 2026-05-06
-11W.5 catalog reconciliation slice, and `team.users.self_update` added
-by the 2026-05-14 Wave 2 W-3 self-service profile slice. None require
-MFA at the catalog level; the launch tier avoids mandatory MFA
-enforcement for admin-tier accounts until post-launch stability. The
-reset-MFA routes still require fresh sign-in through route logic
-because removing a second factor is sensitive.
+11W.5 catalog reconciliation slice, `team.users.self_update` added
+by the 2026-05-14 Wave 2 W-3 self-service profile slice, and the two
+`team.roles.default_catalog.*` keys added by the 2026-05-14 Wave 2
+RP-9 slice for the F&F-internal Default Role Catalog admin surface.
+None require MFA at the catalog level; the launch tier avoids
+mandatory MFA enforcement for admin-tier accounts until post-launch
+stability. The reset-MFA routes still require fresh sign-in through
+route logic because removing a second factor is sensitive.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -185,6 +187,8 @@ because removing a second factor is sensitive.
 | `team.roles.create_custom` | Create operator-scoped custom role. | — |
 | `team.roles.assign` | Grant role to user within own operator. | — |
 | `team.roles.revoke` | Revoke role from user within own operator. | — |
+| `team.roles.default_catalog.view` | View the F&F Default Role Catalog template — read-only access to the seeded role set every new operator begins with. F&F super_admin + ff_support only. | — |
+| `team.roles.default_catalog.edit` | Edits the F&F Default Role Catalog template — adds, renames, or removes seeded roles for new operators. F&F super_admin only. | — |
 | `team.hierarchy.suspend` | Suspend or reactivate locations and hierarchy levels. | — |
 | `team.hierarchy.delete` | Delete locations and empty hierarchy levels. | — |
 | `team.audit_log.view` | View audit log scoped to own operator. | — |
@@ -216,6 +220,18 @@ Baseline grants seeded by 9.0a:
   only — every signed-in operator user can update their own profile
   from the My Account surface, regardless of other team-management
   authority.
+- `team.roles.default_catalog.view` is granted to `super_admin` and
+  `ff_support` only — the F&F-internal Default Role Catalog admin
+  surface (`default_role_catalog_admin_screen.dart`) is the only
+  consumer. Operator-tier roles never receive the grant by default
+  because the default catalog template is global to the F&F
+  deployment.
+- `team.roles.default_catalog.edit` is granted to `super_admin` ONLY.
+  Publishing a new default catalog version affects every operator in
+  the F&F deployment, so the write gate is F&F super-admin-only by
+  design. `ff_support` lands on the read-only branch via the view
+  grant above. Do NOT widen this grant to `operator_owner` or any
+  other operator-scoped role.
 
 ### `account.*` (1)
 

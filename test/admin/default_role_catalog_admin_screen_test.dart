@@ -528,6 +528,171 @@ void main() {
     },
   );
 
+  // Wave 2 RP-9 (2026-05-14) — granular permission gate. The screen
+  // file exposes role-tier sets that mirror the seeded grants for
+  // `team.roles.default_catalog.view` / `team.roles.default_catalog.edit`.
+  // The helper `defaultRoleCatalogScreenCanEdit` is the defense-in-depth
+  // mapping the admin route uses until a wired `PermissionResolver`
+  // lands. These tests pin the role-tier <-> permission-key mapping so
+  // a future widening to operator-tier roles is caught at CI.
+  group('Wave 2 RP-9 default catalog admin permission gate', () {
+    test('view role tier set is super_admin + ff_support only', () {
+      expect(
+        kDefaultRoleCatalogScreenViewRoles,
+        equals(<String>{'super_admin', 'ff_support'}),
+      );
+    });
+
+    test('edit role tier set is super_admin only', () {
+      expect(
+        kDefaultRoleCatalogScreenEditRoles,
+        equals(<String>{'super_admin'}),
+      );
+    });
+
+    test('defaultRoleCatalogScreenCanEdit grants super_admin', () {
+      expect(
+        defaultRoleCatalogScreenCanEdit(actorRoles: const <String>['super_admin']),
+        isTrue,
+      );
+    });
+
+    test('defaultRoleCatalogScreenCanEdit denies ff_support', () {
+      // ff_support holds the view key (read-only branch) but not edit.
+      expect(
+        defaultRoleCatalogScreenCanEdit(actorRoles: const <String>['ff_support']),
+        isFalse,
+      );
+    });
+
+    test('defaultRoleCatalogScreenCanEdit denies operator_owner', () {
+      // F&F-internal scope — operator-tier roles never receive the
+      // edit grant. Widening here without a code-change to
+      // kDefaultRoleCatalogScreenEditRoles + the migration seed would
+      // be a launch-blocker.
+      expect(
+        defaultRoleCatalogScreenCanEdit(
+          actorRoles: const <String>['operator_owner'],
+        ),
+        isFalse,
+      );
+    });
+
+    test('defaultRoleCatalogScreenCanEdit denies an empty role set', () {
+      expect(
+        defaultRoleCatalogScreenCanEdit(actorRoles: const <String>[]),
+        isFalse,
+      );
+    });
+
+    test(
+      'defaultRoleCatalogScreenCanEdit honours role-tier check when the '
+      'resolver hint disagrees (defense-in-depth)',
+      () {
+        // The role-tier check is authoritative until the admin console
+        // threads a PermissionResolver. A future resolver verdict that
+        // disagrees with the role-tier check MUST NOT silently widen
+        // the gate.
+        expect(
+          defaultRoleCatalogScreenCanEdit(
+            actorRoles: const <String>['operator_owner'],
+            actorHasEditKeyHint: true,
+          ),
+          isFalse,
+        );
+        expect(
+          defaultRoleCatalogScreenCanEdit(
+            actorRoles: const <String>['super_admin'],
+            actorHasEditKeyHint: false,
+          ),
+          isTrue,
+        );
+      },
+    );
+  });
+
+  testWidgets(
+    'Wave 2 RP-9: edit affordances render when editingEnabled=true '
+    '(super_admin tier)',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1200);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway();
+      await seedOneVersion(gateway);
+
+      await tester.pumpWidget(
+        wrap(
+          DefaultRoleCatalogAdminScreen(
+            gateway: gateway,
+            // Mirrors the admin route's resolved verdict when an actor
+            // carries the `team.roles.default_catalog.edit` permission
+            // key (super_admin role tier).
+            editingEnabled: true,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Read-only banner absent; add-role affordance present.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_readonly_banner')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_add_role')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'Wave 2 RP-9: ff_support read branch lands when editingEnabled=false',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway();
+      await seedOneVersion(gateway);
+
+      await tester.pumpWidget(
+        wrap(
+          DefaultRoleCatalogAdminScreen(
+            gateway: gateway,
+            // Mirrors the admin route's resolved verdict when an actor
+            // holds only the `team.roles.default_catalog.view` key
+            // (ff_support tier).
+            editingEnabled: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Read-only banner present; add-role gone.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_add_role')),
+        findsNothing,
+      );
+      // Publish button still rendered but disabled.
+      final publish = tester.widget<FilledButton>(
+        find.byKey(const Key('admin_default_role_catalog_publish_button')),
+      );
+      expect(publish.onPressed, isNull);
+    },
+  );
+
   testWidgets('load error: surfaces friendly error banner', (tester) async {
     final gateway = _ThrowingListGateway(
       DefaultRoleCatalogAdminGatewayError(

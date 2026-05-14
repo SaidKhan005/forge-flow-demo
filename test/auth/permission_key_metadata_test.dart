@@ -136,6 +136,77 @@ void main() {
     });
   });
 
+  // Wave 2 RP-9 (2026-05-14) — Default Role Catalog admin permission
+  // keys. The two keys gate the F&F-internal
+  // `default_role_catalog_admin_screen.dart` surface; the metadata mirror
+  // MUST classify them as org-wide (publishing a default catalog version
+  // is a global F&F-deployment-wide event) and `edit` MUST imply `view`.
+  group('Wave 2 RP-9 default catalog admin permission keys', () {
+    test(
+      'team.roles.default_catalog.view + .edit are registered with '
+      'org-wide scope, the team product label, and the Team management '
+      'category',
+      () {
+        for (final key in const <String>[
+          'team.roles.default_catalog.view',
+          'team.roles.default_catalog.edit',
+        ]) {
+          final meta = PermissionKeyMetadataCatalog.byKey[key];
+          expect(meta, isNotNull, reason: 'no metadata for $key');
+          expect(meta!.productLabel, equals('team'));
+          expect(meta.categoryLabel, equals('Team management'));
+          expect(
+            meta.scopeKind,
+            equals(PermissionScopeKind.orgWide),
+            reason:
+                '$key gates a global F&F-deployment-wide action; '
+                'location-scoped grants are nonsensical.',
+          );
+          expect(
+            meta.humanLabel,
+            isNotEmpty,
+            reason: '$key has empty humanLabel',
+          );
+        }
+      },
+    );
+
+    test(
+      'team.roles.default_catalog.edit implies '
+      'team.roles.default_catalog.view (view-required-for-write chain)',
+      () {
+        final meta = PermissionKeyMetadataCatalog.byKey[
+          'team.roles.default_catalog.edit'
+        ];
+        expect(meta, isNotNull);
+        expect(
+          meta!.implies,
+          contains('team.roles.default_catalog.view'),
+          reason:
+              'edit MUST imply view so the role editor and resolver auto-'
+              'grant read access when the edit key is granted.',
+        );
+      },
+    );
+
+    test(
+      'expandImplies on team.roles.default_catalog.edit returns both '
+      'keys',
+      () {
+        final result = PermissionKeyMetadataCatalog.expandImplies(
+          const <String>['team.roles.default_catalog.edit'],
+        );
+        expect(
+          result,
+          equals(<String>{
+            'team.roles.default_catalog.edit',
+            'team.roles.default_catalog.view',
+          }),
+        );
+      },
+    );
+  });
+
   group('PermissionKeyMetadataCatalog.expandImplies', () {
     test('returns the starting set when no key has implies edges', () {
       // barrio.handbook.view has no implies edges.

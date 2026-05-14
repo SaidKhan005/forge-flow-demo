@@ -633,6 +633,26 @@ class PermissionKeyMetadataCatalog {
           implies: <String>[PermissionKeys.teamRolesView],
           humanLabel: 'Revoke team roles',
         ),
+        // Wave 2 RP-9 (2026-05-14). F&F-internal Default Role Catalog
+        // admin surface. `org_wide` because publishing a new default
+        // catalog version is a global F&F-deployment-wide event —
+        // location-scoped grants for these keys are nonsensical (there
+        // is no per-location default catalog). `edit` implies `view`
+        // so the role editor's view-required-for-write chain stays
+        // coherent.
+        PermissionKeys.teamRolesDefaultCatalogView: PermissionKeyMetadata(
+          productLabel: 'team',
+          categoryLabel: 'Team management',
+          scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'View the Default Role Catalog template',
+        ),
+        PermissionKeys.teamRolesDefaultCatalogEdit: PermissionKeyMetadata(
+          productLabel: 'team',
+          categoryLabel: 'Team management',
+          scopeKind: PermissionScopeKind.orgWide,
+          implies: <String>[PermissionKeys.teamRolesDefaultCatalogView],
+          humanLabel: 'Edit the Default Role Catalog template',
+        ),
         PermissionKeys.teamHierarchySuspend: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',

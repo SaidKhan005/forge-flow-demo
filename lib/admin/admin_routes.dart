@@ -1187,10 +1187,21 @@ Widget _buildFeatureFlags(BuildContext context) {
 
 /// Lane B B2.2 — Default Role catalog admin editor route builder.
 /// Reads the gateway from [AdminConsoleServicesScope]; demo + widget
-/// tests fall back to the seeded in-memory gateway. Edit affordances
-/// are gated on `super_admin`; `ff_support` lands on the read-only
-/// branch (the proxy enforces the same gate server-side via
-/// [kDefaultRoleCatalogAdminWriteRoles]).
+/// tests fall back to the seeded in-memory gateway.
+///
+/// Wave 2 RP-9 (2026-05-14): the edit affordance is now gated by the
+/// catalog-registered permission key
+/// `PermissionKeys.teamRolesDefaultCatalogEdit` (super_admin only),
+/// and the read branch by
+/// `PermissionKeys.teamRolesDefaultCatalogView` (super_admin +
+/// ff_support). The admin console's `AdminAuthSession` only carries
+/// role claims at the gate layer, so the role-tier sets
+/// `kDefaultRoleCatalogScreenEditRoles` /
+/// `kDefaultRoleCatalogScreenViewRoles` in the screen file are the
+/// defense-in-depth fallback that maps the role claim to the
+/// permission decision until a `PermissionResolver` is threaded in.
+/// The proxy enforces the same gate server-side via
+/// `kDefaultRoleCatalogAdminWriteRoles`.
 Widget _buildDefaultRoleCatalog(BuildContext context) {
   final gateway = AdminConsoleServicesScope.defaultRoleCatalogAdminGatewayOf(
     context,
@@ -1212,7 +1223,14 @@ Widget _buildDefaultRoleCatalog(BuildContext context) {
     builder: (context, snapshot) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+      // Wave 2 RP-9 — gate on the `team.roles.default_catalog.edit`
+      // permission key via the role-tier fallback. When the admin
+      // console grows a wired `PermissionResolver`, replace the
+      // role-tier check with `resolver.has(
+      // PermissionKeys.teamRolesDefaultCatalogEdit)` and pass the
+      // resolver's verdict in via `actorHasEditKeyHint`.
+      final canEdit = session != null &&
+          defaultRoleCatalogScreenCanEdit(actorRoles: session.roles);
       return buildScreen(canEdit: canEdit);
     },
   );

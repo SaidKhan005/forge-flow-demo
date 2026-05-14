@@ -176,8 +176,16 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql`,
-  which is the Wave 2 U-FU-hp11-account per-location override schema
+  `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`,
+  which is the Wave 2 RP-9 `team.roles.default_catalog.view` +
+  `team.roles.default_catalog.edit` permission keys + baseline grants
+  (F&F super_admin write; super_admin + ff_support read). Promotes the
+  role-tier gate on `default_role_catalog_admin_screen.dart` +
+  `tool/advisor_proxy/admin_default_role_catalog_routes.dart` to a
+  granular permission key registered in the catalog. F&F-internal admin
+  scope — NOT widened to operator-tier roles. Prior cutoff
+  `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql`
+  is the Wave 2 U-FU-hp11-account per-location override schema
   for the three AccountScreen settings (region, business-day rollover,
   identity contact email + phone). Adds `public.location_account_overrides`
   keyed by `(operator_id, location_id)` with NULL columns inheriting

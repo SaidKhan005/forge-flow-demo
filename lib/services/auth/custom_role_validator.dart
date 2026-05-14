@@ -721,6 +721,8 @@ const Map<String, String> kViewRequiredForWrite = <String, String>{
   PermissionKeys.teamRolesCreateCustom: PermissionKeys.teamRolesView,
   PermissionKeys.teamRolesAssign: PermissionKeys.teamRolesView,
   PermissionKeys.teamRolesRevoke: PermissionKeys.teamRolesView,
+  PermissionKeys.teamRolesDefaultCatalogEdit:
+      PermissionKeys.teamRolesDefaultCatalogView,
   PermissionKeys.teamAuditLogExport: PermissionKeys.teamAuditLogView,
 };
 
@@ -767,4 +769,10 @@ const List<String> kOrgWidePermissionKeys = <String>[
   PermissionKeys.integrationQboConnect,
   PermissionKeys.integrationXeroConnect,
   PermissionKeys.integrationKeyRotate,
+  // Wave 2 RP-9 - team.roles.default_catalog.* are F&F-internal,
+  // global-deployment-wide actions. Publishing a new default catalog
+  // version affects every operator, so location-scoped grants are
+  // nonsensical.
+  PermissionKeys.teamRolesDefaultCatalogView,
+  PermissionKeys.teamRolesDefaultCatalogEdit,
 ];
