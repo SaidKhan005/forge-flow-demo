@@ -4,6 +4,7 @@ import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
+import '../widgets/hierarchy_tree_visualization.dart';
 
 const Set<String> kOperatorWebBusinessTimingEditRoles = <String>{
   'operator_owner',
@@ -215,6 +216,16 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           else
             const _ReadOnlyTimingBanner(),
           const SizedBox(height: 14),
+          // Wave 2 H-2: visual hierarchy tree above the existing
+          // text inheritance card. Companion to (not replacement
+          // for) the textual card below, per HP #11.
+          HierarchyTreeVisualization(
+            keyName: 'operator_web_business_setup_hierarchy_tree',
+            headline: 'Hierarchy for this location',
+            nodes: _hierarchyTreeNodesFromBundle(bundle),
+            dataGapExplainer: _treeDataGapForBundle(bundle),
+          ),
+          const SizedBox(height: 14),
           _InheritanceCard(bundle: bundle),
           const SizedBox(height: 14),
           _EffectiveTimingCard(bundle: bundle),
@@ -224,6 +235,105 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
       ),
     );
   }
+}
+
+/// Wave 2 H-2 — adapter from `BusinessTimingBundle.inheritanceChain` to
+/// the visual tree's node shape. The bundle exposes a flat list of
+/// scope rungs (operator default, optional regional rollup, location);
+/// each row's `active` flag tells us whether that scope contributes a
+/// value, and the location is always the "currently editing" scope on
+/// the Business setup surface.
+///
+/// Today the timing bundle does not expose intermediate brand rungs
+/// or the full hierarchy ltree, so the tree shows what IS reachable
+/// — Business → optional Region (when active) → Location — and the
+/// host screen emits a [dataGapExplainer] note that the full chain
+/// will light up once the hierarchy backbone is wired through to this
+/// surface (TODO(wave-N): wire full tree once hierarchy reachable).
+List<HierarchyTreeNodeView> _hierarchyTreeNodesFromBundle(
+  BusinessTimingBundle bundle,
+) {
+  final nodes = <HierarchyTreeNodeView>[];
+
+  // Locate the relevant rungs in the bundle's inheritance chain. The
+  // bundle's chain is ordered top-down (business → org unit → location)
+  // by `DemoBusinessTimingGateway` and the live gateway follows the
+  // same convention.
+  BusinessTimingScopeSummary? businessScope;
+  BusinessTimingScopeSummary? regionScope;
+  BusinessTimingScopeSummary? locationScope;
+  for (final scope in bundle.inheritanceChain) {
+    final kind = scope.scopeKind.toLowerCase();
+    if (kind.contains('operator') || kind.contains('business')) {
+      businessScope ??= scope;
+    } else if (kind.contains('location')) {
+      locationScope ??= scope;
+    } else {
+      regionScope ??= scope;
+    }
+  }
+
+  // Business root — always render, even if the bundle skipped it,
+  // because the operator-facing IA always has a business at the top.
+  nodes.add(HierarchyTreeNodeView(
+    level: HierarchyTreeLevel.business,
+    name: businessScope?.label.isNotEmpty == true
+        ? businessScope!.label
+        : bundle.operatorName,
+    subtitle: businessScope?.summary,
+    // The business contributes the inherited value whenever any of
+    // the bundle's effective fields are marked inherited.
+    inheritsFromHere: bundle.effectiveFields.any((f) => f.inherited),
+  ));
+
+  // Region rung — only when the bundle carries an active regional
+  // override. If the regional rung is present but inactive ("No
+  // timing override set."), we skip it to avoid implying the operator
+  // has a region layer when they do not.
+  if (regionScope != null && regionScope.active) {
+    nodes.add(HierarchyTreeNodeView(
+      level: HierarchyTreeLevel.region,
+      name: regionScope.label,
+      subtitle: regionScope.summary,
+    ));
+  }
+
+  // Location leaf — the scope the operator is currently editing on
+  // the Business setup screen.
+  nodes.add(HierarchyTreeNodeView(
+    level: HierarchyTreeLevel.location,
+    name: locationScope?.label.isNotEmpty == true
+        ? locationScope!.label
+        : bundle.locationName,
+    isCurrentScope: true,
+    subtitle: bundle.hasLocationOverride
+        ? 'Local override is set here.'
+        : 'No local override. Uses business defaults.',
+  ));
+
+  return nodes;
+}
+
+/// Wave 2 H-2 — plain-English note when the timing bundle does not
+/// expose every rung of the org hierarchy. Returns `null` when the
+/// bundle carries a regional override (we already render every rung
+/// we have data for); otherwise points the operator at the data gap
+/// without using engineering jargon.
+String? _treeDataGapForBundle(BusinessTimingBundle bundle) {
+  final hasRegion = bundle.inheritanceChain.any(
+    (scope) =>
+        scope.active &&
+        !scope.scopeKind.toLowerCase().contains('operator') &&
+        !scope.scopeKind.toLowerCase().contains('business') &&
+        !scope.scopeKind.toLowerCase().contains('location'),
+  );
+  if (hasRegion) return null;
+  // TODO(wave-N): wire full tree once hierarchy reachable — the timing
+  // bundle does not expose brand / district rungs yet, so we show the
+  // anchor levels we have and document the gap below the tree.
+  return 'Regions and brands will appear here once your hierarchy is '
+      'connected. Today the tree shows the business and the location '
+      'you are editing.';
 }
 
 class _TimingEditControls extends StatelessWidget {
