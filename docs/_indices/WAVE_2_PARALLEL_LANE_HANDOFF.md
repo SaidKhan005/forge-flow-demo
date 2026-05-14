@@ -134,6 +134,11 @@ verbatim in your worker prompts:
    - `dart analyze --fatal-infos`
    - `dart run tool/advisor_proxy_size_lint.dart` if touching proxy
    - `flutter test test/<relevant-test-dir>`
+   - **Live UI check** if the slice changes operator-web or mobile UI:
+     operator-web → Claude Preview MCP (preview_start + preview_click +
+     preview_screenshot); mobile → connected Samsung device via `adb`
+     + `flutter run` logs. Tests are LIVE — don't ship UI changes that
+     break a click-path on the actual running surface.
 5. **Commit + push.**
 6. **Open PR** titled per gate: `[operator-approval-required] ` prefix
    for `gate: operator` slices; no prefix for `gate: auto`.
@@ -191,14 +196,18 @@ their token usage does NOT hit your session cap. You spend tokens on:
 **No inline implementation edits to slice work.** Doc tweaks ≤10 lines
 are the only carve-out.
 
-## 2. 70% cap throttle
+## 2. 90% weekly cap throttle
 
-When you cross ~70% session usage, **STOP dispatching new workers**.
-Finish auditing what's already in flight. Merge or escalate. Then
-compact + announce you're handing off until next session.
+When you cross ~90% **weekly** session usage, **STOP dispatching new
+workers**. Finish auditing what's already in flight. Merge or escalate.
+Then compact + announce you're handing off until the weekly cap resets.
 
 The failure mode to avoid: 4 workers dispatched, 1 audit done, cap hits
-mid-audit-2, 2 PRs unaudited, operator stranded.
+mid-audit-2, 2 PRs unaudited, operator stranded for days.
+
+The 90% threshold (raised from an earlier 70% draft) reflects the
+operator's preference: spend the cap on real shipping. Weekly is the
+horizon that matters since workers run in separate context windows.
 
 ## 3. Bundle Lane U aggressively
 
