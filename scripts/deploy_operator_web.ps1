@@ -24,11 +24,26 @@
 # Cloud Run URL is a privilege bypass and should only ever ship to
 # an internal / IAM-locked sandbox service.
 #
+# Dev DDC opt-in (NOT FOR PRODUCTION): pass `-DevDdc`. This passes
+# `OPERATOR_WEB_DEV_DDC=true` through to `Dockerfile.operator_web`,
+# which swaps the production CSP for the dev-relaxed CSP used by the
+# Phase 2 operator-web walkthrough (`'unsafe-inline' 'unsafe-eval'` +
+# `ws://localhost:*` / `http://localhost:*` in `connect-src`; drops
+# `upgrade-insecure-requests`). The dev CSP is required for the
+# Flutter DDC bundle to boot but is a privilege bypass on a public
+# Cloud Run URL, so the deploy emits a loud warning and refuses to
+# publish without `-DevDdc` confirmation. Pair with `-DemoMode` for
+# the walkthrough; pair with a sandbox service name (e.g.
+# `forge-flow-operator-web-sandbox`) for safety. The source
+# `web/index.html` + `web/operator/index.html` stay prod-strict on
+# disk — the swap is build-time only.
+#
 # Examples:
 #   scripts/deploy_operator_web.ps1 -ProxyBaseUri https://proxy.forgeflow.app
 #   scripts/deploy_operator_web.ps1 -PrintCommandOnly
 #   scripts/deploy_operator_web.ps1 -DryRun
 #   scripts/deploy_operator_web.ps1 -DemoMode -Service forge-flow-operator-web-sandbox
+#   scripts/deploy_operator_web.ps1 -DemoMode -DevDdc -Service forge-flow-operator-web-sandbox
 #
 # Preview deploys whose service name follows
 # `forge-flow-preview-<name>-operator-web` automatically update the matching
@@ -60,6 +75,7 @@ param(
   [string] $ProxyCorsService = '',
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   [switch] $DemoMode,
+  [switch] $DevDdc,
   [switch] $SkipProxyCorsUpdate,
   [switch] $SkipApiEnable,
   [switch] $PrintCommandOnly,
@@ -279,6 +295,47 @@ if ([string]::IsNullOrWhiteSpace($ProxyBaseUri)) {
   }
 }
 
+# Resolve the dev-DDC flag. Default is the production CSP; dev-DDC
+# only swaps the CSP at build time and requires an explicit
+# acknowledgement so a forgotten flag never lands a dev-relaxed CSP
+# on a public Cloud Run URL.
+#
+# B-FU-dev-csp: the dev-relaxed CSP is required for the Flutter DDC
+# bundle to boot (Phase 2 walkthrough). On a public
+# `--allow-unauthenticated` Cloud Run service it is a privilege bypass
+# (allows `unsafe-eval` + `unsafe-inline`), so the deploy emits a loud
+# warning and refuses to proceed without explicit confirmation.
+$operatorWebDevDdc = 'false'
+if ($DevDdc) {
+  Write-Host ''
+  Write-Host '################################################################'
+  Write-Host '#  WARNING — about to deploy DEV-DDC operator-web CSP.         #'
+  Write-Host '#                                                              #'
+  Write-Host '#  Dev DDC swaps the production CSP for a dev-relaxed CSP      #'
+  Write-Host '#  (unsafe-inline + unsafe-eval + ws/http://localhost:*) so    #'
+  Write-Host '#  the Flutter DDC bundle can boot. On a public                #'
+  Write-Host '#  --allow-unauthenticated Cloud Run service this is a         #'
+  Write-Host '#  privilege bypass. Only proceed if the target service is an  #'
+  Write-Host '#  internal / IAM-locked sandbox (e.g.                         #'
+  Write-Host '#  forge-flow-operator-web-sandbox).                           #'
+  Write-Host '################################################################'
+  Write-Host ''
+  Write-Host "Target service:  $Service"
+  Write-Host "Target project:  $Project"
+  Write-Host "Target region:   $Region"
+  Write-Host ''
+  if ($DryRun -or $PrintCommandOnly) {
+    Write-Host 'Dry-run/print mode active — skipping interactive confirmation, but a real deploy would refuse to proceed without "DEPLOY DEV DDC OPERATOR WEB CSP".'
+  } else {
+    $devDdcConfirmation = Read-Host 'Type "DEPLOY DEV DDC OPERATOR WEB CSP" to proceed, anything else to abort'
+    if ($devDdcConfirmation -ne 'DEPLOY DEV DDC OPERATOR WEB CSP') {
+      Write-Host 'Aborted; dev-DDC deploy was not confirmed.'
+      exit 1
+    }
+  }
+  $operatorWebDevDdc = 'true'
+}
+
 # Resolve the demo flag. Live is the default; demo requires an
 # explicit acknowledgement so a forgotten flag never lands a
 # fixture-login operator-web shell on a public URL.
@@ -352,6 +409,8 @@ $cloudBuildConfig = @(
   "  - 'Dockerfile.operator_web'",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "OPERATOR_WEB_DEMO_AUTH=$operatorWebDemoAuth")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "OPERATOR_WEB_DEV_DDC=$operatorWebDevDdc")",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "OPERATOR_WEB_PROXY_BASE_URI=$ProxyBaseUri")",
   "  - '--build-arg'",
@@ -449,7 +508,11 @@ if ([string]::IsNullOrWhiteSpace($serviceUri)) {
 }
 
 if ($DemoMode) {
-  Write-Host "Operator Web Console (DEMO AUTH) deployed: $serviceUri"
+  if ($DevDdc) {
+    Write-Host "Operator Web Console (DEMO AUTH + DEV DDC CSP) deployed: $serviceUri"
+  } else {
+    Write-Host "Operator Web Console (DEMO AUTH) deployed: $serviceUri"
+  }
 } else {
   if ($SkipProxyCorsUpdate) {
     Write-Host 'Operator-web proxy CORS update skipped.'
@@ -472,5 +535,9 @@ if ($DemoMode) {
       Write-Host 'Operator-web CORS preflight: 204'
     }
   }
-  Write-Host "Operator Web Console (live Firebase auth) deployed: $serviceUri"
+  if ($DevDdc) {
+    Write-Host "Operator Web Console (live Firebase auth + DEV DDC CSP) deployed: $serviceUri"
+  } else {
+    Write-Host "Operator Web Console (live Firebase auth) deployed: $serviceUri"
+  }
 }
