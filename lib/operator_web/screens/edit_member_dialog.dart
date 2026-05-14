@@ -3,8 +3,8 @@
 // Members edit-user write path. Lives next to the sibling
 // [invite_member_dialog.dart]; the screen layer mounts this from the
 // per-row "Edit member" action introduced in 11W.1's Members surface
-// retrofit. The dialog edits two write-path fields and surfaces two
-// read-only fields scoped by the Wave 2 ledger row W-1:
+// retrofit. The dialog edits four write-path fields scoped by Wave 2
+// ledger rows W-1 (email + display name) and W-1-FU (role + scope):
 //
 //   * email             — (write) change Firebase Identity Platform
 //                         account email + Postgres mirror; sensitive
@@ -12,23 +12,28 @@
 //                         before the Save button enables).
 //   * display name      — (write) change Team display name + Firebase
 //                         display name in lock-step.
-//   * role assignment   — (read-only) shows the current role. Changing
-//                         the role is intentionally NOT wired here; a
-//                         follow-up slice (W-1-FU) wires the dropdown
-//                         through the existing `createRoleGrant` +
-//                         `revokeRoleGrant` gateway path. Operator
-//                         decision 2026-05-14: keep the field visible
-//                         so the operator can see the current role at
-//                         a glance, but un-clickable so a role
-//                         demotion cannot be silently dropped on save.
-//   * hierarchy scope   — (read-only) shows the current scope (and the
-//                         pinned location when scope = location). Same
-//                         W-1-FU follow-up unlocks the dropdowns.
+//   * role assignment   — (write, W-1-FU) rotate the user's role grant
+//                         through `createRoleGrant` +
+//                         `revokeRoleGrant`. Same audit row +
+//                         Firebase-claim refresh the Roles page
+//                         triggers.
+//   * hierarchy scope   — (write, W-1-FU) rotate the grant's scope
+//                         (operator-wide / org unit / location).
+//                         Location scope reveals the pinned location
+//                         dropdown.
 //
-// Idempotency: the dialog mints one key for the email/display-name
-// patch. The role-grant idempotency key is plumbed through but unused
-// today because the role/scope rotation is read-only — W-1-FU will
-// activate it.
+// Save dispatches up to two writes:
+//   1. PATCH /v1/auth/team/users/{id} when email or display name dirty.
+//   2. POST + DELETE /v1/auth/team/role-grants when role or scope dirty
+//      (create new grant first, revoke the old one second, so the user
+//      never sees a window with zero grants).
+//
+// Idempotency: the dialog carries two distinct keys — one for the
+// profile PATCH and one for the role-grant rotation. The proxy's
+// `proxy_requests` UNIQUE-key replay surfaces the original audit row
+// on retry. Both writes are gated by the operator-permission check
+// the proxy already enforces; the dialog mounts only when `canWrite`
+// is true on the parent Members screen.
 //
 // Validation: locked copy is shared with the Invite dialog via
 // [InviteMemberDialogCopy] — same emailMalformed / roleMissing /
@@ -171,6 +176,9 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
   late String? _selectedRoleId;
   late _EditMemberScope _selectedScope;
   late String? _selectedLocationId;
+  late String? _initialRoleId;
+  late _EditMemberScope _initialScope;
+  late String? _initialLocationId;
   bool _confirmEmail = false;
   bool _submitting = false;
   String? _errorMessage;
@@ -186,6 +194,12 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
     final initialScopeRaw = firstGrant?.scopeType ?? 'location';
     _selectedScope = _EditMemberScope.fromWire(initialScopeRaw);
     _selectedLocationId = firstGrant?.locationId ?? widget.user.locationId;
+    // Snapshot the initial role/scope so `_roleChanged`/`_scopeChanged`
+    // can detect a real rotation without re-reading the widget every
+    // setState.
+    _initialRoleId = _selectedRoleId;
+    _initialScope = _selectedScope;
+    _initialLocationId = _selectedLocationId;
   }
 
   @override
@@ -204,13 +218,26 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
   bool get _displayNameChanged =>
       _displayNameController.text.trim() != widget.user.displayName.trim();
 
-  // Role + hierarchy scope dropdowns are intentionally read-only in
-  // this dialog (operator decision 2026-05-14). Save lights up only
-  // when email or display name changes; role/scope rotation is handled
-  // by W-1-FU through the existing `createRoleGrant` /
-  // `revokeRoleGrant` gateway path. Roles page remains the canonical
-  // surface for role + scope changes today.
-  bool get _anythingChanged => _emailChanged || _displayNameChanged;
+  /// W-1-FU — role rotation lights up when the operator picks a
+  /// different role from the dropdown.
+  bool get _roleChanged => _selectedRoleId != _initialRoleId;
+
+  /// W-1-FU — hierarchy scope rotation lights up when the operator
+  /// picks a different scope OR when the scope is `location` and the
+  /// pinned location id changes.
+  bool get _scopeChanged {
+    if (_selectedScope != _initialScope) return true;
+    if (_selectedScope == _EditMemberScope.location &&
+        _selectedLocationId != _initialLocationId) {
+      return true;
+    }
+    return false;
+  }
+
+  /// Save lights up when any of the four edit fields are dirty. W-1-FU
+  /// adds role + scope to the original W-1 email + display-name pair.
+  bool get _anythingChanged =>
+      _emailChanged || _displayNameChanged || _roleChanged || _scopeChanged;
 
   String? _validate() {
     if (!_anythingChanged) return EditMemberDialogCopy.nothingToSave;
@@ -233,10 +260,20 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
       // operator-readable shape.
       return 'Display name is required.';
     }
-    // Role + scope are read-only on this dialog, so roleMissing /
-    // locationMissing cannot be triggered through the UI. The
-    // existing role/location values come from the user fixture and
-    // pass through the dialog untouched.
+    // W-1-FU — when role or scope is being rotated, enforce the same
+    // role-missing / location-missing copy the Invite dialog uses so
+    // the operator sees a consistent rejection across both write
+    // surfaces.
+    if (_roleChanged || _scopeChanged) {
+      if (_selectedRoleId == null || _selectedRoleId!.trim().isEmpty) {
+        return EditMemberDialogCopy.roleMissing;
+      }
+      if (_selectedScope == _EditMemberScope.location &&
+          (_selectedLocationId == null ||
+              _selectedLocationId!.trim().isEmpty)) {
+        return EditMemberDialogCopy.locationMissing;
+      }
+    }
     if (_reasonController.text.trim().isEmpty) {
       return EditMemberDialogCopy.reasonMissing;
     }
@@ -273,13 +310,50 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
           idempotencyKey: widget.profileIdempotencyKey,
         );
       }
-      // Role + hierarchy scope rotation is intentionally NOT wired
-      // here. The dropdowns above render the current values as
-      // read-only state (their `onChanged` is null). Operators change
-      // role + scope through the Roles page today; W-1-FU will wire
-      // the dropdowns through the existing
-      // `TeamRoleGrantCreate`/`TeamRoleGrantRevoke` gateway methods.
-      // See ledger row W-1 in `docs/_indices/WAVE_2_LEDGER.md`.
+      // W-1-FU — role + hierarchy scope rotation. Create the new grant
+      // first, then revoke the old one, so the user is never in a
+      // zero-grant window between the two writes. Both calls reuse the
+      // `roleGrantIdempotencyKey` (suffixed) so the proxy's
+      // `proxy_requests` UNIQUE-key replay surfaces the original audit
+      // rows on retry.
+      if (_roleChanged || _scopeChanged) {
+        await widget.gateway.createRoleGrant(
+          TeamRoleGrantCreateCommand(
+            actorUserId: widget.actorUserId,
+            operatorId: widget.operatorId,
+            locationId: widget.locationId,
+            targetUserId: widget.user.userId,
+            roleId: _selectedRoleId!,
+            scopeType: _selectedScope.wire,
+            targetLocationId: _selectedScope == _EditMemberScope.location
+                ? _selectedLocationId
+                : null,
+            reason: reason,
+          ),
+          idempotencyKey: '${widget.roleGrantIdempotencyKey}-create',
+        );
+        // Drop the previous grant so the user lands on exactly one
+        // active grant for the dialog's "single role at a time" model.
+        // When the user fixture has no grants (older projection /
+        // first-time bootstrap) we skip the revoke half — the create
+        // already wrote the new authoritative grant.
+        final existing = widget.user.grants.isEmpty
+            ? null
+            : widget.user.grants.first;
+        if (existing != null) {
+          await widget.gateway.revokeRoleGrant(
+            TeamRoleGrantRevokeCommand(
+              actorUserId: widget.actorUserId,
+              operatorId: widget.operatorId,
+              locationId: widget.locationId,
+              userRoleId: existing.userRoleId,
+              targetUserId: widget.user.userId,
+              reason: reason,
+            ),
+            idempotencyKey: '${widget.roleGrantIdempotencyKey}-revoke',
+          );
+        }
+      }
       if (!mounted) return;
       Navigator.of(context).pop(
         EditMemberDialogResult(
@@ -385,13 +459,14 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
                   onChanged: (_) => setState(() {}),
                 ),
                 const SizedBox(height: 12),
-                // Role + hierarchy scope dropdowns are visible so the
-                // operator can see the current role and scope at a
-                // glance, but `onChanged: null` keeps them un-clickable.
-                // The Roles page is the canonical surface for role +
-                // scope changes today. W-1-FU will unlock the
-                // dropdowns and wire them through the existing
-                // createRoleGrant / revokeRoleGrant gateway path.
+                // W-1-FU — role + hierarchy scope dropdowns are now
+                // editable. `onChanged` writes back into local state so
+                // `_anythingChanged` lights up Save the same way the
+                // email / display-name fields do. On submit the dialog
+                // dispatches `createRoleGrant` + `revokeRoleGrant` to
+                // rotate the grant atomically. The proxy still gates
+                // both writes on `team.roles.assign` /
+                // `team.roles.revoke`.
                 DropdownButtonFormField<String>(
                   key: const Key('edit_member_dialog_role_field'),
                   initialValue: _selectedRoleId,
@@ -399,7 +474,9 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
                     labelText: 'Role',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: null,
+                  onChanged: _submitting
+                      ? null
+                      : (value) => setState(() => _selectedRoleId = value),
                   items: <DropdownMenuItem<String>>[
                     for (final role in widget.roleOptions)
                       DropdownMenuItem<String>(
@@ -416,7 +493,12 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
                     labelText: 'Hierarchy scope',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: null,
+                  onChanged: _submitting
+                      ? null
+                      : (value) {
+                          if (value == null) return;
+                          setState(() => _selectedScope = value);
+                        },
                   items: const <DropdownMenuItem<_EditMemberScope>>[
                     DropdownMenuItem<_EditMemberScope>(
                       value: _EditMemberScope.operatorWide,
@@ -447,7 +529,10 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
                       labelText: 'Primary location',
                       border: OutlineInputBorder(),
                     ),
-                    onChanged: null,
+                    onChanged: _submitting
+                        ? null
+                        : (value) =>
+                            setState(() => _selectedLocationId = value),
                     items: <DropdownMenuItem<String>>[
                       for (final location in widget.locationOptions)
                         DropdownMenuItem<String>(
@@ -457,12 +542,6 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
                     ],
                   ),
                 ],
-                const SizedBox(height: 6),
-                Text(
-                  'To change role or hierarchy scope, use the Roles page.',
-                  key: const Key('edit_member_dialog_role_scope_lock_note'),
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                ),
                 const SizedBox(height: 12),
                 TextField(
                   key: const Key('edit_member_dialog_reason_field'),
