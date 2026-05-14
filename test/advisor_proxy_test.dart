@@ -4508,6 +4508,178 @@ void main() {
       });
     });
 
+    // ──────────────────────────────────────────────────────────────────
+    // Wave 2 B-1B — support-check sign-in regression
+    //
+    // Bug 1 from debug.md:14 ("proxy returned an incomplete session
+    // record after support-check sign-in") had two halves: the proxy
+    // contract for `ff_support` / `super_admin` JWTs (fixed in PR #476
+    // by accepting scope-less global-admin claims and returning empty
+    // `operator_id` / `location_id` in the 200 echo), and the client
+    // parser (fixed in PR #476 follow-up `e26e53af` by mirroring the
+    // role-aware empty-scope tolerance). The existing
+    // `requireOperatorContext` unit tests cover the guard in isolation,
+    // and `proxy_auth_session_ledger_writer_test.dart` covers the
+    // client parser. The gap surfaced by the B-1B re-triage is a
+    // ROUTE-LEVEL regression test that hits `POST /v1/auth/session/login`
+    // end-to-end with a global-admin JWT and asserts the exact 200
+    // response shape the client now depends on. This locks the
+    // `support-check` sign-in path against future drift (e.g. someone
+    // tightening the response builder to omit empty-string fields, or
+    // dropping the role-aware accept branch).
+    //
+    // Mirrors of the same contract live at:
+    //   - `tool/advisor_proxy/advisor_proxy.dart:2272+` (proxy guard)
+    //   - `tool/pressure/p4_session_record_predicate.dart:57-103`
+    //     (soak harness predicate)
+    //   - `lib/services/auth/proxy_auth_session_ledger_writer.dart:373-487`
+    //     (client parser + scope-echo validator)
+    // If any one of these widens / narrows, ALL must move together.
+    // ──────────────────────────────────────────────────────────────────
+
+    test(
+      'B-1B — POST /v1/auth/session/login with scope-less ff_support JWT '
+      'returns 200 with global-admin session shape (session_id + user_id '
+      'populated; operator_id + location_id empty strings)',
+      () async {
+        await withRealHttp(() async {
+          final ledger = _RecordingAuthSessionLedger(
+            loginSessionIds: <String>['support-session-id'],
+          );
+          await spinUpServer(authSessionLedgerWriter: ledger);
+          try {
+            // Scope-less ff_support claim — the production shape for
+            // an F&F support user who has not yet impersonated an
+            // operator via the `/v1/admin/auth/sessions` flow.
+            verifier.claims = const ProxyJwtClaims(
+              userId: 'support-user-uuid',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            );
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authSessionLoginPath),
+              authorization: 'Bearer placeholder.id.token',
+              body: const <String, Object?>{'token_hash': 'sha256-hex-hash'},
+            );
+
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            // Acceptance: response carries ALL four wire-contract keys
+            // the client parser reads (the client refuses to persist
+            // the session if any required key is missing — that was
+            // the bug shape A1 §1.3 H1 ranked HIGH). The keys MUST be
+            // present, even when empty, so the client can sanity-check
+            // the echo before persisting the local AuthSession.
+            expect(body.containsKey('session_id'), isTrue);
+            expect(body.containsKey('user_id'), isTrue);
+            expect(body.containsKey('operator_id'), isTrue);
+            expect(body.containsKey('location_id'), isTrue);
+            expect(body['session_id'], equals('support-session-id'));
+            expect(body['user_id'], equals('support-user-uuid'));
+            // Global-admin contract: empty strings (NOT null, NOT
+            // missing) per the `requireOperatorContext` accept branch
+            // at `tool/advisor_proxy/advisor_proxy.dart:2284-2337`.
+            expect(body['operator_id'], equals(''));
+            expect(body['location_id'], equals(''));
+
+            // Acceptance: writer received the global-admin shape too —
+            // empty operator/location strings, real user id, real
+            // token hash. Mirrors the response echo.
+            expect(ledger.logins, hasLength(1));
+            final login = ledger.logins.single;
+            expect(login.userId, equals('support-user-uuid'));
+            expect(login.operatorId, equals(''));
+            expect(login.locationId, equals(''));
+            expect(login.tokenHash, equals('sha256-hex-hash'));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
+    test(
+      'B-1B — POST /v1/auth/session/login with scope-less super_admin JWT '
+      'returns 200 with global-admin session shape (super_admin '
+      'parallels ff_support)',
+      () async {
+        await withRealHttp(() async {
+          final ledger = _RecordingAuthSessionLedger(
+            loginSessionIds: <String>['superadmin-session-id'],
+          );
+          await spinUpServer(authSessionLedgerWriter: ledger);
+          try {
+            verifier.claims = const ProxyJwtClaims(
+              userId: 'super-admin-uuid',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            );
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authSessionLoginPath),
+              authorization: 'Bearer placeholder.id.token',
+              body: const <String, Object?>{'token_hash': 'sha256-hex-hash'},
+            );
+
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['session_id'], equals('superadmin-session-id'));
+            expect(body['user_id'], equals('super-admin-uuid'));
+            expect(body['operator_id'], equals(''));
+            expect(body['location_id'], equals(''));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
+    test(
+      'B-1B — POST /v1/auth/session/login with scope-less non-admin JWT '
+      'still returns 403 (regression-protects the non-admin reject '
+      'path; the global-admin carve-out is keyed on roles, not on a '
+      'generic empty-scope tolerance)',
+      () async {
+        await withRealHttp(() async {
+          await spinUpServer(
+            authSessionLedgerWriter: _RecordingAuthSessionLedger(),
+          );
+          try {
+            // operator_owner is a tenant-scoped role; missing scope
+            // MUST still reject per the per-operator isolation hard
+            // promise (HP #4).
+            verifier.claims = const ProxyJwtClaims(
+              userId: 'tenant-user-uuid',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['operator_owner'],
+            );
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authSessionLoginPath),
+              authorization: 'Bearer placeholder.id.token',
+              body: const <String, Object?>{'token_hash': 'sha256-hex-hash'},
+            );
+
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['error'],
+              contains('operator'),
+              reason:
+                  'non-admin scope-less tokens MUST still be rejected '
+                  'with the unchanged 403 reject branch',
+            );
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
     test('POST /v1/auth/session/refresh happy path: writer receives '
         'sessionId from body and scope from token', () async {
       await withRealHttp(() async {
