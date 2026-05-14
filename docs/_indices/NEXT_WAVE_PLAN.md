@@ -74,12 +74,23 @@ walkthrough. Cheap to run; catches gross breakage early.
 - Flutter web: `flutter run -t lib/main_operator_web.dart -d chrome --dart-define=OPERATOR_WEB_PROXY_BASE_URI=http://localhost:8080`.
 - Flutter mobile: `scripts\run_flutter_dev.ps1 -App forgeflow` against the connected Samsung device.
 
+**Live testing tools (use these — they're available in main orchestrator session):**
+- **Operator-web:** Claude Preview MCP server hosts the running operator-web
+  build in an iframe Claude can click, screenshot, inspect, and read
+  console/network logs from. Tools: `mcp__Claude_Preview__preview_start`,
+  `_click`, `_screenshot`, `_eval`, `_console_logs`, `_network`, `_inspect`.
+- **Mobile (Samsung device):** the connected Samsung is on. Main orchestrator
+  exercises mobile UI directly via `adb shell input` + `adb exec-out
+  screencap`, plus `flutter run` for hot-reload + log capture. Operator
+  picks up the device when human intuition is needed.
+
 **Exit criteria:**
 - Proxy boots without crash.
-- Operator-web shell renders.
-- Mobile shell renders (forgeflow flavor).
-- One operator-web demo click-path completes without 500s.
-- One mobile demo click-path completes.
+- Operator-web shell renders (verified via Preview screenshot).
+- Mobile shell renders (verified via adb screencap from Samsung device).
+- One operator-web demo click-path completes without 500s (Preview server
+  click + network log check).
+- One mobile demo click-path completes (adb input + screencap verification).
 - `dart analyze --fatal-infos` clean against current master.
 
 **Operator gates:** none — orchestrator drives.
@@ -144,28 +155,58 @@ Main orchestrator lanes summary:
 
 ## Phase 2 — Comprehensive walkthrough + TAG HAPPY STATE
 
-**Goal:** the single comprehensive validation of the wave. Operator + main
-orchestrator walk the full surface — visual + functional, backend +
-frontend — confirm Wave 2 delivered what was scoped, then anchor the
-state for refactor comparison.
+**Goal:** the single comprehensive validation of the wave. **Main
+orchestrator drives the walkthrough autonomously** against the audit
+(`docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md`), fixes gaps surfaced,
+then reports a plain-English verification list to the operator. Operator
+verifies + signs off + tags happy state.
 
-**Step 2a — Visual walkthrough (operator drives, main orchestrator narrates):**
-- Per-screen pass on operator-web (14 Ops Console screens) + mobile (7 mobile screens).
-- Every 🚧 IN PROGRESS / ❌ NOT DONE row from `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` flipped to ✅ DONE (or back into the ledger if a gap survived Wave 2).
-- HP #11 spot-check: every settings surface shows scope / inherited-from / effective value triple, or documents why it's backend-only/gated.
-- Lane U output quality check (subtitle/tile/copy/label hierarchy-sensitivity).
+**Authority:** `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` is the
+canonical authority for what "done" means. Every 🚧 IN PROGRESS / ❌ NOT
+DONE / 🔍 NEEDS VERIFICATION row in that doc gets driven to ✅ DONE (or
+back into the ledger as a Wave 2.5 slice if the gap survived Wave 2 and
+needs operator decision before fix).
 
-**Step 2b — Functional walkthrough:**
-- Each Wave 2 lane's representative click-paths end-to-end:
-  - Lane W: vendor connector write-path → fact tables populated correctly.
-  - Lane H: hierarchy visualization renders + drills.
-  - Lane R + S: hierarchy-scoped roles inherit + show up in the right places.
-  - Lane B: W-1 + W-2 fixes prove out under live apply; BUG-1 + BUG-2 reproductions confirmed closed.
-  - Lane Q: soak harness boots; email harness sends; scaffold-audit script runs clean; custom-role orphan lint catches a planted orphan.
-  - Lane M-Poll: mobile Integrations tab shows live status + demo-live switch works + ops-portal deeplink with JWT handoff lands the operator authenticated.
+**Live testing tools:**
+- **Operator-web:** Claude Preview MCP (click, screenshot, eval, console
+  + network logs). Main exercises every Ops Console screen end-to-end.
+- **Mobile:** connected Samsung device via `adb` + `flutter run` logs +
+  screencaps. Main exercises every mobile screen end-to-end.
+- **Backend:** `dart analyze --fatal-infos`, migration drift scanner,
+  migration cutoff lint, advisor proxy size lint, wave-touched test
+  suites — all run live against post-Wave-2 master.
+
+**Workflow:**
+
+### Step 2a — Main orchestrator walks the full surface
+
+For each row in `DEBUG_MD_IMPLEMENTATION_STATUS.md` not currently ✅:
+1. Identify the screen / API / capability under test.
+2. Drive the live tool (Preview for operator-web; adb for mobile;
+   shell for backend) through the click-path or invocation.
+3. Capture evidence: screenshot, network log, console log, test output,
+   or code-anchored prose.
+4. Classify outcome:
+   - **✅ Resolved live** — works correctly in current state. Flip row to DONE.
+   - **🔧 Fixable inline** — small gap (≤5 file edit), main fixes via
+     worker agent + standard PR. Re-test after merge. Flip row to DONE.
+   - **🚧 Needs scope** — gap requires operator decision before fix.
+     Add Wave 2.5 row to `WAVE_2_LEDGER.md` + leave row as 🚧 with the
+     specific question captured.
+
+Lane checks main runs in parallel with the row-by-row pass:
+- **Lane U output quality:** subtitle/tile/copy/label hierarchy-sensitivity holds across all 14 Ops Console + 7 Mobile screens.
+- **HP #11 sweep:** every settings surface shows scope / inherited-from / effective value triple, or documents why it's backend-only/gated.
+- **Lane W:** vendor connector write-path → fact tables populated correctly.
+- **Lane H:** hierarchy visualization renders + drills correctly.
+- **Lane R + S:** hierarchy-scoped roles inherit + show up in the right places.
+- **Lane B:** W-1 + W-2 fixes prove out under live apply; BUG-1 + BUG-2 reproductions confirmed closed.
+- **Lane Q:** soak harness boots; email harness sends; scaffold-audit script runs clean; custom-role orphan lint catches a planted orphan.
+- **Lane M-Poll:** mobile Integrations tab shows live status + demo-live switch works + ops-portal deeplink with JWT handoff lands authenticated.
 - Operator read-back items get answered with code-anchored prose: locale, schedule timing, audit log explanation, sqlite refresh rate, realtime config, business setup field coverage.
 
-**Step 2c — Backend walkthrough:**
+### Step 2b — Backend cleanliness check
+
 - `dart analyze --fatal-infos` clean against post-Wave-2 master.
 - Migration drift scanner clean: `tool/migration_drift_scanner.dart --strict-docs`.
 - Migration cutoff lint clean: `tool/migration_cutoff_lint.dart`.
@@ -173,13 +214,28 @@ state for refactor comparison.
 - Wave-touched test suites all green; no new entries in `docs/KNOWN_FAILING_TESTS.md`.
 - Audit log + hierarchy gateway end-to-end smoke (real Postgres, real RLS).
 
-**Step 2d — Frontend walkthrough:**
-- Both flavors boot clean: `flutter run -t lib/main_forgeflow.dart` + `flutter run -t lib/main_barrio.dart` (Barrio remains paused but must still build).
-- Operator-web builds + runs in Chrome.
-- No console errors or layout overflows surfaced in normal click-paths.
-- Mobile Integrations tab renders correctly on connected Samsung device.
+### Step 2c — Frontend cleanliness check
 
-**Step 2e — Tag happy state (operator signs off):**
+- Both flavors boot clean: `flutter run -t lib/main_forgeflow.dart` + `flutter run -t lib/main_barrio.dart` (Barrio remains paused but must still build).
+- Operator-web builds + runs (Preview server confirms).
+- No console errors or layout overflows surfaced via Preview console + network logs.
+- Mobile Integrations tab renders correctly on Samsung device (screencap verified).
+
+### Step 2d — Main produces plain-English verification list for operator
+
+Single doc at `docs/_audits/wave_2/phase_2_walkthrough_verification.md`:
+- Every audit row, its outcome (✅ resolved / 🔧 fixed in PR #X / 🚧 escalated to Wave 2.5).
+- Plain-English summary of what main saw on each surface.
+- List of fix PRs main shipped during the walkthrough.
+- List of Wave 2.5 escalations (with proposed scope).
+- Final state of all lane checks.
+- Backend + frontend cleanliness check results.
+
+### Step 2e — Operator verifies + signs off + tags happy state
+
+Operator reads the verification doc, spot-checks any rows they want to
+confirm directly (via the same live tools), signs off:
+
 ```bash
 git tag happy-state-YYYY-MM-DD <commit-hash>
 git push origin happy-state-YYYY-MM-DD
@@ -188,10 +244,12 @@ git push origin happy-state-YYYY-MM-DD
 Plus snapshot any operator-edited demo SQLite state to a known path so
 the same demo click-paths can replay identically after refactor.
 
-**Operator gates:** operator decides exactly when to tag and on which
-commit. Walkthrough may surface stragglers that get queued as Wave 2.5
-slices — those land + walkthrough re-runs against the new state before
-tagging.
+**If operator rejects a row's verification:** main re-investigates that
+specific row + amends the verification doc + re-presents.
+
+**Operator gates:** operator approves the verification doc and decides
+when to tag. Wave 2.5 escalations (if any) ship + walkthrough re-runs
+on affected rows before tagging.
 
 ---
 
@@ -303,15 +361,22 @@ orchestrator's session cap. The orchestrator spends tokens on:
 That's it. No inline edits to slice work. Doc tweaks ≤10 lines are the
 only carve-out.
 
-### 2. 70% cap throttle
+### 2. 90% weekly cap throttle
 
-When either session crosses ~70% session usage, **stop dispatching new
-workers**. Audit + merge what's already in flight. Then compact and
-resume on a fresh session.
+When either session crosses ~90% **weekly** session usage, **stop
+dispatching new workers**. Audit + merge what's already in flight. Then
+compact and wait for the weekly reset before picking up new lanes.
 
 The failure mode we're avoiding: orchestrator dispatches 4 workers,
 audits 1, hits the cap mid-audit-2, leaves 2 PRs unaudited and the
-operator stranded.
+operator stranded for days.
+
+The 90% threshold (raised from an earlier 70% draft) reflects the
+operator's preference: spend the cap on real shipping, not on
+conservative buffer. Weekly is the relevant horizon — the per-session
+throttle was over-conservative because workers run in separate context
+windows and main spends most of its tokens on audits, which compress
+well after compaction.
 
 ### 3. Compact between batches
 
