@@ -9,6 +9,8 @@
 
 import 'package:flutter/material.dart';
 
+import '../../operator_web/widgets/hierarchy_map_picker.dart';
+import '../../operator_web/widgets/hierarchy_tree_picker.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
 import '../models/email_conflict_details.dart';
@@ -119,6 +121,71 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
           id: 'location:${loc.locationId}',
           label: loc.name,
           locationId: loc.locationId,
+        ),
+    ];
+  }
+
+  /// Project the admin scope catalog into the hierarchy-tree picker's
+  /// node shape. Each [MemberAccessScopeRef] becomes one
+  /// [HierarchyMapNode]; the picker uses the prefix on `id`
+  /// (`operator_wide:` / `org_unit:` / `location:`) to derive parent
+  /// links so the rendered tree mirrors Business → Region → Location.
+  /// Location nodes parent under the first non-business scope when no
+  /// explicit org-unit linkage exists (admin scope catalog is flat —
+  /// callers can pass parented data in a follow-up live-wiring slice
+  /// without breaking the picker's contract).
+  List<HierarchyMapNode> _hierarchyNodes() {
+    final scopes = _scopeOptions;
+    if (scopes.isEmpty) return const <HierarchyMapNode>[];
+    // Find the business root (operator_wide) so org-units + un-parented
+    // locations can hang underneath it. If none is present (admin
+    // surface filtered out the business scope) the tree renders the
+    // org-units as roots and locations either parent under their
+    // org-unit when known or hang as siblings of the org-units.
+    String? businessRootId;
+    for (final scope in scopes) {
+      if (scope.isBusiness) {
+        businessRootId = scope.id;
+        break;
+      }
+    }
+    return <HierarchyMapNode>[
+      for (final scope in scopes)
+        HierarchyMapNode(
+          id: scope.id,
+          label: scope.label,
+          helper: scope.isBusiness
+              ? 'Whole business'
+              : scope.isOrgUnit
+                  ? 'Region or group'
+                  : 'Location',
+          kind: scope.isBusiness
+              ? HierarchyMapNodeKind.business
+              : scope.isOrgUnit
+                  ? HierarchyMapNodeKind.orgUnit
+                  : HierarchyMapNodeKind.location,
+          parentId: scope.isBusiness
+              ? null
+              : scope.isOrgUnit
+                  // Admin catalog is flat; org-units hang directly under
+                  // the business root for now. A follow-up live wiring
+                  // slice can encode parent linkage on
+                  // MemberAccessScopeRef without a picker change.
+                  ? businessRootId
+                  // Location nodes parent under their org-unit when one
+                  // is encoded in the access-scope id pattern
+                  // ("location:<locId>"); the admin catalog does not
+                  // carry the org-unit linkage today, so locations sit
+                  // under the business root alongside the regions. The
+                  // operator still sees the location grouped beneath
+                  // "Whole business" with the region nodes as peers,
+                  // which is correct for the flat admin catalog.
+                  : businessRootId,
+          inheritanceBreadcrumb: scope.isBusiness
+              ? 'Granting at this level covers every region and location.'
+              : scope.isOrgUnit
+                  ? 'Locations under this region inherit access granted here.'
+                  : null,
         ),
     ];
   }
@@ -295,24 +362,16 @@ class _InviteMemberAdminDialogState extends State<InviteMemberAdminDialog> {
                 onChanged: (v) => setState(() => _roleKey = v),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
+              HierarchyTreePicker(
                 key: const Key('admin_members_invite_location'),
-                initialValue: _scopeId,
-                isExpanded: true,
-                hint: const Text('Choose access scope'),
-                decoration: const InputDecoration(
-                  labelText: 'Access scope',
-                  border: OutlineInputBorder(),
-                ),
-                items: <DropdownMenuItem<String>>[
-                  for (final scope in _scopeOptions)
-                    DropdownMenuItem<String>(
-                      key: Key('admin_members_invite_scope_${scope.id}'),
-                      value: scope.id,
-                      child: Text(scope.label),
-                    ),
-                ],
-                onChanged: (v) => setState(() => _scopeId = v),
+                keyPrefix: 'admin_members_invite_scope',
+                nodes: _hierarchyNodes(),
+                selectedId: _scopeId,
+                onSelected: (node) => setState(() => _scopeId = node.id),
+                label: 'Choose where this person will work',
+                helper:
+                    'Pick the location, region, or whole business. Higher '
+                    'levels include everything beneath.',
               ),
               const SizedBox(height: 12),
               TextField(
