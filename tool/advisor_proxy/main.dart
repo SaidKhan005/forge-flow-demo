@@ -1604,6 +1604,15 @@ Future<void> _runProxy(List<String> args) async {
         return null;
       }
     },
+    // Wave 2 Q-1-FU-sink — production audit sink so every successful
+    // capture and every pod-rate warn lands one row through the
+    // admin-pool AuthEventsAuditRepository (and through the hash-chained
+    // audit_logs fan-out per the standard `audit_logs_cutover_enabled`
+    // gate). Without this wire the route still works but the audit row
+    // is dropped (noop default). HP #4 platform-diagnostic: no operator
+    // scope is supplied, so the chain fan-out short-circuits while the
+    // auth_events_audit row persists for the support-side log.
+    auditSink: productionBindings.heapSnapshotCaptureAuditSink,
   );
 
   // Phase 8 — wire the inbound integration chain (vendor credential
