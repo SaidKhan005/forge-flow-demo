@@ -42,6 +42,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_tokens_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/notification_preferences_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
@@ -126,6 +127,8 @@ import 'health_producers/producer_registry.dart';
 import 'heap_snapshot_capture_routes.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
+import 'email_dispatch/notification_event_fanout.dart';
+import 'email_dispatch/postgres_notification_fanout_bindings.dart';
 import 'email_soak_probe_routes.dart';
 import 'firebase_test_lab_webhook_routes.dart';
 import 'sendgrid_events_webhook.dart';
@@ -250,6 +253,7 @@ class ProxyProductionBindings {
     required this.connectorBackfillJobsRouter,
     required this.vendorLifecycleRecentlyAvailableRouter,
     required this.notificationPreferencesRouter,
+    required this.notificationEventFanout,
     required this.demoModeMasterSwitchRouter,
     required this.wageRoleRowsRouter,
     required this.authHandoffRouter,
@@ -467,6 +471,17 @@ class ProxyProductionBindings {
   /// RLS). Wired into `routeRequest` for the three operator-scoped
   /// notification-preferences routes.
   final NotificationPreferencesRouter notificationPreferencesRouter;
+
+  /// Wave 2 EN-3-FU - production [NotificationEventFanout] wired
+  /// against the four Postgres seam adapters in
+  /// `tool/advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart`.
+  /// Worker entry points (first-connect backfill, audit_anchor) pull
+  /// this instance into their `onTerminalOutcome` / `onAnchorFailure`
+  /// hooks via the shared envelope-builder helpers in
+  /// `notification_event_hooks.dart`. EN-3's telemetry-only
+  /// mitigation in `notif_event_telemetry_hook.dart` is now a
+  /// fallback rather than the primary dispatch path.
+  final NotificationEventFanout notificationEventFanout;
 
   /// Slice C-4 - operator-scoped Demo -> Live master switch. Backed by
   /// [DemoModeStateRepository] over the tenant pool so the write uses
@@ -1013,6 +1028,24 @@ ProxyProductionBindings buildProxyProductionBindings(
     gateway: RepositoryNotificationPreferencesGateway(
       repository: NotificationPreferencesRepository(tenantWrapper),
     ),
+  );
+  // Wave 2 EN-3-FU - NotificationEventFanout production binding.
+  // The four seam adapters (user directory, preference reader, push,
+  // email) live in `email_dispatch/postgres_notification_fanout_bindings.dart`.
+  // The user directory + preference reader run through
+  // `adminWrapper.runAsSystem` because the fanout walks every user in
+  // the operator; the per-user RLS policy on `users` /
+  // `notification_preferences` would otherwise force one round-trip
+  // per recipient. The push seam delegates to
+  // `MobilePushOutboxRepository.enqueue` (operator-scoped, tenant
+  // wrapper). The email seam INSERTs directly into `email_outbox`
+  // through the admin wrapper with a SELECT-then-INSERT idempotency
+  // collapse on `template_data->>'idempotency_key'`, mirroring the
+  // canonical pattern in
+  // `tool/oauth_refresh_worker/vendor_connection_auto_disabled_dispatcher.dart`.
+  final notificationEventFanout = buildPostgresNotificationEventFanout(
+    adminWrapper: adminWrapper,
+    pushOutboxRepository: MobilePushOutboxRepository(tenantWrapper),
   );
   // Lane B B11.1 — auth handoff (mobile→web) mint + redeem router.
   // Tenant pool + per-tenant RLS policy on `handoff_codes`. The audit
@@ -1601,6 +1634,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     vendorLifecycleRecentlyAvailableRouter:
         vendorLifecycleRecentlyAvailableRouter,
     notificationPreferencesRouter: notificationPreferencesRouter,
+    notificationEventFanout: notificationEventFanout,
     demoModeMasterSwitchRouter: demoModeMasterSwitchRouter,
     wageRoleRowsRouter: wageRoleRowsRouter,
     authHandoffRouter: authHandoffRouter,

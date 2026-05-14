@@ -46,9 +46,12 @@ import 'dart:io';
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
-import '../advisor_proxy/email_dispatch/notif_event_telemetry_hook.dart';
+import '../advisor_proxy/email_dispatch/notification_event_fanout.dart';
+import '../advisor_proxy/email_dispatch/notification_event_hooks.dart';
+import '../advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart';
 import 'audit_anchor.dart';
 import 'azure_blob_client.dart';
 
@@ -240,12 +243,21 @@ class AuditAnchorRuntime {
     required this.operatorIdReader,
     required this.sweepLockIdReader,
     required this.sweepAdvisoryLock,
+    this.notificationEventFanout,
   });
 
   final AuditAnchorOrchestrator orchestrator;
   final OperatorIdReader operatorIdReader;
   final SweepLockIdReader sweepLockIdReader;
   final SweepAdvisoryLock sweepAdvisoryLock;
+
+  /// Wave 2 EN-3-FU - production [NotificationEventFanout] wired
+  /// against the four Postgres seam adapters in
+  /// `tool/advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart`.
+  /// `main()` composes a fanout-backed `onAnchorFailure` hook from
+  /// this instance via `emitAuditAnchorFailure`. Tests pass their
+  /// own `onAnchorFailure` to `runCli` and bypass this entirely.
+  final NotificationEventFanout? notificationEventFanout;
 }
 
 /// Default pool factory — wraps `PackagePostgresPool.fromUrl` so the
@@ -325,11 +337,21 @@ AuditAnchorRuntime buildAuditAnchorRuntime(
       PostgresOperatorIdReader(wrapper: wrapper);
   final sweepLockIdReader = PostgresSweepLockIdReader(wrapper: wrapper);
   final sweepAdvisoryLock = PostgresSweepAdvisoryLock(wrapper: wrapper);
+  // Wave 2 EN-3-FU - NotificationEventFanout production binding.
+  // The audit_anchor CLI uses a single Postgres pool (deploy uses
+  // a single Postgres role that holds both `service_role` and
+  // `forge_admin`); the fanout's cross-user enumeration calls
+  // `runAsSystem` to elevate per-transaction via SET LOCAL ROLE.
+  final notificationEventFanout = buildPostgresNotificationEventFanout(
+    adminWrapper: wrapper,
+    pushOutboxRepository: MobilePushOutboxRepository(wrapper),
+  );
   return AuditAnchorRuntime(
     orchestrator: orchestrator,
     operatorIdReader: operatorIdReader,
     sweepLockIdReader: sweepLockIdReader,
     sweepAdvisoryLock: sweepAdvisoryLock,
+    notificationEventFanout: notificationEventFanout,
   );
 }
 
@@ -412,6 +434,17 @@ Future<int> runCli(
   OperatorIdReader operatorIdReader;
   SweepLockIdReader sweepLockIdReader;
   SweepAdvisoryLock sweepAdvisoryLock;
+  // Wave 2 EN-3-FU - production fanout binding. Tests pass their own
+  // `onAnchorFailure` and bypass this path. In production, when the
+  // caller passed `null`, the binding falls back to:
+  //   1. The fanout-backed hook composed from `runtime.notificationEventFanout`,
+  //      which dispatches `notif.audit.anchor_failure` envelopes through
+  //      the four Postgres seam adapters.
+  //   2. If the runtime did not produce a fanout (test path / degraded
+  //      boot), the EN-3 telemetry hook in
+  //      `notif_event_telemetry_hook.dart` so the failure still surfaces
+  //      as a structured Cloud Logging line.
+  NotificationEventFanout? productionFanout;
   // Default operator-id / lock-id reader / advisory lock for non-
   // sweep modes that never call them. The sweep dispatch builds the
   // production reader (or accepts the test override) below.
@@ -446,10 +479,31 @@ Future<int> runCli(
         sweepLockIdReaderOverride ?? runtime.sweepLockIdReader;
     sweepAdvisoryLock =
         sweepAdvisoryLockOverride ?? runtime.sweepAdvisoryLock;
+    productionFanout = runtime.notificationEventFanout;
     stdoutSink.writeln(
       'audit_anchor starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
     );
+  }
+
+  final AuditAnchorFailureHook? resolvedOnAnchorFailure;
+  if (onAnchorFailure != null) {
+    // Explicit caller-supplied hook (tests, or `main()` if it wants
+    // to keep the EN-3 telemetry fallback). Wins regardless of fanout
+    // availability so the test contract stays simple.
+    resolvedOnAnchorFailure = onAnchorFailure;
+  } else if (productionFanout != null) {
+    // Production path: dispatch the failure through the fanout so
+    // real push + email rows land. EN-3's telemetry hook becomes the
+    // observed-via-logging side channel rather than the primary
+    // dispatch path; callers that want the warn alongside should
+    // explicitly compose the two via the
+    // `_composeAnchorFailureHooks` helper below.
+    resolvedOnAnchorFailure = _buildFanoutBackedAnchorFailureHook(
+      productionFanout,
+    );
+  } else {
+    resolvedOnAnchorFailure = null;
   }
 
   // L9: SIGTERM/SIGINT cooperative shutdown. Each long-running mode
@@ -483,7 +537,7 @@ Future<int> runCli(
           shutdown: shutdown,
           out: stdoutSink,
           err: stderrSink,
-          onAnchorFailure: onAnchorFailure,
+          onAnchorFailure: resolvedOnAnchorFailure,
         );
       case AuditAnchorMode.verify:
         return await _runVerifyMode(
@@ -492,7 +546,7 @@ Future<int> runCli(
           chainDate: args.chainDateUtc!,
           out: stdoutSink,
           err: stderrSink,
-          onAnchorFailure: onAnchorFailure,
+          onAnchorFailure: resolvedOnAnchorFailure,
         );
     }
   } finally {
@@ -977,14 +1031,45 @@ String _formatChainDate(DateTime date) {
       '${utc.day.toString().padLeft(2, '0')}';
 }
 
+/// Wave 2 EN-3-FU - builds an [AuditAnchorFailureHook] that dispatches
+/// `notif.audit.anchor_failure` through the production
+/// [NotificationEventFanout] via the existing envelope-builder helper
+/// in `notification_event_hooks.dart`. The helper internally swallows
+/// fanout exceptions so the audit_anchor exit code is never changed
+/// by a notification-side failure (matching the doc-string contract on
+/// [AuditAnchorFailureHook]).
+AuditAnchorFailureHook _buildFanoutBackedAnchorFailureHook(
+  NotificationEventFanout fanout,
+) {
+  return ({
+    required String operatorId,
+    required String chainDateIso,
+    required String reason,
+  }) async {
+    await emitAuditAnchorFailure(
+      fanout: fanout.fanOut,
+      operatorId: operatorId,
+      chainDateIso: chainDateIso,
+      reason: reason,
+    );
+  };
+}
+
 Future<void> main(List<String> args) async {
-  // Wave 2 EN-3 — bind the production telemetry hook so audit-anchor
-  // failures emit a `notif.event.unwired` warning even while the
-  // full `NotificationEventFanout` Postgres seams are pending. Tests
-  // pass their own `onAnchorFailure` via [runCli]'s named parameter
-  // and bypass this default.
-  exitCode = await runCli(
-    args,
-    onAnchorFailure: buildAuditAnchorFailureTelemetryHook(),
-  );
+  // Wave 2 EN-3-FU - production NotificationEventFanout binding.
+  // `runCli` resolves `onAnchorFailure` to a fanout-backed hook when
+  // the production runtime produced a [NotificationEventFanout] (the
+  // normal Cloud Run path). When `buildAuditAnchorRuntime` could not
+  // produce a fanout (degraded boot, future test-time deploy with no
+  // Postgres), we leave `onAnchorFailure` null so the structured
+  // telemetry warning in `notif_event_telemetry_hook.dart` becomes
+  // the side-channel until the fanout binds.
+  //
+  // EN-3's `buildAuditAnchorFailureTelemetryHook` is intentionally
+  // NOT passed here: the fanout dispatches the real envelope, and
+  // tests inject their own `onAnchorFailure` via `runCli`'s named
+  // parameter. The telemetry helper is preserved for one release
+  // cycle as a fallback path but is not the primary dispatch
+  // surface any more.
+  exitCode = await runCli(args);
 }

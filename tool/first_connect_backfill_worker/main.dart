@@ -101,7 +101,11 @@ import '../advisor_proxy/phase_8_vendor_integration_factories.dart'
         buildPhase8VendorIntegrationFactoriesFromCredentials,
         kPhase8DefaultWebhookPublicBaseUri,
         kPhase8WebhookPublicBaseUriEnvName;
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mobile_push_outbox_repository.dart';
 import '../advisor_proxy/email_dispatch/notif_event_telemetry_hook.dart';
+import '../advisor_proxy/email_dispatch/notification_event_fanout.dart';
+import '../advisor_proxy/email_dispatch/notification_event_hooks.dart';
+import '../advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart';
 import '../integration_sync_worker/backfill_dispatch.dart';
 import '../integration_sync_worker/dispatch.dart' show kSyncWorkerServicePrincipalId;
 
@@ -1162,6 +1166,7 @@ class WorkerRuntime {
     required this.canonicalSink,
     required this.adapterFactory,
     required this.config,
+    this.notificationEventFanout,
   });
 
   final WorkerScopeReader scopeReader;
@@ -1174,6 +1179,15 @@ class WorkerRuntime {
   /// factory through `runCli(adapterFactoryOverride:)`.
   final WorkerBackfillAdapterFactory adapterFactory;
   final WorkerRuntimeConfig config;
+
+  /// Wave 2 EN-3-FU - production [NotificationEventFanout] wired
+  /// against the four Postgres seam adapters in
+  /// `tool/advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart`.
+  /// `runCli` plugs `fanout.fanOut` into the backfill dispatcher's
+  /// `onTerminalOutcome` via `emitBackfillComplete`/`emitBackfillFailed`.
+  /// Null when the worker is started with `--no-notifications` or when
+  /// `buildWorkerRuntime` is bypassed by a test override.
+  final NotificationEventFanout? notificationEventFanout;
 }
 
 WorkerRuntime buildWorkerRuntime({
@@ -1231,12 +1245,25 @@ WorkerRuntime buildWorkerRuntime({
   );
   final adapterFactory = BinderBackedAdapterFactory(factories: factories);
 
+  // Wave 2 EN-3-FU - NotificationEventFanout production binding.
+  // The worker pool double-duties as both tenant + admin wrapper here
+  // because the deploy uses a single Postgres role (the proxy holds
+  // both `service_role` and `forge_admin`; the worker holds the same
+  // grants). The fanout's cross-user enumeration calls
+  // `runAsSystem` which elevates per-transaction via SET LOCAL ROLE,
+  // so a single wrapper is sufficient.
+  final notificationEventFanout = buildPostgresNotificationEventFanout(
+    adminWrapper: wrapper,
+    pushOutboxRepository: MobilePushOutboxRepository(wrapper),
+  );
+
   return WorkerRuntime(
     scopeReader: scopeReader,
     jobStore: cappingStore,
     canonicalSink: canonicalSink,
     adapterFactory: adapterFactory.call,
     config: config,
+    notificationEventFanout: notificationEventFanout,
   );
 }
 
@@ -1422,6 +1449,7 @@ Future<int> runCli(
   CanonicalSink canonicalSink;
 
   WorkerBackfillAdapterFactory? productionAdapterFactory;
+  NotificationEventFanout? productionNotificationEventFanout;
 
   if (hasOverrides) {
     // Tests path: skip env config and pool wiring entirely.
@@ -1464,6 +1492,7 @@ Future<int> runCli(
     jobStore = runtime.jobStore;
     canonicalSink = runtime.canonicalSink;
     productionAdapterFactory = runtime.adapterFactory;
+    productionNotificationEventFanout = runtime.notificationEventFanout;
     stdoutSink.writeln(
       'first_connect_backfill_worker starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
@@ -1476,14 +1505,24 @@ Future<int> runCli(
   final workerId =
       '${config.workerIdPrefix}-${pid.toRadixString(16)}-${DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(16)}';
 
-  // Wave 2 EN-3 — bind the production telemetry hook so backfill
-  // terminal outcomes emit a `notif.event.unwired` warning even
-  // while the full `NotificationEventFanout` Postgres seams are
-  // pending. Tests inject `dispatcherOverride` and bypass the
-  // default. See `tool/advisor_proxy/email_dispatch/notif_event_telemetry_hook.dart`
-  // for the helper.
+  // Wave 2 EN-3-FU - production NotificationEventFanout binding.
+  // When `buildWorkerRuntime` produced a fanout (the normal path),
+  // route terminal outcomes through `emitBackfillComplete` /
+  // `emitBackfillFailed` so real push + email rows land. The
+  // telemetry hook (`buildBackfillTerminalTelemetryHook`) is kept as
+  // a fallback when no fanout is available (test path / degraded
+  // boot); the EN-3 mitigation it shipped is deprecated but
+  // preserved for one release cycle so a fanout regression still
+  // surfaces a structured warning line in Cloud Logging.
+  final BackfillTerminalHook productionTerminalHook =
+      productionNotificationEventFanout != null
+          ? _buildFanoutBackedBackfillTerminalHook(
+              productionNotificationEventFanout,
+            )
+          // ignore: deprecated_member_use_from_same_package
+          : buildBackfillTerminalTelemetryHook();
   final productionDispatcher = IntegrationSyncWorkerBackfillDispatch(
-    onTerminalOutcome: buildBackfillTerminalTelemetryHook(),
+    onTerminalOutcome: productionTerminalHook,
   );
 
   switch (args.mode) {
@@ -1546,6 +1585,51 @@ void _installDefaultSignalHandlers(BackfillWorkerLoop loop) {
   ProcessSignal.sigint.watch().listen((_) {
     loop.requestStop();
   });
+}
+
+/// Wave 2 EN-3-FU - builds a [BackfillTerminalHook] that dispatches
+/// `notif.backfill.complete` / `notif.backfill.failed` through the
+/// production [NotificationEventFanout] via the existing
+/// envelope-builder helpers in `notification_event_hooks.dart`. The
+/// resumable / noJob outcomes are no-ops here because the catalog
+/// only fires push+email on terminal states (succeeded / failed); the
+/// existing hook helpers already guard for that internally.
+BackfillTerminalHook _buildFanoutBackedBackfillTerminalHook(
+  NotificationEventFanout fanout,
+) {
+  return ({
+    required FirstConnectionBackfillJob job,
+    required BackfillDispatchOutcome outcome,
+    String? errorMessage,
+  }) async {
+    switch (outcome) {
+      case BackfillDispatchOutcome.succeeded:
+        await emitBackfillComplete(
+          fanout: fanout.fanOut,
+          operatorId: job.operatorId,
+          locationId: job.locationId,
+          connectionId: job.connectionId,
+          vendorId: job.vendorId,
+          jobId: job.jobId,
+        );
+      case BackfillDispatchOutcome.failed:
+        await emitBackfillFailed(
+          fanout: fanout.fanOut,
+          operatorId: job.operatorId,
+          locationId: job.locationId,
+          connectionId: job.connectionId,
+          vendorId: job.vendorId,
+          jobId: job.jobId,
+          reason: errorMessage ?? 'unknown',
+        );
+      case BackfillDispatchOutcome.resumable:
+      case BackfillDispatchOutcome.noJob:
+        // Non-terminal — the catalog admits no email here. Mirror the
+        // telemetry hook's `return` so the dispatcher's swallow-and-
+        // continue semantics stay identical.
+        return;
+    }
+  };
 }
 
 // Service principal id the dispatcher stamps as actor when claiming.
