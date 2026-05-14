@@ -48,6 +48,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postg
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
+import '../advisor_proxy/email_dispatch/notif_event_telemetry_hook.dart';
 import 'audit_anchor.dart';
 import 'azure_blob_client.dart';
 
@@ -977,5 +978,13 @@ String _formatChainDate(DateTime date) {
 }
 
 Future<void> main(List<String> args) async {
-  exitCode = await runCli(args);
+  // Wave 2 EN-3 — bind the production telemetry hook so audit-anchor
+  // failures emit a `notif.event.unwired` warning even while the
+  // full `NotificationEventFanout` Postgres seams are pending. Tests
+  // pass their own `onAnchorFailure` via [runCli]'s named parameter
+  // and bypass this default.
+  exitCode = await runCli(
+    args,
+    onAnchorFailure: buildAuditAnchorFailureTelemetryHook(),
+  );
 }
