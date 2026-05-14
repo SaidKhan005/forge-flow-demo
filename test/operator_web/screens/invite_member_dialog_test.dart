@@ -126,7 +126,8 @@ void main() {
         find.byKey(const Key('invite_member_dialog_role_field')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Staff').last);
+      // R-2L v2 catalog: "Staff" retired; pick a still-seeded role.
+      await tester.tap(find.text('Supervisor').last);
       await tester.pumpAndSettle();
 
       await tester.tap(find.byKey(const Key('invite_member_dialog_submit')));
@@ -179,7 +180,8 @@ void main() {
           find.byKey(const Key('invite_member_dialog_role_field')),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Staff').last);
+        // R-2L v2 catalog: "Staff" retired; pick a still-seeded role.
+        await tester.tap(find.text('Supervisor').last);
         await tester.pumpAndSettle();
 
         // Tap the Downtown location node in the picker tree.
@@ -241,7 +243,8 @@ void main() {
           find.byKey(const Key('invite_member_dialog_role_field')),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Manager').last);
+        // R-2L v2 catalog: "Manager" renamed to "General Manager".
+        await tester.tap(find.text('General Manager').last);
         await tester.pumpAndSettle();
         await tester.tap(find.byKey(const Key('invite_member_dialog_submit')));
         await tester.pumpAndSettle();
@@ -302,7 +305,8 @@ void main() {
           find.byKey(const Key('invite_member_dialog_role_field')),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Manager').last);
+        // R-2L v2 catalog: "Manager" renamed to "General Manager".
+        await tester.tap(find.text('General Manager').last);
         await tester.pumpAndSettle();
 
         // Tap the East Region node in the picker tree.

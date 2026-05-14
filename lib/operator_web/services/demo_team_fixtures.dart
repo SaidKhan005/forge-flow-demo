@@ -148,27 +148,56 @@ class DemoTeamRoleFixture {
   final List<String> permissionKeys;
 }
 
-/// Allow-set per seeded role for the demo flavor. Mirrors the baseline
-/// grants documented in `docs/contracts/auth_permission_key_catalog.md`
+/// Allow-set per seeded role for the demo flavor.
+///
+/// **R-2L Default Role Catalog v2 (operator-approved 2026-05-14).**
+/// Mirrors `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`
+/// (Steps 1–3) and `docs/_indices/WAVE_2_R2L_DEFAULT_ROLE_CATALOG_V2_PROPOSAL.md`
 /// closely enough to drive a believable Roles + Permission Explainer
 /// walkthrough; live data still wins via the proxy projection.
+///
+/// The F&F-internal `super_admin` / `ff_support` global roles are
+/// intentionally excluded — operator-web's Roles surface only exposes
+/// operator-facing rows (the proxy's `listRoles` projection filters
+/// the same way for non-admin callers). Custom roles (`is_seeded =
+/// false`) follow at the bottom of [kDemoTeamRolesFixture].
 const List<String> _kDemoOperatorOwnerPermissions = <String>[
+  // product.* — full product access
   'product.forgeflow.access',
+  'product.barrio.access',
+  // forgeflow.* — full operational surface
   'forgeflow.shift.view',
   'forgeflow.shift.edit',
   'forgeflow.variance.view',
   'forgeflow.variance.edit',
   'forgeflow.schedule.view',
   'forgeflow.schedule.edit',
+  'forgeflow.baseline.view',
+  'forgeflow.baseline.override',
   'forgeflow.history.view',
   'forgeflow.benchmark.view',
+  'forgeflow.benchmark.edit',
   'forgeflow.target_profile.view',
   'forgeflow.target_profile.manage',
   'forgeflow.target_cycle.view',
+  'forgeflow.target_cycle.unlock',
+  'forgeflow.target_cycle.replace',
   'forgeflow.weekly_plan.view',
   'forgeflow.weekly_plan.lock',
   'forgeflow.settings.view',
   'forgeflow.settings.manage',
+  // barrio.* — full training surface including handbook
+  'barrio.handbook.view',
+  'barrio.handbook.edit',
+  'barrio.interview_playbook.view',
+  'barrio.interview_playbook.edit',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.supervisor_content.edit',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  // team.* — full team management surface
   'team.users.view',
   'team.users.invite',
   'team.users.deactivate',
@@ -176,65 +205,214 @@ const List<String> _kDemoOperatorOwnerPermissions = <String>[
   'team.users.soft_delete',
   'team.users.reset_password',
   'team.users.reset_mfa',
+  'team.users.self_update',
   'team.roles.view',
   'team.roles.create_custom',
   'team.roles.assign',
   'team.roles.revoke',
+  'team.hierarchy.suspend',
+  'team.hierarchy.delete',
   'team.audit_log.view',
+  'team.audit_log.export',
   'team.session.force_logout',
+  // billing.* — Owner-only subscription + payment management
   'billing.invoice.view',
   'billing.usage.view',
-  'integrations.configure',
+  'billing.usage_caps.edit',
+  'billing.subscription.manage',
+  'billing.payment_method.manage',
+  // account.* / business_timing.* — operator-level settings
+  'account.configure',
+  'business_timing.configure',
+  // admin.* (operator-scope subset; no PII erase / pricing_tier.edit)
+  'admin.users.view',
+  'admin.users.reset_mfa_factors',
+  'admin.audit_log.view',
+  'admin.audit_log.export',
+  'admin.audit_privacy.read',
+  // workflow.*
+  'workflow.catalog.view',
+  'workflow.run',
+  'workflow.history.view',
 ];
 
-const List<String> _kDemoOperatorManagerPermissions = <String>[
+const List<String> _kDemoOperatorGeneralManagerPermissions = <String>[
+  // product.*
   'product.forgeflow.access',
+  'product.barrio.access',
+  // forgeflow.* — full operational surface
   'forgeflow.shift.view',
   'forgeflow.shift.edit',
   'forgeflow.variance.view',
   'forgeflow.variance.edit',
   'forgeflow.schedule.view',
   'forgeflow.schedule.edit',
+  'forgeflow.baseline.view',
+  'forgeflow.baseline.override',
   'forgeflow.history.view',
+  'forgeflow.benchmark.view',
+  'forgeflow.benchmark.edit',
+  'forgeflow.target_profile.view',
+  'forgeflow.target_profile.manage',
+  'forgeflow.target_cycle.view',
+  'forgeflow.target_cycle.unlock',
+  'forgeflow.target_cycle.replace',
   'forgeflow.weekly_plan.view',
+  'forgeflow.weekly_plan.lock',
   'forgeflow.settings.view',
+  'forgeflow.settings.manage',
+  // barrio.* — view-all + supervisor_content edit + preston_lee view
+  // (no handbook edit — Owner-only)
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.supervisor_content.edit',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  // team.* — full member admin, no roles create_custom, no audit export
   'team.users.view',
   'team.users.invite',
+  'team.users.deactivate',
   'team.users.reactivate',
   'team.users.reset_password',
+  'team.users.reset_mfa',
+  'team.users.self_update',
   'team.roles.view',
   'team.roles.assign',
   'team.roles.revoke',
   'team.audit_log.view',
-  'team.session.force_logout',
-];
-
-const List<String> _kDemoOperatorSupervisorPermissions = <String>[
-  'product.forgeflow.access',
-  'forgeflow.shift.view',
-  'forgeflow.variance.view',
-  'forgeflow.schedule.view',
-  'forgeflow.history.view',
-  'barrio.supervisor_content.view',
-];
-
-const List<String> _kDemoOperatorStaffPermissions = <String>[
-  'product.forgeflow.access',
-  'forgeflow.shift.view',
-  'barrio.handbook.view',
-  'barrio.learning.complete_unit',
-  'barrio.streak.view',
+  // admin.* — view-only on members + audit
+  'admin.users.view',
+  'admin.audit_log.view',
+  // workflow.*
+  'workflow.catalog.view',
+  'workflow.run',
+  'workflow.history.view',
 ];
 
 const List<String> _kDemoLocationManagerPermissions = <String>[
+  // product.*
   'product.forgeflow.access',
+  'product.barrio.access',
+  // forgeflow.* — operational surface excluding org-wide tools
+  'forgeflow.shift.view',
+  'forgeflow.shift.edit',
+  'forgeflow.variance.view',
+  'forgeflow.schedule.view',
+  'forgeflow.schedule.edit',
+  'forgeflow.baseline.view',
+  'forgeflow.history.view',
+  'forgeflow.benchmark.view',
+  'forgeflow.target_profile.view',
+  'forgeflow.target_cycle.view',
+  'forgeflow.weekly_plan.view',
+  'forgeflow.settings.view',
+  // barrio.* — view-only at the location
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  // team.* — invite + view (location-scoped via user_roles.location_id)
+  'team.users.view',
+  'team.users.invite',
+  'team.users.deactivate',
+  'team.users.self_update',
+  'team.roles.view',
+  'team.roles.assign',
+  // workflow.*
+  'workflow.catalog.view',
+];
+
+const List<String> _kDemoSupervisorPermissions = <String>[
+  // product.*
+  'product.forgeflow.access',
+  'product.barrio.access',
+  // forgeflow.* — minimal supervisor surface (shift edit gated to
+  // "own shifts only" at the resolver layer; catalog grant is the
+  // dotted key, scope-narrowed by the runtime)
   'forgeflow.shift.view',
   'forgeflow.shift.edit',
   'forgeflow.variance.view',
   'forgeflow.schedule.view',
   'forgeflow.history.view',
+  'forgeflow.weekly_plan.view',
+  // barrio.* — read-only training surface
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.el_podio.view',
+  'barrio.learning.complete_unit',
+  'barrio.streak.view',
+  // team.* — self profile update only
+  'team.users.self_update',
+];
+
+const List<String> _kDemoFinanceAnalystPermissions = <String>[
+  // billing.* — invoice + usage read, usage caps edit
+  // (no subscription.manage, no payment_method.manage)
+  'billing.invoice.view',
+  'billing.usage.view',
+  'billing.usage_caps.edit',
+  // admin.* — audit-log read so they can see what was paid
+  'admin.audit_log.view',
+  // team.* — self profile update
+  'team.users.self_update',
+];
+
+const List<String> _kDemoAuditorCompliancePermissions = <String>[
+  // admin.* — audit-log read + export, members view, PII oversight
+  'admin.audit_log.view',
+  'admin.audit_log.export',
+  'admin.users.view',
+  'admin.audit_privacy.read',
+  // team.* — operator-scoped audit-log read + export
+  'team.audit_log.view',
+  'team.audit_log.export',
+  // team.* — self profile update
+  'team.users.self_update',
+];
+
+const List<String> _kDemoTrainingLeadPermissions = <String>[
+  // product.*
+  'product.barrio.access',
+  // barrio.* — supervisor content + interview playbook edit
+  // (no handbook edit — Owner-only)
+  'barrio.handbook.view',
+  'barrio.interview_playbook.view',
+  'barrio.interview_playbook.edit',
+  'barrio.jim_taylor.view',
+  'barrio.preston_lee.view',
+  'barrio.supervisor_content.view',
+  'barrio.supervisor_content.edit',
+  'barrio.el_podio.view',
+  'barrio.streak.view',
+  // team.* — self profile update
+  'team.users.self_update',
+];
+
+const List<String> _kDemoTeamAdminPermissions = <String>[
+  // team.* — full roster + role admin
   'team.users.view',
+  'team.users.invite',
+  'team.users.deactivate',
+  'team.users.reactivate',
+  'team.users.reset_password',
+  'team.users.reset_mfa',
+  'team.users.self_update',
   'team.roles.view',
+  'team.roles.assign',
+  'team.roles.revoke',
+  'team.audit_log.view',
+  'team.session.force_logout',
+  // admin.* — members view
+  'admin.users.view',
 ];
 
 /// Custom-role allow-set for the demo Floor Captain. Mirrors the
@@ -247,6 +425,16 @@ const List<String> _kDemoFloorCaptainPermissions = <String>[
   'forgeflow.history.view',
 ];
 
+/// R-2L v2 catalog — 8 operator-facing seeded roles + 1 custom.
+///
+/// The F&F-internal global roles (`super_admin`, `ff_support`) are
+/// excluded by design: operator-web's Roles surface only renders
+/// operator-facing rows. Display labels are Title Case English per the
+/// UX naming standard locked in the R-2L proposal doc.
+///
+/// Authority: `docs/_indices/WAVE_2_R2L_DEFAULT_ROLE_CATALOG_V2_PROPOSAL.md`
+/// (operator-approved 2026-05-14) and
+/// `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`.
 const List<DemoTeamRoleFixture> kDemoTeamRolesFixture = <DemoTeamRoleFixture>[
   DemoTeamRoleFixture(
     roleId: 'role-operator-owner',
@@ -254,42 +442,81 @@ const List<DemoTeamRoleFixture> kDemoTeamRolesFixture = <DemoTeamRoleFixture>[
     displayName: 'Owner',
     isSeeded: true,
     description:
-        'Operator owner. Full operational + operator-scoped admin + '
-        'integrations.',
+        'Owns the business. Full operational access plus billing, '
+        'integrations, and team admin.',
     permissionKeys: _kDemoOperatorOwnerPermissions,
   ),
   DemoTeamRoleFixture(
-    roleId: 'role-operator-manager',
-    roleKey: 'operator_manager',
-    displayName: 'Manager',
+    roleId: 'role-operator-general-manager',
+    roleKey: 'operator_general_manager',
+    displayName: 'General Manager',
     isSeeded: true,
     description:
-        'Manager-level operator user. Broad operational; limited admin.',
-    permissionKeys: _kDemoOperatorManagerPermissions,
-  ),
-  DemoTeamRoleFixture(
-    roleId: 'role-operator-supervisor',
-    roleKey: 'operator_supervisor',
-    displayName: 'Supervisor',
-    isSeeded: true,
-    description: 'Supervisor-level. Selected operational + supervisor learning.',
-    permissionKeys: _kDemoOperatorSupervisorPermissions,
-  ),
-  DemoTeamRoleFixture(
-    roleId: 'role-operator-staff',
-    roleKey: 'operator_staff',
-    displayName: 'Staff',
-    isSeeded: true,
-    description: 'Line-level. Barrio learning surfaces only by default.',
-    permissionKeys: _kDemoOperatorStaffPermissions,
+        'Runs all locations and staff. Operational edit access plus '
+        'staff admin and audit view; no billing or subscription '
+        'mutations.',
+    permissionKeys: _kDemoOperatorGeneralManagerPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-location-manager',
     roleKey: 'location_manager',
-    displayName: 'Location manager',
+    displayName: 'Location Manager',
     isSeeded: true,
-    description: 'Single-location manager. Read-only roles + members.',
+    description:
+        'Runs one location. Invites and removes staff, edits schedules, '
+        'sees variance and benchmarks at that location.',
     permissionKeys: _kDemoLocationManagerPermissions,
+  ),
+  DemoTeamRoleFixture(
+    roleId: 'role-supervisor',
+    roleKey: 'supervisor',
+    displayName: 'Supervisor',
+    isSeeded: true,
+    description:
+        'Supervises shifts at one location. Edits short-term schedule, '
+        'marks shift covers, sees variance for shifts they ran.',
+    permissionKeys: _kDemoSupervisorPermissions,
+  ),
+  DemoTeamRoleFixture(
+    roleId: 'role-finance-analyst',
+    roleKey: 'finance_analyst',
+    displayName: 'Finance Analyst',
+    isSeeded: true,
+    description:
+        'Reviews invoices and usage, adjusts usage caps. Cannot change '
+        'the subscription plan or connect billing integrations.',
+    permissionKeys: _kDemoFinanceAnalystPermissions,
+  ),
+  DemoTeamRoleFixture(
+    roleId: 'role-auditor-compliance',
+    roleKey: 'auditor_compliance',
+    displayName: 'Auditor / Compliance',
+    isSeeded: true,
+    description:
+        'Read-only audit trail and PII oversight. Sees who did what '
+        'and when, exports the audit log, cannot mutate data.',
+    permissionKeys: _kDemoAuditorCompliancePermissions,
+  ),
+  DemoTeamRoleFixture(
+    roleId: 'role-training-lead',
+    roleKey: 'training_lead',
+    displayName: 'Training Lead',
+    isSeeded: true,
+    description:
+        'Manages employee training and onboarding content. Edits '
+        'supervisor content and the interview playbook; does not edit '
+        'the F&F handbook source.',
+    permissionKeys: _kDemoTrainingLeadPermissions,
+  ),
+  DemoTeamRoleFixture(
+    roleId: 'role-team-admin',
+    roleKey: 'team_admin',
+    displayName: 'Team Admin',
+    isSeeded: true,
+    description:
+        'Manages the team roster, role assignments, MFA, and password '
+        'resets. Does not see operational dashboards.',
+    permissionKeys: _kDemoTeamAdminPermissions,
   ),
   DemoTeamRoleFixture(
     roleId: 'role-floor-captain',
@@ -331,6 +558,20 @@ class DemoTeamRoleGrantFixture {
   final String? orgUnitId;
 }
 
+/// CURRENT live-state grants after the R-2L v2 catalog auto-migration.
+///
+/// v1 -> v2 grant mapping (matches the SQL migration Step 4):
+///   * `role-operator-manager`    -> `role-operator-general-manager`
+///   * `role-operator-supervisor` -> `role-supervisor` (location-scoped)
+///   * `role-operator-staff`      -> `role-supervisor` (location-scoped;
+///     v1 staff folded into shift supervisor)
+///   * `role-operator-owner`      -> unchanged
+///   * `role-location-manager`    -> unchanged
+///
+/// The historical audit-log entries under [kDemoAuditLogEntriesFixture]
+/// keep their original v1 `role_id` / `role_key` payloads on purpose —
+/// the audit log records what happened at the time, not the post-
+/// migration state.
 const List<DemoTeamRoleGrantFixture> kDemoTeamRoleGrantsFixture =
     <DemoTeamRoleGrantFixture>[
   DemoTeamRoleGrantFixture(
@@ -342,7 +583,7 @@ const List<DemoTeamRoleGrantFixture> kDemoTeamRoleGrantsFixture =
   DemoTeamRoleGrantFixture(
     userRoleId: 'demo-grant-downtown-manager',
     userId: 'demo-user-downtown-manager',
-    roleId: 'role-operator-manager',
+    roleId: 'role-operator-general-manager',
     scopeType: 'location',
     locationId: 'demo-loc-downtown',
   ),
@@ -356,14 +597,14 @@ const List<DemoTeamRoleGrantFixture> kDemoTeamRoleGrantsFixture =
   DemoTeamRoleGrantFixture(
     userRoleId: 'demo-grant-riverside-supervisor',
     userId: 'demo-user-riverside-supervisor',
-    roleId: 'role-operator-supervisor',
+    roleId: 'role-supervisor',
     scopeType: 'location',
     locationId: 'demo-loc-riverside',
   ),
   DemoTeamRoleGrantFixture(
     userRoleId: 'demo-grant-riverside-staff',
     userId: 'demo-user-riverside-staff',
-    roleId: 'role-operator-staff',
+    roleId: 'role-supervisor',
     scopeType: 'location',
     locationId: 'demo-loc-riverside',
   ),
@@ -472,8 +713,9 @@ const List<DemoTeamUserFixture> kDemoTeamUsersFixture = <DemoTeamUserFixture>[
     userId: 'demo-user-downtown-manager',
     email: 'jordan.lee@demobistro.test',
     displayName: 'Jordan Lee',
-    roleId: 'role-operator-manager',
-    roleLabel: 'Manager',
+    // R-2L v2: operator_manager auto-migrated to operator_general_manager.
+    roleId: 'role-operator-general-manager',
+    roleLabel: 'General Manager',
     status: 'active',
     locationId: 'demo-loc-downtown',
     locationLabel: 'Downtown',
@@ -485,7 +727,8 @@ const List<DemoTeamUserFixture> kDemoTeamUsersFixture = <DemoTeamUserFixture>[
     email: 'taylor.kim@demobistro.test',
     displayName: 'Taylor Kim',
     roleId: 'role-location-manager',
-    roleLabel: 'Location manager',
+    // R-2L v2: display label refreshed to Title Case "Location Manager".
+    roleLabel: 'Location Manager',
     status: 'active',
     locationId: 'demo-loc-north-loop',
     locationLabel: 'North Loop',
@@ -496,7 +739,9 @@ const List<DemoTeamUserFixture> kDemoTeamUsersFixture = <DemoTeamUserFixture>[
     userId: 'demo-user-riverside-supervisor',
     email: 'morgan.rivers@demobistro.test',
     displayName: 'Morgan Rivers',
-    roleId: 'role-operator-supervisor',
+    // R-2L v2: operator_supervisor auto-migrated to supervisor (name
+    // continuity; v2 supervisor is location-scoped).
+    roleId: 'role-supervisor',
     roleLabel: 'Supervisor',
     status: 'suspended',
     locationId: 'demo-loc-riverside',
@@ -508,8 +753,11 @@ const List<DemoTeamUserFixture> kDemoTeamUsersFixture = <DemoTeamUserFixture>[
     userId: 'demo-user-riverside-staff',
     email: 'casey.brooks@demobistro.test',
     displayName: 'Casey Brooks',
-    roleId: 'role-operator-staff',
-    roleLabel: 'Staff',
+    // R-2L v2: operator_staff auto-migrated to supervisor (the proposal
+    // collapsed staff into shift supervisor at the existing location
+    // grant — deliberate scope narrowing).
+    roleId: 'role-supervisor',
+    roleLabel: 'Supervisor',
     status: 'dormant_30',
     locationId: 'demo-loc-riverside',
     locationLabel: 'Riverside',
@@ -563,8 +811,11 @@ const List<DemoTeamInviteFixture> kDemoTeamInvitesFixture =
   DemoTeamInviteFixture(
     inviteId: 'demo-invite-pending-1',
     email: 'avery.lopez@demobistro.test',
-    roleId: 'role-operator-staff',
-    roleLabel: 'Staff',
+    // R-2L v2: invite targets the new supervisor role (v1 operator_staff
+    // folded into supervisor at the existing location grant per the
+    // catalog v2 auto-migration).
+    roleId: 'role-supervisor',
+    roleLabel: 'Supervisor',
     scopeType: 'location',
     locationId: 'demo-loc-downtown',
     locationLabel: 'Downtown',
