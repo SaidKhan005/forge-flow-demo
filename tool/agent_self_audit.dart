@@ -173,27 +173,40 @@ const Set<String> kNoVerifyGuardExemptPaths = <String>{
   'test/tool/agent_self_audit_test.dart',
 };
 
+/// Matches the right-side path on a `diff --git a/X b/Y` boundary line.
+/// We rely on this rather than the `+++ b/...` unified-header because
+/// when a worker's diff itself contains test-fixture diff text (as this
+/// project's smoke test does), an added line like `+++ b/scripts/foo.sh`
+/// inside a `+`-prefixed addition becomes `++++ b/scripts/foo.sh`, which
+/// is indistinguishable from a real header without the `diff --git`
+/// anchor.
+final RegExp _diffGitHeaderPattern = RegExp(
+  r'^diff --git a/(\S+) b/(\S+)',
+);
+
 /// Frozen-surface guard 1 — no `--no-verify` in the diff.
 ///
-/// Walks the unified diff line-by-line, tracking the current `+++ b/...`
-/// header so an added line in an exempt file (the audit script itself
-/// and its test) does NOT trip the guard. Deleted lines never trip the
-/// guard; a worker REMOVING a `--no-verify` literal is the correct
-/// direction.
+/// Walks the unified diff line-by-line, tracking the current right-side
+/// path via `diff --git a/X b/Y` headers so an added line in an exempt
+/// file (the audit script + its test) does NOT trip the guard. Deleted
+/// lines never trip the guard; a worker REMOVING a `--no-verify`
+/// literal is the correct direction.
 AuditRow _checkNoNoVerifyInDiff(String diffText) {
   final hits = <String>[];
   var currentFile = '';
   for (final line in diffText.split('\n')) {
-    if (line.startsWith('+++ b/')) {
-      currentFile = line.substring(6).trim().replaceAll(r'\', '/');
+    final headerMatch = _diffGitHeaderPattern.firstMatch(line);
+    if (headerMatch != null) {
+      currentFile = (headerMatch.group(2) ?? '').replaceAll(r'\', '/');
       continue;
     }
-    if (line.startsWith('+++')) {
-      // `+++ /dev/null` (file deleted on the right side).
-      currentFile = '';
-      continue;
-    }
-    if (!line.startsWith('+') || line.startsWith('+++')) continue;
+    // Skip unified-diff metadata lines and removed lines. We only flag
+    // ADDED lines (a single leading `+` that is not part of a `+++`
+    // header). To allow added lines that themselves contain
+    // diff-fixture text (e.g. `++++ b/...` from the smoke test), we
+    // require exactly one leading `+`.
+    if (!line.startsWith('+')) continue;
+    if (line.length >= 2 && line.codeUnitAt(1) == 0x2B /* '+' */) continue;
     if (kNoVerifyGuardExemptPaths.contains(currentFile)) continue;
     if (_noVerifyPattern.hasMatch(line)) {
       hits.add(line);
