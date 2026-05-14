@@ -55,7 +55,6 @@ import '../services/web_audit_log_hierarchy_gateway.dart';
 import '../services/web_team_audit_log_gateway.dart';
 import '../services/web_team_hierarchy_gateway.dart';
 import '../widgets/audit_log_row.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 import 'audit_log_hierarchy_filter_pane.dart';
 
@@ -375,15 +374,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
     });
   }
 
-  int _activeFilterCount() {
-    var count = 1; // Time window is always active.
-    if (_selectedActions.isNotEmpty) count += 1;
-    if (_selectedActors.isNotEmpty) count += 1;
-    if ((_query.targetKind ?? '').trim().isNotEmpty) count += 1;
-    if ((_query.targetId ?? '').trim().isNotEmpty) count += 1;
-    return count;
-  }
-
   String _friendlyLoadError(Object error) {
     if (error is WebTeamAuditLogError) {
       if (error.isForbidden) {
@@ -543,36 +533,6 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
               });
               unawaited(_refresh());
             },
-          ),
-          const SizedBox(height: 16),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_audit_log_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.receipt_long_outlined,
-                label: 'Rows loaded',
-                value: _entries.length.toString(),
-                helper: _loading ? 'loading latest page' : 'current filter',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.filter_alt_outlined,
-                label: 'Active filters',
-                value: _activeFilterCount().toString(),
-                helper: 'time window included',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.more_horiz_outlined,
-                label: 'More results',
-                value: _nextCursor == null ? 'No' : 'Yes',
-                helper: 'load more when present',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.file_download_outlined,
-                label: 'Export',
-                value: widget._canExport ? 'Available' : 'View only',
-                helper: widget._canExport ? 'CSV uses filters' : 'role gated',
-              ),
-            ],
           ),
           const SizedBox(height: 16),
           if (_exportMessage != null)

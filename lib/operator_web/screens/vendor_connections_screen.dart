@@ -64,7 +64,6 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../services/operator_web_url_launcher.dart';
 import '../services/operator_web_vendor_lifecycle_recently_available_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../widgets/vendor_connections_backfill_progress_panel.dart';
 import '../widgets/vendor_connections_recently_available_panel.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
@@ -195,38 +194,6 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 20),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_vendor_connections_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.place_outlined,
-                label: 'Location',
-                value: locationLabel,
-                helper: 'connections are location-scoped',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.admin_panel_settings_outlined,
-                label: 'Access',
-                value: 'Owner/Admin',
-                helper: 'writes vendor credentials',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.open_in_new_outlined,
-                label: 'Connect flow',
-                value: widget.gateway == null ? 'Demo' : 'Live',
-                helper: widget.gateway == null
-                    ? 'fixture catalog'
-                    : 'opens vendor auth',
-              ),
-              const OperatorWebSummaryItem(
-                icon: Icons.notifications_none_outlined,
-                label: 'Notify me',
-                value: 'Documented',
-                helper: 'waiting on shared widget hook',
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
           VendorConnectionsRecentlyAvailablePanel(
             key: const Key(
               'operator_web_vendor_connections_recently_available',

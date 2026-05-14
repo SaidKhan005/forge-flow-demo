@@ -42,7 +42,6 @@ import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
@@ -698,41 +697,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_data_accuracy_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.attach_money_outlined,
-                label: 'Labor dollars',
-                value: _wageSourceLabel(_wageSource),
-                helper: 'source for wage cost',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.people_alt_outlined,
-                label: 'Guest counts',
-                value: _coversSummaryLabel(settings),
-                helper: 'lunch, dinner, late night',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.edit_note_outlined,
-                label: 'Fallback cards',
-                value: _showAnyFallbackCard ? 'Shown' : 'Hidden',
-                helper: 'only when needed',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.sync_outlined,
-                label: 'Polling tier',
-                value: tier.tierDisplayLabel,
-                helper: 'managed by F&F',
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const _DataAccuracyGroupLabel(
+          const _DataAccuracySectionHeading(
             title: 'Sources',
-            subtitle: 'Pick the preferred system for labor and covers.',
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           WageSourceToggle(
             value: _wageSource,
             onChanged: _handleWageSourceChanged,
@@ -806,11 +774,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
           ],
           const SizedBox(height: 14),
-          const _DataAccuracyGroupLabel(
-            title: 'Monitoring',
-            subtitle: 'Check polling cadence and why each fallback exists.',
+          const _DataAccuracySectionHeading(
+            title: 'Data Freshness',
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           PollingTierStatusCard(
             status: tier,
             bundle: _bundle,
@@ -844,36 +811,6 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       out[date] = inner;
     });
     return out;
-  }
-
-  static String _wageSourceLabel(WageSource source) {
-    switch (source) {
-      case WageSource.vendor:
-        return 'Vendor';
-      case WageSource.manualMix:
-        return 'Manual mix';
-    }
-  }
-
-  static String _coversSummaryLabel(DataAccuracySettings settings) {
-    final sources = <CoversSource>{
-      settings.coversSourceLunch,
-      settings.coversSourceDinner,
-      settings.coversSourceLateNight,
-    };
-    if (sources.length == 1) return _coversSourceLabel(sources.first);
-    return '${sources.length} sources';
-  }
-
-  static String _coversSourceLabel(CoversSource source) {
-    switch (source) {
-      case CoversSource.vendor:
-        return 'Vendor';
-      case CoversSource.forecast:
-        return 'Forecast';
-      case CoversSource.manual:
-        return 'Manual';
-    }
   }
 
   static WalkInHandlingMode _widgetWalkInModeFromDomain(
@@ -978,6 +915,26 @@ class _DataAccuracyGroupLabel extends StatelessWidget {
           style: AppTextStyles.body12(color: AppColors.textSecondary),
         ),
       ],
+    );
+  }
+}
+
+/// Section heading for the Data Accuracy screen used for the main
+/// vertical groupings ("Sources", "Data Freshness"). Larger than
+/// [_DataAccuracyGroupLabel] so the operator's eye jumps to the
+/// section boundary. The screen-level "Data accuracy" title still
+/// uses `display20`; section headings use `display16` so they sit
+/// below the page title but above card titles.
+class _DataAccuracySectionHeading extends StatelessWidget {
+  const _DataAccuracySectionHeading({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      title,
+      style: AppTextStyles.display16(color: AppColors.textPrimary),
     );
   }
 }

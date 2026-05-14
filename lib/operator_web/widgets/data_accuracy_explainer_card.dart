@@ -70,7 +70,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
           const SizedBox(height: 14),
           const _ExplainerSection(
             slug: 'wage',
-            heading: 'Where labor dollars come from',
+            heading: 'How labor dollars are calculated',
             body:
                 'If your scheduling vendor reports per-shift dollars, '
                 'F&F uses those. If not, F&F can substitute your wage '
