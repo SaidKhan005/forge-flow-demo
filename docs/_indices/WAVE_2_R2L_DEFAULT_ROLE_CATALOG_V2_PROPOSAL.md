@@ -62,8 +62,8 @@ R-2L plugs the v2 catalog into that backbone and ships the migration that retire
 | `ff_support` | F&F Support | global | 27 read-only | No | KEEP — no change |
 | `operator_owner` | Operator Owner | operator-wide | 52 | Yes | KEEP under new display name "Owner" |
 | `operator_manager` | Operator Manager | operator-wide | 28 | Yes | RETIRE → `operator_general_manager` |
-| `operator_supervisor` | Operator Supervisor | operator-wide | 14 | Yes | RETIRE → `location_manager` (location-scoped at each user's existing location grants) |
-| `operator_staff` | Operator Staff | operator-wide | 7 (Barrio only) | Yes | RETIRE → `shift_lead` (location-scoped) |
+| `operator_supervisor` | Operator Supervisor | operator-wide | 14 | Yes | RETIRE → `supervisor` (location-scoped at each user's existing location grants — name continuity) |
+| `operator_staff` | Operator Staff | operator-wide | 7 (Barrio only) | Yes | RETIRE → `supervisor` (location-scoped — Barrio-only users folded into the shift-supervisor role) |
 
 Source: `db/migrations/202604250008_auth_schema_foundation.sql:914-1083`.
 
@@ -80,14 +80,14 @@ Source: `db/migrations/202604250008_auth_schema_foundation.sql:914-1083`.
 | `operator_owner` | Owner | Business | Owns the business. Full operational access plus billing, integrations, and team admin. | Yes |
 | `operator_general_manager` | General Manager | Business | Runs all locations and staff. Operational edit access plus staff admin and audit view; no billing or subscription mutations. | Yes |
 | `location_manager` | Location Manager | Location | Runs one location. Invites and removes staff, edits schedules, sees variance and benchmarks at that location. | Yes |
-| `shift_lead` | Shift Lead | Location | Leads shifts at one location. Edits short-term schedule, marks shift covers, sees variance for shifts they ran. | No |
+| `supervisor` | Supervisor | Location | Supervises shifts at one location. Edits short-term schedule, marks shift covers, sees variance for shifts they ran. | No |
 | `finance_analyst` | Finance Analyst | Business | Reviews invoices and usage, adjusts usage caps. Cannot change the subscription plan or connect billing integrations. | Yes |
 | `auditor_compliance` | Auditor / Compliance | Business | Read-only audit trail and PII oversight. Sees who did what and when, exports the audit log, cannot mutate data. | Yes |
 | `training_lead` | Training Lead | Either | Manages employee training and onboarding content. Edits supervisor content and the interview playbook; does not edit the F&F handbook source. | No |
 | `team_admin` | Team Admin | Either | Manages the team roster, role assignments, MFA, and password resets. Does not see operational dashboards. | Yes |
 
 **Locked decisions (2026-05-14):**
-1. **Retire v1 + auto-migrate** — `operator_manager` → `operator_general_manager`; `operator_supervisor` → `location_manager` at each existing location grant; `operator_staff` → `shift_lead` at each existing location grant.
+1. **Retire v1 + auto-migrate** — `operator_manager` → `operator_general_manager`; `operator_supervisor` → `supervisor` at each existing location grant (name continuity); `operator_staff` → `supervisor` at each existing location grant.
 2. **Finance Analyst is read-only on billing** — `billing.subscription.manage` stays Owner-only. Finance has `billing.invoice.view`, `billing.usage.view`, `billing.usage_caps.edit`.
 3. **Auditor / Compliance and Team Admin both ship as seeded core roles.** Operators don't have to mint them as custom.
 4. **Training Lead is product-agnostic, not Barrio-specific** — role name and description avoid the product surface name so the role survives future training surface additions. Today the role grants Barrio supervisor content + interview playbook edit (no handbook); future training surfaces (quizzing, certification tracking, SOP authoring) plug into the same role.
@@ -132,7 +132,7 @@ Categories use R-1L's `product_label` / `category_label` from `lib/auth/permissi
 
 All `team.*` and `forgeflow.*` keys carrying `scope_kind = either` are granted at the location dimension; `org_wide` keys are excluded.
 
-### `shift_lead` (Shift Lead) — Location scope, ~12 keys
+### `supervisor` (Supervisor) — Location scope, ~12 keys
 
 - **product**: forgeflow access, barrio access
 - **forgeflow** (location-scoped): shift edit (own shifts only — needs runtime gate or new shift-author guard), shift view, variance view, schedule view
@@ -189,8 +189,8 @@ Keep current grant. No change.
 2. **Insert role_permissions rows** per the matrix above. Use `permission_keys.scope_kind` to verify each grant is compatible with the role's scope (CHECK constraint or migration-time assertion).
 3. **Auto-migrate v1 user_roles grants** in a single transaction:
    - `operator_manager` user_roles → flip `role_id` to `operator_general_manager`
-   - `operator_supervisor` user_roles → flip `role_id` to `location_manager`, preserving `location_id` per grant (if `location_id` is NULL in the v1 grant, set it to each location the user had any visibility into — fall back to the first location in `restaurant_locations` if ambiguous, flag for operator review)
-   - `operator_staff` user_roles → flip `role_id` to `shift_lead`, same location-preservation logic
+   - `operator_supervisor` user_roles → flip `role_id` to `supervisor` (name continuity; narrower location-scoped permissions than the v1 operator-wide role), preserving `location_id` per grant (if `location_id` is NULL in the v1 grant, set it to each location the user had any visibility into — fall back to the first location in `restaurant_locations` if ambiguous, flag for operator review). Note: this is a deliberate scope narrowing; operators may want to manually upgrade specific users to `location_manager` or `operator_general_manager` if they need broader access.
+   - `operator_staff` user_roles → flip `role_id` to `supervisor`, same location-preservation logic. v1 operator_staff users had Barrio-only access; under v2 supervisor they keep barrio access AND gain shift edit + variance view at their location, which matches the practical "they were already on the floor" reality.
 4. **Soft-delete v1 roles** by setting `deleted_at = now()` on the three retired role rows. Do NOT hard-delete; keep the audit trail.
 5. **Backfill `permission_keys.product_label` / `category_label` / `scope_kind` / `implies`** for any keys that landed since R-1L (none expected, but the migration should be defensive).
 6. **Emit audit rows** (`auth.role.seeded_catalog_v2_published`) per migrated user_role + per retired seeded role.
@@ -250,7 +250,7 @@ Same as every Wave 2 slice:
 
 These don't block R-2L but should be picked up by S-3 (Roles screen UX simplification):
 
-- Should `forgeflow.shift.edit` at `shift_lead` scope have a runtime "own shifts only" guard, or grant globally within the location?
+- Should `forgeflow.shift.edit` at `supervisor` scope have a runtime "own shifts only" guard, or grant globally within the location?
 - Should `team.users.invite` at `location_manager` scope let them invite users at OTHER locations, or only their own?
 - Should the editor surface a "scope conflict" warning when an operator picks a key whose `scope_kind = org_wide` for a location-scoped grant (instead of silently filtering)?
 
@@ -266,3 +266,4 @@ These don't block R-2L but should be picked up by S-3 (Roles screen UX simplific
 | Training Lead (renamed from Barrio Instructor): product-agnostic name; today edits Barrio supervisor content + interview playbook, no handbook | Approved | 2026-05-14 |
 | UX naming standard (Title Case, no underscores, no engineering jargon) | Approved | 2026-05-14 |
 | Add `permission_keys.human_label` for per-key UX labels | Approved | 2026-05-14 |
+| Supervisor (renamed from Shift Lead): name continuity with v1 operator_supervisor; v1 operator_supervisor + operator_staff users auto-migrate here at their existing location grants (deliberate scope narrowing — operator can upgrade individuals manually) | Approved | 2026-05-14 |
