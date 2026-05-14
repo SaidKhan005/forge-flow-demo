@@ -274,6 +274,13 @@ class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async => throw UnimplementedError();
 
   @override
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) async => throw UnimplementedError();
+
+  @override
   Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({
     required String oobCode,
   }) async => throw UnimplementedError();

@@ -498,6 +498,89 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
   }
 
   @override
+  Future<MemberAdminRow> updateMember({
+    required String operatorId,
+    required String userId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String? email,
+    String? displayName,
+  }) async {
+    // Wave 2 W-1 — Members edit-user write path (admin demo). Mirrors
+    // [HttpMembersAdminGateway.updateMember]: bundled email + display
+    // name patch through a single idempotency key; replay returns
+    // the cached row. Audit lands under the existing
+    // `team.users.update_profile` enum with a `fields` array marker.
+    _ensureForgeAdmin(actorIsForgeAdmin, 'updateMember');
+    _ensureAdminReason(adminReason, 'updateMember');
+    final nextEmail = email?.trim();
+    final nextDisplay = displayName?.trim();
+    if ((nextEmail == null || nextEmail.isEmpty) &&
+        (nextDisplay == null || nextDisplay.isEmpty)) {
+      throw MembersAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'no_profile_fields',
+        message: 'at least one of email or display_name is required',
+      );
+    }
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is MemberAdminRow) return cached;
+    final members = _membersFor(operatorId);
+    final index = _indexOfMember(operatorId: operatorId, userId: userId);
+    final prev = members[index];
+    final updated = MemberAdminRow(
+      userId: prev.userId,
+      email: (nextEmail != null && nextEmail.isNotEmpty)
+          ? nextEmail
+          : prev.email,
+      displayName: (nextDisplay != null && nextDisplay.isNotEmpty)
+          ? nextDisplay
+          : prev.displayName,
+      roleKey: prev.roleKey,
+      primaryLocationId: prev.primaryLocationId,
+      primaryLocationName: prev.primaryLocationName,
+      status: prev.status,
+      mfaEnrolled: prev.mfaEnrolled,
+      lastActiveAt: prev.lastActiveAt,
+      createdAt: prev.createdAt,
+      createdBy: prev.createdBy,
+      updatedAt: _clock(),
+      updatedBy: actorUserId,
+      orgUnitId: prev.orgUnitId,
+      grants: prev.grants,
+    );
+    members[index] = updated;
+    _record(
+      action: 'team.users.update_profile',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'team_user',
+      targetId: userId,
+      payload: <String, Object?>{
+        'fields': <String>[
+          if (nextDisplay != null && nextDisplay.isNotEmpty) 'display_name',
+          if (nextEmail != null && nextEmail.isNotEmpty) 'email',
+        ],
+        if (nextDisplay != null && nextDisplay.isNotEmpty)
+          'display_name': <String, String>{
+            'from': prev.displayName,
+            'to': nextDisplay,
+          },
+        if (nextEmail != null && nextEmail.isNotEmpty)
+          'email': <String, String>{
+            'from': prev.email,
+            'to': nextEmail,
+          },
+      },
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = updated;
+    return updated;
+  }
+
+  @override
   Future<MemberAdminRow> overrideRoleGrant({
     required String operatorId,
     required String userId,

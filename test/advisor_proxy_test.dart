@@ -7363,6 +7363,13 @@ class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async {}
 
   @override
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) async {}
+
+  @override
   Future<void> sendPasswordResetEmail({
     required String email,
     String? continueUrl,

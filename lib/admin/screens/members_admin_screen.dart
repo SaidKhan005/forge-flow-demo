@@ -497,20 +497,31 @@ class _MembersAdminScreenState extends State<MembersAdminScreen> {
   }
 
   Future<void> _onEditDisplayName(MemberAdminRow row) async {
+    // Wave 2 W-1 — Members edit-user write path. The dialog covers
+    // both display name and email; the admin gateway's
+    // [HttpMembersAdminGateway.updateMember] PATCHes through the
+    // existing `/v1/admin/auth/users/{id}` route which the proxy
+    // fans out to Firebase Identity Platform + Postgres + audit log.
     final result = await showDialog<_DisplayNameEditResult>(
       context: context,
       builder: (_) => _DisplayNameEditDialog(row: row),
     );
     if (result == null) return;
+    final emailChanged = result.email != null &&
+        result.email!.trim().toLowerCase() != row.email.toLowerCase();
+    final displayNameChanged =
+        result.displayName.trim() != row.displayName.trim();
+    if (!emailChanged && !displayNameChanged) return;
     await _runAndRefresh(
-      () => widget.gateway.updateDisplayName(
+      () => widget.gateway.updateMember(
         operatorId: widget.pickedOperator.operatorId,
         userId: row.userId,
-        displayName: result.displayName,
-        idempotencyKey: _nextIdempotencyKey('member-display-name'),
+        idempotencyKey: _nextIdempotencyKey('member-edit'),
         actorUserId: widget.actorUserId,
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: result.adminReason,
+        email: emailChanged ? result.email : null,
+        displayName: displayNameChanged ? result.displayName : null,
       ),
       successHint: 'Updated ${row.email}.',
     );
@@ -1903,9 +1914,11 @@ class _DisplayNameEditResult {
   const _DisplayNameEditResult({
     required this.displayName,
     required this.adminReason,
+    this.email,
   });
 
   final String displayName;
+  final String? email;
   final String adminReason;
 }
 
@@ -1920,33 +1933,56 @@ class _DisplayNameEditDialog extends StatefulWidget {
 
 class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
   late final TextEditingController _nameController;
+  late final TextEditingController _emailController;
   final _reasonController = TextEditingController();
   bool _nameViolated = false;
+  bool _emailViolated = false;
   bool _reasonViolated = false;
+  bool _confirmEmail = false;
+  bool _confirmEmailViolated = false;
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.row.displayName);
+    _emailController = TextEditingController(text: widget.row.email);
   }
 
   @override
   void dispose() {
     _nameController.dispose();
+    _emailController.dispose();
     _reasonController.dispose();
     super.dispose();
   }
 
+  bool _emailChanged() =>
+      _emailController.text.trim().toLowerCase() !=
+      widget.row.email.toLowerCase();
+
   void _onSubmit() {
     final displayName = _nameController.text.trim();
+    final email = _emailController.text.trim();
     final reason = _reasonController.text.trim();
+    final emailIsChanging = _emailChanged();
     setState(() {
       _nameViolated = displayName.isEmpty;
+      _emailViolated = email.isEmpty || !_looksLikeEmailAdmin(email);
       _reasonViolated = reason.isEmpty;
+      _confirmEmailViolated = emailIsChanging && !_confirmEmail;
     });
-    if (displayName.isEmpty || reason.isEmpty) return;
+    if (_nameViolated ||
+        _emailViolated ||
+        _reasonViolated ||
+        _confirmEmailViolated) {
+      return;
+    }
     Navigator.of(context).pop(
-      _DisplayNameEditResult(displayName: displayName, adminReason: reason),
+      _DisplayNameEditResult(
+        displayName: displayName,
+        email: emailIsChanging ? email : null,
+        adminReason: reason,
+      ),
     );
   }
 
@@ -1956,7 +1992,7 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
       key: const Key('admin_members_display_name_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Edit display name',
+        'Edit member',
         style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
@@ -1969,6 +2005,43 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
               widget.row.email,
               style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_members_email_field'),
+              controller: _emailController,
+              textInputAction: TextInputAction.next,
+              keyboardType: TextInputType.emailAddress,
+              decoration: InputDecoration(
+                labelText: 'Email',
+                border: const OutlineInputBorder(),
+                errorText: _emailViolated
+                    ? MembersValidationCopy.emailMalformed
+                    : null,
+              ),
+              onChanged: (_) => setState(() {}),
+            ),
+            if (_emailChanged()) ...<Widget>[
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                key: const Key('admin_members_email_confirm'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                dense: true,
+                title: Text(
+                  'Confirm: change this teammate’s sign-in email.',
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                subtitle: _confirmEmailViolated
+                    ? Text(
+                        'You must confirm before saving an email change.',
+                        style:
+                            AppTextStyles.body12(color: AppColors.negative),
+                      )
+                    : null,
+                value: _confirmEmail,
+                onChanged: (v) => setState(() => _confirmEmail = v ?? false),
+              ),
+            ],
             const SizedBox(height: 12),
             TextField(
               key: const Key('admin_members_display_name_field'),
@@ -2013,6 +2086,18 @@ class _DisplayNameEditDialogState extends State<_DisplayNameEditDialog> {
         ),
       ],
     );
+  }
+
+  static bool _looksLikeEmailAdmin(String value) {
+    if (value.contains(' ')) return false;
+    final atIndex = value.indexOf('@');
+    if (atIndex <= 0) return false;
+    if (atIndex == value.length - 1) return false;
+    if (value.indexOf('@', atIndex + 1) != -1) return false;
+    final domain = value.substring(atIndex + 1);
+    if (!domain.contains('.')) return false;
+    if (domain.startsWith('.') || domain.endsWith('.')) return false;
+    return true;
   }
 }
 

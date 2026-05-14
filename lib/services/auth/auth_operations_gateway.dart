@@ -160,15 +160,31 @@ class TeamUserProfilePatchCommand {
     required this.operatorId,
     required this.locationId,
     required this.targetUserId,
-    required this.displayName,
     required this.reason,
+    this.displayName,
+    this.email,
   });
 
   final String actorUserId;
   final String operatorId;
   final String locationId;
   final String targetUserId;
-  final String displayName;
+
+  /// New Team display name. Null leaves the existing value untouched.
+  /// `'   '` (whitespace) is treated as unset — the repository layer
+  /// rejects empty trimmed values rather than blanking the column.
+  final String? displayName;
+
+  /// W-1 (Wave 2 Lane W — Members edit-user write path). New email
+  /// address for the Firebase Identity Platform account + the
+  /// `users.email` mirror. Null leaves the existing value untouched.
+  /// Email change is sensitive; the calling UX must confirm with the
+  /// operator before populating this field.
+  final String? email;
+
+  /// Operator-facing reason captured on the audit row. Always
+  /// required so the operator's audit log surfaces *why* the change
+  /// happened.
   final String reason;
 }
 

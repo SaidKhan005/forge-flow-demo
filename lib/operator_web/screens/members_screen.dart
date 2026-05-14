@@ -53,6 +53,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
 import '../../theme/app_theme.dart';
+import 'edit_member_dialog.dart';
 import 'invite_member_dialog.dart';
 
 /// Roles admitted to the Members surface when the proxy permission
@@ -489,6 +490,35 @@ class _MembersScreenState extends State<MembersScreen> {
     }
   }
 
+  Future<void> _editMember(TeamUserListEntry user) async {
+    // Wave 2 W-1 — Members edit-user write path. Open the Edit member
+    // dialog with the row's current state pre-filled. The dialog
+    // mints idempotency keys for the profile patch + the role-grant
+    // rotation so a retried Save replays cleanly.
+    final result = await showEditMemberDialog(
+      context: context,
+      gateway: widget.gateway,
+      user: user,
+      existingEmails: <String>{
+        for (final entry in _users) entry.email.toLowerCase(),
+        for (final invite in _invites) invite.email.toLowerCase(),
+      },
+      roleOptions: widget.roleOptions,
+      locationOptions: widget.locationOptions,
+      actorUserId: widget.session.uid,
+      operatorId: widget.session.operatorId,
+      locationId: widget.session.primaryLocationId,
+      profileIdempotencyKey: _nextIdempotencyKey(),
+      roleGrantIdempotencyKey: _nextIdempotencyKey(),
+    );
+    if (result == null || !mounted) return;
+    await _loadAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Updated ${result.patched.user.email}.')),
+    );
+  }
+
   Future<void> _cancelInvite(TeamInviteListEntry invite) async {
     final confirmed = await _confirm(
       title: 'Cancel invite',
@@ -652,6 +682,7 @@ class _MembersScreenState extends State<MembersScreen> {
             users: _pagedUsers,
             canWrite: widget._canWrite,
             busyUserIds: _busyUserIds,
+            onEdit: _editMember,
             onSuspend: (user) => _runStatusAction(
               user: user,
               action: widget.gateway.suspendUser,
@@ -928,6 +959,7 @@ class _MembersTable extends StatelessWidget {
     required this.users,
     required this.canWrite,
     required this.busyUserIds,
+    required this.onEdit,
     required this.onSuspend,
     required this.onReactivate,
     required this.onSoftDelete,
@@ -938,6 +970,7 @@ class _MembersTable extends StatelessWidget {
   final List<TeamUserListEntry> users;
   final bool canWrite;
   final Set<String> busyUserIds;
+  final Future<void> Function(TeamUserListEntry user) onEdit;
   final Future<void> Function(TeamUserListEntry user) onSuspend;
   final Future<void> Function(TeamUserListEntry user) onReactivate;
   final Future<void> Function(TeamUserListEntry user) onSoftDelete;
@@ -1001,6 +1034,7 @@ class _MembersTable extends StatelessWidget {
                     user: users[i],
                     canWrite: canWrite,
                     busy: busyUserIds.contains(users[i].userId),
+                    onEdit: onEdit,
                     onSuspend: onSuspend,
                     onReactivate: onReactivate,
                     onSoftDelete: onSoftDelete,
@@ -1012,6 +1046,7 @@ class _MembersTable extends StatelessWidget {
                     user: users[i],
                     canWrite: canWrite,
                     busy: busyUserIds.contains(users[i].userId),
+                    onEdit: onEdit,
                     onSuspend: onSuspend,
                     onReactivate: onReactivate,
                     onSoftDelete: onSoftDelete,
@@ -1089,6 +1124,7 @@ class _MembersTableRow extends StatelessWidget {
     required this.user,
     required this.canWrite,
     required this.busy,
+    required this.onEdit,
     required this.onSuspend,
     required this.onReactivate,
     required this.onSoftDelete,
@@ -1099,6 +1135,7 @@ class _MembersTableRow extends StatelessWidget {
   final TeamUserListEntry user;
   final bool canWrite;
   final bool busy;
+  final Future<void> Function(TeamUserListEntry user) onEdit;
   final Future<void> Function(TeamUserListEntry user) onSuspend;
   final Future<void> Function(TeamUserListEntry user) onReactivate;
   final Future<void> Function(TeamUserListEntry user) onSoftDelete;
@@ -1162,6 +1199,7 @@ class _MembersTableRow extends StatelessWidget {
               user: user,
               canWrite: canWrite,
               busy: busy,
+              onEdit: onEdit,
               onSuspend: onSuspend,
               onReactivate: onReactivate,
               onSoftDelete: onSoftDelete,
@@ -1180,6 +1218,7 @@ class _MembersCompactCard extends StatelessWidget {
     required this.user,
     required this.canWrite,
     required this.busy,
+    required this.onEdit,
     required this.onSuspend,
     required this.onReactivate,
     required this.onSoftDelete,
@@ -1190,6 +1229,7 @@ class _MembersCompactCard extends StatelessWidget {
   final TeamUserListEntry user;
   final bool canWrite;
   final bool busy;
+  final Future<void> Function(TeamUserListEntry user) onEdit;
   final Future<void> Function(TeamUserListEntry user) onSuspend;
   final Future<void> Function(TeamUserListEntry user) onReactivate;
   final Future<void> Function(TeamUserListEntry user) onSoftDelete;
@@ -1263,6 +1303,7 @@ class _MembersCompactCard extends StatelessWidget {
               user: user,
               canWrite: canWrite,
               busy: busy,
+              onEdit: onEdit,
               onSuspend: onSuspend,
               onReactivate: onReactivate,
               onSoftDelete: onSoftDelete,
@@ -1313,6 +1354,7 @@ class _MembersRowActionsButton extends StatelessWidget {
     required this.user,
     required this.canWrite,
     required this.busy,
+    required this.onEdit,
     required this.onSuspend,
     required this.onReactivate,
     required this.onSoftDelete,
@@ -1323,6 +1365,7 @@ class _MembersRowActionsButton extends StatelessWidget {
   final TeamUserListEntry user;
   final bool canWrite;
   final bool busy;
+  final Future<void> Function(TeamUserListEntry user) onEdit;
   final Future<void> Function(TeamUserListEntry user) onSuspend;
   final Future<void> Function(TeamUserListEntry user) onReactivate;
   final Future<void> Function(TeamUserListEntry user) onSoftDelete;
@@ -1349,6 +1392,8 @@ class _MembersRowActionsButton extends StatelessWidget {
       icon: const Icon(Icons.more_vert, size: 18),
       onSelected: (action) {
         switch (action) {
+          case _MembersRowAction.edit:
+            onEdit(user);
           case _MembersRowAction.suspend:
             onSuspend(user);
           case _MembersRowAction.reactivate:
@@ -1365,6 +1410,15 @@ class _MembersRowActionsButton extends StatelessWidget {
         final isSuspended = user.status == 'suspended';
         final isSoftDeleted = user.status == 'soft_deleted';
         return <PopupMenuEntry<_MembersRowAction>>[
+          if (!isSoftDeleted)
+            // Wave 2 W-1 — Members edit-user write path. Edit lives at
+            // the top of the row menu so the affordance is the first
+            // option the operator-admin reaches for.
+            const PopupMenuItem<_MembersRowAction>(
+              key: Key('members_row_action_edit'),
+              value: _MembersRowAction.edit,
+              child: Text('Edit member'),
+            ),
           if (!isSuspended && !isSoftDeleted)
             const PopupMenuItem<_MembersRowAction>(
               key: Key('members_row_action_suspend'),
@@ -1401,6 +1455,7 @@ class _MembersRowActionsButton extends StatelessWidget {
 }
 
 enum _MembersRowAction {
+  edit,
   suspend,
   reactivate,
   softDelete,

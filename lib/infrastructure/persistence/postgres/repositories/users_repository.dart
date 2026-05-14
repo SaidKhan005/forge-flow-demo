@@ -174,6 +174,25 @@ class UserAuthLookupRow {
   final String? firebaseUid;
 }
 
+/// W-1 (Wave 2 Lane W — Members edit-user write path). Narrow read
+/// projection that powers the "before" snapshot in the audit payload
+/// for `auth.user_profile_updated`. Carries the `firebase_uid` so the
+/// caller can target the Identity Platform account without a second
+/// round-trip.
+class UserEmailRow {
+  const UserEmailRow({
+    required this.userId,
+    required this.email,
+    required this.displayName,
+    this.firebaseUid,
+  });
+
+  final String userId;
+  final String? firebaseUid;
+  final String email;
+  final String displayName;
+}
+
 /// C-2-C wire — narrow projection of `users` for the MFA removal
 /// worker's email enqueue path. Carries the columns the dispatcher
 /// stitches into the `email_outbox` row (recipient email + the
@@ -548,6 +567,81 @@ class UsersRepository extends OperatorScopedRepository {
           'user_id': userId,
           'display_name': displayName,
         },
+      );
+    }, reason: adminReason);
+  }
+
+  /// W-1 (Wave 2 Lane W — Members edit-user write path). UPDATE the
+  /// email column for one user inside an operator account. Firebase
+  /// Identity Platform side is mutated by the caller; this row keeps
+  /// the Postgres `users.email` mirror in lock-step.
+  ///
+  /// The WHERE pins `operator_id` (same defence-in-depth posture as
+  /// [updateDisplayName] / [updateStatus]) so a `withSystem`
+  /// (BYPASSRLS) call cannot leak across tenants when a caller supplies
+  /// a `userId` from operator A while believing it lives in operator B.
+  /// `deleted_at is null` + `status != 'deleted'` so a soft-deleted
+  /// row is never reused. Returns affected row count (0 means the
+  /// `(user_id, operator_id)` tuple did not match).
+  Future<int> updateEmail({
+    required String operatorId,
+    required String userId,
+    required String email,
+    required String adminReason,
+  }) {
+    return withSystem<int>((exec) async {
+      return exec.execute(
+        'update users '
+        'set email = @email, updated_at = now() '
+        'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and deleted_at is null '
+        "and status != 'deleted'",
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'user_id': userId,
+          'email': email,
+        },
+      );
+    }, reason: adminReason);
+  }
+
+  /// W-1 — surface the current row for the target so callers can
+  /// project the "before" snapshot into the audit payload. Returns
+  /// null when no live row matches `(operator_id, user_id)`.
+  /// Operator-scoped + soft-delete predicate mirrors the writer.
+  Future<UserEmailRow?> readEmail({
+    required String operatorId,
+    required String userId,
+    required String adminReason,
+  }) {
+    return withSystem<UserEmailRow?>((exec) async {
+      final rows = await exec.query(
+        'select user_id::text as user_id, '
+        'firebase_uid::text as firebase_uid, '
+        'email, display_name '
+        'from users '
+        'where user_id = @user_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and deleted_at is null '
+        "and status != 'deleted' "
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'user_id': userId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final email = row['email'];
+      final displayName = row['display_name'];
+      final firebaseUid = row['firebase_uid'];
+      if (email is! String || displayName is! String) return null;
+      return UserEmailRow(
+        userId: userId,
+        firebaseUid: firebaseUid is String ? firebaseUid : null,
+        email: email,
+        displayName: displayName,
       );
     }, reason: adminReason);
   }

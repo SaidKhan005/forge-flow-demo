@@ -100,6 +100,110 @@ void main() {
     });
 
     test(
+      'W-1 — updateUser sends email + emailVerified=false + displayName',
+      () async {
+        final httpClient = _RecordingHttpClient(
+          responseBody: const <String, Object?>{'localId': 'firebase-uid'},
+        );
+        final client = IdentityToolkitFirebaseAdminAuthClient(
+          projectId: 'forge-flow-staging',
+          apiKey: 'public-api-key',
+          accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+          httpClient: httpClient,
+        );
+
+        await client.updateUser(
+          uid: 'firebase-uid',
+          email: 'new.email@example.test',
+          displayName: 'New Display Name',
+        );
+
+        // ignore: close_sinks - fake request was already closed by the client.
+        final request = httpClient.requests.single;
+        expect(
+          request.url.path,
+          equals('/v1/projects/forge-flow-staging/accounts:update'),
+        );
+        expect(request.jsonBody['localId'], equals('firebase-uid'));
+        expect(request.jsonBody['email'], equals('new.email@example.test'));
+        expect(request.jsonBody['emailVerified'], isFalse);
+        expect(request.jsonBody['displayName'], equals('New Display Name'));
+      },
+    );
+
+    test(
+      'W-1 — updateUser email-only patch does not stamp displayName',
+      () async {
+        final httpClient = _RecordingHttpClient(
+          responseBody: const <String, Object?>{'localId': 'firebase-uid'},
+        );
+        final client = IdentityToolkitFirebaseAdminAuthClient(
+          projectId: 'forge-flow-staging',
+          apiKey: 'public-api-key',
+          accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+          httpClient: httpClient,
+        );
+
+        await client.updateUser(
+          uid: 'firebase-uid',
+          email: 'just.email@example.test',
+        );
+
+        // ignore: close_sinks - fake request was already closed by the client.
+        final request = httpClient.requests.single;
+        expect(request.jsonBody['email'], equals('just.email@example.test'));
+        expect(request.jsonBody['emailVerified'], isFalse);
+        expect(request.jsonBody.containsKey('displayName'), isFalse);
+      },
+    );
+
+    test(
+      'W-1 — updateUser display-name-only patch skips email + emailVerified',
+      () async {
+        final httpClient = _RecordingHttpClient(
+          responseBody: const <String, Object?>{'localId': 'firebase-uid'},
+        );
+        final client = IdentityToolkitFirebaseAdminAuthClient(
+          projectId: 'forge-flow-staging',
+          apiKey: 'public-api-key',
+          accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+          httpClient: httpClient,
+        );
+
+        await client.updateUser(
+          uid: 'firebase-uid',
+          displayName: 'Just Name',
+        );
+
+        // ignore: close_sinks - fake request was already closed by the client.
+        final request = httpClient.requests.single;
+        expect(request.jsonBody['displayName'], equals('Just Name'));
+        expect(request.jsonBody.containsKey('email'), isFalse);
+        expect(request.jsonBody.containsKey('emailVerified'), isFalse);
+      },
+    );
+
+    test(
+      'W-1 — updateUser is a no-op when both fields are blank',
+      () async {
+        final httpClient = _RecordingHttpClient(
+          responseBody: const <String, Object?>{'localId': 'firebase-uid'},
+        );
+        final client = IdentityToolkitFirebaseAdminAuthClient(
+          projectId: 'forge-flow-staging',
+          apiKey: 'public-api-key',
+          accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+          httpClient: httpClient,
+        );
+
+        await client.updateUser(uid: 'firebase-uid', email: '', displayName: '');
+
+        // No HTTP request was made.
+        expect(httpClient.requests, isEmpty);
+      },
+    );
+
+    test(
       'updatePassword sends localId and new password to accounts:update',
       () async {
         final httpClient = _RecordingHttpClient(

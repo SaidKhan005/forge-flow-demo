@@ -619,6 +619,77 @@ void main() {
     );
 
     testWidgets(
+      'W-1 — Edit member changes email + display name through updateMember',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = InMemoryMembersAdminGateway(
+          membersByOperator: kDemoMembersByOperator(),
+          invitesByOperator: kDemoInvitesByOperator(),
+        );
+        var nextKey = 0;
+        await tester.pumpWidget(
+          wrap(
+            MembersAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+              idempotencyKeyFactory: () {
+                nextKey += 1;
+                return 'idem-edit-$nextKey';
+              },
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(
+            const Key('admin_members_action_edit_name_demo-user-diner-owner'),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('admin_members_display_name_dialog')),
+          findsOneWidget,
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('admin_members_email_field')),
+          'diner.new@example.test',
+        );
+        await tester.pump();
+        // Confirm checkbox appears when email is dirty — must be ticked
+        // before save enables.
+        await tester.tap(
+          find.byKey(const Key('admin_members_email_confirm')),
+        );
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(const Key('admin_members_display_name_field')),
+          'Diner Owner Updated',
+        );
+        await tester.enterText(
+          find.byKey(const Key('admin_members_display_name_reason')),
+          'operator typo fix',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_members_display_name_submit')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Diner Owner Updated'), findsWidgets);
+        expect(find.text('diner.new@example.test'), findsWidgets);
+        final events = gateway.capturedAuditEvents;
+        expect(events, hasLength(1));
+        expect(events.single.action, equals('team.users.update_profile'));
+        expect(events.single.actorKind, equals('forge_admin'));
+        final fields = events.single.payload['fields'];
+        expect(fields, contains('display_name'));
+        expect(fields, contains('email'));
+      },
+    );
+
+    testWidgets(
       'Cancelling the reason dialog leaves the row unchanged + audit empty',
       (tester) async {
         wideViewport(tester);

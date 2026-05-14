@@ -84,6 +84,22 @@ abstract class FirebaseAdminAuthClient {
 
   Future<void> setDisabled({required String uid, required bool disabled});
 
+  /// Phase 11W/11A — Members edit-user write path (W-1).
+  ///
+  /// Updates the Firebase Identity Platform account for an existing
+  /// user. Both `email` and `displayName` are optional so a caller can
+  /// patch one without forcing the other to round-trip through this
+  /// seam (Identity Toolkit `accounts:update` treats missing fields as
+  /// no-op). Email changes are sensitive — the operator-web /admin
+  /// Edit member dialog requires the operator to confirm before
+  /// invoking this path, and the calling proxy route layer writes an
+  /// `auth.user_profile_updated` audit row regardless of the source.
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  });
+
   Future<void> sendPasswordResetEmail({
     required String email,
     String? continueUrl,
@@ -134,6 +150,15 @@ class ScaffoldFailingFirebaseAdminAuthClient
 
   @override
   Future<void> setDisabled({required String uid, required bool disabled}) {
+    throw const FirebaseAdminAuthError('firebase_admin_not_configured');
+  }
+
+  @override
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) {
     throw const FirebaseAdminAuthError('firebase_admin_not_configured');
   }
 
@@ -321,6 +346,39 @@ class IdentityToolkitFirebaseAdminAuthClient
     await _post(
       '/v1/projects/${Uri.encodeComponent(projectId)}/accounts:update',
       <String, Object?>{'localId': uid, 'disableUser': disabled},
+      expectedStatus: 200,
+    );
+  }
+
+  @override
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) async {
+    final trimmedEmail = email?.trim();
+    final trimmedDisplay = displayName?.trim();
+    if ((trimmedEmail == null || trimmedEmail.isEmpty) &&
+        (trimmedDisplay == null || trimmedDisplay.isEmpty)) {
+      // No-op when neither field is supplied; the caller is responsible
+      // for skipping the Firebase round-trip in that case but the
+      // guard keeps the wire surface honest.
+      return;
+    }
+    await _post(
+      '/v1/projects/${Uri.encodeComponent(projectId)}/accounts:update',
+      <String, Object?>{
+        'localId': uid,
+        if (trimmedEmail != null && trimmedEmail.isNotEmpty) ...<String, Object?>{
+          'email': trimmedEmail,
+          // Email changes are sensitive — force re-verification per
+          // Firebase Identity Platform best practice so the user
+          // re-confirms ownership of the new address.
+          'emailVerified': false,
+        },
+        if (trimmedDisplay != null && trimmedDisplay.isNotEmpty)
+          'displayName': trimmedDisplay,
+      },
       expectedStatus: 200,
     );
   }

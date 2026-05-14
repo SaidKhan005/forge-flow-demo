@@ -25,6 +25,8 @@
 //   * POST   /v1/auth/team/users/{user_id}/soft-delete
 //   * POST   /v1/auth/team/users/{user_id}/reset-password
 //   * POST   /v1/auth/team/users/{user_id}/reset-mfa
+//   * PATCH  /v1/auth/team/users/{user_id}    (Wave 2 W-1 — email +
+//                                              display name patch)
 //
 // Idempotency posture: every write carries an `Idempotency-Key`
 // header; the screen layer mints one key per user action and threads
@@ -81,6 +83,20 @@ abstract class WebTeamUsersGateway {
 
   Future<TeamMfaResetQueued> requestMfaReset(
     TeamMfaResetCommand command, {
+    required String idempotencyKey,
+  });
+
+  /// Wave 2 W-1 — Members edit-user write path. PATCHes one user's
+  /// display name and/or email through the proxy `PATCH
+  /// /v1/auth/team/users/{user_id}` route. The proxy orchestrates the
+  /// Firebase Identity Platform update + Postgres mirror update +
+  /// audit row.
+  ///
+  /// At least one of [TeamUserProfilePatchCommand.displayName] or
+  /// [TeamUserProfilePatchCommand.email] must be non-null; the proxy
+  /// rejects the all-null shape with 400.
+  Future<TeamUserProfilePatched> editMember(
+    TeamUserProfilePatchCommand command, {
     required String idempotencyKey,
   });
 }
@@ -301,6 +317,33 @@ class WebTeamUsersGatewayLive implements WebTeamUsersGateway {
           ? null
           : DateTime.parse(executeAfterRaw).toUtc(),
     );
+  }
+
+  @override
+  Future<TeamUserProfilePatched> editMember(
+    TeamUserProfilePatchCommand command, {
+    required String idempotencyKey,
+  }) async {
+    // W-1 — Members edit-user write path. PATCH /v1/auth/team/users/{id}.
+    // Both `display_name` and `email` are optional; at least one must
+    // be present so the proxy can fan out to Firebase + Postgres +
+    // audit. The proxy rejects the all-null shape with 400.
+    final response = await _send(
+      method: 'PATCH',
+      path: '${WebTeamUsersPaths.userPrefix}${Uri.encodeComponent(command.targetUserId)}',
+      idempotencyKey: idempotencyKey,
+      body: <String, Object?>{
+        if (command.displayName != null) 'display_name': command.displayName,
+        if (command.email != null) 'email': command.email,
+        'admin_reason': command.reason,
+      },
+    );
+    _expectStatus(response, 200);
+    final rawUser = response.body['user'];
+    if (rawUser is! Map) {
+      throw _malformed(response, 'edit member response was incomplete');
+    }
+    return TeamUserProfilePatched(user: _userFromJson(response, rawUser));
   }
 
   Future<TeamUserStatusUpdated> _userStatusAction(
