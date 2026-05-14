@@ -115,7 +115,7 @@ mega-PR or split into per-screen PRs.
 
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
-| R-1L | Roles hierarchy-scoped infrastructure — schema migration + RLS posture + role inheritance resolver (per locked decision: hierarchy-scoped) | Main | operator | assigned | – | – | debug.md:28, audit RP-4 / RP-6 |
+| R-1L | Roles hierarchy-scoped infrastructure — schema migration + RLS posture + role inheritance resolver (per locked decision: hierarchy-scoped) | Main | operator | merged | #699 | – | debug.md:28, audit RP-4 / RP-6; shipped 2026-05-14 via PR #699 |
 | R-1L-FU | Lane R | Main | operator | merged | #715 | R-1L | PR #699 worker disclosed: R-1L shipped `permission_keys.product_label` / `category_label` / `scope_kind` as NULLABLE with inline backfill (expand-contract escape hatch per slice prompt). After one clean apply cycle on staging, flip to NOT NULL via a follow-up migration. Defense-in-depth Dart-side NOT-NULL-at-source lint already in `tool/permission_key_lint.dart` (METADATA pass). Shipped 2026-05-14 via PR #715 (R-1L-FU + R-2L-FU NOT NULL flip). |
 | R-2L | Default Role Catalog v2 redesign — operator suggests seeded roles based on audit; redesign default permission set; admin selects + adjusts per-role across F&F | Main | operator | merged | #711 | R-1L | debug.md:30-32 (RP-3); 161-167 (OW-7); shipped 2026-05-14 via PR #711 |
 
@@ -146,7 +146,8 @@ mega-PR or split into per-screen PRs.
 |---|---|---|---|---|---|---|---|
 | Q-1 | Soak harness completion + Azure Blob swap (replace GCS uploader; expose heap-snapshot capture for live multi-pod use) | Main | operator | merged | #672 | – | debug.md:16, POST_HARDENING_FOLLOWUPS "Soak Heap-Snapshot Uploader"; shipped via PR #672 (commit `a33fb80a`) |
 | Q-1-FU | Q-1 follow-up: multi-pod live capture endpoint (Q-1 worker shipped Azure Blob heap-snapshot uploader; multi-pod live capture endpoint parked) | Main | operator | parked | – | Q-1 | Q-1 follow-up 2026-05-14 |
-| Q-2 | Email/notification soak harness (Patrol + Firebase Test Lab + Mailosaur + SendGrid event webhook) for end-to-end loopback testing of all email + push + in-app scenarios | Main | operator | assigned | – | – | debug.md:58-67 (EN-5), 322-325 (BC-3); split into Q-2a/Q-2b/Q-2c sub-slices |
+| Q-2 | Email/notification soak harness (Patrol + Firebase Test Lab + Mailosaur + SendGrid event webhook) for end-to-end loopback testing of all email + push + in-app scenarios | Main | operator | merged | #696/#704/#708 | – | debug.md:58-67 (EN-5), 322-325 (BC-3); split into Q-2a/Q-2b/Q-2c sub-slices, all merged 2026-05-14 |
+| Q-2a | Email soak harness (Mailosaur + SendGrid event webhook) — sub-slice of Q-2 | Main | operator | merged | #696 | Q-2 | Q-2 sub-slice; shipped 2026-05-14 via PR #696 (commit `a688b545`) |
 | Q-2b | Patrol harness for in-app notification surface (sub-slice of Q-2) | Claude2 | operator | merged | #704 | Q-2 | Q-2 sub-slice; shipped 2026-05-14 via PR #704 |
 | Q-2c | Firebase Test Lab integration for mobile push delivery (sub-slice of Q-2) | Claude2 | operator | merged | #708 | Q-2 | Q-2 sub-slice; shipped 2026-05-14 via PR #708 |
 | Q-3 | Scaffold audit lane — orphan email template purge + dispatcher cleanup + dormant invite path resolution (wire dedicated invite template OR remove + commit to Firebase password-reset path) | Main | operator | merged | #658 | – | debug.md:308-320 (BC-1, EN-2, EN-4) |
