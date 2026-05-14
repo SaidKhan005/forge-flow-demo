@@ -33,7 +33,6 @@ import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 import 'custom_role_editor_screen.dart';
 import 'permission_explainer_screen.dart';
@@ -367,13 +366,6 @@ class _RolesScreenState extends State<RolesScreen> {
     }
     seeded.sort((a, b) => a.displayName.compareTo(b.displayName));
     custom.sort((a, b) => a.displayName.compareTo(b.displayName));
-    final mfaProtectedCount = _roles
-        .where(
-          (role) => role.permissions.any(
-            (rule) => PermissionKeys.requiresMfa.contains(rule.permissionKey),
-          ),
-        )
-        .length;
     return SingleChildScrollView(
       key: const Key('operator_web_roles_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -384,36 +376,6 @@ class _RolesScreenState extends State<RolesScreen> {
             canWrite: widget._canWrite,
             onOpenExplainer: _openExplainer,
             onCreateRole: () => _openEditor(null),
-          ),
-          const SizedBox(height: 18),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_roles_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.admin_panel_settings_outlined,
-                label: 'Total roles',
-                value: _roles.length.toString(),
-                helper: 'available to assign',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.edit_note_outlined,
-                label: 'Custom',
-                value: custom.length.toString(),
-                helper: 'owned by this operator',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.verified_outlined,
-                label: 'Default',
-                value: seeded.length.toString(),
-                helper: 'Forge & Flow defaults',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.lock_outline,
-                label: 'MFA protected',
-                value: mfaProtectedCount.toString(),
-                helper: 'roles with sensitive permissions',
-              ),
-            ],
           ),
           const SizedBox(height: 18),
           if (custom.isEmpty)
@@ -438,9 +400,6 @@ class _RolesScreenState extends State<RolesScreen> {
           _RoleGroup(
             key: const Key('operator_web_roles_seeded_group'),
             title: 'Default roles (${seeded.length})',
-            subtitle:
-                'Standard roles Forge & Flow ships with. Read-only on your '
-                'business. Use a custom role when you need a different mix.',
             roles: seeded,
             busyRoleIds: _busyRoleIds,
             canWrite: false,
@@ -466,34 +425,21 @@ class _RolesHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final title = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    final title = Row(
       children: <Widget>[
-        Row(
-          children: <Widget>[
-            const Icon(
-              Icons.shield_outlined,
-              size: 22,
-              color: AppColors.sunsetDark,
-            ),
-            const SizedBox(width: 10),
-            Flexible(
-              child: Text(
-                'Roles & permissions',
-                maxLines: 2,
-                softWrap: true,
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
+        const Icon(
+          Icons.shield_outlined,
+          size: 22,
+          color: AppColors.sunsetDark,
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Set what each role can do, then assign roles from Team members. '
-          'Use seeded roles for the standard mix, or build a custom role '
-          'when permissions need to be different.',
-          key: const Key('operator_web_roles_subtitle'),
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        const SizedBox(width: 10),
+        Flexible(
+          child: Text(
+            'Roles & permissions',
+            maxLines: 2,
+            softWrap: true,
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
         ),
       ],
     );
@@ -559,7 +505,7 @@ class _RoleGroup extends StatelessWidget {
   const _RoleGroup({
     super.key,
     required this.title,
-    required this.subtitle,
+    this.subtitle,
     required this.roles,
     required this.busyRoleIds,
     required this.canWrite,
@@ -568,7 +514,7 @@ class _RoleGroup extends StatelessWidget {
   });
 
   final String title;
-  final String subtitle;
+  final String? subtitle;
   final List<TeamRoleCatalogEntry> roles;
   final Set<String> busyRoleIds;
   final bool canWrite;
@@ -577,6 +523,7 @@ class _RoleGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final subtitleText = subtitle;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
@@ -587,11 +534,13 @@ class _RoleGroup extends StatelessWidget {
             weight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 2),
-        Text(
-          subtitle,
-          style: AppTextStyles.body12(color: AppColors.textSecondary),
-        ),
+        if (subtitleText != null) ...<Widget>[
+          const SizedBox(height: 2),
+          Text(
+            subtitleText,
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+        ],
         const SizedBox(height: 10),
         for (final role in roles)
           _RoleTile(
@@ -878,19 +827,11 @@ class _EmptyCustomRolesPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Text(
-            'No custom roles yet',
+            'Create custom role',
             style: AppTextStyles.mono14(
               color: AppColors.textPrimary,
               weight: FontWeight.w700,
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Build a custom role when the seeded set does not match how '
-            'your team works. Try one with a small permission subset to '
-            'start, like a Floor Captain who can edit the schedule but '
-            'not change benchmarks.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           if (canWrite) ...<Widget>[
             const SizedBox(height: 10),

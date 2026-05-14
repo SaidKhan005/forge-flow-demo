@@ -52,7 +52,6 @@ import '../../services/team/team_users_list_controller.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 import 'invite_member_dialog.dart';
 
@@ -630,11 +629,6 @@ class _MembersScreenState extends State<MembersScreen> {
       );
     }
     final filteredCount = _filteredUsers.length;
-    final activeCount = _users.where((user) => user.status == 'active').length;
-    final suspendedCount = _users
-        .where((user) => user.status == 'suspended')
-        .length;
-    final mfaCount = _users.where((user) => user.mfaEnrolled).length;
     return SingleChildScrollView(
       key: const Key('operator_web_members_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -644,36 +638,6 @@ class _MembersScreenState extends State<MembersScreen> {
           _MembersHeader(
             canInvite: widget._canManageInvites,
             onInvite: _openInviteDialog,
-          ),
-          const SizedBox(height: 18),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_members_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.people_outline,
-                label: 'Visible members',
-                value: filteredCount.toString(),
-                helper: '${_users.length} total loaded',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.check_circle_outline,
-                label: 'Active',
-                value: activeCount.toString(),
-                helper: 'can sign in',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.pause_circle_outline,
-                label: 'Suspended',
-                value: suspendedCount.toString(),
-                helper: 'blocked until restored',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.verified_user_outlined,
-                label: 'MFA enrolled',
-                value: mfaCount.toString(),
-                helper: '${_invites.length} pending invites',
-              ),
-            ],
           ),
           const SizedBox(height: 18),
           _MembersFilterRail(
@@ -774,20 +738,12 @@ class _MembersHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              Text(
-                'Invite teammates, review status, and manage each person who '
-                'can sign in to Forge & Flow. Changes here apply to every '
-                'device the teammate uses.',
-                key: const Key('operator_web_members_subtitle'),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
             ],
           ),
         ),
         const SizedBox(width: 16),
         SizedBox(
-          height: 38,
+          height: 48,
           child: FilledButton.icon(
             key: const Key('operator_web_members_invite_button'),
             onPressed: canInvite ? onInvite : null,
@@ -796,8 +752,12 @@ class _MembersHeader extends StatelessWidget {
               foregroundColor: AppColors.backgroundSurface,
               disabledBackgroundColor: AppColors.borderSubtle,
               disabledForegroundColor: AppColors.textMuted,
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              textStyle: AppTextStyles.display16(
+                color: AppColors.backgroundSurface,
+              ),
             ),
-            icon: const Icon(Icons.person_add_alt_1_outlined, size: 16),
+            icon: const Icon(Icons.person_add_alt_1_outlined, size: 20),
             label: const Text('Invite member'),
           ),
         ),

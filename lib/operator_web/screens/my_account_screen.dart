@@ -590,10 +590,6 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
               _SectionHeader(
                 icon: Icons.person_outline,
                 title: 'My account',
-                subtitle:
-                    'Your profile, sign-in security, MFA, and active sessions '
-                    'live here. Business-wide defaults stay on the Business '
-                    'account tab.',
               ),
               const SizedBox(height: 18),
               _ProfileSection(
@@ -650,34 +646,22 @@ class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
     required this.icon,
     required this.title,
-    required this.subtitle,
   });
 
   final IconData icon;
   final String title;
-  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
-        Row(
-          children: [
-            Icon(icon, size: 22, color: AppColors.sunsetDark),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                title,
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          subtitle,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        Icon(icon, size: 22, color: AppColors.sunsetDark),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
         ),
       ],
     );
@@ -689,7 +673,7 @@ class _SectionCard extends StatelessWidget {
     required this.cardKey,
     required this.icon,
     required this.title,
-    required this.headerExplainer,
+    this.headerExplainer,
     required this.child,
     required this.auditLinkKey,
     required this.onAuditLog,
@@ -699,7 +683,7 @@ class _SectionCard extends StatelessWidget {
   final Key cardKey;
   final IconData icon;
   final String title;
-  final String headerExplainer;
+  final String? headerExplainer;
   final Widget child;
   final Key auditLinkKey;
   final VoidCallback onAuditLog;
@@ -707,6 +691,7 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final explainer = headerExplainer;
     return Container(
       key: cardKey,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -734,11 +719,13 @@ class _SectionCard extends StatelessWidget {
               if (statusBadge != null) statusBadge!,
             ],
           ),
-          const SizedBox(height: 6),
-          Text(
-            headerExplainer,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
+          if (explainer != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              explainer,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ],
           const SizedBox(height: 14),
           child,
           const SizedBox(height: 14),
@@ -806,11 +793,6 @@ class _ProfileSection extends StatelessWidget {
       cardKey: const Key('account_section_profile'),
       icon: Icons.badge_outlined,
       title: 'Profile',
-      headerExplainer:
-          'Display name and email come from your sign-in provider. To '
-          'change either, ask Forge & Flow support to issue a new invite '
-          'for the new email. Phone changes happen in the operator '
-          'mobile app under Settings → Account.',
       auditLinkKey: const Key('account_section_profile_audit_log_link'),
       onAuditLog: onAuditLog,
       child: twoColumn
