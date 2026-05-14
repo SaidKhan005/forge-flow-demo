@@ -715,6 +715,7 @@ class _AdminMfaChallengeScreenState extends State<_AdminMfaChallengeScreen> {
   @override
   Widget build(BuildContext context) {
     return TotpChallengeView(
+      title: 'Two-factor sign-in',
       email: widget.challenge.email,
       errorMessage: widget.challenge.lastErrorMessage,
       helpMessage: _helpMessage,

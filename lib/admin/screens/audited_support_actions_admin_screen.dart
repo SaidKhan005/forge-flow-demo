@@ -362,10 +362,12 @@ class _AuditedSupportActionsAdminScreenState
 
   Future<void> _onResetMfa() async {
     if (!widget.canResetMfaFactors) return;
-    final member = await _pickMember('Reset MFA for which member?');
+    final member = await _pickMember(
+      'Reset two-factor sign-in for which member?',
+    );
     if (member == null) return;
     final reason = await _promptAdminReason(
-      'Reset MFA for ${member.displayName}',
+      'Reset two-factor sign-in for ${member.displayName}',
     );
     if (reason == null) return;
     await _runAndRefresh(
@@ -377,7 +379,7 @@ class _AuditedSupportActionsAdminScreenState
         actorIsForgeAdmin: widget.editingEnabled,
         adminReason: reason,
       ),
-      successHint: 'Reset MFA for ${member.displayName}',
+      successHint: 'Reset two-factor sign-in for ${member.displayName}',
     );
   }
 
@@ -819,11 +821,11 @@ class _ActionsPanelCard extends StatelessWidget {
             children: <Widget>[
               _ActionRow(
                 keyId: 'admin_asa_action_reset_mfa',
-                title: 'Reset member MFA',
+                title: 'Reset member two-factor sign-in',
                 description:
-                    'Removes the member\'s MFA factors so they can re-enroll. '
-                    'Multi-factor sign-in required.',
-                buttonLabel: 'Reset MFA',
+                    "Removes the member's two-factor sign-in so they can "
+                    're-enroll. Two-factor sign-in required.',
+                buttonLabel: 'Reset two-factor sign-in',
                 enabled: editingEnabled && canResetMfaFactors,
                 onPressed: onResetMfa,
                 mfaTag: true,
@@ -1262,7 +1264,7 @@ class _FiltersBarState extends State<_FiltersBar> {
                   ),
                   DropdownMenuItem<String?>(
                     value: 'mfa_factor',
-                    child: Text('MFA factor'),
+                    child: Text('Two-factor sign-in factor'),
                   ),
                   DropdownMenuItem<String?>(
                     value: 'audit_log_export',
@@ -1645,7 +1647,7 @@ String humanizeAuditAction(String action) {
     case 'admin.session.force_logout':
       return 'Forced session logout';
     case 'admin.users.reset_mfa_factors':
-      return 'Reset member MFA';
+      return 'Reset member two-factor sign-in';
     case 'admin.users.reset_password':
       return 'Initiated password reset';
     case 'admin.users.erasure.requested':
@@ -1657,7 +1659,7 @@ String humanizeAuditAction(String action) {
     case 'auth.password.change':
       return 'Changed password';
     case 'auth.mfa.enroll':
-      return 'Enrolled MFA factor';
+      return 'Enrolled two-factor sign-in factor';
     default:
       return action;
   }

@@ -209,8 +209,8 @@ class MfaCardController extends ChangeNotifier {
       _setState(
         _state.copyWith(
           errorMessage:
-              'MFA status needs a server-confirmed authenticator before '
-              '2FA can be turned off.',
+              'Two-factor sign-in status needs a server-confirmed authenticator '
+              'before two-factor sign-in can be turned off.',
         ),
       );
       return;
@@ -218,7 +218,7 @@ class MfaCardController extends ChangeNotifier {
     _setState(_state.copyWith(busy: true, clearError: true));
     try {
       await currentActions.requireFreshMfaForAccountSecurity(
-        actionLabel: 'turning off 2FA',
+        actionLabel: 'turning off two-factor sign-in',
       );
       await refresh();
       if (_state.stage == MfaCardStage.removable) {
@@ -226,8 +226,9 @@ class MfaCardController extends ChangeNotifier {
           _state.copyWith(
             busy: false,
             errorMessage:
-                '2FA is ready to turn off, but the server still lists an '
-                'active authenticator. Try again in a few minutes.',
+                'Two-factor sign-in is ready to turn off, but the server '
+                'still lists an active authenticator. Try again in a few '
+                'minutes.',
           ),
         );
       }
@@ -310,11 +311,11 @@ class MfaCardController extends ChangeNotifier {
       case MfaCardStage.notEnrolled:
         return const MfaCardState(
           stage: MfaCardStage.notEnrolled,
-          badgeLabel: 'MFA: Not enrolled',
+          badgeLabel: 'Two-factor sign-in: Off',
           headline: 'Protect your sign-in',
           body:
-              'Turn on 2FA so signing in requires your password and a '
-              'one-time code from your authenticator app.',
+              'Turn on two-factor sign-in so signing in requires your '
+              'password and a one-time code from your authenticator app.',
           primaryButtonLabel: 'Enable two-factor sign-in',
           primaryButtonTooltip:
               'Start authenticator setup for this sign-in account.',
@@ -330,11 +331,11 @@ class MfaCardController extends ChangeNotifier {
         if (!recoveryCodesViewed) {
           return MfaCardState(
             stage: MfaCardStage.enrolled,
-            badgeLabel: 'MFA: Enrolled',
+            badgeLabel: 'Two-factor sign-in: Enabled',
             headline: 'Save your recovery codes',
             body:
                 '$factorCopy View your recovery codes before adding more '
-                'sign-in methods or changing 2FA settings.',
+                'sign-in methods or changing two-factor sign-in settings.',
             primaryButtonLabel: 'View recovery codes',
             primaryButtonTooltip:
                 'Open the one-time recovery codes for this account.',
@@ -346,7 +347,7 @@ class MfaCardController extends ChangeNotifier {
         if (factorCount == 1) {
           return MfaCardState(
             stage: MfaCardStage.enrolled,
-            badgeLabel: 'MFA: Enrolled',
+            badgeLabel: 'Two-factor sign-in: Enabled',
             headline: 'Add a backup sign-in method',
             body:
                 '$factorCopy Recovery codes have been viewed. Add another '
@@ -361,14 +362,15 @@ class MfaCardController extends ChangeNotifier {
         }
         return MfaCardState(
           stage: MfaCardStage.enrolled,
-          badgeLabel: 'MFA: Enrolled',
+          badgeLabel: 'Two-factor sign-in: Enabled',
           headline: 'Two-step verification is on',
           body:
               '$factorCopy Recovery codes have been viewed. You can manage '
               'methods or request removal from this account.',
           primaryButtonLabel: 'Manage two-factor sign-in',
           primaryButtonTooltip:
-              'Open 2FA management for methods, recovery codes, and removal.',
+              'Open two-factor sign-in management for methods, recovery '
+              'codes, and removal.',
           primaryActionKey: 'account_section_mfa_manage',
           factorCount: factorCount,
           primaryFactor: primaryFactor,
@@ -377,14 +379,16 @@ class MfaCardController extends ChangeNotifier {
         final remaining = _formatRemaining(pendingRemoval!.executeAfter, now);
         return MfaCardState(
           stage: MfaCardStage.removalRequested,
-          badgeLabel: 'MFA: Removal requested',
+          badgeLabel: 'Two-factor sign-in: Removal pending',
           headline: 'Two-step verification turns off in $remaining',
           body:
-              'We wait 24 hours before turning off 2FA so that if someone '
-              'got into your account, you have time to stop them.',
+              'We wait 24 hours before turning off two-factor sign-in so '
+              'that if someone got into your account, you have time to '
+              'stop them.',
           primaryButtonLabel: 'Manage two-factor sign-in',
           primaryButtonTooltip:
-              'Cancel the pending 2FA removal or review account protection.',
+              'Cancel the pending two-factor sign-in removal or review '
+              'account protection.',
           primaryActionKey: 'account_section_mfa_cancel_removal',
           factorCount: factorCount,
           primaryFactor: primaryFactor,
@@ -393,14 +397,15 @@ class MfaCardController extends ChangeNotifier {
       case MfaCardStage.removable:
         return MfaCardState(
           stage: MfaCardStage.removable,
-          badgeLabel: 'MFA: Ready to turn off',
+          badgeLabel: 'Two-factor sign-in: Ready to turn off',
           headline: 'Two-step verification can turn off now',
           body:
-              'The 24-hour wait has passed. Turn off 2FA to complete the '
-              'server check with a fresh sign-in.',
+              'The 24-hour wait has passed. Turn off two-factor sign-in to '
+              'complete the server check with a fresh sign-in.',
           primaryButtonLabel: 'Manage two-factor sign-in',
           primaryButtonTooltip:
-              'Complete the requested 2FA removal after fresh sign-in.',
+              'Complete the requested two-factor sign-in removal after '
+              'fresh sign-in.',
           primaryActionKey: 'account_section_mfa_turn_off_final',
           factorCount: factorCount,
           primaryFactor: primaryFactor,
@@ -423,12 +428,13 @@ class MfaCardController extends ChangeNotifier {
     if (error is WebSecurityError) {
       if (error.code == 'mfa_freshness_required' ||
           error.code == 'insufficient_user_authentication') {
-        return 'Please sign in again before changing 2FA. This protects your '
-            'account settings.';
+        return 'Please sign in again before changing two-factor sign-in. '
+            'This protects your account settings.';
       }
-      return 'Could not update 2FA (${error.code}). Try again in a moment.';
+      return 'Could not update two-factor sign-in (${error.code}). Try '
+          'again in a moment.';
     }
-    return 'Could not update 2FA. Try again in a moment.';
+    return 'Could not update two-factor sign-in. Try again in a moment.';
   }
 
   @override

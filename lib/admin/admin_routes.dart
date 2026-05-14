@@ -490,7 +490,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.person_outline,
     section: AdminRouteSection.account,
     subtitle:
-        'Review your admin sign-in details, 2FA status, and current session.',
+        'Review your admin sign-in details, two-factor sign-in status, '
+        'and current session.',
     builder: _buildMyAccount,
   ),
 ];
