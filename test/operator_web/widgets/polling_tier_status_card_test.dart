@@ -171,7 +171,7 @@ void main() {
           find.byKey(const Key('polling_tier_request_change_button'));
       expect(buttonFinder, findsOneWidget);
 
-      final OutlinedButton button = tester.widget<OutlinedButton>(buttonFinder);
+      final FilledButton button = tester.widget<FilledButton>(buttonFinder);
       expect(button.onPressed, isNotNull);
     });
 
