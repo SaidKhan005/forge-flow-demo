@@ -89,17 +89,17 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
         TeamOrgHierarchyListCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
         ),
       );
       final overrides = await _benchmarksGateway.listOverrides(
         operatorId: widget.session.operatorId,
-        locationId: widget.session.primaryLocationId,
+        locationId: widget.session.primaryLocationId ?? '',
         actorUserId: widget.session.uid,
       );
       final capStatus = await _benchmarksGateway.getCapStatus(
         operatorId: widget.session.operatorId,
-        locationId: widget.session.primaryLocationId,
+        locationId: widget.session.primaryLocationId ?? '',
         actorUserId: widget.session.uid,
       );
       if (!mounted) return;
@@ -140,7 +140,7 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
     try {
       final row = await _benchmarksGateway.setOverride(
         operatorId: widget.session.operatorId,
-        locationId: widget.session.primaryLocationId,
+        locationId: widget.session.primaryLocationId ?? '',
         actorUserId: widget.session.uid,
         scopeType: _scopeTypeFor(node),
         orgUnitId: node.scopeKind == InheritanceTreeScopeKind.orgUnit
@@ -157,7 +157,7 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
       // user this month, so the manager budget drops by one.
       final refreshedCap = await _benchmarksGateway.getCapStatus(
         operatorId: widget.session.operatorId,
-        locationId: widget.session.primaryLocationId,
+        locationId: widget.session.primaryLocationId ?? '',
         actorUserId: widget.session.uid,
       );
       if (!mounted) return;
@@ -237,7 +237,7 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
     try {
       await _benchmarksGateway.adminUndoOverride(
         operatorId: widget.session.operatorId,
-        locationId: widget.session.primaryLocationId,
+        locationId: widget.session.primaryLocationId ?? '',
         actorUserId: widget.session.uid,
         overrideId: direct.overrideId,
       );
@@ -275,7 +275,7 @@ class _BenchmarksScreenState extends State<BenchmarksScreen> {
     try {
       await _benchmarksGateway.clearOverride(
         operatorId: widget.session.operatorId,
-        locationId: widget.session.primaryLocationId,
+        locationId: widget.session.primaryLocationId ?? '',
         actorUserId: widget.session.uid,
         overrideId: direct.overrideId,
       );

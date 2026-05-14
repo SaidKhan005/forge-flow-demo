@@ -148,7 +148,7 @@ class _RolesScreenState extends State<RolesScreen> {
         TeamRoleCatalogListCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
         ),
       );
       if (!mounted || generation != _loadGeneration) return;
@@ -190,7 +190,7 @@ class _RolesScreenState extends State<RolesScreen> {
         TeamRoleDeleteCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           roleId: role.roleId,
           reason: 'op_web_roles_delete',
         ),

@@ -535,7 +535,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     }
     final session = state.session;
     final sessionKey =
-        '${session.uid}|${session.operatorId}|${session.primaryLocationId}';
+        '${session.uid}|${session.operatorId}|${session.primaryLocationId ?? ''}';
     if (_managementScopeSessionKey == sessionKey &&
         (_managementScopeOptions.isNotEmpty || _managementScopeLoading)) {
       return;
@@ -566,7 +566,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         TeamOrgHierarchyListCommand(
           actorUserId: session.uid,
           operatorId: session.operatorId,
-          locationId: session.primaryLocationId,
+          locationId: session.primaryLocationId ?? '',
         ),
       );
       if (!mounted || generation != _managementScopeGeneration) return;
@@ -605,10 +605,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     final options = <OperatorWebManagementScopeOption>[
       _operatorScopeOption(session),
     ];
-    if (session.primaryLocationId.trim().isNotEmpty) {
+    final primaryLocationId = session.primaryLocationId;
+    if (primaryLocationId != null && primaryLocationId.trim().isNotEmpty) {
       options.add(
         _locationScopeOption(
-          locationId: session.primaryLocationId,
+          locationId: primaryLocationId,
           label: session.primaryLocationName,
         ),
       );
@@ -658,15 +659,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         ),
       );
     }
+    final primaryLocationId = session.primaryLocationId;
     final primaryKey = _scopeKey(
       OperatorWebManagementScopeKind.location,
-      session.primaryLocationId,
+      primaryLocationId ?? '',
     );
     if (!seenKeys.contains(primaryKey) &&
-        session.primaryLocationId.trim().isNotEmpty) {
+        primaryLocationId != null &&
+        primaryLocationId.trim().isNotEmpty) {
       options.add(
         _locationScopeOption(
-          locationId: session.primaryLocationId,
+          locationId: primaryLocationId,
           label: session.primaryLocationName,
         ),
       );
@@ -708,11 +711,14 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     OperatorWebSession session,
     List<OperatorWebManagementScopeOption> options,
   ) {
-    final primaryKey = _scopeKey(
-      OperatorWebManagementScopeKind.location,
-      session.primaryLocationId,
-    );
-    if (_hasManagementScopeKey(options, primaryKey)) return primaryKey;
+    final primaryLocationId = session.primaryLocationId;
+    if (primaryLocationId != null && primaryLocationId.trim().isNotEmpty) {
+      final primaryKey = _scopeKey(
+        OperatorWebManagementScopeKind.location,
+        primaryLocationId,
+      );
+      if (_hasManagementScopeKey(options, primaryKey)) return primaryKey;
+    }
     final firstLocation = options.where(
       (option) => option.kind == OperatorWebManagementScopeKind.location,
     );
@@ -764,7 +770,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     }
     return <DemoTeamLocationFixture>[
       DemoTeamLocationFixture(
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         name: session.primaryLocationName,
         orgUnitId: '',
       ),

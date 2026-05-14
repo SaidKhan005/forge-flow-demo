@@ -91,7 +91,7 @@ void main() {
       final gateway = _FakeGateway();
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
       )));
@@ -125,7 +125,7 @@ void main() {
         ]);
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
       )));
@@ -177,7 +177,7 @@ void main() {
       var idemSeq = 0;
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
         idempotencyKeyFactory: () {
@@ -230,7 +230,7 @@ void main() {
       var idemSeq = 0;
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
         idempotencyKeyFactory: () {
@@ -284,7 +284,7 @@ void main() {
       var idemSeq = 0;
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
         idempotencyKeyFactory: () {
@@ -328,7 +328,7 @@ void main() {
         ..deleteShouldThrow = true;
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
         idempotencyKeyFactory: () => 'test-idem-1',
@@ -364,7 +364,7 @@ void main() {
       final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
       await tester.pumpWidget(wrap(WageAuthorityScreen(
         session: session,
-        locationId: session.primaryLocationId,
+        locationId: session.primaryLocationId ?? '',
         locationName: session.primaryLocationName,
         gateway: gateway,
       )));
@@ -404,7 +404,7 @@ void main() {
         final gateway = _FakeGateway();
         await tester.pumpWidget(wrap(WageAuthorityScreen(
           session: session,
-          locationId: session.primaryLocationId,
+          locationId: session.primaryLocationId ?? '',
           locationName: session.primaryLocationName,
           gateway: gateway,
         )));
@@ -451,7 +451,7 @@ void main() {
         final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
         await tester.pumpWidget(wrap(WageAuthorityScreen(
           session: session,
-          locationId: session.primaryLocationId,
+          locationId: session.primaryLocationId ?? '',
           locationName: session.primaryLocationName,
           gateway: gateway,
         )));
@@ -504,7 +504,7 @@ void main() {
           ..seed(<WageRoleRowRecord>[humanityRow, manualRow]);
         await tester.pumpWidget(wrap(WageAuthorityScreen(
           session: session,
-          locationId: session.primaryLocationId,
+          locationId: session.primaryLocationId ?? '',
           locationName: session.primaryLocationName,
           gateway: gateway,
         )));
@@ -544,7 +544,7 @@ void main() {
         final gateway = _FakeGateway();
         await tester.pumpWidget(wrap(WageAuthorityScreen(
           session: session,
-          locationId: session.primaryLocationId,
+          locationId: session.primaryLocationId ?? '',
           locationName: session.primaryLocationName,
           gateway: gateway,
         )));
@@ -575,7 +575,7 @@ void main() {
           ]);
         await tester.pumpWidget(wrap(WageAuthorityScreen(
           session: session,
-          locationId: session.primaryLocationId,
+          locationId: session.primaryLocationId ?? '',
           locationName: session.primaryLocationName,
           gateway: gateway,
         )));

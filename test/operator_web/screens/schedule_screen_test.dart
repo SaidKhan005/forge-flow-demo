@@ -116,7 +116,7 @@ void main() {
           wrap(
             ScheduleScreen(
               session: session,
-              locationId: session.primaryLocationId,
+              locationId: session.primaryLocationId ?? '',
               locationName: session.primaryLocationName,
               gateway: gateway,
             ),
@@ -160,7 +160,7 @@ void main() {
         wrap(
           ScheduleScreen(
             session: session,
-            locationId: session.primaryLocationId,
+            locationId: session.primaryLocationId ?? '',
             locationName: session.primaryLocationName,
             gateway: gateway,
           ),
@@ -185,7 +185,7 @@ void main() {
         wrap(
           ScheduleScreen(
             session: session,
-            locationId: session.primaryLocationId,
+            locationId: session.primaryLocationId ?? '',
             locationName: session.primaryLocationName,
             gateway: null,
           ),
@@ -205,7 +205,7 @@ void main() {
         wrap(
           ScheduleScreen(
             session: session,
-            locationId: session.primaryLocationId,
+            locationId: session.primaryLocationId ?? '',
             locationName: session.primaryLocationName,
             gateway: OperatorWebDemoScheduleGateway(),
           ),
@@ -243,7 +243,7 @@ void main() {
           wrap(
             ScheduleScreen(
               session: session,
-              locationId: session.primaryLocationId,
+              locationId: session.primaryLocationId ?? '',
               locationName: session.primaryLocationName,
               gateway: gateway,
             ),
@@ -270,7 +270,7 @@ void main() {
         wrap(
           ScheduleScreen(
             session: session,
-            locationId: session.primaryLocationId,
+            locationId: session.primaryLocationId ?? '',
             locationName: session.primaryLocationName,
             gateway: gateway,
           ),
@@ -293,7 +293,7 @@ void main() {
           wrap(
             ScheduleScreen(
               session: session,
-              locationId: session.primaryLocationId,
+              locationId: session.primaryLocationId ?? '',
               locationName: session.primaryLocationName,
               gateway: loadedGateway,
             ),

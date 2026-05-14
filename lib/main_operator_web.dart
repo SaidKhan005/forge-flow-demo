@@ -42,6 +42,7 @@ import 'dart:html' as html;
 
 import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
+import 'operator_web/demo/operator_web_demo_scenario.dart';
 import 'operator_web/operator_web_app.dart';
 import 'operator_web/services/demo_security_gateway.dart';
 import 'operator_web/services/demo_team_audit_log_gateway.dart';
@@ -65,6 +66,18 @@ import 'services/auth/firebase_auth_client_sdk.dart';
 /// can never publish demo auth on a public Cloud Run service.
 const bool _kOperatorWebDemoAuth = bool.fromEnvironment(
   'OPERATOR_WEB_DEMO_AUTH',
+);
+
+/// Demo scenario switch (Phase 2 walkthrough closure). Drives which
+/// initial state + session + gateway seeding the demo auth source
+/// emits. Production builds never read this — it's gated on
+/// [_kOperatorWebDemoAuth] being true. The catalog of accepted values
+/// + resolver lives in
+/// `lib/operator_web/demo/operator_web_demo_scenario.dart` so it can
+/// be unit-tested without pulling in `dart:html` from this entrypoint.
+/// See [kOperatorWebDemoScenarios] for the full token list.
+const String _kOperatorWebDemoScenario = String.fromEnvironment(
+  'OPERATOR_WEB_DEMO_SCENARIO',
 );
 
 /// Operator-web proxy base URI. `--dart-define=OPERATOR_WEB_PROXY_BASE_URI=...`
@@ -156,7 +169,8 @@ Future<OperatorWebAuthSource> _resolveAuthSource() async {
     // Live flavor wires `package:http`-backed gateways against the
     // same proxy client in the `11W.x.live` follow-ups (mirrors the
     // gateway-follows-shell pattern Phase 11A used).
-    return _DemoOperatorWebAuthSourceWithTeamSurfaces();
+    final scenario = resolveOperatorWebDemoScenario(_kOperatorWebDemoScenario);
+    return _DemoOperatorWebAuthSourceWithTeamSurfaces(scenario: scenario);
   }
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: kOperatorWebFirebaseOptions);
@@ -208,6 +222,11 @@ String? _parseMagicLinkToken() {
 /// surfaces share the demo fixture data set during the walkthrough.
 /// Live mode binds the live HTTP impls in their `11W.x.live`
 /// follow-ups.
+///
+/// The optional [scenario] selector picks the initial state +
+/// session payload + gateway seeding so the walkthrough can land on
+/// a specific demo posture without manual click-through. See
+/// [_kOperatorWebDemoScenario] for the full scenario catalog.
 class _DemoOperatorWebAuthSourceWithTeamSurfaces
     extends DemoOperatorWebAuthSource
     implements
@@ -217,14 +236,44 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
         OperatorWebTeamSessionsGatewayProvider,
         OperatorWebTeamAuditLogGatewayProvider,
         OperatorWebSecurityGatewayProvider {
-  _DemoOperatorWebAuthSourceWithTeamSurfaces()
-    : teamUsersGateway = DemoWebTeamUsersGateway(),
-      teamRolesGateway = DemoWebTeamRolesGateway(),
-      teamHierarchyGateway = DemoWebTeamHierarchyGateway(),
-      teamSessionsGateway = DemoWebTeamSessionsGateway(),
-      teamAuditLogGateway = DemoWebTeamAuditLogGateway(),
-      securityGateway = DemoWebSecurityGateway(),
-      super(initial: const OperatorWebNeedsToken());
+  factory _DemoOperatorWebAuthSourceWithTeamSurfaces({
+    String scenario = kOperatorWebDemoScenarioDefault,
+  }) {
+    final securityGateway = DemoWebSecurityGateway();
+    final initial = _initialStateForScenario(scenario);
+    final emitNeedsSignInOnSignOut = scenario == 'signed-out-live';
+    if (scenario == 'mfa-pending-removal') {
+      // Seed the gateway directly so the OW-8c
+      // `MfaCardStage.removalRequested` surface renders on first paint
+      // with a 18h remaining badge instead of requiring the operator
+      // to first revoke the factor.
+      securityGateway.seedPendingFactorRemoval(
+        factorId: kDemoSecurityExistingFactorId,
+        delay: const Duration(hours: 18),
+      );
+    }
+    return _DemoOperatorWebAuthSourceWithTeamSurfaces._(
+      teamUsersGateway: DemoWebTeamUsersGateway(),
+      teamRolesGateway: DemoWebTeamRolesGateway(),
+      teamHierarchyGateway: DemoWebTeamHierarchyGateway(),
+      teamSessionsGateway: DemoWebTeamSessionsGateway(),
+      teamAuditLogGateway: DemoWebTeamAuditLogGateway(),
+      securityGateway: securityGateway,
+      initial: initial,
+      emitNeedsSignInOnSignOut: emitNeedsSignInOnSignOut,
+    );
+  }
+
+  _DemoOperatorWebAuthSourceWithTeamSurfaces._({
+    required this.teamUsersGateway,
+    required this.teamRolesGateway,
+    required this.teamHierarchyGateway,
+    required this.teamSessionsGateway,
+    required this.teamAuditLogGateway,
+    required this.securityGateway,
+    required OperatorWebAuthState initial,
+    required super.emitNeedsSignInOnSignOut,
+  }) : super(initial: initial);
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
@@ -249,4 +298,32 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
   /// this from the auth source in the `11W.4.live` follow-up.
   @override
   String? get currentSessionId => kDemoTeamSessionThisSessionId;
+
+  /// Maps a normalized scenario token to the initial auth state the
+  /// demo source should emit. Unknown / unset tokens fall back to the
+  /// Welcome (NeedsToken) screen — historical default behavior.
+  static OperatorWebAuthState _initialStateForScenario(String scenario) {
+    switch (scenario) {
+      case 'owner-location-completed':
+        return const OperatorWebCompleted(session: kDemoOperatorWebSession);
+      case 'owner-business':
+        return const OperatorWebCompleted(
+          session: kDemoOperatorWebBusinessSession,
+        );
+      case 'manager-once':
+        return const OperatorWebCompleted(
+          session: kDemoOperatorWebLocationManagerSession,
+        );
+      case 'mfa-enrolled':
+      case 'mfa-pending-removal':
+        return const OperatorWebCompleted(
+          session: kDemoOperatorWebMfaEnrolledSession,
+        );
+      case 'signed-out-live':
+        return const OperatorWebNeedsSignIn();
+      case 'owner-location':
+      default:
+        return const OperatorWebNeedsToken();
+    }
+  }
 }

@@ -88,7 +88,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: adminSession,
-            locationId: adminSession.primaryLocationId,
+            locationId: adminSession.primaryLocationId ?? '',
           ),
         ),
       );
@@ -123,7 +123,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
           ),
         ),
       );
@@ -147,7 +147,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: locationManagerSession,
-            locationId: locationManagerSession.primaryLocationId,
+            locationId: locationManagerSession.primaryLocationId ?? '',
           ),
         ),
       );
@@ -191,7 +191,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: noRoleSession,
-            locationId: noRoleSession.primaryLocationId,
+            locationId: noRoleSession.primaryLocationId ?? '',
           ),
         ),
       );
@@ -213,7 +213,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: adminSession,
-            locationId: adminSession.primaryLocationId,
+            locationId: adminSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -271,7 +271,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: adminSession,
-            locationId: adminSession.primaryLocationId,
+            locationId: adminSession.primaryLocationId ?? '',
           ),
           size: const Size(768, 1024),
         ),
@@ -292,7 +292,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: adminSession,
-            locationId: adminSession.primaryLocationId,
+            locationId: adminSession.primaryLocationId ?? '',
           ),
           size: const Size(1024, 768),
         ),
@@ -348,7 +348,7 @@ void main() {
           wrap(
             VendorConnectionsScreen(
               session: adminSession,
-              locationId: adminSession.primaryLocationId,
+              locationId: adminSession.primaryLocationId ?? '',
               gateway: captureGateway,
             ),
           ),
@@ -458,7 +458,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: adminSession,
-            locationId: adminSession.primaryLocationId,
+            locationId: adminSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -514,7 +514,7 @@ void main() {
         wrap(
           VendorConnectionsScreen(
             session: adminSession,
-            locationId: adminSession.primaryLocationId,
+            locationId: adminSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
           size: const Size(768, 1024),

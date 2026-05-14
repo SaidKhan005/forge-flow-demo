@@ -280,7 +280,7 @@ class _MembersScreenState extends State<MembersScreen> {
     return TeamUserListCommand(
       actorUserId: widget.session.uid,
       operatorId: widget.session.operatorId,
-      locationId: widget.session.primaryLocationId,
+      locationId: widget.session.primaryLocationId ?? '',
     );
   }
 
@@ -390,7 +390,7 @@ class _MembersScreenState extends State<MembersScreen> {
         TeamUserStatusCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           targetUserId: user.userId,
           reason: reasonCode,
         ),
@@ -428,7 +428,7 @@ class _MembersScreenState extends State<MembersScreen> {
         TeamPasswordResetCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           targetUserId: user.userId,
         ),
         idempotencyKey: _nextIdempotencyKey(),
@@ -465,7 +465,7 @@ class _MembersScreenState extends State<MembersScreen> {
         TeamMfaResetCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           targetUserId: user.userId,
         ),
         idempotencyKey: _nextIdempotencyKey(),
@@ -507,7 +507,7 @@ class _MembersScreenState extends State<MembersScreen> {
       locationOptions: widget.locationOptions,
       actorUserId: widget.session.uid,
       operatorId: widget.session.operatorId,
-      locationId: widget.session.primaryLocationId,
+      locationId: widget.session.primaryLocationId ?? '',
       profileIdempotencyKey: _nextIdempotencyKey(),
       roleGrantIdempotencyKey: _nextIdempotencyKey(),
     );
@@ -534,7 +534,7 @@ class _MembersScreenState extends State<MembersScreen> {
         TeamInviteRevokeCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           inviteId: invite.inviteId,
         ),
         idempotencyKey: _nextIdempotencyKey(),
