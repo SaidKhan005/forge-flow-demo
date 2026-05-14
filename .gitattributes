@@ -1,1 +1,6 @@
 *.pdf binary
+# B-FU-dev-csp: shell scripts run inside Linux build containers (e.g.
+# `scripts/apply_operator_web_dev_csp.sh` invoked from
+# `Dockerfile.operator_web`); enforce LF so a Windows clone never
+# commits CRLF that would break the shebang or perl invocation.
+*.sh text eol=lf

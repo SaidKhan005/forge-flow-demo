@@ -52,6 +52,15 @@ ARG FIREBASE_PROJECT_ID=
 ARG FIREBASE_AUTH_DOMAIN=
 ARG FIREBASE_STORAGE_BUCKET=
 ARG OPERATOR_WEB_BUILD_FLAVOR=operator_web
+# B-FU-dev-csp: dev-relaxed CSP swap (`unsafe-inline` + `unsafe-eval` +
+# `ws://localhost:*` + `http://localhost:*` in `connect-src`, drops
+# `upgrade-insecure-requests`) so the Flutter DDC dev bundle can boot.
+# Set to `true` ONLY for a local sandbox build that targets an
+# IAM-locked Cloud Run service. The deploy script
+# (`scripts/deploy_operator_web.ps1 -DevDdc`) refuses to pass this
+# build-arg through to a public production service; never set true in a
+# production Cloud Run deploy.
+ARG OPERATOR_WEB_DEV_DDC=false
 
 WORKDIR /workspace
 
@@ -83,6 +92,24 @@ RUN cp web/operator/index.html web/index.html \
     && cp -f web/operator/icons/Icon-512.png web/icons/Icon-512.png \
     && cp -f web/operator/icons/Icon-maskable-192.png web/icons/Icon-maskable-192.png \
     && cp -f web/operator/icons/Icon-maskable-512.png web/icons/Icon-maskable-512.png
+
+# B-FU-dev-csp: swap the production CSP for a dev-relaxed CSP when the
+# deploy script signals a DDC / debug sandbox build. The Flutter DDC
+# dev bundle relies on `eval`, inline scripts, and the local
+# `ws://localhost:*` + `http://localhost:*` channels which the
+# production CSP correctly forbids; swapping at build time keeps the
+# source `web/operator/index.html` (and `web/index.html`) prod-strict
+# on disk and only relaxes the CSP inside this sandbox image. The swap
+# is gated by `OPERATOR_WEB_DEV_DDC=true` which the deploy script will
+# only emit behind the `-DevDdc` switch + sandbox-service confirmation.
+COPY scripts/apply_operator_web_dev_csp.sh /tmp/apply_operator_web_dev_csp.sh
+RUN chmod +x /tmp/apply_operator_web_dev_csp.sh \
+    && if [ "${OPERATOR_WEB_DEV_DDC}" = "true" ]; then \
+        /tmp/apply_operator_web_dev_csp.sh web/index.html; \
+    else \
+        echo "B-FU-dev-csp: OPERATOR_WEB_DEV_DDC=false (production CSP retained)"; \
+    fi \
+    && rm -f /tmp/apply_operator_web_dev_csp.sh
 
 RUN flutter config --enable-web \
     && flutter build web \
