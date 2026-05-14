@@ -8,6 +8,35 @@
 // Trusted programmatic creation (no invite email) is a separate
 // path — F&F super_admin only per the decision lock — and lives
 // under `TrustedUserCreationPolicy` below.
+//
+// BC-1 invite-path resolution (Q-3 scaffold audit lane,
+// 2026-05-13): This service owns the durable `auth_invites`
+// bookkeeping — token mint, expiry, accept/revoke state machine.
+// It does NOT mint or send the invite email itself. The production
+// invite EMAIL goes through Firebase Identity Platform's
+// password-reset action-link template, dispatched from
+// `lib/services/auth/repository_auth_operations_gateway.dart`'s
+// `firebaseAdmin.sendPasswordResetEmail` calls at the
+// invite-completion site and the admin-initiated reset site.
+// Rationale: Firebase already owns the canonical action-link
+// flow (oobCode mint, branded action page, deep-link bounce
+// through `web/auth/action/index.html`); duplicating that with a
+// SendGrid-owned invite template would force F&F to re-implement
+// the token-exchange + UI surface for no functional gain.
+//
+// The repo-owned `operator_admin_invite.md` template was deleted
+// in A2.2 (PR #540); `operator_invite_first_admin.md` is
+// preserved as the admin SendGrid connectivity-test fixture only
+// (see `EmailTemplateIds.operatorInviteFirstAdmin` doc string and
+// `tool/advisor_proxy/admin_email_routes.dart`). C-2 Draft A and
+// addendum B4 path 1 both ratified Firebase as the production
+// invite email; Q-3 promotes that ratification from
+// decision-doc-only to source-of-truth comment so future readers
+// see the split without grepping decision docs.
+//
+// Source: `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+// Draft A; addendum B4 path 1; `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md`
+// row BC-1.
 
 class InviteRequest {
   const InviteRequest({
