@@ -223,10 +223,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       teamActor: effectiveTeamActor,
       showAccount: showAccount,
     );
-    // U-7 (debug.md:304) — Settings tab order is Setup, Data (F&F admins),
-    // Account. A future MP-1 Integrations tab will slot between Setup and
-    // Data once the operator-gated mobile integrations surface is built;
-    // until then the slot is omitted, not stubbed.
+    // U-7 (debug.md:304) — Settings tab order is Setup, Integrations
+    // (MP-1, gated by `showAdminTabs`), Data (F&F admins only), Account.
+    // The MP-1 Integrations tab landed in the post-U-7 rebase (this PR);
+    // it slots between Setup and Data as the operator-gated mobile
+    // integrations surface and is the canonical home for the C-4
+    // Demo→Live master switch (no longer mounted under Setup).
     final tabs = <_SettingsTabSpec>[
       if (showAdminTabs) _authoritySettingsTab,
       // MP-1 (Wave 2) — Integrations is its own top-level tab. Hosts
@@ -273,7 +275,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         body: TabBarView(
           children: [
             // U-7 (debug.md:304) — TabBarView children mirror the
-            // bottom-nav `tabs` order: Setup, Data, Account.
+            // bottom-nav `tabs` order. Post-MP-1 that is:
+            // Setup, Integrations, Data, Account.
             if (showAdminTabs)
               _SettingsTabScrollView(
                 tabId: 'authority',
