@@ -842,6 +842,12 @@ const String kDemoOperatorWebPlaceholderLogoUrl =
 /// Shared demo session so `signedOut → completed` factories return the
 /// same identity payload — important because widget tests assert on
 /// the fields.
+///
+/// `U-FU-hp11-account-demo-defaults` (2026-05-14): currency / locale /
+/// week-start / rollover / timezone are populated so the Account
+/// screen's Hierarchy scope notices interpolate to real values
+/// ("CAD / en-CA", "04:00 local") instead of literal "null". Mirrors
+/// the Business setup demo (`America/Toronto`, Monday-start, 04:00).
 const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
   uid: 'demo-operator-owner',
   email: 'owner@demo.forgeflow.test',
@@ -854,6 +860,11 @@ const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
   // Wave 2 W-5 — demo placeholder logo. See
   // [kDemoOperatorWebPlaceholderLogoUrl] for the demo-mode rationale.
   logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
+  currencyCode: 'CAD',
+  localeTag: 'en-CA',
+  weekStartDay: 'monday',
+  rolloverHour: 4,
+  primaryLocationTimezone: 'America/Toronto',
 );
 
 /// Demo session for the `location_manager` read-only branch. Drives
@@ -871,6 +882,11 @@ const OperatorWebSession kDemoOperatorWebLocationManagerSession =
       primaryLocationName: 'Demo Main Street',
       roles: <String>['location_manager'],
       logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
+      currencyCode: 'CAD',
+      localeTag: 'en-CA',
+      weekStartDay: 'monday',
+      rolloverHour: 4,
+      primaryLocationTimezone: 'America/Toronto',
     );
 
 String _maskPhoneNumber(String raw) {
