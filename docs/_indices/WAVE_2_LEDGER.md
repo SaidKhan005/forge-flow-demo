@@ -11,7 +11,7 @@ Claude lane orchestrators (main + second account) read this before
 picking work. Pick the first slice with `state = assigned` on your lane.
 Lock it by opening the PR (you don't edit this file).
 
-Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the 7-phase pipeline).
+Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the 6-phase pipeline).
 Second-Claude paste-ready prompt: `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
 
 ## How this works
@@ -167,7 +167,7 @@ mega-PR or split into per-screen PRs.
 
 ## Authority anchors
 
-- Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the 7-phase pipeline).
+- Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the 6-phase pipeline).
 - Second-Claude handoff prompt: `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
 - Debug-md source-of-truth: `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md`.
 - Wave 1 closeout: `docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`.
