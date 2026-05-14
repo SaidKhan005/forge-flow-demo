@@ -94,7 +94,7 @@ class _SyncLogsDialog extends StatelessWidget {
     if (entry.recordsCount != null) {
       return '${entry.recordsCount} vendor records were processed.';
     }
-    return 'The vendor connection recorded this activity.';
+    return 'The vendor integration recorded this activity.';
   }
 
   String _eventLabel(String eventKind) {

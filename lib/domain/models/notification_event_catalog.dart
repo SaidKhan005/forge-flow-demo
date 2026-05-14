@@ -182,7 +182,7 @@ const List<NotificationCatalogEntry> kNotificationCatalog =
 const Map<NotificationCategory, String> kNotificationCategoryLabels =
     <NotificationCategory, String>{
   NotificationCategory.backfill: 'First-connect backfill',
-  NotificationCategory.vendor: 'Vendor connections',
+  NotificationCategory.vendor: 'Vendor integrations',
   NotificationCategory.audit: 'Audit and integrity',
   NotificationCategory.shift: 'Live shift',
   NotificationCategory.plan: 'Weekly plan',

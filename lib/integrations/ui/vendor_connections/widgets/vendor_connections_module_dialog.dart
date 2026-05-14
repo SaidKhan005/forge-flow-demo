@@ -128,7 +128,7 @@ class _ModuleDisambiguationDialog extends StatelessWidget {
           return 'ADP RUN is not supported in this flow yet.';
       }
     }
-    return 'Use this product for the selected vendor connection.';
+    return 'Use this product for the selected vendor integration.';
   }
 }
 

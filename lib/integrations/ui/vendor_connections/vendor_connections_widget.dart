@@ -148,7 +148,7 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _error = 'Could not load vendor connections: $error';
+        _error = 'Could not load vendor integrations: $error';
         _loading = false;
       });
     }

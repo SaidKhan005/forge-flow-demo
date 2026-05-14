@@ -343,7 +343,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'Shared platform services used across operators, such as exchange rates and outbound email. These are separate from per-location vendor connections.',
+                  'Shared platform services used across operators, such as exchange rates and outbound email. These are separate from per-location vendor integrations.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 10),

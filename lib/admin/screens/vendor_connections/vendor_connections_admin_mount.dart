@@ -349,7 +349,7 @@ class _VendorLocationRequiredPanel extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: <Widget>[
                                 Text(
-                                  'Choose a location before editing vendor connections',
+                                  'Choose a location before editing vendor integrations',
                                   style: AppTextStyles.sectionTitle(
                                     color: AppColors.textPrimary,
                                   ),

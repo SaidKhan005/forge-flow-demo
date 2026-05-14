@@ -104,7 +104,7 @@ void main() {
       );
       // The screen chrome (display20 title + subtitle) renders. The
       // shared widget under the screen also has its own internal
-      // header that says "Vendor connections", so a bare text find
+      // header that says "Vendor integrations", so a bare text find
       // for that string would match both — the screen Key + the
       // unique subtitle Key together pin the chrome.
       expect(
@@ -168,7 +168,7 @@ void main() {
       );
       expect(
         find.text(
-          'Vendor connections are managed by your operator '
+          'Vendor integrations are managed by your operator '
           'admin or owner; ask them to set up integrations '
           'for this location.',
         ),
