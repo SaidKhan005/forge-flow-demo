@@ -9,6 +9,7 @@
 
 ## Changelog
 
+- 2026-05-14: Wave 2 closeout sweep — flipped RP-3 (DONE via R-2L PR #711), RP-8 (DONE via S-3 PR #717), RP-12 (DONE via S-3 + Q-4 PRs #717/#716), RP-14 (DONE via S-3 PR #717), RP-16 (DONE via W-2 PR #691), MO-3c / MO-4b / MO-6d (DONE via U-FU-mobile-deeplink PR #600 / Codex C-5), OW-12h (DONE via U-FU-tier-email PR #713 — mount FU `U-FU-tier-email-wire` parked). Companion ledger entry: `docs/_indices/WAVE_2_LEDGER.md` "2026-05-14: Wave 2 closeout sweep".
 - 2026-05-14: OW-2d flipped to CLOSED — mobile dashboard header logo propagation merged as W-5-mobile-FU PR #695. Audited Claude #2 PRs; 5 new follow-ups added to WAVE_2_LEDGER.md.
 - **2026-05-14 — Wave 2 post-merge sync.** Wave 2 closed roughly 20
   main-lane slices and 11 second-lane slices, each anchored to specific
@@ -116,20 +117,20 @@ consistent way." This is HP #11 (Hard Promise #11 in CLAUDE.md).
 |---|---|---|---|
 | RP-1 | "Audit of permissions / roles — what's implemented, exposed, where?" | ✅ DONE | `docs/contracts/auth_permission_key_catalog.md` (canonical catalog); `lib/auth/permission_keys.dart` (frozen mirror); `permission_explainer_screen.dart` renders the catalog with category groupings. PR #481 retroactive audit re-confirmed. |
 | RP-2 | "What seeded roles exist and what capabilities they carry; is ReBAC done?" | 🚧 IN PROGRESS | B2.1/B2.2/B2.3 shipped the **Default Role Catalog** with versioning + admin publish surface (`default_role_catalog_admin_screen.dart`). ReBAC posture validated by wave auth audit. **Operator decision still open**: confirm the published default set matches Vanessa's intent. Targets Step 1 (demo-validate). |
-| RP-3 | "Suggest seeded roles based on audit" | ❌ NOT DONE | No seeded-role redesign proposal exists. **New slice — "Default Role Catalog v2 redesign"** (post demo-validate). |
+| RP-3 | "Suggest seeded roles based on audit" | ✅ DONE | Wave 2 R-2L (PR #711) shipped the Default Role Catalog v2 redesign — operator-approved seeded-role proposal with per-key human labels, product/category metadata, and the implies graph. |
 | RP-4 | "Are roles applied via hierarchy/inheritance like other settings? Does UX match?" | 🚧 IN PROGRESS | Roles ARE operator-wide (per `01_product_rule_and_ia.md`), not hierarchy-scoped — that's a product decision, not a gap. The UX does NOT visualize this in the role surfaces. **Operator decision**: keep operator-wide or extend to hierarchy. |
 | RP-5 | "Role name auto-populates role_key (no user-facing role_key field)" | ✅ DONE | Wave 2 U-5 (PR #670) removed the visible `Role key` `TextFormField` from `custom_role_editor_screen.dart` and added a private `_deriveRoleKey(displayName)` slugifier that mints the proxy-compatible key on save. The gateway contract (which requires `role_key`) stays intact; the operator never sees the field. |
 | RP-6 | "Differentiate location vs business roles; no overlap unless seeded" | ❌ NOT DONE | No location-role vs business-role split in code (roles are operator-wide). **Needs operator decision** before slicing. |
 | RP-7 | "Rename seeded roles to Default roles across all consoles" | 🚧 IN PROGRESS | Admin console says "Default Role Catalog". `roles_screen.dart` shows "Default" badge per worker notes. **Mobile + label sweep across all surfaces** needs verification. 🔍 NEEDS VERIFICATION. |
-| RP-8 | "Display only name + short description + edit button after creation" | ❌ NOT DONE | `roles_screen.dart` currently shows more than name + description per F-OW-1 LoC dashboard. **New slice — "Roles screen UX simplification"**. Targets Step 5a or a new UX slice. |
+| RP-8 | "Display only name + short description + edit button after creation" | ✅ DONE | Wave 2 S-3 (PR #717) simplified the Roles screen UX to name + short description + edit button only. |
 | RP-9 | "Admin can edit Default-role permissions across F&F; this itself is a permission" | 🚧 IN PROGRESS | `default_role_catalog_admin_screen.dart` + publish dialog ship the admin edit path. **Permission key for it**: check `team.roles.default_catalog.edit` or similar. 🔍 NEEDS VERIFICATION. |
 | RP-10 | "Invite team member location assignment changes to hierarchy-type assignment" | 🚧 IN PROGRESS | `invite_member_dialog.dart` + `invite_member_admin_dialog.dart` exist. **Hierarchy-tree picker vs flat list** needs verification per HP #11 mandate. 🔍 NEEDS VERIFICATION. |
 | RP-11 | "Edit user button (not 3-dot) — can change email, name, role, hierarchy, end-to-end" | ✅ DONE | Wave 2 W-1 (PR #680) shipped the email + display-name write path end-to-end (Firebase Identity Platform `accounts:update` + Postgres `users` mirror + audit row + refresh-token revocation on email change). Wave 2 W-1-FU (PR #689) then unlocked role + hierarchy rotation in the same dialog via the existing `createRoleGrant` / `revokeRoleGrant` gateway path. The 3-dot is now a dedicated **Edit member** dialog. |
-| RP-12 | "Permission to access Ops Console vs Admin Console (product access)" | 🚧 IN PROGRESS | `permission_keys.dart` has keys; `permission_explainer_screen.dart` is categorized. **No "product access" UX category yet**. New slice — "Roles by product → functionality categorization UX". |
+| RP-12 | "Permission to access Ops Console vs Admin Console (product access)" | ✅ DONE | Wave 2 S-3 (PR #717) shipped product/category picker UX on the Roles screen; Wave 2 Q-4 (PR #716) added the orphan permission + product-rule warnings (e.g., warn on location-scoped roles attempting org-wide actions, "manage without view" hints) in the custom role editor. |
 | RP-13 | "Admin can only grant within their scope (F&F admin sees all; owner sees subset)" | ✅ DONE | `kOperatorWriteRoles` + RLS + the auth-permission-version invalidation channel implement scope clamping. Wave audit (`wave_audit_auth_rls_permissions.md`) verified zero cross-tenant leaks. |
-| RP-14 | "Roles categorized by product, then by functionality within each product; dependency auto-add" | ❌ NOT DONE | No product-categorized role taxonomy in code or UX. **New slice — "Role categorization by product + dependency auto-select"**. |
+| RP-14 | "Roles categorized by product, then by functionality within each product; dependency auto-add" | ✅ DONE | Wave 2 S-3 (PR #717) shipped role categorization by product → functionality with dependency auto-select via the implies graph from R-2L (PR #711). |
 | RP-15 | "Benchmark override ability — manager once, admin can undo, both consoles + mobile UX" | 🚧 IN PROGRESS | B6 + `operator_benchmark_overrides_routes.dart` + `benchmark_override_resolver_test.dart` ship the override + audit chain. **Manager-once cap + admin-undo UX** needs verification. 🔍 NEEDS VERIFICATION. |
-| RP-16 | "Pending invites cancel button — wired end-to-end including Firebase API" | 🚧 IN PROGRESS | Wave 2 Lane W slice **W-2 (cancel pending invite end-to-end)** is in-flight: PR #691 open at 2026-05-14, not yet merged. The contract is for the operator-web + admin cancel button to call through to the Firebase API and the audit log in one idempotent write. |
+| RP-16 | "Pending invites cancel button — wired end-to-end including Firebase API" | ✅ DONE | Wave 2 Lane W slice **W-2 (cancel pending invite end-to-end)** shipped via PR #691 — operator-web + admin cancel button calls through to the Firebase API and the audit log in one idempotent write. |
 | RP-17 | "Applies to both consoles unless specified" | (meta-rule) | Bound to RP-1..16 above. |
 
 ---
@@ -323,7 +324,7 @@ parity work is the upstream gate.
 | OW-12e | "Covers — explain 3 logic types; reservation integration?" | 🚧 IN PROGRESS | Operator read-back still queued for Step 1. |
 | OW-12f | "Rename Monitoring → Data Freshness; bigger font" | ✅ DONE | Wave 2 U-6 (PR #673). |
 | OW-12g | "Subtitle rewrite: 'Polling is...' + plan tier + request-fresh-data" | ✅ DONE | Wave 2 U-6 (PR #673). |
-| OW-12h | "Remove 'no poll only vendors connected'; make tier-change button better; wired as email?" | 🚧 IN PROGRESS | Wave 2 U-6 (PR #673) handled the cosmetic side (cleaner button, removed orphan copy). The "wired as email" question is operator decision — no Wave 2 slice touched the tier-change-as-email path. |
+| OW-12h | "Remove 'no poll only vendors connected'; make tier-change button better; wired as email?" | ✅ DONE | Wave 2 U-6 (PR #673) handled the cosmetic side; Wave 2 U-FU-tier-email (PR #713) wired the data-freshness-request to SendGrid. Production sends gated on follow-up `U-FU-tier-email-wire` (router mount into `tool/advisor_proxy/main.dart`) — parked. |
 | OW-12i | "Rename 'How this applies to your setup' → 'Note:'" | ✅ DONE | Wave 2 U-6 (PR #673). |
 | OW-12j | "Reword polling cadence + webhook subtitles" | ✅ DONE | Wave 2 U-6 (PR #673). |
 
@@ -376,14 +377,14 @@ parity work is the upstream gate.
 |---|---|---|---|
 | MO-3a | "View-only mobile business timing (correct as-is); cleanup subtitles + tiles" | ✅ DONE | Wave 2 U-7 (PR #678) dropped the "Current timing" pill + "Restaurant-local timing controls..." subtitle from `settings_timing_authority_section.dart` and dropped the Setup-tab "Review when business days..." description. |
 | MO-3b | "Consolidate 'business day starts' + 'shift close rule' into one widget" | ✅ DONE | Wave 2 U-7 (PR #678) introduced the new `_BusinessDayBoundaryTile` that renders both rows inside one bordered container with a shared "Business day boundary" caption. |
-| MO-3c | "'Manage business timing on operator web' is a button that opens ops-web with same JWT, deep-links to relevant section" | 🚧 IN PROGRESS | Wave 2 U-7 (PR #678) **explicitly skipped** this — the B11.1 handoff-codes infrastructure exists but the mobile→ops-web deep-link UI hook is not yet wired. Defer to a dedicated "Mobile → Ops-Web deep-link with handoff code" slice (paired with MO-4b + MO-6d). |
+| MO-3c | "'Manage business timing on operator web' is a button that opens ops-web with same JWT, deep-links to relevant section" | ✅ DONE | Wave 2 U-FU-mobile-deeplink shipped via PR #600 (Codex C-5 mobile handoff-code deeplink, commit `161e6b85`) — B11.1 handoff-codes infrastructure wired through to the mobile UI. Same row as MO-4b / MO-6d. |
 
 ### 4) Wage Setup
 
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
 | MO-4a | "Remove subtitle 'review the wage mix used...' + 'source default wages' wording" | ✅ DONE | Wave 2 U-7 (PR #678) dropped the "Review the wage mix..." subtitle from the Setup-tab Wage section. |
-| MO-4b | "'Manage wage setup on operator console' button same as timing" | 🚧 IN PROGRESS | Wave 2 U-7 (PR #678) **explicitly skipped** this — same B11.1 deep-link follow-up as MO-3c. |
+| MO-4b | "'Manage wage setup on operator console' button same as timing" | ✅ DONE | Wave 2 U-FU-mobile-deeplink shipped via PR #600 (Codex C-5 mobile handoff-code deeplink, commit `161e6b85`). Same row as MO-3c / MO-6d. |
 | MO-4c | "Widget displays the FOH/BOH/Mgmt breakdown (view-only)" | ✅ DONE | Wave 2 U-7 (PR #678) verified the FOH/BOH/Mgmt breakdown is already rendered view-only at `settings_wage_authority_section.dart:205-214`. The matching blended-mix display work on operator-web shipped via S-1 (PR #679); the mobile section already mirrors the same view-only shape. |
 
 ### 6) Covers Setup
@@ -413,7 +414,7 @@ parity work is the upstream gate.
 |---|---|---|---|
 | MO-6b | "Remove subtitle 'review your sign in details'" | ✅ DONE | Wave 2 U-7 (PR #678) dropped the "Review your sign-in details." subtitle. |
 | MO-6c | "Rename 'Display name' → 'Name'" | ✅ DONE | Wave 2 U-7 (PR #678) renamed the label to "Name" in the `_AccountInfoSummaryCard`. |
-| MO-6d | "'Manage account on operator web' deep-link button (same as timing/wage)" | 🚧 IN PROGRESS | Wave 2 U-7 (PR #678) **explicitly skipped** this — same B11.1 deep-link follow-up as MO-3c and MO-4b. |
+| MO-6d | "'Manage account on operator web' deep-link button (same as timing/wage)" | ✅ DONE | Wave 2 U-FU-mobile-deeplink shipped via PR #600 (Codex C-5 mobile handoff-code deeplink, commit `161e6b85`). Same row as MO-3c / MO-4b. |
 
 ### 7b) Active Sessions
 
@@ -480,35 +481,33 @@ regression), W-1 (legacy fact tables), W-2 (partman dollar-quote).
 
 **New slices to add to NEXT_WAVE_PLAN.md (not yet captured):**
 
+> **2026-05-14 Wave 2 closeout sweep:** items 4 (Roles screen UX simplification → S-3 PR #717), 6 (Cancel pending invite → W-2 PR #691), 7 (Default Role Catalog v2 → R-2L PR #711), and 8 (Profile self-service + mobile deep-link → W-3 PR #697 + U-FU-mobile-deeplink PR #600) removed as completed. Remaining items renumbered.
+
 1. **Scaffold audit lane** — BC-1 / EN-2 / EN-4 / QI-1. ~5-10 LoC purge per orphan + dispatcher cleanup.
 2. **Vendor Connection → Vendor Integration rename sweep** — OW-11a, OW-14c. Cross-console string sweep.
 3. **HP #11 sweep for schedule + wage_authority** — H-1 / M-4. 1-day operator-web-side slice.
-4. **Roles screen UX simplification + role categorization by product** — RP-8 + RP-12 + RP-14 + OW-7a..g.
-5. **Members edit-user write path (email + name + role + hierarchy)** — RP-11 + OW-6d.
-6. **Cancel pending invite end-to-end** — RP-16.
-7. **Default Role Catalog v2 redesign** — RP-3. Post demo-validate operator decision.
-8. **Profile self-service write paths + mobile → ops-web deep-link with handoff code** — P-1 + P-3 + MO-3c + MO-4b + MO-6d.
-9. **Admin console My Account parity** — P-5.
-10. **Top bar + location selector hierarchy redesign (ops web + admin)** — OW-0c.
-11. **Inheritance tree visualization on identity pages** — OW-3e.
-12. **Business logo upload + propagation** — OW-2d.
-13. **Account screen — timezone + missing-field exposure** — OW-2g.
-14. **Wage Authority — blended-mix formula display + vendor applicability label** — OW-13a + OW-13b.
-15. **Wage Authority + Data Accuracy unified IA** — OW-13c.
-16. **Mobile Data tab role-gated visibility** — MO-2.
-17. **Mobile covers manual entry (vendor-fallback)** — MO-6.
-18. **Mobile Integrations tab — live vendor status + ops-portal deep-link** — MO-7a + MO-7b.
-19. **Mobile settings tab IA reorder** — MO-S.
-20. **Soak harness — completion + Azure Blob swap** — BC-2 + BUG-3.
-21. **Email/notification soak (Patrol + Firebase Test Lab + Mailosaur)** — EN-5 + BC-3.
-22. **Operator SOP authoring** — QI-10. Post-V1 deploy.
-23. **Vendor outreach kickoff** — QI-11. Post-V1 deploy.
-24. **Mobile + ops-web UX polish bundle** — every UX-only row (subtitle removal, tile removal, copy rewording). Can be a single high-velocity bundle since each individual change is tiny.
-25. **Audit chain hierarchy projection** — AL-1. Post-V1 if needed.
-26. **Custom role editor — orphan permission lint + product rule warnings** — AC-2.
-27. **Phase 10b perf-and-overfetch audit** — QI-7 (was in 10b before pause).
-28. **Frameworks → runbooks conversion** — QI-4 (housekeeping).
-29. **Central agent-self-audit script** — QI-5.
+4. **Members edit-user write path (email + name + role + hierarchy)** — RP-11 + OW-6d.
+5. **Admin console My Account parity** — P-5.
+6. **Top bar + location selector hierarchy redesign (ops web + admin)** — OW-0c.
+7. **Inheritance tree visualization on identity pages** — OW-3e.
+8. **Business logo upload + propagation** — OW-2d.
+9. **Account screen — timezone + missing-field exposure** — OW-2g.
+10. **Wage Authority — blended-mix formula display + vendor applicability label** — OW-13a + OW-13b.
+11. **Wage Authority + Data Accuracy unified IA** — OW-13c.
+12. **Mobile Data tab role-gated visibility** — MO-2.
+13. **Mobile covers manual entry (vendor-fallback)** — MO-6.
+14. **Mobile Integrations tab — live vendor status + ops-portal deep-link** — MO-7a + MO-7b.
+15. **Mobile settings tab IA reorder** — MO-S.
+16. **Soak harness — completion + Azure Blob swap** — BC-2 + BUG-3.
+17. **Email/notification soak (Patrol + Firebase Test Lab + Mailosaur)** — EN-5 + BC-3.
+18. **Operator SOP authoring** — QI-10. Post-V1 deploy.
+19. **Vendor outreach kickoff** — QI-11. Post-V1 deploy.
+20. **Mobile + ops-web UX polish bundle** — every UX-only row (subtitle removal, tile removal, copy rewording). Can be a single high-velocity bundle since each individual change is tiny.
+21. **Audit chain hierarchy projection** — AL-1. Post-V1 if needed.
+22. **Custom role editor — orphan permission lint + product rule warnings** — AC-2.
+23. **Phase 10b perf-and-overfetch audit** — QI-7 (was in 10b before pause).
+24. **Frameworks → runbooks conversion** — QI-4 (housekeeping).
+25. **Central agent-self-audit script** — QI-5.
 
 ---
 
