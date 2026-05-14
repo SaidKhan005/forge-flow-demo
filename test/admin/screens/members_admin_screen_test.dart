@@ -1298,6 +1298,171 @@ void main() {
       expect(captured!.primaryLocationId, isEmpty);
       expect(captured!.orgUnitId, equals('unit-1'));
     });
+
+    testWidgets(
+      'hierarchy-tree picker renders with plain-English label + helper',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            Builder(
+              builder: (context) => Center(
+                child: ElevatedButton(
+                  key: const Key('open_dialog'),
+                  onPressed: () => showDialog<InviteMemberAdminDraft>(
+                    context: context,
+                    builder: (_) => const InviteMemberAdminDialog(
+                      operatorBusinessName: 'Demo',
+                      locations: <MemberLocationRef>[
+                        MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
+                        MemberLocationRef(locationId: 'loc-2', name: 'Loc 2'),
+                      ],
+                      accessScopes: <MemberAccessScopeRef>[
+                        MemberAccessScopeRef(
+                          scopeType: 'operator_wide',
+                          id: 'operator_wide:op-1',
+                          label: 'Business / Demo',
+                        ),
+                        MemberAccessScopeRef(
+                          scopeType: 'location',
+                          id: 'location:loc-1',
+                          label: 'Loc 1',
+                          locationId: 'loc-1',
+                        ),
+                        MemberAccessScopeRef(
+                          scopeType: 'location',
+                          id: 'location:loc-2',
+                          label: 'Loc 2',
+                          locationId: 'loc-2',
+                        ),
+                      ],
+                    ),
+                  ),
+                  child: const Text('open'),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.byKey(const Key('open_dialog')));
+        await tester.pumpAndSettle();
+
+        // Picker mounts under the legacy location-field key so existing
+        // tests + screen wiring keep working.
+        expect(
+          find.byKey(const Key('admin_members_invite_location')),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Choose where this person will work'),
+          findsOneWidget,
+        );
+        expect(
+          find.text(
+            'Pick the location, region, or whole business. Higher levels '
+            'include everything beneath.',
+          ),
+          findsOneWidget,
+        );
+        // Picker tree renders (multi-node hierarchy, not the
+        // single-location collapse row).
+        expect(
+          find.byKey(const Key('admin_members_invite_scope_tree')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('picking a location in the tree feeds the location scope', (
+      tester,
+    ) async {
+      // The picker tree + admin reason fields push the dialog past the
+      // default 800x600 widget-test viewport. Resize so the Loc 2 row
+      // is hit-testable.
+      tester.view.physicalSize = const Size(1024, 1400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      InviteMemberAdminDraft? captured;
+      await tester.pumpWidget(
+        wrap(
+          Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                key: const Key('open_dialog'),
+                onPressed: () async {
+                  captured = await showDialog<InviteMemberAdminDraft>(
+                    context: context,
+                    builder: (_) => const InviteMemberAdminDialog(
+                      operatorBusinessName: 'Demo',
+                      locations: <MemberLocationRef>[
+                        MemberLocationRef(locationId: 'loc-1', name: 'Loc 1'),
+                        MemberLocationRef(locationId: 'loc-2', name: 'Loc 2'),
+                      ],
+                      accessScopes: <MemberAccessScopeRef>[
+                        MemberAccessScopeRef(
+                          scopeType: 'operator_wide',
+                          id: 'operator_wide:op-1',
+                          label: 'Business / Demo',
+                        ),
+                        MemberAccessScopeRef(
+                          scopeType: 'location',
+                          id: 'location:loc-1',
+                          label: 'Loc 1',
+                          locationId: 'loc-1',
+                        ),
+                        MemberAccessScopeRef(
+                          scopeType: 'location',
+                          id: 'location:loc-2',
+                          label: 'Loc 2',
+                          locationId: 'loc-2',
+                        ),
+                      ],
+                    ),
+                  );
+                },
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const Key('open_dialog')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_email')),
+        'pat.location@op.test',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_display_name')),
+        'Pat Location',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_role')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Operator manager').last);
+      await tester.pumpAndSettle();
+
+      // Pick Loc 2 in the hierarchy tree. Scroll it into view first
+      // in case the dialog content has overflowed the test viewport.
+      await tester.ensureVisible(find.text('Loc 2'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Loc 2'));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('admin_members_invite_admin_reason')),
+        'support-onboarding',
+      );
+      await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
+      await tester.pumpAndSettle();
+
+      expect(captured, isNotNull);
+      expect(captured!.scopeType, equals('location'));
+      expect(captured!.primaryLocationId, equals('loc-2'));
+      expect(captured!.orgUnitId, isNull);
+    });
   });
 
   group('merged People/access/roles surface', () {

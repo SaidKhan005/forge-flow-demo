@@ -24,6 +24,8 @@ import '../../services/team/team_invite_form_controller.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
 import '../../theme/app_theme.dart';
+import '../widgets/hierarchy_map_picker.dart';
+import '../widgets/hierarchy_tree_picker.dart';
 
 /// Locked validation copy. Tests assert against these strings to pin
 /// the parity contract against the rendered dialog copy.
@@ -47,6 +49,11 @@ class InviteMemberDialogResult {
 }
 
 /// Open the invite dialog from the Members screen.
+///
+/// [orgUnitOptions] + [businessLabel] are optional: when the caller
+/// omits them the picker falls back to the demo fixture so the
+/// hierarchy tree still renders Business → Region → Location during
+/// the walkthrough.
 Future<InviteMemberDialogResult?> showInviteMemberDialog({
   required BuildContext context,
   required WebTeamUsersGateway gateway,
@@ -55,6 +62,8 @@ Future<InviteMemberDialogResult?> showInviteMemberDialog({
   required List<DemoTeamRoleFixture> roleOptions,
   required List<DemoTeamLocationFixture> locationOptions,
   required String idempotencyKey,
+  List<DemoTeamOrgUnitFixture> orgUnitOptions = kDemoTeamOrgUnitsFixture,
+  String businessLabel = kDemoOperatorBusinessNameFixture,
 }) {
   return showDialog<InviteMemberDialogResult>(
     context: context,
@@ -64,6 +73,8 @@ Future<InviteMemberDialogResult?> showInviteMemberDialog({
       existingEmails: existingEmails,
       roleOptions: roleOptions,
       locationOptions: locationOptions,
+      orgUnitOptions: orgUnitOptions,
+      businessLabel: businessLabel,
       idempotencyKey: idempotencyKey,
     ),
   );
@@ -81,6 +92,8 @@ class InviteMemberDialog extends StatefulWidget {
     required this.roleOptions,
     required this.locationOptions,
     required this.idempotencyKey,
+    this.orgUnitOptions = kDemoTeamOrgUnitsFixture,
+    this.businessLabel = kDemoOperatorBusinessNameFixture,
   });
 
   final WebTeamUsersGateway gateway;
@@ -93,6 +106,16 @@ class InviteMemberDialog extends StatefulWidget {
   final List<DemoTeamRoleFixture> roleOptions;
   final List<DemoTeamLocationFixture> locationOptions;
 
+  /// Org-unit tree the hierarchy-tree picker walks alongside the
+  /// flat location list. Demo build defaults to the shared fixture;
+  /// live build will replace this with the operator's hierarchy
+  /// gateway projection in a follow-up live wiring slice.
+  final List<DemoTeamOrgUnitFixture> orgUnitOptions;
+
+  /// Business label rendered at the root of the picker tree (e.g.
+  /// "Demo Bistro"). Defaults to the demo fixture name.
+  final String businessLabel;
+
   /// Caller-minted key. The dialog reuses the same key on retry so
   /// the proxy replay returns the original invite row.
   final String idempotencyKey;
@@ -101,9 +124,18 @@ class InviteMemberDialog extends StatefulWidget {
   State<InviteMemberDialog> createState() => _InviteMemberDialogState();
 }
 
+/// Process-level cache of the operator's last hierarchy pick. The
+/// dialog rewires this on every open so a Cancel → Reopen returns
+/// the operator to the same selection mid-invite (HP #11 walks the
+/// operator through scope; losing their pick on a typo correction is
+/// hostile). Cleared once an invite submits successfully.
+String? _lastSelectedHierarchyNodeId;
+
 class _InviteMemberDialogState extends State<InviteMemberDialog> {
   late final TeamInviteFormController _form;
   late final TextEditingController _emailController;
+  late final List<HierarchyMapNode> _hierarchyNodes;
+  String? _selectedHierarchyNodeId;
   String? _errorMessage;
   bool _submitting = false;
 
@@ -113,6 +145,50 @@ class _InviteMemberDialogState extends State<InviteMemberDialog> {
     _form = TeamInviteFormController();
     _emailController = TextEditingController();
     _form.addListener(_handleFormChange);
+    _hierarchyNodes = buildInviteHierarchyNodes(
+      businessId: widget.listCommand.operatorId,
+      businessLabel: widget.businessLabel,
+      orgUnits: <({String orgUnitId, String name, String? parentOrgUnitId})>[
+        for (final unit in widget.orgUnitOptions)
+          // The "corp" root org-unit (e.g. `demo-org-root`) doubles as
+          // the business node already rendered by
+          // buildInviteHierarchyNodes; skipping it keeps the tree from
+          // showing two business-wide rows.
+          if (unit.unitType != 'corp')
+            (
+              orgUnitId: unit.orgUnitId,
+              name: unit.name,
+              parentOrgUnitId: _isCorpRoot(unit.parentOrgUnitId)
+                  ? null
+                  : unit.parentOrgUnitId,
+            ),
+      ],
+      locations: <({String locationId, String name, String? orgUnitId})>[
+        for (final loc in widget.locationOptions)
+          (
+            locationId: loc.locationId,
+            name: loc.name,
+            orgUnitId: _isCorpRoot(loc.orgUnitId) ? null : loc.orgUnitId,
+          ),
+      ],
+    );
+    // Restore the operator's last pick if it is still valid.
+    final last = _lastSelectedHierarchyNodeId;
+    if (last != null && _hierarchyNodes.any((n) => n.id == last)) {
+      _selectedHierarchyNodeId = last;
+      _applyHierarchySelection(_hierarchyNodes.firstWhere((n) => n.id == last));
+    }
+  }
+
+  /// `demo-org-root` is the synthetic corp node in the demo fixture
+  /// that maps to the business root; treat it as the implicit parent
+  /// so the tree's "Whole business" row replaces it.
+  bool _isCorpRoot(String? orgUnitId) {
+    if (orgUnitId == null) return false;
+    for (final unit in widget.orgUnitOptions) {
+      if (unit.orgUnitId == orgUnitId && unit.unitType == 'corp') return true;
+    }
+    return false;
   }
 
   @override
@@ -129,6 +205,35 @@ class _InviteMemberDialogState extends State<InviteMemberDialog> {
       _emailController.text = _form.email;
     }
     setState(() {});
+  }
+
+  /// Translate a picked hierarchy node into the form's scope + scope-
+  /// id pair. Mirrors the `TeamInviteFormController.setScope` rules:
+  /// switching to operator-wide clears the location + org-unit ids;
+  /// picking a location or region clears the other.
+  void _applyHierarchySelection(HierarchyMapNode node) {
+    _selectedHierarchyNodeId = node.id;
+    _lastSelectedHierarchyNodeId = node.id;
+    switch (node.kind) {
+      case HierarchyMapNodeKind.business:
+        _form.setScope(TeamInviteScope.operatorWide);
+        break;
+      case HierarchyMapNodeKind.orgUnit:
+        _form.setScope(TeamInviteScope.orgUnit);
+        // Node ids are prefixed by buildInviteHierarchyNodes so the
+        // raw scope id is the suffix after the first colon.
+        _form.setOrgUnitId(_idAfterPrefix(node.id, 'org_unit:'));
+        break;
+      case HierarchyMapNodeKind.location:
+        _form.setScope(TeamInviteScope.location);
+        _form.setLocationId(_idAfterPrefix(node.id, 'location:'));
+        break;
+    }
+  }
+
+  static String _idAfterPrefix(String value, String prefix) {
+    if (value.startsWith(prefix)) return value.substring(prefix.length);
+    return value;
   }
 
   String? _resolveValidationCopy() {
@@ -183,6 +288,10 @@ class _InviteMemberDialogState extends State<InviteMemberDialog> {
         idempotencyKey: widget.idempotencyKey,
       );
       if (!mounted) return;
+      // Clear the cross-dialog hierarchy cache so the next invite
+      // starts from a clean tree (the prior pick was specific to
+      // this invitee and should not bleed across).
+      _lastSelectedHierarchyNodeId = null;
       Navigator.of(context).pop(InviteMemberDialogResult(created: created));
     } catch (error) {
       if (!mounted) return;
@@ -266,27 +375,26 @@ class _InviteMemberDialogState extends State<InviteMemberDialog> {
                 ],
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                key: const Key('invite_member_dialog_location_field'),
-                initialValue: _form.locationId,
-                onChanged: _submitting
-                    ? null
-                    : (value) {
-                        if (value == null) return;
-                        _form.setScope(TeamInviteScope.location);
-                        _form.setLocationId(value);
-                      },
-                decoration: const InputDecoration(
-                  labelText: 'Primary location',
-                  border: OutlineInputBorder(),
+              IgnorePointer(
+                ignoring: _submitting,
+                child: HierarchyTreePicker(
+                  key: const Key('invite_member_dialog_location_field'),
+                  keyPrefix: 'invite_member_dialog_hierarchy',
+                  nodes: _hierarchyNodes,
+                  selectedId: _selectedHierarchyNodeId,
+                  onSelected: (node) {
+                    setState(() {
+                      _applyHierarchySelection(node);
+                      // Clear the inline error once the operator picks
+                      // a scope so they do not see a stale "Choose a
+                      // primary location" hint after the fix.
+                      if (_errorMessage ==
+                          InviteMemberDialogCopy.locationMissing) {
+                        _errorMessage = null;
+                      }
+                    });
+                  },
                 ),
-                items: <DropdownMenuItem<String>>[
-                  for (final location in widget.locationOptions)
-                    DropdownMenuItem<String>(
-                      value: location.locationId,
-                      child: Text(location.name),
-                    ),
-                ],
               ),
               if (_errorMessage != null) ...[
                 const SizedBox(height: 10),
