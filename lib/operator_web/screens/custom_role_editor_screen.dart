@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../services/auth/custom_role_validator.dart';
+import '../../services/auth/role_warning_dismissal_store.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
 import '../../theme/app_theme.dart';
@@ -42,10 +43,20 @@ const String kCustomRoleEditorUnknownKeyMessage =
     'One or more permission keys are not in the catalog. Pick keys '
     'from the list below.';
 
+/// Process-lifetime fallback used when the caller does not pass a
+/// [RoleWarningDismissalStore]. The default is intentionally an
+/// in-memory store so the operator-web SPA keeps dismissals across
+/// editor open/close within the same session; durable persistence
+/// will plug in via constructor injection from the higher-level
+/// route once `package:shared_preferences` is wired in for the web
+/// shell.
+final RoleWarningDismissalStore _kDefaultDismissalStore =
+    MemoryRoleWarningDismissalStore();
+
 /// Operator Web custom-role builder screen. Pass `existing == null`
 /// to create a new role; pass an existing role to edit it.
 class CustomRoleEditorScreen extends StatefulWidget {
-  const CustomRoleEditorScreen({
+  CustomRoleEditorScreen({
     super.key,
     required this.session,
     required this.gateway,
@@ -56,7 +67,8 @@ class CustomRoleEditorScreen extends StatefulWidget {
     this.readOnly = false,
     this.roleScope = RoleScope.location,
     this.validator = const CustomRoleValidator(),
-  });
+    RoleWarningDismissalStore? dismissalStore,
+  }) : dismissalStore = dismissalStore ?? _kDefaultDismissalStore;
 
   final OperatorWebSession session;
   final WebTeamRolesGateway gateway;
@@ -76,6 +88,14 @@ class CustomRoleEditorScreen extends StatefulWidget {
   /// tests to pin a specific warning set without seeding permission
   /// keys.
   final CustomRoleValidator validator;
+
+  /// Persistent store for "Don't show this warning again for this
+  /// role" dismissals. Defaults to a process-lifetime in-memory store
+  /// so the SPA-session experience matches the operator's intuition
+  /// ("I dismissed it, I do not want to see it again"). Tests inject
+  /// a fresh [MemoryRoleWarningDismissalStore] so dismissals from
+  /// other tests do not bleed in.
+  final RoleWarningDismissalStore dismissalStore;
 
   /// Existing role to edit. `null` means "create a new custom role".
   final TeamRoleCatalogEntry? existing;
@@ -125,10 +145,19 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
         }
       }
     }
+    // The non-Owner billing-subscription warning (Rule 6c) reads the
+    // display name. Rebuild on name change so the warning surfaces /
+    // disappears as the operator types.
+    _displayNameController.addListener(_onDisplayNameChanged);
+  }
+
+  void _onDisplayNameChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
+    _displayNameController.removeListener(_onDisplayNameChanged);
     _displayNameController.dispose();
     _descriptionController.dispose();
     super.dispose();
@@ -384,11 +413,33 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                   final warnings = widget.validator.validate(
                     _selectedPermissions,
                     scope: widget.roleScope,
+                    roleDisplayName: _displayNameController.text,
                   );
-                  if (warnings.isEmpty) return const SizedBox.shrink();
+                  final roleId = widget.existing?.roleId;
+                  final visibleWarnings = warnings
+                      .where(
+                        (w) => !widget.dismissalStore.isDismissed(
+                          roleId: roleId,
+                          warning: w,
+                        ),
+                      )
+                      .toList(growable: false);
+                  if (visibleWarnings.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
                   return Padding(
                     padding: const EdgeInsets.only(top: 14),
-                    child: _RoleWarningPanel(warnings: warnings),
+                    child: _RoleWarningPanel(
+                      warnings: visibleWarnings,
+                      onDismiss: (warning) async {
+                        await widget.dismissalStore.dismiss(
+                          roleId: roleId,
+                          warning: warning,
+                        );
+                        if (!mounted) return;
+                        setState(() {});
+                      },
+                    ),
                   );
                 }),
                 if (_saveError != null) ...<Widget>[
@@ -905,11 +956,18 @@ class _PermissionCheckbox extends StatelessWidget {
 
 /// Inline advisory panel for [RoleWarning]s emitted by
 /// [CustomRoleValidator]. Warnings are advisory only - the save
-/// button stays enabled regardless of how many warnings render.
+/// button stays enabled regardless of how many warnings render. Each
+/// row carries a "Don't show this warning again for this role"
+/// affordance that fires [onDismiss] for the operator to persist via
+/// the editor's [RoleWarningDismissalStore].
 class _RoleWarningPanel extends StatelessWidget {
-  const _RoleWarningPanel({required this.warnings});
+  const _RoleWarningPanel({
+    required this.warnings,
+    required this.onDismiss,
+  });
 
   final List<RoleWarning> warnings;
+  final ValueChanged<RoleWarning> onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -958,7 +1016,10 @@ class _RoleWarningPanel extends StatelessWidget {
           for (final warning in warnings)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _RoleWarningRow(warning: warning),
+              child: _RoleWarningRow(
+                warning: warning,
+                onDismiss: () => onDismiss(warning),
+              ),
             ),
         ],
       ),
@@ -967,9 +1028,13 @@ class _RoleWarningPanel extends StatelessWidget {
 }
 
 class _RoleWarningRow extends StatelessWidget {
-  const _RoleWarningRow({required this.warning});
+  const _RoleWarningRow({
+    required this.warning,
+    required this.onDismiss,
+  });
 
   final RoleWarning warning;
+  final VoidCallback onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -1017,6 +1082,30 @@ class _RoleWarningRow extends StatelessWidget {
                   ),
                 ),
             ],
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: Key(
+                'operator_web_custom_role_editor_warning_dismiss_'
+                '${warning.code.name}',
+              ),
+              onPressed: onDismiss,
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.textMuted,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 2,
+                ),
+                minimumSize: const Size(0, 28),
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: Text(
+                "Don't show this for this role",
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+            ),
           ),
         ],
       ),
