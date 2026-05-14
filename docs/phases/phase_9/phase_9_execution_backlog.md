@@ -176,11 +176,23 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605150000_phase_r2l_default_role_catalog_v2.sql`, which adds the
-  Wave 2 R-1L Roles schema rewrite (`permission_keys.product_label` +
+  `202605150100_phase_r_followup_not_null_flip.sql`, which is the
+  Wave 2 R-1L-FU + R-2L-FU contract migration: flips
+  `permission_keys.product_label` + `category_label` + `scope_kind` +
+  `human_label` from NULLABLE to NOT NULL after R-1L + R-2L inline
+  backfills hydrated every row, and re-asserts `implies text[]`
+  default + NOT NULL. Defensive pre-flight DO block raises with the
+  offending row count if any of the five columns is still NULL before
+  the flip (never silently tightens). Prior cutoff
+  `202605150000_phase_r2l_default_role_catalog_v2.sql` is the Wave 2
+  R-2L Default Role Catalog v2 redesign (adds
+  `permission_keys.human_label` NULLABLE with inline backfill, seeds
+  7 v2 role rows + Owner v2 wording, auto-migrates v1 user_roles,
+  soft-deletes v1 retired roles); prior cutoff
+  `202605142100_phase_R_1L_roles_schema_rewrite.sql` is the Wave 2
+  R-1L Roles schema rewrite (`permission_keys.product_label` +
   `category_label` + `scope_kind` + `implies` columns, NULLABLE with
-  inline backfill, NOT-NULL flip deferred to R-1L-FU per
-  expand-contract discipline). Prior cutoff
+  inline backfill). Prior cutoff
   `202605140000_w_3_self_profile_perm_key.sql` adds the Wave 2 W-3
   `team.users.self_update` permission key + baseline grants backing
   the new `PATCH /v1/auth/self/profile` self-service profile editor on

@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**49 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605150000_phase_r2l_default_role_catalog_v2.sql`; staging/preview
+**50 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605150100_phase_r_followup_not_null_flip.sql`; staging/preview
 apply evidence must stay attached to the runbook before any Production1 apply.
 
 | Migration | Origin | Staging |
@@ -85,8 +85,10 @@ apply evidence must stay attached to the runbook before any Production1 apply.
 | `202605131900_c_2_d_vendor_sync_outage_state.sql` | Lane C C-2-D `vendor_sync_outage_state` per-(operator_id, location_id, connection_id) state surface for the first-failure-of-outage detector that gates the `vendor_sync_error_alert` email (one row per outage window; cleared on next `poll_success`; per-tenant RLS mirroring `connector_sync_log`) | code-ready |
 | `202605140000_w_3_self_profile_perm_key.sql` | Wave 2 W-3 `team.users.self_update` permission key + baseline grants to every seeded operator role and super_admin. Backs the new `PATCH /v1/auth/self/profile` self-service profile editor on operator-web and admin My Account surfaces. | code-ready |
 | `202605142100_phase_R_1L_roles_schema_rewrite.sql` | Wave 2 R-1L Roles schema rewrite: `permission_keys.product_label` + `category_label` + `scope_kind` (CHECK `org_wide`/`location_scoped`/`either`) + `implies text[]` columns added NULLABLE with inline backfill; defers NOT-NULL flip to R-1L-FU follow-up per expand-contract discipline. Backfill mirrors `lib/services/auth/custom_role_validator.dart`'s `kOrgWidePermissionKeys` + `kViewRequiredForWrite` + `kTeamUsersWriteKeys`. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` METADATA pass. Resolver imply walk in `lib/auth/permission_resolution.dart`. | code-ready |
+| `202605150000_phase_r2l_default_role_catalog_v2.sql` | Wave 2 R-2L Default Role Catalog v2 redesign: adds `permission_keys.human_label` NULLABLE with inline backfill, seeds 7 v2 role rows (general_manager / location_manager / supervisor / finance_analyst / auditor_compliance / training_lead / team_admin) + Owner v2 wording refresh, auto-migrates v1 user_roles (`operator_manager` -> `operator_general_manager`; `operator_supervisor` / `operator_staff` -> `supervisor` with location fan-out), soft-deletes v1 retired roles, emits `auth.role.seeded_catalog_v2_published` audit rows. Defers NOT-NULL flip on `human_label` to R-1L-FU follow-up. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` HUMAN_LABEL_INVALID pass. | code-ready |
+| `202605150100_phase_r_followup_not_null_flip.sql` | Wave 2 R-1L-FU + R-2L-FU contract migration: flips `permission_keys.product_label` + `category_label` + `scope_kind` + `human_label` from NULLABLE to NOT NULL after R-1L + R-2L inline backfills hydrated every row, and re-asserts `implies text[]` default of `'{}'::text[]` + NOT NULL. Defensive pre-flight DO block raises with the offending row count if any of the five columns is still NULL before the flip (never silently tightens). Idempotent: each `SET NOT NULL` no-ops on already-tight columns. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` METADATA + HUMAN_LABEL_INVALID passes, so the inline backfills are guaranteed to find a non-NULL value in every row before this flip applies. | code-ready |
 
-**Action:** apply all 48 in next Production1 event per
+**Action:** apply all 50 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

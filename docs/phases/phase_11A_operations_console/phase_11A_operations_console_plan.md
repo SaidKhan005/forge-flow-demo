@@ -152,7 +152,7 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605150000_phase_r2l_default_role_catalog_v2.sql`, including the later cron
+`202605150100_phase_r_followup_not_null_flip.sql`, including the later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
 lifecycle, scoped Data Accuracy/Polling, lifecycle access hardening,
 audit-log actor/reason/business-date migrations, the Lane B B11.1
