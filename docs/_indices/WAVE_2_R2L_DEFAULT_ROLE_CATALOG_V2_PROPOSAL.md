@@ -8,6 +8,34 @@ This doc captures the operator's locked-in decisions for the Default Role Catalo
 
 ---
 
+## UX naming standard (operator-mandated 2026-05-14)
+
+**Every string the operator sees in the UX must be Title Case English with spaces, no underscores, no engineering jargon.** This is non-negotiable.
+
+The split:
+- **`role_key`** (internal slug, e.g. `operator_general_manager`) — never rendered in the UX. Only used for DB joins and the JWT payload. Stays snake_case.
+- **`display_name`** (UX field, e.g. "General Manager") — Title Case with spaces. This is what every operator-facing surface (role chip, role picker, audit log line, permission explainer header) renders.
+- **`description`** (UX field) — full sentences, plain English, reads as training per `memory/project_ux_writing_standard.md`. Never "PATCH endpoint" or "scope_id"; always "edits the team roster", "sees who did what".
+- **`permission_keys.product_label`** (e.g., `team`, `forgeflow`, `billing`) — stays lowercase tag-style; used to group keys, never directly rendered.
+- **`permission_keys.category_label`** (e.g., "Team management", "Forge & Flow surfaces") — Title Case English. Already correct in R-1L's metadata.
+- **`permission_keys.human_label`** — **NEW for R-2L.** Per-key human label rendered in the role-editor picker. R-1L's metadata only has product + category labels; the picker today either renders the raw dotted key (e.g., `team.users.invite`) or relies on the screen to hand-roll a label. R-2L closes this by adding a per-key human label to both the schema and the Dart metadata. Examples:
+  - `team.users.invite` → "Invite team members"
+  - `team.users.reset_mfa` → "Reset another user's MFA"
+  - `forgeflow.shift.edit` → "Edit shift details"
+  - `billing.usage_caps.edit` → "Adjust usage caps"
+  - `barrio.handbook.edit` → "Edit the Barrio handbook"
+
+Every v2 catalog string in this doc has been verified against this standard:
+
+| Field | All entries Title Case? | No underscores? | Reads as English? |
+|---|---|---|---|
+| Role `display_name` | ✓ | ✓ | ✓ |
+| Role `description` | ✓ | ✓ | ✓ |
+| Permission `category_label` (R-1L) | ✓ | ✓ | ✓ |
+| Permission `human_label` (R-2L addition) | required by slice | required by slice | required by slice |
+
+---
+
 ## Why v2 exists
 
 The original Default Role Catalog (seeded by `db/migrations/202604250008_auth_schema_foundation.sql` lines 914–1083) shipped six roles with mostly correct intentions but three audit gaps:
@@ -154,7 +182,8 @@ Keep current grant. No change.
 
 **Pattern:**
 
-1. **Insert new role rows** with `is_seeded = true`, `operator_id = null`, populated `display_name` + `description` (reads-as-training plain English).
+0. **Extend `permission_keys` with `human_label TEXT`** (nullable initially, like R-1L's other text columns — NOT NULL flip parked alongside R-1L-FU). Backfill all 104 keys with Title Case English labels using the examples in the "UX naming standard" section above. Mirror in `lib/auth/permission_key_metadata.dart` as a new `humanLabel` field on `PermissionKeyMetadata`. Extend the METADATA pass in `tool/permission_key_lint.dart` to fail if any key has an empty `humanLabel` or one containing underscores.
+1. **Insert new role rows** with `is_seeded = true`, `operator_id = null`, populated `display_name` + `description` (Title Case English per the UX naming standard, reads-as-training plain English).
 2. **Insert role_permissions rows** per the matrix above. Use `permission_keys.scope_kind` to verify each grant is compatible with the role's scope (CHECK constraint or migration-time assertion).
 3. **Auto-migrate v1 user_roles grants** in a single transaction:
    - `operator_manager` user_roles → flip `role_id` to `operator_general_manager`
@@ -233,3 +262,5 @@ These don't block R-2L but should be picked up by S-3 (Roles screen UX simplific
 | Finance read-only on billing | Approved | 2026-05-14 |
 | Include Auditor + Team Admin | Approved | 2026-05-14 |
 | Barrio Instructor: no handbook edit | Approved | 2026-05-14 |
+| UX naming standard (Title Case, no underscores, no engineering jargon) | Approved | 2026-05-14 |
+| Add `permission_keys.human_label` for per-key UX labels | Approved | 2026-05-14 |
