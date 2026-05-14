@@ -65,11 +65,17 @@ need an operator decision (file the question, do not guess).
 
 ## Status board (update on every commit)
 
-| Lane | State | Last commit | Next action |
-|---|---|---|---|
-| **Operator-web** | 🟡 IN PROGRESS — round 2: 4 of 7 skipped surfaces driven (Permission Explainer ✅, W-1 dialog body ✅, RP-15 scope-flip 🟢, OW-12j 🐛); 3 demo-patch surfaces still pending (U-1 Login, OW-4 business-scope inverse, OW-8c MFA-enrolled); PR #738 U-FU-hp11-account-demo-defaults merged to master; R-2L-FU-demo-fixture agent + tracker-annotations agent still running. 3 new gaps filed (RP-1-FU human_label, OW-12j-FU copy-decision, RP-15-FU cap-manager-session). | `6df432b8` (2026-05-14 evening) — merge of master + round 2 commits | Audit + merge R-2L-FU PR → audit + merge annotations PR → revert dev patches → commit round 2 closure → in NEXT session apply Patches 3 + 4 + 5 (business-scope, MFA-enrolled, Manager-role demo sessions) → drive U-1 + OW-4 inverse + OW-8c MFA-enrolled + RP-15 cap → close lane. |
-| **Admin console** | ⏸ PENDING | — | After operator-web lane closes. Need `admin-console-demo` launch entry + admin-side demo auth shortcut (ADMIN_DEMO_AUTH=true already exists per `run_admin_console_dev.ps1`). |
-| **Mobile (Samsung A54 R5CW503HJHP)** | ⏸ PENDING | — | After admin closes. Need forgeflow APK build + adb install + demo seed. |
+| Lane | Owner | State | Last commit | Next action |
+|---|---|---|---|---|
+| **Operator-web** | Main Claude (this lane) | 🟡 IN PROGRESS — round 2 closed: 4 of 7 skipped surfaces driven (Permission Explainer ✅, W-1 dialog body ✅, RP-15 scope-flip 🟢, OW-12j 🐛); 3 demo-patch surfaces still pending (U-1 Login, OW-4 business-scope inverse, OW-8c MFA-enrolled, RP-15 cap-state with Manager session). All 3 agent PRs merged: #738 U-FU-hp11-account-demo-defaults (resolved), #739 annotations (274 inline annotations across 3 trackers), #740 R-2L-FU-demo-fixture (resolved). 3 new gaps filed (RP-1-FU human_label, OW-12j-FU copy-decision, RP-15-FU cap-manager-session). | `f5a6ad84` (2026-05-14 evening) — R-2L-FU demo fixture merged | NEXT session: apply Patches 3 + 4 + 5 (business-scope, MFA-enrolled, Manager-role demo sessions) → drive U-1 + OW-4 inverse + OW-8c MFA-enrolled + RP-15 cap state → close lane. |
+| **Admin console** | Claude2 lane (separate machine) | 🟡 ASSIGNED — handoff doc opened 2026-05-14 evening at `docs/_indices/PHASE_2_WALKTHROUGH_CLAUDE2_HANDOFF.md`; Claude2 starts when operator pastes the opening prompt into the second session | — | Claude2 reads handoff doc, applies admin dev patches per handoff §"Admin dev patches", boots `admin-console-demo` at port 8182, drives admin surfaces per handoff §"Surfaces to drive" (Phase A through H), inline-annotates admin rows in 3 trackers, files gaps in this master plan's Gaps register. |
+| **Mobile (Samsung A54 R5CW503HJHP)** | Main Claude (this lane) | ⏸ PENDING | — | After operator-web lane closes. Need forgeflow APK build + adb install + demo seed. |
+
+### Cross-lane coordination
+
+Append a one-line note here whenever a cross-lane event happens that the other lane needs to know about. Format: `<date>: <lane> — <event>`.
+
+- 2026-05-14 evening: Main opened Claude2 handoff doc for admin console lane. Claude2 takes over admin lane on a separate machine. Concurrency rule: Main never edits `lib/admin/**`; Claude2 never edits `lib/operator_web/**` or `lib/main_forgeflow.dart`. Shared docs (master plan + verification matrix + trackers) get per-lane sections; both lanes annotate their own tracker rows inline, never overwrite each other's annotations.
 
 ---
 
