@@ -47,7 +47,21 @@ import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/services/business_timing/business_timing_profile_validator.dart';
 import 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
 
+import 'business_logo_upload_routes.dart';
+
 export 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
+export 'business_logo_upload_routes.dart'
+    show
+        BusinessLogoBlobUploader,
+        BusinessLogoUploadHandler,
+        BusinessLogoUploadResult,
+        AzureBlobBusinessLogoUploader,
+        BusinessLogoEnvNames,
+        LogoUploadDecode,
+        kBusinessLogoMaxBytes,
+        kPngMagic,
+        operatorBusinessLogoUploadPath,
+        decodeBusinessLogoUploadBody;
 
 /// Route paths. Exported so the frontend gateway tests and the proxy
 /// dispatcher reference one canonical set of strings. The PATCH +
@@ -204,9 +218,11 @@ class OperatorWriteRouter {
     OperatorWriteIdempotencyCache? idempotencyCache,
     DateTime Function()? now,
     OperatorBusinessTimingMutationListener? mutationListener,
+    BusinessLogoUploadHandler? businessLogoUploadHandler,
   })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
         _now = now ?? DateTime.now,
-        _mutationListener = mutationListener;
+        _mutationListener = mutationListener,
+        _businessLogoUploadHandler = businessLogoUploadHandler;
 
   final OperatorAccountWriteGateway accountGateway;
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
@@ -214,6 +230,12 @@ class OperatorWriteRouter {
   final OperatorWriteIdempotencyCache _idempotencyCache;
   final DateTime Function() _now;
   final OperatorBusinessTimingMutationListener? _mutationListener;
+
+  /// Wave 2 W-5 — optional logo upload handler. When null the
+  /// `/v1/operator/business/logo` route resolves to a calm 503
+  /// instead of a 404, mirroring the rest of the operator-write
+  /// surface's "not configured" behaviour.
+  final BusinessLogoUploadHandler? _businessLogoUploadHandler;
 
   Future<void> _notifyTimingMutation({
     required String operatorId,
@@ -257,6 +279,12 @@ class OperatorWriteRouter {
     }
     if (path.startsWith(operatorBusinessTimingProfilePrefix)) {
       if (method == 'PATCH' || method == 'POST') return true;
+    }
+    // Wave 2 W-5 — POST /v1/operator/business/logo. Multipart-ish
+    // upload (JSON envelope carrying base64 PNG bytes); see
+    // `business_logo_upload_routes.dart` for the wire shape.
+    if (method == 'POST' && path == operatorBusinessLogoUploadPath) {
+      return true;
     }
     return false;
   }
@@ -365,6 +393,14 @@ class OperatorWriteRouter {
         actorUserId: actorUserId,
         actorKind: actorKind,
         idempotencyKey: idempotencyKey,
+        body: body,
+      );
+    }
+    if (method == 'POST' && path == operatorBusinessLogoUploadPath) {
+      return _handleBusinessLogoUpload(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
         body: body,
       );
     }
@@ -836,6 +872,58 @@ class OperatorWriteRouter {
         },
       );
     }
+  }
+
+  /// Wave 2 W-5 — POST /v1/operator/business/logo. Delegates to the
+  /// injected [BusinessLogoUploadHandler]; emits an audit row on
+  /// success so the operator's audit log captures every replacement.
+  /// Returns 503 when the handler is not wired (build without an
+  /// Azure Blob env binding).
+  Future<({int statusCode, Map<String, Object?> body})>
+      _handleBusinessLogoUpload({
+    required String operatorId,
+    required String actorUserId,
+    required String actorKind,
+    required Map<String, Object?> body,
+  }) async {
+    final handler = _businessLogoUploadHandler;
+    if (handler == null) {
+      return (
+        statusCode: 503,
+        body: const <String, Object?>{
+          'error': 'business_logo_uploader_not_configured',
+          'message':
+              'logo upload is not available on this build; '
+              'paste an https URL instead',
+        },
+      );
+    }
+    final result = await handler.handleUpload(
+      operatorId: operatorId,
+      body: body,
+    );
+    if (result.statusCode == 200) {
+      // Capture the upload in the operator's audit log even before the
+      // resulting URL is persisted to `public.operators.logo_url` via
+      // the existing PATCH route. The two writes are intentionally
+      // split: the upload commits in Azure Blob first; the operator-
+      // web client then issues PATCH /v1/operator/account `logoUrl`
+      // with the returned URL. Without this audit row, a successful
+      // upload + later PATCH failure would leave the blob in storage
+      // with no trace in the operator's logs.
+      await auditSink.record(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        eventKind: 'operator_business_logo_uploaded',
+        payload: <String, Object?>{
+          'logo_url': result.body['logoUrl'],
+          'size_bytes': result.body['sizeBytes'],
+        },
+        occurredAt: _now().toUtc(),
+      );
+    }
+    return result;
   }
 
   ValidatedBusinessTimingProfile _toValidated(

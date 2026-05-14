@@ -114,6 +114,7 @@ import 'advisor_proxy.dart';
 import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'audit_log_hierarchy_routes.dart';
+import 'business_logo_upload_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
@@ -867,6 +868,17 @@ ProxyProductionBindings buildProxyProductionBindings(
     },
   );
   final timingMutationListener = _LoggingBusinessTimingMutationListener();
+  // Wave 2 W-5 — business logo upload handler. The default
+  // [AzureBlobBusinessLogoUploader] reads four AZURE_BLOB_* /
+  // AZURE_AD_* env vars at construction time; when any are unset the
+  // handler returns 503 `business_logo_uploader_not_configured` and
+  // the operator-web Business Account screen renders the "paste URL
+  // instead" fallback. Wiring the handler unconditionally keeps the
+  // route catalog stable across environments — staging without the
+  // env vars still routes the path, just with a calm 503.
+  final businessLogoUploadHandler = BusinessLogoUploadHandler(
+    uploader: AzureBlobBusinessLogoUploader(),
+  );
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
@@ -874,6 +886,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     businessTimingGateway: operatorBusinessTimingWriteGateway,
     auditSink: operatorBusinessTimingAuditSink,
     mutationListener: timingMutationListener,
+    businessLogoUploadHandler: businessLogoUploadHandler,
   );
   final adminBusinessTimingRouter = AdminBusinessTimingRouter(
     businessTimingGateway: operatorBusinessTimingWriteGateway,

@@ -179,14 +179,11 @@ class _HeaderBar extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20),
           child: Row(
             children: [
-              ClipOval(
-                child: Image.asset(
-                  'assets/images/forge_flow_splash_icon.png',
-                  width: 40,
-                  height: 40,
-                  fit: BoxFit.cover,
-                ),
-              ),
+              // Wave 2 W-5 — operator's uploaded logo, falls back to
+              // the Forge & Flow splash icon when the operator has
+              // not uploaded one. The fallback keeps the shell
+              // identical for fresh tenants.
+              _OperatorBrandMark(logoUrl: session.logoUrl),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -265,6 +262,57 @@ class _HeaderBar extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Wave 2 W-5 — operator brand mark in the shell header. Renders the
+/// operator's uploaded `logoUrl` when one is present; falls back to
+/// the Forge & Flow splash icon otherwise. Both branches share the
+/// same 40x40 circular footprint (U-2 bumped the bar to height 80, so
+/// the splash/logo follows proportionally) so the rest of the header
+/// layout stays unchanged. Image load errors fall back to the F&F
+/// splash silently — a broken logo URL must never blank the shell.
+class _OperatorBrandMark extends StatelessWidget {
+  const _OperatorBrandMark({required this.logoUrl});
+
+  final String? logoUrl;
+
+  static const double _size = 40;
+
+  @override
+  Widget build(BuildContext context) {
+    final url = logoUrl?.trim();
+    final hasUrl = url != null && url.isNotEmpty;
+    return ClipOval(
+      key: const Key('operator_web_header_brand_mark'),
+      child: SizedBox(
+        width: _size,
+        height: _size,
+        child: hasUrl
+            ? Image.network(
+                url,
+                key: Key('operator_web_header_brand_logo_${url.hashCode}'),
+                width: _size,
+                height: _size,
+                fit: BoxFit.cover,
+                // Defence in depth: if the network image fails (CORS,
+                // 404, transient AAD outage), fall back to the splash
+                // icon so the shell never blanks.
+                errorBuilder: (_, __, ___) => _splashFallback(),
+              )
+            : _splashFallback(),
+      ),
+    );
+  }
+
+  Widget _splashFallback() {
+    return Image.asset(
+      'assets/images/forge_flow_splash_icon.png',
+      key: const Key('operator_web_header_brand_splash_fallback'),
+      width: _size,
+      height: _size,
+      fit: BoxFit.cover,
     );
   }
 }
