@@ -21,6 +21,7 @@ import '../services/team/team_scope_visibility_policy.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
+import 'settings/settings_covers_setup_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_demo_live_switch.dart';
 import 'settings/settings_mfa_section.dart';
@@ -363,6 +364,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   if (restaurant != null) ...[
+                    // Wave 2 MO-2 — Covers Setup is the first item on
+                    // the Setup tab per debug.md:287-289. Manual entry
+                    // is the primary path when the active POS does
+                    // not expose covers (Square / Clover) and a
+                    // manual override otherwise. Demo + live both
+                    // write to the same `manual_cover_entries` table
+                    // (HP #2 — no kDemoMode reader branch).
+                    _settingsSection(
+                      title: 'Covers setup',
+                      description:
+                          "Type covers when your point-of-sale doesn't send them, "
+                          'or to override a count for a specific shift.',
+                      child: SettingsCoversSetupSection(
+                        restaurantId: restaurant.restaurantId,
+                        scopeLabel: restaurant.displayName,
+                        onAfterSave: _refreshAfterWrite,
+                      ),
+                    ),
                     _settingsSection(
                       title: 'Business timing',
                       description:

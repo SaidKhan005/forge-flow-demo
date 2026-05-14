@@ -526,6 +526,33 @@ Future<void> _createAllTables(Database db) async {
       effective_at_business_date DESC
     )
   ''');
+
+  // ── Manual cover entries (Wave 2 MO-2) ──────────────────────────────
+  // Mobile-side overlay for operator-entered covers when the active
+  // POS vendor does not expose a covers field (Square / Clover) or
+  // when the operator wants to override a per-(business_date, daypart)
+  // count. Mirrors the per-daypart shape of
+  // `data_accuracy_settings.covers_manual_entries` (Postgres jsonb)
+  // so when the mobile write-through path lights up in a follow-up
+  // slice, the rows project cleanly onto the canonical contract.
+  //
+  // Demo-mode invariant: writes go to the same table whether the
+  // restaurant is in demo or live mode — no `kDemoMode` reader branch
+  // (HP #2).
+  await db.execute('''
+    CREATE TABLE manual_cover_entries (
+      restaurant_id  TEXT NOT NULL,
+      business_date  TEXT NOT NULL,
+      daypart        TEXT NOT NULL,
+      covers         INTEGER NOT NULL,
+      recorded_at    TEXT NOT NULL,
+      PRIMARY KEY (restaurant_id, business_date, daypart)
+    )
+  ''');
+  await db.execute('''
+    CREATE INDEX ix_manual_cover_entries_recent
+    ON manual_cover_entries(restaurant_id, business_date DESC)
+  ''');
 }
 
 Future<void> _createTableIfNotExists(
