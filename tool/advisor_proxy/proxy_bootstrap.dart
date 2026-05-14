@@ -121,6 +121,7 @@ import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
+import 'heap_snapshot_capture_routes.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
 import 'email_soak_probe_routes.dart';
@@ -257,6 +258,7 @@ class ProxyProductionBindings {
     required this.sendGridEventsWebhookRouter,
     required this.emailSoakProbeRouter,
     required this.firebaseTestLabWebhookRouter,
+    required this.heapSnapshotCaptureAuditSink,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
@@ -602,6 +604,28 @@ class ProxyProductionBindings {
   /// behind the router lets the soak orchestrator poll for outcomes
   /// by matrix id.
   final FirebaseTestLabWebhookRouter firebaseTestLabWebhookRouter;
+
+  /// Wave 2 Q-1-FU-sink — production audit sink for the heap-snapshot
+  /// live-capture route (`POST /v1/admin/heap-snapshot/capture`).
+  /// `main.dart` passes this into [HeapSnapshotCaptureRouter] in place
+  /// of the noop default so every successful capture (and every
+  /// pod-rate warn) lands one `admin.heap_snapshot_captured` /
+  /// `admin.heap_snapshot.pod_rate_high` row through the admin-pool
+  /// [AuthEventsAuditRepository.insertSystemEvent] path. The fan-out
+  /// into hash-chained `public.audit_logs` rides the same
+  /// `audit_logs_cutover_enabled` flag as every other admin write.
+  ///
+  /// Shape mismatch surfaced for operator decision: the heap-snapshot
+  /// event is F&F-internal platform diagnostic (no operator_id —
+  /// the route REJECTS any operator_id field per HP #4), but the
+  /// `public.audit_logs` table requires `operator_id NOT NULL`.
+  /// `_fanOutToAuditLogs` short-circuits when `operatorId == null`,
+  /// so the row persists in `auth_events_audit` only. The
+  /// hash-chained `audit_logs` row is gated by the same constraint
+  /// that gates every other F&F-internal cross-tenant admin event
+  /// (default-role-catalog publish, etc.). See PR body's "Operator
+  /// decision" section.
+  final HeapSnapshotCaptureAuditSink heapSnapshotCaptureAuditSink;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
   /// password-reset / magic-link request endpoint. Keyed by
@@ -1115,6 +1139,32 @@ ProxyProductionBindings buildProxyProductionBindings(
   // store is process-local; soak runs that span a proxy restart are
   // out of scope for the V1 receiver.
   final firebaseTestLabWebhookRouter = FirebaseTestLabWebhookRouter();
+  // Wave 2 Q-1-FU-sink — production audit sink for the heap-snapshot
+  // live-capture route. Backed by the admin-pool
+  // `AuthEventsAuditRepository` (same posture as the
+  // default-role-catalog publish: F&F-internal cross-tenant,
+  // `actor_kind = 'forge_admin'`). `main.dart` injects this into
+  // `HeapSnapshotCaptureRouter` in place of the noop default so every
+  // successful capture and every pod-rate warn lands an audit row.
+  // The chain fan-out is gated by `audit_logs_cutover_enabled` AND
+  // operator_id presence; this surface has no operator scope (HP #4
+  // platform diagnostic), so the auth_events_audit row persists and
+  // the audit_logs chain write is omitted by the same gate used for
+  // every other no-operator F&F-internal event.
+  final heapSnapshotCaptureAuditSink = ProductionHeapSnapshotCaptureAuditSink(
+    auditRepository: adminAudit,
+    onError: (error, stackTrace) {
+      log(
+        LogSeverity.error,
+        'proxy.heap_snapshot_capture_audit_failed',
+        fields: <String, Object?>{
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stackTrace),
+        },
+      );
+    },
+  );
   // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
   // Wired through tenant-pool repository so RLS + per-operator
   // isolation hold; the read path stays in `fetchWageRoleRows`
@@ -1591,6 +1641,14 @@ ProxyProductionBindings buildProxyProductionBindings(
     // unset → 503. Shared-secret header gates the route — no Firebase
     // JWT, no operator permission key.
     firebaseTestLabWebhookRouter: firebaseTestLabWebhookRouter,
+    // Wave 2 Q-1-FU-sink — production audit sink for the heap-snapshot
+    // live-capture route. `main.dart` threads this into
+    // `HeapSnapshotCaptureRouter` in place of the noop default so the
+    // `admin.heap_snapshot_captured` / `admin.heap_snapshot.pod_rate_high`
+    // events fan through `auth_events_audit` (and the hash-chained
+    // `audit_logs` per the standard cutover gate when operator scope
+    // is non-null — see field doc for the schema-driven gate).
+    heapSnapshotCaptureAuditSink: heapSnapshotCaptureAuditSink,
     // Slice A11.1 — production session-record gauge. Single shared
     // instance per proxy process; the route handler increments it on
     // every 2xx from POST /v1/auth/session/login, the deep-health
@@ -1811,6 +1869,126 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
           payload: payload,
         );
       });
+    } catch (error, stackTrace) {
+      _onError?.call(error, stackTrace);
+    }
+  }
+}
+
+/// Wave 2 Q-1-FU-sink — production [HeapSnapshotCaptureAuditSink] for
+/// the F&F-internal heap-snapshot live-capture route. Mirrors
+/// [ProductionDefaultRoleCatalogAuditSink] (also F&F-internal,
+/// `actor_kind = 'forge_admin'`, `runAsSystem` admin pool) so the
+/// hash-chained `audit_logs` fan-out engages through the existing
+/// `AuthEventsAuditRepository.insertSystemEvent` path instead of a new
+/// write surface.
+///
+/// Shape-mismatch bridge (surfaced in PR body's "Operator decision"
+/// section):
+///   * Q-1-FU's [HeapSnapshotCaptureAuditSink.record] is shaped for
+///     an actor with a free-form `actorKind` claim ("user" /
+///     "service_principal" / etc.) and no operator scope.
+///   * `audit_logs` requires `operator_id NOT NULL`; the heap-snapshot
+///     capture has no operator id (HP #4 platform diagnostic, never
+///     operator data — the route REJECTS any operator_id input).
+///   * `AuthEventsAuditRepository._fanOutToAuditLogs` skips the chain
+///     write when `operatorId == null`. Result: the
+///     `auth_events_audit` row persists; the hash-chained `audit_logs`
+///     row is omitted by the same gate that omits every other
+///     F&F-internal admin event without an operator scope.
+///
+/// Actor mapping the sink applies:
+///   * super_admin / ff_support callers carry `actorKind = 'user'`
+///     on the bearer token; this sink remaps them to the canonical
+///     `'forge_admin'` actor_kind that `audit_logs_actor_shape_check`
+///     accepts for cross-tenant admin events. The matching
+///     `admin_reason` is set so the (future) fan-out into
+///     `audit_logs` satisfies the forge_admin requirement that
+///     admin_reason be non-empty.
+///   * service_principal-shaped JWTs land `actor_kind =
+///     'service_principal'`; the fan-out's principal-mapping rule
+///     handles those identically to other service-principal audit
+///     writes (`sp:<id>` in `actor_principal_id`).
+///
+/// Failures are swallowed via [_onError] and surfaced through the
+/// structured logger — matches the
+/// [ProductionHandoffAuditSink] / [ProductionStepUpAuditSink] /
+/// [_ProductionWageRoleRowsAuditSink] / [ProductionDefaultRoleCatalogAuditSink]
+/// discipline (a downstream observability outage MUST NOT 5xx a
+/// successful capture whose blob upload already committed).
+class ProductionHeapSnapshotCaptureAuditSink
+    implements HeapSnapshotCaptureAuditSink {
+  ProductionHeapSnapshotCaptureAuditSink({
+    required AuthEventsAuditRepository auditRepository,
+    void Function(Object error, StackTrace stackTrace)? onError,
+  })  : _auditRepository = auditRepository,
+        _onError = onError;
+
+  final AuthEventsAuditRepository _auditRepository;
+  final void Function(Object error, StackTrace stackTrace)? _onError;
+
+  /// `auth_events_audit.target_kind` value for heap-snapshot capture
+  /// rows. The target is the pod_id (platform-diagnostic identifier)
+  /// — there is no operator-scoped target for this surface.
+  static const String kTargetKind = 'heap_snapshot_capture';
+
+  @override
+  Future<void> record({
+    required String eventKind,
+    required String actorUserId,
+    required String actorKind,
+    required Map<String, Object?> payload,
+    required DateTime occurredAt,
+  }) async {
+    try {
+      final podId = payload['pod_id'];
+      final targetId = podId is String && podId.isNotEmpty ? podId : null;
+      // Map the JWT-supplied actor_kind to the canonical audit_logs
+      // values. F&F-internal admin (super_admin / ff_support) callers
+      // carry `actorKind = 'user'` on the bearer token; rewrite them
+      // to `forge_admin` so the (operator-scoped) audit_logs fan-out
+      // matches the existing default-role-catalog publish posture
+      // when the schema admits a non-null operator one day.
+      final String mappedActorKind;
+      String? mappedActorUserId;
+      String? mappedServicePrincipalId;
+      switch (actorKind) {
+        case 'service_principal':
+        case 'service':
+          mappedActorKind = 'service_principal';
+          mappedServicePrincipalId =
+              actorUserId.isEmpty ? null : actorUserId;
+          break;
+        case 'forge_admin':
+          mappedActorKind = 'forge_admin';
+          mappedActorUserId = actorUserId.isEmpty ? null : actorUserId;
+          break;
+        case 'user':
+        case 'team_member':
+        default:
+          mappedActorKind = 'forge_admin';
+          mappedActorUserId = actorUserId.isEmpty ? null : actorUserId;
+          break;
+      }
+      await _auditRepository.insertSystemEvent(
+        eventType: eventKind,
+        actorKind: mappedActorKind,
+        actorUserId: mappedActorUserId,
+        actorServicePrincipalId: mappedServicePrincipalId,
+        targetKind: kTargetKind,
+        targetId: targetId,
+        // F&F-internal platform diagnostic: no operator scope. The
+        // _fanOutToAuditLogs path skips the chain write when
+        // operatorId is null; the auth_events_audit row still
+        // persists.
+        payload: <String, Object?>{
+          ...payload,
+          'event_kind': eventKind,
+          'occurred_at': occurredAt.toUtc().toIso8601String(),
+        },
+        adminReason:
+            'admin.heap_snapshot_capture:${targetId ?? 'unknown_pod'}',
+      );
     } catch (error, stackTrace) {
       _onError?.call(error, stackTrace);
     }
