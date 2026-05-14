@@ -602,14 +602,23 @@ class _AccountScreenState extends State<AccountScreen> {
     final regionOverrideSet = overrides != null &&
         (overrides.override.currencyCode != null ||
             overrides.override.localeCode != null);
+    // `U-FU-hp11-account-demo-defaults` (2026-05-14): defend against
+    // null session values so a brand-new operator (no projected
+    // currency / locale / rollover yet) sees "no currency" / "no
+    // rollover hour" instead of literal "null". The non-overrides
+    // branch above already handles this via `?? "no currency"`; mirror
+    // it here for the session-fallback branch.
     final regionBusinessDefault = overrides == null
-        ? '${widget.session.currencyCode} / ${widget.session.localeTag}'
+        ? '${widget.session.currencyCode ?? "no currency"} / '
+            '${widget.session.localeTag ?? "no locale"}'
         : '${overrides.businessDefault.currencyCode ?? "no currency"} / '
             '${overrides.businessDefault.localeCode ?? "no locale"}';
     final businessDayOverrideSet = overrides != null &&
         overrides.override.businessDayRolloverHour != null;
     final businessDayBusinessDefault = overrides == null
-        ? '${widget.session.rolloverHour.toString().padLeft(2, '0')}:00 local'
+        ? (widget.session.rolloverHour == null
+            ? 'no rollover hour'
+            : '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00 local')
         : (overrides.businessDefault.businessDayRolloverHour == null
             ? 'no rollover hour'
             : '${overrides.businessDefault.businessDayRolloverHour!
