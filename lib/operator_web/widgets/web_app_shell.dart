@@ -13,6 +13,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
 import '../../theme/app_theme.dart';
+import 'hierarchy_map_picker.dart';
 
 /// One nav entry on the operator-web side rail.
 @immutable
@@ -250,6 +251,14 @@ class _HeaderBar extends StatelessWidget {
   }
 }
 
+/// Wave 2 H-3 — hierarchy-map picker shim for the operator-web top bar.
+///
+/// Bridges `OperatorWebManagementScopeOption` to the reusable
+/// [HierarchyMapPicker] so the trigger button (the test surface key
+/// `operator_web_management_scope_picker`) opens a tree-shaped popover
+/// instead of a flat dropdown. Operator-web's scope kinds map 1:1 onto
+/// [HierarchyMapNodeKind] (`operator` → `business`, `orgUnit` →
+/// `orgUnit`, `location` → `location`).
 class _ManagementScopePicker extends StatelessWidget {
   const _ManagementScopePicker({
     required this.options,
@@ -267,144 +276,123 @@ class _ManagementScopePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (options.isEmpty) return const _ManagementScopePlaceholder();
-    final selected = options.any((option) => option.key == selectedKey)
-        ? selectedKey
-        : options.first.key;
-    final current = options.firstWhere(
-      (option) => option.key == selected,
-      orElse: () => options.first,
-    );
-    final borderColor = error == null
-        ? AppColors.borderSubtle
-        : AppColors.negative.withValues(alpha: 0.55);
-    final tooltip = error == null
-        ? 'Choose the business, group, or location you are managing. '
-              'Location-scoped tabs use a location selection.'
-        : '$error Showing the safest available context.';
-    return Tooltip(
-      message: tooltip,
-      child: Container(
-        key: const Key('operator_web_management_scope_container'),
-        height: 38,
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface.withValues(alpha: 0.84),
-          border: Border.all(color: borderColor, width: 1),
-          borderRadius: BorderRadius.circular(6),
-        ),
-        child: Row(
-          children: [
-            Icon(_iconFor(current.kind), size: 16, color: AppColors.sunsetDark),
-            const SizedBox(width: 8),
-            Text(
-              'Managing',
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  key: const Key('operator_web_management_scope_picker'),
-                  value: selected,
-                  isExpanded: true,
-                  iconEnabledColor: AppColors.textSecondary,
-                  dropdownColor: AppColors.backgroundSurface,
-                  style: AppTextStyles.body13(color: AppColors.textPrimary),
-                  selectedItemBuilder: (context) => [
-                    for (final option in options)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          option.label,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                      ),
-                  ],
-                  items: [
-                    for (final option in options)
-                      DropdownMenuItem<String>(
-                        key: Key(
-                          'operator_web_management_scope_option_'
-                          '${_optionKey(option.key)}',
-                        ),
-                        value: option.key,
-                        child: Row(
-                          children: [
-                            Icon(
-                              _iconFor(option.kind),
-                              size: 16,
-                              color: AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    option.label,
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                  Text(
-                                    option.helper,
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                    style: AppTextStyles.mono8(
-                                      color: AppColors.textMuted,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                  ],
-                  onChanged: loading || onChanged == null
-                      ? null
-                      : (value) {
-                          if (value == null) return;
-                          onChanged!(value);
-                        },
-                ),
-              ),
-            ),
-            if (loading)
-              const Padding(
-                padding: EdgeInsets.only(left: 6),
-                child: SizedBox(
-                  width: 12,
-                  height: 12,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.sunsetDark,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
+    if (options.isEmpty && !loading) {
+      return const _ManagementScopePlaceholder();
+    }
+    final nodes = _toNodes(options);
+    final resolvedSelected =
+        options.any((option) => option.key == selectedKey)
+            ? selectedKey
+            : (options.isEmpty ? null : options.first.key);
+    return HierarchyMapPicker(
+      key: const Key('operator_web_management_scope_container'),
+      keyPrefix: 'operator_web_management_scope',
+      // Preserve the legacy test key on the trigger button so existing
+      // tests (`tester.tap(find.byKey(Key('operator_web_management_scope_picker')))`)
+      // keep driving the popover open.
+      triggerKey: const Key('operator_web_management_scope_picker'),
+      nodes: nodes,
+      selectedId: resolvedSelected,
+      onSelected: (node) {
+        if (onChanged == null || loading) return;
+        onChanged!(node.id);
+      },
+      loading: loading,
+      error: error,
+      // Operator-web routes that need a location forward to a "Choose
+      // a location" surface when a non-location scope is picked, so
+      // non-location selection IS valid at the picker level. Schedule,
+      // Vendor connections, etc. handle the redirect themselves.
+      allowNonLocationSelection: true,
     );
   }
 
-  static IconData _iconFor(OperatorWebManagementScopeKind kind) {
+  static List<HierarchyMapNode> _toNodes(
+    List<OperatorWebManagementScopeOption> options,
+  ) {
+    // Locate the operator (business-level) row so all top-level org
+    // units / locations parent under it. There is exactly one in the
+    // operator-web catalog ("All locations").
+    OperatorWebManagementScopeOption? operatorOption;
+    for (final option in options) {
+      if (option.kind == OperatorWebManagementScopeKind.operator) {
+        operatorOption = option;
+        break;
+      }
+    }
+    final operatorKey = operatorOption?.key;
+    // Pre-compute the set of org-unit keys actually present in the
+    // options list. The router currently filters `unitType=='corp'`
+    // out of the orgUnit catalog, so a child orgUnit (or location)
+    // pointing at the corp-root org unit (e.g. `demo-org-root`) has
+    // no in-tree parent. Re-parent those orphans under the operator
+    // "All locations" row so the tree stays connected.
+    final orgUnitKeys = <String>{
+      for (final option in options)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
+          option.key,
+    };
+    return <HierarchyMapNode>[
+      for (final option in options)
+        HierarchyMapNode(
+          id: option.key,
+          label: option.label,
+          helper: option.helper,
+          kind: _nodeKindFor(option.kind),
+          parentId: _parentIdFor(option, operatorKey, orgUnitKeys),
+          inheritanceBreadcrumb: _breadcrumbFor(option),
+        ),
+    ];
+  }
+
+  static HierarchyMapNodeKind _nodeKindFor(
+    OperatorWebManagementScopeKind kind,
+  ) {
     switch (kind) {
       case OperatorWebManagementScopeKind.operator:
-        return Icons.apartment_outlined;
+        return HierarchyMapNodeKind.business;
       case OperatorWebManagementScopeKind.orgUnit:
-        return Icons.account_tree_outlined;
+        return HierarchyMapNodeKind.orgUnit;
       case OperatorWebManagementScopeKind.location:
-        return Icons.place_outlined;
+        return HierarchyMapNodeKind.location;
     }
   }
 
-  static String _optionKey(String key) => key
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-      .replaceAll(RegExp(r'^_+|_+$'), '');
+  static String? _parentIdFor(
+    OperatorWebManagementScopeOption option,
+    String? operatorKey,
+    Set<String> orgUnitKeys,
+  ) {
+    switch (option.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return null;
+      case OperatorWebManagementScopeKind.orgUnit:
+        // OrgUnits whose parent is the corp root (or any orgUnit that
+        // is not surfaced in the options catalog) re-parent under the
+        // operator "All locations" row so the tree has a single root.
+        final parent = option.parentOrgUnitId;
+        if (parent == null || parent.isEmpty) return operatorKey;
+        final parentKey = 'orgUnit:$parent';
+        return orgUnitKeys.contains(parentKey) ? parentKey : operatorKey;
+      case OperatorWebManagementScopeKind.location:
+        final parent = option.parentOrgUnitId;
+        if (parent == null || parent.isEmpty) return operatorKey;
+        final parentKey = 'orgUnit:$parent';
+        return orgUnitKeys.contains(parentKey) ? parentKey : operatorKey;
+    }
+  }
+
+  static String? _breadcrumbFor(OperatorWebManagementScopeOption option) {
+    switch (option.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return 'Business-wide. Every location inherits these defaults.';
+      case OperatorWebManagementScopeKind.orgUnit:
+        return 'Inherits business-wide defaults. Locations under '
+            'this group inherit values you set here.';
+      case OperatorWebManagementScopeKind.location:
+        return null;
+    }
+  }
 }
 
 class _ManagementScopePlaceholder extends StatelessWidget {
