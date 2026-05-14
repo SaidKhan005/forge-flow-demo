@@ -116,6 +116,7 @@ import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'audit_log_hierarchy_routes.dart';
 import 'business_logo_upload_routes.dart';
+import 'operator_location_timezone_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'connector_backfill_jobs_routes.dart';
 import 'anthropic_http_complete_fn.dart';
@@ -891,6 +892,17 @@ ProxyProductionBindings buildProxyProductionBindings(
   final businessLogoUploadHandler = BusinessLogoUploadHandler(
     uploader: AzureBlobBusinessLogoUploader(),
   );
+  // Wave 2 W-6 backend — primary-location timezone editor. The
+  // gateway wraps the existing `LocationsRepository.updateLocationTimezone`
+  // path so the operator-web Account screen's timezone editor
+  // (PR #682 frontend) lands in `public.locations.timezone`. HP #4
+  // operator-scoped write defence is enforced by the repository's
+  // `(operator_id, location_id)` WHERE clause.
+  final locationTimezoneHandler = OperatorLocationTimezoneHandler(
+    gateway: _RepositoryOperatorLocationTimezoneWriteGateway(
+      repository: LocationsRepository(tenantWrapper),
+    ),
+  );
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
@@ -899,6 +911,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     auditSink: operatorBusinessTimingAuditSink,
     mutationListener: timingMutationListener,
     businessLogoUploadHandler: businessLogoUploadHandler,
+    locationTimezoneHandler: locationTimezoneHandler,
   );
   final adminBusinessTimingRouter = AdminBusinessTimingRouter(
     businessTimingGateway: operatorBusinessTimingWriteGateway,
@@ -9385,6 +9398,50 @@ class _LoggingBusinessTimingMutationListener
         'actor_kind': actorKind,
         'occurred_at': occurredAt.toUtc().toIso8601String(),
       },
+    );
+  }
+}
+
+/// Wave 2 W-6 backend — production gateway wiring for
+/// PATCH /v1/operator/location-timezone. Wraps
+/// [LocationsRepository.updateLocationTimezone] in the
+/// [OperatorLocationTimezoneWriteGateway] surface the proxy router
+/// consumes. HP #4 operator-scoped write defence is enforced by the
+/// repository's `(operator_id, location_id)` WHERE clause; RLS on
+/// `public.locations` is the backup defence.
+class _RepositoryOperatorLocationTimezoneWriteGateway
+    implements OperatorLocationTimezoneWriteGateway {
+  _RepositoryOperatorLocationTimezoneWriteGateway({
+    required LocationsRepository repository,
+  }) : _repository = repository;
+
+  final LocationsRepository _repository;
+
+  @override
+  Future<LocationTimezoneUpdateOutcome> updateLocationTimezone({
+    required String operatorId,
+    required String ianaTimezone,
+    required String adminReason,
+  }) async {
+    final row = await _repository.updateLocationTimezone(
+      operatorId: operatorId,
+      ianaTimezone: ianaTimezone,
+      adminReason: adminReason,
+    );
+    if (row == null) {
+      return const LocationTimezoneUpdateOutcome.noPrimaryLocation();
+    }
+    if (!row.locationFound) {
+      return const LocationTimezoneUpdateOutcome.locationNotFound();
+    }
+    return LocationTimezoneUpdateOutcome.ok(
+      LocationTimezoneRecord(
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        ianaTimezone: row.ianaTimezone,
+        previousIanaTimezone: row.previousIanaTimezone,
+        updatedAt: row.updatedAt,
+      ),
     );
   }
 }

@@ -48,6 +48,7 @@ import 'package:forge_and_flow/services/business_timing/business_timing_profile_
 import 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
 
 import 'business_logo_upload_routes.dart';
+import 'operator_location_timezone_routes.dart';
 
 export 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
 export 'business_logo_upload_routes.dart'
@@ -62,6 +63,16 @@ export 'business_logo_upload_routes.dart'
         kPngMagic,
         operatorBusinessLogoUploadPath,
         decodeBusinessLogoUploadBody;
+export 'operator_location_timezone_routes.dart'
+    show
+        LocationTimezoneDecode,
+        LocationTimezoneRecord,
+        LocationTimezoneUpdateOutcome,
+        LocationTimezoneUpdateOutcomeKind,
+        OperatorLocationTimezoneHandler,
+        OperatorLocationTimezoneWriteGateway,
+        decodeLocationTimezoneBody,
+        operatorLocationTimezonePath;
 
 /// Route paths. Exported so the frontend gateway tests and the proxy
 /// dispatcher reference one canonical set of strings. The PATCH +
@@ -219,10 +230,12 @@ class OperatorWriteRouter {
     DateTime Function()? now,
     OperatorBusinessTimingMutationListener? mutationListener,
     BusinessLogoUploadHandler? businessLogoUploadHandler,
+    OperatorLocationTimezoneHandler? locationTimezoneHandler,
   })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
         _now = now ?? DateTime.now,
         _mutationListener = mutationListener,
-        _businessLogoUploadHandler = businessLogoUploadHandler;
+        _businessLogoUploadHandler = businessLogoUploadHandler,
+        _locationTimezoneHandler = locationTimezoneHandler;
 
   final OperatorAccountWriteGateway accountGateway;
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
@@ -236,6 +249,12 @@ class OperatorWriteRouter {
   /// instead of a 404, mirroring the rest of the operator-write
   /// surface's "not configured" behaviour.
   final BusinessLogoUploadHandler? _businessLogoUploadHandler;
+
+  /// Wave 2 W-6 backend — optional primary-location timezone handler.
+  /// When null the `/v1/operator/location-timezone` route resolves
+  /// to a calm 503 instead of a 404, matching the rest of the
+  /// operator-write surface's "not configured" posture.
+  final OperatorLocationTimezoneHandler? _locationTimezoneHandler;
 
   Future<void> _notifyTimingMutation({
     required String operatorId,
@@ -284,6 +303,14 @@ class OperatorWriteRouter {
     // upload (JSON envelope carrying base64 PNG bytes); see
     // `business_logo_upload_routes.dart` for the wire shape.
     if (method == 'POST' && path == operatorBusinessLogoUploadPath) {
+      return true;
+    }
+    // Wave 2 W-6 backend — PATCH /v1/operator/location-timezone.
+    // Operator-scoped primary-location timezone editor (HP #11
+    // location-scoped) wired into the existing operator-write
+    // dispatch path so it inherits auth + role gate + Idempotency-
+    // Key + per-operator isolation for free.
+    if (method == 'PATCH' && path == operatorLocationTimezonePath) {
       return true;
     }
     return false;
@@ -398,6 +425,14 @@ class OperatorWriteRouter {
     }
     if (method == 'POST' && path == operatorBusinessLogoUploadPath) {
       return _handleBusinessLogoUpload(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        body: body,
+      );
+    }
+    if (method == 'PATCH' && path == operatorLocationTimezonePath) {
+      return _handleLocationTimezonePatch(
         operatorId: operatorId,
         actorUserId: actorUserId,
         actorKind: actorKind,
@@ -919,6 +954,53 @@ class OperatorWriteRouter {
         payload: <String, Object?>{
           'logo_url': result.body['logoUrl'],
           'size_bytes': result.body['sizeBytes'],
+        },
+        occurredAt: _now().toUtc(),
+      );
+    }
+    return result;
+  }
+
+  /// Wave 2 W-6 backend — PATCH /v1/operator/location-timezone.
+  /// Delegates to the injected [OperatorLocationTimezoneHandler];
+  /// emits an audit row capturing the before/after IANA tz pair on
+  /// success so the operator's audit log reflects every primary-
+  /// location timezone change. Returns 503 when the handler is not
+  /// wired (build without a Postgres binding).
+  Future<({int statusCode, Map<String, Object?> body})>
+      _handleLocationTimezonePatch({
+    required String operatorId,
+    required String actorUserId,
+    required String actorKind,
+    required Map<String, Object?> body,
+  }) async {
+    final handler = _locationTimezoneHandler;
+    if (handler == null) {
+      return (
+        statusCode: 503,
+        body: const <String, Object?>{
+          'error': 'operator_location_timezone_not_configured',
+          'message':
+              'location timezone editing is not available on this '
+              'build; please retry later.',
+        },
+      );
+    }
+    final result = await handler.handlePatch(
+      operatorId: operatorId,
+      actorUserId: actorUserId,
+      body: body,
+    );
+    if (result.statusCode == 200) {
+      await auditSink.record(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        eventKind: 'operator_location_timezone_updated',
+        payload: <String, Object?>{
+          'location_id': result.body['locationId'],
+          'previous_tz': result.body['previousIanaTimezone'],
+          'new_tz': result.body['ianaTimezone'],
         },
         occurredAt: _now().toUtc(),
       );

@@ -153,6 +153,96 @@ class LocationsRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  /// Wave 2 W-6 backend — resolve the operator's primary location and
+  /// rewrite its `locations.timezone` column to [ianaTimezone].
+  ///
+  /// Returns:
+  ///   * `null` — operator row missing or has no `primary_location_id`
+  ///     set yet (proxy maps to 400 `no_primary_location`).
+  ///   * [LocationTimezoneUpdateRow] with `locationFound = false` —
+  ///     primary-location pointer is dangling (row missing or soft-
+  ///     deleted). Proxy maps to 404 `location_not_found`.
+  ///   * [LocationTimezoneUpdateRow] with `locationFound = true` —
+  ///     the UPDATE landed; carries the before + after IANA strings.
+  ///
+  /// HP #4 — the UPDATE's WHERE clause carries
+  /// `(operator_id, location_id)` so a stale primary-location
+  /// pointer cannot reach across tenants even if RLS were disabled.
+  /// RLS on `public.locations` is the backup defence.
+  ///
+  /// The single-statement `WITH old AS (...) UPDATE ... RETURNING
+  /// old.timezone, new` CTE pattern captures the BEFORE value with
+  /// a `FOR UPDATE` row lock so a concurrent writer serialises
+  /// against it and the audit row's previous_tz/new_tz pair stays
+  /// correct under contention.
+  Future<LocationTimezoneUpdateRow?> updateLocationTimezone({
+    required String operatorId,
+    required String ianaTimezone,
+    required String adminReason,
+  }) {
+    return withSystem<LocationTimezoneUpdateRow?>((exec) async {
+      final pointerRows = await exec.query(
+        'select primary_location_id::text as primary_location_id '
+        'from operators '
+        'where operator_id = @operator_id::uuid',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      if (pointerRows.isEmpty) return null;
+      final primaryLocationId =
+          pointerRows.single['primary_location_id'] as String?;
+      if (primaryLocationId == null) return null;
+      // CTE captures the row BEFORE the update with a FOR UPDATE
+      // lock so a concurrent writer serialises against it. The
+      // UPDATE then writes the new timezone and the RETURNING list
+      // emits both the previous (from `old`) and new (from the post-
+      // UPDATE `locations` projection) values.
+      final updated = await exec.query(
+        'with old as ('
+        '  select location_id, timezone as previous_timezone '
+        '  from locations '
+        '  where location_id = @location_id::uuid '
+        '  and operator_id = @operator_id::uuid '
+        '  and deleted_at is null '
+        '  for update'
+        ') '
+        'update locations '
+        'set timezone = @timezone, updated_at = now() '
+        'from old '
+        'where locations.location_id = old.location_id '
+        'returning locations.location_id::text as location_id, '
+        'locations.operator_id::text as operator_id, '
+        'old.previous_timezone as previous_timezone, '
+        'locations.timezone as new_timezone, '
+        'locations.updated_at',
+        parameters: <String, Object?>{
+          'location_id': primaryLocationId,
+          'operator_id': operatorId,
+          'timezone': ianaTimezone,
+        },
+      );
+      if (updated.isEmpty) {
+        return LocationTimezoneUpdateRow(
+          locationId: primaryLocationId,
+          operatorId: operatorId,
+          previousIanaTimezone: '',
+          ianaTimezone: ianaTimezone,
+          updatedAt: DateTime.now().toUtc(),
+          locationFound: false,
+        );
+      }
+      final row = updated.single;
+      return LocationTimezoneUpdateRow(
+        locationId: row['location_id']! as String,
+        operatorId: row['operator_id']! as String,
+        previousIanaTimezone:
+            (row['previous_timezone'] as String?) ?? '',
+        ianaTimezone: row['new_timezone']! as String,
+        updatedAt: _toDateTime(row['updated_at'])!,
+        locationFound: true,
+      );
+    }, reason: adminReason);
+  }
+
   /// DELETE a location. Returns the affected-row count (0 when the
   /// row was already gone — proxy translates that into a 404).
   /// Caller must ensure the location is not the operator's
@@ -279,4 +369,39 @@ DateTime? _toDateTime(Object? value) {
     return value.isEmpty ? null : DateTime.parse(value).toUtc();
   }
   return null;
+}
+
+/// Wave 2 W-6 backend — return shape for
+/// [LocationsRepository.updateLocationTimezone]. Carries the before
+/// and after IANA tz strings so the proxy can emit a
+/// `operator_location_timezone_updated` audit row with `previous_tz`
+/// + `new_tz`.
+class LocationTimezoneUpdateRow {
+  const LocationTimezoneUpdateRow({
+    required this.locationId,
+    required this.operatorId,
+    required this.previousIanaTimezone,
+    required this.ianaTimezone,
+    required this.updatedAt,
+    required this.locationFound,
+  });
+
+  final String locationId;
+  final String operatorId;
+
+  /// IANA tz the location carried BEFORE this update. Empty string
+  /// when [locationFound] is false (the proxy maps that case to a
+  /// 404 and does not emit an audit row).
+  final String previousIanaTimezone;
+
+  /// IANA tz the location now carries after the update.
+  final String ianaTimezone;
+
+  /// `locations.updated_at` post-UPDATE.
+  final DateTime updatedAt;
+
+  /// False when the primary-location pointer was dangling (row
+  /// missing or soft-deleted). The proxy maps this to a 404
+  /// `location_not_found`.
+  final bool locationFound;
 }
