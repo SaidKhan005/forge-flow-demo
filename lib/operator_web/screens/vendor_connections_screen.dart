@@ -182,7 +182,7 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  'Vendor connections',
+                  'Vendor integrations',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
               ),
@@ -304,7 +304,7 @@ class _ForbiddenSurface extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Vendor connections are admin-managed',
+                      'Vendor integrations are admin-managed',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
@@ -314,7 +314,7 @@ class _ForbiddenSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Vendor connections are managed by your operator '
+                'Vendor integrations are managed by your operator '
                 'admin or owner; ask them to set up integrations '
                 'for this location.',
                 key: const Key(
@@ -400,10 +400,10 @@ class _NoLocationSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Vendor connections are configured per location, so '
+                'Vendor integrations are configured per location, so '
                 'this screen needs to know which location you are '
                 'setting up. Pick a location from the side nav, then '
-                'open Vendor connections again.',
+                'open Vendor integrations again.',
                 key: const Key(
                   'operator_web_vendor_connections_no_location_body',
                 ),

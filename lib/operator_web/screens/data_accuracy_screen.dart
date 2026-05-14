@@ -239,7 +239,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     } catch (error) {
       if (!mounted || generation != _loadGeneration) return;
       setState(() {
-        _loadError = 'Could not load vendor connection context: $error';
+        _loadError = 'Could not load vendor integration context: $error';
         _loading = false;
       });
     }

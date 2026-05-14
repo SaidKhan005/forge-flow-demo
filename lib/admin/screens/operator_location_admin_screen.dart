@@ -4033,7 +4033,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Support access is read-only. Operator, location, and vendor connection changes are hidden for this role.',
+              'Support access is read-only. Operator, location, and vendor integration changes are hidden for this role.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),

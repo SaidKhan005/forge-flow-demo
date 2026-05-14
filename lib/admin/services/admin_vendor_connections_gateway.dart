@@ -266,7 +266,7 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
       throw VendorConnectionsGatewayError(
         statusCode: 408,
         message:
-            'admin vendor connections proxy timed out after '
+            'admin vendor integrations proxy timed out after '
             '${_timeout.inSeconds}s',
         remediation: 'Retry once. If it repeats, check the admin proxy logs.',
       );
@@ -286,7 +286,7 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
       message:
           _readString(parsed['message']) ??
           _readString(parsed['error']) ??
-          'admin vendor connections proxy returned an error',
+          'admin vendor integrations proxy returned an error',
       remediation:
           'Confirm a location scope is selected and retry. If it repeats, '
           'check the admin integration route logs.',
@@ -520,10 +520,10 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
     final trimmed = _clean(value);
     if (trimmed == null) {
       throw VendorConnectionsGatewayError(
-        message: 'A location is required before editing vendor connections.',
+        message: 'A location is required before editing vendor integrations.',
         remediation:
             'Select a location scope from the hierarchy, then retry the vendor '
-            'connection action.',
+            'integration action.',
       );
     }
     return trimmed;
@@ -533,7 +533,7 @@ class AdminHttpVendorConnectionsGateway implements VendorConnectionsGateway {
     final trimmed = _clean(value);
     if (trimmed == null) {
       throw VendorConnectionsGatewayError(
-        message: 'A $label id is required for vendor connections.',
+        message: 'A $label id is required for vendor integrations.',
         remediation: 'Refresh the admin workspace and choose the scope again.',
       );
     }

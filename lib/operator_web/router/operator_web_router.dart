@@ -985,7 +985,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
-        title: 'Vendor connections',
+        title: 'Vendor integrations',
         icon: Icons.cable_outlined,
         group: 'Data & integrations',
       ),
@@ -1099,8 +1099,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 icon: Icons.cable_outlined,
                 title: 'Choose a location',
                 body:
-                    'Vendor connections are set up per location. Use '
-                    'Managing to pick the location whose connections you '
+                    'Vendor integrations are set up per location. Use '
+                    'Managing to pick the location whose integrations you '
                     'want to manage.',
                 selectedScopeLabel: managementScope.label,
               )

@@ -103,7 +103,7 @@ void main() {
     );
     expect(find.textContaining('global vendor API health'), findsOneWidget);
     expect(
-      find.textContaining('per-location vendor connections'),
+      find.textContaining('per-location vendor integrations'),
       findsOneWidget,
     );
     expect(

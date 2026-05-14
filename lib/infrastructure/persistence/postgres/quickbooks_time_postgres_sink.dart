@@ -263,7 +263,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
             'QuickBooks Time sink received a punch row attributed to '
             'connector_connection.module="${module ?? ''}"; only the '
             '"time" module is supported. Reconnect from the QuickBooks '
-            'Time tile in the Vendor Connections widget.',
+            'Time tile in the Vendor integrations widget.',
       );
     }
 

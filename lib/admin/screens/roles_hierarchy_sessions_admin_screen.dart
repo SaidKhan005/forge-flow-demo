@@ -1095,7 +1095,7 @@ String _permissionResourceToken(String token) {
     case 'integration':
       return 'integration';
     case 'integrations':
-      return 'vendor connections';
+      return 'vendor integrations';
     case 'workflow':
       return 'workflow';
     case 'users':
@@ -1262,7 +1262,7 @@ class _PermissionExplainerCard extends StatelessWidget {
     'team': 'Operator team management',
     'billing': 'Billing',
     'integration': 'Integration management',
-    'integrations': 'Vendor connections',
+    'integrations': 'Vendor integrations',
     'workflow': 'Workflow automation',
   };
 
