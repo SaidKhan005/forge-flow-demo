@@ -265,7 +265,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.text('Actor: Automated service sp-vendor-sync • Target: —'),
+      find.text('Actor: Service account sp-vendor-sync • Target: —'),
       findsOneWidget,
     );
     // Defensive: the raw enum strings must not have leaked anywhere
