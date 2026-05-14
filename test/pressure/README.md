@@ -102,6 +102,39 @@ against a non-preview / non-staging / non-localhost URL, and exit
 with code 3 if any incomplete session record was observed (Bug A
 regression class).
 
+## Wave 2 Lane Q — soak orchestrator + Azure Blob heap snapshots (2026-05-13)
+
+Slice Q-1 (`docs/_indices/WAVE_2_LEDGER.md`) replaced the GCS heap-
+snapshot uploader with `AzureBlobHeapSnapshotUploadTarget` (mirroring
+`tool/audit_anchor/azure_blob_client.dart`) and added a top-level
+orchestrator:
+
+  * `tool/pressure/p4_soak_orchestrator.dart` — drives a mixed
+    sign-in / operator-day workload against the proxy, captures
+    per-request latency, schedules heap snapshots into Azure Blob at
+    a configurable interval, and emits a Markdown report with request
+    rate, p50/p95/p99 latency, error counts, per-pod breakdown, and
+    heap-snapshot blob URIs. Smoke run example:
+
+        dart run tool/pressure/p4_soak_orchestrator.dart \
+          --proxy-url=http://localhost:8080 \
+          --duration=60s --concurrency=4 --ops=8 \
+          --run-id=local-smoke-1
+
+Heap-snapshot upload is inert unless ALL FOUR env vars
+(`AZURE_BLOB_HEAP_SNAPSHOTS_CONTAINER`, `AZURE_BLOB_HEAP_SNAPSHOTS_ENDPOINT`,
+`AZURE_AD_TENANT_ID`, `AZURE_AD_CLIENT_ID`) are set — see
+`runbooks/cloud_run_env_vars.md`. When configured, snapshots land at
+`<endpoint>/<container>/heap-snapshots/<run_id>/<pod_id>/heap-<iso>.heapsnapshot`
+and the final report links each one.
+
+Multi-pod capture: the orchestrator accepts `--pod-ids=pod-a,pod-b,...`
+and produces a per-pod breakdown in the report. Today the proxy lacks
+a control-plane heap-dump endpoint, so only the local pod gets a real
+snapshot; other pods are flagged `remote_capture_pending` in the
+per-pod table (follow-up slice `Q-1-FU-multi-pod-heap` covers that
+work).
+
 ## What This Directory Is NOT
 
 - Not a place for integration tests (Phase 2 owns
