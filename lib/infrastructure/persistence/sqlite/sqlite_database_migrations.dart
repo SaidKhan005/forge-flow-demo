@@ -283,6 +283,35 @@ Future<void> _migrateToV31(Database db) async {
   );
 }
 
+/// Wave 2 MO-2 — mobile-side `manual_cover_entries` overlay.
+///
+/// Backs the mobile Covers Setup section on the Settings → Setup tab.
+/// Each row is one operator-entered cover count for a specific
+/// (restaurant, business date, daypart). Mirrors the daypart shape of
+/// `public.data_accuracy_settings.covers_manual_entries` (jsonb) so a
+/// follow-up write-through slice can fan rows into the canonical
+/// settings payload without re-keying.
+///
+/// Additive only — legacy rows in other tables are untouched.
+Future<void> _migrateToV34(Database db) async {
+  if (!await _tableExists(db, 'manual_cover_entries')) {
+    await db.execute('''
+      CREATE TABLE manual_cover_entries (
+        restaurant_id  TEXT NOT NULL,
+        business_date  TEXT NOT NULL,
+        daypart        TEXT NOT NULL,
+        covers         INTEGER NOT NULL,
+        recorded_at    TEXT NOT NULL,
+        PRIMARY KEY (restaurant_id, business_date, daypart)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX ix_manual_cover_entries_recent
+      ON manual_cover_entries(restaurant_id, business_date DESC)
+    ''');
+  }
+}
+
 /// Theme H#6 — weekly_plan_snapshots lifecycle columns.
 ///
 /// Adds the 5 server-truth fields the proxy emits but the SQLite model
