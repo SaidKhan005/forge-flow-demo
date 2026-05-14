@@ -55,6 +55,17 @@ abstract class WebAccountGateway {
   Future<AccountLocationTimezone> patchLocationTimezone(
     AccountLocationTimezonePatch patch,
   );
+
+  /// Wave 2 W-3 — self-service profile editor. Distinct from
+  /// [patchAccount] (which writes operator business-identity columns)
+  /// and from the W-1 admin-side `members_admin_gateway.updateMember`
+  /// (which edits *someone else's* user row). This call patches the
+  /// signed-in operator user's own `display_name` and/or `email`.
+  ///
+  /// The proxy route `/v1/auth/self/profile` resolves the target user
+  /// from the verified bearer token; a client never supplies a target
+  /// user id.
+  Future<SelfProfilePatchResult> patchSelfProfile(SelfProfilePatchPayload patch);
 }
 
 /// User-scoped account session surface for My Account. Reuses the
@@ -115,6 +126,10 @@ class HttpWebAccountGateway
   /// avoid `/v1/admin/*` or any B9.2-only schema additions.
   static const String activeSessionsPath = '/v1/auth/sessions';
   static const String revokeSessionPath = '/v1/auth/session/revoke';
+
+  /// Wave 2 W-3 — self-service profile editor route. The proxy
+  /// resolves the target user from the verified bearer token.
+  static const String selfProfilePath = '/v1/auth/self/profile';
   static const Duration _freshMfaWindow = Duration(hours: 1);
   static const String _freshMfaRedirectUri =
       '/auth/login?reason=fresh_mfa_required';
@@ -181,6 +196,30 @@ class HttpWebAccountGateway
       body: patch.toJson(),
     );
     return AccountLocationTimezone.fromJson(response.body);
+  }
+
+  @override
+  Future<SelfProfilePatchResult> patchSelfProfile(
+    SelfProfilePatchPayload patch,
+  ) async {
+    if (selfProfilePath.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to update your profile.',
+    );
+    // Mirror the freshness gate the security section already uses for
+    // sensitive writes. The operator's last sign-in must be inside the
+    // `_freshMfaWindow` before we'll let them change email.
+    if ((patch.email ?? '').isNotEmpty) {
+      _requireFreshMfaToken(token);
+    }
+    final response = await _client.patchJson(
+      selfProfilePath,
+      idToken: token,
+      body: patch.toJson(),
+    );
+    return SelfProfilePatchResult.fromJson(response.body);
   }
 
   @override
@@ -604,6 +643,76 @@ class AccountSessionSignOutOthersResult {
   const AccountSessionSignOutOthersResult({required this.revokedCount});
 
   final int revokedCount;
+}
+
+/// Wave 2 W-3 — payload for [WebAccountGateway.patchSelfProfile].
+/// Both fields are optional; the proxy rejects the all-null shape
+/// with 400 `no_profile_fields`.
+@immutable
+class SelfProfilePatchPayload {
+  const SelfProfilePatchPayload({this.displayName, this.email});
+
+  final String? displayName;
+  final String? email;
+
+  Map<String, Object?> toJson() {
+    final json = <String, Object?>{};
+    if (displayName != null) json['display_name'] = displayName;
+    if (email != null) json['email'] = email;
+    return json;
+  }
+}
+
+/// Resolved profile after a successful PATCH.
+@immutable
+class SelfProfilePatchResult {
+  const SelfProfilePatchResult({
+    required this.userId,
+    required this.email,
+    required this.displayName,
+    required this.emailChanged,
+    required this.displayNameChanged,
+  });
+
+  final String userId;
+  final String email;
+  final String displayName;
+
+  /// True when the email actually changed (the patch could have been
+  /// a no-op). The UI uses this to force a sign-out so the next
+  /// sign-in picks up the new address.
+  final bool emailChanged;
+
+  /// True when the display name actually changed. Mostly a UX signal
+  /// for rendering "Saved" confirmations.
+  final bool displayNameChanged;
+
+  static SelfProfilePatchResult fromJson(Map<String, Object?> json) {
+    final rawUser = json['user'];
+    if (rawUser is! Map) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_self_profile_patch',
+        message: 'The proxy returned an incomplete profile patch response.',
+      );
+    }
+    final user = Map<String, Object?>.from(rawUser);
+    final userId = AccountIdentity._readString(user['user_id']);
+    final email = AccountIdentity._readString(user['email']);
+    final displayName = AccountIdentity._readString(user['display_name']);
+    if (userId == null || email == null || displayName == null) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_self_profile_patch',
+        message: 'The proxy returned an incomplete profile patch response.',
+      );
+    }
+    return SelfProfilePatchResult(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+      emailChanged: user['email_changed'] == true,
+      displayNameChanged: user['display_name_changed'] == true,
+    );
+  }
 }
 
 class _AdminRouteForbidden implements Exception {

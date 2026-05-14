@@ -194,6 +194,68 @@ class TeamUserProfilePatched {
   final TeamUserListEntry user;
 }
 
+/// Wave 2 W-3 — self-service profile editing command.
+///
+/// Distinct from [TeamUserProfilePatchCommand] because:
+///   * actor == target (enforced at the route guard — the proxy
+///     resolves [actorUserId] from the verified bearer token and
+///     never accepts a client-supplied target id).
+///   * no `reason` field — operators changing their own profile
+///     don't need to justify the change to themselves; the audit
+///     row captures the `actor_kind = 'user'` self-edit signal.
+///   * permission gate is the self-edit gate
+///     (`team.users.self_update`), not `team.users.invite`.
+///
+/// Both [displayName] and [email] are optional, but at least one
+/// must be present. The gateway rejects the all-null shape with 400.
+class SelfProfilePatchCommand {
+  const SelfProfilePatchCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    this.displayName,
+    this.email,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+
+  /// New display name. Null leaves the existing value untouched.
+  /// `'   '` (whitespace) is treated as unset.
+  final String? displayName;
+
+  /// New email address. Null leaves the existing value untouched.
+  /// Triggers a refresh-token revoke server-side so the next sign-in
+  /// uses the new address.
+  final String? email;
+}
+
+class SelfProfilePatched {
+  const SelfProfilePatched({
+    required this.userId,
+    required this.email,
+    required this.displayName,
+    this.emailChanged = false,
+    this.displayNameChanged = false,
+  });
+
+  final String userId;
+  final String email;
+  final String displayName;
+
+  /// True when the patch caused the email to change. The caller
+  /// uses this signal to force a sign-out so the next sign-in picks
+  /// up the new email; null/false means the email is the same and
+  /// no sign-out is needed.
+  final bool emailChanged;
+
+  /// True when the patch caused the display name to change. Mostly
+  /// useful for the UI to render a "Saved" confirmation that lists
+  /// which fields actually changed.
+  final bool displayNameChanged;
+}
+
 // Phase 9.UX.grant-payload — per-grant snapshot bundled with the team-users
 // projection. Mirrors the `user_roles` row shape consumed by the role-change
 // dialog's inheritance hint, plus the materialized
@@ -1328,6 +1390,13 @@ abstract class AuthOperationsGateway {
     TeamUserProfilePatchCommand command,
   );
 
+  /// Wave 2 W-3 — self-service profile edit. The proxy route guard
+  /// resolves the target user from the verified bearer token; the
+  /// gateway never trusts a client-supplied target id.
+  Future<SelfProfilePatched> patchSelfProfile(
+    SelfProfilePatchCommand command,
+  );
+
   Future<TeamRoleCatalogListed> listRoles(TeamRoleCatalogListCommand command);
 
   Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command);
@@ -1436,6 +1505,13 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<TeamUserProfilePatched> patchUserProfile(
     TeamUserProfilePatchCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<SelfProfilePatched> patchSelfProfile(
+    SelfProfilePatchCommand command,
   ) {
     throw StateError(_message);
   }

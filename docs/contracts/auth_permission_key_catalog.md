@@ -154,7 +154,7 @@ also not by the 9.0 foundation seed.
 | `admin.service_principal.issue_token` | Issue short-lived service-principal JWTs for automation identities. MFA required. | yes |
 | `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
 
-### `team.*` (14)
+### `team.*` (15)
 
 Operator self-service team management. Distinct from `admin.*` —
 `team.*` keys gate the operator-facing Settings → Team UX (lands in
@@ -163,12 +163,13 @@ without touching F&F-side admin paths.
 
 Added 2026-04-27 by the 9.0a multi-location scale-flow extensions
 slice, with `team.users.reset_mfa` added by the 2026-04-30 MFA
-hardening migration and `team.audit_log.export` added by the 2026-05-06
-11W.5 catalog reconciliation slice. None require MFA at the catalog
-level; the launch tier avoids mandatory MFA enforcement for admin-tier
-accounts until post-launch stability. The reset-MFA routes still
-require fresh sign-in through route logic because removing a second
-factor is sensitive.
+hardening migration, `team.audit_log.export` added by the 2026-05-06
+11W.5 catalog reconciliation slice, and `team.users.self_update` added
+by the 2026-05-14 Wave 2 W-3 self-service profile slice. None require
+MFA at the catalog level; the launch tier avoids mandatory MFA
+enforcement for admin-tier accounts until post-launch stability. The
+reset-MFA routes still require fresh sign-in through route logic
+because removing a second factor is sensitive.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -179,6 +180,7 @@ factor is sensitive.
 | `team.users.soft_delete` | Soft-delete a user in own operator. | — |
 | `team.users.reset_password` | Admin-initiated password reset for a team member. | — |
 | `team.users.reset_mfa` | Start or cancel delayed authenticator-app removal for a team member after fresh authentication. | — |
+| `team.users.self_update` | Change your own display name or email from My Account. Distinct from `team.users.invite` which gates editing someone else; every signed-in operator role is granted this key by default. | — |
 | `team.roles.view` | View the operator's role list. | — |
 | `team.roles.create_custom` | Create operator-scoped custom role. | — |
 | `team.roles.assign` | Grant role to user within own operator. | — |
@@ -194,21 +196,26 @@ Baseline grants seeded by 9.0a:
 - `super_admin` gets every key in the catalog. The 9.0 seed grants all
   original keys, and the 9.0a audit-fix migration grants the later `team.*`
   keys. The MFA hardening migration grants `team.users.reset_mfa`. The
-  11W.5 reconciliation migration grants `team.audit_log.export`.
+  11W.5 reconciliation migration grants `team.audit_log.export`. The
+  W-3 self-service migration grants `team.users.self_update`.
 - `operator_owner` gets ALL `team.*` keys, including
-  `team.users.reset_mfa`, `team.audit_log.export`, and hierarchy lifecycle
-  keys.
+  `team.users.reset_mfa`, `team.audit_log.export`, hierarchy lifecycle
+  keys, and `team.users.self_update`.
 - `operator_admin` (when seeded) gets `team.audit_log.export` so the
-  Operator Web Audit Log CSV export action carries an honest gate.
+  Operator Web Audit Log CSV export action carries an honest gate,
+  plus `team.users.self_update` for the self-service profile editor.
 - `operator_manager` gets the manager-tier subset:
   `team.users.view`, `team.users.invite`, `team.users.reactivate`,
-  `team.users.reset_password`, `team.roles.view`,
-  `team.roles.assign`, `team.roles.revoke`, `team.audit_log.view`,
-  `team.session.force_logout`. Manager **cannot** create custom roles,
-  suspend/delete hierarchy levels, soft-delete users, reset MFA, or export audit logs by default
-  (locked); pulling a full audit trail to CSV is a senior-role action.
-- `operator_supervisor` and `operator_staff` get nothing in
-  `team.*`.
+  `team.users.reset_password`, `team.users.self_update`,
+  `team.roles.view`, `team.roles.assign`, `team.roles.revoke`,
+  `team.audit_log.view`, `team.session.force_logout`. Manager **cannot**
+  create custom roles, suspend/delete hierarchy levels, soft-delete
+  users, reset MFA, or export audit logs by default (locked); pulling
+  a full audit trail to CSV is a senior-role action.
+- `operator_supervisor` and `operator_staff` get `team.users.self_update`
+  only — every signed-in operator user can update their own profile
+  from the My Account surface, regardless of other team-management
+  authority.
 
 ### `account.*` (1)
 

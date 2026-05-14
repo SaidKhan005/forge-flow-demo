@@ -441,6 +441,12 @@ class SettingsAccountSection extends StatefulWidget {
   /// W3.A — when true, the password-change action and the bulk
   /// sign-out action are hidden. The mobile mirror only shows the
   /// account-info summary + a sign-out-this-device fallback.
+  ///
+  /// Wave 2 W-3: the mobile entry point uses `viewOnly: true` for the
+  /// Account section, and a `SettingsPointerRow` (rendered by the
+  /// caller, not this section) ferries the operator to the operator-
+  /// web `/my-account` page via the existing JWT-handoff deep-link
+  /// path.
   final bool viewOnly;
 
   @override
@@ -639,7 +645,10 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
     final accountInfoGateway = widget.accountInfoGateway;
     if (widget.viewOnly) {
       // Read-only mirror: only show the account-info summary card,
-      // no password-change form or sign-out-everywhere action.
+      // no password-change form or sign-out-everywhere action. The
+      // mobile entry-point in `lib/screens/settings_screen.dart`
+      // wraps this section with a `SettingsPointerRow` that opens the
+      // operator-web My Account page via the JWT-handoff deep-link.
       if (accountInfoGateway == null) {
         return const SizedBox.shrink();
       }

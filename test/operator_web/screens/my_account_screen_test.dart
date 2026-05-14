@@ -781,6 +781,19 @@ class _FakeAccountActions implements OperatorWebAccountActions {
     return AccountSessionSignOutOthersResult(revokedCount: ids.length);
   }
 
+  @override
+  Future<SelfProfilePatchResult?> patchSelfProfile({
+    String? displayName,
+    String? email,
+  }) async {
+    // Wave 2 W-3 — fake does not wire the
+    // OperatorWebAccountGatewayProvider seam; the My Account widget
+    // test suite covers only the read-only profile section here.
+    // The dedicated W-3 dialog test
+    // (`edit_self_profile_dialog_test.dart`) exercises the live path.
+    return null;
+  }
+
   static final List<AccountActiveSessionEntry> _defaultSessions =
       <AccountActiveSessionEntry>[
         _sessionEntry('session-current', 'Safari on Mac', city: 'Portland'),

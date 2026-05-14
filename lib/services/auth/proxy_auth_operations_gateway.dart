@@ -228,6 +228,11 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   static const String usersPrefix = '/v1/admin/auth/users/';
   static const String rolesPath = '/v1/admin/auth/roles';
   static const String roleGrantsPath = '/v1/admin/auth/role-grants';
+  // Wave 2 W-3 — self-service profile editor. Distinct from the
+  // `usersPrefix` route which is for admin-editing-someone-else; this
+  // route's guard resolves the target user from the verified bearer
+  // token so a client cannot patch another operator's profile.
+  static const String selfProfilePath = '/v1/auth/self/profile';
   // Phase 9.UX.4 — org hierarchy admin client paths.
   static const String orgUnitsPath = '/v1/admin/auth/org-units';
   static const String locationsPrefix = '/v1/admin/auth/locations/';
@@ -286,6 +291,44 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       throw _malformed(response, 'team user patch response was incomplete');
     }
     return TeamUserProfilePatched(user: _teamUserFromJson(response, rawUser));
+  }
+
+  @override
+  Future<SelfProfilePatched> patchSelfProfile(
+    SelfProfilePatchCommand command,
+  ) async {
+    final response = await _patch(
+      selfProfilePath,
+      <String, Object?>{
+        // Both `display_name` and `email` are optional on the wire; the
+        // proxy validates at least one is present + the email shape
+        // before calling the gateway.
+        if (command.displayName != null) 'display_name': command.displayName,
+        if (command.email != null) 'email': command.email,
+      },
+    );
+    _expectStatus(response, 200);
+    final rawUser = response.body['user'];
+    if (rawUser is! Map) {
+      throw _malformed(response, 'self profile patch response was incomplete');
+    }
+    final json = Map<String, Object?>.from(rawUser);
+    final userId = _readNonBlankString(json['user_id']);
+    final email = _readNonBlankString(json['email']);
+    final displayName = _readNonBlankString(json['display_name']);
+    final emailChangedRaw = json['email_changed'];
+    final displayNameChangedRaw = json['display_name_changed'];
+    if (userId == null || email == null || displayName == null) {
+      throw _malformed(response, 'self profile patch payload was incomplete');
+    }
+    return SelfProfilePatched(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+      emailChanged: emailChangedRaw is bool ? emailChangedRaw : false,
+      displayNameChanged:
+          displayNameChangedRaw is bool ? displayNameChangedRaw : false,
+    );
   }
 
   @override

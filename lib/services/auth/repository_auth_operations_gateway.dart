@@ -236,6 +236,130 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     return TeamUserProfilePatched(user: user);
   }
 
+  @override
+  Future<SelfProfilePatched> patchSelfProfile(
+    SelfProfilePatchCommand command,
+  ) async {
+    // Wave 2 W-3 — self-service profile edit. Distinct from
+    // [patchUserProfile]: actor == target (the proxy resolves the
+    // target user from the verified bearer token), no admin_reason
+    // required, and the permission gate is `team.users.self_update`.
+    //
+    // The repository path mirrors the admin-edit choreography:
+    //   1) Look up the current email row so the audit captures
+    //      the "before" email without a follow-up read.
+    //   2) Apply the Postgres mirror updates (display name + email).
+    //   3) Push the changes to Firebase Identity Platform.
+    //   4) Revoke refresh tokens when the email changed so the next
+    //      sign-in uses the new identity.
+    //   5) Write a single audit row.
+    final nextDisplayName = command.displayName == null
+        ? null
+        : _requiredTrimmed(command.displayName!, 'displayName');
+    final nextEmail = command.email == null
+        ? null
+        : _requiredTrimmed(command.email!, 'email');
+    if (nextDisplayName == null && nextEmail == null) {
+      throw const AuthOperationRejected(
+        code: 'no_profile_fields',
+        message:
+            'self-edit requires at least one of email or display_name',
+        statusCode: 400,
+      );
+    }
+    final emailRow = await usersRepository.readEmail(
+      operatorId: command.operatorId,
+      userId: command.actorUserId,
+      // The proxy route guarantees actor == target. We pass a stable
+      // marker so the audit-row-on-read inside readEmail records a
+      // self-edit attribution rather than an admin lookup.
+      adminReason: 'self_edit_my_account',
+    );
+    if (emailRow == null) {
+      throw const AuthOperationRejected(
+        code: 'user_not_found',
+        message: 'your user record was not found for this operator',
+        statusCode: 404,
+      );
+    }
+    var displayNameChanged = false;
+    var emailChanged = false;
+    if (nextDisplayName != null) {
+      final affected = await usersRepository.updateDisplayName(
+        operatorId: command.operatorId,
+        userId: command.actorUserId,
+        displayName: nextDisplayName,
+        adminReason: 'self_edit_my_account',
+      );
+      displayNameChanged = affected > 0;
+    }
+    if (nextEmail != null &&
+        nextEmail.toLowerCase() != emailRow.email.toLowerCase()) {
+      final affected = await usersRepository.updateEmail(
+        operatorId: command.operatorId,
+        userId: command.actorUserId,
+        email: nextEmail,
+        adminReason: 'self_edit_my_account',
+      );
+      emailChanged = affected > 0;
+    }
+    if ((displayNameChanged || emailChanged) &&
+        (emailRow.firebaseUid ?? '').isNotEmpty) {
+      try {
+        await firebaseAdmin.updateUser(
+          uid: emailRow.firebaseUid!,
+          email: emailChanged ? nextEmail : null,
+          displayName: displayNameChanged ? nextDisplayName : null,
+        );
+      } on FirebaseAdminAuthError catch (error) {
+        throw AuthOperationRejected(
+          code: 'firebase_update_failed',
+          message: 'Firebase Identity Platform update failed (${error.code})',
+          statusCode: error.statusCode ?? 502,
+        );
+      }
+      if (emailChanged) {
+        // Email change rotates the user's identity; force every active
+        // session to re-authenticate so the next request signs in with
+        // the new address.
+        try {
+          await firebaseAdmin.revokeRefreshTokens(uid: emailRow.firebaseUid!);
+        } on FirebaseAdminAuthError {
+          // Best-effort — the audit row still captures the email
+          // change. Re-auth happens on the next ID-token refresh.
+        }
+      }
+    }
+    if (displayNameChanged || emailChanged) {
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        targetUserId: command.actorUserId,
+        eventType: 'auth.user.self_profile_updated',
+        payload: <String, Object?>{
+          'fields': <String>[
+            if (displayNameChanged) 'display_name',
+            if (emailChanged) 'email',
+          ],
+          if (emailChanged) ...<String, Object?>{
+            'previous_email': emailRow.email,
+            'email': nextEmail,
+          },
+          if (displayNameChanged && nextDisplayName != null)
+            'display_name': nextDisplayName,
+        },
+      );
+    }
+    return SelfProfilePatched(
+      userId: command.actorUserId,
+      email: emailChanged ? nextEmail! : emailRow.email,
+      displayName: displayNameChanged ? nextDisplayName! : emailRow.displayName,
+      emailChanged: emailChanged,
+      displayNameChanged: displayNameChanged,
+    );
+  }
+
   static TeamUserListEntry? _teamUserById(
     List<TeamUserListEntry> users,
     String userId,

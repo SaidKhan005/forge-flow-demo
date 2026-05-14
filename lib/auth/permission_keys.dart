@@ -28,9 +28,11 @@
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
 //   - admin.*         (28 keys) admin actions
-//   - team.*          (14 keys) operator-self-service team management
+//   - team.*          (15 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
-//                                facing Settings → Team UX)
+//                                facing Settings → Team UX; W-3 added
+//                                team.users.self_update for the self-
+//                                service "My Account" editor)
 //   - account.*       (1 key)   operator account settings
 //   - business_timing.* (1 key) business-timing settings
 //   - billing.*       (5 keys)  billing-related actions
@@ -38,11 +40,11 @@
 //   - integrations.*  (1 key)   Phase 8.0 vendor-connections category gate
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 103 keys (81 baseline + 13 team.* keys + 2 later admin
+// Total: 104 keys (81 baseline + 13 team.* keys + 2 later admin
 // keys added in 9.0Σ.h2/B41 + 1 integrations.configure added in
 // Phase 8.0 + 1 admin.users.reset_mfa_factors added in 11A.14 +
 // 1 team.audit_log.export added in 11W.5 + 2 hierarchy lifecycle
-// keys + 2 B5.b settings keys).
+// keys + 2 B5.b settings keys + 1 team.users.self_update added in W-3).
 // Some keys are flagged MFA-required via PermissionKeys.requiresMfa;
 // the migration mirrors that in the permission_keys.requires_mfa
 // column.
@@ -140,7 +142,7 @@ class PermissionKeys {
   // conversation content is F&F-internal at launch.
   static const String adminAuditPrivacyRead = 'admin.audit_privacy.read'; // MFA
 
-  // ─── team.* (14) ──────────────────────────────────────────────────
+  // ─── team.* (15) ──────────────────────────────────────────────────
   // Added 9.0a (2026-04-27). Operator-self-service team management;
   // consumed by 9.10 Settings → Team UX. Distinct from admin.* which
   // gates F&F-side admin paths.
@@ -151,6 +153,13 @@ class PermissionKeys {
   static const String teamUsersSoftDelete = 'team.users.soft_delete';
   static const String teamUsersResetPassword = 'team.users.reset_password';
   static const String teamUsersResetMfa = 'team.users.reset_mfa';
+  // Wave 2 W-3 (2026-05-14). Self-service profile editing — operator
+  // changes their own display name + email from the My Account
+  // surface. Distinct from `team.users.invite` (which gates admin-
+  // editing-someone-else); every signed-in operator role is granted
+  // this key by default because anyone with a sign-in can update
+  // their own profile.
+  static const String teamUsersSelfUpdate = 'team.users.self_update';
   static const String teamRolesView = 'team.roles.view';
   static const String teamRolesCreateCustom = 'team.roles.create_custom';
   static const String teamRolesAssign = 'team.roles.assign';
@@ -285,6 +294,7 @@ class PermissionKeys {
     teamUsersSoftDelete,
     teamUsersResetPassword,
     teamUsersResetMfa,
+    teamUsersSelfUpdate,
     teamRolesView,
     teamRolesCreateCustom,
     teamRolesAssign,

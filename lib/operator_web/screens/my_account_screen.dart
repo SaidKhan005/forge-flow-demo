@@ -59,6 +59,7 @@ import '../services/operator_web_proxy_client.dart';
 import '../services/operator_web_url_launcher.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
+import 'edit_self_profile_dialog.dart';
 
 /// V1 My account screen. The router renders this at
 /// `kOperatorWebNavMyAccount` once onboarding completes.
@@ -92,6 +93,11 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   // confirmations across the operator's session.
   String? _passwordToast;
   Timer? _passwordToastTimer;
+  // Wave 2 W-3 — same toast pattern for the profile edit. Cleared on
+  // the same TTL so a long-lived screen does not accumulate stale
+  // confirmations.
+  String? _profileToast;
+  Timer? _profileToastTimer;
   static const Duration _kToastVisibleDuration = Duration(seconds: 4);
 
   List<AccountActiveSessionEntry> _activeSessions =
@@ -168,6 +174,7 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   @override
   void dispose() {
     _passwordToastTimer?.cancel();
+    _profileToastTimer?.cancel();
     _mfaController.removeListener(_onMfaControllerChanged);
     _mfaController.dispose();
     super.dispose();
@@ -393,6 +400,33 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
     }
   }
 
+  Future<void> _handleEditProfile() async {
+    final actions = widget.actions;
+    if (actions == null) return;
+    final result = await showEditSelfProfileDialog(
+      context: context,
+      actions: actions,
+      currentDisplayName: widget.session.displayName,
+      currentEmail: widget.session.email,
+    );
+    if (!mounted || result == null) return;
+    _profileToastTimer?.cancel();
+    setState(() {
+      _profileToast = result.patched.emailChanged
+          ? 'Profile saved. Sign in again with your new email.'
+          : 'Profile updated.';
+    });
+    _profileToastTimer = Timer(_kToastVisibleDuration, () {
+      if (!mounted) return;
+      setState(() => _profileToast = null);
+    });
+    // When the email rotates the proxy revokes refresh tokens server-
+    // side. The next ID-token refresh will fail and the existing
+    // mfa-freshness-redirect listener forces the user back to the
+    // sign-in page so they can authenticate with the new address.
+    // No additional client-side sign-out is needed here.
+  }
+
   Future<void> _loadActiveSessions() async {
     final actions = widget.actions;
     if (actions == null) {
@@ -596,6 +630,10 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
                 session: widget.session,
                 twoColumn: twoColumnProfile,
                 onAuditLog: _handleOpenAuditLog,
+                onEditProfile: widget.actions == null
+                    ? null
+                    : _handleEditProfile,
+                editToastMessage: _profileToast,
               ),
               const SizedBox(height: 14),
               _SecuritySection(
@@ -755,11 +793,23 @@ class _ProfileSection extends StatelessWidget {
     required this.session,
     required this.twoColumn,
     required this.onAuditLog,
+    this.onEditProfile,
+    this.editToastMessage,
   });
 
   final OperatorWebSession session;
   final bool twoColumn;
   final VoidCallback onAuditLog;
+
+  /// Wave 2 W-3 — when non-null, renders an "Edit profile" button
+  /// below the profile fields. Null means the actions seam is not
+  /// wired (demo-mode-without-actions), so the section stays read-
+  /// only.
+  final VoidCallback? onEditProfile;
+
+  /// Wave 2 W-3 — auto-clearing confirmation toast shown after a
+  /// successful save. Mirrors the password section's toast pattern.
+  final String? editToastMessage;
 
   @override
   Widget build(BuildContext context) {
@@ -795,8 +845,11 @@ class _ProfileSection extends StatelessWidget {
       title: 'Profile',
       auditLinkKey: const Key('account_section_profile_audit_log_link'),
       onAuditLog: onAuditLog,
-      child: twoColumn
-          ? Wrap(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (twoColumn)
+            Wrap(
               key: const Key('account_section_profile_two_column'),
               spacing: 24,
               runSpacing: 12,
@@ -804,7 +857,8 @@ class _ProfileSection extends StatelessWidget {
                 for (final field in fields) SizedBox(width: 280, child: field),
               ],
             )
-          : Column(
+          else
+            Column(
               key: const Key('account_section_profile_single_column'),
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -814,6 +868,66 @@ class _ProfileSection extends StatelessWidget {
                 ],
               ],
             ),
+          if (onEditProfile != null) ...[
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                height: 38,
+                child: OutlinedButton.icon(
+                  key: const Key('account_section_profile_edit'),
+                  onPressed: onEditProfile,
+                  icon: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Edit profile'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.sunsetDark,
+                    side: const BorderSide(color: AppColors.sunsetDark),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    textStyle: AppTextStyles.mono14(
+                      color: AppColors.sunsetDark,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+          if (editToastMessage != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('account_section_profile_toast'),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.positive.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.positive.withValues(alpha: 0.45),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle_outline,
+                    size: 16,
+                    color: AppColors.positive,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      editToastMessage!,
+                      style: AppTextStyles.body13(color: AppColors.positive),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

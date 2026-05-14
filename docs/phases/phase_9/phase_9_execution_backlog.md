@@ -176,7 +176,10 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605131900_c_2_d_vendor_sync_outage_state.sql`.
+  `202605140000_w_3_self_profile_perm_key.sql`, which adds the Wave 2
+  W-3 `team.users.self_update` permission key + baseline grants
+  backing the new `PATCH /v1/auth/self/profile` self-service profile
+  editor on the operator-web and admin My Account surfaces.
 
   Lane C C-2-D (`202605131900_c_2_d_vendor_sync_outage_state.sql`)
   adds the per-(operator_id, location_id, connection_id) state surface

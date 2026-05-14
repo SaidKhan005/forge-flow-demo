@@ -810,6 +810,104 @@ void main() {
       },
     );
 
+    test(
+      'W-3 — PATCH /v1/auth/self/profile patches display name + email',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '/v1/auth/self/profile',
+              const <String, Object?>{
+                'display_name': 'Alex Morrison-Davies',
+                'email': 'alex@new-domain.com',
+              },
+              idempotencyKey: 'idem-self-profile-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            // The route MUST gate on the self-edit key, NOT on
+            // team.users.invite (which gates admin-editing-someone-else).
+            expect(guard.permissionKeys,
+                equals(<String>['team.users.self_update']));
+            final command = gateway.selfProfilePatches.single;
+            // Actor == target: the proxy resolves the actor from the
+            // verified bearer token; no client-supplied target id.
+            expect(command.actorUserId, equals(_userId));
+            expect(command.displayName, equals('Alex Morrison-Davies'));
+            expect(command.email, equals('alex@new-domain.com'));
+            final user = response.json['user'] as Map<String, Object?>;
+            expect(user['display_name'], equals('Alex Morrison-Davies'));
+            expect(user['email'], equals('alex@new-domain.com'));
+            expect(user['email_changed'], isTrue);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'W-3 — PATCH /v1/auth/self/profile rejects all-null body with 400',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '/v1/auth/self/profile',
+              const <String, Object?>{},
+              idempotencyKey: 'idem-self-profile-no-fields',
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('no_profile_fields'));
+            expect(gateway.selfProfilePatches, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'W-3 — PATCH /v1/auth/self/profile rejects malformed email with 400',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '/v1/auth/self/profile',
+              const <String, Object?>{
+                'email': 'not-an-email',
+              },
+              idempotencyKey: 'idem-self-profile-bad-email',
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('invalid_email'));
+            expect(gateway.selfProfilePatches, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST admin deactivate alias returns updated user payload', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
@@ -2812,6 +2910,7 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   final inviteLists = <TeamInviteListCommand>[];
   final inviteCreates = <TeamInviteCreateCommand>[];
   final profilePatches = <TeamUserProfilePatchCommand>[];
+  final selfProfilePatches = <SelfProfilePatchCommand>[];
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
@@ -2884,6 +2983,23 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
         status: 'active',
         mfaEnrolled: true,
       ),
+    );
+  }
+
+  @override
+  Future<SelfProfilePatched> patchSelfProfile(
+    SelfProfilePatchCommand command,
+  ) async {
+    // Wave 2 W-3 — self-service profile editor. Mirrors patchUserProfile
+    // but the target is the caller themselves; the recording stub
+    // surfaces whichever values were supplied.
+    selfProfilePatches.add(command);
+    return SelfProfilePatched(
+      userId: command.actorUserId,
+      email: command.email ?? 'actor@example.test',
+      displayName: command.displayName ?? 'Actor User',
+      emailChanged: command.email != null,
+      displayNameChanged: command.displayName != null,
     );
   }
 
