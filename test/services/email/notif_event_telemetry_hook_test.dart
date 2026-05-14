@@ -1,11 +1,16 @@
 // Wave 2 EN-3 — notif_event_telemetry_hook tests.
 //
-// Pins the production behaviour the EN-3 mitigation guarantees: each
-// terminal backfill outcome + every audit-anchor failure emits one
-// structured `notif.event.unwired` warning so the silent-drop noted
-// in debug.md:315-316 is visible in Cloud Logging. Tests inject a
-// recording log seam; production binds to the proxy's [log]
-// function.
+// Wave 2 EN-3-FU: the helpers in `notif_event_telemetry_hook.dart`
+// are now deprecated fallbacks (the production dispatch path uses
+// `NotificationEventFanout` via `buildPostgresNotificationEventFanout`).
+// Each fire still emits the original `notif.event.unwired` warning so
+// the EN-3 contract holds, AND an additional
+// `notif.event.telemetry_fallback` warning so log search can surface
+// "fanout did not run; telemetry path fired instead" without operator
+// intervention. Tests inject a recording log seam; production binds
+// to the proxy's [log] function.
+//
+// ignore_for_file: deprecated_member_use_from_same_package
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
@@ -25,8 +30,11 @@ void main() {
         job: _job(),
         outcome: BackfillDispatchOutcome.succeeded,
       );
-      expect(recorder.records, hasLength(1));
-      final rec = recorder.records.single;
+      // EN-3-FU: two log lines per fire — the original
+      // `notif.event.unwired` warning AND the deprecation-trip
+      // `notif.event.telemetry_fallback` warning.
+      expect(recorder.records, hasLength(2));
+      final rec = recorder.records.first;
       expect(rec.event, 'notif.event.unwired');
       expect(rec.severity, LogSeverity.warning);
       expect(rec.fields['event_kind'], 'notif.backfill.complete');
@@ -43,6 +51,11 @@ void main() {
       );
       // Success path: no error_message field.
       expect(rec.fields.containsKey('error_message'), isFalse);
+      // Deprecation-trip warning.
+      final fallback = recorder.records.last;
+      expect(fallback.event, 'notif.event.telemetry_fallback');
+      expect(fallback.severity, LogSeverity.warning);
+      expect(fallback.fields['event_kind'], 'notif.backfill.complete');
     });
 
     test('emits notif.event.unwired with notif.backfill.failed on failed + '
@@ -54,8 +67,9 @@ void main() {
         outcome: BackfillDispatchOutcome.failed,
         errorMessage: 'cap_reached:network_timeout',
       );
-      expect(recorder.records, hasLength(1));
-      final rec = recorder.records.single;
+      // EN-3-FU: two log lines per fire (see succeeded test above).
+      expect(recorder.records, hasLength(2));
+      final rec = recorder.records.first;
       expect(rec.event, 'notif.event.unwired');
       expect(rec.fields['event_kind'], 'notif.backfill.failed');
       expect(rec.fields['template_id'], 'backfill_failed');
@@ -82,8 +96,9 @@ void main() {
         chainDateIso: '2026-05-13',
         reason: 'verify_chain_hash_mismatch: row 7',
       );
-      expect(recorder.records, hasLength(1));
-      final rec = recorder.records.single;
+      // EN-3-FU: two log lines per fire (see succeeded test above).
+      expect(recorder.records, hasLength(2));
+      final rec = recorder.records.first;
       expect(rec.event, 'notif.event.unwired');
       expect(rec.severity, LogSeverity.warning);
       expect(rec.fields['event_kind'], 'notif.audit.anchor_failure');
@@ -96,9 +111,14 @@ void main() {
         rec.fields['recipient_address_for_review'],
         'support@forgeflow.org',
       );
+      // Deprecation-trip warning.
+      final fallback = recorder.records.last;
+      expect(fallback.event, 'notif.event.telemetry_fallback');
+      expect(fallback.severity, LogSeverity.warning);
     });
 
-    test('two failures emit two log lines', () async {
+    test('two failures emit two unwired + two fallback log lines',
+        () async {
       final recorder = _RecordingLogSeam();
       final hook =
           buildAuditAnchorFailureTelemetryHook(logSeam: recorder.seam);
@@ -112,9 +132,18 @@ void main() {
         chainDateIso: '2026-05-13',
         reason: 'second',
       );
-      expect(recorder.records, hasLength(2));
-      expect(recorder.records[0].fields['operator_id'], 'op-2');
-      expect(recorder.records[1].fields['operator_id'], 'op-3');
+      // EN-3-FU: 2 fires x 2 log lines each.
+      expect(recorder.records, hasLength(4));
+      final unwired = recorder.records
+          .where((r) => r.event == 'notif.event.unwired')
+          .toList();
+      expect(unwired, hasLength(2));
+      expect(unwired[0].fields['operator_id'], 'op-2');
+      expect(unwired[1].fields['operator_id'], 'op-3');
+      final fallback = recorder.records
+          .where((r) => r.event == 'notif.event.telemetry_fallback')
+          .toList();
+      expect(fallback, hasLength(2));
     });
   });
 }

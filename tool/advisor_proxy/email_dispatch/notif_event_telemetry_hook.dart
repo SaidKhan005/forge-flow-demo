@@ -1,33 +1,36 @@
 // Forge & Flow advisor proxy — notification event telemetry hooks.
 //
-// Wave 2 EN-3 (debug.md:315-316): the three internal-only events
-// (backfill complete, backfill failed, audit anchor failure) have
-// fully wired Markdown templates, registered template ids
-// (`EmailTemplateIds.backfillComplete` etc.), and per-event hook
-// helpers in `notification_event_hooks.dart`. They are NOT yet
-// dispatched in production because the worker `main()` paths do not
-// construct a `NotificationEventFanout` (Postgres-backed user
-// directory, preference reader, and push outbox seams are still
-// pending). The hook seam (`onTerminalOutcome` on the backfill
-// dispatcher, `onAnchorFailure` on the audit_anchor CLI) defaults to
-// `null` in production, which means the operator never learns the
-// notification path was a no-op.
+// SUPERSEDED by Wave 2 EN-3-FU (see
+// `tool/advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart`).
+// The full `NotificationEventFanout` production wire-up landed in
+// EN-3-FU, so the proxy / backfill worker / audit_anchor CLI now
+// dispatch real push + email rows instead of emitting a
+// `notif.event.unwired` warning.
 //
-// This file ships the smallest production-visible mitigation per the
-// EN-3 prompt's "ship the smallest possible mitigation + escalation
-// note" guidance: a telemetry-only hook that emits a structured
-// `notif.event.unwired` warning on every terminal outcome the
-// fanout would have handled. The full `NotificationEventFanout`
-// production wire-up (one Postgres user-directory query + one
-// preference-reader query + the push-outbox INSERT seam) is tracked
-// as the EN-3 follow-up in the PR body's "Operator decision"
-// section.
+// The two builder helpers in this file are kept for one release
+// cycle so a fanout-regression failure mode still surfaces a
+// structured Cloud Logging line. They are marked `@Deprecated` and
+// emit an extra `notif.event.telemetry_fallback` line on every fire
+// so log search can surface "fanout did not run; telemetry path
+// fired instead" without operator intervention.
 //
-// Once the full fanout is bound in production these helpers should
-// be removed (or kept as a fallback for events the fanout itself
-// short-circuits, e.g. operators with no admin user); test coverage
-// in `test/services/email/notif_event_telemetry_hook_test.dart`
-// pins the JSON envelope so a future migration is mechanical.
+// Wave 2 EN-3 (debug.md:315-316) — original context: the three
+// internal-only events (backfill complete, backfill failed, audit
+// anchor failure) had fully wired Markdown templates, registered
+// template ids (`EmailTemplateIds.backfillComplete` etc.), and
+// per-event hook helpers in `notification_event_hooks.dart`. They
+// were NOT yet dispatched in production because the worker `main()`
+// paths did not construct a `NotificationEventFanout` (Postgres
+// user directory, preference reader, and push outbox seams were
+// pending). EN-3 shipped the smallest production-visible mitigation
+// per the prompt's "ship the smallest possible mitigation +
+// escalation note" guidance: a telemetry-only hook that emits a
+// structured `notif.event.unwired` warning on every terminal outcome
+// the fanout would have handled. EN-3-FU replaces the gap.
+//
+// Test coverage in `test/services/email/notif_event_telemetry_hook_test.dart`
+// pins the JSON envelope of the deprecated path so any future
+// removal is mechanical.
 
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/observability/log.dart';
@@ -58,6 +61,16 @@ void _defaultLogSeam(
 /// Builds a [BackfillTerminalHook] that emits one structured
 /// `notif.event.unwired` warning per terminal backfill outcome.
 ///
+/// Wave 2 EN-3-FU: this builder is a fallback for cases where the
+/// fanout-backed dispatch path did not bind (degraded boot, test
+/// harness that skipped `buildWorkerRuntime`). Every fire also emits
+/// a `notif.event.telemetry_fallback` warning so log search can
+/// surface "fanout did not run; telemetry path fired instead"
+/// without operator intervention. Production callers should now
+/// thread the real fanout through the worker runtime; see
+/// `tool/first_connect_backfill_worker/main.dart` and the
+/// `_buildFanoutBackedBackfillTerminalHook` helper.
+///
 /// Routes:
 ///   * [BackfillDispatchOutcome.succeeded] → emits with
 ///     `event_kind = 'notif.backfill.complete'` and
@@ -67,6 +80,11 @@ void _defaultLogSeam(
 ///     `template_id = 'backfill_failed'`.
 ///   * [BackfillDispatchOutcome.resumable] / `noJob` → no emit
 ///     (the catalog only fires email on terminal states).
+@Deprecated(
+  'Use `NotificationEventFanout` via `buildPostgresNotificationEventFanout` '
+  '(EN-3-FU). This helper is kept for one release cycle as a fallback for '
+  'degraded boot only.',
+)
 BackfillTerminalHook buildBackfillTerminalTelemetryHook({
   NotifTelemetryLogSeam logSeam = _defaultLogSeam,
 }) {
@@ -104,6 +122,20 @@ BackfillTerminalHook buildBackfillTerminalTelemetryHook({
         'recipient_address_for_review': 'support@forgeflow.org',
       },
     );
+    // Wave 2 EN-3-FU - emit the deprecation-trip warning so log
+    // search can surface "fanout did not run; telemetry path fired
+    // instead" without operator intervention.
+    logSeam(
+      LogSeverity.warning,
+      'notif.event.telemetry_fallback',
+      fields: <String, Object?>{
+        'event_kind': eventKind,
+        'reason': 'fanout_unavailable_telemetry_fired',
+        'remediation':
+            'ensure buildPostgresNotificationEventFanout wired in worker '
+            'runtime',
+      },
+    );
   };
 }
 
@@ -123,12 +155,22 @@ typedef AuditAnchorFailureTelemetryHook =
 /// Builds an audit-anchor failure hook that emits one structured
 /// `notif.event.unwired` warning per failure.
 ///
+/// Wave 2 EN-3-FU: superseded by the fanout-backed
+/// `_buildFanoutBackedAnchorFailureHook` in
+/// `tool/audit_anchor/main.dart`. Kept for one release cycle as a
+/// fallback for degraded boot only.
+///
 /// Always emits with `event_kind = 'notif.audit.anchor_failure'`
 /// and `template_id = 'audit_anchor_failure'`. The audit-anchor CLI
 /// already swallows hook exceptions so a failure in the log emit
 /// never changes the anchor exit code. The returned closure is
 /// shape-compatible with `AuditAnchorFailureHook` (same parameter
 /// names and types).
+@Deprecated(
+  'Use `NotificationEventFanout` via `buildPostgresNotificationEventFanout` '
+  '(EN-3-FU). This helper is kept for one release cycle as a fallback for '
+  'degraded boot only.',
+)
 AuditAnchorFailureTelemetryHook buildAuditAnchorFailureTelemetryHook({
   NotifTelemetryLogSeam logSeam = _defaultLogSeam,
 }) {
@@ -148,6 +190,20 @@ AuditAnchorFailureTelemetryHook buildAuditAnchorFailureTelemetryHook({
         'reason': reason,
         'fanout_status': 'not_bound_in_production',
         'recipient_address_for_review': 'support@forgeflow.org',
+      },
+    );
+    // Wave 2 EN-3-FU - emit the deprecation-trip warning so log
+    // search can surface "fanout did not run; telemetry path fired
+    // instead" without operator intervention.
+    logSeam(
+      LogSeverity.warning,
+      'notif.event.telemetry_fallback',
+      fields: <String, Object?>{
+        'event_kind': 'notif.audit.anchor_failure',
+        'reason': 'fanout_unavailable_telemetry_fired',
+        'remediation':
+            'ensure buildPostgresNotificationEventFanout wired in audit_anchor '
+            'runtime',
       },
     );
   };
