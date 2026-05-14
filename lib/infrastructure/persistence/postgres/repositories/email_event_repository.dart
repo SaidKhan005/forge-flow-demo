@@ -101,6 +101,28 @@ class EmailEventInsertDuplicate extends EmailEventInsertResult {
   const EmailEventInsertDuplicate();
 }
 
+/// Row returned by [EmailEventRepository.findEventsByProviderMessageId].
+/// Subset of `email_event` columns the Q-2a email soak harness probe
+/// route surfaces; deliberately narrow so the probe cannot exfiltrate
+/// the full `event_payload` JSONB to an admin caller.
+class EmailEventSummary {
+  const EmailEventSummary({
+    required this.eventId,
+    required this.eventKind,
+    required this.occurredAt,
+    required this.receivedAt,
+    required this.providerEventId,
+    required this.providerMessageId,
+  });
+
+  final String eventId;
+  final String eventKind;
+  final DateTime occurredAt;
+  final DateTime receivedAt;
+  final String? providerEventId;
+  final String? providerMessageId;
+}
+
 class EmailEventRepository extends OperatorScopedRepository {
   EmailEventRepository(super.tenantWrapper);
 
@@ -112,6 +134,13 @@ class EmailEventRepository extends OperatorScopedRepository {
   /// `app.bypass_rls_audit` GUC.
   static const String kInsertProviderEventReason =
       'email_event.insert_provider_event';
+
+  /// Audit-attribution reason string used by the Q-2a email soak
+  /// probe route. Stays distinct from the insert reason so log search
+  /// can tell read-side probe activity apart from inbound webhook
+  /// processing.
+  static const String kFindByMessageIdReason =
+      'email_event.email_soak_probe_find_by_message_id';
 
   /// INSERT one SendGrid event with `ON CONFLICT (provider_event_id)
   /// DO NOTHING` against the partial UNIQUE INDEX. Returns
@@ -188,4 +217,93 @@ class EmailEventRepository extends OperatorScopedRepository {
       reason: kInsertProviderEventReason,
     );
   }
+
+  /// Q-2a email soak harness read seam.
+  ///
+  /// Returns the subset of `email_event` rows whose `provider_message_id`
+  /// matches [providerMessageId] AND that arrived at or after [since]
+  /// (when [since] is non-null). [kindFilter] further narrows to a
+  /// specific SendGrid event kind (e.g. `'delivered'`); pass `null` to
+  /// return every kind. Results are ordered by `received_at ASC` so the
+  /// harness sees the earliest event first (the relevant signal for an
+  /// end-to-end latency budget).
+  ///
+  /// Runs under `withSystem` because the inbound `email_event` rows
+  /// have no operator scope until the FK to `email_outbox.email_id` is
+  /// resolved (the harness driver writes through the admin test send
+  /// surface, which uses a system-side dispatch path). Audit reason is
+  /// `kFindByMessageIdReason` so log search can isolate probe-driven
+  /// reads from inbound webhook processing.
+  ///
+  /// LIMIT defaults to 25 so a misbehaving probe cannot scan the whole
+  /// table; SendGrid typically emits at most 5-6 events per send (one
+  /// per lifecycle stage), so the cap is comfortable for the soak
+  /// harness's per-path verification.
+  Future<List<EmailEventSummary>> findEventsByProviderMessageId({
+    required String providerMessageId,
+    DateTime? since,
+    String? kindFilter,
+    int limit = 25,
+  }) {
+    return withSystem<List<EmailEventSummary>>(
+      (exec) async {
+        final clauses = <String>[
+          'provider_message_id = @provider_message_id',
+        ];
+        final params = <String, Object?>{
+          'provider_message_id': providerMessageId,
+          'limit': limit.clamp(1, 200),
+        };
+        if (since != null) {
+          clauses.add('received_at >= @since::timestamptz');
+          params['since'] = since.toUtc().toIso8601String();
+        }
+        if (kindFilter != null && kindFilter.isNotEmpty) {
+          clauses.add('event_kind = @kind');
+          params['kind'] = kindFilter;
+        }
+        final where = clauses.join(' AND ');
+        final rows = await exec.query(
+          'select '
+          '  event_id::text as event_id, '
+          '  event_kind, '
+          '  occurred_at, '
+          '  received_at, '
+          '  provider_event_id, '
+          '  provider_message_id '
+          'from public.email_event '
+          'where $where '
+          'order by received_at asc '
+          'limit @limit',
+          parameters: params,
+        );
+        return rows
+            .map<EmailEventSummary>(
+              (row) => EmailEventSummary(
+                eventId: row['event_id'] as String,
+                eventKind: row['event_kind'] as String,
+                occurredAt: _readUtcTimestamp(row['occurred_at']),
+                receivedAt: _readUtcTimestamp(row['received_at']),
+                providerEventId: row['provider_event_id'] as String?,
+                providerMessageId: row['provider_message_id'] as String?,
+              ),
+            )
+            .toList(growable: false);
+      },
+      reason: kFindByMessageIdReason,
+    );
+  }
+}
+
+/// Normalize a Postgres timestamp column to UTC `DateTime`. The
+/// `package:postgres` binding may return either a `DateTime` or a
+/// `String` depending on column type + codec; the helper accepts both
+/// shapes so a future codec swap does not silently break the probe.
+DateTime _readUtcTimestamp(Object? raw) {
+  if (raw is DateTime) return raw.toUtc();
+  if (raw is String) return DateTime.parse(raw).toUtc();
+  throw StateError(
+    'email_event timestamp column returned unexpected type: '
+    '${raw.runtimeType}',
+  );
 }

@@ -121,6 +121,7 @@ import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
 import 'mobile_push_notifications.dart';
+import 'email_soak_probe_routes.dart';
 import 'sendgrid_events_webhook.dart';
 import 'vendor_admin_status_catalog.dart' as vendor_status;
 import 'vendor_capability_index.dart';
@@ -251,6 +252,7 @@ class ProxyProductionBindings {
     required this.auditLogHierarchyGateway,
     required this.operatorWebAuditLogHierarchyGateway,
     required this.sendGridEventsWebhookRouter,
+    required this.emailSoakProbeRouter,
     required this.passwordResetEmailShortCounter,
     required this.passwordResetIpCounter,
     required this.permissionVersionChecker,
@@ -575,6 +577,15 @@ class ProxyProductionBindings {
   /// disclosed in the C-1a worker's PR (and not addressed in this
   /// slice per ledger row 82 worker disclosure).
   final SendGridEventsWebhookRouter sendGridEventsWebhookRouter;
+
+  /// Wave 2 Q-2a — email soak harness probe route. Mounted as a
+  /// pre-check in `main.dart`. The router is env-gated-inert: when
+  /// `EMAIL_SOAK_PROBE_TOKEN` is unset (the production posture), the
+  /// route returns 503 `email_soak_probe_disabled` and never reaches
+  /// Postgres. When wired in a preview / staging env, it surfaces
+  /// `email_event` rows by `provider_message_id` so the harness can
+  /// poll for `delivered` events end-to-end.
+  final EmailSoakProbeRouter emailSoakProbeRouter;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
   /// password-reset / magic-link request endpoint. Keyed by
@@ -1048,9 +1059,23 @@ ProxyProductionBindings buildProxyProductionBindings(
   // and retries while operators configure the secret. Signature
   // verifier is the pointycastle-backed ECDSA P-256 path; the
   // observer wires structured logging for parse + signature failures.
+  // Lane C C-1 — webhook receiver + Wave 2 Q-2a probe route share one
+  // [EmailEventRepository] instance. The repository is stateless from
+  // the proxy's perspective (Postgres-backed); a shared instance keeps
+  // bookkeeping minimal.
+  final emailEventRepository = EmailEventRepository(adminWrapper);
   final sendGridEventsWebhookRouter = SendGridEventsWebhookRouter(
-    repository: EmailEventRepository(adminWrapper),
+    repository: emailEventRepository,
     observer: const LoggingSendGridEventsWebhookObserver(),
+  );
+  // Wave 2 Q-2a — email soak probe route. Env-gated-inert by default:
+  // production deploys leave `EMAIL_SOAK_PROBE_TOKEN` UNSET, so the
+  // route returns 503 `email_soak_probe_disabled` on every call and
+  // never reaches Postgres. Preview / staging deploys wire a long
+  // random secret via the secret manager binding; the harness
+  // forwards it as `Authorization: Bearer …`.
+  final emailSoakProbeRouter = EmailSoakProbeRouter(
+    repository: emailEventRepository,
   );
   // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
   // Wired through tenant-pool repository so RLS + per-operator
@@ -1518,6 +1543,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     // short-circuits on a matched request the same way it does for
     // the email-test + Phase 8.0 admin routes.
     sendGridEventsWebhookRouter: sendGridEventsWebhookRouter,
+    // Wave 2 Q-2a — email soak harness probe (test-time observation
+    // only). Mounted as a pre-check in `main.dart`. The router is
+    // env-gated-inert: `EMAIL_SOAK_PROBE_TOKEN` unset → 503.
+    emailSoakProbeRouter: emailSoakProbeRouter,
     // Slice A11.1 — production session-record gauge. Single shared
     // instance per proxy process; the route handler increments it on
     // every 2xx from POST /v1/auth/session/login, the deep-health
