@@ -270,7 +270,13 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final response = await _patch(
       '$usersPrefix${Uri.encodeComponent(command.targetUserId)}',
       <String, Object?>{
-        'display_name': command.displayName,
+        // W-1 — Members edit-user write path. Both `display_name` and
+        // `email` are optional on the wire; the proxy validates at
+        // least one is present + the email shape before calling the
+        // gateway. Older callers that still only send `display_name`
+        // continue to work unchanged.
+        if (command.displayName != null) 'display_name': command.displayName,
+        if (command.email != null) 'email': command.email,
         'reason': command.reason,
       },
     );

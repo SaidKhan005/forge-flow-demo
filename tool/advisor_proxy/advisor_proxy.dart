@@ -103,6 +103,7 @@ import 'realtime_route.dart'
 // reaching into `tool/pressure/` directly.
 import 'session_record_predicate.dart';
 import 'star_target_routes.dart';
+import 'team_users_edit_member_validation.dart' show validateEditMemberRouteBody;
 import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
@@ -11573,26 +11574,28 @@ Future<void> routeRequest(
             if (request.method == 'PATCH' &&
                 authOperationPath.startsWith(adminAuthUsersPrefix)) {
               if (!await requirePermission('team.users.invite')) return;
-              final targetUserId = _pathSuffix(
-                authOperationPath,
-                adminAuthUsersPrefix,
+              // W-1 — Members edit-user write path. Pre-flight + body shaping live in `team_users_edit_member_validation.dart`.
+              final inputs = validateEditMemberRouteBody(
+                targetUserId:
+                    _pathSuffix(authOperationPath, adminAuthUsersPrefix),
+                nonBlankString: _nonBlankString,
+                rawDisplayName: body['display_name'],
+                rawEmail: body['email'],
+                rawReason: body['reason'],
+                rawAdminReason: body['admin_reason'],
               );
-              final displayName = _nonBlankString(body['display_name']);
-              final reason =
-                  _nonBlankString(body['admin_reason']) ??
-                  _nonBlankString(body['reason']);
-              if (targetUserId == null ||
-                  displayName == null ||
-                  reason == null) {
-                _writeJson(response, 400, <String, Object?>{
-                  'error': 'missing_user_profile_fields',
-                  'message':
-                      'user id, display_name, and admin_reason are required',
-                });
+              if (inputs.rejection != null) {
+                _writeJson(response, inputs.rejection!.statusCode,
+                    <String, Object?>{
+                      'error': inputs.rejection!.error,
+                      'message': inputs.rejection!.message,
+                    });
                 return;
               }
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
+              final targetUserId =
+                  _pathSuffix(authOperationPath, adminAuthUsersPrefix)!;
               final cached = await authOpsCache.runOrReplay(
                 route: '$adminAuthUsersPrefix$targetUserId',
                 key: idempotencyKey,
@@ -11603,17 +11606,14 @@ Future<void> routeRequest(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       targetUserId: targetUserId,
-                      displayName: displayName,
-                      reason: reason,
+                      displayName: inputs.displayName,
+                      email: inputs.email,
+                      reason: inputs.reason!,
                     ),
                   );
-                  return CachedProxyResponse(
-                    statusCode: 200,
-                    body: <String, Object?>{
-                      'ok': true,
-                      'user': _teamUserToJson(patched.user),
-                    },
-                  );
+                  return CachedProxyResponse(statusCode: 200, body:
+                      <String, Object?>{'ok': true,
+                        'user': _teamUserToJson(patched.user)});
                 },
               );
               _writeJson(response, cached.statusCode, cached.body);

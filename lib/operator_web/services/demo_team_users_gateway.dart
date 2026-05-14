@@ -173,6 +173,62 @@ class DemoWebTeamUsersGateway implements WebTeamUsersGateway {
     return result;
   }
 
+  @override
+  Future<TeamUserProfilePatched> editMember(
+    TeamUserProfilePatchCommand command, {
+    required String idempotencyKey,
+  }) async {
+    // Wave 2 W-1 — Members edit-user write path. Demo gateway updates
+    // the in-memory `_users` map so the walkthrough can demonstrate
+    // the change end-to-end without a backend. Mirrors the live
+    // proxy's idempotency replay so re-submitting the same key
+    // returns the original patched user.
+    final cached = _idempotency[idempotencyKey];
+    if (cached is _CachedProfilePatched) return cached.patched;
+    final existing = _users[command.targetUserId];
+    if (existing == null) {
+      throw const WebTeamUsersError(
+        code: 'user_not_found',
+        message: 'team user was not found for this operator',
+        statusCode: 404,
+      );
+    }
+    final nextDisplayName = command.displayName?.trim();
+    final nextEmail = command.email?.trim();
+    if ((nextDisplayName == null || nextDisplayName.isEmpty) &&
+        (nextEmail == null || nextEmail.isEmpty)) {
+      throw const WebTeamUsersError(
+        code: 'no_profile_fields',
+        message: 'at least one of display_name or email is required',
+        statusCode: 400,
+      );
+    }
+    final updated = TeamUserListEntry(
+      userId: existing.userId,
+      email: (nextEmail != null && nextEmail.isNotEmpty)
+          ? nextEmail
+          : existing.email,
+      displayName: (nextDisplayName != null && nextDisplayName.isNotEmpty)
+          ? nextDisplayName
+          : existing.displayName,
+      roleId: existing.roleId,
+      roleLabel: existing.roleLabel,
+      status: existing.status,
+      locationId: existing.locationId,
+      locationLabel: existing.locationLabel,
+      mfaEnrolled: existing.mfaEnrolled,
+      mfaRemovalPending: existing.mfaRemovalPending,
+      mfaRemovalRequestId: existing.mfaRemovalRequestId,
+      userRoleId: existing.userRoleId,
+      lastActiveAt: existing.lastActiveAt,
+      grants: existing.grants,
+    );
+    _users[command.targetUserId] = updated;
+    final result = TeamUserProfilePatched(user: updated);
+    _idempotency[idempotencyKey] = _CachedProfilePatched(result);
+    return result;
+  }
+
   Future<TeamUserStatusUpdated> _updateStatus(
     TeamUserStatusCommand command,
     String nextStatus,
@@ -249,4 +305,9 @@ class _CachedPasswordReset extends _CachedMutation {
 class _CachedMfaReset extends _CachedMutation {
   const _CachedMfaReset(this.queued);
   final TeamMfaResetQueued queued;
+}
+
+class _CachedProfilePatched extends _CachedMutation {
+  const _CachedProfilePatched(this.patched);
+  final TeamUserProfilePatched patched;
 }

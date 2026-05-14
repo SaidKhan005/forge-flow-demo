@@ -323,6 +323,13 @@ class _E2EFakeFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async {}
 
   @override
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) async {}
+
+  @override
   Future<void> updatePassword({
     required String uid,
     required String password,

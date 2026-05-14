@@ -356,6 +356,24 @@ abstract class MembersAdminGateway {
     required String adminReason,
   });
 
+  /// Wave 2 W-1 — Members edit-user write path. PATCHes the member's
+  /// `email` and/or `display_name` against the proxy
+  /// `/v1/admin/auth/users/{user_id}` route. At least one of [email]
+  /// or [displayName] must be non-null; the proxy rejects the
+  /// all-null shape with 400. The proxy fans out to Firebase
+  /// Identity Platform + Postgres mirror + audit row with
+  /// `actor_kind = 'forge_admin'`.
+  Future<MemberAdminRow> updateMember({
+    required String operatorId,
+    required String userId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String? email,
+    String? displayName,
+  });
+
   /// Admin-only. Restores a soft-deleted member back to `active`.
   /// Operator self-service surface (`11W.1`) does NOT expose this —
   /// the parity contract pins the asymmetry.
@@ -676,6 +694,45 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       jsonBody: <String, Object?>{
         'operator_id': operatorId,
         'display_name': trimmedDisplayName,
+        'admin_reason': adminReason,
+      },
+    );
+    return _memberRowFromJson(_asMap(body['user']));
+  }
+
+  @override
+  Future<MemberAdminRow> updateMember({
+    required String operatorId,
+    required String userId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String? email,
+    String? displayName,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'updateMember');
+    _requireAdminReason(adminReason, 'updateMember');
+    final trimmedEmail = email?.trim();
+    final trimmedDisplay = displayName?.trim();
+    if ((trimmedEmail == null || trimmedEmail.isEmpty) &&
+        (trimmedDisplay == null || trimmedDisplay.isEmpty)) {
+      throw MembersAdminGatewayError(
+        statusCode: 400,
+        errorCode: 'no_profile_fields',
+        message: 'at least one of email or display_name is required',
+      );
+    }
+    final body = await _send(
+      method: 'PATCH',
+      path: '$usersPath/${Uri.encodeComponent(userId)}',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        if (trimmedDisplay != null && trimmedDisplay.isNotEmpty)
+          'display_name': trimmedDisplay,
+        if (trimmedEmail != null && trimmedEmail.isNotEmpty)
+          'email': trimmedEmail,
         'admin_reason': adminReason,
       },
     );

@@ -1172,8 +1172,13 @@ class _IdempotencyRecordingAuthOperationsGateway
     return TeamUserProfilePatched(
       user: TeamUserListEntry(
         userId: command.targetUserId,
-        email: 'target@example.test',
-        displayName: command.displayName,
+        // W-1 — Members edit-user write path. Both `displayName` and
+        // `email` are optional on the command; the recording stub
+        // surfaces whichever value was supplied, falling back to the
+        // existing fixture so route grant test assertions keep
+        // working.
+        email: command.email ?? 'target@example.test',
+        displayName: command.displayName ?? 'Target User',
         roleId: _roleId,
         roleLabel: 'Staff',
         status: 'active',

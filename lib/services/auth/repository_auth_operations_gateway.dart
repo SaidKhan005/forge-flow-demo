@@ -97,8 +97,25 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   Future<TeamUserProfilePatched> patchUserProfile(
     TeamUserProfilePatchCommand command,
   ) async {
-    final displayName = _requiredTrimmed(command.displayName, 'displayName');
     final reason = _requiredTrimmed(command.reason, 'reason');
+    // W-1 — Members edit-user write path. Both fields are optional but
+    // at least one must be present. The route validator rejects the
+    // all-null shape with 400 before getting here, but we double-check
+    // server-side so a malformed direct gateway call is rejected too.
+    final nextDisplayName = command.displayName == null
+        ? null
+        : _requiredTrimmed(command.displayName!, 'displayName');
+    final nextEmail = command.email == null
+        ? null
+        : _requiredTrimmed(command.email!, 'email');
+    if (nextDisplayName == null && nextEmail == null) {
+      throw const AuthOperationRejected(
+        code: 'no_profile_fields',
+        message:
+            'edit member requires at least one of email or display_name',
+        statusCode: 400,
+      );
+    }
     final before = await listUsers(
       TeamUserListCommand(
         actorUserId: command.actorUserId,
@@ -107,12 +124,76 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       ),
     );
     final beforeUser = _teamUserById(before.users, command.targetUserId);
-    final affected = await usersRepository.updateDisplayName(
+    if (beforeUser == null) {
+      throw const AuthOperationRejected(
+        code: 'user_not_found',
+        message: 'team user was not found for this operator',
+        statusCode: 404,
+      );
+    }
+    // Look up the Firebase UID + canonical mirror once so the audit
+    // payload captures the "before" email without a follow-up read.
+    final emailRow = await usersRepository.readEmail(
       operatorId: command.operatorId,
       userId: command.targetUserId,
-      displayName: displayName,
       adminReason: reason,
     );
+    var displayNameChanged = false;
+    var emailChanged = false;
+    if (nextDisplayName != null && nextDisplayName != beforeUser.displayName) {
+      final affected = await usersRepository.updateDisplayName(
+        operatorId: command.operatorId,
+        userId: command.targetUserId,
+        displayName: nextDisplayName,
+        adminReason: reason,
+      );
+      displayNameChanged = affected > 0;
+    }
+    if (nextEmail != null &&
+        emailRow != null &&
+        nextEmail.toLowerCase() != emailRow.email.toLowerCase()) {
+      final affected = await usersRepository.updateEmail(
+        operatorId: command.operatorId,
+        userId: command.targetUserId,
+        email: nextEmail,
+        adminReason: reason,
+      );
+      emailChanged = affected > 0;
+    }
+    // Firebase Identity Platform side. We pass only the fields that
+    // actually changed so a partial patch does not re-stamp the
+    // unchanged value (which would clear `emailVerified` for a no-op
+    // email patch, for example).
+    if ((displayNameChanged || emailChanged) &&
+        emailRow != null &&
+        (emailRow.firebaseUid ?? '').isNotEmpty) {
+      try {
+        await firebaseAdmin.updateUser(
+          uid: emailRow.firebaseUid!,
+          email: emailChanged ? nextEmail : null,
+          displayName: displayNameChanged ? nextDisplayName : null,
+        );
+      } on FirebaseAdminAuthError catch (error) {
+        throw AuthOperationRejected(
+          code: 'firebase_update_failed',
+          message: 'Firebase Identity Platform update failed (${error.code})',
+          statusCode: error.statusCode ?? 502,
+        );
+      }
+      if (emailChanged) {
+        // Email change rotates the user's identity; force every active
+        // session to re-authenticate so the next request signs in with
+        // the updated address. The custom-claims refresh below also
+        // bumps `roles_version` so the proxy snapshot loader picks up
+        // a fresh permission snapshot on the next call.
+        try {
+          await firebaseAdmin.revokeRefreshTokens(uid: emailRow.firebaseUid!);
+        } on FirebaseAdminAuthError {
+          // Best-effort — the audit row still captures the email
+          // change. Re-auth will happen on the next ID-token refresh.
+        }
+      }
+    }
     final after = await listUsers(
       TeamUserListCommand(
         actorUserId: command.actorUserId,
@@ -128,7 +209,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         statusCode: 404,
       );
     }
-    if (affected > 0 && beforeUser?.displayName != displayName) {
+    if (displayNameChanged || emailChanged) {
       await _audit(
         operatorId: command.operatorId,
         locationId: command.locationId,
@@ -136,10 +217,18 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         targetUserId: command.targetUserId,
         eventType: 'auth.user_profile_updated',
         payload: <String, Object?>{
-          'field': 'display_name',
-          if (beforeUser != null)
+          'fields': <String>[
+            if (displayNameChanged) 'display_name',
+            if (emailChanged) 'email',
+          ],
+          if (displayNameChanged) ...<String, Object?>{
             'previous_display_name': beforeUser.displayName,
-          'display_name': displayName,
+            'display_name': nextDisplayName,
+          },
+          if (emailChanged && emailRow != null) ...<String, Object?>{
+            'previous_email': emailRow.email,
+            'email': nextEmail,
+          },
           'reason': reason,
         },
       );

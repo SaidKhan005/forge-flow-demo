@@ -702,9 +702,107 @@ void main() {
             final command = gateway.profilePatches.single;
             expect(command.targetUserId, equals('target-user'));
             expect(command.displayName, equals('Target Person'));
+            expect(command.email, isNull);
             expect(command.reason, equals('operator requested correction'));
             final user = response.json['user'] as Map<String, Object?>;
             expect(user['display_name'], equals('Target Person'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'W-1 — PATCH admin user accepts combined email + display_name patch',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'display_name': 'Pat Lee',
+                'email': 'pat.lee@example.test',
+                'admin_reason': 'operator typo fix',
+              },
+              idempotencyKey: 'idem-user-edit-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.users.invite']));
+            final command = gateway.profilePatches.single;
+            expect(command.targetUserId, equals('target-user'));
+            expect(command.displayName, equals('Pat Lee'));
+            expect(command.email, equals('pat.lee@example.test'));
+            expect(command.reason, equals('operator typo fix'));
+            final user = response.json['user'] as Map<String, Object?>;
+            expect(user['display_name'], equals('Pat Lee'));
+            expect(user['email'], equals('pat.lee@example.test'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'W-1 — PATCH admin user rejects all-null body shape with 400',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'admin_reason': 'operator requested correction',
+              },
+              idempotencyKey: 'idem-user-edit-no-fields',
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_user_profile_fields'));
+            expect(gateway.profilePatches, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'W-1 — PATCH admin user rejects malformed email with 400',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.patchJson(
+              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+              const <String, Object?>{
+                'email': 'not-an-email',
+                'admin_reason': 'operator typo fix',
+              },
+              idempotencyKey: 'idem-user-edit-bad-email',
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('invalid_email'));
+            expect(gateway.profilePatches, isEmpty);
           } finally {
             await harness.close();
           }
@@ -2775,8 +2873,12 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
     return TeamUserProfilePatched(
       user: TeamUserListEntry(
         userId: command.targetUserId,
-        email: 'target@example.test',
-        displayName: command.displayName,
+        // W-1 — Members edit-user write path. Both `displayName` and
+        // `email` are optional on the command; the recording stub
+        // surfaces whichever value was supplied, falling back to the
+        // existing fixture so the route test assertions keep working.
+        email: command.email ?? 'target@example.test',
+        displayName: command.displayName ?? 'Target User',
         roleId: _roleId,
         roleLabel: 'Kitchen Lead',
         status: 'active',
