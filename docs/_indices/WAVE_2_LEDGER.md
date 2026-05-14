@@ -114,6 +114,7 @@ mega-PR or split into per-screen PRs.
 | # | Slice | Owner | Gate | State | PR | Dep | Source |
 |---|---|---|---|---|---|---|---|
 | R-1L | Roles hierarchy-scoped infrastructure — schema migration + RLS posture + role inheritance resolver (per locked decision: hierarchy-scoped) | Main | operator | assigned | – | – | debug.md:28, audit RP-4 / RP-6 |
+| R-1L-FU | Lane R | Main | operator | parked | – | R-1L | PR #699 worker disclosed: R-1L shipped `permission_keys.product_label` / `category_label` / `scope_kind` as NULLABLE with inline backfill (expand-contract escape hatch per slice prompt). After one clean apply cycle on staging, flip to NOT NULL via a follow-up migration. Defense-in-depth Dart-side NOT-NULL-at-source lint already in `tool/permission_key_lint.dart` (METADATA pass). |
 | R-2L | Default Role Catalog v2 redesign — operator suggests seeded roles based on audit; redesign default permission set; admin selects + adjusts per-role across F&F | Main | operator | assigned | – | R-1L | debug.md:30-32 (RP-3); 161-167 (OW-7) |
 
 (Lane label `R` for Roles overlaps with the refactor item names R-1 / R-2 in NEXT_WAVE_PLAN. To disambiguate, Wave 2 Lane R slices are suffixed `R-1L` / `R-2L` — the `L` is for "role lane".)
@@ -134,6 +135,8 @@ mega-PR or split into per-screen PRs.
 | B-W2 | W-2 fix: tagged dollar-quote in `db/migrations/202605081100_partman_maintenance_hourly_cron.sql` (`do $partman$ ... $partman$;`) | Main | operator | merged | #655 | – | POST_HARDENING_FOLLOWUPS "Wave bugs surfaced 2026-05-13" W-2 |
 | B-1B | BUG-1 triage: proxy returned incomplete session record after support-check sign-in — reproduce + fix + regression test | Main | operator | assigned | – | – | debug.md:14 (BUG-1) |
 | B-2B | BUG-2 triage: proxy crash after some time — reproduce + root cause + fix (likely needs soak-harness assist from Q-1) | Main | operator | merged | #683 | Q-1 | debug.md:15 (BUG-2) |
+| R-1L-FU-pre-fail | Lane B | Main | operator | parked | – | – | PR #699 worker disclosed: `test/role_admin_live_binding_test.dart` 'listVisibleRoles' expects SQL without the `r.` table alias prefix; reproduced on master `14b72714` WITHOUT R-1L changes, so it's a pre-existing master failure not introduced by R-1L. NOT in `docs/KNOWN_FAILING_TESTS.md` yet. Either: (a) add to KNOWN_FAILING_TESTS with a note pointing at the SQL alias drift, or (b) sweep slice fixes the test expectation. Out of scope for R-1L. |
+| B-FU-proxy-analyze-infos | Lane B | Main | operator | parked | – | – | R-1L rebase worker disclosed: two pre-existing `dart analyze --fatal-infos` infos surfaced during R-1L rebase verification, both predate R-1L on master: (1) `tool/advisor_proxy/main.dart:64` duplicate import of `permission_effect.dart` introduced by commit `f651f05c` (Lane B B8.b, 2026-05-13); (2) `tool/advisor_proxy/integration_oauth_routes.dart:84` unnecessary `log.dart` import introduced by commit `363160e6` (2026-05-09). Janitorial only — delete the duplicate + the unused import. |
 
 ### Lane Q — Quality + longer-running (Main)
 
@@ -174,6 +177,7 @@ mega-PR or split into per-screen PRs.
 
 ## Changelog
 
+- 2026-05-14: R-1L merged (PR #699, commit `c92ba2e8`). Added 3 follow-up rows for disclosed gaps: R-1L-FU (NOT NULL flip on `permission_keys.product_label` / `category_label` / `scope_kind` after one clean staging apply cycle), R-1L-FU-pre-fail (pre-existing `role_admin_live_binding_test.dart` 'listVisibleRoles' SQL alias drift on master, not introduced by R-1L), B-FU-proxy-analyze-infos (2 pre-existing `dart analyze --fatal-infos` infos in `tool/advisor_proxy/` predating R-1L). None V1-blocking, all parked for after demo-validate.
 - 2026-05-14: Orchestrator audited all Claude #2 merged PRs (657, 663, 664, 670, 673, 678, 685, 687, 693, 695). Added 5 follow-up rows for legitimate disclosed gaps: U-FU-hp11-account, U-FU-mobile-deeplink, U-FU-tier-email, W-5-mobile-FU-2, U-FU-summary-strip-cleanup. None V1-blocking.
 - 2026-05-14: Wave 2 batch 2 flips — Main lane 10 slices (S-1, S-2, H-3, W-6, B-2B, W-1, W-1-FU, W-4, W-5, W-2) and Claude2 lane bundle merged. Added 5 follow-up rows (W-1-FU now merged; W-5-mobile-FU handed to Claude #2; W-6-backend, MO-2-FU, Q-1-FU parked). 21 of 22 Main slices merged. W-3 in flight.
 - **2026-05-13** Ledger created. All 33 slices `assigned`. Lane split locked per operator decision.
