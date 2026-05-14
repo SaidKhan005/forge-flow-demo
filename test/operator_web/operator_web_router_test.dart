@@ -204,10 +204,17 @@ void main() {
           find.byKey(const Key('operator_web_nav_item_security')),
           findsNothing,
         );
+        // Wave 2 OW-4 — the default management scope is the operator's
+        // primary location, so the Locations CRUD nav row is hidden on
+        // first paint. The next test in this group flips the picker to
+        // "All locations" and asserts the row reappears.
+        expect(
+          find.byKey(const Key('operator_web_nav_item_locations')),
+          findsNothing,
+        );
         final navOrder = [
           'account',
           'business_setup',
-          'locations',
           'my_account',
           'members',
           'roles',
@@ -235,6 +242,140 @@ void main() {
         );
         expect(
           find.byKey(const Key('operator_web_vendor_connections_screen')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Wave 2 OW-4 — Locations nav row is hidden at location scope and '
+      'reappears at business scope',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpAndSettle();
+
+        // Default scope is the operator's primary location: the
+        // Locations CRUD row is hidden so the side nav doesn't offer
+        // an admin-of-the-tree affordance from inside a single leaf.
+        expect(
+          find.byKey(const Key('operator_web_nav_item_locations')),
+          findsNothing,
+        );
+
+        // Flip the management scope to "All locations" (business scope).
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('All locations').last);
+        await tester.pumpAndSettle();
+
+        // The Locations CRUD row is now mounted under the Business group.
+        expect(
+          find.byKey(const Key('operator_web_nav_item_locations')),
+          findsOneWidget,
+        );
+
+        // Flip back to a specific location; the row hides again.
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Downtown').last);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_nav_item_locations')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Wave 2 OW-4 — selecting Locations then narrowing to location scope '
+      'snaps the body back to the default nav',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpAndSettle();
+
+        // Widen scope to business so the Locations row is mounted.
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('All locations').last);
+        await tester.pumpAndSettle();
+
+        // Tap into the Locations CRUD body.
+        await tester.tap(
+          find.byKey(const Key('operator_web_nav_item_locations')),
+        );
+        await tester.pumpAndSettle();
+
+        // Now narrow back to a location. The nav row vanishes and the
+        // body must snap to the default (Account) so the operator is
+        // never stranded on an orphaned route.
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Downtown').last);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_nav_item_locations')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_account_screen')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Wave 2 OW-4 — deep-linking to /locations at location scope renders '
+      'the Switch-to-business fail-soft surface',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavLocations,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // Default scope is location, so the deep link lands on the
+        // fail-soft surface rather than the CRUD tree.
+        expect(
+          find.byKey(const Key('operator_web_locations_requires_business')),
+          findsOneWidget,
+        );
+
+        // Widen scope to business: the CRUD body mounts.
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('All locations').last);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_locations_requires_business')),
           findsNothing,
         );
       },

@@ -493,7 +493,28 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       // Changing scope while editing timing would make the write target
       // ambiguous, so return to the read view first.
       _editingBusinessTiming = false;
+      // Wave 2 OW-4 — the Locations nav row only renders at business /
+      // org-unit scope. If the operator drops into location scope while
+      // standing on the Locations route, the body would mount but the
+      // nav row would vanish, leaving an orphaned selection. Snap back
+      // to the default nav so selection and visibility stay in sync.
+      if (_selectedNavId == kOperatorWebNavLocations) {
+        final picked = _scopeByKey(key);
+        if (picked != null &&
+            picked.kind == OperatorWebManagementScopeKind.location) {
+          _selectedNavId = kOperatorWebDefaultNavId;
+          _rolesSubRoute = null;
+          _rolesEditTarget = null;
+        }
+      }
     });
+  }
+
+  OperatorWebManagementScopeOption? _scopeByKey(String key) {
+    for (final option in _managementScopeOptions) {
+      if (option.key == key) return option;
+    }
+    return null;
   }
 
   void _syncManagementScopesForState(OperatorWebAuthState state) {
@@ -927,74 +948,88 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         managementScope.kind == OperatorWebManagementScopeKind.location
         ? managementScope
         : null;
-    final navItems = const <OperatorWebNavItem>[
-      OperatorWebNavItem(
+    // Wave 2 OW-4 — the Locations nav row mounts the per-operator
+    // hierarchy CRUD (`HierarchyScreen`: add / rename / move org
+    // units, attach locations as leaves). That surface only makes
+    // sense at business or org-unit scope, where the operator can
+    // see and edit the whole tree. At location scope the operator is
+    // already inside a single leaf — there is no child to manage and
+    // no sibling tree to render, so the row is hidden to keep the
+    // side nav scope-honest per HP #11 (scope-conditional surfaces).
+    // The `kOperatorWebNavLocations` constant + deep-link route stay
+    // resolvable for handoff/back-compat; `_selectNav` snaps an
+    // already-selected Locations route back to the default nav when
+    // the operator drops into location scope.
+    final isLocationScope = locationScope != null;
+    final navItems = <OperatorWebNavItem>[
+      const OperatorWebNavItem(
         id: kOperatorWebNavSchedule,
         title: 'Schedule',
         icon: Icons.calendar_today_outlined,
         group: 'Operations',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavAccount,
         title: 'Business account',
         icon: Icons.business_outlined,
         group: 'Business',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavBusinessSetup,
         title: 'Business setup',
         icon: Icons.storefront_outlined,
         group: 'Business',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavBenchmarks,
         title: 'Benchmarks',
         icon: Icons.speed_outlined,
         group: 'Business',
       ),
-      OperatorWebNavItem(
-        id: kOperatorWebNavLocations,
-        title: 'Locations',
-        icon: Icons.account_tree_outlined,
-        group: 'Business',
-      ),
-      OperatorWebNavItem(
+      if (!isLocationScope)
+        const OperatorWebNavItem(
+          id: kOperatorWebNavLocations,
+          title: 'Locations',
+          icon: Icons.account_tree_outlined,
+          group: 'Business',
+        ),
+      const OperatorWebNavItem(
         id: kOperatorWebNavMyAccount,
         title: 'My account',
         icon: Icons.person_outline,
         group: 'People',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavMembers,
         title: 'Team members',
         icon: Icons.group_outlined,
         group: 'People',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavRoles,
         title: 'Roles & permissions',
         icon: Icons.admin_panel_settings_outlined,
         group: 'Access',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavSessions,
         title: 'Active sessions',
         icon: Icons.devices_outlined,
         group: 'Access',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavAuditLog,
         title: 'Audit log',
         icon: Icons.fact_check_outlined,
         group: 'Access',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor integrations',
         icon: Icons.cable_outlined,
         group: 'Data & integrations',
       ),
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavDataAccuracy,
         title: 'Data accuracy',
         icon: Icons.tune_outlined,
@@ -1005,7 +1040,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       // accuracy. Deep links and the `kOperatorWebNavWageAuthority`
       // constant still resolve (via `_navIdFromRaw`) but redirect to
       // the Data accuracy page.
-      OperatorWebNavItem(
+      const OperatorWebNavItem(
         id: kOperatorWebNavNotifications,
         title: 'Notifications',
         icon: Icons.notifications_outlined,
@@ -1073,10 +1108,27 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = _buildRolesBody(session);
         break;
       case kOperatorWebNavLocations:
-        body = HierarchyScreen(
-          session: session,
-          gateway: _teamHierarchyGateway,
-        );
+        // Wave 2 OW-4 — the Locations nav row is hidden at location
+        // scope; the route is only reachable via deep link from a
+        // location-scoped session. Render a fail-soft surface that
+        // points the operator at the scope picker so the route never
+        // ends up rendering a CRUD-of-locations body inside a single
+        // leaf scope.
+        body = isLocationScope
+            ? _RequiresBusinessScopeSurface(
+                key: const Key('operator_web_locations_requires_business'),
+                icon: Icons.account_tree_outlined,
+                title: 'Switch to business scope',
+                body:
+                    'The Locations page edits your business-wide '
+                    'hierarchy. Use Managing to pick All locations or a '
+                    'region to add, rename, or move locations.',
+                selectedScopeLabel: managementScope.label,
+              )
+            : HierarchyScreen(
+                session: session,
+                gateway: _teamHierarchyGateway,
+              );
         break;
       case kOperatorWebNavSessions:
         body = SessionsScreen(
@@ -1504,6 +1556,91 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
 
 class _RequiresLocationScopeSurface extends StatelessWidget {
   const _RequiresLocationScopeSurface({
+    super.key,
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.selectedScopeLabel,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final String selectedScopeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(icon, size: 22, color: AppColors.sunsetDark),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                body,
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                decoration: BoxDecoration(
+                  color: AppColors.cardGlow,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.account_tree_outlined,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Currently managing: $selectedScopeLabel',
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Wave 2 OW-4 — fail-soft surface for routes that only render at
+/// business / org-unit scope. Mirrors [_RequiresLocationScopeSurface]
+/// but inverts the prompt: it tells the operator to widen the scope
+/// picker rather than narrow it. Currently used by the Locations
+/// route, which the side nav hides at location scope but which deep
+/// links can still resolve.
+class _RequiresBusinessScopeSurface extends StatelessWidget {
+  const _RequiresBusinessScopeSurface({
     super.key,
     required this.icon,
     required this.title,
