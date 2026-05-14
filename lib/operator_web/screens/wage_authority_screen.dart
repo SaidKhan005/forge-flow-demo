@@ -39,6 +39,9 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
 import '../widgets/hierarchy_scope_notice.dart';
 import '../../theme/app_theme.dart';
+import 'wage_authority/blended_wage_calculator.dart';
+import 'wage_authority/blended_wage_summary_card.dart';
+import 'wage_authority/wage_vendor_applicability_label.dart';
 
 /// Roles admitted to write wage rows. Mirrors `kOperatorWriteRoles` in
 /// `tool/advisor_proxy/operator_routes.dart` so the UI gate matches the
@@ -80,6 +83,7 @@ class WageAuthorityScreen extends StatefulWidget {
     required this.locationName,
     this.gateway,
     this.idempotencyKeyFactory,
+    this.connectedLaborVendorIds = const <String>{},
   });
 
   final OperatorWebSession session;
@@ -98,6 +102,12 @@ class WageAuthorityScreen extends StatefulWidget {
   /// Test-injectable idempotency-key generator. Production wires in a
   /// random-bytes generator; tests inject a deterministic counter.
   final String Function()? idempotencyKeyFactory;
+
+  /// Labor vendor ids the operator has connected at this location.
+  /// Drives the "Manual only — pick a vendor role…" copy on rows with
+  /// no `vendor_id`. Empty when no labor vendor is connected; the
+  /// row's label then reads "Manual only — no labor vendor connected".
+  final Set<String> connectedLaborVendorIds;
 
   @override
   State<WageAuthorityScreen> createState() => _WageAuthorityScreenState();
@@ -118,6 +128,19 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
   /// visible. The form is rendered alongside the bucket section so
   /// the operator can fill one bucket without losing scroll position.
   final Set<String> _addingForBuckets = <String>{};
+
+  /// In-flight per-row edits, keyed by `wage_role_row_id`. Updated
+  /// every time the operator types in the edit form so the blended-
+  /// wage summary card recomputes without waiting for a save round-
+  /// trip. Cleared when the form closes (save / cancel).
+  final Map<String, _DraftRowValues> _draftEdits =
+      <String, _DraftRowValues>{};
+
+  /// In-flight values for an open add-row form, keyed by `laborBucket`.
+  /// Updated by the same typing seam as [_draftEdits] so newly typed
+  /// rows roll into the blended-wage summary immediately.
+  final Map<String, _DraftRowValues> _draftAdds =
+      <String, _DraftRowValues>{};
 
   int _idemCounter = 0;
 
@@ -219,6 +242,8 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
         _rowsById[saved.wageRoleRowId] = saved;
         _editingIds.remove(existingRowId);
         _addingForBuckets.remove(laborBucket);
+        if (existingRowId != null) _draftEdits.remove(existingRowId);
+        _draftAdds.remove(laborBucket);
       });
       _showSnackBar('Saved just now', isError: false);
     } catch (_) {
@@ -280,6 +305,61 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
         keyName: 'wage_authority_delete_error_snackbar',
       );
     }
+  }
+
+  /// Build the input rows for [computeBlendedWageSummary]. Saved rows
+  /// are projected straight through; rows with an open edit form get
+  /// their saved values overridden by the in-flight draft; open add-
+  /// forms contribute the operator's typed-but-unsaved row.
+  ///
+  /// Only `isActive` saved rows participate — soft-deleted rows are
+  /// excluded the same way they are from [_rowsForBucket].
+  List<BlendedWageInputRow> _summaryInputs() {
+    final inputs = <BlendedWageInputRow>[];
+    for (final row in _rowsById.values) {
+      if (!row.isActive) continue;
+      final draft = _draftEdits[row.wageRoleRowId];
+      if (draft != null) {
+        inputs.add(BlendedWageInputRow(
+          laborBucket: row.laborBucket,
+          hourlyRate: draft.hourlyRate ?? row.hourlyRate,
+          weightedHours: draft.weightedHours ?? row.weightedHours,
+        ));
+      } else {
+        inputs.add(BlendedWageInputRow(
+          laborBucket: row.laborBucket,
+          hourlyRate: row.hourlyRate,
+          weightedHours: row.weightedHours,
+        ));
+      }
+    }
+    for (final entry in _draftAdds.entries) {
+      final hr = entry.value.hourlyRate;
+      final wh = entry.value.weightedHours;
+      if (hr == null || wh == null) continue;
+      inputs.add(BlendedWageInputRow(
+        laborBucket: entry.key,
+        hourlyRate: hr,
+        weightedHours: wh,
+      ));
+    }
+    return inputs;
+  }
+
+  /// Compute the set of vendor ids actually used by any wage row on
+  /// this screen. Falls back to the caller-supplied
+  /// `connectedLaborVendorIds` when no row carries a `vendor_id` yet.
+  /// Used by the per-row "Manual only - pick a vendor role..." copy
+  /// to remind the operator which connected labor vendor a row can
+  /// sync with.
+  Set<String> _effectiveLaborVendorIds() {
+    final fromRows = <String>{
+      for (final r in _rowsById.values)
+        if (r.isActive && r.vendorId != null && r.vendorId!.isNotEmpty)
+          r.vendorId!,
+    };
+    if (fromRows.isNotEmpty) return fromRows;
+    return widget.connectedLaborVendorIds;
   }
 
   void _showSnackBar(
@@ -365,6 +445,19 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
                   'a live operator account to edit wage rows.',
             ),
           ],
+          const SizedBox(height: 14),
+          // Live blended-wage preview. Wave 2 S-1 — computes Σ(hours ×
+          // rate) / Σ(hours) across saved rows plus any open in-flight
+          // draft, so the operator sees the mix update before they
+          // save. Anchored to debug.md:198-235 (OW-13a + OW-13b).
+          BlendedWageSummaryCard(
+            summary: computeBlendedWageSummary(
+              rows: _summaryInputs(),
+              bucketOrder: <String>[
+                for (final b in _kBuckets) b.wire,
+              ],
+            ),
+          ),
           const SizedBox(height: 18),
           for (final bucket in _kBuckets) ...<Widget>[
             _BucketSection(
@@ -373,20 +466,40 @@ class _WageAuthorityScreenState extends State<WageAuthorityScreen> {
               canWrite: _canWrite,
               isEditing: (id) => _editingIds.contains(id),
               isAdding: _addingForBuckets.contains(bucket.wire),
+              connectedLaborVendorIds: _effectiveLaborVendorIds(),
               onStartEdit: (id) {
                 setState(() {
                   _editingIds.add(id);
                   _addingForBuckets.remove(bucket.wire);
+                  _draftAdds.remove(bucket.wire);
                 });
               },
               onCancelEdit: (id) {
-                setState(() => _editingIds.remove(id));
+                setState(() {
+                  _editingIds.remove(id);
+                  _draftEdits.remove(id);
+                });
               },
               onStartAdd: () {
-                setState(() => _addingForBuckets.add(bucket.wire));
+                setState(() {
+                  _addingForBuckets.add(bucket.wire);
+                });
               },
               onCancelAdd: () {
-                setState(() => _addingForBuckets.remove(bucket.wire));
+                setState(() {
+                  _addingForBuckets.remove(bucket.wire);
+                  _draftAdds.remove(bucket.wire);
+                });
+              },
+              onEditDraftChanged: (id, draft) {
+                setState(() {
+                  _draftEdits[id] = draft;
+                });
+              },
+              onAddDraftChanged: (draft) {
+                setState(() {
+                  _draftAdds[bucket.wire] = draft;
+                });
               },
               onSaveEdit: (row, form) => _saveRow(
                 laborBucket: bucket.wire,
@@ -521,10 +634,13 @@ class _BucketSection extends StatelessWidget {
     required this.canWrite,
     required this.isEditing,
     required this.isAdding,
+    required this.connectedLaborVendorIds,
     required this.onStartEdit,
     required this.onCancelEdit,
     required this.onStartAdd,
     required this.onCancelAdd,
+    required this.onEditDraftChanged,
+    required this.onAddDraftChanged,
     required this.onSaveEdit,
     required this.onSaveAdd,
     required this.onDelete,
@@ -535,10 +651,13 @@ class _BucketSection extends StatelessWidget {
   final bool canWrite;
   final bool Function(String) isEditing;
   final bool isAdding;
+  final Set<String> connectedLaborVendorIds;
   final void Function(String) onStartEdit;
   final void Function(String) onCancelEdit;
   final VoidCallback onStartAdd;
   final VoidCallback onCancelAdd;
+  final void Function(String rowId, _DraftRowValues draft) onEditDraftChanged;
+  final void Function(_DraftRowValues draft) onAddDraftChanged;
   final Future<void> Function(WageRoleRowRecord, _WageRowFormResult) onSaveEdit;
   final Future<void> Function(_WageRowFormResult) onSaveAdd;
   final Future<void> Function(WageRoleRowRecord) onDelete;
@@ -592,7 +711,12 @@ class _BucketSection extends StatelessWidget {
               key: Key('wage_authority_empty_${bucket.wire}'),
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
-                "No roles yet for this group. Add one so Forge & Flow knows the typical hourly cost.",
+                canWrite
+                    ? "No wage rates set at this scope yet. Add rates and "
+                        "Forge & Flow will inherit them down to lower scopes."
+                    : "No roles yet for this group. An operator owner or "
+                        "admin can add one so Forge & Flow knows the typical "
+                        "hourly cost.",
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
             ),
@@ -603,10 +727,13 @@ class _BucketSection extends StatelessWidget {
                     initial: rows[i],
                     onCancel: () => onCancelEdit(rows[i].wageRoleRowId),
                     onSave: (form) => onSaveEdit(rows[i], form),
+                    onDraftChanged: (draft) =>
+                        onEditDraftChanged(rows[i].wageRoleRowId, draft),
                   )
                 : _WageRowDisplay(
                     row: rows[i],
                     canWrite: canWrite,
+                    connectedLaborVendorIds: connectedLaborVendorIds,
                     onEdit: () => onStartEdit(rows[i].wageRoleRowId),
                     onDelete: () => onDelete(rows[i]),
                   ),
@@ -627,6 +754,7 @@ class _BucketSection extends StatelessWidget {
               initial: null,
               onCancel: onCancelAdd,
               onSave: onSaveAdd,
+              onDraftChanged: onAddDraftChanged,
             ),
           ],
         ],
@@ -639,17 +767,29 @@ class _WageRowDisplay extends StatelessWidget {
   const _WageRowDisplay({
     required this.row,
     required this.canWrite,
+    required this.connectedLaborVendorIds,
     required this.onEdit,
     required this.onDelete,
   });
 
   final WageRoleRowRecord row;
   final bool canWrite;
+  final Set<String> connectedLaborVendorIds;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
+    // Wave 2 S-1 — vendor applicability label per debug.md:198-220.
+    // The plain-English label tells the operator which labor vendor
+    // will receive this rate on the next sync; falls back to "Manual
+    // only — no labor vendor connected" when nothing is wired.
+    final vendorLabel = buildWageVendorApplicabilityLabel(
+      vendorId: row.vendorId,
+      vendorRoleId: row.vendorRoleId,
+      jobCode: row.jobCode,
+      connectedLaborVendorIds: connectedLaborVendorIds,
+    );
     return Row(
       key: Key('wage_authority_row_display_${row.wageRoleRowId}'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -666,20 +806,25 @@ class _WageRowDisplay extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
+              // Operator-readable formula crumb (`@ $/hr × hours = $`),
+              // mirrors the debug.md example so the operator can sanity-
+              // check the math in-line.
               Text(
-                '\$${row.hourlyRate.toStringAsFixed(2)}/hr · '
-                '${row.weightedHours.toStringAsFixed(1)} weighted hours',
+                '@ \$${row.hourlyRate.toStringAsFixed(2)}/hr · '
+                '${row.weightedHours.toStringAsFixed(1)} weighted hrs/wk = '
+                '\$${(row.hourlyRate * row.weightedHours).toStringAsFixed(2)}',
                 style: AppTextStyles.body12(color: AppColors.textSecondary),
               ),
-              if (row.vendorId != null ||
-                  row.vendorRoleId != null ||
-                  row.jobCode != null) ...<Widget>[
-                const SizedBox(height: 2),
-                Text(
-                  _vendorMappingLabel(row),
-                  style: AppTextStyles.body11(color: AppColors.textMuted),
+              const SizedBox(height: 4),
+              Text(
+                vendorLabel.text,
+                key: Key(
+                  'wage_authority_row_vendor_label_${row.wageRoleRowId}',
                 ),
-              ],
+                style: AppTextStyles.body11(
+                  color: _toneColor(vendorLabel.tone),
+                ),
+              ),
             ],
           ),
         ),
@@ -702,15 +847,29 @@ class _WageRowDisplay extends StatelessWidget {
     );
   }
 
-  static String _vendorMappingLabel(WageRoleRowRecord row) {
-    final parts = <String>[];
-    if (row.vendorId != null) parts.add('Vendor: ${row.vendorId}');
-    if (row.vendorRoleId != null) {
-      parts.add('Vendor role: ${row.vendorRoleId}');
+  static Color _toneColor(WageVendorApplicabilityTone tone) {
+    switch (tone) {
+      case WageVendorApplicabilityTone.perPositionSync:
+        return AppColors.textSecondary;
+      case WageVendorApplicabilityTone.perEmployeeAdvisory:
+      case WageVendorApplicabilityTone.hoursOnlyAdvisory:
+        return AppColors.textMuted;
+      case WageVendorApplicabilityTone.manualOnly:
+        return AppColors.textMuted;
     }
-    if (row.jobCode != null) parts.add('Job code: ${row.jobCode}');
-    return parts.join(' · ');
   }
+}
+
+/// In-flight numeric values for one open form, used by the live
+/// blended-wage summary. `null` fields mean the operator has not yet
+/// entered a valid number (e.g. empty input, mid-keystroke `.`); the
+/// caller falls back to the saved row for an edit form, or skips the
+/// row entirely for an add form.
+class _DraftRowValues {
+  const _DraftRowValues({this.hourlyRate, this.weightedHours});
+
+  final double? hourlyRate;
+  final double? weightedHours;
 }
 
 class _WageRowFormResult {
@@ -739,6 +898,7 @@ class _WageRowForm extends StatefulWidget {
     required this.initial,
     required this.onCancel,
     required this.onSave,
+    this.onDraftChanged,
   });
 
   /// Existing row when this form is editing; null when adding a new
@@ -746,6 +906,12 @@ class _WageRowForm extends StatefulWidget {
   final WageRoleRowRecord? initial;
   final VoidCallback onCancel;
   final Future<void> Function(_WageRowFormResult) onSave;
+
+  /// Fires every keystroke on the `@/hr` and weighted-hours fields so
+  /// the parent's blended-wage summary card can recompute live. The
+  /// parent typically wires this to a `setState` that updates a
+  /// per-row draft map. The form does not depend on the result.
+  final void Function(_DraftRowValues draft)? onDraftChanged;
 
   @override
   State<_WageRowForm> createState() => _WageRowFormState();
@@ -778,10 +944,14 @@ class _WageRowFormState extends State<_WageRowForm> {
     _jobCode = TextEditingController(text: initial?.jobCode ?? '');
     _vendorId = TextEditingController(text: initial?.vendorId ?? '');
     _vendorRoleId = TextEditingController(text: initial?.vendorRoleId ?? '');
+    _hourlyRate.addListener(_emitDraft);
+    _weightedHours.addListener(_emitDraft);
   }
 
   @override
   void dispose() {
+    _hourlyRate.removeListener(_emitDraft);
+    _weightedHours.removeListener(_emitDraft);
     _roleName.dispose();
     _hourlyRate.dispose();
     _weightedHours.dispose();
@@ -790,6 +960,15 @@ class _WageRowFormState extends State<_WageRowForm> {
     _vendorId.dispose();
     _vendorRoleId.dispose();
     super.dispose();
+  }
+
+  void _emitDraft() {
+    final cb = widget.onDraftChanged;
+    if (cb == null) return;
+    cb(_DraftRowValues(
+      hourlyRate: double.tryParse(_hourlyRate.text.trim()),
+      weightedHours: double.tryParse(_weightedHours.text.trim()),
+    ));
   }
 
   Future<void> _onSave() async {
