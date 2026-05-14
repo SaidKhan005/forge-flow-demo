@@ -40,7 +40,6 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../../widgets/inheritance_tree.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_hierarchy_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles admitted to the Hierarchy surface when the proxy permission
@@ -390,38 +389,6 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
             ),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_hierarchy_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.account_tree_outlined,
-                label: 'Groups',
-                value: _orgUnits.length.toString(),
-                helper: 'regions and districts',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.storefront_outlined,
-                label: 'Locations',
-                value: _locations.length.toString(),
-                helper: 'attached to the tree',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.lock_outline,
-                label: 'Edit mode',
-                value: widget._canMutate ? 'Enabled' : 'Read-only',
-                helper: widget._canMutate
-                    ? 'owner/admin actions visible'
-                    : 'view-only role',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.sort_by_alpha_outlined,
-                label: 'Order',
-                value: 'A to Z',
-                helper: 'groups and locations',
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
           _OperatorWebHierarchyInheritanceTree(
             orgUnits: _orgUnits,
             locations: _locations,
