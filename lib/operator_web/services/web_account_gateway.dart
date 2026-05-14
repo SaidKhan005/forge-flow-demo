@@ -37,6 +37,24 @@ abstract class WebAccountGateway {
   /// [patch] is optional; the backend treats absent keys as
   /// "leave alone." Returns the resolved row after the write.
   Future<AccountIdentity> patchAccount(AccountIdentityPatch patch);
+
+  /// Wave 2 W-6 - patches the primary location's IANA timezone.
+  /// The write delegates server-side to
+  /// `LocationsRepository.updateLocation(timezone: ...)`.
+  ///
+  /// Operator-scoped per HP #11: timezone is a location-scoped field;
+  /// the route resolves the primary location from the caller's JWT.
+  /// Returns the updated effective timezone after the write so the
+  /// caller can refresh the UI without re-querying.
+  ///
+  /// Ops-debt: the matching backend handler lands in the W-6 backend
+  /// follow-up lane (mirrors the 11W.7 ops-debt pattern for
+  /// `/v1/operator/account`). Until then, callers will see a 404 from
+  /// the proxy. The gateway shape is pinned here so the lane has an
+  /// exact wire contract to implement against.
+  Future<AccountLocationTimezone> patchLocationTimezone(
+    AccountLocationTimezonePatch patch,
+  );
 }
 
 /// User-scoped account session surface for My Account. Reuses the
@@ -85,6 +103,13 @@ class HttpWebAccountGateway
 
   /// Operator-scoped route. The unit-test contract pins this string.
   static const String operatorAccountPath = '/v1/operator/account';
+
+  /// Wave 2 W-6 - operator-scoped route for the primary location's
+  /// IANA timezone. The handler lands in the W-6 backend follow-up
+  /// (mirrors the 11W.7 ops-debt model where the frontend gateway
+  /// shipped first with the wire contract pinned).
+  static const String operatorLocationTimezonePath =
+      '/v1/operator/location-timezone';
 
   /// Existing self-service auth-session routes. These stay user-scoped and
   /// avoid `/v1/admin/*` or any B9.2-only schema additions.
@@ -138,6 +163,24 @@ class HttpWebAccountGateway
       body: patch.toJson(),
     );
     return AccountIdentity.fromJson(response.body);
+  }
+
+  @override
+  Future<AccountLocationTimezone> patchLocationTimezone(
+    AccountLocationTimezonePatch patch,
+  ) async {
+    if (operatorLocationTimezonePath.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to update your location timezone.',
+    );
+    final response = await _client.patchJson(
+      operatorLocationTimezonePath,
+      idToken: token,
+      body: patch.toJson(),
+    );
+    return AccountLocationTimezone.fromJson(response.body);
   }
 
   @override
@@ -362,6 +405,67 @@ class AccountIdentityPatch {
     if (weekStartDay != null) json['weekStartDay'] = weekStartDay;
     if (rolloverHour != null) json['rolloverHour'] = rolloverHour;
     return json;
+  }
+}
+
+/// Wave 2 W-6 - patch payload for the primary location's IANA
+/// timezone. The wire shape is one required field so the backend
+/// handler has the simplest possible contract to implement against.
+@immutable
+class AccountLocationTimezonePatch {
+  const AccountLocationTimezonePatch({required this.ianaTimezone});
+
+  /// IANA tz database name (e.g. `America/Toronto`, `Europe/London`).
+  /// The backend handler validates the value before passing it to
+  /// `LocationsRepository.updateLocation(timezone: ...)`. Empty / blank
+  /// strings are rejected; the value MUST be a non-empty trimmed
+  /// string per the validator contract.
+  final String ianaTimezone;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'ianaTimezone': ianaTimezone,
+      };
+}
+
+/// Wave 2 W-6 - resolved location timezone returned by the proxy
+/// after a successful PATCH. Carries the operator + location ids so
+/// the UI can confirm the write landed on the expected scope, plus
+/// the effective IANA timezone string.
+@immutable
+class AccountLocationTimezone {
+  const AccountLocationTimezone({
+    required this.operatorId,
+    required this.locationId,
+    required this.ianaTimezone,
+    required this.updatedAt,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String ianaTimezone;
+  final DateTime updatedAt;
+
+  static AccountLocationTimezone fromJson(Map<String, Object?> json) {
+    final operatorId = AccountIdentity._readString(json['operatorId']);
+    final locationId = AccountIdentity._readString(json['locationId']);
+    final ianaTimezone = AccountIdentity._readString(json['ianaTimezone']);
+    final updatedAtRaw = AccountIdentity._readString(json['updatedAt']);
+    if (operatorId == null ||
+        locationId == null ||
+        ianaTimezone == null ||
+        updatedAtRaw == null) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_location_timezone',
+        message:
+            'The proxy returned an incomplete location timezone record.',
+      );
+    }
+    return AccountLocationTimezone(
+      operatorId: operatorId,
+      locationId: locationId,
+      ianaTimezone: ianaTimezone,
+      updatedAt: DateTime.parse(updatedAtRaw).toUtc(),
+    );
   }
 }
 

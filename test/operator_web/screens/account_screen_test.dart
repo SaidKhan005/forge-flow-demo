@@ -18,10 +18,13 @@ import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 class _FakeAccountGateway implements WebAccountGateway {
-  _FakeAccountGateway({this.failWith});
+  _FakeAccountGateway({this.failWith, this.timezoneFailWith});
 
   final OperatorWebProxyException? failWith;
+  final OperatorWebProxyException? timezoneFailWith;
   final List<AccountIdentityPatch> calls = <AccountIdentityPatch>[];
+  final List<AccountLocationTimezonePatch> timezoneCalls =
+      <AccountLocationTimezonePatch>[];
   int getCalls = 0;
 
   @override
@@ -55,9 +58,27 @@ class _FakeAccountGateway implements WebAccountGateway {
       updatedAt: DateTime.utc(2026, 5, 6, 18),
     );
   }
+
+  @override
+  Future<AccountLocationTimezone> patchLocationTimezone(
+    AccountLocationTimezonePatch patch,
+  ) async {
+    timezoneCalls.add(patch);
+    if (timezoneFailWith != null) throw timezoneFailWith!;
+    return AccountLocationTimezone(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      ianaTimezone: patch.ianaTimezone,
+      updatedAt: DateTime.utc(2026, 5, 14, 12),
+    );
+  }
 }
 
-OperatorWebSession sessionWithRole(String role) => OperatorWebSession(
+OperatorWebSession sessionWithRole(
+  String role, {
+  String? primaryLocationTimezone = 'America/Toronto',
+}) =>
+    OperatorWebSession(
       uid: 'uid-$role',
       email: 'alex@brio-restaurants.com',
       displayName: 'Alex Morrison',
@@ -70,6 +91,7 @@ OperatorWebSession sessionWithRole(String role) => OperatorWebSession(
       localeTag: 'en-US',
       weekStartDay: 'monday',
       rolloverHour: 4,
+      primaryLocationTimezone: primaryLocationTimezone,
     );
 
 Widget wrap(Widget child) => MaterialApp(
@@ -196,4 +218,129 @@ void main() {
       findsOneWidget,
     );
   });
+
+  // Wave 2 W-6 — timezone section coverage.
+
+  testWidgets(
+    'timezone section renders with HP #11 scope notice + effective value',
+    (tester) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(AccountScreen(session: session, gateway: _FakeAccountGateway())),
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_account_section_location_timezone'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_scope')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_account_timezone_scope_scope_pill'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_shortlist')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_save')),
+        findsOneWidget,
+      );
+      // HP #11 effective row carries the seeded America/Toronto value.
+      expect(
+        find.textContaining('America/Toronto'),
+        findsWidgets,
+      );
+    },
+  );
+
+  testWidgets(
+    'timezone save round-trips the picked value through the gateway',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeAccountGateway();
+      final session = sessionWithRole(
+        'operator_owner',
+        primaryLocationTimezone: 'America/Toronto',
+      );
+      await tester.pumpWidget(
+        wrap(AccountScreen(session: session, gateway: gateway)),
+      );
+
+      // Open the dropdown and pick a different shortlist option.
+      await tester.tap(
+        find.byKey(const Key('operator_web_account_timezone_shortlist')),
+      );
+      await tester.pumpAndSettle();
+      await tester
+          .tap(find.text('London / Dublin').last);
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_account_timezone_save')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.timezoneCalls, hasLength(1));
+      expect(gateway.timezoneCalls.single.ianaTimezone, 'Europe/London');
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_success')),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'timezone gateway error surfaces in the inline timezone banner',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeAccountGateway(
+        timezoneFailWith: const OperatorWebProxyException(
+          code: 'invalid_iana_timezone',
+          message: 'That timezone is not in the IANA database.',
+        ),
+      );
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(AccountScreen(session: session, gateway: gateway)),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_account_timezone_save')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operator_web_account_timezone_error')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('That timezone is not in the IANA database.'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets(
+    'session with no primary location timezone shows the empty-state copy',
+    (tester) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole(
+        'operator_owner',
+        primaryLocationTimezone: null,
+      );
+      await tester.pumpWidget(
+        wrap(AccountScreen(session: session, gateway: _FakeAccountGateway())),
+      );
+      expect(
+        find.text('No timezone is on file. Set one to lock daily timing.'),
+        findsOneWidget,
+      );
+    },
+  );
 }

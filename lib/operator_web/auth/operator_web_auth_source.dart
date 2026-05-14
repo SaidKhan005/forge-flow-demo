@@ -61,6 +61,7 @@ class OperatorWebSession {
     this.localeTag,
     this.weekStartDay,
     this.rolloverHour,
+    this.primaryLocationTimezone,
   });
 
   /// Firebase user UID (or a synthetic id under demo mode).
@@ -131,6 +132,18 @@ class OperatorWebSession {
   /// Hour-of-day (0..23, restaurant local time) at which the
   /// business day rolls over. Null when not yet projected.
   final int? rolloverHour;
+
+  /// Wave 2 W-6 — IANA timezone of the primary location (e.g.
+  /// `America/Toronto`, `Europe/London`). This is the location's
+  /// `locations.timezone` column, projected onto the session payload
+  /// so the Account screen can render + edit it without an extra
+  /// proxy round-trip on first load.
+  ///
+  /// Null when the proxy has not projected a value for this operator
+  /// yet (older session payloads, or live sources that have not been
+  /// updated). The Account screen renders "Not on file" in that case
+  /// and the operator can still set a value through the editor.
+  final String? primaryLocationTimezone;
 }
 
 /// Onboarding stage the screen-router keys off. Linear progression
