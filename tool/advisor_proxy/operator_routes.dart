@@ -48,6 +48,7 @@ import 'package:forge_and_flow/services/business_timing/business_timing_profile_
 import 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
 
 import 'business_logo_upload_routes.dart';
+import 'operator_location_account_overrides_routes.dart';
 import 'operator_location_timezone_routes.dart';
 
 export 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
@@ -73,6 +74,21 @@ export 'operator_location_timezone_routes.dart'
         OperatorLocationTimezoneWriteGateway,
         decodeLocationTimezoneBody,
         operatorLocationTimezonePath;
+export 'operator_location_account_overrides_routes.dart'
+    show
+        LocationAccountOverridesDecode,
+        LocationAccountOverridesFieldSet,
+        LocationAccountOverridesOutcome,
+        LocationAccountOverridesOutcomeKind,
+        LocationAccountOverridesRecord,
+        LocationAccountOverridesWriteGateway,
+        OperatorLocationAccountOverridesHandler,
+        ValidatedLocationAccountOverridesPatch,
+        decodeLocationAccountOverridesPatchBody,
+        isLocationAccountOverridesUuid,
+        isOperatorLocationAccountOverridesPath,
+        operatorLocationAccountOverridesIdOf,
+        operatorLocationAccountOverridesPathPrefix;
 
 /// Route paths. Exported so the frontend gateway tests and the proxy
 /// dispatcher reference one canonical set of strings. The PATCH +
@@ -231,11 +247,14 @@ class OperatorWriteRouter {
     OperatorBusinessTimingMutationListener? mutationListener,
     BusinessLogoUploadHandler? businessLogoUploadHandler,
     OperatorLocationTimezoneHandler? locationTimezoneHandler,
+    OperatorLocationAccountOverridesHandler?
+        locationAccountOverridesHandler,
   })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
         _now = now ?? DateTime.now,
         _mutationListener = mutationListener,
         _businessLogoUploadHandler = businessLogoUploadHandler,
-        _locationTimezoneHandler = locationTimezoneHandler;
+        _locationTimezoneHandler = locationTimezoneHandler,
+        _locationAccountOverridesHandler = locationAccountOverridesHandler;
 
   final OperatorAccountWriteGateway accountGateway;
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
@@ -255,6 +274,14 @@ class OperatorWriteRouter {
   /// to a calm 503 instead of a 404, matching the rest of the
   /// operator-write surface's "not configured" posture.
   final OperatorLocationTimezoneHandler? _locationTimezoneHandler;
+
+  /// Wave 2 U-FU-hp11-account — optional per-location account
+  /// overrides handler. When null the
+  /// `/v1/operator/location-account-overrides/{location_id}` routes
+  /// resolve to a calm 503 (matching the rest of the operator-write
+  /// surface's "not configured" posture).
+  final OperatorLocationAccountOverridesHandler?
+      _locationAccountOverridesHandler;
 
   Future<void> _notifyTimingMutation({
     required String operatorId,
@@ -313,6 +340,16 @@ class OperatorWriteRouter {
     if (method == 'PATCH' && path == operatorLocationTimezonePath) {
       return true;
     }
+    // Wave 2 U-FU-hp11-account — GET/PATCH
+    // /v1/operator/location-account-overrides/{location_id}. HP #11
+    // per-location overrides for the three AccountScreen settings
+    // cards (region + business-day + identity contact email + phone).
+    // Reuses the same dispatch path so it inherits auth + role gate
+    // + Idempotency-Key + per-operator isolation for free.
+    if ((method == 'GET' || method == 'PATCH') &&
+        isOperatorLocationAccountOverridesPath(path)) {
+      return true;
+    }
     return false;
   }
 
@@ -322,6 +359,7 @@ class OperatorWriteRouter {
     if (method != 'GET') return false;
     if (path == operatorAccountPath) return true;
     if (path == operatorBusinessTimingProfilesPath) return true;
+    if (isOperatorLocationAccountOverridesPath(path)) return true;
     return false;
   }
 
@@ -436,6 +474,24 @@ class OperatorWriteRouter {
         operatorId: operatorId,
         actorUserId: actorUserId,
         actorKind: actorKind,
+        body: body,
+      );
+    }
+    if (isOperatorLocationAccountOverridesPath(path) &&
+        (method == 'GET' || method == 'PATCH')) {
+      final locationId = operatorLocationAccountOverridesIdOf(path)!;
+      if (method == 'GET') {
+        return _handleLocationAccountOverridesGet(
+          operatorId: operatorId,
+          actorUserId: actorUserId,
+          locationId: locationId,
+        );
+      }
+      return _handleLocationAccountOverridesPatch(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        locationId: locationId,
         body: body,
       );
     }
@@ -1001,6 +1057,101 @@ class OperatorWriteRouter {
           'location_id': result.body['locationId'],
           'previous_tz': result.body['previousIanaTimezone'],
           'new_tz': result.body['ianaTimezone'],
+        },
+        occurredAt: _now().toUtc(),
+      );
+    }
+    return result;
+  }
+
+  /// Wave 2 U-FU-hp11-account — GET
+  /// /v1/operator/location-account-overrides/{location_id}. Read-only
+  /// resolver; the dispatcher already routes through `isReadOnly` so
+  /// the call bypasses the idempotency cache + Idempotency-Key
+  /// requirement. Returns 503 when the handler is not wired.
+  Future<({int statusCode, Map<String, Object?> body})>
+      _handleLocationAccountOverridesGet({
+    required String operatorId,
+    required String actorUserId,
+    required String locationId,
+  }) async {
+    final handler = _locationAccountOverridesHandler;
+    if (handler == null) {
+      return (
+        statusCode: 503,
+        body: const <String, Object?>{
+          'error': 'operator_location_account_overrides_not_configured',
+          'message':
+              'per-location account overrides are not available on '
+                  'this build; please retry later.',
+        },
+      );
+    }
+    return handler.handleGet(
+      operatorId: operatorId,
+      actorUserId: actorUserId,
+      locationId: locationId,
+    );
+  }
+
+  /// Wave 2 U-FU-hp11-account — PATCH
+  /// /v1/operator/location-account-overrides/{location_id}. Emits an
+  /// audit row capturing the previous + new field values on success
+  /// so the operator's audit log reflects every per-location override
+  /// change. Returns 503 when the handler is not wired.
+  Future<({int statusCode, Map<String, Object?> body})>
+      _handleLocationAccountOverridesPatch({
+    required String operatorId,
+    required String actorUserId,
+    required String actorKind,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async {
+    final handler = _locationAccountOverridesHandler;
+    if (handler == null) {
+      return (
+        statusCode: 503,
+        body: const <String, Object?>{
+          'error': 'operator_location_account_overrides_not_configured',
+          'message':
+              'per-location account overrides are not available on '
+                  'this build; please retry later.',
+        },
+      );
+    }
+    final result = await handler.handlePatch(
+      operatorId: operatorId,
+      actorUserId: actorUserId,
+      locationId: locationId,
+      body: body,
+    );
+    if (result.statusCode == 200) {
+      // The handler returns the full effective/override/businessDefault
+      // triple; the audit payload captures the override + business
+      // default so reviewers can reconstruct both the prior and new
+      // effective values from the audit row alone (the previous
+      // override row's state is the prior effective via business
+      // default merge; the new effective is the audited override+
+      // businessDefault merge).
+      final override =
+          (result.body['override'] as Map?)?.cast<String, Object?>() ??
+              const <String, Object?>{};
+      final businessDefault =
+          (result.body['businessDefault'] as Map?)?.cast<String, Object?>() ??
+              const <String, Object?>{};
+      final effective =
+          (result.body['effective'] as Map?)?.cast<String, Object?>() ??
+              const <String, Object?>{};
+      await auditSink.record(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        eventKind: 'operator_location_account_overrides_updated',
+        payload: <String, Object?>{
+          'location_id': result.body['locationId'],
+          'override': override,
+          'business_default': businessDefault,
+          'effective': effective,
         },
         occurredAt: _now().toUtc(),
       );

@@ -25,18 +25,20 @@
 //
 //   * Business scope selected — the operator edits the business
 //     defaults. Each card's notice says "Set here. Does not inherit
-//     from a higher scope." Edit affordances stay live.
-//   * Location (or org-unit) scope selected — the schema does not yet
-//     carry per-location overrides for region / business day /
-//     identity (`db/migrations/202605070000_phase_11W_7_operator_
-//     account_fields.sql` stores those on `public.operators` only;
-//     `locations.business_day_rollover_hour` is the only per-location
-//     override that exists). Until the U-FU-hp11-account-schema
-//     follow-up lands, the notice tells the operator "Inherits the
-//     business default from Business" + a backend-only explainer
-//     pointing them at the Business scope. Edit affordances stay
-//     disabled. HP #11's final clause is honoured by naming the gap
-//     in plain English instead of rendering a silent omission.
+//     from a higher scope." Edit affordances stay live. Saves go to
+//     PATCH /v1/operator/account (the existing operator-level write).
+//   * Location scope selected — the screen loads the per-location
+//     override row from
+//     `GET /v1/operator/location-account-overrides/<location_id>` on
+//     mount. Each card's notice surfaces:
+//       - the override value when set ("Set here at <location>.
+//         Business default: <value>"), OR
+//       - the inheritance line when no override is set ("Inherits the
+//         business default from Business: <value>").
+//     Save goes to PATCH /v1/operator/location-account-overrides/<id>.
+//   * Business display name has no per-location override (single
+//     business name doctrine) — the Identity card disables the
+//     business-name field at Location scope with an inline explainer.
 
 import 'dart:async';
 
@@ -103,15 +105,33 @@ class AccountScreen extends StatefulWidget {
       session.permissions.contains(_kAccountEditPermission);
 
   /// HP #11 — true when the operator picked a non-Business scope in
-  /// the shell's Managing picker. The schema today only stores
-  /// region / business-day / identity at the operator (business)
-  /// scope, so at non-business scopes the screen shows the
-  /// inheritance line and disables edits. See the file header for the
-  /// full PUNT rationale + U-FU-hp11-account-schema follow-up.
+  /// the shell's Managing picker. The screen routes saves through the
+  /// per-location overrides gateway when this is true, and through
+  /// the operator-level account gateway when this is false.
   bool get scopeBelowBusiness {
     final scope = selectedScope;
     if (scope == null) return false;
     return scope.kind != OperatorWebManagementScopeKind.operator;
+  }
+
+  /// True when the selected scope is a location (not Business, not an
+  /// org unit). Per the operator decision logged 2026-05-14, only the
+  /// location scope carries an override row today — org-unit-scoped
+  /// overrides are not on the U-FU-hp11-account-schema slice.
+  bool get scopeIsLocation {
+    final scope = selectedScope;
+    if (scope == null) return false;
+    return scope.kind == OperatorWebManagementScopeKind.location;
+  }
+
+  /// Wave 2 U-FU-hp11-account — location id the override route writes
+  /// against. Null when the operator picked Business scope (no
+  /// override surface) or when the selected scope is an org unit.
+  String? get locationIdForOverride {
+    final scope = selectedScope;
+    if (scope == null) return null;
+    if (scope.kind != OperatorWebManagementScopeKind.location) return null;
+    return scope.id;
   }
 
   /// Plain-English name of the scope target ("Brio Main", "East
@@ -142,26 +162,52 @@ class AccountScreen extends StatefulWidget {
   }
 
   /// HP #11 inheritance line for the per-field cards when the
-  /// operator is below the business scope. The Account screen's
-  /// region / business-day / identity values currently live at the
-  /// operator (business) level only, so a non-business scope inherits
-  /// them downward. Returns null at Business scope (nothing to
-  /// inherit from).
-  String? inheritedLabelForBusinessDefault() {
-    return scopeBelowBusiness
-        ? 'Inherits the business default from Business.'
-        : null;
+  /// operator is below the business scope. Renders one of:
+  ///
+  ///   * null — Business scope, no inheritance line needed.
+  ///   * "Inherits the business default from Business." — non-location
+  ///     scope (org unit) with no override surface yet.
+  ///   * `Set here at <location>. Business default: <value>.` — the
+  ///     location has an override for this field group.
+  ///   * `Inherits the business default from Business: <value>.` — the
+  ///     location has no override; the inheritance line carries the
+  ///     business default value the operator is reading.
+  ///
+  /// [businessDefaultDisplay] is the rendered string for the cluster
+  /// (e.g. "USD / en-US" for region; "04:00 local" for rollover; an
+  /// "ops@example.com" line for identity contact).
+  /// [overrideIsSet] is true when at least one column in the field
+  /// cluster has a non-null override in the loaded envelope.
+  String? inheritedLabelFor({
+    required bool overrideIsSet,
+    required String businessDefaultDisplay,
+  }) {
+    if (!scopeBelowBusiness) return null;
+    if (!scopeIsLocation) {
+      // Org-unit scope is not on the U-FU-hp11-account-schema slice
+      // (operator decision 2026-05-14). Fall back to the prior
+      // PUNT-mode inheritance line.
+      return 'Inherits the business default from Business.';
+    }
+    if (overrideIsSet) {
+      return 'Set here at $scopeName. '
+          'Business default: $businessDefaultDisplay.';
+    }
+    return 'Inherits the business default from Business: '
+        '$businessDefaultDisplay.';
   }
 
-  /// HP #11 backend-only explainer surfaced inside each notice when
-  /// the operator is below business scope. Names the gap in plain
-  /// English so the operator does not see a silent omission. Returns
-  /// null at Business scope.
+  /// HP #11 backend-only explainer surfaced inside each notice. Only
+  /// rendered when the operator is below business scope AND the
+  /// scope is NOT a location (because the location scope now supports
+  /// real per-location overrides via this slice).
   String? backendOnlyExplainerForBusinessDefault() {
     if (!scopeBelowBusiness) return null;
-    return 'Per-location overrides for this field are not on file yet. '
+    if (scopeIsLocation) return null;
+    return 'Per-org-unit overrides for this field are not on file yet. '
         'Switch the Managing picker to Business to update the default '
-        'every location inherits.';
+        'every location inherits, or pick a specific location to set '
+        'an override there.';
   }
 
   @override
@@ -175,6 +221,16 @@ class _AccountScreenState extends State<AccountScreen> {
   String? _localeTag;
   String? _weekStartDay;
   int? _rolloverHour;
+
+  // Wave 2 U-FU-hp11-account — location-scope override state. Loaded
+  // lazily on mount when the operator picks Location scope. Editing
+  // these fields at Location scope writes to the per-location
+  // overrides route instead of `PATCH /v1/operator/account`.
+  LocationAccountOverridesEnvelope? _locationOverrides;
+  bool _locationOverridesLoading = false;
+  String? _locationOverridesLoadError;
+  late TextEditingController _contactEmail;
+  late TextEditingController _contactPhone;
 
   // Wave 2 W-6 — location timezone editor state. The active value
   // seeds from the session; a custom value lives in
@@ -274,6 +330,88 @@ class _AccountScreenState extends State<AccountScreen> {
     _timezoneCustomController = TextEditingController(
       text: hasInShortlist ? '' : (initialTimezone ?? ''),
     );
+    _contactEmail = TextEditingController();
+    _contactPhone = TextEditingController();
+    // Wave 2 U-FU-hp11-account — preload per-location overrides when
+    // the router opens this screen at Location scope.
+    if (widget.scopeIsLocation && widget.gateway != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _loadLocationOverrides();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(AccountScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Reload overrides when the operator flips the Managing picker
+    // between scopes. Loading is a no-op at Business scope.
+    if (oldWidget.selectedScope?.id != widget.selectedScope?.id ||
+        oldWidget.selectedScope?.kind != widget.selectedScope?.kind) {
+      if (widget.scopeIsLocation && widget.gateway != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _loadLocationOverrides();
+        });
+      } else {
+        setState(() {
+          _locationOverrides = null;
+          _locationOverridesLoadError = null;
+          _contactEmail.text = '';
+          _contactPhone.text = '';
+        });
+      }
+    }
+  }
+
+  Future<void> _loadLocationOverrides() async {
+    final gateway = widget.gateway;
+    final locationId = widget.locationIdForOverride;
+    if (gateway == null || locationId == null) return;
+    setState(() {
+      _locationOverridesLoading = true;
+      _locationOverridesLoadError = null;
+    });
+    try {
+      final envelope = await gateway.getLocationAccountOverrides(
+        locationId: locationId,
+      );
+      if (!mounted) return;
+      setState(() {
+        _locationOverrides = envelope;
+        _locationOverridesLoading = false;
+        // Seed the form controllers with the current override values
+        // (fall back to business defaults so the operator can edit
+        // from the inherited starting point).
+        _currencyCode = envelope.override.currencyCode ??
+            envelope.businessDefault.currencyCode ??
+            _currencyCode;
+        _localeTag = envelope.override.localeCode ??
+            envelope.businessDefault.localeCode ??
+            _localeTag;
+        _rolloverHour = envelope.override.businessDayRolloverHour ??
+            envelope.businessDefault.businessDayRolloverHour ??
+            _rolloverHour;
+        _contactEmail.text = envelope.override.contactEmail ??
+            envelope.businessDefault.contactEmail ??
+            '';
+        _contactPhone.text = envelope.override.contactPhone ??
+            envelope.businessDefault.contactPhone ??
+            '';
+      });
+    } on OperatorWebProxyException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _locationOverridesLoading = false;
+        _locationOverridesLoadError = error.message;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _locationOverridesLoading = false;
+        _locationOverridesLoadError =
+            'Could not load this location\'s account overrides: $error';
+      });
+    }
   }
 
   @override
@@ -281,6 +419,8 @@ class _AccountScreenState extends State<AccountScreen> {
     _businessName.dispose();
     _logoUrl.dispose();
     _timezoneCustomController.dispose();
+    _contactEmail.dispose();
+    _contactPhone.dispose();
     _successTimer?.cancel();
     _timezoneSuccessTimer?.cancel();
     super.dispose();
@@ -291,24 +431,57 @@ class _AccountScreenState extends State<AccountScreen> {
   Future<void> _handleSave() async {
     final gateway = widget.gateway;
     if (gateway == null || !widget.canEdit) return;
-    final patch = AccountIdentityPatch(
-      businessName: _businessName.text.trim().isEmpty
-          ? null
-          : _businessName.text.trim(),
-      logoUrl: _logoUrl.text.trim().isEmpty ? null : _logoUrl.text.trim(),
-      clearLogo: _logoUrl.text.trim().isEmpty,
-      currencyCode: _currencyCode,
-      localeTag: _localeTag,
-      weekStartDay: _weekStartDay,
-      rolloverHour: _rolloverHour,
-    );
+    // Wave 2 U-FU-hp11-account — route the save to the correct
+    // gateway based on selected scope. Business scope writes to the
+    // operator-level account row; Location scope writes to the per-
+    // location override row.
+    final locationId = widget.locationIdForOverride;
     setState(() {
       _submitting = true;
       _errorMessage = null;
       _successMessage = null;
     });
     try {
-      await gateway.patchAccount(patch);
+      if (widget.scopeIsLocation && locationId != null) {
+        final envelope = await gateway.patchLocationAccountOverrides(
+          locationId: locationId,
+          patch: LocationAccountOverridesPatchPayload(
+            // Currency / locale / rollover ride along when set.
+            // Business display name + logo are operator-wide; the
+            // Identity card disables those fields at Location scope so
+            // they would not have changed.
+            currencyCode: _currencyCode,
+            localeCode: _localeTag,
+            businessDayRolloverHour: _rolloverHour,
+            contactEmail: _contactEmail.text.trim().isEmpty
+                ? null
+                : _contactEmail.text.trim(),
+            clearContactEmail: _contactEmail.text.trim().isEmpty,
+            contactPhone: _contactPhone.text.trim().isEmpty
+                ? null
+                : _contactPhone.text.trim(),
+            clearContactPhone: _contactPhone.text.trim().isEmpty,
+          ),
+        );
+        if (!mounted) return;
+        setState(() {
+          _locationOverrides = envelope;
+        });
+      } else {
+        final patch = AccountIdentityPatch(
+          businessName: _businessName.text.trim().isEmpty
+              ? null
+              : _businessName.text.trim(),
+          logoUrl:
+              _logoUrl.text.trim().isEmpty ? null : _logoUrl.text.trim(),
+          clearLogo: _logoUrl.text.trim().isEmpty,
+          currencyCode: _currencyCode,
+          localeTag: _localeTag,
+          weekStartDay: _weekStartDay,
+          rolloverHour: _rolloverHour,
+        );
+        await gateway.patchAccount(patch);
+      }
     } on OperatorWebProxyException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -400,16 +573,66 @@ class _AccountScreenState extends State<AccountScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Wave 2 U-FU-hp11-account — per-card edits stay live at Business
-    // scope; at non-business scopes the schema has no override path,
-    // so we disable the affordance and the notice explains why.
+    // Wave 2 U-FU-hp11-account — per-card edits enabled at Business
+    // scope (writes the operator-level row) and at Location scope
+    // (writes the per-location override row). Other non-business
+    // scopes (org units) stay disabled until the override surface
+    // extends to org-unit scope in a future slice.
     final scopeBelowBusiness = widget.scopeBelowBusiness;
-    final identityEnabled =
+    final scopeIsLocation = widget.scopeIsLocation;
+    // Business display name + logo are operator-wide (single business
+    // name doctrine); the Identity card disables those two fields at
+    // Location scope. Contact email + phone are the location-scoped
+    // identity surface.
+    final identityNameEnabled =
         widget.canEdit && !_submitting && !scopeBelowBusiness;
-    final regionEnabled =
-        widget.canEdit && !_submitting && !scopeBelowBusiness;
-    final businessDayEnabled =
-        widget.canEdit && !_submitting && !scopeBelowBusiness;
+    final identityContactEnabled = widget.canEdit &&
+        !_submitting &&
+        (scopeIsLocation || !scopeBelowBusiness);
+    final regionEnabled = widget.canEdit &&
+        !_submitting &&
+        (scopeIsLocation || !scopeBelowBusiness);
+    final businessDayEnabled = widget.canEdit &&
+        !_submitting &&
+        (scopeIsLocation || !scopeBelowBusiness);
+    // Helpers for the new per-card inheritance line. At Business scope
+    // the helper returns null (no inheritance), so the notice falls
+    // back to "Set here. Does not inherit from a higher scope."
+    final overrides = _locationOverrides;
+    final regionOverrideSet = overrides != null &&
+        (overrides.override.currencyCode != null ||
+            overrides.override.localeCode != null);
+    final regionBusinessDefault = overrides == null
+        ? '${widget.session.currencyCode} / ${widget.session.localeTag}'
+        : '${overrides.businessDefault.currencyCode ?? "no currency"} / '
+            '${overrides.businessDefault.localeCode ?? "no locale"}';
+    final businessDayOverrideSet = overrides != null &&
+        overrides.override.businessDayRolloverHour != null;
+    final businessDayBusinessDefault = overrides == null
+        ? '${widget.session.rolloverHour.toString().padLeft(2, '0')}:00 local'
+        : (overrides.businessDefault.businessDayRolloverHour == null
+            ? 'no rollover hour'
+            : '${overrides.businessDefault.businessDayRolloverHour!
+                .toString()
+                .padLeft(2, '0')}:00 local');
+    final identityOverrideSet = overrides != null &&
+        (overrides.override.contactEmail != null ||
+            overrides.override.contactPhone != null);
+    final identityBusinessDefault = overrides == null
+        ? widget.session.businessName
+        : (overrides.businessDefault.contactEmail ?? widget.session.businessName);
+    final identityInheritedLabel = widget.inheritedLabelFor(
+      overrideIsSet: identityOverrideSet,
+      businessDefaultDisplay: identityBusinessDefault,
+    );
+    final regionInheritedLabel = widget.inheritedLabelFor(
+      overrideIsSet: regionOverrideSet,
+      businessDefaultDisplay: regionBusinessDefault,
+    );
+    final businessDayInheritedLabel = widget.inheritedLabelFor(
+      overrideIsSet: businessDayOverrideSet,
+      businessDefaultDisplay: businessDayBusinessDefault,
+    );
     return SingleChildScrollView(
       key: const Key('operator_web_account_screen'),
       padding: const EdgeInsets.all(28),
@@ -422,13 +645,25 @@ class _AccountScreenState extends State<AccountScreen> {
           if (!_hasGateway) const SizedBox(height: 14),
           if (!widget.canEdit) const _ReadOnlyBanner(),
           if (!widget.canEdit) const SizedBox(height: 14),
+          if (_locationOverridesLoading)
+            const _LocationOverridesLoadingBanner(),
+          if (_locationOverridesLoading) const SizedBox(height: 14),
+          if (_locationOverridesLoadError != null)
+            _LocationOverridesErrorBanner(
+              message: _locationOverridesLoadError!,
+            ),
+          if (_locationOverridesLoadError != null) const SizedBox(height: 14),
           _BusinessIdentitySection(
             businessNameController: _businessName,
             logoUrlController: _logoUrl,
+            contactEmailController: _contactEmail,
+            contactPhoneController: _contactPhone,
             logoLivePreviewUrl: _logoUrl.text.trim().isEmpty
                 ? null
                 : _logoUrl.text.trim(),
-            enabled: identityEnabled,
+            nameAndLogoEnabled: identityNameEnabled,
+            contactEnabled: identityContactEnabled,
+            scopeIsLocation: scopeIsLocation,
             onChanged: () => setState(() {}),
             logoUploadGateway: widget.logoUploadGateway,
             logoFilePicker: widget.logoFilePicker,
@@ -443,7 +678,7 @@ class _AccountScreenState extends State<AccountScreen> {
             },
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
-            inheritedLabel: widget.inheritedLabelForBusinessDefault(),
+            inheritedLabel: identityInheritedLabel,
             backendOnlyExplainer:
                 widget.backendOnlyExplainerForBusinessDefault(),
           ),
@@ -458,7 +693,7 @@ class _AccountScreenState extends State<AccountScreen> {
             onLocaleChanged: (value) => setState(() => _localeTag = value),
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
-            inheritedLabel: widget.inheritedLabelForBusinessDefault(),
+            inheritedLabel: regionInheritedLabel,
             backendOnlyExplainer:
                 widget.backendOnlyExplainerForBusinessDefault(),
           ),
@@ -468,12 +703,17 @@ class _AccountScreenState extends State<AccountScreen> {
             rolloverHour: _rolloverHour,
             weekStartDays: _weekStartDays,
             enabled: businessDayEnabled,
+            // Wave 2 U-FU-hp11-account: week-start-day stays operator-
+            // wide (it has no override column in this slice); disable
+            // the picker at Location scope so the operator does not
+            // think they can edit it there.
+            weekStartEnabled: businessDayEnabled && !scopeIsLocation,
             onWeekStartChanged: (value) =>
                 setState(() => _weekStartDay = value),
             onRolloverChanged: (value) => setState(() => _rolloverHour = value),
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
-            inheritedLabel: widget.inheritedLabelForBusinessDefault(),
+            inheritedLabel: businessDayInheritedLabel,
             backendOnlyExplainer:
                 widget.backendOnlyExplainerForBusinessDefault(),
           ),
@@ -561,7 +801,7 @@ class _AccountScreenState extends State<AccountScreen> {
                 onPressed: widget.canEdit &&
                         _hasGateway &&
                         !_submitting &&
-                        !scopeBelowBusiness
+                        (scopeIsLocation || !scopeBelowBusiness)
                     ? _handleSave
                     : null,
                 style: FilledButton.styleFrom(
@@ -643,6 +883,73 @@ class _UnavailableBanner extends StatelessWidget {
   }
 }
 
+class _LocationOverridesLoadingBanner extends StatelessWidget {
+  const _LocationOverridesLoadingBanner();
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('operator_web_account_overrides_loading'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: <Widget>[
+          const SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Loading this location\'s account overrides...',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LocationOverridesErrorBanner extends StatelessWidget {
+  const _LocationOverridesErrorBanner({required this.message});
+  final String message;
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('operator_web_account_overrides_load_error'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.10),
+        border: Border.all(
+          color: AppColors.negative.withValues(alpha: 0.45),
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(
+            Icons.error_outline,
+            size: 16,
+            color: AppColors.negative,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ReadOnlyBanner extends StatelessWidget {
   const _ReadOnlyBanner();
   @override
@@ -676,8 +983,12 @@ class _BusinessIdentitySection extends StatelessWidget {
   const _BusinessIdentitySection({
     required this.businessNameController,
     required this.logoUrlController,
+    required this.contactEmailController,
+    required this.contactPhoneController,
     required this.logoLivePreviewUrl,
-    required this.enabled,
+    required this.nameAndLogoEnabled,
+    required this.contactEnabled,
+    required this.scopeIsLocation,
     required this.onChanged,
     required this.onLogoUploaded,
     required this.scopeLevel,
@@ -690,8 +1001,28 @@ class _BusinessIdentitySection extends StatelessWidget {
 
   final TextEditingController businessNameController;
   final TextEditingController logoUrlController;
+
+  /// Wave 2 U-FU-hp11-account — location-scoped contact email + phone
+  /// controllers. Only rendered at Location scope.
+  final TextEditingController contactEmailController;
+  final TextEditingController contactPhoneController;
   final String? logoLivePreviewUrl;
-  final bool enabled;
+
+  /// Whether the business name + logo URL fields are editable. False
+  /// at Location scope (single business name doctrine).
+  final bool nameAndLogoEnabled;
+
+  /// Whether the contact email + phone fields are editable. True at
+  /// Business scope (writes to operators) and at Location scope
+  /// (writes to location_account_overrides).
+  final bool contactEnabled;
+
+  /// Wave 2 U-FU-hp11-account — true when the selected scope is a
+  /// location. Drives whether the contact email + phone fields show
+  /// up at all (they only render at Business or Location scope) and
+  /// whether the business-name carve-out explainer is rendered.
+  final bool scopeIsLocation;
+
   final VoidCallback onChanged;
   final ValueChanged<String> onLogoUploaded;
   final BusinessLogoUploadGateway? logoUploadGateway;
@@ -739,14 +1070,16 @@ class _BusinessIdentitySection extends StatelessWidget {
           TextField(
             key: const Key('operator_web_account_business_name'),
             controller: businessNameController,
-            enabled: enabled,
+            enabled: nameAndLogoEnabled,
             inputFormatters: <TextInputFormatter>[
               LengthLimitingTextInputFormatter(120),
             ],
-            decoration: const InputDecoration(
+            decoration: InputDecoration(
               labelText: 'Business name',
-              border: OutlineInputBorder(),
-              helperText: 'Up to 120 characters.',
+              border: const OutlineInputBorder(),
+              helperText: scopeIsLocation
+                  ? 'The business name is set at the Business level.'
+                  : 'Up to 120 characters.',
             ),
             onChanged: (_) => onChanged(),
           ),
@@ -758,7 +1091,7 @@ class _BusinessIdentitySection extends StatelessWidget {
           // button persists it.
           BusinessLogoUploadSection(
             gateway: logoUploadGateway,
-            enabled: enabled,
+            enabled: nameAndLogoEnabled,
             onUploaded: onLogoUploaded,
             filePicker: logoFilePicker,
           ),
@@ -766,7 +1099,7 @@ class _BusinessIdentitySection extends StatelessWidget {
           TextField(
             key: const Key('operator_web_account_logo_url'),
             controller: logoUrlController,
-            enabled: enabled,
+            enabled: nameAndLogoEnabled,
             inputFormatters: <TextInputFormatter>[
               LengthLimitingTextInputFormatter(2048),
             ],
@@ -783,6 +1116,47 @@ class _BusinessIdentitySection extends StatelessWidget {
             const SizedBox(height: 10),
             _LogoPreview(url: logoLivePreviewUrl!),
           ],
+          // Wave 2 U-FU-hp11-account — contact email + phone live in
+          // the per-location override table. We render them at every
+          // scope because the operator might also want to set a
+          // business-wide contact email/phone someday. The proxy
+          // route accepts both; the schema's NULL columns inherit
+          // the business default.
+          const SizedBox(height: 14),
+          TextField(
+            key: const Key('operator_web_account_contact_email'),
+            controller: contactEmailController,
+            enabled: contactEnabled,
+            inputFormatters: <TextInputFormatter>[
+              LengthLimitingTextInputFormatter(320),
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Contact email',
+              border: OutlineInputBorder(),
+              helperText:
+                  'Address Forge & Flow uses for support escalations '
+                  'and account updates. Leave empty to inherit the '
+                  'business default.',
+            ),
+            onChanged: (_) => onChanged(),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            key: const Key('operator_web_account_contact_phone'),
+            controller: contactPhoneController,
+            enabled: contactEnabled,
+            inputFormatters: <TextInputFormatter>[
+              LengthLimitingTextInputFormatter(64),
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Contact phone',
+              border: OutlineInputBorder(),
+              helperText:
+                  'Phone Forge & Flow uses for urgent issues. Leave '
+                  'empty to inherit the business default.',
+            ),
+            onChanged: (_) => onChanged(),
+          ),
         ],
       ),
     );
@@ -943,6 +1317,7 @@ class _BusinessDaySection extends StatelessWidget {
     required this.rolloverHour,
     required this.weekStartDays,
     required this.enabled,
+    required this.weekStartEnabled,
     required this.onWeekStartChanged,
     required this.onRolloverChanged,
     required this.scopeLevel,
@@ -954,7 +1329,17 @@ class _BusinessDaySection extends StatelessWidget {
   final String? weekStartDay;
   final int? rolloverHour;
   final List<_OptionPair> weekStartDays;
+
+  /// Rollover-hour picker enabled state. The rollover hour is the one
+  /// business-day field this slice exposes a per-location override
+  /// for, so it follows the same enable rules as Region.
   final bool enabled;
+
+  /// Week-start-day picker enabled state. Tighter than [enabled]
+  /// because this slice does not (yet) add a per-location override
+  /// column for the first day of the week. At Location scope this
+  /// stays disabled with the implicit "inherits from Business" copy.
+  final bool weekStartEnabled;
   final ValueChanged<String?> onWeekStartChanged;
   final ValueChanged<int?> onRolloverChanged;
 
@@ -1011,7 +1396,7 @@ class _BusinessDaySection extends StatelessWidget {
                   child: Text(option.label),
                 ),
             ],
-            onChanged: enabled ? onWeekStartChanged : null,
+            onChanged: weekStartEnabled ? onWeekStartChanged : null,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<int>(

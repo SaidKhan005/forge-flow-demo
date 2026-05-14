@@ -336,4 +336,17 @@ class _Gateway implements WebAccountGateway {
       displayNameChanged: patch.displayName != null,
     );
   }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getLocationAccountOverrides({
+    required String locationId,
+  }) =>
+      throw UnimplementedError();
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchLocationAccountOverrides({
+    required String locationId,
+    required LocationAccountOverridesPatchPayload patch,
+  }) =>
+      throw UnimplementedError();
 }

@@ -176,7 +176,16 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605150100_phase_r_followup_not_null_flip.sql`, which is the
+  `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql`,
+  which is the Wave 2 U-FU-hp11-account per-location override schema
+  for the three AccountScreen settings (region, business-day rollover,
+  identity contact email + phone). Adds `public.location_account_overrides`
+  keyed by `(operator_id, location_id)` with NULL columns inheriting
+  the business defaults from `public.operators`. RLS via
+  `app_current_operator()` wrapper + operator-leading B-tree index per
+  HP #4; reuses the existing operator_owner / operator_admin role
+  gate (no new permission key). Prior cutoff
+  `202605150100_phase_r_followup_not_null_flip.sql` is the
   Wave 2 R-1L-FU + R-2L-FU contract migration: flips
   `permission_keys.product_label` + `category_label` + `scope_kind` +
   `human_label` from NULLABLE to NOT NULL after R-1L + R-2L inline

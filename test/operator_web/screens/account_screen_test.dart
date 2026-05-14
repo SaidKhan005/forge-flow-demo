@@ -19,13 +19,30 @@ import 'package:forge_and_flow/operator_web/widgets/web_app_shell.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 class _FakeAccountGateway implements WebAccountGateway {
-  _FakeAccountGateway({this.failWith, this.timezoneFailWith});
+  _FakeAccountGateway({
+    this.failWith,
+    this.timezoneFailWith,
+    this.overridesFailWith,
+    this.initialOverrides,
+  });
 
   final OperatorWebProxyException? failWith;
   final OperatorWebProxyException? timezoneFailWith;
+  final OperatorWebProxyException? overridesFailWith;
+
+  /// Wave 2 U-FU-hp11-account — when non-null, `getLocationAccountOverrides`
+  /// returns this envelope; otherwise the fake returns a synthetic "no
+  /// override on file" envelope (every override field NULL, business
+  /// defaults filled in).
+  final LocationAccountOverridesEnvelope? initialOverrides;
+
   final List<AccountIdentityPatch> calls = <AccountIdentityPatch>[];
   final List<AccountLocationTimezonePatch> timezoneCalls =
       <AccountLocationTimezonePatch>[];
+  final List<({String locationId, LocationAccountOverridesPatchPayload patch})>
+      overridesPatchCalls =
+      <({String locationId, LocationAccountOverridesPatchPayload patch})>[];
+  final List<String> overridesGetCalls = <String>[];
   int getCalls = 0;
 
   @override
@@ -88,6 +105,78 @@ class _FakeAccountGateway implements WebAccountGateway {
       displayName: patch.displayName ?? 'Alex Morrison',
       emailChanged: patch.email != null,
       displayNameChanged: patch.displayName != null,
+    );
+  }
+
+  // Wave 2 U-FU-hp11-account — synthetic in-memory implementation of
+  // the per-location override gateway methods. Sufficient for widget
+  // tests: getLocationAccountOverrides returns the seeded envelope (or
+  // a "no override" default); patchLocationAccountOverrides records the
+  // call and reflects the patch in the returned envelope so the screen
+  // sees the new override state.
+  LocationAccountOverridesEnvelope _defaultOverridesEnvelope() {
+    return LocationAccountOverridesEnvelope(
+      operatorId: 'op-1',
+      locationId: 'loc-1',
+      effective: const LocationAccountOverridesFieldSet(
+        ianaTimezone: 'America/Toronto',
+        localeCode: 'en-US',
+        currencyCode: 'USD',
+        businessDayRolloverHour: 4,
+      ),
+      override: const LocationAccountOverridesFieldSet(),
+      businessDefault: const LocationAccountOverridesFieldSet(
+        ianaTimezone: 'America/Toronto',
+        localeCode: 'en-US',
+        currencyCode: 'USD',
+        businessDayRolloverHour: 4,
+      ),
+      updatedAt: DateTime.utc(2026, 5, 14, 12),
+    );
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getLocationAccountOverrides({
+    required String locationId,
+  }) async {
+    overridesGetCalls.add(locationId);
+    if (overridesFailWith != null) throw overridesFailWith!;
+    return initialOverrides ?? _defaultOverridesEnvelope();
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchLocationAccountOverrides({
+    required String locationId,
+    required LocationAccountOverridesPatchPayload patch,
+  }) async {
+    overridesPatchCalls.add((locationId: locationId, patch: patch));
+    if (overridesFailWith != null) throw overridesFailWith!;
+    final businessDefault =
+        (initialOverrides ?? _defaultOverridesEnvelope()).businessDefault;
+    return LocationAccountOverridesEnvelope(
+      operatorId: 'op-1',
+      locationId: locationId,
+      effective: LocationAccountOverridesFieldSet(
+        ianaTimezone:
+            patch.ianaTimezone ?? businessDefault.ianaTimezone,
+        localeCode: patch.localeCode ?? businessDefault.localeCode,
+        currencyCode:
+            patch.currencyCode ?? businessDefault.currencyCode,
+        businessDayRolloverHour: patch.businessDayRolloverHour ??
+            businessDefault.businessDayRolloverHour,
+        contactEmail: patch.contactEmail,
+        contactPhone: patch.contactPhone,
+      ),
+      override: LocationAccountOverridesFieldSet(
+        ianaTimezone: patch.ianaTimezone,
+        localeCode: patch.localeCode,
+        currencyCode: patch.currencyCode,
+        businessDayRolloverHour: patch.businessDayRolloverHour,
+        contactEmail: patch.contactEmail,
+        contactPhone: patch.contactPhone,
+      ),
+      businessDefault: businessDefault,
+      updatedAt: DateTime.utc(2026, 5, 14, 12),
     );
   }
 }
@@ -459,43 +548,175 @@ void main() {
     );
 
     testWidgets(
-      'Location scope with no override renders the inheritance line + disables edit',
+      'Location scope with no override renders the inheritance line + '
+      'enables Save (U-FU-hp11-account-schema)',
       (tester) async {
         await _sizeViewport(tester);
         final session = sessionWithRole('operator_owner');
+        final gateway = _FakeAccountGateway();
         await tester.pumpWidget(
           wrap(
             AccountScreen(
               session: session,
-              gateway: _FakeAccountGateway(),
+              gateway: gateway,
               selectedScope: locationScope,
             ),
           ),
         );
-        // The three cards show the inheritance copy.
+        // Let the post-frame loadLocationOverrides round-trip settle.
+        await tester.pumpAndSettle();
+        // The three operator-set cards show an inheritance copy
+        // carrying the business default value.
         expect(
-          find.text('Inherits the business default from Business.'),
+          find.textContaining(
+            'Inherits the business default from Business:',
+          ),
           findsNWidgets(3),
         );
-        // Backend-only explainer surfaces the schema gap in plain
-        // English.
+        // The backend-only explainer is NO LONGER rendered at Location
+        // scope — the slice replaces the PUNT-mode copy with a real
+        // override surface.
         expect(
           find.textContaining(
             'Per-location overrides for this field are not on file yet.',
           ),
-          findsNWidgets(3),
+          findsNothing,
         );
-        // Save is disabled at non-business scope because the schema
-        // has no override path yet.
+        // The screen called the override-load gateway.
+        expect(gateway.overridesGetCalls, contains('loc-1'));
+        // Save is ENABLED at Location scope because the per-location
+        // override route is the new write target.
         final saveButton = tester.widget<ButtonStyleButton>(
           find.byKey(const Key('operator_web_account_save')),
         );
-        expect(saveButton.onPressed, isNull);
-        // The editable fields disable their input handlers.
+        expect(saveButton.onPressed, isNotNull);
+        // The business-name field stays disabled (single business
+        // name doctrine).
         final businessNameField = tester.widget<TextField>(
           find.byKey(const Key('operator_web_account_business_name')),
         );
         expect(businessNameField.enabled, isFalse);
+        // The new contact email + phone fields render and are
+        // editable at Location scope.
+        final contactEmailField = tester.widget<TextField>(
+          find.byKey(const Key('operator_web_account_contact_email')),
+        );
+        expect(contactEmailField.enabled, isTrue);
+      },
+    );
+
+    testWidgets(
+      'Location scope save round-trips an override patch through the '
+      'gateway',
+      (tester) async {
+        // U-FU-hp11-account adds the contact-email + contact-phone
+        // fields at the bottom of the Identity card, plus the
+        // location-overrides banner; the default 1600px viewport
+        // pushes Save below the fold. Use a taller viewport so the
+        // tap hits.
+        tester.view.physicalSize = const Size(1280, 2400);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(() {
+          tester.view.resetPhysicalSize();
+          tester.view.resetDevicePixelRatio();
+        });
+        final session = sessionWithRole('operator_owner');
+        final gateway = _FakeAccountGateway();
+        await tester.pumpWidget(
+          wrap(
+            AccountScreen(
+              session: session,
+              gateway: gateway,
+              selectedScope: locationScope,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // Type a new contact email so the patch carries it.
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_account_contact_email')),
+        );
+        await tester.enterText(
+          find.byKey(const Key('operator_web_account_contact_email')),
+          'ops@brio-main.com',
+        );
+        await tester.ensureVisible(
+          find.byKey(const Key('operator_web_account_save')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('operator_web_account_save')),
+        );
+        await tester.pumpAndSettle();
+        // The override gateway must have been called; the operator-
+        // level patchAccount path must NOT have been touched.
+        expect(gateway.overridesPatchCalls.length, equals(1));
+        final call = gateway.overridesPatchCalls.single;
+        expect(call.locationId, equals('loc-1'));
+        expect(call.patch.contactEmail, equals('ops@brio-main.com'));
+        expect(gateway.calls, isEmpty);
+        // Success banner renders.
+        expect(
+          find.byKey(const Key('operator_web_account_success')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Location scope with an existing override renders the '
+      '"Set here" inheritance line carrying the business default',
+      (tester) async {
+        await _sizeViewport(tester);
+        final session = sessionWithRole('operator_owner');
+        final gateway = _FakeAccountGateway(
+          initialOverrides: LocationAccountOverridesEnvelope(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            effective: const LocationAccountOverridesFieldSet(
+              ianaTimezone: 'Europe/London',
+              localeCode: 'en-GB',
+              currencyCode: 'GBP',
+              businessDayRolloverHour: 4,
+              contactEmail: 'ops@example.com',
+            ),
+            override: const LocationAccountOverridesFieldSet(
+              currencyCode: 'GBP',
+              localeCode: 'en-GB',
+              contactEmail: 'ops@example.com',
+            ),
+            businessDefault: const LocationAccountOverridesFieldSet(
+              ianaTimezone: 'America/Toronto',
+              localeCode: 'en-US',
+              currencyCode: 'USD',
+              businessDayRolloverHour: 4,
+            ),
+            updatedAt: DateTime.utc(2026, 5, 14, 12),
+          ),
+        );
+        await tester.pumpWidget(
+          wrap(
+            AccountScreen(
+              session: session,
+              gateway: gateway,
+              selectedScope: locationScope,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        // The region card carries the "Set here at <location>. Business
+        // default: <value>." copy because the override row is on file
+        // for currency + locale.
+        expect(
+          find.textContaining('Set here at Brio Main.'),
+          findsWidgets,
+        );
+        // At least one card surfaces the business default value
+        // alongside the override.
+        expect(
+          find.textContaining('Business default: USD / en-US'),
+          findsWidgets,
+        );
       },
     );
 
