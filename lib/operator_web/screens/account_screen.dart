@@ -25,6 +25,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
+import '../widgets/hierarchy_scope_notice.dart';
 
 const Set<String> _kAccountEditRoles = <String>{
   'operator_owner',
@@ -59,6 +60,18 @@ class _AccountScreenState extends State<AccountScreen> {
   String? _localeTag;
   String? _weekStartDay;
   int? _rolloverHour;
+
+  // Wave 2 W-6 — location timezone editor state. The active value
+  // seeds from the session; a custom value lives in
+  // `_timezoneCustomController` so the operator can type any IANA tz
+  // name not in the shortlist without losing what they typed when
+  // they toggle the dropdown.
+  late TextEditingController _timezoneCustomController;
+  String? _selectedTimezone;
+  bool _timezoneSubmitting = false;
+  String? _timezoneErrorMessage;
+  String? _timezoneSuccessMessage;
+  Timer? _timezoneSuccessTimer;
 
   bool _submitting = false;
   String? _errorMessage;
@@ -96,6 +109,31 @@ class _AccountScreenState extends State<AccountScreen> {
     _OptionPair('sunday', 'Sunday'),
   ];
 
+  // Wave 2 W-6 — North American + common European shortlist. Operators
+  // outside this list can type any IANA tz name in the custom field;
+  // the backend validates against the full tz database.
+  static const List<_OptionPair> _timezoneShortlist = <_OptionPair>[
+    _OptionPair('America/Toronto', 'Toronto / Montreal (Eastern)'),
+    _OptionPair('America/New_York', 'New York / Atlanta (Eastern)'),
+    _OptionPair('America/Chicago', 'Chicago / Dallas (Central)'),
+    _OptionPair('America/Denver', 'Denver / Calgary (Mountain)'),
+    _OptionPair('America/Phoenix', 'Phoenix (Mountain, no DST)'),
+    _OptionPair('America/Los_Angeles', 'Los Angeles / Vancouver (Pacific)'),
+    _OptionPair('America/Anchorage', 'Anchorage (Alaska)'),
+    _OptionPair('America/Halifax', 'Halifax (Atlantic)'),
+    _OptionPair('America/St_Johns', "St. John's (Newfoundland)"),
+    _OptionPair('America/Mexico_City', 'Mexico City (Central)'),
+    _OptionPair('Europe/London', 'London / Dublin'),
+    _OptionPair('Europe/Paris', 'Paris / Berlin / Madrid'),
+    _OptionPair('Australia/Sydney', 'Sydney / Melbourne'),
+    _OptionPair('UTC', 'UTC (no offset)'),
+  ];
+
+  // Sentinel value the dropdown uses when the operator has typed a
+  // custom timezone not in [_timezoneShortlist]. The dropdown stays
+  // visible, and the custom text field below it owns the live value.
+  static const String _timezoneCustomSentinel = '__custom__';
+
   @override
   void initState() {
     super.initState();
@@ -105,13 +143,31 @@ class _AccountScreenState extends State<AccountScreen> {
     _localeTag = widget.session.localeTag;
     _weekStartDay = widget.session.weekStartDay;
     _rolloverHour = widget.session.rolloverHour;
+    // Wave 2 W-6 — seed timezone state from the session. Drop the
+    // initial value onto either the shortlist dropdown or the custom
+    // text field depending on whether it appears in
+    // [_timezoneShortlist].
+    final initialTimezone = widget.session.primaryLocationTimezone?.trim();
+    final hasInShortlist = initialTimezone != null &&
+        initialTimezone.isNotEmpty &&
+        _timezoneShortlist.any((opt) => opt.value == initialTimezone);
+    _selectedTimezone = hasInShortlist
+        ? initialTimezone
+        : (initialTimezone == null || initialTimezone.isEmpty
+            ? null
+            : _timezoneCustomSentinel);
+    _timezoneCustomController = TextEditingController(
+      text: hasInShortlist ? '' : (initialTimezone ?? ''),
+    );
   }
 
   @override
   void dispose() {
     _businessName.dispose();
     _logoUrl.dispose();
+    _timezoneCustomController.dispose();
     _successTimer?.cancel();
+    _timezoneSuccessTimer?.cancel();
     super.dispose();
   }
 
@@ -165,6 +221,68 @@ class _AccountScreenState extends State<AccountScreen> {
     });
   }
 
+  /// Resolves the value the timezone editor will send to the gateway.
+  /// When the dropdown is on the custom sentinel, the custom field's
+  /// trimmed text is the canonical value; otherwise the dropdown
+  /// value wins.
+  String _effectiveTimezoneValue() {
+    if (_selectedTimezone == _timezoneCustomSentinel) {
+      return _timezoneCustomController.text.trim();
+    }
+    return _selectedTimezone?.trim() ?? '';
+  }
+
+  Future<void> _handleSaveTimezone() async {
+    final gateway = widget.gateway;
+    if (gateway == null || !widget.canEdit) return;
+    final value = _effectiveTimezoneValue();
+    if (value.isEmpty) {
+      setState(() {
+        _timezoneErrorMessage =
+            'Pick a timezone from the list, or type the IANA name '
+            '(for example, America/Toronto) before saving.';
+        _timezoneSuccessMessage = null;
+      });
+      return;
+    }
+    setState(() {
+      _timezoneSubmitting = true;
+      _timezoneErrorMessage = null;
+      _timezoneSuccessMessage = null;
+    });
+    try {
+      await gateway.patchLocationTimezone(
+        AccountLocationTimezonePatch(ianaTimezone: value),
+      );
+    } on OperatorWebProxyException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _timezoneSubmitting = false;
+        _timezoneErrorMessage = error.message;
+      });
+      return;
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _timezoneSubmitting = false;
+        _timezoneErrorMessage =
+            'Could not save the timezone for this location: $error';
+      });
+      return;
+    }
+    if (!mounted) return;
+    _timezoneSuccessTimer?.cancel();
+    setState(() {
+      _timezoneSubmitting = false;
+      _timezoneSuccessMessage =
+          'Saved. Daily timing now uses $value for this location.';
+    });
+    _timezoneSuccessTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted) return;
+      setState(() => _timezoneSuccessMessage = null);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -207,6 +325,23 @@ class _AccountScreenState extends State<AccountScreen> {
             onWeekStartChanged: (value) =>
                 setState(() => _weekStartDay = value),
             onRolloverChanged: (value) => setState(() => _rolloverHour = value),
+          ),
+          const SizedBox(height: 14),
+          _LocationTimezoneSection(
+            session: widget.session,
+            selectedValue: _selectedTimezone,
+            customController: _timezoneCustomController,
+            shortlist: _timezoneShortlist,
+            customSentinel: _timezoneCustomSentinel,
+            enabled: widget.canEdit && _hasGateway && !_timezoneSubmitting,
+            submitting: _timezoneSubmitting,
+            errorMessage: _timezoneErrorMessage,
+            successMessage: _timezoneSuccessMessage,
+            effectiveValue: _effectiveTimezoneValue(),
+            onShortlistChanged: (value) =>
+                setState(() => _selectedTimezone = value),
+            onCustomChanged: () => setState(() {}),
+            onSave: _handleSaveTimezone,
           ),
           const SizedBox(height: 18),
           if (_errorMessage != null)
@@ -646,6 +781,235 @@ class _BusinessDaySection extends StatelessWidget {
     if (hour == 0) return '$hh:00 (midnight)';
     if (hour == 4) return '$hh:00 (recommended)';
     return '$hh:00';
+  }
+}
+
+/// Wave 2 W-6 — location timezone editor.
+///
+/// HP #11: timezone is location-scoped, so the section renders the
+/// scope/inherited-from/effective triple via [HierarchyScopeNotice].
+/// "Set here" because each location stores its own `locations.timezone`
+/// today; there is no business-level rollup yet.
+///
+/// Two input affordances:
+///   * Shortlist dropdown of common IANA timezones.
+///   * Custom text field for any other IANA tz name.
+/// The dropdown owns the choice unless the operator selects the
+/// "Custom IANA timezone" sentinel, in which case the text field's
+/// trimmed value is canonical. Saves go through
+/// [WebAccountGateway.patchLocationTimezone].
+///
+/// Time guardrails (`CLAUDE.md`): the location timezone drives every
+/// business-date computation for shifts, weeks, and weekly plans.
+/// Storage stays UTC; this editor only changes the local-display
+/// reference frame, never the stored timestamps.
+class _LocationTimezoneSection extends StatelessWidget {
+  const _LocationTimezoneSection({
+    required this.session,
+    required this.selectedValue,
+    required this.customController,
+    required this.shortlist,
+    required this.customSentinel,
+    required this.enabled,
+    required this.submitting,
+    required this.errorMessage,
+    required this.successMessage,
+    required this.effectiveValue,
+    required this.onShortlistChanged,
+    required this.onCustomChanged,
+    required this.onSave,
+  });
+
+  final OperatorWebSession session;
+  final String? selectedValue;
+  final TextEditingController customController;
+  final List<_OptionPair> shortlist;
+  final String customSentinel;
+  final bool enabled;
+  final bool submitting;
+  final String? errorMessage;
+  final String? successMessage;
+  final String effectiveValue;
+  final ValueChanged<String?> onShortlistChanged;
+  final VoidCallback onCustomChanged;
+  final Future<void> Function() onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final isCustom = selectedValue == customSentinel;
+    final hasEffective = effectiveValue.isNotEmpty;
+    return _Card(
+      cardKey: const Key('operator_web_account_section_location_timezone'),
+      icon: Icons.schedule_outlined,
+      title: 'Location timezone',
+      subtitle:
+          'Forge & Flow groups every shift, week, and weekly plan into '
+          'this location\'s local day. Changing the timezone changes how '
+          'business dates land for ${session.primaryLocationName} from '
+          'this point forward; past data keeps the timezone it was '
+          'recorded against.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          HierarchyScopeNotice(
+            keyName: 'operator_web_account_timezone_scope',
+            selectedScope: HierarchyScopeLevel.location,
+            scopeName: session.primaryLocationName,
+            effectiveValueSummary: hasEffective
+                ? 'This location uses $effectiveValue.'
+                : 'No timezone is on file. Set one to lock daily timing.',
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            key: const Key('operator_web_account_timezone_shortlist'),
+            initialValue: selectedValue,
+            decoration: const InputDecoration(
+              labelText: 'Timezone',
+              border: OutlineInputBorder(),
+              helperText:
+                  'Pick the closest match, or choose "Custom" to type '
+                  'any IANA timezone name.',
+            ),
+            items: <DropdownMenuItem<String>>[
+              for (final option in shortlist)
+                DropdownMenuItem<String>(
+                  value: option.value,
+                  child: Text(option.label),
+                ),
+              DropdownMenuItem<String>(
+                value: customSentinel,
+                child: const Text('Custom IANA timezone…'),
+              ),
+            ],
+            onChanged: enabled ? onShortlistChanged : null,
+          ),
+          if (isCustom) ...<Widget>[
+            const SizedBox(height: 10),
+            TextField(
+              key: const Key('operator_web_account_timezone_custom'),
+              controller: customController,
+              enabled: enabled,
+              inputFormatters: <TextInputFormatter>[
+                LengthLimitingTextInputFormatter(64),
+              ],
+              decoration: const InputDecoration(
+                labelText: 'IANA timezone name',
+                hintText: 'e.g. America/Toronto',
+                border: OutlineInputBorder(),
+                helperText:
+                    'Use the IANA tz database name. We validate the '
+                    'value when you save.',
+              ),
+              onChanged: (_) => onCustomChanged(),
+            ),
+          ],
+          if (errorMessage != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Container(
+              key: const Key('operator_web_account_timezone_error'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.negative.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.negative.withValues(alpha: 0.45),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: <Widget>[
+                  const Icon(
+                    Icons.error_outline,
+                    size: 16,
+                    color: AppColors.negative,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      errorMessage!,
+                      style:
+                          AppTextStyles.body13(color: AppColors.negative),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          if (successMessage != null) ...<Widget>[
+            const SizedBox(height: 12),
+            Container(
+              key: const Key('operator_web_account_timezone_success'),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.positive.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.positive.withValues(alpha: 0.45),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: <Widget>[
+                  const Icon(
+                    Icons.check_circle_outline,
+                    size: 16,
+                    color: AppColors.positive,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      successMessage!,
+                      style:
+                          AppTextStyles.body13(color: AppColors.positive),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: SizedBox(
+              height: 38,
+              child: OutlinedButton(
+                key: const Key('operator_web_account_timezone_save'),
+                onPressed: enabled && !submitting
+                    ? () {
+                        onSave();
+                      }
+                    : null,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.sunsetDark,
+                  side: const BorderSide(
+                    color: AppColors.sunsetDark,
+                    width: 1,
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                child: submitting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppColors.sunsetDark,
+                        ),
+                      )
+                    : const Text('Save timezone'),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

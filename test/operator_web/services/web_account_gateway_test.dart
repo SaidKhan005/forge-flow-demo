@@ -392,6 +392,100 @@ void main() {
         ),
       );
     });
+
+    // Wave 2 W-6 — location timezone PATCH.
+
+    test(
+      'patchLocationTimezone hits /v1/operator/location-timezone with '
+      'Bearer + Idempotency-Key + JSON body',
+      () async {
+        sequenceStatuses = <int>[200];
+        sequenceBodies = <Map<String, Object?>>[
+          <String, Object?>{
+            'operatorId': 'op-1',
+            'locationId': 'loc-1',
+            'ianaTimezone': 'America/Toronto',
+            'updatedAt': '2026-05-14T12:00:00.000Z',
+          },
+        ];
+        final gateway = buildGateway();
+        final result = await gateway.patchLocationTimezone(
+          const AccountLocationTimezonePatch(ianaTimezone: 'America/Toronto'),
+        );
+        expect(capturedRequests, hasLength(1));
+        final request = capturedRequests.single;
+        expect(request.method, 'PATCH');
+        expect(request.url.path, '/v1/operator/location-timezone');
+        expect(request.headers['authorization'], 'Bearer demo-id-token');
+        expect(request.headers['idempotency-key'], 'idem-key-fixture');
+        final json = jsonDecode(request.body) as Map<String, Object?>;
+        expect(json['ianaTimezone'], 'America/Toronto');
+        expect(result.operatorId, 'op-1');
+        expect(result.locationId, 'loc-1');
+        expect(result.ianaTimezone, 'America/Toronto');
+        expect(result.updatedAt.isUtc, isTrue);
+      },
+    );
+
+    test(
+      'patchLocationTimezone path is operator-scoped (never /admin/)',
+      () {
+        expect(
+          HttpWebAccountGateway.operatorLocationTimezonePath,
+          '/v1/operator/location-timezone',
+        );
+        expect(
+          HttpWebAccountGateway.operatorLocationTimezonePath.contains(
+            '/admin/',
+          ),
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'patchLocationTimezone surfaces malformed proxy response as code',
+      () async {
+        sequenceStatuses = <int>[200];
+        sequenceBodies = <Map<String, Object?>>[
+          // Missing ianaTimezone + updatedAt -> the parser refuses.
+          <String, Object?>{'operatorId': 'op-1', 'locationId': 'loc-1'},
+        ];
+        final gateway = buildGateway();
+        await expectLater(
+          () => gateway.patchLocationTimezone(
+            const AccountLocationTimezonePatch(ianaTimezone: 'UTC'),
+          ),
+          throwsA(
+            isA<OperatorWebProxyException>().having(
+              (e) => e.code,
+              'code',
+              'malformed_location_timezone',
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'patchLocationTimezone refuses to fire when no token is available',
+      () async {
+        final gateway = buildGateway(token: '');
+        await expectLater(
+          () => gateway.patchLocationTimezone(
+            const AccountLocationTimezonePatch(ianaTimezone: 'UTC'),
+          ),
+          throwsA(
+            isA<OperatorWebProxyException>().having(
+              (e) => e.code,
+              'code',
+              'unauthenticated',
+            ),
+          ),
+        );
+        expect(capturedRequests, isEmpty);
+      },
+    );
   });
 
   group('OperatorWebAccountActions session freshness', () {
@@ -479,6 +573,13 @@ class _FreshnessRequiredGateway
 
   @override
   Future<AccountIdentity> patchAccount(AccountIdentityPatch patch) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AccountLocationTimezone> patchLocationTimezone(
+    AccountLocationTimezonePatch patch,
+  ) {
     throw UnimplementedError();
   }
 
