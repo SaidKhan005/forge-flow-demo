@@ -62,6 +62,10 @@ mega-PR or split into per-screen PRs.
 | U-5 | Ops Console — Locations + My Account + Team Members + Roles + Sign-in-Security + Active Sessions UX cleanup (subtitles + tiles across 6 screens) | Claude2 | auto | merged | #670 | – | debug.md:141-181 (OW-4..OW-9) |
 | U-6 | Ops Console — Audit Log + Vendor Connections (rename to Vendor Integration is V-1) + Data Accuracy + Wage Authority + Notifications UX cleanup | Claude2 | auto | merged | #673 | – | debug.md:181-256 (OW-10, OW-11b/c, OW-12, OW-13a-c minus formula UI, OW-14) |
 | U-7 | Mobile UX cleanup (Settings tab reorder + Setup section + Wage Setup + 2FA + Sign-in-details + Active Sessions subtitles/tiles) | Claude2 | auto | merged | #678 | – | debug.md:259-306 (MO-3a/b, MO-4, MO-5a/d, MO-6, MO-7c/d, MO-S) |
+| U-FU-hp11-account | Lane U | Claude2 | operator | parked | – | U-1+U-3+U-4 | PR #663 worker disclosed: AccountScreen settings widgets (region, business day, identity) miss the HP #11 scope+inherited+effective triple. OW-2b / OW-2e / OW-3a scope-sensitive labels also skipped — needs scope provider plumbing into AccountScreen + BusinessSetupScreen router nav title. |
+| U-FU-mobile-deeplink | Lane U | Claude2 | operator | parked | – | U-7 | PR #678 + PR #693 disclosed: MO-3c / MO-4b / MO-6d mobile deep-link patterns explicitly skipped pending B11.1. Dedicated slice to wire mobile deep-link contract once B11.1 lands. |
+| U-FU-tier-email | Lane U | Claude2 | operator | parked | – | U-6 | PR #673 worker disclosed: "Request faster data freshness" dialog (OW-12h) writes audit row + toast but no email yet. Wire actual email send. Phase 9 / notification routing dependency. |
+| U-FU-summary-strip-cleanup | Lane U | Claude2 | operator | parked | – | U-5 | PR #670 worker disclosed: `lib/operator_web/widgets/operator_web_summary_strip.dart` left as-is despite 3 of 5 consumers removed in U-5. Migrate or remove the remaining 2 consumers (hierarchy + audit_log + data_accuracy mount it; check current state) and delete the widget. |
 
 ### Lane V — Vendor Connection → Vendor Integration rename sweep (Claude2)
 
@@ -93,6 +97,7 @@ mega-PR or split into per-screen PRs.
 | W-4 | Admin console My Account parity (full surface on admin-side, currently missing) | Main | operator | merged | #688 | – | debug.md:52 (P-5) |
 | W-5 | Business logo upload + propagation (operator-web → console header + mobile dashboard header, PNG format) | Main | operator | merged | #686 | – | debug.md:118 (OW-2d) |
 | W-5-mobile-FU | W-5 follow-up: mobile dashboard header logo propagation (W-5 worker explicitly deferred mobile dashboard header logo propagation) | Claude2 | operator | assigned | – | W-5 | handoff doc `docs/_indices/CLAUDE2_HELP_QUEUE_2026_05_14.md` |
+| W-5-mobile-FU-2 | Lane W | Claude2 | operator | parked | – | W-5-mobile-FU | PR #695 worker disclosed: proxy `AccountInfoGateway` does not yet serialize `logo_url` in its wire format. Client `fromJson` is forward-compatible so this is non-blocking, but the proxy half should ship for full round-trip. |
 | W-6 | Account screen — timezone + missing-field exposure (location/business settings audit + write paths) | Main | operator | merged | #682 | – | debug.md:122 (OW-2g) |
 | W-6-backend | W-6 backend: proxy handler for `PATCH /v1/operator/location-timezone` (W-6 worker shipped frontend wire contract; backend parked for future slot) | Main | operator | parked | – | W-6 | W-6 follow-up 2026-05-14 |
 
@@ -169,6 +174,7 @@ mega-PR or split into per-screen PRs.
 
 ## Changelog
 
+- 2026-05-14: Orchestrator audited all Claude #2 merged PRs (657, 663, 664, 670, 673, 678, 685, 687, 693, 695). Added 5 follow-up rows for legitimate disclosed gaps: U-FU-hp11-account, U-FU-mobile-deeplink, U-FU-tier-email, W-5-mobile-FU-2, U-FU-summary-strip-cleanup. None V1-blocking.
 - 2026-05-14: Wave 2 batch 2 flips — Main lane 10 slices (S-1, S-2, H-3, W-6, B-2B, W-1, W-1-FU, W-4, W-5, W-2) and Claude2 lane bundle merged. Added 5 follow-up rows (W-1-FU now merged; W-5-mobile-FU handed to Claude #2; W-6-backend, MO-2-FU, Q-1-FU parked). 21 of 22 Main slices merged. W-3 in flight.
 - **2026-05-13** Ledger created. All 33 slices `assigned`. Lane split locked per operator decision.
 - **2026-05-14** Batch 1 merged (10 slices):
