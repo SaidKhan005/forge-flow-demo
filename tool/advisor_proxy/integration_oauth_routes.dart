@@ -81,7 +81,6 @@ import 'admin_integrations_routes.dart' show
     IntegrationRoutesGateway;
 import 'advisor_proxy.dart';
 import 'integration_oauth_state_store.dart';
-import 'log.dart';
 
 /// Lifecycle status the callback writes onto its 302 redirect URL so
 /// the operator UI can render the right state.

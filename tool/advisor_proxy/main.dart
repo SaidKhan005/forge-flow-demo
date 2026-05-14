@@ -61,7 +61,6 @@ import 'package:http/http.dart' as http;
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart'
     show MetadataServerAccessTokenProvider;
 import 'package:forge_and_flow/services/auth/kms_pepper_store.dart';
-import 'package:forge_and_flow/auth/permission_effect.dart';
 
 import '../audit_anchor/audit_anchor.dart' as audit_anchor;
 import '../audit_anchor/main.dart' as audit_anchor_cli;
