@@ -72,6 +72,7 @@ import 'audit_log_hierarchy_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'advisor_response_cache.dart';
 import 'operator_benchmark_overrides_routes.dart';
+import 'operator_tier_email_routes.dart';
 import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
 import 'log.dart';
@@ -1423,6 +1424,144 @@ Future<void> _runProxy(List<String> args) async {
     },
   );
 
+  // Wave 2 U-FU-tier-email — Operator data freshness tier-email
+  // router. Mounts POST /v1/operator/tier-email/data-freshness-request
+  // next to the B6 benchmark-overrides router; the router does its
+  // own JWT + `kOperatorWriteRoles` + Idempotency-Key verification via
+  // the injected auth resolver (closes over `authGuard`). No new
+  // permission key is introduced — the role gate mirrors the
+  // existing `/v1/.../data_accuracy_settings` write surface and is
+  // owned inside the sibling router so the bleed-stop ceiling on
+  // `advisor_proxy.dart` is not touched. Audit rows hash-chain
+  // through the shared `ProductionOperatorWriteAuditSink` (reused
+  // from B6) so this surface lands on the same audit-log chain as
+  // every other operator write. Email sends ride a dedicated
+  // `SendGridEmailProvider` so the tier-email path stays isolated
+  // from the email_outbox dispatcher's client + retry budget.
+  // Pattern A pre-check shape mirrors the B6 mount block at the
+  // top of this region.
+  final operatorTierEmailHttpClient = http.Client();
+  final operatorTierEmailSendGridProvider = SendGridEmailProvider(
+    httpGateway: ({
+      required String method,
+      required Uri uri,
+      required Map<String, String> headers,
+      String? body,
+    }) async {
+      final request = http.Request(method, uri);
+      request.headers.addAll(headers);
+      if (body != null) request.body = body;
+      final streamed = await operatorTierEmailHttpClient
+          .send(request)
+          .timeout(const Duration(seconds: 15));
+      final response = await http.Response.fromStream(streamed);
+      return SendGridHttpResponse(
+        statusCode: response.statusCode,
+        headers: response.headers,
+        body: response.body,
+      );
+    },
+    apiKeyProvider: () async =>
+        Platform.environment['SENDGRID_API_KEY'] ?? '',
+    sandboxMode:
+        (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+            .trim()
+            .toLowerCase() ==
+        'true',
+  );
+  final operatorTierEmailRouter = OperatorTierEmailRouter(
+    emailProvider: operatorTierEmailSendGridProvider,
+    auditSink: productionBindings.operatorBenchmarkOverridesAuditSink,
+    fromAddress:
+        Platform.environment['EMAIL_FROM_ADDRESS'] ??
+        'noreply@mail.forgeflow.app',
+    fromDisplayName:
+        Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ?? 'Forge & Flow',
+    authResolver: (request) async {
+      try {
+        final scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+        return OperatorTierEmailActor(
+          userId: scope.userId,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          // `OperatorContext` does not carry a display name; the
+          // router falls back to `operatorId` when this is empty,
+          // matching the B6 / B8 sibling-router convention.
+          operatorName: '',
+          roles: scope.roles.toSet(),
+          actorKind: scope.actorKind,
+        );
+      } on ProxyAuthError {
+        return null;
+      }
+    },
+    unhandledErrorLogger: ({
+      required String method,
+      required String path,
+      required Object error,
+      required StackTrace stackTrace,
+    }) {
+      final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
+      final clipped = errorText.length > 500
+          ? '${errorText.substring(0, 500)}...'
+          : errorText;
+      final stackText = stackTrace.toString();
+      final firstNewline = stackText.indexOf('\n');
+      final firstFrame = firstNewline == -1
+          ? stackText
+          : stackText.substring(0, firstNewline);
+      log(
+        LogSeverity.error,
+        'proxy.unhandled_error',
+        fields: <String, Object?>{
+          'surface': 'operator_tier_email',
+          'method': method,
+          'path': path,
+          'error_type': error.runtimeType.toString(),
+          'error_message': clipped,
+          'stack_first_frame': firstFrame,
+        },
+      );
+    },
+    sendErrorLogger: ({
+      required String operatorId,
+      required String actorUserId,
+      required String auditRowId,
+      required Object error,
+    }) {
+      log(
+        LogSeverity.error,
+        'operator_tier_email.send_failed',
+        fields: <String, Object?>{
+          'operator_id': operatorId,
+          'actor_user_id': actorUserId,
+          'audit_row_id': auditRowId,
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+        },
+      );
+    },
+  );
+  log(
+    LogSeverity.info,
+    'startup.operator_tier_email_router',
+    fields: <String, Object?>{
+      'mounted': true,
+      'path': operatorTierEmailDataFreshnessRequestPath,
+      'sendgrid_api_key_loaded':
+          (Platform.environment['SENDGRID_API_KEY'] ?? '').isNotEmpty,
+      'sandbox_mode':
+          (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+              .trim()
+              .toLowerCase() ==
+          'true',
+    },
+  );
+
   // Phase 8 — wire the inbound integration chain (vendor credential
   // broker, 17 per-tenant adapter factories, signature verifiers,
   // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
@@ -1858,6 +1997,23 @@ Future<void> _runProxy(List<String> args) async {
           // `tryHandle` short-circuit) so reviewers see one idiom for
           // every operator/admin sibling router.
           if (await operatorBenchmarkOverridesRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
+          // region: wave_2_u_fu_operator_tier_email
+          // Wave 2 U-FU-tier-email — operator data freshness tier-email
+          // route. Handles POST
+          // /v1/operator/tier-email/data-freshness-request. The router
+          // does its own JWT + `kOperatorWriteRoles` + Idempotency-Key
+          // verification via the injected resolvers (closure over
+          // `authGuard`); audit row + SendGrid send happen inside
+          // `handle()`. Returns false on non-matching paths so the
+          // existing dispatcher continues. advisor_proxy.dart is
+          // intentionally NOT touched (bleed-stop ceiling discipline)
+          // — the only mounting site is this pre-check. Mirrors the
+          // B6 benchmark-overrides + B8 audit-log-hierarchy mount
+          // pattern.
+          if (await operatorTierEmailRouter.tryHandle(request)) {
             return;
           }
           // endregion
