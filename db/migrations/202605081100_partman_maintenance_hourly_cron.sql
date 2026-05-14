@@ -47,7 +47,14 @@
 
 begin;
 
-do $$
+-- B-W2 fix (2026-05-13): outer block uses tagged dollar-quote `$partman$`
+-- because the inner notice strings contain literal `$$` substrings that the
+-- PG lexer matches regardless of single-quote string context. Without the
+-- tag the outer `do $$` block terminates early at the first inner `$$`,
+-- raising "syntax error at or near 'select'" the moment the migration runs.
+-- Single-character edit per POST_HARDENING_FOLLOWUPS W-2; no behavioral
+-- change.
+do $partman$
 declare
   v_existing int;
   v_jobid    bigint;
@@ -103,6 +110,6 @@ begin
     'partman_maintenance: registered jobid=%, schedule=''0 * * * *'', '
     'command=run_maintenance(p_analyze := true)', v_jobid;
 end;
-$$;
+$partman$;
 
 commit;
