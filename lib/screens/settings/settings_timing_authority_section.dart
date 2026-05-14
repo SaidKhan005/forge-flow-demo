@@ -118,6 +118,13 @@ class TimingAuthoritySection extends StatelessWidget {
         }
 
         final periods = config.servicePeriodDefinitions;
+        // U-7 MO-3a/MO-3b (debug.md:264) — mobile is view-only.
+        // Dropped: "Current timing" pill + "Restaurant-local timing
+        // controls..." subtitle. Consolidated: "Business day starts" and
+        // "Shift close rule" share a single bordered tile so the
+        // business-day boundary reads as one piece of authority. The
+        // tile groups the day-start time on top with the closeout rule
+        // directly below.
         return SettingsCard(
           children: [
             Padding(
@@ -125,44 +132,9 @@ class TimingAuthoritySection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.sunset.withValues(alpha: 0.12),
-                          border: Border.all(
-                            color: AppColors.sunset.withValues(alpha: 0.45),
-                            width: 1,
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Current timing',
-                          style: AppTextStyles.mono10(
-                            color: AppColors.sunsetDark,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    'Restaurant-local timing controls the business date, week start, and service periods.',
-                    style: AppTextStyles.body13(color: AppColors.textSecondary),
-                  ),
-                  const SizedBox(height: 12),
                   _TimingValueRow(
                     label: 'Timezone',
                     value: config.businessTimezone,
-                  ),
-                  const SettingsRowDivider(),
-                  _TimingValueRow(
-                    label: 'Business day starts',
-                    value: _formatTime(config.businessDayStartLocalTime),
                   ),
                   const SettingsRowDivider(),
                   _TimingValueRow(
@@ -170,9 +142,11 @@ class TimingAuthoritySection extends StatelessWidget {
                     value: _formatWeekStart(config.weekStartDay),
                   ),
                   const SettingsRowDivider(),
-                  _TimingValueRow(
-                    label: 'Shift close rule',
-                    value: _formatShiftCloseRule(config),
+                  _BusinessDayBoundaryTile(
+                    dayStartLabel: _formatTime(
+                      config.businessDayStartLocalTime,
+                    ),
+                    shiftCloseLabel: _formatShiftCloseRule(config),
                   ),
                   if (periods.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -227,6 +201,49 @@ class _TimingValueRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// U-7 MO-3b — consolidated "Business day boundary" tile that pairs the
+/// business-day-start time with the shift-close rule. Both pieces define
+/// when a business day finishes, so the mobile mirror renders them as one
+/// bordered block instead of two separate authority rows.
+class _BusinessDayBoundaryTile extends StatelessWidget {
+  final String dayStartLabel;
+  final String shiftCloseLabel;
+  const _BusinessDayBoundaryTile({
+    required this.dayStartLabel,
+    required this.shiftCloseLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          borderRadius: BorderRadius.circular(4),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Business day boundary',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 6),
+            _TimingValueRow(
+              label: 'Business day starts',
+              value: dayStartLabel,
+            ),
+            const SettingsRowDivider(),
+            _TimingValueRow(label: 'Shift close rule', value: shiftCloseLabel),
+          ],
+        ),
       ),
     );
   }
