@@ -65,9 +65,16 @@ void main() {
       );
       expect(roles, hasLength(1));
       final sql = pool.transactions.single.executedSql.last;
-      expect(sql, contains('from roles'));
-      expect(sql, contains('deleted_at is null'));
-      expect(sql, contains('case when operator_id is null then 0 else 1 end'));
+      // Lane B B2.4 added a LEFT JOIN of `roles r` against `operators o`
+      // and `default_role_catalog_versions cv`, so every column in the
+      // listVisibleRoles SELECT now carries the `r.` table alias to
+      // disambiguate. Pin the assertions to the aliased form.
+      expect(sql, contains('from roles r'));
+      expect(sql, contains('r.deleted_at is null'));
+      expect(
+        sql,
+        contains('case when r.operator_id is null then 0 else 1 end'),
+      );
     });
 
     test('insertOperatorRole inserts is_seeded=false + binds role_key + '
