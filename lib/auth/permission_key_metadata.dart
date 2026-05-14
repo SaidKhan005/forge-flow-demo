@@ -1,5 +1,5 @@
-// Wave 2 R-1L - Roles schema rewrite (product label + category +
-// scope kind + implies) — Dart-side metadata mirror.
+// Wave 2 R-1L / R-2L - Roles schema rewrite (product label + category +
+// scope kind + implies + human label) — Dart-side metadata mirror.
 //
 // The frozen catalog at `lib/auth/permission_keys.dart` declares every
 // permission key the runtime knows about. This sibling file carries
@@ -16,6 +16,12 @@
 //                        this key with effect=allow, the resolver also
 //                        grants every key listed here (transitively).
 //                        Deny is NEVER propagated through implies.
+//   * `humanLabel`     — Wave 2 R-2L per-key UX label. Title Case English,
+//                        no underscores, no engineering jargon (per
+//                        memory/project_ux_writing_standard.md). Mirrors
+//                        `permission_keys.human_label` schema column added
+//                        by migration
+//                        `202605150000_phase_r2l_default_role_catalog_v2.sql`.
 //
 // Mirror discipline (same shape as `PermissionKeys.all`):
 //   1. `db/migrations/202605142100_phase_R_1L_roles_schema_rewrite.sql`
@@ -40,14 +46,17 @@
 
 import 'permission_keys.dart';
 
-/// R-1L per-permission-key metadata. Mirrors the four columns added
-/// to `public.permission_keys` by migration
-/// `202605142100_phase_R_1L_roles_schema_rewrite.sql`.
+/// R-1L / R-2L per-permission-key metadata. Mirrors the columns added
+/// to `public.permission_keys` by migrations
+/// `202605142100_phase_R_1L_roles_schema_rewrite.sql` (product_label,
+/// category_label, scope_kind, implies) and
+/// `202605150000_phase_r2l_default_role_catalog_v2.sql` (human_label).
 class PermissionKeyMetadata {
   const PermissionKeyMetadata({
     required this.productLabel,
     required this.categoryLabel,
     required this.scopeKind,
+    required this.humanLabel,
     this.implies = const <String>[],
   });
 
@@ -73,6 +82,15 @@ class PermissionKeyMetadata {
   /// `lib/auth/permission_resolution.dart` walks the imply graph
   /// recursively.
   final List<String> implies;
+
+  /// Wave 2 R-2L per-key UX label. Title Case English, no underscores,
+  /// no engineering jargon (per memory/project_ux_writing_standard.md).
+  /// Rendered in the role editor + permission explainer surfaces in
+  /// place of the raw dotted key. NOT-NULL-at-source via
+  /// `tool/permission_key_lint.dart`'s HUMAN_LABEL_INVALID pass; the
+  /// matching schema column is nullable per the R-1L expand-contract
+  /// precedent (NOT NULL flip parked alongside R-1L-FU).
+  final String humanLabel;
 }
 
 /// Mirrors the `permission_keys.scope_kind` CHECK constraint values.
@@ -123,11 +141,13 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'product',
           categoryLabel: 'Product access',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Open Forge & Flow',
         ),
         PermissionKeys.productBarrioAccess: PermissionKeyMetadata(
           productLabel: 'product',
           categoryLabel: 'Product access',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Open Barrio',
         ),
 
         // ─── forgeflow.* ────────────────────────────────────────────
@@ -135,111 +155,131 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View shift details',
         ),
         PermissionKeys.forgeflowShiftEdit: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowShiftView],
+          humanLabel: 'Edit shift details',
         ),
         PermissionKeys.forgeflowVarianceView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View variance results',
         ),
         PermissionKeys.forgeflowVarianceEdit: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowVarianceView],
+          humanLabel: 'Adjust variance results',
         ),
         PermissionKeys.forgeflowScheduleView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View schedules',
         ),
         PermissionKeys.forgeflowScheduleEdit: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowScheduleView],
+          humanLabel: 'Edit schedules',
         ),
         PermissionKeys.forgeflowBaselineView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View baseline targets',
         ),
         PermissionKeys.forgeflowBaselineOverride: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowBaselineView],
+          humanLabel: 'Override baseline targets',
         ),
         PermissionKeys.forgeflowHistoryView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View historical results',
         ),
         PermissionKeys.forgeflowBenchmarkView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View benchmarks',
         ),
         PermissionKeys.forgeflowBenchmarkEdit: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowBenchmarkView],
+          humanLabel: 'Edit benchmarks',
         ),
         PermissionKeys.forgeflowTargetProfileView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View target profiles',
         ),
         PermissionKeys.forgeflowTargetProfileManage: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowTargetProfileView],
+          humanLabel: 'Manage target profiles',
         ),
         PermissionKeys.forgeflowTargetCycleView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View target cycles',
         ),
         PermissionKeys.forgeflowTargetCycleUnlock: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowTargetCycleView],
+          humanLabel: 'Unlock target cycles',
         ),
         PermissionKeys.forgeflowTargetCycleReplace: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowTargetCycleView],
+          humanLabel: 'Replace target cycles',
         ),
         PermissionKeys.forgeflowWeeklyPlanView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View weekly plans',
         ),
         PermissionKeys.forgeflowWeeklyPlanLock: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowWeeklyPlanView],
+          humanLabel: 'Lock weekly plans',
         ),
         PermissionKeys.forgeflowSettingsView: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View Forge & Flow settings',
         ),
         PermissionKeys.forgeflowSettingsManage: PermissionKeyMetadata(
           productLabel: 'forgeflow',
           categoryLabel: 'Forge & Flow surfaces',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.forgeflowSettingsView],
+          humanLabel: 'Manage Forge & Flow settings',
         ),
 
         // ─── barrio.* ───────────────────────────────────────────────
@@ -247,65 +287,77 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the Barrio handbook',
         ),
         PermissionKeys.barrioInterviewPlaybookView: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the interview playbook',
         ),
         PermissionKeys.barrioJimTaylorView: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the Jim Taylor course',
         ),
         PermissionKeys.barrioPrestonLeeView: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the Preston Lee course',
         ),
         PermissionKeys.barrioSupervisorContentView: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View supervisor content',
         ),
         PermissionKeys.barrioElPodioView: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the El Podio course',
         ),
         PermissionKeys.barrioHandbookEdit: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.barrioHandbookView],
+          humanLabel: 'Edit the Barrio handbook',
         ),
         PermissionKeys.barrioInterviewPlaybookEdit: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.barrioInterviewPlaybookView],
+          humanLabel: 'Edit the interview playbook',
         ),
         PermissionKeys.barrioPrestonLeeEdit: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.barrioPrestonLeeView],
+          humanLabel: 'Edit the Preston Lee course',
         ),
         PermissionKeys.barrioSupervisorContentEdit: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.barrioSupervisorContentView],
+          humanLabel: 'Edit supervisor content',
         ),
         PermissionKeys.barrioLearningCompleteUnit: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Mark learning units complete',
         ),
         PermissionKeys.barrioStreakView: PermissionKeyMetadata(
           productLabel: 'barrio',
           categoryLabel: 'Barrio learning',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View learning streaks',
         ),
 
         // ─── admin.* ────────────────────────────────────────────────
@@ -313,156 +365,184 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View users',
         ),
         PermissionKeys.adminUsersCreate: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Create users',
         ),
         PermissionKeys.adminUsersDeactivate: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Deactivate users',
         ),
         PermissionKeys.adminUsersReactivate: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Reactivate users',
         ),
         PermissionKeys.adminUsersSoftDelete: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Soft delete users',
         ),
         PermissionKeys.adminUsersErasePii: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Erase user personal information',
         ),
         PermissionKeys.adminUsersResetPassword: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Reset user passwords',
         ),
         PermissionKeys.adminUsersResetMfaFactors: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminUsersView],
+          humanLabel: 'Reset user MFA factors',
         ),
         PermissionKeys.adminInvitesCreate: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Send invitations',
         ),
         PermissionKeys.adminInvitesRevoke: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Revoke invitations',
         ),
         PermissionKeys.adminRolesView: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View roles',
         ),
         PermissionKeys.adminRolesEditSeeded: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
           implies: <String>[PermissionKeys.adminRolesView],
+          humanLabel: 'Edit seeded roles',
         ),
         PermissionKeys.adminRolesCreateCustom: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminRolesView],
+          humanLabel: 'Create custom roles',
         ),
         PermissionKeys.adminRolesDeleteCustom: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminRolesView],
+          humanLabel: 'Delete custom roles',
         ),
         PermissionKeys.adminRolesAssign: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminRolesView],
+          humanLabel: 'Assign roles',
         ),
         PermissionKeys.adminRolesRevoke: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminRolesView],
+          humanLabel: 'Revoke roles',
         ),
         PermissionKeys.adminAuditLogView: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the audit log',
         ),
         PermissionKeys.adminAuditLogExport: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.adminAuditLogView],
+          humanLabel: 'Export the audit log',
         ),
         PermissionKeys.adminTargetCycleUnlock: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Unlock locked target cycles',
         ),
         PermissionKeys.adminPricingTierView: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'View pricing tiers',
         ),
         PermissionKeys.adminPricingTierEdit: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
           implies: <String>[PermissionKeys.adminPricingTierView],
+          humanLabel: 'Edit pricing tiers',
         ),
         PermissionKeys.adminFeatureFlagView: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'View feature flags',
         ),
         PermissionKeys.adminFeatureFlagToggle: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
           implies: <String>[PermissionKeys.adminFeatureFlagView],
+          humanLabel: 'Toggle feature flags',
         ),
         PermissionKeys.adminStatusPagePublish: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Publish status page updates',
         ),
         PermissionKeys.adminDebugConsoleView: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'View the debug console',
         ),
         PermissionKeys.adminSessionForceLogout: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Force log out sessions',
         ),
         PermissionKeys.adminServicePrincipalIssueToken: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Issue service principal tokens',
         ),
         PermissionKeys.adminAuditPrivacyRead: PermissionKeyMetadata(
           productLabel: 'admin',
           categoryLabel: 'F&F admin actions',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Read sensitive audit details',
         ),
 
         // ─── team.* ─────────────────────────────────────────────────
@@ -470,42 +550,49 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View team members',
         ),
         PermissionKeys.teamUsersInvite: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: 'Invite team members',
         ),
         PermissionKeys.teamUsersDeactivate: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: 'Deactivate team members',
         ),
         PermissionKeys.teamUsersReactivate: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: 'Reactivate team members',
         ),
         PermissionKeys.teamUsersSoftDelete: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: 'Soft delete team members',
         ),
         PermissionKeys.teamUsersResetPassword: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: "Reset a team member's password",
         ),
         PermissionKeys.teamUsersResetMfa: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: "Reset another user's MFA",
         ),
         // Wave 2 W-3 (2026-05-14). Self-service profile editing — the
         // actor edits their own display name + email. Distinct from
@@ -517,56 +604,66 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Update your own profile',
         ),
         PermissionKeys.teamRolesView: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View team roles',
         ),
         PermissionKeys.teamRolesCreateCustom: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamRolesView],
+          humanLabel: 'Create custom team roles',
         ),
         PermissionKeys.teamRolesAssign: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamRolesView],
+          humanLabel: 'Assign team roles',
         ),
         PermissionKeys.teamRolesRevoke: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamRolesView],
+          humanLabel: 'Revoke team roles',
         ),
         PermissionKeys.teamHierarchySuspend: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Suspend hierarchy nodes',
         ),
         PermissionKeys.teamHierarchyDelete: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Delete hierarchy nodes',
         ),
         PermissionKeys.teamAuditLogView: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the team audit log',
         ),
         PermissionKeys.teamAuditLogExport: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamAuditLogView],
+          humanLabel: 'Export the team audit log',
         ),
         PermissionKeys.teamSessionForceLogout: PermissionKeyMetadata(
           productLabel: 'team',
           categoryLabel: 'Team management',
           scopeKind: PermissionScopeKind.either,
           implies: <String>[PermissionKeys.teamUsersView],
+          humanLabel: 'Force log out team sessions',
         ),
 
         // ─── account.* / business_timing.* ─────────────────────────
@@ -574,11 +671,13 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'account',
           categoryLabel: 'Account settings',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Configure account settings',
         ),
         PermissionKeys.businessTimingConfigure: PermissionKeyMetadata(
           productLabel: 'business_timing',
           categoryLabel: 'Business timing',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Configure business timing',
         ),
 
         // ─── billing.* ──────────────────────────────────────────────
@@ -586,26 +685,31 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'billing',
           categoryLabel: 'Billing',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'View invoices',
         ),
         PermissionKeys.billingSubscriptionManage: PermissionKeyMetadata(
           productLabel: 'billing',
           categoryLabel: 'Billing',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Manage the subscription plan',
         ),
         PermissionKeys.billingPaymentMethodManage: PermissionKeyMetadata(
           productLabel: 'billing',
           categoryLabel: 'Billing',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Manage payment methods',
         ),
         PermissionKeys.billingUsageView: PermissionKeyMetadata(
           productLabel: 'billing',
           categoryLabel: 'Billing',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'View usage and costs',
         ),
         PermissionKeys.billingUsageCapsEdit: PermissionKeyMetadata(
           productLabel: 'billing',
           categoryLabel: 'Billing',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Adjust usage caps',
         ),
 
         // ─── integration.* ──────────────────────────────────────────
@@ -613,51 +717,61 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Connect Toast POS',
         ),
         PermissionKeys.integrationToastView: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View Toast POS data',
         ),
         PermissionKeys.integration7shiftsConnect: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Connect 7shifts labor',
         ),
         PermissionKeys.integration7shiftsView: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View 7shifts labor data',
         ),
         PermissionKeys.integrationOpentableConnect: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Connect OpenTable reservations',
         ),
         PermissionKeys.integrationOpentableView: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View OpenTable reservation data',
         ),
         PermissionKeys.integrationQboConnect: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Connect QuickBooks Online',
         ),
         PermissionKeys.integrationXeroConnect: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Connect Xero',
         ),
         PermissionKeys.integrationKeyRotate: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Rotate integration keys',
         ),
         PermissionKeys.integrationsConfigure: PermissionKeyMetadata(
           productLabel: 'integration',
           categoryLabel: 'Vendor integrations',
           scopeKind: PermissionScopeKind.orgWide,
+          humanLabel: 'Configure vendor connections',
         ),
 
         // ─── workflow.* ─────────────────────────────────────────────
@@ -665,41 +779,49 @@ class PermissionKeyMetadataCatalog {
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View the workflow catalog',
         ),
         PermissionKeys.workflowRun: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Run workflows',
         ),
         PermissionKeys.workflowApprove: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Approve workflow steps',
         ),
         PermissionKeys.workflowReject: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Reject workflow steps',
         ),
         PermissionKeys.workflowCreate: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Create workflows',
         ),
         PermissionKeys.workflowDelete: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Delete workflows',
         ),
         PermissionKeys.workflowHistoryView: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'View workflow run history',
         ),
         PermissionKeys.workflowToolInvoke: PermissionKeyMetadata(
           productLabel: 'workflow',
           categoryLabel: 'Workflows',
           scopeKind: PermissionScopeKind.either,
+          humanLabel: 'Invoke a workflow tool directly',
         ),
       };
 

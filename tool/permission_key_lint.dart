@@ -170,6 +170,12 @@ enum PermissionKeyFindingCode {
   // `202605142100_phase_R_1L_roles_schema_rewrite.sql`.
   metadataMissing,
   metadataInvalid,
+  // Wave 2 R-2L — human_label gate. Mirror discipline for the
+  // `permission_keys.human_label` column added by migration
+  // `202605150000_phase_r2l_default_role_catalog_v2.sql`. Title Case
+  // English, no underscores, no engineering jargon (per
+  // memory/project_ux_writing_standard.md).
+  humanLabelInvalid,
 }
 
 /// Declaration shape for a parsed constant.
@@ -217,6 +223,8 @@ class PermissionKeyFinding {
         return 'METADATA_MISSING';
       case PermissionKeyFindingCode.metadataInvalid:
         return 'METADATA_INVALID';
+      case PermissionKeyFindingCode.humanLabelInvalid:
+        return 'HUMAN_LABEL_INVALID';
     }
   }
 
@@ -270,6 +278,9 @@ class PermissionKeyLintResult {
 
   Iterable<PermissionKeyFinding> get metadataInvalid => findings
       .where((f) => f.code == PermissionKeyFindingCode.metadataInvalid);
+
+  Iterable<PermissionKeyFinding> get humanLabelInvalid => findings
+      .where((f) => f.code == PermissionKeyFindingCode.humanLabelInvalid);
 
   bool get isClean => findings.isEmpty;
 }
@@ -477,6 +488,32 @@ class PermissionKeyLintRunner {
                 "${_validScopeKinds.join(', ')}.",
           ));
         }
+        // Wave 2 R-2L — HUMAN_LABEL_INVALID gate. The role editor +
+        // permission explainer render `humanLabel` instead of the raw
+        // dotted key, so every entry MUST carry a Title Case English
+        // label per memory/project_ux_writing_standard.md. Empty or
+        // underscore-bearing labels fail the lint.
+        if (meta.humanLabel.isEmpty) {
+          findings.add(PermissionKeyFinding(
+            code: PermissionKeyFindingCode.humanLabelInvalid,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: 'metadata entry for `${c.value}` carries empty '
+                'humanLabel. Set a Title Case English label that '
+                'reads as the action (e.g. "Invite team members", '
+                '"Edit shift details") per the UX writing standard.',
+          ));
+        } else if (meta.humanLabel.contains('_')) {
+          findings.add(PermissionKeyFinding(
+            code: PermissionKeyFindingCode.humanLabelInvalid,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: 'metadata entry for `${c.value}` has humanLabel '
+                '"${meta.humanLabel}" which contains an underscore. '
+                'Operator-facing labels must be Title Case English '
+                'with spaces; no underscores or engineering jargon.',
+          ));
+        }
       }
     }
 
@@ -492,21 +529,26 @@ class PermissionKeyLintRunner {
   }
 }
 
-/// Wave 2 R-1L — parsed metadata entry from
-/// `lib/auth/permission_key_metadata.dart`. The lint cares only
-/// about coverage (every PermissionKeys.all member has an entry) and
-/// validity (productLabel + categoryLabel non-empty, scopeKind is one
-/// of [_validScopeKinds]).
+/// Wave 2 R-1L / R-2L — parsed metadata entry from
+/// `lib/auth/permission_key_metadata.dart`. The lint cares about
+/// coverage (every PermissionKeys.all member has an entry) and
+/// validity:
+///   * productLabel + categoryLabel non-empty
+///   * scopeKind is one of [_validScopeKinds]
+///   * humanLabel non-empty AND free of underscores (Wave 2 R-2L
+///     UX naming standard — HUMAN_LABEL_INVALID pass).
 class _ParsedPermissionKeyMetadata {
   const _ParsedPermissionKeyMetadata({
     required this.productLabel,
     required this.categoryLabel,
     required this.scopeKind,
+    required this.humanLabel,
   });
 
   final String productLabel;
   final String categoryLabel;
   final String scopeKind;
+  final String humanLabel;
 }
 
 /// Accepted values for `PermissionScopeKind`. The lint enforces the
@@ -534,14 +576,25 @@ final RegExp _metadataEntryPattern = RegExp(
   r'PermissionKeyMetadata\s*\(([\s\S]*?)\)\s*,',
 );
 
+// Quoted string patterns use a back-reference so an inner apostrophe
+// inside a double-quoted Dart string (e.g. "member's password")
+// parses correctly. `(['\"])` captures the opening quote; the matching
+// closing quote is forced by `\1`.
 final RegExp _productLabelPattern = RegExp(
-  r"""productLabel\s*:\s*['"]([^'"]*)['"]""",
+  r"""productLabel\s*:\s*(['\"])((?:\\.|(?!\1).)*)\1""",
 );
 final RegExp _categoryLabelPattern = RegExp(
-  r"""categoryLabel\s*:\s*['"]([^'"]*)['"]""",
+  r"""categoryLabel\s*:\s*(['\"])((?:\\.|(?!\1).)*)\1""",
 );
 final RegExp _scopeKindPattern = RegExp(
   r'scopeKind\s*:\s*PermissionScopeKind\.([A-Za-z_]+)\b',
+);
+
+/// Wave 2 R-2L — humanLabel capture pattern. Same back-reference shape
+/// as the productLabel/categoryLabel patterns so a single-quoted Dart
+/// string with an inner double quote (or vice versa) parses correctly.
+final RegExp _humanLabelPattern = RegExp(
+  r"""humanLabel\s*:\s*(['\"])((?:\\.|(?!\1).)*)\1""",
 );
 
 /// Parses every `PermissionKeys.<name>: PermissionKeyMetadata(...)`
@@ -560,10 +613,17 @@ Map<String, _ParsedPermissionKeyMetadata> _parsePermissionKeyMetadata(
     final productMatch = _productLabelPattern.firstMatch(body);
     final categoryMatch = _categoryLabelPattern.firstMatch(body);
     final scopeMatch = _scopeKindPattern.firstMatch(body);
+    final humanMatch = _humanLabelPattern.firstMatch(body);
+    // For the quoted-string patterns (product / category / human
+    // label), group(1) captures the opening quote and group(2)
+    // captures the string body — back-reference shape introduced
+    // for R-2L. The scope pattern has no quote group; its value is
+    // in group(1).
     out[name] = _ParsedPermissionKeyMetadata(
-      productLabel: productMatch?.group(1) ?? '',
-      categoryLabel: categoryMatch?.group(1) ?? '',
+      productLabel: productMatch?.group(2) ?? '',
+      categoryLabel: categoryMatch?.group(2) ?? '',
       scopeKind: scopeMatch?.group(1) ?? '',
+      humanLabel: humanMatch?.group(2) ?? '',
     );
   }
   return out;
@@ -824,7 +884,8 @@ Future<void> main(List<String> args) async {
   if (result.isClean) {
     stdout.writeln('permission_key_lint: clean — no orphans / drift / '
         'missing entries / raw literals / missing or invalid '
-        'PermissionKeyMetadata entries.');
+        'PermissionKeyMetadata entries / invalid humanLabel '
+        'entries.');
     return;
   }
 
