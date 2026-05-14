@@ -125,7 +125,7 @@ void main() {
       );
     });
 
-    testWidgets('narrow header keeps title and subtitle readable', (
+    testWidgets('narrow header keeps title readable', (
       tester,
     ) async {
       await sizeViewport(tester, const Size(360, 1200));
@@ -135,11 +135,12 @@ void main() {
       expect(titleSize.width, greaterThan(50));
       expect(titleSize.height, lessThan(60));
 
-      final subtitleSize = tester.getSize(
+      // Wave 2 U-5 UX cleanup (OW-7b): the descriptive subtitle has
+      // been removed from the header.
+      expect(
         find.byKey(const Key('operator_web_roles_subtitle')),
+        findsNothing,
       );
-      expect(subtitleSize.width, greaterThan(250));
-      expect(subtitleSize.height, lessThan(220));
       expect(
         find.byKey(const Key('operator_web_roles_open_explainer')),
         findsOneWidget,
@@ -306,9 +307,11 @@ void main() {
         find.byKey(const Key('operator_web_custom_role_editor_display_name')),
         findsOneWidget,
       );
+      // Wave 2 U-5 UX cleanup (OW-7f): role_key field is no longer
+      // surfaced; the editor derives it from the display name on save.
       expect(
         find.byKey(const Key('operator_web_custom_role_editor_role_key')),
-        findsOneWidget,
+        findsNothing,
       );
       expect(
         find.byKey(const Key('operator_web_custom_role_editor_description')),
@@ -344,7 +347,7 @@ void main() {
       expect(checkbox.onChanged, isNull);
     });
 
-    testWidgets('Save button stays disabled until name + role key + at least '
+    testWidgets('Save button stays disabled until name + at least '
         'one permission selected', (tester) async {
       await sizeViewport(tester, const Size(1280, 1600));
       await tester.pumpWidget(
@@ -367,10 +370,6 @@ void main() {
       await tester.enterText(
         find.byKey(const Key('operator_web_custom_role_editor_display_name')),
         'Floor Captain',
-      );
-      await tester.enterText(
-        find.byKey(const Key('operator_web_custom_role_editor_role_key')),
-        'floor_captain',
       );
       await tester.pump();
       expect(
@@ -406,10 +405,6 @@ void main() {
       await tester.enterText(
         find.byKey(const Key('operator_web_custom_role_editor_display_name')),
         'Closer',
-      );
-      await tester.enterText(
-        find.byKey(const Key('operator_web_custom_role_editor_role_key')),
-        'closer',
       );
       await tester.pumpAndSettle();
       // Tap the Checkbox specifically inside the permission row so the

@@ -85,7 +85,6 @@ class CustomRoleEditorScreen extends StatefulWidget {
 class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _roleKeyController = TextEditingController();
   final Set<String> _selectedPermissions = <String>{};
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
@@ -100,7 +99,6 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     if (existing != null) {
       _displayNameController.text = existing.displayName;
       _descriptionController.text = existing.description;
-      _roleKeyController.text = existing.roleKey;
       for (final rule in existing.permissions) {
         if (rule.effect == 'allow' &&
             PermissionKeys.all.contains(rule.permissionKey)) {
@@ -114,7 +112,6 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
   void dispose() {
     _displayNameController.dispose();
     _descriptionController.dispose();
-    _roleKeyController.dispose();
     super.dispose();
   }
 
@@ -127,8 +124,54 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     if (widget.readOnly) return false;
     final name = _displayNameController.text.trim();
     if (name.isEmpty) return false;
-    if (_isCreate && _roleKeyController.text.trim().isEmpty) return false;
     return _selectedPermissions.isNotEmpty;
+  }
+
+  /// Derive a stable, proxy-compatible role_key from the display name.
+  /// The role_key field is no longer surfaced in the UI per Wave 2 U-5
+  /// UX cleanup; we still mint it locally so the proxy contract (which
+  /// requires a unique snake_case key per role) keeps working.
+  String _deriveRoleKey(String displayName) {
+    final lowered = displayName.toLowerCase();
+    final sanitized = StringBuffer();
+    var lastWasUnderscore = false;
+    for (final code in lowered.codeUnits) {
+      final char = String.fromCharCode(code);
+      final isAlpha = code >= 0x61 && code <= 0x7a;
+      final isDigit = code >= 0x30 && code <= 0x39;
+      if (isAlpha || isDigit) {
+        sanitized.write(char);
+        lastWasUnderscore = false;
+      } else if (!lastWasUnderscore && sanitized.isNotEmpty) {
+        sanitized.write('_');
+        lastWasUnderscore = true;
+      }
+    }
+    var key = sanitized.toString();
+    while (key.endsWith('_')) {
+      key = key.substring(0, key.length - 1);
+    }
+    // role_key regex requires a leading letter; prepend "role_" if the
+    // first usable character was a digit so we always satisfy the
+    // /^[a-z][a-z0-9_]{1,63}$/ rule the proxy enforces.
+    if (key.isEmpty || !RegExp(r'^[a-z]').hasMatch(key)) {
+      key = 'role_${key.isEmpty ? 'custom' : key}';
+    }
+    if (key.length > 64) {
+      key = key.substring(0, 64);
+      while (key.endsWith('_') && key.isNotEmpty) {
+        key = key.substring(0, key.length - 1);
+      }
+    }
+    // Suffix with a short timestamp so two roles created with the same
+    // display name don't collide on role_key. Falls within the 64-char
+    // ceiling because we trim above first.
+    final suffix = DateTime.now().toUtc().millisecondsSinceEpoch
+        .remainder(1000000)
+        .toString();
+    final maxBase = 64 - suffix.length - 1;
+    final base = key.length > maxBase ? key.substring(0, maxBase) : key;
+    return '${base}_$suffix';
   }
 
   String _nextIdempotencyKey() {
@@ -173,7 +216,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
             actorUserId: widget.session.uid,
             operatorId: widget.session.operatorId,
             locationId: widget.session.primaryLocationId,
-            roleKey: _roleKeyController.text.trim(),
+            roleKey: _deriveRoleKey(_displayNameController.text.trim()),
             displayName: _displayNameController.text.trim(),
             description: _descriptionController.text.trim(),
             permissions: permissions,
@@ -307,11 +350,9 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 _MetaCard(
-                  isCreate: _isCreate,
                   readOnly: widget.readOnly,
                   displayNameController: _displayNameController,
                   descriptionController: _descriptionController,
-                  roleKeyController: _roleKeyController,
                 ),
                 const SizedBox(height: 16),
                 _PermissionPickerCard(
@@ -454,18 +495,14 @@ Map<String, List<String>> _permissionKeysByResource(
 
 class _MetaCard extends StatelessWidget {
   const _MetaCard({
-    required this.isCreate,
     required this.readOnly,
     required this.displayNameController,
     required this.descriptionController,
-    required this.roleKeyController,
   });
 
-  final bool isCreate;
   final bool readOnly;
   final TextEditingController displayNameController;
   final TextEditingController descriptionController;
-  final TextEditingController roleKeyController;
 
   @override
   Widget build(BuildContext context) {
@@ -508,31 +545,6 @@ class _MetaCard extends StatelessWidget {
               }
               if (value.trim().length > 80) {
                 return 'Keep the role name under 80 characters.';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            key: const Key('operator_web_custom_role_editor_role_key'),
-            controller: roleKeyController,
-            enabled: !readOnly && isCreate,
-            decoration: InputDecoration(
-              labelText: 'Role key',
-              border: const OutlineInputBorder(),
-              isDense: true,
-              helperText: isCreate
-                  ? 'Lowercase letters, numbers, and underscores. '
-                        'For example, floor_captain.'
-                  : 'Role keys are locked once a role is created.',
-            ),
-            validator: (value) {
-              if (!isCreate) return null;
-              final trimmed = value?.trim() ?? '';
-              if (trimmed.isEmpty) return 'Role key is required.';
-              if (!RegExp(r'^[a-z][a-z0-9_]{1,63}$').hasMatch(trimmed)) {
-                return 'Use lowercase letters, numbers, and underscores '
-                    '(2 to 64 characters).';
               }
               return null;
             },

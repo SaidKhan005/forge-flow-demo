@@ -48,7 +48,6 @@ import 'package:flutter/material.dart';
 import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
-import '../widgets/operator_web_summary_strip.dart';
 import '../../theme/app_theme.dart';
 
 /// Permission-key bound for the Team sessions section. Aliased to the
@@ -393,47 +392,10 @@ class _SessionsScreenState extends State<SessionsScreen> {
         children: [
           const _SessionsHeader(),
           const SizedBox(height: 18),
-          OperatorWebSummaryStrip(
-            key: const Key('operator_web_sessions_summary'),
-            items: [
-              OperatorWebSummaryItem(
-                icon: Icons.person_outline,
-                label: 'Your access',
-                value: _ownSessions.length.toString(),
-                helper: 'active sessions',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.groups_outlined,
-                label: 'Team access',
-                value: widget._canViewTeamSessions
-                    ? _teamSessionsExcludingOwn.length.toString()
-                    : 'Not shown',
-                helper: widget._canViewTeamSessions
-                    ? 'other active sessions'
-                    : 'requires owner/admin access',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.devices_outlined,
-                label: 'This browser',
-                value: widget.currentSessionId == null ? 'Unknown' : 'Marked',
-                helper: 'current session chip',
-              ),
-              OperatorWebSummaryItem(
-                icon: Icons.refresh_outlined,
-                label: 'Refresh',
-                value: 'On open',
-                helper: 'no background polling',
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
           _SessionsSection(
             sectionKey: const Key('operator_web_sessions_own_section'),
             keyPrefix: 'operator_web_sessions',
             title: 'Your sessions',
-            subtitle:
-                'Devices you are currently signed in to. Use Sign out to '
-                'end any session, including this one.',
             sessions: _ownSessions,
             currentSessionId: widget.currentSessionId,
             busySessionIds: _busySessionIds,
@@ -446,9 +408,6 @@ class _SessionsScreenState extends State<SessionsScreen> {
               sectionKey: const Key('operator_web_sessions_team_section'),
               keyPrefix: 'operator_web_sessions_team',
               title: 'Team sessions',
-              subtitle:
-                  'Active sessions for everyone on your team. Sign out a '
-                  'device to end that session right away.',
               sessions: _teamSessionsExcludingOwn,
               currentSessionId: widget.currentSessionId,
               busySessionIds: _busySessionIds,
@@ -512,7 +471,6 @@ class _SessionsSection extends StatelessWidget {
     required this.sectionKey,
     required this.keyPrefix,
     required this.title,
-    required this.subtitle,
     required this.sessions,
     required this.currentSessionId,
     required this.busySessionIds,
@@ -528,7 +486,6 @@ class _SessionsSection extends StatelessWidget {
   /// collides on the same key in the widget tree.
   final String keyPrefix;
   final String title;
-  final String subtitle;
   final List<WebTeamSessionEntry> sessions;
   final String? currentSessionId;
   final Set<String> busySessionIds;
@@ -550,22 +507,12 @@ class _SessionsSection extends StatelessWidget {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ],
+            child: Text(
+              title,
+              style: AppTextStyles.mono14(
+                color: AppColors.textPrimary,
+                weight: FontWeight.w700,
+              ),
             ),
           ),
           if (loadError != null)
