@@ -92,6 +92,7 @@ void main() {
         changedFiles: const <String>['scripts/foo.sh'],
         diffText:
             '''diff --git a/scripts/foo.sh b/scripts/foo.sh
++++ b/scripts/foo.sh
 + git push --no-verify origin HEAD
 ''',
         fileBodyLookup: (_) => '',
@@ -112,12 +113,36 @@ void main() {
       );
     });
 
+    test(
+      '--no-verify added inside tool/agent_self_audit.dart is exempt',
+      () {
+        // The audit script + its test legitimately contain the literal
+        // `--no-verify` (they are THE detectors). Self-scanning should
+        // not flag itself.
+        final runner = AgentSelfAuditRunner(
+          diffBase: 'origin/master',
+          changedFiles: const <String>['tool/agent_self_audit.dart'],
+          diffText:
+              '''diff --git a/tool/agent_self_audit.dart b/tool/agent_self_audit.dart
++++ b/tool/agent_self_audit.dart
++ // Comment that mentions --no-verify literally.
+''',
+          fileBodyLookup: (_) => '',
+          subprocessRunner: _fakeRun,
+          migrationsTouched: false,
+        );
+        final result = runner.run();
+        expect(result.exitCode, 0);
+      },
+    );
+
     test('--no-verify in a DELETED line does NOT trip the guard', () {
       final runner = AgentSelfAuditRunner(
         diffBase: 'origin/master',
         changedFiles: const <String>['scripts/foo.sh'],
         diffText:
             '''diff --git a/scripts/foo.sh b/scripts/foo.sh
++++ b/scripts/foo.sh
 - git push --no-verify origin HEAD
 + git push origin HEAD
 ''',

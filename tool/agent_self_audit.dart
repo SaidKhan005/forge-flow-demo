@@ -164,22 +164,46 @@ String? _fileBodyAtHead(String path) {
   }
 }
 
+/// Paths whose added lines are exempt from the `--no-verify` guard.
+/// The audit script + its smoke test legitimately contain the literal
+/// `--no-verify` (the script is THE thing that detects it). Without this
+/// allowlist the self-audit would always fail when scanning itself.
+const Set<String> kNoVerifyGuardExemptPaths = <String>{
+  'tool/agent_self_audit.dart',
+  'test/tool/agent_self_audit_test.dart',
+};
+
 /// Frozen-surface guard 1 — no `--no-verify` in the diff.
+///
+/// Walks the unified diff line-by-line, tracking the current `+++ b/...`
+/// header so an added line in an exempt file (the audit script itself
+/// and its test) does NOT trip the guard. Deleted lines never trip the
+/// guard; a worker REMOVING a `--no-verify` literal is the correct
+/// direction.
 AuditRow _checkNoNoVerifyInDiff(String diffText) {
-  // Only inspect ADDED lines (those prefixed `+ ` but not the file header
-  // `+++`). Otherwise a worker who DELETES a `--no-verify` literal would
-  // trip the guard.
-  final addedLines = diffText
-      .split('\n')
-      .where((line) => line.startsWith('+') && !line.startsWith('+++'));
-  final hits = addedLines
-      .where((line) => _noVerifyPattern.hasMatch(line))
-      .toList();
+  final hits = <String>[];
+  var currentFile = '';
+  for (final line in diffText.split('\n')) {
+    if (line.startsWith('+++ b/')) {
+      currentFile = line.substring(6).trim().replaceAll(r'\', '/');
+      continue;
+    }
+    if (line.startsWith('+++')) {
+      // `+++ /dev/null` (file deleted on the right side).
+      currentFile = '';
+      continue;
+    }
+    if (!line.startsWith('+') || line.startsWith('+++')) continue;
+    if (kNoVerifyGuardExemptPaths.contains(currentFile)) continue;
+    if (_noVerifyPattern.hasMatch(line)) {
+      hits.add(line);
+    }
+  }
   if (hits.isEmpty) {
     return AuditRow(
       check: 'no --no-verify in diff',
       passed: true,
-      notes: 'no added line contains `--no-verify`',
+      notes: 'no added line contains `--no-verify` outside exempt paths',
     );
   }
   return AuditRow(
