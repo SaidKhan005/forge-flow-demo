@@ -361,6 +361,35 @@ orchestrator's session cap. The orchestrator spends tokens on:
 That's it. No inline edits to slice work. Doc tweaks ≤10 lines are the
 only carve-out.
 
+### 1b. Parallel dispatch — fan out independent slices
+
+**Default to maximum parallelism.** When two or more slices have no
+file overlap and no contract dependency, dispatch their worker agents
+in the **same Agent-tool message** (multiple `<invoke>` blocks in one
+`<function_calls>` block). They run concurrently in separate worktrees;
+their PRs land in any order; you audit + merge in any order.
+
+Concrete examples:
+- Lane B's 4 bug fixes (W-1, W-2, BUG-1, BUG-2) are independent files →
+  dispatch all 4 at once.
+- Lane Q's 4 quality slices are independent → all 4 at once.
+- Lane W's 6 write-path slices: most are independent across vendor
+  surfaces; check the slice rows for file overlap and group accordingly
+  (e.g., 3 + 3, or 4 + 2 if two touch the same admin screen).
+- Lane H's 3 hierarchy slices: HP #11 sweep + visualization + audit are
+  independent → all 3 at once.
+
+**Serialize only on:**
+- File-level overlap (same file edited by 2+ slices).
+- Contract dependency (slice B needs slice A's API or schema first;
+  capture in the ledger's Dependency column).
+- Operator-gated lane awaiting your approval (no point fanning out
+  before the gate clears).
+
+Orchestrator burns the same prompt-writing time per slice regardless of
+parallelism; audit cost dominates and audits batch well. **Throughput
+is the optimization target, not conservatism.**
+
 ### 2. 90% weekly cap throttle
 
 When either session crosses ~90% **weekly** session usage, **stop

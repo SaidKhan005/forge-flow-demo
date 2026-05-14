@@ -355,6 +355,48 @@ The mobile launchers do NOT need `POSTGRES_URL` — they hit the proxy
 via Cloud Run staging by default. To point them at the local proxy,
 pass `-ProxyBaseUri http://localhost:8080`.
 
+### adb (Android Debug Bridge) — for direct mobile UI testing
+
+The connected Samsung A54 (`SM-A546W`, transport id `R5CW503HJHP`) is
+controlled directly via adb for click-path verification + screencap
+during agent walkthroughs. adb ships with the Android SDK but is NOT
+on `PATH` by default. Full path:
+
+```
+C:\Users\saidu\AppData\Local\Android\Sdk\platform-tools\adb.exe
+```
+
+Common commands an agent uses during a live UI check:
+
+```powershell
+# List connected devices (sanity)
+& "C:\Users\saidu\AppData\Local\Android\Sdk\platform-tools\adb.exe" devices -l
+
+# Tap at screen coordinates (x=540, y=1200 etc.)
+& "C:\Users\saidu\AppData\Local\Android\Sdk\platform-tools\adb.exe" shell input tap 540 1200
+
+# Type text (URL-encode spaces as %s)
+& "C:\Users\saidu\AppData\Local\Android\Sdk\platform-tools\adb.exe" shell input text "hello%sworld"
+
+# Screen cap (binary PNG to local file for inspection / PR attachment)
+& "C:\Users\saidu\AppData\Local\Android\Sdk\platform-tools\adb.exe" exec-out screencap -p > screenshot.png
+
+# Tail device logs (filtered)
+& "C:\Users\saidu\AppData\Local\Android\Sdk\platform-tools\adb.exe" logcat -v threadtime --pid=$(adb shell pidof com.forgeflow.app)
+```
+
+To persist on `PATH` for a session, set `ANDROID_HOME`:
+
+```powershell
+$env:ANDROID_HOME = "$env:LOCALAPPDATA\Android\Sdk"
+$env:PATH = "$env:ANDROID_HOME\platform-tools;$env:PATH"
+adb devices -l   # now works bare
+```
+
+Operator's machine convention: prefer the full-path invocation in
+agent scripts so they work even when invoked from contexts that don't
+inherit the session PATH update.
+
 ## Differences from staging / Production1
 
 | Aspect | Local | Staging / Production1 |
