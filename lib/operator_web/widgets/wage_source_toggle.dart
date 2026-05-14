@@ -52,11 +52,14 @@ class WageSourceToggle extends StatelessWidget {
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_wage_source_card'),
       icon: Icons.payments_outlined,
-      title: 'Where labor dollars come from',
+      title: 'How labor dollars are calculated',
       headerExplainer:
-          'Labor dollars on your dashboard come from one of two places. '
-          'Pick where you want Forge & Flow to read them from. You can '
-          'change this any time without losing past data.',
+          'Labor dollars on your dashboard are calculated one of two ways. '
+          'Either Forge & Flow reads them straight from your scheduling '
+          'system, or it multiplies the wage rates you set in Settings by '
+          'the hours your staff actually worked. Pick the path that '
+          'matches the system you trust today — you can switch back '
+          'any time without losing past numbers.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

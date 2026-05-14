@@ -171,7 +171,7 @@ void main() {
           find.byKey(const Key('polling_tier_request_change_button'));
       expect(buttonFinder, findsOneWidget);
 
-      final OutlinedButton button = tester.widget<OutlinedButton>(buttonFinder);
+      final FilledButton button = tester.widget<FilledButton>(buttonFinder);
       expect(button.onPressed, isNotNull);
     });
 
@@ -199,7 +199,7 @@ void main() {
     });
 
     testWidgets(
-        'empty cadences map renders muted "no poll-only vendors" line',
+        'empty cadences map renders a plain-English real-time confirmation line',
         (tester) async {
       await tester.pumpWidget(
         _wrap(
@@ -213,7 +213,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.textContaining('No poll-only vendors connected'),
+        find.textContaining('pushes updates to Forge & Flow'),
         findsOneWidget,
       );
     });

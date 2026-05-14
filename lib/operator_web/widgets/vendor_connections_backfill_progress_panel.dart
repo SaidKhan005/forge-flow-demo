@@ -149,7 +149,7 @@ class _VendorConnectionsBackfillProgressPanelState
               ),
               const SizedBox(width: 8),
               Text(
-                'Initial backfill progress',
+                '60 day benchmark data',
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
             ],
