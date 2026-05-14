@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:provider/provider.dart';
 
 import '../auth/auth_session.dart';
+import '../auth/permission_keys.dart';
 import '../models/app_data_status.dart';
 import '../services/app_data_status_service.dart';
 import '../services/auth/account_info_gateway.dart';
@@ -14,6 +15,7 @@ import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
 import '../state/app_refresh_coordinator.dart';
 import '../state/auth_session_notifier.dart';
+import '../state/permission_context.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../services/team/team_scope_visibility_policy.dart';
 import '../theme/app_theme.dart';
@@ -168,6 +170,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final session = authNotifier?.session;
     final showAccount = session != null;
+    // MO-1 — read the production permission snapshot (when wired by
+    // AuthPermissionContextBridge). `listen: true` so a session-driven
+    // re-load of the snapshot re-runs the Data tab gate without
+    // requiring the user to re-enter Settings.
+    PermissionContext? permissionContext;
+    try {
+      permissionContext = Provider.of<PermissionContext>(context, listen: true);
+    } on ProviderNotFoundException {
+      permissionContext = null;
+    }
     // W3.A â€” Team / Diagnostics / Advisor tabs are gone. The Operator
     // Web console owns Team management + advisor admin. Mobile mirrors
     // the read-only essentials in 3 tabs.
@@ -185,10 +197,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _isAdminTier(effectiveTeamActor);
     final showFFSupport =
         effectiveTeamActor != null && _isFFAccount(effectiveTeamActor);
+    // MO-1 (Wave 2) — the Data tab carries F&F-internal diagnostic
+    // surfaces (Sync status, Demo→Live switch, data freshness, demo
+    // reset, data alignment). Per debug.md:260 the tab is privileged
+    // to seeded F&F admin users only (super_admin / ff_support), not
+    // operator-tier admins.
+    //
+    // Server-snapshot first: when a [PermissionContext] is wired
+    // (production auth bridge), gate on `admin.debug_console.view` —
+    // the closest existing catalog key restricted to super_admin and
+    // ff_support (see db/migrations/202604250008 lines 975-996). When
+    // no snapshot is in scope (demo / unauth / pre-Phase-9 tests),
+    // fall back to the role-based [_isFFAccount] helper. A null
+    // teamActor (legacy demo / unauth shells) keeps the tab visible
+    // so demo-mode walkthroughs still reach the Demo→Live switch.
+    //
+    // TODO(mo-1): consider adding a dedicated `mobile.data_tab.view`
+    // or `forgeflow.data_diagnostics.view` permission key in a
+    // follow-up slice; reusing `admin.debug_console.view` is a
+    // conservative match (no new keys per slice scope), but a
+    // dedicated key would carry clearer intent.
+    final showDataTab = _shouldShowDataTab(
+      permissionContext: permissionContext,
+      teamActor: effectiveTeamActor,
+      showAccount: showAccount,
+    );
     final tabs = <_SettingsTabSpec>[
       if (showAccount) _accountSettingsTab,
       if (showAdminTabs) _authoritySettingsTab,
-      if (showAdminTabs) _dataSettingsTab,
+      if (showDataTab) _dataSettingsTab,
     ];
 
     return DefaultTabController(
@@ -368,7 +405,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
               ),
-            if (showAdminTabs)
+            if (showDataTab)
               _SettingsTabScrollView(
                 tabId: 'data',
                 onRefresh: _handlePullToRefresh,
@@ -476,6 +513,51 @@ bool _isFFAccount(TeamScopeActor? actor) {
   if (actor == null) return false;
   return actor.actorRoles.contains('super_admin') ||
       actor.actorRoles.contains('ff_support');
+}
+
+/// MO-1 (Wave 2) â€” gate for the mobile Settings Data tab.
+///
+/// Per debug.md:260 the tab is restricted to seeded F&F admin users
+/// (super_admin / ff_support). Operators (owner / manager /
+/// supervisor / staff) do not see the tab.
+///
+/// Resolution order:
+///  1. When the user is unauthenticated (`!showAccount`), keep the
+///     tab visible. The screen still mounts in the demo / unauth
+///     walkthrough so the demo-mode operator can reach the
+///     Demo→Live switch and Data reset.
+///  2. When a [PermissionContext] is wired (production auth bridge),
+///     prefer the server-snapshot answer: `admin.debug_console.view`
+///     is granted to super_admin + ff_support only in the seeded
+///     role-permission rows (see db/migrations/202604250008 around
+///     line 990).
+///  3. Otherwise fall back to the role-based [_isFFAccount] helper.
+///  4. A null [teamActor] with no [PermissionContext] keeps the tab
+///     visible so legacy demo / unauth / pre-Phase-9 test shells
+///     stay functional (mirrors `showAdminTabs`â€™s null-actor open
+///     posture).
+bool _shouldShowDataTab({
+  required PermissionContext? permissionContext,
+  required TeamScopeActor? teamActor,
+  required bool showAccount,
+}) {
+  // Unauth / demo walkthrough: keep the demo Demo→Live + reset rows
+  // reachable. Same posture as `showAdminTabs`.
+  if (!showAccount) return true;
+  if (permissionContext != null) {
+    // Server-snapshot resolves the truth. F&F admins return true;
+    // operator-tier and below return false (catalog grants
+    // `admin.debug_console.view` to super_admin + ff_support only).
+    return permissionContext.hasPermission(
+      PermissionKeys.adminDebugConsoleView,
+    );
+  }
+  // No snapshot in the tree (widget tests / demo shells / Barrio
+  // embeds without the bridge). Defer to the role-based helper. A
+  // null actor opens the tab — mirrors `showAdminTabs` for
+  // backward compatibility with pre-Phase-9 test setups.
+  if (teamActor == null) return true;
+  return _isFFAccount(teamActor);
 }
 
 ActiveSessionsActor _activeSessionsActorForSession(
