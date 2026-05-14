@@ -23,7 +23,7 @@ import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
 import 'settings/settings_covers_setup_section.dart';
 import 'settings/settings_data_sections.dart';
-import 'settings/settings_demo_live_switch.dart';
+import 'settings/settings_integrations_section.dart';
 import 'settings/settings_mfa_section.dart';
 import 'settings/settings_pointer_row.dart';
 import 'settings/settings_timing_authority_section.dart';
@@ -229,6 +229,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // until then the slot is omitted, not stubbed.
     final tabs = <_SettingsTabSpec>[
       if (showAdminTabs) _authoritySettingsTab,
+      // MP-1 (Wave 2) — Integrations is its own top-level tab. Hosts
+      // per-(O, L, C) status from `demo_mode_state`, the operator
+      // master Demo→Live switch (formerly mounted under Setup as
+      // "Demo vs live data" per MO-1-FU; the long-term home is here),
+      // and a B11.1 short-opaque-code handoff link to operator-web's
+      // Vendor Connections screen. Gated by `showAdminTabs` so every
+      // operator admin (owner / manager / super_admin / ff_support)
+      // reaches it; the Data tab keeps its tighter F&F gate.
+      if (showAdminTabs) _integrationsSettingsTab,
       if (showDataTab) _dataSettingsTab,
       if (showAccount) _accountSettingsTab,
     ];
@@ -346,26 +355,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                   ),
-                  // MO-1-FU (Wave 2) — operator master Demo→Live switch
-                  // moved here from the Data tab. MO-1 (PR #661) gated
-                  // the Data tab to F&F admin users only, which left
-                  // operator-tier users (operator_owner /
-                  // operator_manager) unable to reach this switch.
-                  // Per Demo Mode carve-out #4 (`CLAUDE.md`),
-                  // `SettingsDemoLiveSwitch` is the operator-approved
-                  // master switch and semantically belongs to
-                  // operators, not F&F-internal diagnostics. Setup is
-                  // gated by `showAdminTabs` (operator_owner /
-                  // operator_manager / super_admin / ff_support), so
-                  // the switch stays available to demo operators while
-                  // the Data tab remains F&F-internal. F&F admins also
-                  // reach the Setup tab, so the switch is reachable
-                  // for them too via this single placement.
+                  // MO-1-FU (Wave 2) — the operator master Demo→Live
+                  // switch was briefly mounted here under "Demo vs live
+                  // data" because MO-1 (PR #661) had gated the Data
+                  // tab to F&F admin users only. MP-1 (Wave 2) gives
+                  // the switch a permanent home: the new top-level
+                  // Integrations tab (`_integrationsSettingsTab`),
+                  // alongside per-category integration status and the
+                  // operator-console deep-link. The widget itself is
+                  // unchanged — only its mount point moves.
+                ],
+              ),
+            if (showAdminTabs)
+              _SettingsTabScrollView(
+                tabId: 'integrations',
+                onRefresh: _handlePullToRefresh,
+                slivers: [
+                  // MP-1 (Wave 2) — Integrations tab body. Per-category
+                  // status (POS / Reservation / Labor) from the same
+                  // `demo_mode_state` source the demo banner uses, the
+                  // C-4 master Demo→Live switch mounted verbatim, and
+                  // a B11.1 short-opaque-code handoff link to the
+                  // operator console's Vendor Connections screen. All
+                  // connection management (connect / disconnect /
+                  // OAuth) stays on operator-web — mobile is
+                  // read-only.
                   _settingsSection(
-                    title: 'Demo vs live data',
+                    title: 'Integrations',
                     description:
-                        'Switch this location from demo facts to live vendor facts.',
-                    child: const SettingsDemoLiveSwitch(),
+                        'See which categories are still on demo data and '
+                        'jump to the operator console to connect vendors.',
+                    child: SettingsIntegrationsSection(
+                      handoffCodeGateway: widget.handoffCodeGateway,
+                    ),
                   ),
                 ],
               ),
@@ -660,6 +682,17 @@ const _SettingsTabSpec _authoritySettingsTab = _SettingsTabSpec(
   id: 'authority',
   label: 'Setup',
   icon: Icons.tune_rounded,
+);
+
+/// MP-1 (Wave 2) — top-level Integrations tab. Renders per-category
+/// integration status, the operator master Demo→Live switch (the C-4
+/// surface; widget mounted verbatim), and a B11.1 deep-link to the
+/// operator console's Vendor Connections screen. Gated by
+/// `showAdminTabs`, so every operator admin role reaches it.
+const _SettingsTabSpec _integrationsSettingsTab = _SettingsTabSpec(
+  id: 'integrations',
+  label: 'Integrations',
+  icon: Icons.cable_rounded,
 );
 
 const _SettingsTabSpec _dataSettingsTab = _SettingsTabSpec(
