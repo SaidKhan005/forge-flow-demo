@@ -1,8 +1,8 @@
 # Forge Flow Architecture Guide
 
-Last updated: 2026-04-29
+Last updated: 2026-05-12
 
-Repository/tracker state reviewed through: 2026-04-28
+Repository/tracker state reviewed through: 2026-05-12
 
 This document explains Forge Flow in two languages at the same time:
 
@@ -16,7 +16,7 @@ The goal is not just to list technology. The goal is to make the system understa
 Most areas follow this pattern:
 
 1. Plain English: the mental model.
-2. Named architecture areas: a direct plain-English explanation, then a restaurant analogy, then the technical purpose.
+2. Named architecture areas: a direct plain-English explanation, then the technical purpose.
 3. One-at-a-time explanations inside each area: each term gets its own short block with what it is, what it does, an example in the app, and why it matters.
 4. How it works: the flow through the system.
 5. Where it lives: repo paths to inspect.
@@ -26,21 +26,27 @@ Status words used in this guide:
 - Live: implemented and actively used or verified.
 - Scaffolded: foundation exists, but the final consumer or workflow is not complete.
 - Planned: documented in phase plans, not fully implemented.
+- Paused: documented but intentionally on hold (AI / outward-vendor / Barrio freezes).
 
 Recommended reading flow:
 
 1. Start with the whole-system picture and quick walkthroughs.
-2. Read the product loop so the restaurant concepts make sense.
+2. Read the product loop so the domain concepts make sense.
 3. Read app, SQLite, proxy, DNS, auth, and Postgres as the core runtime path.
 4. Read RLS, permissions, service principals, and audit as the safety path.
 5. Read events, usage, advisor, graph, integrations, shared state, and workflow as the expansion path.
 6. Use deployment, testing, status, glossary, and source files as reference material.
 
+Domain vocabulary used throughout: POS, Labor, and Reservation are the three
+source-system classes Forge Flow integrates with. Shift, cover, business date,
+service period, and wage authority are product-layer terms that show up in
+schema and UI. They are architectural truth, not illustrations.
+
 ## 1. Whole System In One Picture
 
 ### Plain English
 
-Forge Flow is a restaurant operations system.
+Forge Flow is a restaurant-operations product.
 
 It helps an operator understand:
 
@@ -51,25 +57,23 @@ It helps an operator understand:
 - what happened historically
 - what the system recommends next
 
-The app on the device is only one part of the system. The bigger system includes a server-side proxy, a shared database, auth, audit logs, DNS, cloud infrastructure, AI retrieval, and future workflow automation.
-
-Think of the whole system like the operating flow of a restaurant:
-
-- The Flutter app is the operator-facing screen, like the POS/floor-management surface staff actually use during service.
-- SQLite is the local working copy, like a station's current prep sheet, floor chart, or KDS view.
-- The proxy is the manager-on-duty checkpoint for protected work, like voids, comps, drawer closeout, or sensitive reports.
-- Postgres is the back-office system of record for sales, labor, closeout, audit, manager-log, and multi-location data.
-- Firebase is the identity check, similar to proving which employee profile is signing in before permissions are applied.
-- DNS and the load balancer are the public listing and routed entry path that get requests to the right backend service.
-- The advisor is the experienced GM/chef view that reviews POS, labor, reservations, prep, and manager-log evidence before recommending action.
+The app on the device is only one part of the system. The bigger system
+includes a server-side proxy, a shared database, auth, audit logs, DNS, cloud
+infrastructure, AI retrieval, and future workflow automation. Each tier owns
+a different kind of truth: the device owns local cache and demo data, the
+proxy owns identity and policy, Postgres owns shared records, Firebase owns
+credentials, the edge owns public ingress.
 
 ### Core System Map
 
-We use a core system map because Forge Flow has several major pieces, and it is easier to understand them when you can see how they fit together first.
+We use a core system map because Forge Flow has several major pieces, and it
+is easier to understand them when you can see how they fit together first.
 
-In restaurant operations terms, this is the service map from FOH to BOH: host stand and reservations, POS order entry, KDS/prep stations, the expo at the pass, food runners, manager closeout, and back-office reporting. Each station has a job, and service works when the handoffs are clear.
-
-Technically, the core system map defines top-level runtime boundaries and trust zones. It separates client execution, local persistence, server-side API authority, shared database authority, identity verification, public edge routing, and AI/advisor processing so each layer has a clear responsibility, deployment model, and security posture.
+The core system map defines top-level runtime boundaries and trust zones. It
+separates client execution, local persistence, server-side API authority,
+shared database authority, identity verification, public edge routing, and
+AI/advisor processing so each layer has a clear responsibility, deployment
+model, and security posture.
 
 Key pieces, one at a time:
 
@@ -77,7 +81,7 @@ Key pieces, one at a time:
 
 - **What it is:** The user-facing app code
 - **What it does:** Shows screens, handles user interaction, reads local state, calls services
-- **Example in the app:** Manager opens Forge Flow to check tonight's labor.
+- **Example in the app:** Operator opens Forge Flow to check tonight's labor variance.
 - **Why it matters:** One shared app framework can serve the operator experience across platforms without rebuilding every screen separately
 - **How this helps long term:** Supports future mobile, web, and branded surfaces without creating separate UI stacks.
 
@@ -108,8 +112,8 @@ Key pieces, one at a time:
 #### Firebase Identity Platform
 
 - **What it is:** Hosted identity service
-- **What it does:** Handles login credentials, password auth, and MFA
-- **Example in the app:** Sarah signs in with email, password, and MFA.
+- **What it does:** Handles login credentials, password auth, and TOTP MFA
+- **Example in the app:** A manager signs in with email, password, and a TOTP authenticator code.
 - **Why it matters:** Credential security is hard; using Firebase avoids building password/MFA infrastructure from scratch
 - **How this helps long term:** Keeps future auth/MFA improvements on a dedicated identity platform instead of custom credential code.
 
@@ -155,10 +159,10 @@ Key pieces, one at a time:
 
 #### Advisor
 
-- **What it is:** AI/retrieval system
-- **What it does:** Answers operational questions using documents, metrics, SQL, graph data, and model providers
+- **What it is:** AI/retrieval system (paused during V1 AI freeze; foundations are live, consumer surfaces are not)
+- **What it does:** Answers operational questions using documents, metrics, SQL, graph data, and model providers behind general-purpose provider abstractions
 - **Example in the app:** Answers why labor is high using sales and schedule evidence.
-- **Why it matters:** Recommendations become grounded in evidence instead of being generic chatbot output
+- **Why it matters:** Recommendations become grounded in evidence instead of being generic chatbot output. Advisor speaks in recommendations only — F&F never acts on the operator's behalf at launch
 - **How this helps long term:** Creates a path for smarter recommendations without coupling AI directly to screens.
 
 
@@ -280,34 +284,46 @@ what happened before
   -> what we learn
 ```
 
-This matters because live restaurant data can be messy. Sales can change. Labor can change. Reservations can move. A manager can adjust a schedule. If the system mixes live data, planned data, and historical truth, it becomes hard to trust.
+This matters because live operational data is messy. Sales can change. Labor
+can change. Reservations move. A manager can adjust a schedule. If the system
+mixes live, planned, and closed truth, screens stop being trustworthy.
 
-Forge Flow tries to keep those meanings separate.
+Forge Flow keeps those meanings separate. The three Hard Promises in
+`docs/contracts/core_app_architecture.md` lock this in:
+
+1. Source systems own raw truth; the app owns canonical truth.
+2. Locked truth never gets rewritten (closed shifts, weekly plans,
+   cycle/week provenance).
+3. Live, closed, projected, and fallback states stay distinguishable. Every
+   metric carries `state` + `provenance` per the metric-card honesty
+   contract.
 
 ### Product Truth Model
 
-We use a product truth model because restaurant data has different meanings depending on whether it is planned, live, historical, or recommended.
+We use a product truth model because operational data has different meanings
+depending on whether it is planned, live, historical, or recommended.
 
-In restaurant operations terms, these are different operating artifacts: the forecast tells you expected covers, the prep list tells the kitchen what to prepare, the schedule says who is working, the POS/KDS shows live tickets, the 86 list says what is unavailable, and the manager log/closeout captures what actually happened.
-
-Technically, the product truth model defines domain invariants. It keeps planned, forecasted, live, benchmarked, and closed data as separate concepts so formulas, UI state, persistence, integrations, analytics, and advisor logic do not accidentally compare or rewrite the wrong kind of truth.
+The product truth model defines domain invariants. It keeps planned,
+forecasted, live, benchmarked, and closed data as separate concepts so
+formulas, UI state, persistence, integrations, analytics, and advisor logic
+do not accidentally compare or rewrite the wrong kind of truth.
 
 Key pieces, one at a time:
 
 #### Operational facts
 
-- **What it is:** Raw or normalized restaurant facts
+- **What it is:** Raw or normalized POS/Labor/Reservation facts
 - **What it does:** Represent sales, labor, reservations, shifts, wages, plans, and outcomes
-- **Example in the app:** Actual sales, labor punches, reservations, and shifts.
-- **Why it matters:** The system needs real restaurant evidence before it can make useful comparisons or recommendations
+- **Example in the app:** Actual sales, labor punches, reservations, and shift records.
+- **Why it matters:** The system needs real evidence before it can make useful comparisons or recommendations
 - **How this helps long term:** Provides stable evidence for future integrations, audits, rollups, and advisor reasoning.
 
 #### Canonical facts
 
-- **What it is:** Forge Flow's standard internal version of those facts
+- **What it is:** Forge Flow's standard internal version of those facts (`ShiftRecord`, `OpenShiftSnapshot`, `ReservationBookSnapshot`, and the per-vendor `cover_facts` / `labor_punches` / `reservation_facts` rows)
 - **What it does:** Lets all vendors and app surfaces speak one common data language
 - **Example in the app:** Toast labor data normalized into Forge Flow fields.
-- **Why it matters:** Vendor-specific mess stays at the boundary, so the app and advisor do not need custom logic for every provider
+- **Why it matters:** Vendor-specific mess stays at the boundary, so the app and advisor do not need custom logic for every provider. UI never reads vendor payload shape
 - **How this helps long term:** Lets new vendors be added without changing product logic everywhere.
 
 #### Benchmark
@@ -320,8 +336,8 @@ Key pieces, one at a time:
 
 #### TargetCycle
 
-- **What it is:** A locked benchmark window
-- **What it does:** Prevents targets from constantly changing after a plan is made
+- **What it is:** A locked 60-day standards window owning target CPLH, SPLH, PPA, and OPZ bounds
+- **What it does:** Prevents targets from constantly changing after a plan is made; managers can override once per cycle; admins can replace with explicit provenance; new cycles never re-grade already closed history
 - **Example in the app:** This week locked against the chosen benchmark.
 - **Why it matters:** Keeps planning fair: the standard used to make a plan is still the standard used to judge it
 - **How this helps long term:** Supports fair plan-versus-result comparison across future planning phases.
@@ -330,7 +346,7 @@ Key pieces, one at a time:
 
 - **What it is:** The currently active target settings
 - **What it does:** Gives screens and formulas the current standard to compare against
-- **Example in the app:** Downtown's current labor target settings.
+- **Example in the app:** a location's current labor target settings.
 - **Why it matters:** UI and calculations stay aligned on one current target source
 - **How this helps long term:** Lets target strategy evolve without rewriting every screen and formula.
 
@@ -346,22 +362,22 @@ Key pieces, one at a time:
 
 - **What it is:** The locked plan for a week
 - **What it does:** Preserves what the operator intended before actuals arrive
-- **Example in the app:** Schedule Sarah approved on Monday.
+- **Example in the app:** Schedule an operator approved on Monday.
 - **Why it matters:** Actual results can be compared to the plan that existed at the time, not a rewritten plan
 - **How this helps long term:** Preserves plan history for future variance, audit, and learning features.
 
 #### Shift
 
-- **What it is:** The live or whole-day shift view
+- **What it is:** The live or whole-day shift view (whole-day is authoritative; Phase 10.5 adds daypart alongside, never replacing it)
 - **What it does:** Shows what is happening now or happened in a shift
-- **Example in the app:** Tonight's dinner shift at Downtown.
+- **Example in the app:** Tonight's dinner shift at the example location.
 - **Why it matters:** Operators need a current operational picture while the day is still actionable
 - **How this helps long term:** Gives live operations a stable surface as daypart and real-time data expand.
 
 #### Variance
 
 - **What it is:** Difference between plan and actual
-- **What it does:** Explains whether the restaurant is above/below plan
+- **What it does:** Explains whether the location is above or below plan
 - **Example in the app:** Labor is 8 hours over plan.
 - **Why it matters:** Variance turns raw numbers into a clear "on track or off track" signal
 - **How this helps long term:** Becomes the bridge for future coaching, alerts, and planning feedback.
@@ -425,11 +441,19 @@ If you want to understand a change, first ask: is this UI, app state, local data
 
 ### Repository Layout
 
-We organize the repository by responsibility because UI code, database code, cloud code, tests, and planning docs all need clear homes.
+We organize the repository by responsibility because UI code, database code,
+cloud code, tests, and planning docs all need clear homes.
 
-In restaurant operations terms, this is station organization and mise en place. Prep lists, recipe cards, vendor invoices, temp logs, cash closeout paperwork, and POS configuration do not all live in the same binder because different people use them for different jobs.
-
-Technically, the repository layout documents separation of concerns. Each folder represents an ownership boundary: presentation, domain logic, runtime services, state management, local persistence, server persistence, proxy/API code, schema migration, tests, architecture docs, and operational procedures.
+The repository layout documents separation of concerns. Each folder represents
+an ownership boundary: presentation, domain logic, runtime services, state
+management, local persistence, server persistence, proxy/API code, schema
+migration, tests, architecture docs, and operational procedures. The
+service-layer split is enforced by lint (CLAUDE.md "Service-Layer Split"):
+`lib/data/` is frozen legacy and delete-only; `lib/services/` orchestrates
+runtime; `lib/domain/services/` holds pure formulas with no I/O; `lib/state/`
+owns state holders; `lib/dev/` is demo and dev-only; `lib/auth/` mirrors the
+frozen permission-key catalog; raw `package:postgres` imports are allowed
+only inside `lib/infrastructure/persistence/postgres/`.
 
 Key pieces, one at a time:
 
@@ -456,6 +480,14 @@ Key pieces, one at a time:
 - **Why it matters:** Orchestration sits between raw UI and low-level infrastructure
 - **How this helps long term:** Keeps orchestration replaceable as providers, gateways, and proxy features change.
 
+#### `lib/domain/services/`
+
+- **What it is:** Pure formula services (no I/O)
+- **What it does:** Implements LaborModel, TargetCycle projection, and other domain math
+- **Example in the app:** `target_cycle_active_target_profile_projector.dart`.
+- **Why it matters:** Pure functions are testable, portable, and safe to call from any layer
+- **How this helps long term:** Keeps formulas usable from app, proxy, and future workflow tools.
+
 #### `lib/state/`
 
 - **What it is:** App state objects
@@ -463,6 +495,22 @@ Key pieces, one at a time:
 - **Example in the app:** Shift dashboard notifier stores current screen state.
 - **Why it matters:** UI can react to clean state changes instead of calculating everything itself
 - **How this helps long term:** Lets UI surfaces grow without duplicating state logic.
+
+#### `lib/dev/`
+
+- **What it is:** Demo and dev-only code
+- **What it does:** Houses demo fixtures and developer utilities
+- **Example in the app:** `demo_fixture_data.dart` seeds the demo operator.
+- **Why it matters:** Keeps demo-mode plumbing out of production code paths
+- **How this helps long term:** Lets demo evolve without polluting `lib/services/` orchestration.
+
+#### `lib/auth/`
+
+- **What it is:** Frozen permission-key catalog
+- **What it does:** Mirrors `docs/contracts/auth_permission_key_catalog.md`
+- **Example in the app:** Constants for `auth.roles.update`, `schedule.view`, etc.
+- **Why it matters:** Permission keys must match the documented catalog one-to-one
+- **How this helps long term:** Prevents drift between code and the durable catalog contract.
 
 #### `lib/infrastructure/persistence/sqlite/`
 
@@ -516,8 +564,8 @@ Key pieces, one at a time:
 
 - **What it is:** Phase plans
 - **What it does:** Holds active implementation plans and audits
-- **Example in the app:** Phase 9 auth plan lives here.
-- **Why it matters:** Work in progress stays organized by roadmap slice
+- **Example in the app:** Phase 11A operations console plan lives here.
+- **Why it matters:** Work in progress stays organized by phase slice
 
 #### `runbooks/`
 
@@ -567,22 +615,27 @@ docs/contract or phase plan
 
 ### Plain English
 
-The app is the part users see. It gives restaurant operators screens for the current shift, variance, plans, benchmarks, settings, and notifications.
+The app is the part users see. It gives operators screens for the current
+shift, variance, plans, benchmarks, settings, and notifications.
 
 The app has two flavors:
 
-- ForgeFlow: main product app.
-- Barrio: branded/demo flavor.
+- ForgeFlow: main product app (`lib/main_forgeflow.dart`).
+- Barrio: branded shell that renders Forge Flow surfaces alongside Barrio
+  learning content (`lib/main_barrio.dart`). **Paused for V1** — slices touching
+  `lib/internal/barrio/**` or `main_barrio.dart` are on hold.
 
 Both flavors share the same architectural backbone.
 
 ### App Runtime Flow
 
-We have an app runtime flow because the visible app needs a reliable startup path before users see protected screens.
+We have an app runtime flow because the visible app needs a reliable startup
+path before users see protected screens.
 
-In restaurant operations terms, this is the opening checklist: terminals and KDS screens come online, the starting cash bank is counted, staff are clocked in, sections/stations are assigned, pre-shift notes are reviewed, and service starts only after the basics are ready.
-
-Technically, the app runtime flow defines the Flutter composition path. Entrypoints select flavor/runtime mode, bootstrap builds dependencies, providers expose services, notifiers publish state changes, the app shell owns navigation, and auth gating prevents protected UI from rendering before identity state is known.
+The app runtime flow defines the Flutter composition path. Entrypoints select
+flavor/runtime mode, bootstrap builds dependencies, providers expose services,
+notifiers publish state changes, the app shell owns navigation, and auth
+gating prevents protected UI from rendering before identity state is known.
 
 Key pieces, one at a time:
 
@@ -664,7 +717,7 @@ Key pieces, one at a time:
 
 - **What it is:** Screen/router that checks sign-in state
 - **What it does:** Shows login, MFA, loading, or the real app shell
-- **Example in the app:** Blocks dashboard until Sarah is signed in.
+- **Example in the app:** Blocks dashboard until the user is signed in.
 - **Why it matters:** Protected screens stay behind authentication and MFA state
 - **How this helps long term:** Preserves one place to enforce login/MFA before new protected screens.
 
@@ -711,11 +764,21 @@ But SQLite is not the official shared record for sensitive or multi-user truth. 
 
 ### Local Database Model
 
-We use a local database model because the app needs fast nearby data for screens, demos, replay, and cache behavior.
+We use a local database model because the app needs fast nearby data for
+screens, demos, replay, and cache behavior.
 
-In restaurant operations terms, SQLite is the working copy at a station: the host stand floor chart, a printed prep sheet, or the expo's current ticket view. It is close and fast for service, but the official closeout, sales, labor, and audit records still come from the system of record.
+The local database model defines the embedded persistence layer. It covers
+local schema versioning, migrations, seed data, replay fixtures,
+screen-optimized read models, and cached copies of operational data while
+keeping shared/security-sensitive authority out of the client database.
 
-Technically, the local database model defines the embedded persistence layer. It covers local schema versioning, migrations, seed data, replay fixtures, screen-optimized read models, and cached copies of operational data while keeping shared/security-sensitive authority out of the client database.
+**Demo mode and SQLite.** Hard Promise #2 says `kDemoMode` is a writer-side
+switch — same tables, same reads, same UI whether demo or live. Demo data
+seeds into the standard SQLite tables under
+`DemoScope.restaurantId = 'demo_restaurant_001'`. There are no `demo_*` SQLite
+tables. The writer is `MockReplayDataSourceProvider`; Phase 8 vendor
+connectors implement the same `DataSourceProvider` interface so flipping
+demo→live changes only the writer. See `docs/contracts/demo_mode_contract.md`.
 
 Key pieces, one at a time:
 
@@ -760,15 +823,15 @@ Key pieces, one at a time:
 #### Seed data
 
 - **What it is:** Initial/demo records
-- **What it does:** Gives the app a known starting restaurant and replay data
-- **Example in the app:** Demo operator and sample shifts for local runs.
+- **What it does:** Gives the app a known starting operator and replay data via `_seedDemoDataFromReplay` in `sqlite_database_seed.dart`
+- **Example in the app:** Demo operator and sample shifts for local runs (Barrio Legado, `America/St_Johns`).
 - **Why it matters:** Demo and development flows start from a repeatable baseline
 - **How this helps long term:** Keeps demos and development scenarios repeatable.
 
 #### Mock replay
 
-- **What it is:** Simulated operational data
-- **What it does:** Lets the app behave as if live data exists
+- **What it is:** Simulated operational data writing through the same `DataSourceProvider` interface vendor connectors use
+- **What it does:** Lets the app behave as if live data exists; the per-(operator, location, category) `demo_mode_state` row in Postgres flips `is_demo=false` once a vendor connection backfills ≥1 record
 - **Example in the app:** Replay a known Friday dinner scenario.
 - **Why it matters:** Product surfaces can be built and tested before every vendor integration is live
 - **How this helps long term:** Lets product work continue before every live integration is ready.
@@ -794,7 +857,7 @@ Key pieces, one at a time:
 
 SQLite currently stores local/app-facing data such as:
 
-- restaurant locations
+- `restaurant_locations` (location rows under `DemoScope.restaurantId`)
 - connector configs
 - import runs
 - raw import records
@@ -811,7 +874,7 @@ SQLite currently stores local/app-facing data such as:
 - target cycles
 - weekly plan snapshots
 - benchmark selection summaries
-- restaurant timing configs
+- `restaurant_timing_configs`
 - app notifications
 
 ### How It Works
@@ -831,7 +894,8 @@ app starts
 
 - SQLite code: `lib/infrastructure/persistence/sqlite/`
 - Desktop/dev database file: `forge_flow_v2.db`
-- Current schema version in code: `24`
+- Current schema version in code: `33` (see `SqliteDatabase.schemaVersion` in `sqlite_database.dart`)
+- Demo seed flow: `sqlite_database_seed.dart` (`_seedDemoDataFromReplay`)
 
 ## 6. Postgres: Shared Server Truth
 
@@ -845,11 +909,15 @@ The app should not bypass Postgres for shared or sensitive data.
 
 ### Managed Postgres Platform
 
-We have a managed Postgres platform because Forge Flow needs one official shared database for server-side truth, and that database needs to be hosted, backed up, and maintained reliably.
+We have a managed Postgres platform because Forge Flow needs one official
+shared database for server-side truth, and that database needs to be hosted,
+backed up, and maintained reliably.
 
-In restaurant operations terms, Postgres is the back-office system of record for things managers and accountants depend on: sales, labor, closeouts, manager logs, inventory history, permissions, audits, and multi-location reporting. Azure is the managed facility that keeps that system running instead of the restaurant maintaining the database server itself.
-
-Technically, the managed Postgres platform defines the database runtime contract: database engine, cloud provider, region, and version. Those choices determine extension availability, latency profile, operational responsibilities, backup/maintenance expectations, and the baseline behavior migrations must target.
+The managed Postgres platform defines the database runtime contract:
+database engine, cloud provider, region, and version. Those choices determine
+extension availability, latency profile, operational responsibilities,
+backup/maintenance expectations, and the baseline behavior migrations must
+target.
 
 Key pieces, one at a time:
 
@@ -888,11 +956,13 @@ Key pieces, one at a time:
 
 ### Postgres Code Locations
 
-We separate Postgres code locations because runtime code and database schema changes are different kinds of work.
+We separate Postgres code locations because runtime code and database schema
+changes are different kinds of work.
 
-In restaurant operations terms, this is the difference between using the POS/back-office system during service and changing its configuration. A manager running a closeout is not doing the same work as someone adding a new report, permission, menu rule, or accounting export.
-
-Technically, Postgres code locations separate application-level persistence code from schema evolution. Repository/executor code controls how runtime queries are issued, while migrations define the database objects, constraints, indexes, policies, and functions that must exist consistently across environments.
+Postgres code locations separate application-level persistence code from
+schema evolution. Repository/executor code controls how runtime queries are
+issued, while migrations define the database objects, constraints, indexes,
+policies, and functions that must exist consistently across environments.
 
 Key pieces, one at a time:
 
@@ -915,11 +985,15 @@ Key pieces, one at a time:
 
 ### Postgres Abstractions
 
-We have Postgres abstractions because application code should not talk to the database in random, one-off ways.
+We have Postgres abstractions because application code should not talk to the
+database in random, one-off ways.
 
-In restaurant operations terms, these are the standard manager procedures for back-office work. Staff do not get raw access to every report, drawer, comp, void, or safe drop; they work through controlled roles and approved steps.
-
-Technically, Postgres abstractions are the database access layer. They standardize query execution, transaction lifecycle, connection reuse, tenant context propagation, and repository ownership so low-level driver behavior does not leak into business services or UI-facing code.
+Postgres abstractions are the database access layer. They standardize query
+execution, transaction lifecycle, connection reuse, tenant context
+propagation, and repository ownership so low-level driver behavior does not
+leak into business services or UI-facing code. CI lint enforces that raw
+`package:postgres` imports only appear under
+`lib/infrastructure/persistence/postgres/`.
 
 Key pieces, one at a time:
 
@@ -951,7 +1025,7 @@ Key pieces, one at a time:
 
 - **What it is:** Current operator/location/user label
 - **What it does:** Tells database work which tenant and actor it belongs to
-- **Example in the app:** operator_id = Restaurant Company A; location_id = Downtown; user_id = manager Sarah.
+- **Example in the app:** operator_id = Operator A; location_id = a specific location; user_id = an operator user.
 - **Why it matters:** Every database operation can be tied to the right operator, location, and user
 - **How this helps long term:** Centralizes tenant metadata for future RLS-protected tables.
 
@@ -974,11 +1048,18 @@ Key pieces, one at a time:
 
 ### Postgres Extensions
 
-We use Postgres extensions because the database needs extra abilities beyond normal tables and SQL queries.
+We use Postgres extensions because the database needs extra abilities beyond
+normal tables and SQL queries.
 
-In restaurant operations terms, these are specialized back-office modules: inventory counts, sales reports, prep station routing, manager logs, scheduled closeout work, food-safety records, and organization/location hierarchies.
+Postgres extensions are database-level capabilities added beyond core SQL.
+They support cryptographic hashing, embedding similarity search, graph
+traversal, scheduled jobs, partition lifecycle management, query performance
+telemetry, and hierarchical organization modeling without forcing separate
+external systems for each capability.
 
-Technically, Postgres extensions are database-level capabilities added beyond core SQL. They support cryptographic hashing, embedding similarity search, graph traversal, scheduled jobs, partition lifecycle management, query performance telemetry, and hierarchical organization modeling without forcing separate external systems for each capability.
+Note: **`pgmq` is NOT available** on Azure DB Flexible Server. Use
+`FOR UPDATE SKIP LOCKED` or Cloud Tasks for queue patterns
+(`docs/phases/phase_11a/phase_11a_decision_register.md`).
 
 Key pieces, one at a time:
 
@@ -1056,11 +1137,16 @@ location-editable because vendor credentials are location-bound.
 
 ### Important Execution Patterns
 
-We have important execution patterns because database work must carry the right tenant, actor, transaction, and privilege context every time.
+We have important execution patterns because database work must carry the
+right tenant, actor, transaction, and privilege context every time.
 
-In restaurant operations terms, every sensitive action has context: which location, which drawer, which shift, which manager or employee, and whether it is normal service work, closeout, a cash drop, a comp/void, or corporate/back-office maintenance.
-
-Technically, important execution patterns are runtime database standards. They require tenant-scoped work to run inside explicit transactions with transaction-local context, reserve privileged system execution for named maintenance paths, and isolate raw driver usage behind approved adapters to prevent context leaks and inconsistent transaction handling.
+Important execution patterns are runtime database standards. They require
+tenant-scoped work to run inside explicit transactions with transaction-local
+context (`SET LOCAL`, never `SET`), reserve privileged system execution for
+named maintenance paths, and isolate raw driver usage behind approved
+adapters to prevent context leaks and inconsistent transaction handling. RLS
+policies use four `STABLE LEAKPROOF PARALLEL SAFE` wrapper functions; bare
+`current_setting()` reads in policy bodies are forbidden.
 
 Key pieces, one at a time:
 
@@ -1068,7 +1154,7 @@ Key pieces, one at a time:
 
 - **What it is:** Normal tenant-scoped database execution
 - **What it does:** Starts a transaction and sets the current operator/location/user for that transaction
-- **Example in the app:** Runs as operator_id = Restaurant Company A; location_id = Downtown; user_id = manager Sarah.
+- **Example in the app:** Runs as operator_id = Operator A; location_id = a specific location; user_id = an operator user.
 - **Why it matters:** Most app work runs as a specific tenant, so RLS and audit can protect the right rows
 - **How this helps long term:** Sets the baseline for safe new tenant-scoped repositories.
 
@@ -1144,18 +1230,25 @@ Repository discipline is the first line of defense. RLS is the database safety n
 
 ### Tenant Identity And RLS
 
-We use tenant identity and RLS because many operators can share the same platform, but each operator's data must stay separated.
+We use tenant identity and RLS because many operators can share the same
+platform, but each operator's data must stay separated.
 
-In restaurant operations terms, each operator and location has its own POS location, revenue centers, labor reports, drawers, deposits, inventory counts, and manager logs. Downtown staff should not be able to open Uptown's reports just because both locations use the same platform.
-
-Technically, tenant identity and RLS define the multi-tenant isolation model. Tenant identifiers label ownership, transaction-local settings tell Postgres the current tenant/actor, RLS policies enforce row access at the database layer, tenant-leading indexes keep scoped access performant, and time rules preserve correct business-date reporting.
+Tenant identity and RLS define the multi-tenant isolation model. Tenant
+identifiers label ownership, transaction-local settings tell Postgres the
+current tenant/actor, RLS policies enforce row access at the database layer,
+tenant-leading indexes keep scoped access performant, and time rules preserve
+correct business-date reporting. The two-layer rule
+(`docs/contracts/hardening_rls_and_repository_pattern_contract.md`):
+`OperatorScopedRepository<T>` is the **primary** defense; Postgres RLS is the
+backup. Every fact-table B-tree index leads with `operator_id` or
+`(operator_id, location_id)` — CI lint enforces.
 
 Concrete app example:
 
 ```text
-Which operator is this for?  operator_id = Restaurant Company A
-Which location is this for?  location_id = Downtown location
-Which user is acting?       user_id = manager Sarah
+Which operator is this for?  operator_id = Operator A
+Which location is this for?  location_id = the user's assigned location
+Which user is acting?       user_id = an operator user
 ```
 
 That identity context travels with protected database work so the app, proxy, audit logs, and RLS policies are all talking about the same tenant and actor.
@@ -1166,7 +1259,7 @@ Key pieces, one at a time:
 
 - **What it is:** A customer/operator boundary
 - **What it does:** Separates one operator's data from another's
-- **Example in the app:** Restaurant Company A is separate from Restaurant Company B.
+- **Example in the app:** Operator A is separate from Operator B.
 - **Why it matters:** Multi-operator SaaS only works if each customer boundary is explicit and protected
 - **How this helps long term:** Scales the platform to many operators without mixing ownership boundaries.
 
@@ -1174,15 +1267,15 @@ Key pieces, one at a time:
 
 - **What it is:** Operator identifier
 - **What it does:** Labels which operator owns a row
-- **Example in the app:** operator_id = Restaurant Company A.
+- **Example in the app:** operator_id = Operator A.
 - **Why it matters:** Queries and policies can filter data to the correct operator
 - **How this helps long term:** Becomes the backbone for future RLS, indexing, partitioning, and reporting.
 
 #### `location_id`
 
-- **What it is:** Restaurant/location identifier
+- **What it is:** Location identifier
 - **What it does:** Labels which location a row belongs to
-- **Example in the app:** location_id = Downtown location.
+- **Example in the app:** `location_id` = the user's assigned location.
 - **Why it matters:** Operators with multiple locations can scope access and reporting correctly
 - **How this helps long term:** Supports multi-location reporting and scoped permissions.
 
@@ -1190,7 +1283,7 @@ Key pieces, one at a time:
 
 - **What it is:** Acting user identifier
 - **What it does:** Labels who is performing the action
-- **Example in the app:** user_id = manager Sarah.
+- **Example in the app:** user_id = an operator user.
 - **Why it matters:** Audit, permissions, and session behavior can tie actions to a real actor
 - **How this helps long term:** Improves future audit, permissions, and per-user session controls.
 
@@ -1198,7 +1291,7 @@ Key pieces, one at a time:
 
 - **What it is:** Row Level Security
 - **What it does:** Lets Postgres hide rows that do not match the current context
-- **Example in the app:** Sarah's query only sees Restaurant Company A rows.
+- **Example in the app:** the user's query only sees Operator A rows.
 - **Why it matters:** The database itself becomes a backstop against cross-tenant data leaks
 - **How this helps long term:** Provides database-level protection as the query surface grows.
 
@@ -1212,8 +1305,8 @@ Key pieces, one at a time:
 
 #### Wrapper function
 
-- **What it is:** Approved helper used by RLS policies
-- **What it does:** Avoids unsafe direct use of session settings in policies
+- **What it is:** Approved `STABLE LEAKPROOF PARALLEL SAFE` helper used by RLS policies (four wrappers total)
+- **What it does:** Avoids unsafe direct use of session settings in policy bodies; bare `current_setting()` reads in policies are forbidden
 - **Example in the app:** `app_current_operator_id()` reads current tenant safely.
 - **Why it matters:** Policy logic stays consistent and lintable across many tables
 - **How this helps long term:** Keeps policy logic lintable and consistent across more tables.
@@ -1244,11 +1337,11 @@ Key pieces, one at a time:
 
 #### Business date
 
-- **What it is:** Restaurant-local operating date
-- **What it does:** Lets a late-night shift belong to the correct business day
+- **What it is:** Operator-local operating date, denormalized as a `DATE` column alongside `TIMESTAMPTZ` on operator-scoped fact tables
+- **What it does:** Lets a late-night shift belong to the correct business day; per `docs/contracts/phase_7_55_time_boundary_contract.md`, restaurant-local timing wins and closed truth is not rewritten by later cycles
 - **Example in the app:** 1 AM close still belongs to Friday service.
-- **Why it matters:** Restaurant reporting follows operating reality, not just calendar midnight
-- **How this helps long term:** Preserves restaurant reporting semantics across late-night operations.
+- **Why it matters:** Reporting follows operating reality, not just calendar midnight
+- **How this helps long term:** Preserves operator-local reporting semantics across late-night operations.
 
 
 ### How It Works
@@ -1292,11 +1385,18 @@ The proxy checks:
 
 ### Proxy Request And Security
 
-We use a proxy request and security layer because the app needs to ask for protected work without holding powerful secrets or direct database access.
+We use a proxy request and security layer because the app needs to ask for
+protected work without holding powerful secrets or direct database access.
 
-In restaurant operations terms, the proxy is the manager-on-duty checkpoint for protected actions. A server can ring in orders, but manager-level work such as voids, comps, drawer closeout, safe drops, or sensitive reports requires the right authority.
-
-Technically, proxy request and security define the server API boundary and trust enforcement layer. They cover route contracts, HTTP semantics, DTO boundaries, JWT verification, permission checks, fail-closed behavior, and the Cloud Run runtime that hosts privileged server operations outside the Flutter client.
+Proxy request and security define the server API boundary and trust
+enforcement layer. They cover route contracts, HTTP semantics, DTO boundaries,
+JWT verification, permission checks, fail-closed behavior, and the Cloud Run
+runtime that hosts privileged server operations outside the Flutter client.
+F&F holds all provider keys server-side — no BYO-key — and the proxy brokers
+all LLM/embedding/integration calls. API URL versioning is `/v1/...` today,
+with `/v2/...` reserved for breaking changes; old paths stay live until
+explicit deprecation. Every proxy write is idempotent: clients carry an
+idempotency key and the proxy stores keys in `proxy_requests` (UNIQUE).
 
 Key pieces, one at a time:
 
@@ -1432,11 +1532,18 @@ DNS translates that name into a network destination. Google receives the traffic
 
 ### DNS And Edge Routing
 
-We use DNS and edge routing because public requests need a stable name, secure entry point, and path to the running proxy service.
+We use DNS and edge routing because public requests need a stable name,
+secure entry point, and path to the running proxy service.
 
-In restaurant operations terms, DNS and the edge are like the public listing, reservation channel, host stand, and floor path that get a guest to the right location. The guest should not need to know where the kitchen, office, or server station physically sits behind the scenes.
+DNS and edge routing define the public ingress path. DNS resolves hostnames,
+certificates establish HTTPS trust, the load balancer terminates and routes
+traffic, Cloud Armor/reCAPTCHA provide edge policy controls, the serverless
+NEG binds the load balancer to Cloud Run, and Cloud Run executes the proxy
+container.
 
-Technically, DNS and edge routing define the public ingress path. DNS resolves hostnames, certificates establish HTTPS trust, the load balancer terminates and routes traffic, Cloud Armor/reCAPTCHA provide edge policy controls, the serverless NEG binds the load balancer to Cloud Run, and Cloud Run executes the proxy container.
+V1 production target: `app.forgeflow.app` (separate Flutter Web entry).
+Production Firebase Auth action domain switches from `auth.feflow.org` to
+`forge-flow-production1.web.app` at cutover.0 preflight (still operator-blocked).
 
 Key pieces, one at a time:
 
@@ -1594,11 +1701,16 @@ Forge Flow says:
 
 ### Identity And Sessions
 
-We use identity and sessions because logging in only proves who someone is; Forge Flow also needs to know what restaurant, location, and role they belong to.
+We use identity and sessions because logging in only proves who someone is;
+Forge Flow also needs to know which operator, location, and role they belong
+to.
 
-In restaurant operations terms, Firebase is the identity check, while Forge Flow is closer to the POS employee profile: after someone is recognized, the system still needs to know whether they are a server, manager, owner, support user, and which location or revenue center they can work in.
-
-Technically, identity and sessions define the authentication handoff between external credential authority and internal business identity. Firebase verifies credentials and issues signed tokens; custom claims and Forge Flow records map that token to tenant/user/location context; session ledgers make auth activity auditable; secure storage preserves local session state; fail-closed logic rejects incomplete identity context.
+Identity and sessions define the authentication handoff between external
+credential authority and internal business identity. Firebase verifies
+credentials and issues signed tokens; custom claims and Forge Flow records
+map that token to tenant/user/location context; session ledgers make auth
+activity auditable; secure storage preserves local session state;
+fail-closed logic rejects incomplete identity context.
 
 Key pieces, one at a time:
 
@@ -1606,7 +1718,7 @@ Key pieces, one at a time:
 
 - **What it is:** Hosted auth provider
 - **What it does:** Handles credentials, sign-in, password auth, MFA identity
-- **Example in the app:** Sarah signs in with email, password, and MFA.
+- **Example in the app:** a user signs in with email, password, and MFA.
 - **Why it matters:** Credential security and MFA are delegated to a dedicated identity platform
 - **How this helps long term:** Keeps credential and MFA upgrades externalized.
 
@@ -1614,7 +1726,7 @@ Key pieces, one at a time:
 
 - **What it is:** Firebase user identifier
 - **What it does:** Stable identity from Firebase
-- **Example in the app:** Firebase user id for manager Sarah.
+- **Example in the app:** Firebase user id for an operator user.
 - **Why it matters:** Forge Flow can link business user records to a durable auth identity
 - **How this helps long term:** Provides a stable link between Firebase and Forge Flow user records.
 
@@ -1622,7 +1734,7 @@ Key pieces, one at a time:
 
 - **What it is:** Signed JWT from Firebase
 - **What it does:** Proves the user is currently authenticated
-- **Example in the app:** Signed token proving Sarah is logged in now.
+- **Example in the app:** Signed token proving the user is logged in now.
 - **Why it matters:** The app can prove login state to the proxy without sending passwords
 - **How this helps long term:** Gives future APIs a reusable proof of login state.
 
@@ -1638,7 +1750,7 @@ Key pieces, one at a time:
 
 - **What it is:** Forge Flow record of a login session
 - **What it does:** Makes sign-in activity auditable and revocable
-- **Example in the app:** Sarah's current login session row.
+- **Example in the app:** the user's current login session row.
 - **Why it matters:** Session behavior becomes visible and controllable server-side
 - **How this helps long term:** Enables revocation and audit as login flows grow.
 
@@ -1646,7 +1758,7 @@ Key pieces, one at a time:
 
 - **What it is:** Server-side session table
 - **What it does:** Records login, refresh, revoke, and session state
-- **Example in the app:** Login, refresh, and revoke events for Sarah.
+- **Example in the app:** Login, refresh, and revoke events for the user.
 - **Why it matters:** Security reviews can trace session lifecycle instead of trusting device state only
 - **How this helps long term:** Supports future security reviews and session management.
 
@@ -1705,15 +1817,21 @@ MFA means "password plus another proof."
 
 The launch MFA path is TOTP: the rotating six-digit codes from an authenticator app.
 
-Recovery-code display and challenge entry are not a launch UX surface. If someone loses access to their authenticator app, the visible product path is restaurant-admin reset with the 24-hour removal delay.
+Recovery-code display and challenge entry are not a launch UX surface. If
+someone loses access to their authenticator app, the visible product path is
+operator-admin reset with the 24-hour removal delay.
 
 ### MFA Protection
 
-We use MFA protection because a password alone is not enough for sensitive operator and admin access.
+We use MFA protection because a password alone is not enough for sensitive
+operator and admin access.
 
-In restaurant operations terms, MFA is like requiring more than a memorized POS passcode for manager-level access. A password proves one thing; the second factor is an extra check before sensitive actions such as admin changes, recovery, or high-risk account access.
-
-Technically, MFA protection defines the second-factor authentication and reset safety model. It covers TOTP setup/confirmation, admin reset / delayed removal, Firebase Identity Toolkit integration, audit events, and throttling controls to reduce credential-stuffing and brute-force risk. Hash-only recovery-code primitives may remain for compatibility tests, but they are not exposed in the app UX.
+MFA protection defines the second-factor authentication and reset safety
+model. It covers TOTP setup/confirmation, admin reset / delayed removal,
+Firebase Identity Toolkit integration, audit events, and throttling controls
+to reduce credential-stuffing and brute-force risk. Hash-only recovery-code
+primitives may remain for compatibility tests, but they are not exposed in
+the app UX.
 
 Key pieces, one at a time:
 
@@ -1729,14 +1847,14 @@ Key pieces, one at a time:
 
 - **What it is:** Time-based one-time password
 - **What it does:** Generates rotating codes from authenticator apps
-- **Example in the app:** Six-digit code from Sarah's authenticator app.
+- **Example in the app:** Six-digit code from the user's authenticator app.
 - **Why it matters:** Strong MFA works without SMS and without storing reusable codes
 - **How this helps long term:** Avoids SMS dependency while supporting standard authenticator apps.
 
 #### Admin reset
 
-- **What it is:** Restaurant-admin reset path for lost authenticator access
-- **What it does:** Lets an authorized admin start the controlled MFA removal/reset flow
+- **What it is:** Operator-admin reset path for lost authenticator access
+- **What it does:** Lets an authorized admin start the controlled MFA removal/reset flow with the 24-hour delay
 - **Example in the app:** User selects Contact your admin; admin starts reset from Team.
 - **Why it matters:** Users have a controlled support path without exposing backup codes that remove MFA
 - **How this helps long term:** Keeps account recovery tied to ownership and audit.
@@ -1818,11 +1936,28 @@ The app should not guess permissions from a job title. It should ask for a permi
 
 ### Authorization And Admin
 
-We use authorization and admin controls because signing in should not automatically unlock every action in the system.
+We use authorization and admin controls because signing in should not
+automatically unlock every action in the system.
 
-In restaurant operations terms, this mirrors POS permissions. A server may enter orders and close their checks, a bartender may use a bar drawer, a manager may approve voids/comps and close drawers, and an owner or corporate admin may see higher-level reports.
+Authorization and admin define authorization after authentication. RBAC maps
+users to roles and roles to permission keys, snapshots give clients a
+resolved permission view, admin routes mutate access through protected APIs,
+role audit logs preserve access-change history, and future ReBAC can add
+relationship-based rules without replacing the launch model. The frozen
+permission-key catalog lives in `lib/auth/` and mirrors
+`docs/contracts/auth_permission_key_catalog.md` one-to-one.
 
-Technically, authorization and admin define authorization after authentication. RBAC maps users to roles and roles to permission keys, snapshots give clients a resolved permission view, admin routes mutate access through protected APIs, role audit logs preserve access-change history, and future ReBAC can add relationship-based rules without replacing the launch model.
+**Hierarchy-scoped settings (Hard Promise #11).** Every setting that can
+affect a business account resolves through the operator hierarchy. A value
+may be set at the business/operator level and inherited by descendants, or
+overridden at any org-unit or location level. The lowest configured scope
+wins. Every admin, operator web, proxy, migration, and mobile surface that
+exposes settings must show the selected scope, the inherited source, and the
+effective value — or document why the capability is backend-only or gated.
+Integrations are the known exception: they prompt for hierarchy context but
+edits are location-level because vendor connections are location-bound. The
+`admin-hierarchy-settings-overhaul` lane closed 2026-05-12 (evidence:
+`docs/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`).
 
 Key pieces, one at a time:
 
@@ -1854,7 +1989,7 @@ Key pieces, one at a time:
 
 - **What it is:** Assignment of role to user
 - **What it does:** Gives a user a role in an operator/location context
-- **Example in the app:** Sarah has Manager at Downtown.
+- **Example in the app:** a user is assigned the Manager role at a single location.
 - **Why it matters:** Access can be scoped to the correct operator or location
 - **How this helps long term:** Supports future location-scoped and time-scoped access.
 
@@ -1862,7 +1997,7 @@ Key pieces, one at a time:
 
 - **What it is:** Current resolved permission set
 - **What it does:** Tells the app what this user can do now
-- **Example in the app:** App receives Sarah's allowed actions.
+- **Example in the app:** App receives the user's allowed actions.
 - **Why it matters:** The UI can render allowed actions without recalculating auth logic
 - **How this helps long term:** Lets client UX adapt without reimplementing authorization logic.
 
@@ -1878,7 +2013,7 @@ Key pieces, one at a time:
 
 - **What it is:** Record of role changes
 - **What it does:** Preserves who changed access and when
-- **Example in the app:** Records who changed Sarah's role and when.
+- **Example in the app:** Records who changed the user's role and when.
 - **Why it matters:** Access changes are traceable for security and support
 - **How this helps long term:** Supports future compliance and support investigations.
 
@@ -1886,7 +2021,7 @@ Key pieces, one at a time:
 
 - **What it is:** Relationship-Based Access Control
 - **What it does:** Future model where access depends on relationships, deferred to Phase 12
-- **Example in the app:** Future rule like Sarah manages locations X and Y.
+- **Example in the app:** Future rule like a user manages locations X and Y.
 - **Why it matters:** More advanced access can be added later without overcomplicating launch RBAC
 - **How this helps long term:** Leaves a path for relationship-based workflow access later.
 
@@ -1925,17 +2060,21 @@ Humans log in with Firebase. Automation should not pretend to be a human. A work
 Example:
 
 ```text
-human actor: manager Sarah
+human actor: an operator user
 service actor: nightly-audit-anchor-job
 ```
 
 ### Automation Identity
 
-We use automation identity because background jobs and workflows need their own accountable identity instead of borrowing a human user's account.
+We use automation identity because background jobs and workflows need their
+own accountable identity instead of borrowing a human user's account.
 
-In restaurant operations terms, automation should be treated like a named integration user or scheduled back-office job. A nightly sales export, payroll sync, or inventory import should not run under a real manager's personal login.
-
-Technically, automation identity defines non-human identity. Service principals receive scoped credentials, `sp:` JWTs distinguish automation from Firebase human tokens, issuers and verifiers control token lifecycle, actor-kind fields preserve audit attribution, and workflow identities allow future automation to execute with explicit permissions and traceability.
+Automation identity defines non-human identity. Service principals receive
+scoped credentials, `sp:` JWTs distinguish automation from Firebase human
+tokens, issuers and verifiers control token lifecycle, actor-kind fields
+preserve audit attribution (`audit_logs.actor_kind` is never NULL), and
+workflow identities allow future automation to execute with explicit
+permissions and traceability.
 
 Key pieces, one at a time:
 
@@ -2004,7 +2143,8 @@ Current gap:
 - The verifier and issuer route are locally implemented.
 - The 2026-05-03 Production1 migration apply landed the service-principal
   issuance permission key on Production1.
-- Phase 12 workflows still need live issuance evidence.
+- Phase 12 workflows are **paused (AI freeze)**; live issuance evidence will
+  arrive when that phase resumes.
 
 ### Where It Lives
 
@@ -2023,11 +2163,16 @@ This does not mean the database is impossible to alter. It means alteration beco
 
 ### Audit Integrity
 
-We use audit integrity because sensitive actions need a trustworthy record that can be checked later.
+We use audit integrity because sensitive actions need a trustworthy record
+that can be checked later.
 
-In restaurant operations terms, this is the manager log plus POS audit trail for sensitive events: comps, voids, no-sales, cash drops, closeout variances, incidents, and handoff notes. The point is not just to record the event, but to make later tampering visible.
-
-Technically, audit integrity defines tamper-evident audit architecture. Durable audit rows capture actor/action context, actor-kind fields separate human/service/system actions, pgcrypto digests chain rows together, external anchors checkpoint chain state outside normal table mutation, and redaction patterns support privacy obligations without destroying audit structure.
+Audit integrity defines tamper-evident audit architecture. Durable audit rows
+capture actor/action context, actor-kind fields separate human/service/system
+actions, `pgcrypto` SHA-256 digests chain rows together,
+`pg_partman`-managed per-operator/day partitions keep volume manageable, a
+daily Azure Blob anchor checkpoints chain state outside normal table
+mutation, and redaction patterns support privacy obligations without
+destroying audit structure.
 
 Key pieces, one at a time:
 
@@ -2035,7 +2180,7 @@ Key pieces, one at a time:
 
 - **What it is:** Durable event record
 - **What it does:** Stores who did what and when
-- **Example in the app:** Record that Sarah changed a role.
+- **Example in the app:** Record that a user changed a role.
 - **Why it matters:** Sensitive operations need a trustworthy record for support, compliance, and investigations
 - **How this helps long term:** Forms the foundation for future compliance, support, and incident review.
 
@@ -2043,7 +2188,7 @@ Key pieces, one at a time:
 
 - **What it is:** Person or service that acted
 - **What it does:** Identifies the source of the action
-- **Example in the app:** manager Sarah or `sp:rollup-worker`.
+- **Example in the app:** an operator user or `sp:rollup-worker`.
 - **Why it matters:** The system can attribute changes to the right human or automation
 - **How this helps long term:** Allows future investigations to attribute changes accurately.
 
@@ -2144,11 +2289,16 @@ The event row is durable. A notification is only a wake-up.
 
 ### Event Delivery
 
-We use event delivery because one part of the platform often needs to react after another part changes data.
+We use event delivery because one part of the platform often needs to react
+after another part changes data.
 
-In restaurant operations terms, this is POS-to-KDS ticket flow. Once a server sends an order, the right prep stations receive it, the expo/pass coordinates timing, and the ticket stays visible until the work is completed or handled.
-
-Technically, event delivery defines reliable asynchronous delivery. The transactional outbox persists events with the source write, NOTIFY wakes workers, row-claiming with `SKIP LOCKED` enables concurrent consumers, Pub/Sub/WebSocket paths distribute updates, leases and idempotency support safe retries, and dead-letter handling isolates poisoned events.
+Event delivery defines reliable asynchronous delivery. The transactional
+outbox persists events with the source write, NOTIFY wakes workers,
+row-claiming with `FOR UPDATE SKIP LOCKED` enables concurrent consumers
+(`pgmq` is not available on Azure DB Flexible Server), Pub/Sub/WebSocket paths
+distribute updates, leases and idempotency support safe retries, retention
+sweeps trim the outbox on schedule, and dead-letter handling isolates
+poisoned events.
 
 Key pieces, one at a time:
 
@@ -2251,15 +2401,22 @@ Why not rely only on NOTIFY:
 - The durable outbox row remains.
 - A worker can always catch up by reading the table.
 
-Known gap:
+Status:
 
-- Event table exists.
-- Consumer worker scaffold and dead-letter contract are still queued.
+- Event outbox table is live with retention sweep and publish metrics
+  (`202605040300_phase_10a_2_dead_letter.sql`,
+  `202605050200_phase_10a_3_event_outbox_retention.sql`,
+  `202605050300_phase_10a_4_event_outbox_publish_metrics.sql`,
+  `202605050400_phase_10a_5_subscription_watermark.sql`,
+  `202605081000_outbox_notify_channel_split.sql`).
+- Pub/Sub adapter and full operator-facing surfaces remain queued behind the
+  V1 cutover gates.
 
 ### Where It Lives
 
 - Contract: `docs/contracts/event_outbox_contract.md`
-- Migration: `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql`
+- Initial migration: `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql`
+- Retention + dead-letter migrations: 2026-05-04/05 Phase 10a series above
 
 ## 16. Usage, Caps, And Rollups
 
@@ -2275,11 +2432,19 @@ Instead of recalculating everything from raw rows every time, the system precomp
 
 ### Usage And Reporting
 
-We use usage and reporting because the system needs to count consumption, compare it to limits, and summarize raw activity into useful views.
+We use usage and reporting because the system needs to count consumption,
+compare it to limits, and summarize raw activity into useful views.
 
-In restaurant operations terms, this is the reporting layer behind food cost, labor percentage, sales by revenue center, par versus actual inventory, and end-of-day closeout summaries. Raw tickets and punches become numbers managers can act on.
+Usage and reporting define metering and aggregation infrastructure. Usage
+logs record consumption, caps define allowed limits keyed by a two-slot model
+(operator, location/slot), reconciliation aligns actuals with caps, rollup
+grains precompute summaries at multiple reporting levels, aggregation state
+tracks freshness, and `pg_cron` schedules maintain derived tables for
+dashboards and health checks.
 
-Technically, usage and reporting define metering and aggregation infrastructure. Usage logs record consumption, caps define allowed limits, reconciliation keys align actuals with caps, rollup grains precompute summaries at multiple reporting levels, aggregation state tracks freshness, and scheduled jobs maintain derived tables for dashboards and health checks.
+AI cost is metered by class. Five cost-discipline levers are default-on:
+prompt cache, tier routing, response cache (`202605071400_advisor_response_cache_table.sql`),
+precomputed summaries, and Batch API. Margin target: 75–95%.
 
 Key pieces, one at a time:
 
@@ -2295,7 +2460,7 @@ Key pieces, one at a time:
 
 - **What it is:** Limit record
 - **What it does:** Defines allowed usage by operator/slot/period
-- **Example in the app:** Downtown can use up to N advisor calls this month.
+- **Example in the app:** A location can use up to N advisor calls this month.
 - **Why it matters:** Operators can be kept within plan, budget, or product limits
 - **How this helps long term:** Supports future plan enforcement and quota controls.
 
@@ -2319,7 +2484,7 @@ Key pieces, one at a time:
 
 - **What it is:** Precomputed summary
 - **What it does:** Makes dashboards faster
-- **Example in the app:** Daily labor summary for Downtown.
+- **Example in the app:** Daily labor summary for a location.
 - **Why it matters:** Expensive calculations happen ahead of time instead of on every dashboard load
 - **How this helps long term:** Keeps dashboards fast as data volume grows.
 
@@ -2359,11 +2524,10 @@ raw usage or operational events arrive
   -> health checks monitor freshness
 ```
 
-Known Q3.1 gap:
+Status:
 
-- `usage_caps` has the two-slot model.
-- `usage_logs` still needs a matching mirror for cap-versus-actual reconciliation.
-- This is tracked as B33.
+- `usage_caps` two-slot model and `usage_logs` mirror both live; B33
+  cap-versus-actual reconciliation work is complete on master.
 
 ### Where It Lives
 
@@ -2375,9 +2539,8 @@ Known Q3.1 gap:
 
 ### Plain English
 
-The advisor is not just "ask a chatbot."
-
-It is supposed to answer from evidence:
+The advisor is not just "ask a chatbot." It is supposed to answer from
+evidence:
 
 - product docs
 - operational metrics
@@ -2385,15 +2548,34 @@ It is supposed to answer from evidence:
 - graph relationships
 - prior context
 
-The advisor should recommend, explain, and cite context. It should not silently perform risky actions.
+The advisor should recommend, explain, and cite context. It should not
+silently perform risky actions. Per Hard Promise #6 in CLAUDE.md, F&F speaks
+in recommendations only and never acts on the operator's behalf at launch.
+Liability codification ships in Phase 9.8.
+
+**Paused status (V1 AI freeze, 2026-05-03).** Phase `11b` / `11b.1` /
+`11b.2`, Phase 12 (`12.0`–`12.5`), Phase `11A.3` + `11A.3.x`, `11A.11`, the
+advisor portion of `9.8`, and `10b` are all on hold. The infrastructure
+below is live; the operator-facing advisor surface is not the active V1 lane.
 
 ### Advisor Evidence And Models
 
-We use advisor evidence and models because AI answers should come from real operational context, not unsupported guesses.
+We use advisor evidence and models because AI answers should come from real
+operational context, not unsupported guesses.
 
-In restaurant operations terms, the advisor should behave like an experienced GM or chef reviewing the actual evidence: POS sales mix, labor report, reservations, 86s, prep levels, manager log notes, and station bottlenecks before making a recommendation.
+Advisor evidence and models define evidence-grounded AI architecture.
+Provider abstractions isolate external model vendors, retrieval and
+embeddings locate relevant context, vector and sparse search collect
+candidate evidence, reranking improves context quality, classifiers route
+work to the right tool path, synthesis produces the final answer, provenance
+supports reviewability, and caching/routing control latency and cost.
 
-Technically, advisor evidence and models define evidence-grounded AI architecture. Provider abstractions isolate external model vendors, retrieval and embeddings locate relevant context, vector and sparse search collect candidate evidence, reranking improves context quality, classifiers route work to the right tool path, synthesis produces the final answer, provenance supports reviewability, and caching/routing control latency and cost.
+The AI infrastructure is general-purpose (Hard Promise #8): `LLMProvider`,
+`EmbeddingProvider`, `RerankProvider`, `DataSourceProvider`, and
+`IntegrationProvider` are not advisor-specific — Phase 12 reuses the same
+plumbing. Retrieval architecture for `11b` launch is Contextual Retrieval
+(Anthropic); AGE traversal lights up incrementally (`11b.2` causal, Phase
+12).
 
 Key pieces, one at a time:
 
@@ -2547,11 +2729,22 @@ The graph layer helps answer questions where the connections matter:
 
 ### Graph Data
 
-We use graph data because some operational questions are about relationships, not just individual rows.
+We use graph data because some operational questions are about relationships,
+not just individual rows.
 
-In restaurant operations terms, graph data maps dependencies in service: prep affects station readiness, station readiness affects ticket times, ticket times affect the pass, the pass affects runners, and runners affect table turns and guest experience.
+Graph data define relationship modeling. Nodes and edges represent graph
+entities and links, AGE/Cypher provide graph query capabilities inside
+Postgres, projections build graph views from canonical facts, and tripwire
+metrics monitor size/degree thresholds so graph traversal remains operable.
 
-Technically, graph data define relationship modeling. Nodes and edges represent graph entities and links, AGE/Cypher provide graph query capabilities inside Postgres, projections build graph views from canonical facts, and tripwire metrics monitor size/degree thresholds so graph traversal remains operable.
+AGE infra must be live before `11b`; retrieval architecture is Modular
+Adaptive Agentic RAG. The graphify candidate review proxy routes
+(`tool/advisor_proxy/advisor_proxy.dart`
+`graph_candidates_not_configured` / `graph_candidates_unavailable` 503s)
+ship as scaffolding and intentionally 503 without a hand-staged
+`tool/advisor_proxy/graphify_candidates/candidates/` bundle. This is the
+paused-by-design `11A.3.x` graphify candidates work — do not build the
+bundle staging automation during the AI freeze.
 
 Key pieces, one at a time:
 
@@ -2637,11 +2830,34 @@ But the UI should not be rewritten for every vendor. Vendor data should enter th
 
 ### Vendor Integrations
 
-We use vendor integrations because Forge Flow needs to receive data from POS, labor, reservation, and accounting systems without letting each vendor shape the whole product.
+We use vendor integrations because Forge Flow needs to receive POS, Labor,
+Reservation, and accounting data without letting each vendor shape the
+product.
 
-In restaurant operations terms, POS, scheduling, reservations, inventory, and accounting systems all describe the same business differently. Integrations translate those vendor-specific exports, webhooks, and API fields into Forge Flow's standard operating data.
+Vendor integrations define external integration boundaries. Connectors handle
+vendor APIs/auth/webhooks, adapters normalize vendor payloads into canonical
+DTOs, secrets remain server-side, OAuth supports delegated authorization,
+watermarks make sync resumable, and raw imports preserve original evidence
+for debugging and replay.
 
-Technically, vendor integrations define external integration boundaries. Connectors handle vendor APIs/auth/webhooks, adapters normalize vendor payloads into canonical DTOs, secrets remain server-side, OAuth supports delegated authorization, watermarks make sync resumable, and raw imports preserve original evidence for debugging and replay.
+Phase 8 is the pure-transport swap (Hard Promise #1): vendor connectors write
+existing SQLite tables only — no cleanup, no logic decisions. Logic-deciding
+slices begin at Phase `7.58.0` (Primary Driver audit). The Phase 8.0
+integration framework migration
+(`202605040000_phase_8_0_integration_framework.sql`) and lifecycle event kind
+(`202605040400_phase_8_0_lifecycle_add_vendor_lifecycle_notification.sql`)
+are live.
+
+**17 INTEGRATE adapters at lifecycle = `documented`.** Each `*.live.sandbox`
+and `*.live.prod` slice fires only when vendor credentials arrive
+(`docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`):
+
+| Wave | Vendors | Lane id pattern |
+|---|---|---|
+| Wave 1 (needed for launch UX) | Lightspeed K-Series · Libro · QuickBooks Time | `8.LSK.live.{sandbox,prod}` · `8R.LB.live.{sandbox,prod}` · `8.S.QBT.live.{sandbox,prod}` |
+| Wave D (partnership-paced) | Toast · Clover · Oracle Simphony · ADP · Aloha · NCR · Square · 7shifts · Revel · Tock · OpenTable · SevenRooms · Humanity · Agendrix · Push Operations | matching `8*.<vendor>.live.{sandbox,prod}` |
+
+Omnivore is a legacy on-prem fallback, not a primary integration.
 
 Key pieces, one at a time:
 
@@ -2724,15 +2940,18 @@ vendor API provides payload
 Rules:
 
 - Use official APIs.
-- Keep vendor secrets out of Flutter.
-- Convert timestamps using restaurant IANA timezones.
+- Keep vendor secrets server-side (Secret Manager / KMS); no BYO-key.
+- Convert timestamps using operator-local IANA timezones.
 - Do not build a separate UI truth path for each vendor.
+- Webhook signing secret column landed (`202605080600_ops_debt_vendor_credentials_webhook_signing_secret.sql`).
 
 ### Where It Lives
 
+- Live rollout plan: `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`
+- Phase 8.0 integration framework: `db/migrations/202605040000_phase_8_0_integration_framework.sql`
 - POS/labor plan: `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
 - Reservation plan: `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
-- External integrations plan: `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
+- External integrations plan (`8.5`): paused under outward-vendor freeze; `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
 
 ## 20. Shared State Roadmap
 
@@ -2744,11 +2963,14 @@ SQLite can still make the app fast locally, but Postgres becomes the source for 
 
 ### Shared State Sync
 
-We use shared state sync because multiple devices need to agree on official server data while still keeping the app fast locally.
+We use shared state sync because multiple devices need to agree on official
+server data while still keeping the app fast locally.
 
-In restaurant operations terms, shared state is like POS/KDS order state. A prep station screen, expo screen, and server view may each show the order differently, but they should all reconcile back to the same official ticket state.
-
-Technically, shared state sync defines the synchronization model. Postgres owns authoritative shared state, SQLite caches local read models, startup sync hydrates devices, invalidation/event bridges notify clients of changes, LWW provides a simple V1 conflict policy, and audit trails preserve mutation history.
+Shared state sync defines the synchronization model. Postgres owns
+authoritative shared state, SQLite caches local read models, startup sync
+hydrates devices, invalidation/event bridges notify clients of changes, LWW
+provides a simple V1 conflict policy, and audit trails preserve mutation
+history.
 
 Key pieces, one at a time:
 
@@ -2832,15 +3054,27 @@ manager changes shared setting
 
 The operations console is an internal admin tool for Forge and Flow staff.
 
-It is not the restaurant operator app. It is for managing the platform itself: operators, locations, pricing, feature flags, corpus, integrations, support, audit, and health.
+It is not the operator-facing app. It is for managing the platform itself:
+operators, locations, pricing, feature flags, corpus, integrations, support,
+audit, and health.
+
+This is the F&F Ops Console half of the Two-Console framing (operator
+memory: `project_two_console_framing.md`). The operator-facing surfaces
+(own-op web console + mobile) are the other half.
 
 ### Internal Operations
 
-We use internal operations tooling because platform staff need safe, auditable ways to manage support, health, and configuration work.
+We use internal operations tooling because platform staff need safe,
+auditable ways to manage support, health, and configuration work.
 
-In restaurant operations terms, internal operations is the corporate/back-office console for multi-location support: store setup, menu/config checks, permissions, incident review, health monitoring, and controlled support actions.
+Internal operations define platform administration. A staff-only web UI
+calls protected admin APIs, feature flags control rollout, observability
+surfaces health and diagnostics, support actions are routed through
+auditable workflows, and browsers never receive direct database access.
 
-Technically, internal operations define platform administration. A staff-only web UI calls protected admin APIs, feature flags control rollout, observability surfaces health and diagnostics, support actions are routed through auditable workflows, and browsers never receive direct database access.
+Engineering still in scope for V1: `11A.8` (Support audit), `11A.9`
+(Cross-operator reads), `11A.10` (Operator impersonation) — all not started,
+queued behind operator-blocked cutover items.
 
 Key pieces, one at a time:
 
@@ -2922,17 +3156,27 @@ internal admin signs in
 
 The workflow platform is the future automation layer.
 
-It will let Forge Flow run scheduled or event-driven work, but with strict identity, permission, audit, cost, and approval controls.
+It will let Forge Flow run scheduled or event-driven work, but with strict
+identity, permission, audit, cost, and approval controls.
 
-The important safety idea is: automation should be powerful, but not invisible.
+The important safety idea: automation should be powerful, but not invisible.
+
+**Paused (V1 AI freeze).** Phase 12 (`12.0`–`12.5`) is on hold per the
+2026-05-03 pause. The identity foundations (`sp:` JWTs, issuance permission
+key on Production1) are in place; the workflow surface itself does not ship
+in V1.
 
 ### Workflow Automation
 
-We use workflow automation because repeated operational tasks should be able to run consistently, with controls around risky actions.
+We use workflow automation because repeated operational tasks should be able
+to run consistently, with controls around risky actions.
 
-In restaurant operations terms, workflow automation is like an opening, prep, or closing checklist that can run routine steps consistently while still requiring manager approval for high-impact actions such as changing permissions, publishing schedules, or affecting money.
-
-Technically, workflow automation defines controlled automation architecture. Triggers start workflows, service-principal identity authenticates them, tool registries restrict available actions, Plan-Then-Execute separates planning from mutation, approval gates protect risky operations, artifacts preserve outputs, background jobs execute long work, and cost caps/batch paths control provider spend.
+Workflow automation defines controlled automation architecture. Triggers
+start workflows, service-principal identity authenticates them, tool
+registries restrict available actions, Plan-Then-Execute separates planning
+from mutation, approval gates protect risky operations, artifacts preserve
+outputs, background jobs execute long work, and cost caps/batch paths
+control provider spend.
 
 Key pieces, one at a time:
 
@@ -3038,11 +3282,23 @@ Secrets are sensitive values like API keys and database URLs. They should not be
 
 ### Environment And Release
 
-We use environment and release rules because local, staging, and production need different risk levels, configuration, and secret handling.
+We use environment and release rules because local, staging, and production
+need different risk levels, configuration, and secret handling.
 
-In restaurant operations terms, local, staging, and production are like training mode, a test store, and the live store. Staff can practice and verify setup in non-live modes, while production changes need closeout-level care and secrets must stay in controlled back-office systems.
+Environment and release define runtime operations. Environments separate
+development/staging/production risk, Secret Manager and env vars provide
+runtime configuration without committing secrets, Dockerfiles make proxy
+builds reproducible, CI/CD gates validate changes, runbooks standardize live
+operations, and managed certificates secure public ingress.
 
-Technically, environment and release define runtime operations. Environments separate development/staging/production risk, Secret Manager and env vars provide runtime configuration without committing secrets, Dockerfiles make proxy builds reproducible, CI/CD gates validate changes, runbooks standardize live operations, and managed certificates secure public ingress.
+V1 production cutover is gate-driven (not date-driven). Plan:
+`docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
+Gates `cutover.0` (preflight, needs Firebase Auth domain switch + 2 pending
+migrations), `cutover.1` (corpus load + cost approval), `cutover.0b` (Tier-M
+perf gate, launch-blocking), `cutover.2` (first operator onboarding,
+operator-authored T&Cs), `cutover.3` (DNS / env-var flip), `cutover.4`
+(7-day stability watch, non-negotiable), `cutover.5` (post-launch
+hardening). All gates are currently not started.
 
 Key pieces, one at a time:
 
@@ -3175,11 +3431,28 @@ In this repo, tests protect more than UI. They protect auth, MFA, tenant isolati
 
 ### Verification
 
-We use verification gates because code, schema, auth rules, and deployments need repeatable checks before they are trusted.
+We use verification gates because code, schema, auth rules, and deployments
+need repeatable checks before they are trusted.
 
-In restaurant operations terms, verification is the pre-shift line check plus compliance discipline: stations stocked, KDS/POS working, sanitizer and temperature logs in range, cash drawer counted, and known issues surfaced before service starts.
+Verification defines gates across layers. Static analysis catches code
+issues, unit/widget tests check behavior, contract/migration tests enforce
+architectural and schema expectations, RLS lint protects tenant isolation
+policy shape, smoke tests validate live wiring, CI runs checks consistently,
+and platform builds catch target-specific regressions.
 
-Technically, verification defines gates across layers. Static analysis catches code issues, unit/widget tests check behavior, contract/migration tests enforce architectural and schema expectations, RLS lint protects tenant isolation policy shape, smoke tests validate live wiring, CI runs checks consistently, and platform builds catch target-specific regressions.
+Migration tooling: after any `db/migrations/*.sql` change, run
+`tool/migration_drift_scanner.dart --fix --strict-docs` then
+`tool/migration_cutoff_lint.dart`. Runtime acceptance follows
+`docs/contracts/slice_runtime_acceptance_contract.md` as an advisory pattern
+(reviewer judgment, not CI-enforced). Browser-exposed slices use Codex-driven
+Browser Use evidence per `runbooks/browser_use_codex_acceptance_workflow.md`
+(out-of-repo automation, not a binary in this tree). Full E2E uses
+`docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`. Feature-touching work
+runs `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before
+the implementation.
+
+Known-failing tests are catalogued in `docs/KNOWN_FAILING_TESTS.md` — treat
+those as expected, not regressions.
 
 Key pieces, one at a time:
 
@@ -3289,117 +3562,120 @@ macos-15 runner
 
 ### Plain English
 
-The foundation is broad and much of it is now merged or scaffolded. Some database structures exist before their final UI, worker, or workflow consumer exists.
+The foundation is broad and most of it is now merged. Several phases have
+shifted into a freeze state for V1 launch (AI, outward-vendor, Barrio).
+V1 launch is gate-driven (`cutover.0` through `cutover.5`) and currently
+blocked on operator items, not engineering items.
 
-That is normal for this repo's phase style: build the foundation, verify the contracts, then attach consumer features.
+State as of 2026-05-12.
 
-### Current Status And Gaps
+### V1 Launch Path
 
-We track current status and gaps because the architecture is partly live, partly scaffolded, and partly planned, and those states should not be confused.
+Three workstreams remain before V1 declaration. Detail lives in
+`PROJECT_TRACKER.md`.
 
-In restaurant operations terms, status and gaps are the manager passdown: completed prep, 86s, equipment issues, labor concerns, cash variances, unresolved guest issues, and follow-up tasks stay visible for the next shift.
+**1. Operator-blocked (no engineering):**
 
-Technically, current status and gaps summarize operational readiness and remaining risk. They track merged foundation work, staging ingress status, production migration state, auth/admin completion, security monitoring, known schema gaps, missing workers/routes, test coverage gaps, and health-surface requirements so future work can prioritize by dependency and risk.
+- Firebase Auth action-domain switch (`auth.feflow.org` →
+  `forge-flow-production1.web.app`, set `callbackUri`, run 4 validation
+  checks).
+- Decide + apply 2 remaining Production1 migrations (first-connect-backfill
+  jobs + 11W.7 operator account fields). 18 of 20 already staging-verified.
+- Seed operator-authored T&C content into `tos_versions` (universal +
+  per-vendor scopes) at deploy time.
+- Sandbox credentials for the trio: Lightspeed K-Series · Libro · QuickBooks
+  Time.
 
-Key pieces, one at a time:
+**2. Cutover sequence (gate-driven, not date-driven):**
 
-#### `9.0Sigma.b-k` merged
+All `cutover.*` gates are not started. Plan:
+`docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
-- **What it means:** Foundation migrations/features are on master
-- **Example in the app:** Foundation auth/audit/event/graph/rollup work landed.
-- **Why it matters:** Auth/RLS/service/audit/event/graph/rollup groundwork exists
-- **How this helps long term:** Forms the base for later consumer phases.
+**3. Engineering still in scope:**
 
-#### Staging DNS/HTTPS passing
+- `11A.8` Support audit · `11A.9` Cross-operator reads · `11A.10` Operator
+  impersonation — all not started.
+- `9.8` inbound vendor T&Cs — code-ready; operator-self-served content
+  seeding pending.
+- `business-timing-live` full hierarchy + settings lanes — future.
+- Doc 1 item 7 (physical connected-device E2E) — needs physical device.
+- Doc 1 item 9 (push delivery proof) — preflight documented; needs staging
+  apply + device.
+- Group / region / company rollup truth — follows server rollup snapshots.
 
-- **What it means:** Public staging API resolves and smokes
-- **Example in the app:** `https://staging-api.feflow.org/readyz` works.
-- **Why it matters:** Cloud edge path is wired
-- **How this helps long term:** Confirms the edge pattern for future environments.
+### What Is Live On Master
 
-#### Secret Manager-backed env refs
+- **Phase 9 foundation (`9.0Sigma.b-k`)** — auth schema, RLS wrappers + policy
+  rewrites, org-units, service principals, audit logs (hash-chained), event
+  outbox, usage caps (two-slot), graph canonical (AGE), DiskANN install,
+  rollups + `pg_cron` jobs, recovery-code attempts, audit privacy role.
+- **Phase 9 Production1 apply** — migrations through `202604290000`
+  (service-principal issue permission) applied 2026-05-03.
+- **Staging ingress** — `https://staging-api.feflow.org/readyz` smoke
+  passing; A record to `34.54.204.29`, Google-managed cert, Cloud Armor in
+  preview mode.
+- **Secret Manager-backed env refs** — Cloud Run pulls secrets via
+  references rather than plain env vars.
+- **RLS isolation sweep** — passive cross-tenant tests in place; staging
+  sweep proves Operator A cannot read Operator B when explicitly enabled.
+- **B17 admin role catalog CRUD** — staging smoke-passed; unblocks operator
+  team-settings UX.
+- **B33 usage_logs two-slot mirror** — cap-vs-actual reconciliation has the
+  two-slot writer and constraint posture.
+- **B34 audit attribution discriminator** — `actor_principal_id` vs
+  `actor_service_principal_id` documented and consolidated
+  (`202605071800_actor_kind_constraint_consolidation.sql`).
+- **Service-principal issuer route** — Production1 permission key landed
+  2026-05-03; runtime deploy/evidence waits on Phase 12 unfreeze.
+- **Phase 10a event outbox** — outbox table, retention sweep, publish
+  metrics, subscription watermark, NOTIFY channel split, dead-letter table
+  all live. Pub/Sub adapter and operator-facing UX still queued.
+- **Health producers (B44 graph, B45 rollup, B47 vector)** — fill the B42
+  health envelope; `11A.6` has a bounded observability dashboard; `11A.5`
+  remains the health/debug surface.
+- **Phase 8.0 integration framework** — vendor-lifecycle notification kind,
+  data-accuracy settings, service-period settings, walk-in settings, weekly
+  plan server truth, wage-role-row server truth, timing provenance, OAuth
+  state, first-connect backfill jobs (all 2026-05-04 → 2026-05-08).
+- **Admin hierarchy settings overhaul** — closed 2026-05-12. All admin /
+  operator-web settings surfaces now resolve through the
+  operator → org-unit → location hierarchy per Hard Promise #11. Lifecycle
+  migration: `202605082200_admin_hierarchy_lifecycle.sql`.
+- **Audit anchor cron unpause** — daily Azure Blob anchor running
+  (`202605080700_audit_anchor_cron_unpause.sql`).
+- **Mobile push notifications** — schema landed
+  (`202605060000_mobile_push_notifications.sql`); device proof still pending.
 
-- **What it means:** Cloud Run receives secrets securely
-- **Example in the app:** Cloud Run reads secrets from Secret Manager refs.
-- **Why it matters:** Sensitive values are not plain deploy config
-- **How this helps long term:** Establishes the secret-handling pattern for later services.
+### Paused (do not pick up without operator unfreeze)
 
-#### Phase 9 accepted
+- **AI freeze:** `11b` / `11b.1` / `11b.2`, `12.0`–`12.5`, `11A.3` +
+  `11A.3.x`, `11A.11`, advisor portion of `9.8`, `10b`.
+- **Outward-vendor freeze:** `8.5`, `11W.9`.
+- **Barrio freeze:** `9.5.UX.*`, `9.75`, `lib/internal/barrio/**`,
+  `lib/main_barrio.dart`.
 
-- **What it means:** Live auth closeout is accepted for next-phase handoff
-- **Example in the app:** Auth closeout accepted for next phase.
-- **Why it matters:** Cloud Armor is monitored; physical iOS QA is deferred
-- **How this helps long term:** Allows next-phase work to proceed with known constraints.
+### Known Gaps
 
-#### Cloud Armor preview
-
-- **What it means:** Edge policy logs but does not block yet
-- **Example in the app:** Edge WAF is logging before enforcement.
-- **Why it matters:** Heartbeat monitors 3 clean post-tuning days before enforcement
-- **How this helps long term:** Collects evidence before enforcement changes risk.
-
-#### Production1 applied
-
-- **What it means:** Phase 9 migrations through `202604280013` are applied
-- **Example in the app:** Phase 9 migrations applied to production once gated.
-- **Why it matters:** Future production mutation still requires a fresh gate
-- **How this helps long term:** Shows the migration path worked under gates; future changes still need fresh gates.
-
-#### B17 complete
-
-- **What it means:** Admin role catalog CRUD is deployed and smoke-passed on staging
-- **Example in the app:** Admin role CRUD route work is done.
-- **Why it matters:** Unblocks operator team settings consumption
-- **How this helps long term:** Unblocks future team/settings UX work.
-
-#### B33 complete
-
-- **What it means:** `usage_logs` two-slot mirror work is complete
-- **Example in the app:** Usage/cap reconciliation has the two-slot writer and constraint posture.
-- **Why it matters:** Supports cap-vs-actual reconciliation
-- **How this helps long term:** Gives billing/reconciliation a stable base.
-
-#### B34 complete
-
-- **What it means:** Audit attribution contract clarification is complete
-- **Example in the app:** Audit actor attribution has a documented discriminator rule.
-- **Why it matters:** Supports clear cross-table audit queries
-- **How this helps long term:** Keeps audit reporting semantics stable.
-
-#### RLS isolation sweep complete
-
-- **What it means:** New tenant-scoped tables have passive cross-tenant tests
-- **Example in the app:** The staging sweep can prove Operator A cannot read Operator B when explicitly enabled.
-- **Why it matters:** Reduces tenant leak risk
-- **How this helps long term:** Keeps future production-table work tied to isolation evidence.
-
-#### Service-principal issuer route live schema ready
-
-- **What it means:** Issuance route/client/tests landed, and the Production1 permission-key apply completed on 2026-05-03.
-- **Example in the app:** `sp:` token issuance has the live database permission key needed before Phase 12 workflows depend on it.
-- **Why it matters:** Needed for Phase 12 workflows
-- **How this helps long term:** Gives the workflow platform an automation identity path once runtime deploy and live issuance evidence are in place.
-
-#### Event outbox scaffold landed
-
-- **What it means:** Phase 10a scaffold exists; Pub/Sub adapter, dead-letter handling, retention sweep, tripwires, and UX surfaces are still queued
-- **Example in the app:** Durable `event_outbox` rows are the source of truth; NOTIFY only wakes consumers.
-- **Why it matters:** Needed for real event fan-out
-- **How this helps long term:** Keeps durable event delivery separate from transient push signals.
-
-#### Health producers delivered
-
-- **What it means:** B44 graph, B45 rollup, and B47 vector producers now fill the B42 health envelope in code
-- **Example in the app:** `11A.6` now has a bounded observability dashboard; `11A.5` remains the health/debug surface against these producer families.
-- **Why it matters:** Needed for ops console health views
-- **How this helps long term:** Moves remaining work from producer wiring to health UX, live evidence, and operational recovery posture.
-
+- **Cloud Armor still in preview** — logs but does not block. Heartbeat
+  monitors 3 clean post-tuning days before enforcement flip.
+- **Pub/Sub adapter for event outbox** — durable table is the source of
+  truth, but fan-out to remote subscribers waits on V1 cutover.
+- **Workflow platform (Phase 12) consumer surfaces** — service-principal
+  foundation ready, but workflow execution paths are paused.
+- **Physical-device QA** — Doc 1 items 7 and 9 (connected-device E2E + push
+  delivery proof) still need a real device.
+- **Operator-authored T&C content** — seeding for `tos_versions` is a
+  cutover.2 dependency; operator owns content per
+  `docs/contracts/operator_self_served_tos_contract.md`.
 
 ### Where It Lives
 
-- Current tracker: `PROJECT_TRACKER.md`
-- Backlog: `docs/phases/phase_9/phase_9_execution_backlog.md`
-- Production apply: `runbooks/phase_9_production1_migration_apply_runbook.md`
+- Routing tracker: `PROJECT_TRACKER.md`
+- Open hardening followups (P0–P3): `docs/POST_HARDENING_FOLLOWUPS.md`
+- Production apply runbook: `runbooks/phase_9_production1_migration_apply_runbook.md`
+- Cutover plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`
+- Wave execution ledger: `docs/_indices/WAVE_EXECUTION_LEDGER.md`
+- Lane indices: `docs/_indices/CLAUDE_LANE_INDEX.md`, `docs/_indices/CODEX_LANE_INDEX.md`
 
 ## 26. Quick Glossary
 
@@ -3414,7 +3690,7 @@ Key pieces, one at a time:
 #### AGE
 
 - **What it means:** Postgres extension for graph queries
-- **Example in the app:** Queries graph links between prep, line, and demand.
+- **Example in the app:** Queries graph links between entities, metrics, and operator concepts.
 - **Why it matters:** Lets relationship questions live inside Postgres
 
 #### API
@@ -3450,7 +3726,7 @@ Key pieces, one at a time:
 #### Firebase Identity Platform
 
 - **What it means:** Hosted login/auth/MFA service
-- **Example in the app:** Sarah signs in with email, password, and MFA.
+- **Example in the app:** A manager signs in with email, password, and TOTP MFA.
 - **Why it matters:** Avoids building credential and MFA systems from scratch
 
 #### Hostname
@@ -3504,7 +3780,7 @@ Key pieces, one at a time:
 #### RLS
 
 - **What it means:** Postgres row-level access control
-- **Example in the app:** Sarah's query only sees Restaurant Company A rows.
+- **Example in the app:** A user's query only sees rows for their operator scope.
 - **Why it matters:** Prevents cross-tenant row access at the database layer
 
 #### Secret Manager
@@ -3528,7 +3804,7 @@ Key pieces, one at a time:
 #### TOTP
 
 - **What it means:** Rotating authenticator-app code
-- **Example in the app:** Six-digit code from Sarah's authenticator app.
+- **Example in the app:** Six-digit code from an authenticator app.
 - **Why it matters:** Provides MFA without SMS
 
 #### WebSocket
@@ -3543,25 +3819,47 @@ Key pieces, one at a time:
 This guide was synthesized from:
 
 - `README.md`
-- `PROJECT_TRACKER.md`
 - `CLAUDE.md`
+- `PROJECT_TRACKER.md`
 - `pubspec.yaml`
 - `Dockerfile`
 - `docker-compose.dev.yml`
 - `docs/README.md`
+- `docs/contracts/core_app_architecture.md` (canonical Phase 7.55 architecture)
+- `docs/contracts/phase_7_55_architecture_contract.md`
 - `docs/contracts/phase_7_55_plain_english_architecture.md`
+- `docs/contracts/phase_7_55_time_boundary_contract.md`
+- `docs/contracts/hardening_rls_and_repository_pattern_contract.md`
+- `docs/contracts/integration_spine_architecture_contract.md`
+- `docs/contracts/metric_card_honesty_contract.md`
+- `docs/contracts/auth_permission_key_catalog.md`
 - `docs/contracts/event_outbox_contract.md`
-- `docs/archive/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
-- `docs/archive/phases/phase_8R/phase_8R_official_reservation_connector_plan.md`
+- `docs/contracts/demo_mode_contract.md`
+- `docs/contracts/operator_self_served_tos_contract.md`
+- `docs/contracts/slice_runtime_acceptance_contract.md`
+- `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`
 - `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
-- `docs/phases/phase_9/phase_9_auth_plan.md`
-- `docs/archive/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
+- `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`
+- `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`
+- `docs/phases/phase_9_8/*`
 - `docs/phases/phase_11a/phase_11a_decision_register.md`
 - `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`
 - `docs/phases/phase_12_workflow_platform/phase_12_workflow_platform_plan.md`
+- `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`
+- `docs/phases/phase_business_timing_live/*`
+- `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
+- `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md`
+- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+- `docs/POST_HARDENING_FOLLOWUPS.md`
+- `docs/KNOWN_FAILING_TESTS.md`
+- `docs/_indices/WAVE_EXECUTION_LEDGER.md`
+- `docs/_indices/CLAUDE_LANE_INDEX.md`
+- `docs/_indices/CODEX_LANE_INDEX.md`
+- `docs/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`
 - `runbooks/phase_9_production1_migration_apply_runbook.md`
 - `runbooks/audit_chain_verify_runbook.md`
 - `runbooks/gdpr_erasure_runbook.md`
+- `runbooks/browser_use_codex_acceptance_workflow.md`
 - `lib/main_forgeflow.dart`
 - `lib/main_barrio.dart`
 - `lib/forge_flow_bootstrap.dart`
@@ -3573,14 +3871,6 @@ This guide was synthesized from:
 - `lib/infrastructure/persistence/sqlite/`
 - `lib/infrastructure/persistence/postgres/`
 - `tool/advisor_proxy/`
-- `db/migrations/`
+- `db/migrations/` (state as of 2026-05-08, schema version 33)
 - `.github/workflows/ci.yml`
 - `.github/workflows/apple-platform-verify.yml`
-
-Restaurant operations references used to ground the analogies:
-
-- [Toast platform glossary](https://doc.toasttab.com/doc/platformguide/adminGlossary.html): FOH, expo, prep stations, KDS, rail, 86, cash drawer/reporting language.
-- [National Restaurant Association food-safety inspection guidance](https://restaurant.org/education-and-resources/resource-library/here-is-what-health-inspectors-look-for-in-your-restaurant-and-why/): temperature logs, sanitizing, prep-surface, and inspection-readiness framing.
-- [Restaurant365 Manager Log docs](https://docs.restaurant365.com/docs/smart-ops-manager-log-overview): manager logbooks, log entries, location-specific notes, and operational handoff language.
-- [Eat App FOH/BOH operations guide](https://restaurant.eatapp.co/blog/restaurant-front-of-house-management): FOH/BOH, pre-shift briefing, debriefing, role assignment, host/table management, and expo/window coordination.
-- [Restaurant Association inventory management guide](https://restaurantassociation.com/posts/restaurant-inventory-management-best-practices/): par levels, inventory counts, standardized item lists, storage locations, recipe/portion control, and ordering rules.
