@@ -49,7 +49,7 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 
 | Index | Audience | Purpose |
 | --- | --- | --- |
-| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward 7-phase pipeline: Phase 0 smoke → Phase 1 walkthrough → Phase 2 Wave 2 → Phase 3 tag happy state → Phase 4 refactor → Phase 5 re-test → Phase 6 mutate → Phase 7 post-launch. Operator-locked decisions captured. |
+| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward 6-phase pipeline: Phase 0 smoke → Phase 1 Wave 2 → Phase 2 comprehensive walkthrough + TAG HAPPY STATE → Phase 3 refactor → Phase 4 re-test → Phase 5 mutate → Phase 6 post-launch. Walkthrough collapsed into single post-Wave-2 validation. Operator-locked decisions captured. |
 | `docs/_indices/WAVE_2_LEDGER.md` | All (Main + Claude2 read; Main writes) | Wave 2's canonical slice ledger. 33 slices across 11 lanes; lane assignments locked 2026-05-13. |
 | `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md` | Operator (paste-ready) | Wave 2 deployment prompt for the second Claude account. Operator pastes this into the other device's session to bootstrap parallel-lane execution. |
 | `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. Wave 2 ledger rows cite this. |

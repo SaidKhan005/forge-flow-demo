@@ -8,7 +8,7 @@ Claude lanes, Codex lanes, or both run the same underlying pattern.
 
 | File | Audience | Purpose |
 |---|---|---|
-| `NEXT_WAVE_PLAN.md` | All | Forward roadmap — the 7-phase pipeline (Phase 0 smoke → Phase 1 walkthrough → Phase 2 Wave 2 → Phase 3 tag happy state → Phase 4 refactor → Phase 5 re-test → Phase 6 mutate → Phase 7 post-launch). Operator-locked decisions captured. |
+| `NEXT_WAVE_PLAN.md` | All | Forward roadmap — the 6-phase pipeline (Phase 0 smoke → Phase 1 Wave 2 → Phase 2 comprehensive walkthrough + TAG HAPPY STATE → Phase 3 refactor → Phase 4 re-test → Phase 5 mutate → Phase 6 post-launch). Walkthrough collapsed into single post-Wave-2 validation. Operator-locked decisions captured. |
 | `WAVE_2_LEDGER.md` | All (Main + Claude2 read; Main writes) | Wave 2's slice ledger. 33 slices across 11 lanes, lane assignments locked. Canonical for slice state. |
 | `WAVE_2_PARALLEL_LANE_HANDOFF.md` | Operator (paste-ready) | Wave 2 deployment prompt for the second Claude account (running on operator's other device). Specializes the general Claude handoff for the dual-Claude parallel-lane pattern. |
 | `WAVE_EXECUTION_LEDGER.md` | Reference (frozen) | Wave 1's (post-Codex wave's) slice state machine. CLOSED 2026-05-13. Historical reference only. |
@@ -67,7 +67,7 @@ regardless of executor).
 - New slice added → main orchestrator adds a row to the ledger.
 - Handoff prompts → updated only when the cross-cutting workflow changes (rare).
 - `NEXT_WAVE_PLAN.md` → updated when the operator pivots the forward sequencing, when a phase closes, or when a major decision lands.
-- `DEBUG_MD_IMPLEMENTATION_STATUS.md` → updated as Wave 2 slices land (rows flip ✅) or as Phase 1 walkthrough surfaces new gaps.
+- `DEBUG_MD_IMPLEMENTATION_STATUS.md` → updated as Wave 2 slices land (rows flip ✅) or as Phase 2 walkthrough surfaces stragglers.
 
 ## Dual-Claude execution (Wave 2)
 

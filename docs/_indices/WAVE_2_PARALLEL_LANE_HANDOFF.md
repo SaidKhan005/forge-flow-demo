@@ -81,9 +81,9 @@ You:
 
 1. `CLAUDE.md` "Workflow" section — the executor-agnostic workflow
    pattern you'll run. Same pattern Codex ran in Wave 1.
-2. `docs/_indices/NEXT_WAVE_PLAN.md` — the 7-phase pipeline you're
-   contributing to (you drive Phase 2 lanes; the main orchestrator
-   coordinates the pipeline).
+2. `docs/_indices/NEXT_WAVE_PLAN.md` — the 6-phase pipeline you're
+   contributing to (you drive Phase 1 lanes; the main orchestrator
+   coordinates the pipeline + drives Phase 2 walkthrough with the operator).
 3. `docs/_indices/WAVE_2_LEDGER.md` — your work queue. Find rows where
    Owner = "Claude2". Pick the first one in `state = assigned`.
 4. `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` — source-of-truth
@@ -251,26 +251,28 @@ For operator-gated slices:
 
 # Phase gating — when you start
 
-The main orchestrator runs the 7-phase pipeline. Your work slots in at
-**Phase 2** (Wave 2 execution), but lanes U/V/D are cleared to start as
-soon as **Phase 0 (local stack smoke test) passes**, in parallel with
-Phase 1 walkthrough. The main orchestrator confirms Phase 0 clearance
-via the WAVE_2_LEDGER.md commit history (look for the "Phase 0 clean —
-Claude2 cleared for U/V/D" marker).
+The main orchestrator runs the 6-phase pipeline. Your work slots in at
+**Phase 1** (Wave 2 execution). **All four of your lanes (U, V, D,
+M-Poll) clear together** as soon as **Phase 0 (local stack smoke test)
+passes**. The main orchestrator confirms Phase 0 clearance via the
+WAVE_2_LEDGER.md commit history (look for the "Phase 0 clean — Claude2
+cleared for U/V/D/M-Poll" marker).
 
-**Lane M-Poll waits** until Phase 1 walkthrough is complete (it touches
-the demo-live switch surface and walkthrough may amend its scope).
+No pre-Wave-2 walkthrough — the operator-driven walkthrough is **Phase 2,
+after Wave 2 lands**, comprehensive (visual + functional, backend +
+frontend). You will not be paused waiting for one.
 
 # First action
 
 Read the required docs in order. Check the most recent commits to
 `docs/_indices/WAVE_2_LEDGER.md` for the Phase 0 clearance marker.
 
-- **If cleared:** announce "Phase 0 cleared. Picking up lane <U/V/D>
-  first because <reason>. Dispatching a worker agent in 30 seconds."
-  Then proceed.
-- **If NOT yet cleared:** announce "Phase 0 not yet cleared. Holding.
-  Will re-check in 30 minutes." Compact your context to minimum + wait.
+- **If cleared:** announce "Phase 0 cleared. Picking up lane <X> first
+  because <reason>. Dispatching a worker agent in 30 seconds." Then
+  proceed.
+- **If NOT yet cleared:** announce "Phase 0 not yet cleared. Holding."
+  Compact your context to minimum + wait for operator signal that the
+  marker has landed.
 
 If at any point you're blocked, stop and write a note to
 `docs/_audits/wave_2/scope_clarifications.md` rather than guess.
@@ -283,7 +285,7 @@ Begin.
 ## Cross-references
 
 - `docs/_indices/WAVE_2_LEDGER.md` — the work queue this prompt points at.
-- `docs/_indices/NEXT_WAVE_PLAN.md` — the 7-phase pipeline.
+- `docs/_indices/NEXT_WAVE_PLAN.md` — the 6-phase pipeline.
 - `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` — the general executor
   handoff (this prompt extends it for Wave 2 specifically).
 - `CLAUDE.md` "Workflow" — the executor-agnostic workflow pattern.

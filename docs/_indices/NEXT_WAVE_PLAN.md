@@ -1,15 +1,23 @@
 # Next Wave Plan — Post-Codex Closeout → V1 Deploy
 
-> **Created:** 2026-05-13. **Revised:** 2026-05-13 after the debug.md
-> implementation-status audit (PR #646) surfaced 29 new slices not
-> previously captured. Operator-locked decisions 2026-05-13:
-> (a) **Roles are hierarchy-scoped**;
-> (b) **Wave 2 keeps all 29 slices** plus 4 bug fixes;
-> (c) **All bug fixes pull into Wave 2** (not deferred to Phase 6);
-> (d) **Dual-Claude execution** — main orchestrator + second-Claude
-> lane orchestrator running in parallel (Codex out of quota).
+> **Created:** 2026-05-13. **Revised:** 2026-05-13 twice — first after
+> the debug.md implementation-status audit (PR #646) surfaced 29 new
+> slices, then again when the operator collapsed the pre-Wave-2
+> "demo-validate walkthrough" into a single comprehensive post-Wave-2
+> validation phase (cleaner sequencing, faster execution, no idle time
+> for second-Claude lanes).
 >
-> **Status:** Active. 7-phase pipeline.
+> **Operator-locked decisions 2026-05-13:**
+> (a) **Roles are hierarchy-scoped**;
+> (b) **Wave 2 keeps all 29 slices** plus 4 bug fixes (33 total);
+> (c) **All bug fixes pull into Wave 2** (not deferred);
+> (d) **Dual-Claude execution** — main orchestrator + second-Claude lane
+> orchestrator running in parallel from Phase 0 close (Codex out of quota);
+> (e) **Single comprehensive walkthrough post-Wave-2**, not split
+> pre/post (validation, not scoping — scoping is what the debug.md audit
+> already did).
+>
+> **Status:** Active. 6-phase pipeline.
 > **Owner:** Operator drives sequencing; main orchestrator + second
 > Claude lane execute.
 
@@ -19,28 +27,31 @@ slice ledger; the canonical source for who-does-what across the 33 Wave 2
 slices). Second-Claude handoff prompt persists at
 `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
 
-## The 7-phase pipeline
+## The 6-phase pipeline
 
 ```
 Phase 0   Local stack smoke test (against Wave 1's final state)
-Phase 1   Demo-validate walkthrough (structured scoping for Wave 2)
-Phase 1.5 ✅ Operator decisions LOCKED 2026-05-13
-Phase 2   Execute Wave 2 (33 slices across 11 lanes — dual-Claude parallel)
-Phase 3   Operator walkthrough on Wave 2 output + TAG HAPPY STATE
-Phase 4   Refactor (R-1 + R-2 — against the polished, operator-blessed surface)
-Phase 5   Re-test against the happy-state tag (catch refactor regressions)
-Phase 6   Mutate staging + Production1 (migrations + deploy)
-Phase 7   Post-launch operational (SOPs, vendor outreach, soak completion)
+Phase 1   Execute Wave 2 (33 slices across 11 lanes — full dual-Claude parallel from Phase 0 close)
+Phase 2   Comprehensive walkthrough (visual + functional, backend + frontend) → TAG HAPPY STATE
+Phase 3   Refactor (R-1 + R-2 + R-3 — against the polished, operator-blessed surface)
+Phase 4   Re-test against the happy-state tag (catch refactor regressions)
+Phase 5   Mutate staging + Production1 (migrations + deploy)
+Phase 6   Post-launch operational (SOPs, vendor outreach, soak completion)
 ```
 
 Each phase is operator-gated. Orchestrator does not advance the pipeline
 without explicit "go" — these are large changes whose sequencing has
 business impact.
 
-**Critical sequencing note (operator correction 2026-05-13):**
-**Happy state tag is at the end of Phase 3, not after Phase 1.** The
-refactor's comparison anchor must be the operator-walked, Wave-2-polished
-surface — otherwise refactor regressions get conflated with UX changes.
+**Critical sequencing note (operator decision 2026-05-13, revised):**
+**Walkthrough happens ONCE, after Wave 2 lands.** A pre-Wave-2 walkthrough
+would be reactive scoping against an incomplete surface (UX polish + debug
+fixes not yet in). The debug.md audit (PR #646) already did the scoping
+work. The single post-Wave-2 walkthrough is comprehensive validation —
+visual + functional, backend + frontend — and the happy-state tag drops
+the moment that walkthrough passes. This anchors the refactor against the
+operator-blessed surface and lets second-Claude lanes start immediately
+at Phase 0 close (no idle time waiting for walkthrough).
 
 ---
 
@@ -76,64 +87,15 @@ walkthrough. Cheap to run; catches gross breakage early.
 **Owner:** main orchestrator (this session).
 
 **Hand-off on clean Phase 0:** the moment Phase 0 passes, second Claude
-is cleared to start **Lanes U, V, and D** in parallel with the Phase 1
-walkthrough. Only **Lane M-Poll** waits for Phase 1 to complete (M-Poll
-touches the demo-live switch surface and walkthrough may amend its
-scope). This parallelization keeps second Claude's caps spent on
-shipping rather than waiting.
+is cleared to start **all four assigned lanes (U, V, D, M-Poll)** in
+parallel with main orchestrator's Wave 2 lanes. No idle time. Main
+drops a "Phase 0 clean — Claude2 cleared for U/V/D/M-Poll" marker
+commit on the ledger so second Claude can detect clearance on its first
+action without a real-time channel.
 
 ---
 
-## Phase 1 — Demo-validate as a STRUCTURED walkthrough
-
-**Goal:** decisive scoping session for Wave 2. Per-screen walkthrough flips
-every 🔍 NEEDS VERIFICATION row in
-`docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` to ✅ or stays 🚧 with
-the specific gap captured. **This is where the 50 IN PROGRESS rows get
-definitively triaged.**
-
-**Workflow:**
-- Operator walks the surface (operator-web + mobile) with main orchestrator
-  guiding from the DEBUG_MD_IMPLEMENTATION_STATUS tracker.
-- Each row gets a status flip + a one-line gap-capture if not ✅.
-- Operator read-back items (locale, schedule timing, audit log explanation,
-  sqlite refresh rate, realtime config, business setup field coverage) get
-  answered with code-anchored prose.
-- BUG-1 (incomplete session record after support check) + BUG-2 (proxy
-  crash) get reproduced + triaged with a logged repro.
-
-**Output:** an updated DEBUG_MD_IMPLEMENTATION_STATUS tracker with concrete
-punch list, plus any new bugs filed as additional rows.
-
-**Operator gates:** operator drives the walkthrough; main orchestrator is
-the companion. Phase 1 closes when the operator says "I've seen enough; go
-to Phase 2."
-
-**Parallel execution:** second Claude is already running Lanes U/V/D
-during this phase (cleared at Phase 0 close). Their PRs land in parallel
-with the walkthrough. The walkthrough may surface NEW UX gaps that
-become additional Lane U slices — those get added to the ledger by main
-orchestrator and queued for second Claude's next pick.
-
----
-
-## Phase 1.5 — Operator decisions ✅ LOCKED 2026-05-13
-
-Three gating decisions that shape Wave 2. **Locked.**
-
-| Decision | Locked answer | Implication |
-|---|---|---|
-| Roles: hierarchy-scoped or operator-wide? | **Hierarchy-scoped** | Default Role Catalog v2 redesign + role inheritance migration + role-at-hierarchy-level UX all enter Wave 2 as engineered work. |
-| Wave 2 slice scope: keep all 29 or trim? | **Keep all 29** | Plus the 4 bug fixes (W-1, W-2, BUG-1, BUG-2) = 33 Wave 2 slices total. SOPs + vendor outreach stay in scope (Phase 7 ops work) but tracked. |
-| Bug fixes: when? | **Pull into Wave 2** | By the time Phase 4 refactor hits, all known bugs are closed; happy state is bug-clean. |
-
-Bonus locked decision (2026-05-13): **Dual-Claude execution.** Codex out
-of quota; second Claude account picks up parallel lanes per
-`docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`.
-
----
-
-## Phase 2 — Execute Wave 2 (33 slices across 11 lanes)
+## Phase 1 — Execute Wave 2 (33 slices across 11 lanes)
 
 **Goal:** ship every actionable item from the debug.md brain dump that
 Wave 1 didn't catch, plus close the 4 known bugs (W-1, W-2, BUG-1, BUG-2).
@@ -180,19 +142,44 @@ Main orchestrator lanes summary:
 
 ---
 
-## Phase 3 — Operator walkthrough on Wave 2 output + TAG HAPPY STATE
+## Phase 2 — Comprehensive walkthrough + TAG HAPPY STATE
 
-**Goal:** confirm Wave 2 delivered what the operator wanted, then anchor
-the state for refactor comparison.
+**Goal:** the single comprehensive validation of the wave. Operator + main
+orchestrator walk the full surface — visual + functional, backend +
+frontend — confirm Wave 2 delivered what was scoped, then anchor the
+state for refactor comparison.
 
-**Step 3a — Operator walkthrough:**
-- Re-run Phase 1 walkthrough but against post-Wave-2 master.
-- Every 🚧 IN PROGRESS row from Phase 1's tracker should now be ✅ DONE.
-- Every ❌ NOT DONE row that was queued into Wave 2 should now be ✅.
-- Bugs (W-1, W-2, BUG-1, BUG-2) closed.
-- Operator signs off: "this is the version I want to compare against."
+**Step 2a — Visual walkthrough (operator drives, main orchestrator narrates):**
+- Per-screen pass on operator-web (14 Ops Console screens) + mobile (7 mobile screens).
+- Every 🚧 IN PROGRESS / ❌ NOT DONE row from `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` flipped to ✅ DONE (or back into the ledger if a gap survived Wave 2).
+- HP #11 spot-check: every settings surface shows scope / inherited-from / effective value triple, or documents why it's backend-only/gated.
+- Lane U output quality check (subtitle/tile/copy/label hierarchy-sensitivity).
 
-**Step 3b — Tag happy state:**
+**Step 2b — Functional walkthrough:**
+- Each Wave 2 lane's representative click-paths end-to-end:
+  - Lane W: vendor connector write-path → fact tables populated correctly.
+  - Lane H: hierarchy visualization renders + drills.
+  - Lane R + S: hierarchy-scoped roles inherit + show up in the right places.
+  - Lane B: W-1 + W-2 fixes prove out under live apply; BUG-1 + BUG-2 reproductions confirmed closed.
+  - Lane Q: soak harness boots; email harness sends; scaffold-audit script runs clean; custom-role orphan lint catches a planted orphan.
+  - Lane M-Poll: mobile Integrations tab shows live status + demo-live switch works + ops-portal deeplink with JWT handoff lands the operator authenticated.
+- Operator read-back items get answered with code-anchored prose: locale, schedule timing, audit log explanation, sqlite refresh rate, realtime config, business setup field coverage.
+
+**Step 2c — Backend walkthrough:**
+- `dart analyze --fatal-infos` clean against post-Wave-2 master.
+- Migration drift scanner clean: `tool/migration_drift_scanner.dart --strict-docs`.
+- Migration cutoff lint clean: `tool/migration_cutoff_lint.dart`.
+- Advisor proxy size lint clean: `tool/advisor_proxy_size_lint.dart`.
+- Wave-touched test suites all green; no new entries in `docs/KNOWN_FAILING_TESTS.md`.
+- Audit log + hierarchy gateway end-to-end smoke (real Postgres, real RLS).
+
+**Step 2d — Frontend walkthrough:**
+- Both flavors boot clean: `flutter run -t lib/main_forgeflow.dart` + `flutter run -t lib/main_barrio.dart` (Barrio remains paused but must still build).
+- Operator-web builds + runs in Chrome.
+- No console errors or layout overflows surfaced in normal click-paths.
+- Mobile Integrations tab renders correctly on connected Samsung device.
+
+**Step 2e — Tag happy state (operator signs off):**
 ```bash
 git tag happy-state-YYYY-MM-DD <commit-hash>
 git push origin happy-state-YYYY-MM-DD
@@ -201,11 +188,14 @@ git push origin happy-state-YYYY-MM-DD
 Plus snapshot any operator-edited demo SQLite state to a known path so
 the same demo click-paths can replay identically after refactor.
 
-**Operator gates:** operator decides exactly when to tag and on which commit.
+**Operator gates:** operator decides exactly when to tag and on which
+commit. Walkthrough may surface stragglers that get queued as Wave 2.5
+slices — those land + walkthrough re-runs against the new state before
+tagging.
 
 ---
 
-## Phase 4 — Refactor (R-1 + R-2)
+## Phase 3 — Refactor (R-1 + R-2)
 
 **Goal:** structural extraction without behavior change. The refactor
 scope is captured in `docs/POST_HARDENING_FOLLOWUPS.md` under "Refactor
@@ -217,7 +207,7 @@ phase scope".
 - Decompose `my_account_screen.dart` into sibling panes (`my_account_security_pane.dart`, `my_account_mfa_pane.dart`, `my_account_sessions_pane.dart`, `my_account_profile_pane.dart`).
 - Parent stays as a thin tab-host.
 
-**Notable Phase 2 dependency:** OW-5a (move My Account under Access) and
+**Notable Phase 1 dependency:** OW-5a (move My Account under Access) and
 OW-8d (consolidate Sign-in-Security into My Account) — both fold naturally
 into R-1's decomposition. R-1 inherits whatever IA Wave 2 settled on.
 
@@ -234,13 +224,13 @@ operator-web — both are governance-sensitive).
 
 ---
 
-## Phase 5 — Re-test against happy state
+## Phase 4 — Re-test against happy state
 
 **Goal:** catch any regression introduced by R-1 + R-2 before mutating
 staging/Production1.
 
 **Actions:**
-- Re-run the same Phase 3 demo click-paths against the post-refactor build.
+- Re-run the same Phase 2 demo click-paths against the post-refactor build.
 - Diff `dart analyze --fatal-infos` output against happy-state baseline — must still be 0 errors, no new wave-introduced regressions.
 - Re-run wave-touched test suites — same green count as happy state.
 - Spot-check the surfaces the refactor touched (panes of `my_account_screen`, the 3 hybrid dispatchers in `advisor_proxy`).
@@ -252,17 +242,17 @@ on "we are not worse than happy state."
 
 ---
 
-## Phase 6 — Mutate staging + Production1
+## Phase 5 — Mutate staging + Production1
 
 **Goal:** ship the post-Wave-2 + post-refactor code to real environments.
 
-### 6a — Environment wires
+### 5a — Environment wires
 
 - **SendGrid pubkey** — `SENDGRID_EVENT_WEBHOOK_PUBKEY_PEM` to Cloud Run env (production-only secret; wire on deploy day).
 - **Live operator-web Firebase mixin** — ~10 LoC code change wiring `WebAuditLogHierarchyGatewayProvider` on the Firebase deploy source. (Pulled into Wave 2 Lane W if it ends up needing more than a 10-LoC patch.)
-- Mailosaur preview-CI secrets already wired by Codex 2026-05-13 (✅ done pre-Phase-6).
+- Mailosaur preview-CI secrets already wired by Codex 2026-05-13 (✅ done pre-Phase-5).
 
-### 6b — Production1 migration apply
+### 5b — Production1 migration apply
 
 - Follow `runbooks/phase_9_production1_migration_apply_runbook.md` end-to-end.
 - W-1 + W-2 fixes (closed in Wave 2 Lane B) included in apply queue.
@@ -270,18 +260,18 @@ on "we are not worse than happy state."
 - Cutoff file updated to whatever Wave 2 last-schema migration is.
 - Operator-gated. Operator drives the apply.
 
-### 6c — Deploy + verify
+### 5c — Deploy + verify
 
 - Cloud Run deploy (proxy + operator-web + admin-console).
 - Firebase hosting deploy (operator-web static + admin-console static).
 - Mobile builds promoted (forgeflow + barrio APKs/AABs).
 - Post-deploy smoke: SendGrid webhook receives + verifies, operator-web `/roles/explainer` renders complete catalog, admin Default Role Catalog publish idempotent, local-time on closed shift rows correct (Phase 7.55 time boundaries), every Wave 2 surface verified.
 
-**Operator gates:** every sub-stage 6a / 6b / 6c.
+**Operator gates:** every sub-stage 5a / 5b / 5c.
 
 ---
 
-## Phase 7 — Post-launch operational
+## Phase 6 — Post-launch operational
 
 Operator-owned work (engineering not required for these):
 
