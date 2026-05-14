@@ -323,6 +323,9 @@ class _E2EFakeFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async {}
 
   @override
+  Future<void> deleteUser({required String uid}) async {}
+
+  @override
   Future<void> updateUser({
     required String uid,
     String? email,

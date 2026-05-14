@@ -11908,10 +11908,8 @@ Future<void> routeRequest(
             if (request.method == 'DELETE' &&
                 authOperationPath.startsWith(adminAuthInvitePrefix)) {
               if (!await requirePermission('team.users.invite')) return;
-              final inviteId = _pathSuffix(
-                authOperationPath,
-                adminAuthInvitePrefix,
-              );
+              final inviteId =
+                  _pathSuffix(authOperationPath, adminAuthInvitePrefix);
               if (inviteId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -11932,6 +11930,7 @@ Future<void> routeRequest(
                       operatorId: scope.operatorId,
                       locationId: scope.locationId,
                       inviteId: inviteId,
+                      reason: _nonBlankString(body['reason']),
                     ),
                   );
                   return CachedProxyResponse(

@@ -62,6 +62,139 @@ void main() {
         );
       },
     );
+
+    test(
+      'Wave 2 W-2 — fans out Firebase deleteUser + users.softDelete + '
+      'audit row with reason and previous_email when shadow row exists',
+      () async {
+        final authInvitesRepository = _RecordingAuthInvitesRepository(
+          <int>[1],
+          pendingEmails: <String?>['invitee@example.com'],
+        );
+        final auditRepository = _RecordingAuthEventsAuditRepository();
+        final firebase = _RecordingFirebaseAdminAuthClient();
+        final users = _RecordingUsersRepositoryForInvite(
+          shadow: const InvitedShadowUserRow(
+            userId: _shadowUserId,
+            firebaseUid: _shadowFirebaseUid,
+            email: 'invitee@example.com',
+          ),
+        );
+        final gateway = _gatewayWithRepositories(
+          authInvitesRepository: authInvitesRepository,
+          auditRepository: auditRepository,
+          firebaseAdmin: firebase,
+          usersRepository: users,
+        );
+
+        final result = await gateway.revokeInvite(
+          const TeamInviteRevokeCommand(
+            actorUserId: _actorUserId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            inviteId: _inviteId,
+            reason: '  email typo, resending  ',
+          ),
+        );
+
+        expect(result.revoked, isTrue);
+        expect(firebase.deletedUids, equals(<String>[_shadowFirebaseUid]));
+        expect(users.softDeleteRequests, hasLength(1));
+        expect(users.softDeleteRequests.single.userId, equals(_shadowUserId));
+        expect(
+          users.softDeleteRequests.single.operatorId,
+          equals(_operatorId),
+        );
+        expect(auditRepository.events, hasLength(1));
+        expect(
+          auditRepository.events.single.payload,
+          equals(<String, Object?>{
+            'invite_id': _inviteId,
+            'previous_email': 'invitee@example.com',
+            // Trimmed by the gateway before audit-write so audit
+            // never stores whitespace-only padding.
+            'reason': 'email typo, resending',
+          }),
+        );
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — skips Firebase + users.softDelete when invite is '
+      'already revoked (pendingInviteEmail returns null)',
+      () async {
+        final authInvitesRepository = _RecordingAuthInvitesRepository(
+          <int>[0],
+          pendingEmails: <String?>[null],
+        );
+        final auditRepository = _RecordingAuthEventsAuditRepository();
+        final firebase = _RecordingFirebaseAdminAuthClient();
+        final users = _RecordingUsersRepositoryForInvite(shadow: null);
+        final gateway = _gatewayWithRepositories(
+          authInvitesRepository: authInvitesRepository,
+          auditRepository: auditRepository,
+          firebaseAdmin: firebase,
+          usersRepository: users,
+        );
+
+        final result = await gateway.revokeInvite(
+          const TeamInviteRevokeCommand(
+            actorUserId: _actorUserId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            inviteId: _inviteId,
+          ),
+        );
+
+        expect(result.revoked, isFalse);
+        expect(firebase.deletedUids, isEmpty);
+        expect(users.softDeleteRequests, isEmpty);
+        expect(users.findShadowRequests, isEmpty);
+        expect(auditRepository.events, isEmpty);
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — still revokes the invite when no shadow user row '
+      'exists (e.g. invite predates Firebase-bound flow); audit captures '
+      'the previous_email anyway',
+      () async {
+        final authInvitesRepository = _RecordingAuthInvitesRepository(
+          <int>[1],
+          pendingEmails: <String?>['legacy@example.com'],
+        );
+        final auditRepository = _RecordingAuthEventsAuditRepository();
+        final firebase = _RecordingFirebaseAdminAuthClient();
+        final users = _RecordingUsersRepositoryForInvite(shadow: null);
+        final gateway = _gatewayWithRepositories(
+          authInvitesRepository: authInvitesRepository,
+          auditRepository: auditRepository,
+          firebaseAdmin: firebase,
+          usersRepository: users,
+        );
+
+        final result = await gateway.revokeInvite(
+          const TeamInviteRevokeCommand(
+            actorUserId: _actorUserId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            inviteId: _inviteId,
+          ),
+        );
+
+        expect(result.revoked, isTrue);
+        expect(firebase.deletedUids, isEmpty);
+        expect(users.softDeleteRequests, isEmpty);
+        expect(auditRepository.events, hasLength(1));
+        expect(
+          auditRepository.events.single.payload,
+          equals(<String, Object?>{
+            'invite_id': _inviteId,
+            'previous_email': 'legacy@example.com',
+          }),
+        );
+      },
+    );
   });
 
   group('RepositoryAuthOperationsGateway role permission audit', () {
@@ -198,6 +331,8 @@ const String _operatorId = '20000000-0000-4000-8000-000000000001';
 const String _locationId = '30000000-0000-4000-8000-000000000001';
 const String _inviteId = '40000000-0000-4000-8000-000000000001';
 const String _roleId = '60000000-0000-4000-8000-000000000001';
+const String _shadowUserId = '70000000-0000-4000-8000-000000000001';
+const String _shadowFirebaseUid = '70000000-0000-4000-8000-000000000001';
 
 RepositoryAuthOperationsGateway _gatewayWithRepositories({
   required AuthInvitesRepository authInvitesRepository,
@@ -205,11 +340,13 @@ RepositoryAuthOperationsGateway _gatewayWithRepositories({
   RolesRepository? rolesRepository,
   RolePermissionsRepository? rolePermissionsRepository,
   UserRolesRepository? userRolesRepository,
+  FirebaseAdminAuthClient? firebaseAdmin,
+  UsersRepository? usersRepository,
 }) {
   final wrapper = TenantTransactionWrapper(_UnexpectedPostgresPool());
   return RepositoryAuthOperationsGateway(
-    firebaseAdmin: const ScaffoldFailingFirebaseAdminAuthClient(),
-    usersRepository: UsersRepository(wrapper),
+    firebaseAdmin: firebaseAdmin ?? const ScaffoldFailingFirebaseAdminAuthClient(),
+    usersRepository: usersRepository ?? UsersRepository(wrapper),
     rolesRepository: rolesRepository ?? RolesRepository(wrapper),
     rolePermissionsRepository:
         rolePermissionsRepository ?? RolePermissionsRepository(wrapper),
@@ -347,12 +484,22 @@ class _RecordingUserRolesRepository extends UserRolesRepository {
 }
 
 class _RecordingAuthInvitesRepository extends AuthInvitesRepository {
-  _RecordingAuthInvitesRepository(List<int> affectedRows)
-    : _affectedRows = List<int>.of(affectedRows),
-      super(TenantTransactionWrapper(_UnexpectedPostgresPool()));
+  _RecordingAuthInvitesRepository(
+    List<int> affectedRows, {
+    List<String?>? pendingEmails,
+  }) : _affectedRows = List<int>.of(affectedRows),
+       _pendingEmails = pendingEmails == null
+           ? null
+           : List<String?>.of(pendingEmails),
+       super(TenantTransactionWrapper(_UnexpectedPostgresPool()));
 
   final List<int> _affectedRows;
+  // Wave 2 W-2 — optional script for `pendingInviteEmail` so tests
+  // that care can pin the lookup result. When null, the stub returns
+  // null (no pending email found) so existing tests stay green.
+  final List<String?>? _pendingEmails;
   final List<_RevokeInviteRequest> requests = <_RevokeInviteRequest>[];
+  final List<String> pendingInviteEmailRequests = <String>[];
 
   @override
   Future<int> revokeInvite({
@@ -373,6 +520,22 @@ class _RecordingAuthInvitesRepository extends AuthInvitesRepository {
       throw StateError('unexpected revokeInvite call');
     }
     return _affectedRows.removeAt(0);
+  }
+
+  @override
+  Future<String?> pendingInviteEmail({
+    required String operatorId,
+    required String locationId,
+    required String inviteId,
+    required String actorUserId,
+  }) async {
+    pendingInviteEmailRequests.add(inviteId);
+    final scripted = _pendingEmails;
+    if (scripted == null) return null;
+    if (scripted.isEmpty) {
+      throw StateError('unexpected pendingInviteEmail call');
+    }
+    return scripted.removeAt(0);
   }
 }
 
@@ -448,6 +611,131 @@ class _RolePermissionDeleteRequest {
 
   final String roleId;
   final String permissionKey;
+}
+
+/// Wave 2 W-2 — Firebase client stub that records every
+/// `deleteUser` invocation so the cancel-invite test can assert
+/// the gateway fanned out to Firebase Identity Platform with the
+/// shadow account's uid. Other surfaces throw to fail fast if the
+/// test exercises a path the stub does not script.
+class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
+  final List<String> deletedUids = <String>[];
+
+  @override
+  Future<void> deleteUser({required String uid}) async {
+    deletedUids.add(uid);
+  }
+
+  @override
+  Future<void> createUser({
+    required String uid,
+    required String email,
+    required Map<String, Object?> customClaims,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> setCustomClaims({
+    required String uid,
+    required Map<String, Object?> customClaims,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> setDisabled({
+    required String uid,
+    required bool disabled,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> updateUser({
+    required String uid,
+    String? email,
+    String? displayName,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> sendPasswordResetEmail({
+    required String email,
+    String? continueUrl,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({
+    required String oobCode,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> confirmPasswordReset({
+    required String oobCode,
+    required String newPassword,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<bool> verifyPassword({
+    required String email,
+    required String password,
+    required String expectedUid,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> updatePassword({
+    required String uid,
+    required String password,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<void> revokeRefreshTokens({required String uid}) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<void> clearMfaEnrollments({required String uid}) async =>
+      throw UnimplementedError();
+}
+
+/// Wave 2 W-2 — UsersRepository stub that returns a scripted
+/// [InvitedShadowUserRow] for `findInvitedShadowUserByEmail` and
+/// records `softDelete` invocations so the cancel-invite test can
+/// assert the shadow row was torn down. Falls through to the
+/// `_UnexpectedPostgresPool` for everything else so any unscripted
+/// repository call fails loudly.
+class _RecordingUsersRepositoryForInvite extends UsersRepository {
+  _RecordingUsersRepositoryForInvite({required this.shadow})
+    : super(TenantTransactionWrapper(_UnexpectedPostgresPool()));
+
+  final InvitedShadowUserRow? shadow;
+  final List<String> findShadowRequests = <String>[];
+  final List<_RecordedSoftDelete> softDeleteRequests = <_RecordedSoftDelete>[];
+
+  @override
+  Future<InvitedShadowUserRow?> findInvitedShadowUserByEmail({
+    required String operatorId,
+    required String email,
+    required String adminReason,
+  }) async {
+    findShadowRequests.add(email);
+    return shadow;
+  }
+
+  @override
+  Future<int> softDelete({
+    required String userId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    softDeleteRequests.add(
+      _RecordedSoftDelete(userId: userId, operatorId: operatorId),
+    );
+    return 1;
+  }
+}
+
+class _RecordedSoftDelete {
+  const _RecordedSoftDelete({
+    required this.userId,
+    required this.operatorId,
+  });
+
+  final String userId;
+  final String operatorId;
 }
 
 class _RecordedAuditEvent {

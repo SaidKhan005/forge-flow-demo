@@ -927,6 +927,150 @@ void main() {
       expect(bodies[1].containsKey('primary_location_id'), isFalse);
     });
 
+    test(
+      'Wave 2 W-2 — cancelInvite calls DELETE /v1/admin/auth/invites/{id} '
+      'with the idempotency-key and forwards operator_id + admin_reason + '
+      'optional reason',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{'ok': true, 'revoked': true}),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpMembersAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        final revoked = await gateway.cancelInvite(
+          operatorId: 'op-1',
+          inviteId: 'inv-9',
+          idempotencyKey: 'idemp-cancel-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'wrong-email',
+          reason: '  wrong-email  ',
+        );
+
+        expect(revoked, isTrue);
+        expect(captured.method, equals('DELETE'));
+        expect(captured.url.path, equals('/v1/admin/auth/invites/inv-9'));
+        expect(captured.headers['authorization'], equals('Bearer tok'));
+        expect(captured.headers['Idempotency-Key'], equals('idemp-cancel-1'));
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(body['operator_id'], equals('op-1'));
+        expect(body['admin_reason'], equals('wrong-email'));
+        // Trimmed before the wire so the audit row does not store
+        // whitespace-only padding.
+        expect(body['reason'], equals('wrong-email'));
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — cancelInvite returns the proxy `revoked` bool '
+      'and treats a missing field as false',
+      () async {
+        var call = 0;
+        final mock = http_testing.MockClient((http.Request request) async {
+          call += 1;
+          if (call == 1) {
+            return http.Response(
+              jsonEncode(<String, Object?>{'ok': true, 'revoked': false}),
+              200,
+              headers: <String, String>{'content-type': 'application/json'},
+            );
+          }
+          return http.Response(
+            jsonEncode(<String, Object?>{'ok': true}),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpMembersAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        final alreadyRevoked = await gateway.cancelInvite(
+          operatorId: 'op-1',
+          inviteId: 'inv-already',
+          idempotencyKey: 'idemp-cancel-2',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'cleanup',
+        );
+        final missingField = await gateway.cancelInvite(
+          operatorId: 'op-1',
+          inviteId: 'inv-no-field',
+          idempotencyKey: 'idemp-cancel-3',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'cleanup',
+        );
+
+        expect(alreadyRevoked, isFalse);
+        expect(missingField, isFalse);
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — cancelInvite throws MembersAdminForbidden when the '
+      'caller is not flagged as forge_admin',
+      () async {
+        final mock = http_testing.MockClient(
+          (request) async => throw StateError('unexpected'),
+        );
+        final gateway = HttpMembersAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+        expect(
+          gateway.cancelInvite(
+            operatorId: 'op-1',
+            inviteId: 'inv-1',
+            idempotencyKey: 'idemp-cancel-4',
+            actorUserId: 'admin-1',
+            actorIsForgeAdmin: false,
+            adminReason: 'cleanup',
+          ),
+          throwsA(isA<MembersAdminForbiddenException>()),
+        );
+      },
+    );
+
+    test(
+      'Wave 2 W-2 — cancelInvite rejects empty admin_reason at the '
+      'gateway layer (defense in depth behind the proxy reject)',
+      () async {
+        final mock = http_testing.MockClient(
+          (request) async => throw StateError('unexpected'),
+        );
+        final gateway = HttpMembersAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+        expect(
+          gateway.cancelInvite(
+            operatorId: 'op-1',
+            inviteId: 'inv-1',
+            idempotencyKey: 'idemp-cancel-5',
+            actorUserId: 'admin-1',
+            actorIsForgeAdmin: true,
+            adminReason: '   ',
+          ),
+          throwsA(isA<MembersAdminGatewayError>()),
+        );
+      },
+    );
+
     test('overrideRoleGrant sends scoped role-grant payload', () async {
       late http.Request captured;
       final mock = http_testing.MockClient((http.Request request) async {

@@ -417,6 +417,29 @@ abstract class MembersAdminGateway {
     String? orgUnitId,
     String? welcomeNote,
   });
+
+  /// Wave 2 W-2 — Cancel pending invite end-to-end.
+  ///
+  /// DELETE `/v1/admin/auth/invites/{invite_id}`. The proxy delegates
+  /// to `AuthOperationsGateway.revokeInvite` which orchestrates the
+  /// Firebase Identity Platform `accounts:delete` + Postgres
+  /// `auth_invites.revoked_at` flip + shadow `users` soft-delete +
+  /// `invite.cancel` audit row.
+  ///
+  /// Idempotent: a retried DELETE on an already-cancelled invite
+  /// returns `revoked: false` without surfacing as an error. The
+  /// gateway exposes the returned bool so the caller can pick a
+  /// different success copy when it was a no-op (e.g. "already
+  /// cancelled").
+  Future<bool> cancelInvite({
+    required String operatorId,
+    required String inviteId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String? reason,
+  });
 }
 
 class HttpMembersAdminGateway implements MembersAdminGateway {
@@ -867,6 +890,39 @@ class HttpMembersAdminGateway implements MembersAdminGateway {
       if (welcomeNote != null && welcomeNote.trim().isNotEmpty)
         'welcome_note': welcomeNote.trim(),
     });
+  }
+
+  @override
+  Future<bool> cancelInvite({
+    required String operatorId,
+    required String inviteId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String? reason,
+  }) async {
+    // Wave 2 W-2 — Cancel pending invite end-to-end. The proxy
+    // dispatches DELETE `/v1/admin/auth/invites/{invite_id}` through
+    // the same auth-ops handler the operator-web Cancel invite UI
+    // hits — same permission gate (`team.users.invite`), same
+    // idempotency key contract, same `invite.cancel` audit shape.
+    _requireEditable(actorIsForgeAdmin, 'cancelInvite');
+    _requireAdminReason(adminReason, 'cancelInvite');
+    final trimmedReason = reason?.trim();
+    final body = await _send(
+      method: 'DELETE',
+      path: '$invitesPath/${Uri.encodeComponent(inviteId)}',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'admin_reason': adminReason,
+        if (trimmedReason != null && trimmedReason.isNotEmpty)
+          'reason': trimmedReason,
+      },
+    );
+    final revoked = body['revoked'];
+    return revoked is bool ? revoked : false;
   }
 
   void _requireEditable(bool actorIsForgeAdmin, String operation) {

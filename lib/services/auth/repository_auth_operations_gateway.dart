@@ -625,6 +625,44 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   Future<TeamInviteRevoked> revokeInvite(
     TeamInviteRevokeCommand command,
   ) async {
+    // Wave 2 W-2 — Cancel pending invite end-to-end.
+    //
+    // Order matters: resolve the shadow Firebase + Postgres rows
+    // BEFORE flipping `auth_invites.revoked_at` so a partial failure
+    // (e.g. Firebase API timeout) does not leave the invite marked
+    // revoked while the magic-link credential is still claimable. If
+    // Firebase delete succeeds but the Postgres revoke fails, a
+    // retry replays the Firebase delete (which is fail-soft on
+    // `user_not_found`) and then flips the invite row. If the
+    // Firebase delete fails, the invite stays revokable on retry —
+    // the operator sees the action did not complete and can try
+    // again.
+    final pendingEmail = await authInvitesRepository.pendingInviteEmail(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      inviteId: command.inviteId,
+      actorUserId: command.actorUserId,
+    );
+    InvitedShadowUserRow? shadow;
+    if (pendingEmail != null) {
+      shadow = await usersRepository.findInvitedShadowUserByEmail(
+        operatorId: command.operatorId,
+        email: pendingEmail,
+        adminReason: 'team.invite_cancel_shadow_lookup',
+      );
+      final firebaseUid = shadow?.firebaseUid;
+      if (firebaseUid != null && firebaseUid.isNotEmpty) {
+        await firebaseAdmin.deleteUser(uid: firebaseUid);
+      }
+      final shadowUserId = shadow?.userId;
+      if (shadowUserId != null && shadowUserId.isNotEmpty) {
+        await usersRepository.softDelete(
+          userId: shadowUserId,
+          operatorId: command.operatorId,
+          adminReason: 'team.invite_cancel_shadow_soft_delete',
+        );
+      }
+    }
     final affected = await authInvitesRepository.revokeInvite(
       operatorId: command.operatorId,
       locationId: command.locationId,
@@ -632,12 +670,17 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       actorUserId: command.actorUserId,
     );
     if (affected > 0) {
+      final reason = command.reason?.trim();
       await _audit(
         operatorId: command.operatorId,
         locationId: command.locationId,
         actorUserId: command.actorUserId,
         eventType: 'invite.cancel',
-        payload: <String, Object?>{'invite_id': command.inviteId},
+        payload: <String, Object?>{
+          'invite_id': command.inviteId,
+          if (pendingEmail != null) 'previous_email': pendingEmail,
+          if (reason != null && reason.isNotEmpty) 'reason': reason,
+        },
       );
     }
     return TeamInviteRevoked(revoked: affected > 0);

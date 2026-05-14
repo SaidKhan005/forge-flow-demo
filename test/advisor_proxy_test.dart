@@ -7342,6 +7342,7 @@ class _SettableVerifier implements ProxyJwtVerifier {
 
 class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   final List<String> revokedRefreshTokenUids = <String>[];
+  final List<String> deletedUids = <String>[];
 
   @override
   Future<void> createUser({
@@ -7361,6 +7362,11 @@ class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
     required String uid,
     required bool disabled,
   }) async {}
+
+  @override
+  Future<void> deleteUser({required String uid}) async {
+    deletedUids.add(uid);
+  }
 
   @override
   Future<void> updateUser({

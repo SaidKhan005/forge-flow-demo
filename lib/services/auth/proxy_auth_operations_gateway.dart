@@ -414,9 +414,12 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   Future<TeamInviteRevoked> revokeInvite(
     TeamInviteRevokeCommand command,
   ) async {
+    final reason = command.reason?.trim();
     final response = await _delete(
       '$invitesPath/${Uri.encodeComponent(command.inviteId)}',
-      const <String, Object?>{},
+      <String, Object?>{
+        if (reason != null && reason.isNotEmpty) 'reason': reason,
+      },
     );
     _expectStatus(response, 200);
     final revoked = response.body['revoked'];

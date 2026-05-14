@@ -84,6 +84,20 @@ abstract class FirebaseAdminAuthClient {
 
   Future<void> setDisabled({required String uid, required bool disabled});
 
+  /// Wave 2 W-2 — Cancel pending invite end-to-end.
+  ///
+  /// Deletes the Firebase Identity Platform account for [uid] so the
+  /// magic-link / temporary credential the invite created can no longer
+  /// be exchanged for a session. Used by `revokeInvite` to revoke the
+  /// shadow account that `createInvite` provisioned with
+  /// [createUser].
+  ///
+  /// Implementations MUST treat `user_not_found` as a no-op so the
+  /// operation stays idempotent on the wire — a retried DELETE on an
+  /// invite whose Firebase account was already deleted MUST NOT
+  /// surface as an error to the caller.
+  Future<void> deleteUser({required String uid});
+
   /// Phase 11W/11A — Members edit-user write path (W-1).
   ///
   /// Updates the Firebase Identity Platform account for an existing
@@ -150,6 +164,11 @@ class ScaffoldFailingFirebaseAdminAuthClient
 
   @override
   Future<void> setDisabled({required String uid, required bool disabled}) {
+    throw const FirebaseAdminAuthError('firebase_admin_not_configured');
+  }
+
+  @override
+  Future<void> deleteUser({required String uid}) {
     throw const FirebaseAdminAuthError('firebase_admin_not_configured');
   }
 
@@ -348,6 +367,26 @@ class IdentityToolkitFirebaseAdminAuthClient
       <String, Object?>{'localId': uid, 'disableUser': disabled},
       expectedStatus: 200,
     );
+  }
+
+  @override
+  Future<void> deleteUser({required String uid}) async {
+    // Wave 2 W-2 — Cancel pending invite. Identity Toolkit's
+    // `accounts:delete` removes the Firebase account so the magic
+    // link / temp credential `createUser` provisioned can no longer
+    // be exchanged. Fail-soft on `user_not_found` so a retried DELETE
+    // on an already-revoked invite (whose Firebase shadow account
+    // was deleted on a prior attempt) stays idempotent on the wire.
+    try {
+      await _post(
+        '/v1/projects/${Uri.encodeComponent(projectId)}/accounts:delete',
+        <String, Object?>{'localId': uid},
+        expectedStatus: 200,
+      );
+    } on FirebaseAdminAuthError catch (error) {
+      if (error.code == 'user_not_found') return;
+      rethrow;
+    }
   }
 
   @override

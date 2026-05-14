@@ -734,6 +734,54 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
     return invite;
   }
 
+  @override
+  Future<bool> cancelInvite({
+    required String operatorId,
+    required String inviteId,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+    String? reason,
+  }) async {
+    // Wave 2 W-2 — Cancel pending invite end-to-end. Mirrors the
+    // proxy contract: gated on `actorIsForgeAdmin` + non-empty
+    // `admin_reason`; idempotency-keyed; idempotent on repeated
+    // calls (a retried Cancel after the row is already gone returns
+    // `false` and does NOT double-audit).
+    _ensureForgeAdmin(actorIsForgeAdmin, 'cancelInvite');
+    _ensureAdminReason(adminReason, 'cancelInvite');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is bool) return cached;
+    final invites = _invitesFor(operatorId);
+    final index = invites.indexWhere((i) => i.inviteId == inviteId);
+    if (index < 0) {
+      _idempotentResults[idempotencyKey] = false;
+      return false;
+    }
+    final removed = invites.removeAt(index);
+    final trimmedReason = reason?.trim();
+    _record(
+      // Pinned to the proxy-side audit event vocabulary
+      // (`invite.cancel`, mapped to "Invite cancelled" in
+      // `auth_operations_gateway.dart` + `web_team_audit_log_gateway`).
+      action: 'invite.cancel',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'team_invite',
+      targetId: removed.inviteId,
+      payload: <String, Object?>{
+        'invite_id': removed.inviteId,
+        'previous_email': removed.email,
+        if (trimmedReason != null && trimmedReason.isNotEmpty)
+          'reason': trimmedReason,
+      },
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = true;
+    return true;
+  }
+
   String? _findLocationName({
     required List<MemberAdminRow> members,
     required List<MemberInviteRow> invites,

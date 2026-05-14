@@ -106,12 +106,20 @@ class TeamInviteRevokeCommand {
     required this.operatorId,
     required this.locationId,
     required this.inviteId,
+    this.reason,
   });
 
   final String actorUserId;
   final String operatorId;
   final String locationId;
   final String inviteId;
+
+  /// Wave 2 W-2 — optional operator-supplied reason captured on the
+  /// `invite.cancel` audit row. Null when the caller did not collect
+  /// one (UI-side text field is optional). The proxy trims the value
+  /// before it reaches the gateway so a whitespace-only string maps
+  /// to null.
+  final String? reason;
 }
 
 class TeamInviteRevoked {
