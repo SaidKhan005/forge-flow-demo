@@ -65,10 +65,14 @@ import 'package:forge_and_flow/services/auth/kms_pepper_store.dart';
 import '../audit_anchor/audit_anchor.dart' as audit_anchor;
 import '../audit_anchor/main.dart' as audit_anchor_cli;
 
+import '../pressure/p4_heap_snapshot_uploader.dart'
+    show AzureBlobHeapSnapshotUploadTarget;
+
 import 'admin_email_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'audit_log_hierarchy_routes.dart';
+import 'heap_snapshot_capture_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'advisor_response_cache.dart';
 import 'operator_benchmark_overrides_routes.dart';
@@ -1562,6 +1566,46 @@ Future<void> _runProxy(List<String> args) async {
     },
   );
 
+  // Wave 2 Q-1-FU — multi-pod heap-snapshot live capture endpoint.
+  // Mounts the `/v1/admin/heap-snapshot/capture` POST as a pre-check
+  // before `routeRequest`, mirroring the B6 / B8 sibling-file pattern
+  // so `advisor_proxy.dart` stays UNTOUCHED (bleed-stop ceiling per
+  // `tool/advisor_proxy_size_lint.dart`). Reuses the existing
+  // `AzureBlobHeapSnapshotUploadTarget` from
+  // `tool/pressure/p4_heap_snapshot_uploader.dart` as the storage
+  // sink so this slice does not duplicate the Workload Identity
+  // Federation token-exchange logic. The upload target stays inert
+  // when its env vars are unset (production deploys that do not run
+  // the soak harness leave the route's storage path 503-grade on
+  // first use; the route returns 502 azure_blob_write_failed in that
+  // case, surfaced both to the caller and to the audit log).
+  //
+  // F&F-internal-only: the auth resolver gates on `super_admin` /
+  // `ff_support` roles (matching the existing debug-console proxy
+  // gate). The pod_id / pod_hostname identifies the platform pod that
+  // captured the snapshot; there is NO operator_id field anywhere in
+  // the request shape (HP #4 per-operator isolation — platform
+  // diagnostic, never operator data).
+  final heapSnapshotCaptureRouter = HeapSnapshotCaptureRouter(
+    uploadTarget: AzureBlobHeapSnapshotUploadTarget(),
+    authResolver: (request) async {
+      try {
+        final claims = await authGuard.requireVerifiedClaims(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+        return HeapSnapshotCaptureActor(
+          userId: claims.userId,
+          roles: claims.roles.toSet(),
+          actorKind: claims.actorKind,
+        );
+      } on ProxyAuthError {
+        return null;
+      }
+    },
+  );
+
   // Phase 8 — wire the inbound integration chain (vendor credential
   // broker, 17 per-tenant adapter factories, signature verifiers,
   // RepositoryInboundWebhookGateway, RepositoryIntegrationRoutesGateway)
@@ -2014,6 +2058,21 @@ Future<void> _runProxy(List<String> args) async {
           // B6 benchmark-overrides + B8 audit-log-hierarchy mount
           // pattern.
           if (await operatorTierEmailRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
+          // region: wave_2_q_1_fu_heap_snapshot_capture
+          // Wave 2 Q-1-FU — multi-pod heap-snapshot live capture
+          // endpoint. Handles POST /v1/admin/heap-snapshot/capture.
+          // F&F-internal-only — the router gates on super_admin /
+          // ff_support roles via the existing `authGuard.requireVerifiedClaims`
+          // path, then uploads the binary heap-snapshot body to Azure
+          // Blob via the soak harness's `AzureBlobHeapSnapshotUploadTarget`.
+          // Returns false on non-matching paths so the existing
+          // dispatcher continues. advisor_proxy.dart is intentionally
+          // NOT touched (bleed-stop ceiling discipline per
+          // `tool/advisor_proxy_size_lint.dart`).
+          if (await heapSnapshotCaptureRouter.tryHandle(request)) {
             return;
           }
           // endregion
