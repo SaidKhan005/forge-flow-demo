@@ -128,9 +128,11 @@ class DataAccuracyExplainerCard extends StatelessWidget {
             slug: 'polling_tier',
             heading: 'Data freshness tier',
             body:
-                'F&F controls how often we ask your poll-only vendors '
-                'for new data — your dashboard stays as live as the '
-                'schedule. Webhook vendors are real-time regardless.',
+                'Polling and data freshness applies to your poll-only '
+                'vendors. F&F checks them on a schedule so your '
+                'dashboard stays as live as the schedule. Vendors '
+                'outside this list update in real time because they '
+                'push data to F&F as it happens.',
             example:
                 'Example: On Standard, F&F checks Oracle MICROS every '
                 '5 minutes. On Premium, F&F checks every minute when '

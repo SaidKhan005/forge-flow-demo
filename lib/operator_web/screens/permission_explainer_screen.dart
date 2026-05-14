@@ -165,7 +165,7 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
       'provenance row capturing reader, reason, target, and records-read '
       'count. MFA required.',
 
-  // team.* (17)
+  // team.* (19)
   'team.users.view': "View the operator's user list.",
   'team.users.invite': 'Create invites for users in own operator.',
   'team.users.deactivate': 'Suspend a user in own operator.',
@@ -181,6 +181,13 @@ const Map<String, String> kPermissionExplainerDescriptions = <String, String>{
   'team.roles.create_custom': 'Create operator-scoped custom role.',
   'team.roles.assign': 'Grant role to user within own operator.',
   'team.roles.revoke': 'Revoke role from user within own operator.',
+  'team.roles.default_catalog.view':
+      'View the F&F Default Role Catalog template - read-only access to the '
+      'seeded role set every new operator begins with. F&F super_admin + '
+      'ff_support only.',
+  'team.roles.default_catalog.edit':
+      'Edits the F&F Default Role Catalog template - adds, renames, or '
+      'removes seeded roles for new operators. F&F super_admin only.',
   'team.audit_log.view': 'View audit log scoped to own operator.',
   'team.audit_log.export': 'View and export team audit log entries (CSV).',
   'team.session.force_logout':
