@@ -11,8 +11,8 @@
 
 - **Postgres:** ✅ green
 - **Advisor proxy:** ✅ green (health endpoint returns `status:ok`, all three deps green)
-- **Mobile (Samsung A54):** ✅ green (Barrio app launches + renders; Forge & Flow app not installed on device)
-- **Operator-web (Preview MCP):** 🟡 compiling at report time (Flutter web release build in progress on port 8091; will validate post-report)
+- **Mobile (Samsung A54) — Forge & Flow:** ✅ green (release APK built off master `9860bd0d` + kDemoMode, installed, all 4 bottom tabs render demo data; Shift tab empty state captured as Finding P0-F1)
+- **Operator-web (Preview MCP):** ✅ build + serve + render green; runtime error gate captured as Finding P0-F5 (Lane V kickoff)
 - **`dart analyze --fatal-infos`:** 🟡 49 issues (5 errors, all in test/integration files; lib/ tree clean)
 
 **Verdict:** Phase 0 clean. Findings are pre-existing master state, not Wave-2 blockers. Second Claude session is cleared to start lanes U/V/D/M-Poll. Lane H gets a slice to triage the analyzer findings.
@@ -69,17 +69,41 @@ Non-blocking warnings logged at boot (carry into report as findings):
 
 ### 3. Mobile (Samsung A54)
 
-- Device `R5CW503HJHP` (`SM-A546W`) reachable via `adb devices`.
-- Installed Forge & Flow surfaces: **`com.forgeflow.barrio` only** (not `com.forgeflow.forgeflow`).
-- Launched Barrio via `monkey -p com.forgeflow.barrio -c android.intent.category.LAUNCHER 1`.
-- Screencap captured (`phase_0_mobile_barrio_launch.png`) — landing surface renders:
-  - Header: "Barrio Legado" + PREVIEW badge
-  - Role chips: Staff / Supervisor / Manager / Admin (Admin selected)
-  - Centerpiece: Dashboard CTA + Taylor Labor Model + Company Handbook + Interview Playbook tiles
-  - "EL PODIO" preview pill
-- Demo seed visibly present. Mobile shell + adb tooling confirmed working end-to-end.
+- Device `R5CW503HJHP` (`SM-A546W`, Android 16, One UI) reachable via `adb devices`.
+- Built fresh Forge & Flow release APK off master `9860bd0d` (post-Wave-1, post-Phase-0-marker):
+  ```powershell
+  flutter build apk --release --flavor forgeflow -t lib/main_forgeflow.dart `
+    --dart-define=kDemoMode=true `
+    --dart-define=ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY
+  ```
+  Output: `build\app\outputs\flutter-apk\app-forgeflow-release.apk` (60.5 MB, Gradle 185.1s).
+- Installed via `adb -s R5CW503HJHP install -r app-forgeflow-release.apk` → `Success`. Package metadata: `applicationId com.forgeflow.app`, `versionName 1.0.0`, `versionCode 15`, `targetSdk 35`. (Note: release flavor signs with debug keystore in absence of `android/key.properties`; fine for on-device smoke, not a Play Store-eligible build.)
+- Launched via `monkey -p com.forgeflow.app -c android.intent.category.LAUNCHER 1`.
+- Initial render — **Shift tab** (`phase_0_mobile_forgeflow_launch_t0.png` / `_t1.png`):
+  - Top bar: hamburger menu, notifications bell, settings cog
+  - Bottom tab bar: **Shift** / Variance / Plan / Benchmark (Shift selected)
+  - Empty state: "LOCKED PLAN UNAVAILABLE — No locked weekly plan is available for the current week. Last import: 2026-05-13T22:50:08" (demo writer fired on app boot)
+- **Variance tab** (`phase_0_mobile_forgeflow_variance_tab.png`):
+  - "This Week — Mar 26 · Thursday · Business Day 4 of 7"
+  - WEEK-TO-DATE vs PLAN table with TARGET / ACTUAL / VAR columns
+  - CONDITIONS: Covers (630 / 593 / **−37**), Blended Wage ($19.05 / $18.98 / **−$0.07**)
+  - EXECUTION: PPA ($42.08 / $42.17 / **+$0.10**), FOH Hours (133 / 132 / **−1**), BOH Hours (147 / 138 / **−9**), CPLH (4.75 / 4.49 / **−0.26**), SPLH ($180 / $181 / **+$0.91**)
+- **Plan tab** (`phase_0_mobile_forgeflow_plan_tab.png`):
+  - Weekly Operating Plan — NEXT WEEK PROJECTIONS
+  - COVERS 1,153 · SALES $48,517
+  - LABOR PLAN: FOH 243 hrs · BOH 269 hrs · 20.1% · $9,753
+  - COVER FORECAST ADJUSTED BY DAY chart (M–Su bars, weekly avg dashed line)
+  - DAY-BY-DAY PLAN table (Mon 132/$5,554/28/31, Tue 159/$6,312/32/35, …)
+- **Benchmark tab** (`phase_0_mobile_forgeflow_benchmark_tab.png`):
+  - "60 Day Benchmark — TOTAL COVERS LAST 60 DAYS: 10,102"
+  - CPLH Range slider: lowest 4.28 ↔ highest 5.00 ↔ target **4.75** marker
+  - GOOD OPZ RANGE pill: "Team looks busy without getting stretched. Service should hold here."
+  - CHOOSE STAR SHIFTS CTA
+  - DAYPART BREAKDOWN: Lunch 76 covers · CPLH 4.57 · SPLH $180 · PPA $40.57
 
-**Finding P0-F1:** Forge & Flow mobile app (`com.forgeflow.forgeflow`) is not installed on the device — only Barrio is. Wave 2 mobile lane M-Poll should kick off with a `flutter run -t lib/main_forgeflow.dart` install step before adb click-paths.
+Mobile shell, navigation, demo writer, formula engine, variance computation, and metric-honesty UI all functional. Shift tab empty state is the only gap (`Finding P0-F1` below) — demo seed does not yet write a locked weekly plan for the current business week.
+
+**Finding P0-F1:** Forge & Flow Shift tab renders "LOCKED PLAN UNAVAILABLE" because `WeeklyPlanSnapshot` for the current business week is not seeded by `_seedDemoDataFromReplay`. Lane M-Other (or a small Lane S seeder slice) wires this so the Shift tab has parity with Plan/Variance/Benchmark on first boot.
 
 ### 4. Operator-web (Preview MCP)
 
@@ -116,7 +140,7 @@ Exit 3 (errors present). Breakdown of 49 issues:
 | Id | Owner | Effort | Severity |
 |---|---|---|---|
 | P0-W3 | Lane R / Lane H | 5-line guard on Windows SIGTERM registration | non-blocking warning |
-| P0-F1 | Lane M-Poll prelude | `flutter run -t lib/main_forgeflow.dart` to install `com.forgeflow.forgeflow` on R5CW503HJHP | smoke prereq |
+| P0-F1 | Lane M-Other / Lane S seeder slice | `_seedDemoDataFromReplay` does not write a `WeeklyPlanSnapshot` for the current business week → Forge & Flow Shift tab renders "LOCKED PLAN UNAVAILABLE" on first boot | demo parity gap |
 | P0-F2 | Lane H | Add missing import to `integration_test/phase_4_emulator/_harness.dart` (`FlutterExceptionHandler`) | 1-line fix |
 | P0-F3 | Lane R | Remove duplicate import in `tool/advisor_proxy/main.dart:64` | 1-line fix |
 | P0-F4 | Lane U | Add `const` constructors in `lib/widgets/push_permission_denied_card.dart` (8 sites) | low-noise polish |
