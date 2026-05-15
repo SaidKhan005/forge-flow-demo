@@ -29,7 +29,7 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 | 5 — Variance read-seam swap | **Main** | ✅ MERGED #775 (`8f97f699`) | Per-period read + new derived `daypartTheoreticalLaborPctFor` accessor (formula = canonical `build()`). Audit: `slice_5_variance_read_seam.md`. |
 | 6 — Audit scorer extension | **Main** | ✅ MERGED #774 (`a6c6359a`) | Gap-8 structural ordering fix + pool-consistency + wage-at-lock-time audit groups. Audit: `slice_6_audit_scorer.md`. |
 | 7a — Tock reservation business_date | **Claude 2** | ✅ MERGED #766 (`baa4047a`) | Gap 45 closed via `IanaTimezoneConverter`. |
-| 7b — Sub-hour business-day cutoff precision (Gap 46+47) | **Claude 2** | RESOLVED — operator chose option (b) proper fix (sink-side `BusinessDateResolver`). Claude 2 implementing + handling doc merges. | Orchestrator defaults handed to Claude 2: (b1) keep SQL trigger as legacy backup; converge 3 fallback cutoff hardcodes onto 4h. Operator may override on return. |
+| 7b — Sub-hour business-day cutoff precision (Gap 46+47) | **Claude 2** | IN PROGRESS — option (b) sink-side fix. **7b.1 MERGED #781 (`4e06a74e`, 22:38Z)** — `SinkBusinessDateProjector` helper + Square exemplar. Claude 2 now on **7b.2** (roll out the projector across remaining vendor sinks). | Orchestrator defaults: (b1) keep SQL trigger as legacy backup; converge 3 fallback cutoff hardcodes onto 4h. Operator may override. |
 
 ## Operator decisions queued
 
@@ -44,10 +44,10 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 1. ~~Slice 1 merge approval~~ — DONE. Operator approved; merged #767 ~21:24Z 2026-05-15.
 2. ~~Slice 7b option choice~~ — RESOLVED. Claude 2 owns option (b) + doc merges.
 
-**Per-Daypart V1 implementation slices ALL MERGED** (0, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7a). Only 7b remains, in Claude 2's lane. Post-merge master analyze: 5 info-level deprecation lints only (planned `DaypartPlanAllocator` migration tail), zero errors/warnings.
+**Per-Daypart V1 implementation slices ALL MERGED** (0, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7a). 7b in progress in Claude 2's lane: **7b.1 merged #781**; Claude 2 on 7b.2. Post-merge master analyze: 5 info-level deprecation lints only (planned `DaypartPlanAllocator` migration tail), zero errors/warnings.
 
 **New follow-up (NOT blocking V1 — needs its own slice + operator approval):**
-- **Gap 35 backend half.** Slice 2 severed the operator-web Benchmarks *UI* surface. The backend half — drop the `benchmark_overrides` Postgres table + remove `_writeReplacementCycle`'s admin-replacement path in `target_cycle_service.dart` — was correctly deferred (schema-touching + proxy-touching → needs operator approval + own slice). Server-side resolver/repository/proxy routes are currently UI-unreachable but still live. Tracked: `docs/_audits/per_daypart_v1/slice_2_benchmark_tab.md` Follow-ups §1.
+- **Gap 35 backend half. DEFERRED BY OPERATOR until post-testing (2026-05-15).** Slice 2 severed the operator-web Benchmarks *UI* surface (door bricked up, zero UI reach). The backend half — drop the `benchmark_overrides` Postgres table + remove `_writeReplacementCycle`'s admin-replacement path in `target_cycle_service.dart` — is **intentionally held open** until end-to-end testing confirms with certainty that the table + admin write-path are truly unused and safe to delete. Do NOT close this off / dispatch the removal slice until the operator confirms post-testing. Schema-touching + proxy-touching → own slice + operator approval when greenlit. Tracked: `docs/_audits/per_daypart_v1/slice_2_benchmark_tab.md` Follow-ups §1.
 
 ## Dispatch transport (NEW STANDARD 2026-05-15 — testing)
 
@@ -87,20 +87,16 @@ Worker execution moves off the orchestrator's interactive subscription onto the 
 - Shared docs (plan doc, brief, ledger): both lanes annotate own slice rows inline; never overwrite the other lane's annotations. Status board sections per lane.
 - Coordination via Git only — no real-time channel.
 
-## Active work (2026-05-15 — operator on break, autonomous mode)
+## Active work (2026-05-15 — autonomous orchestration; V1 implementation complete)
 
-**Merged in current wave** (chronological): Slice 0 (#761) → Slice 2.5 (#762) → Slice 1.5 (#763) → architecture-verification audit (#764) → Slice 7a Tock (#766) → Slice 1.5 regression test (#768) → Slice 7b research doc (#765).
+**Merged this session:** Slice 0 (#761) → 2.5 (#762) → 1.5 (#763) → arch-verify (#764) → 7a (#766) → 1.5 regression (#768) → 7b research (#765) → Slice 1 audit (#770) → 7b coord (#772) → dispatch harness (#773) → **Slice 1 #767 (operator-approved)** → **Slices 2/3/4/5/6 parallel wave #774-#778 (all audited clean, merged)** → wave-close + harness fixes (#779) → notes update (this).
 
-**Awaiting operator return:**
-1. **Slice 1 merge approval** — PR #767, schema-touching gate. SOLE blocker.
+**In flight (Claude 2 lane):** Slice 7b option (b). 7b.1 merged (#781). Claude 2 on 7b.2 (projector rollout across remaining vendor sinks). Claude 2 self-coordinates its lane; orchestrator only tracks status here.
 
-**In flight (Claude 2):** Slice 7b option (b) proper fix + doc merges.
+**Held open by operator decision (do NOT action until greenlit):**
+- Gap 35 backend half — deferred until post-testing confirms the `benchmark_overrides` table + admin write-path are provably safe to delete. See "New follow-up" section above.
 
-**Dispatchable on Slice 1 merge** (one-shot parallel wave):
-- Slices 2 / 3 / 5 / 6 → Main parallel workers
-- Slice 4 → Claude 2
-
-Pre-staged worker prompts: `docs/_indices/PER_DAYPART_V1_POST_SLICE1_DISPATCH.md` (populated on first dispatch).
+**No Main-lane work queued.** V1 implementation slices all shipped. Next Main dispatch only on operator instruction (Gap 35 removal slice, or new direction).
 
 ## Stop conditions
 
