@@ -45,6 +45,21 @@ enum DataAlignmentAuditGroup {
   /// Locked plan ↔ Shift / WTD / Variance Full Week daypart runtime
   /// surfaces.
   planRuntime,
+
+  /// Per-Daypart V1 (Slice 6) — pool-consistency invariant. The
+  /// whole-day pool scalars on the active [TargetCycle] must equal the
+  /// cover-weighted rollup of its per-period `target_cycle_dayparts`
+  /// rows (Design Rule 4). A future override UI that edits only the
+  /// pool would silently break the per-period doctrine; this group is
+  /// the read-time guard (plan Gap 14).
+  poolConsistency,
+
+  /// Per-Daypart V1 (Slice 6) — wage-at-lock-time provenance. Audit
+  /// checks comparing locked dollar values compare against the
+  /// snapshot's `wage_at_lock_time_json` stamp (Design Rule 8), never
+  /// against `ActiveTargetProfile` current wages (which drift after
+  /// the week locks).
+  wageAtLockTime,
 }
 
 extension DataAlignmentAuditGroupTitle on DataAlignmentAuditGroup {
@@ -61,6 +76,10 @@ extension DataAlignmentAuditGroupTitle on DataAlignmentAuditGroup {
         return 'LOCKED PLAN <-> PROJECTION';
       case DataAlignmentAuditGroup.planRuntime:
         return 'PLAN -> RUNTIME';
+      case DataAlignmentAuditGroup.poolConsistency:
+        return 'POOL CONSISTENCY';
+      case DataAlignmentAuditGroup.wageAtLockTime:
+        return 'WAGE-AT-LOCK-TIME PROVENANCE';
     }
   }
 }
