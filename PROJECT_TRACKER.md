@@ -49,28 +49,22 @@ Prefer `.mcp.json` servers for orientation: `forgeflow_docs`,
 
 | Index | Audience | Purpose |
 | --- | --- | --- |
-| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward 6-phase pipeline: Phase 0 smoke → Phase 1 Wave 2 → Phase 2 comprehensive walkthrough + TAG HAPPY STATE → Phase 3 refactor → Phase 4 re-test → Phase 5 mutate → Phase 6 post-launch. Walkthrough collapsed into single post-Wave-2 validation. Operator-locked decisions captured. |
-| `docs/_indices/WAVE_2_LEDGER.md` | All (Main + Claude2 read; Main writes) | Wave 2's canonical slice ledger. 33 slices across 11 lanes; lane assignments locked 2026-05-13. |
-| `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md` | Operator (paste-ready) | Wave 2 deployment prompt for the second Claude account. Operator pastes this into the other device's session to bootstrap parallel-lane execution. |
-| `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. Wave 2 ledger rows cite this. |
-| `docs/_indices/WAVE_EXECUTION_LEDGER.md` | Reference (frozen) | Post-Codex wave's (Wave 1) slice ledger. **CLOSED 2026-05-13.** Historical only. |
-| `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. Use for non-Wave-2 sessions. |
-| `docs/_indices/CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex (dormant; out of quota). Both general handoff prompts encode the SAME workflow (CLAUDE.md "Workflow" section); executor-specific scaffolding only. |
+| `docs/_indices/NEXT_WAVE_PLAN.md` | All | Forward 6-phase pipeline. **Phase 2.5 — Per-Daypart Targets V1 is the active feature work** (output of Phase 2 mobile walkthrough). |
+| `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md` | All | **Active feature plan.** Self-contained; 14 decisions locked; 9 slices; 44 gaps consolidated; reusable audit method. |
+| `docs/_indices/WAVE_2_LEDGER.md` | Reference | Wave 2's slice ledger. Operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1). |
+| `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth on every brain-dump ask from `debug.md` mapped to ✅/🚧/❌/🔍 with citations. |
+| `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. |
+| `docs/_indices/CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex (dormant; out of quota). |
 | `docs/_indices/README.md` | All | Explains the index pattern + when to read which doc. |
 
-**Dual-Claude execution (Wave 2):** Codex out of quota; Wave 2 runs with
-two Claude orchestrators in parallel. Main orchestrator (this session,
-operator's primary device) owns 7 of 11 Wave 2 lanes
-(W/H/R/S/B/Q/M-Other — auth/RLS/schema/proxy-sensitive). Second Claude
-(operator's other device, bootstrapped via WAVE_2_PARALLEL_LANE_HANDOFF)
-owns 4 lanes (U/V/D/M-Poll — UX polish, mechanical rename, docs +
-tooling, mobile Integrations tab). Branch prefixes prevent collision:
-`claude/` for main agents, `claude2/` for second-Claude agents.
-
-Note: `CLAUDE_LANE_INDEX.md` + `CODEX_LANE_INDEX.md` (post-Codex wave's
-per-lane scope routers) retired to `docs/archive/_indices/` 2026-05-13.
-The handoff prompts above are the active operator-paste-ready surface;
-per-slice scope for Wave 2 lives in `docs/_indices/WAVE_2_LEDGER.md`.
+**Archived indices** (closed-wave artifacts retired 2026-05-15):
+`docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md`
+(Wave 1 ledger),
+`docs/archive/_indices/wave_2_closeout_2026_05_15/` (Claude2-lane
+handoffs + R-2L proposal + help queues — Wave 2 operator-web + admin
+lanes closed),
+`docs/archive/_indices/CLAUDE_LANE_INDEX_2026-05-13.md` +
+`CODEX_LANE_INDEX_2026-05-13.md` (post-Codex wave lane indices).
 
 ## Hard Product Rule - Hierarchy-Scoped Settings
 
@@ -122,6 +116,7 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
 | Slice | Status | Plan |
 |---|---|---|
+| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active planning; 4 operator decisions queued before slice dispatch** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`** — 9 slices (0 → 1 → 1.5 → 2 → 2.5 → 3 → 4 → 5 → 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. |
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |

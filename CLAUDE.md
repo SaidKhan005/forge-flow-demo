@@ -57,8 +57,8 @@ quota on one and switch to the other; the workflow stays the same.
 ### Routing
 
 - Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md`.
-- Per-wave slice ledger: `docs/_indices/<wave>_EXECUTION_LEDGER.md` (the
-  current wave's is `WAVE_EXECUTION_LEDGER.md`; CLOSED 2026-05-13).
+- **Active feature plan: `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`** (Phase 2.5 per NEXT_WAVE_PLAN; output of Phase 2 mobile walkthrough; 9 slices; 44 gaps consolidated; reusable surface-coverage audit method appended).
+- Per-wave slice ledger: `docs/_indices/<wave>_EXECUTION_LEDGER.md`. Wave 1's `WAVE_EXECUTION_LEDGER.md` CLOSED 2026-05-13 (archived to `docs/archive/_indices/wave_1_closed_2026_05_13/`). Wave 2's `WAVE_2_LEDGER.md` operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1 plan).
 - Paste-ready executor prompts: `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` and
   `docs/_indices/CODEX_HANDOFF_PROMPT.md`. Both encode the same workflow;
   use whichever matches your active executor.
