@@ -17,10 +17,17 @@ import '../../../domain/models/import_run.dart';
 import '../../../domain/models/open_shift_snapshot.dart';
 import '../../../domain/models/raw_import_record.dart';
 import '../../../domain/models/reservation_book_snapshot.dart';
+import '../../../domain/models/schedule_distribution_weights.dart';
+import '../../../domain/models/schedule_forecast_demand.dart';
+import '../../../domain/models/schedule_plan.dart';
 import '../../../domain/models/target_cycle.dart';
 import '../../../domain/models/target_cycle_source.dart';
+import '../../../domain/models/weekly_plan_snapshot.dart';
+import '../../../domain/services/distribution_weight_builder.dart';
+import '../../../domain/services/schedule_plan_resolver.dart';
 import '../../../domain/services/target_cycle_active_target_profile_projector.dart';
 import '../../../domain/services/utc_metadata_timestamp.dart';
+import '../../../domain/services/weekly_plan_snapshot_policy.dart';
 import '../../../models/baseline_candidate_shift.dart';
 import '../../../models/shift_record.dart';
 
@@ -118,6 +125,18 @@ class SqliteDatabase {
     );
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
+    // FU-mobile-cold-boot-shift-stale-state: seed the locked weekly plan
+    // snapshot synchronously during cold-boot so the Shift dashboard's
+    // first read finds it. Without this row, the runtime auto-generator
+    // is invoked indirectly via WeekDataNotifier on first use — that
+    // race meant the ShiftDashboardNotifier's first _load() ran ahead of
+    // the snapshot write and cached `lockedPlanUnavailable = true`. HP #2
+    // compliance: this is a writer-side bootstrap seed; reader paths
+    // remain unchanged and never branch on kDemoMode.
+    await _seedWeeklyPlanSnapshotFromReplay(
+      db,
+      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+    );
   }
 
   // ── Seed helpers ────────────────────────────────────────────────────────
@@ -418,6 +437,16 @@ class SqliteDatabase {
     await _backfillLockedTargets(db, businessDate: isoDate);
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
+    // FU-mobile-cold-boot-shift-stale-state: ensure a locked weekly plan
+    // snapshot exists for the current week after replay advance/reset.
+    // Same-week snapshots are preserved (see 7.55l.6b1 comment above);
+    // this seeder is a no-op when one already exists for the week-in-force,
+    // so cross-week advances and post-reseedDemo bootstraps both produce
+    // a snapshot without rewriting same-week locked truth.
+    await _seedWeeklyPlanSnapshotFromReplay(
+      db,
+      businessDate: isoDate,
+    );
   }
 
   /// Clears all operational data while preserving restaurant scope and
