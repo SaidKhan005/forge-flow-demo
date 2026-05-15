@@ -664,6 +664,188 @@ void main() {
       }
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  // Group I — Per-Daypart V1 / Slice 7b option (b) (2026-05-15):
+  // business_date now resolves through the canonical
+  // BusinessTimingProfilesRepository chain via SinkBusinessDateProjector.
+  // Closes Gap 46 (sub-hour cutoff truncation) AND Gap 47 (operator →
+  // org_unit → location hierarchy bypass) for Square. Mirrors the
+  // structural approach of group "I." in tock_reservation_postgres_sink_test.
+  // ────────────────────────────────────────────────────────────────────
+  group(
+      'SquarePosPostgresSink — I. Per-Daypart V1 Slice 7b business_date '
+      'projection via canonical timing chain (Gaps 46+47)', () {
+    test(
+      'I.1 late-night before rollover in America/Toronto buckets to '
+      'PRIOR business_date (01:30 local Wed → Tue business_date) — same '
+      'whole-hour invariant as Tock Slice 7a, now powered by the '
+      'canonical resolver chain',
+      () async {
+        final pool = _FakeSquarePool()
+          ..seedLocation(operatorId: _opA, locationId: _locA)
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = SquarePosPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 13, 12, 0, 0),
+        );
+
+        // Wed 2026-05-13 01:30 EDT = Wed 2026-05-13 05:30 UTC. Local
+        // 01:30 < cutoff 04:00 → business_date = Tue 2026-05-12.
+        final order = <String, Object?>{
+          'id': 'sq_ord_tz1',
+          'location_id': 'L_RESTAURANT_A',
+          'created_at': '2026-05-13T04:00:00Z',
+          'updated_at': '2026-05-13T05:30:00Z',
+          'closed_at': '2026-05-13T05:30:00Z',
+          'total_money': <String, Object?>{'amount': 4500, 'currency': 'CAD'},
+          'state': 'COMPLETED',
+        };
+        final fact = _factFromOrder(order, operatorId: _opA, locationId: _locA);
+
+        await sink.upsertSalesFact(fact);
+
+        expect(pool.coverFacts, hasLength(1));
+        expect(pool.coverFacts.values.single['business_date'], '2026-05-12',
+            reason: '01:30 Wed local with 04:00 cutoff belongs to PRIOR '
+                'business_date (Tue), proving the projector ran.');
+      },
+    );
+
+    test(
+      'I.2 sub-hour cutoff (04:30) — 04:15 local Wed projects to PRIOR '
+      'business_date. Closes Gap 46 (the legacy integer-hour path '
+      'truncated to 4 and would have returned Wed)',
+      () async {
+        final pool = _FakeSquarePool()
+          ..seedLocation(
+            operatorId: _opA,
+            locationId: _locA,
+            // Sub-hour cutoff comes from the canonical chain; the legacy
+            // INT column would have rounded to `4` and returned Wed.
+            businessDayStartLocalTime: '04:30:00',
+          )
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = SquarePosPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 13, 12, 0, 0),
+        );
+
+        // Wed 2026-05-13 04:15 EDT = Wed 2026-05-13 08:15 UTC. Local
+        // 04:15 < cutoff 04:30 → business_date = Tue 2026-05-12. The
+        // LEGACY integer-hour path (rollover_hour = 4) would have given
+        // Wed because predicate `4 < 4` is false. Slice 7b option (b)
+        // closes Gap 46.
+        final order = <String, Object?>{
+          'id': 'sq_ord_tz2',
+          'location_id': 'L_RESTAURANT_A',
+          'created_at': '2026-05-13T07:30:00Z',
+          'updated_at': '2026-05-13T08:15:00Z',
+          'closed_at': '2026-05-13T08:15:00Z',
+          'total_money': <String, Object?>{'amount': 1200, 'currency': 'CAD'},
+          'state': 'COMPLETED',
+        };
+        final fact = _factFromOrder(order, operatorId: _opA, locationId: _locA);
+
+        await sink.upsertSalesFact(fact);
+
+        expect(pool.coverFacts.values.single['business_date'], '2026-05-12',
+            reason: 'Sub-hour cutoff 04:30 honors local 04:15 < 04:30 → '
+                'PRIOR business_date. Closes Gap 46.');
+      },
+    );
+
+    test(
+      'I.3 sink no longer reads business_day_rollover_hour — even when '
+      'the seeded location row carries a wildly wrong value (999), the '
+      'projection still uses the canonical-chain cutoff, NOT the '
+      'location-row value (Gap 47 hierarchy bypass closed for Square)',
+      () async {
+        final pool = _FakeSquarePool()
+          ..seedLocation(
+            operatorId: _opA,
+            locationId: _locA,
+            // Even with a NONSENSE legacy rollover hour, the result must
+            // come from the canonical chain (default cutoff '04:00:00').
+            // If Square were still reading this field, it would either
+            // throw a range error or silently produce a totally wrong
+            // business_date — neither happens.
+            rolloverHour: 999,
+          )
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = SquarePosPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 13, 12, 0, 0),
+        );
+
+        // Wed 2026-05-13 12:00 EDT = Wed 2026-05-13 16:00 UTC. Local
+        // 12:00 ≥ cutoff 04:00 → business_date = Wed 2026-05-13 from
+        // the canonical chain. If the sink had retained the legacy
+        // path and read `rolloverHour = 999`, the
+        // `IanaTimezoneConverter.toBusinessDate` validation would have
+        // thrown — `must be in [0, 23]`. The test passes ONLY because
+        // the legacy field is no longer read.
+        final order = <String, Object?>{
+          'id': 'sq_ord_tz3',
+          'location_id': 'L_RESTAURANT_A',
+          'created_at': '2026-05-13T15:00:00Z',
+          'updated_at': '2026-05-13T16:00:00Z',
+          'closed_at': '2026-05-13T16:00:00Z',
+          'total_money': <String, Object?>{'amount': 2200, 'currency': 'CAD'},
+          'state': 'COMPLETED',
+        };
+        final fact = _factFromOrder(order, operatorId: _opA, locationId: _locA);
+
+        await sink.upsertSalesFact(fact);
+
+        expect(pool.coverFacts.values.single['business_date'], '2026-05-13',
+            reason: 'Square no longer reads rollover_hour. The canonical '
+                'chain produced 04:00 as the cutoff; 12:00 local ≥ 04:00 '
+                '→ same business_date.');
+      },
+    );
+
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as a query column or field-access '
+      'token (Gap 47 closed for Square — pinned by static check so a '
+      'future refactor cannot silently regress)',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/square_pos_postgres_sink.dart',
+        ).readAsString();
+        // Strip out comment-only lines so the assertion fires on
+        // executable code only. Doc comments are allowed to mention
+        // the deprecated column by name.
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Square sink — it was removed by Per-Daypart '
+              'V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 // ─── Test doubles ────────────────────────────────────────────────────
@@ -772,10 +954,23 @@ class _FakeSquarePool implements PostgresPool {
 
   final List<_FakeTransaction> transactions = <_FakeTransaction>[];
 
-  void seedLocation({required String operatorId, required String locationId}) {
+  void seedLocation({
+    required String operatorId,
+    required String locationId,
+    String timezone = 'America/Toronto',
+    String businessDayStartLocalTime = '04:00:00',
+    int? rolloverHour,
+  }) {
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the
+    // canonical cutoff for the new business-date projection comes from
+    // `businessDayStartLocalTime` (HH:MM:SS, sub-hour aware). The
+    // legacy `rolloverHour` field is retained on the seed map for
+    // back-compat with the field-access regression test in group I —
+    // even when present, the Square sink no longer reads it.
     _locations['$operatorId|$locationId'] = <String, Object?>{
-      'timezone': 'America/Toronto',
-      'business_day_rollover_hour': 4,
+      'timezone': timezone,
+      'business_day_start_local_time': businessDayStartLocalTime,
+      if (rolloverHour != null) 'business_day_rollover_hour': rolloverHour,
     };
   }
 
@@ -822,8 +1017,11 @@ class _FakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
-    if (sql.contains(
-        'select timezone, business_day_rollover_hour from public.locations')) {
+    if (sql.contains('select timezone from public.locations')) {
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Square no
+      // longer reads `business_day_rollover_hour` from the location
+      // row — the cutoff itself comes from the canonical
+      // `business_timing_profiles` chain via SinkBusinessDateProjector.
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool._locations['$operatorId|$locationId'];
@@ -831,7 +1029,60 @@ class _FakeTransaction implements PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{
           'timezone': row['timezone'],
-          'business_day_rollover_hour': row['business_day_rollover_hour'],
+        },
+      ];
+    }
+    if (sql.contains('from public.business_timing_profiles p')) {
+      // SinkBusinessDateProjector → BusinessTimingProfilesRepository.
+      // The fake returns a single `location`-scoped candidate carrying
+      // the seeded `businessDayStartLocalTime` (default '04:00:00' to
+      // mimic the operator-default fallback so existing A–H tests
+      // project identically to before).
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final tz =
+          (pool._locations['$operatorId|$locationId']
+              ?['timezone'] as String?) ??
+              'America/Toronto';
+      final cutoff =
+          (pool._locations['$operatorId|$locationId']
+              ?['business_day_start_local_time'] as String?) ??
+              '04:00:00';
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': '99999999-9999-4999-8999-999999999999',
+          'operator_id': operatorId,
+          'scope_type': 'location',
+          'scope_id': locationId,
+          'display_name': null,
+          'business_day_start_local_time': cutoff,
+          'week_start_day': 1,
+          'close_authority': 'app_local_cutoff_fallback',
+          'local_close_fallback_time': null,
+          'effective_from_business_date': '2026-01-01',
+          'effective_until_business_date': null,
+          'supersedes_profile_id': null,
+          'created_by': null,
+          'updated_by': null,
+          'created_at': DateTime.utc(2026, 1, 1),
+          'updated_at': DateTime.utc(2026, 1, 1),
+          'location_timezone': tz,
+          'service_periods': <Map<String, Object?>>[
+            <String, Object?>{
+              'service_period_id':
+                  '88888888-8888-4888-8888-888888888888',
+              'operator_id': operatorId,
+              'profile_id': '99999999-9999-4999-8999-999999999999',
+              'service_period_key': 'lunch',
+              'label': 'Lunch',
+              'short_label': 'L',
+              'sort_order': 1,
+              'start_local_time': '11:00',
+              'end_local_time': '15:00',
+              'rolls_past_midnight': false,
+              'applicable_weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
+            },
+          ],
         },
       ];
     }
