@@ -242,11 +242,28 @@ void main() {
         find.text('BENCHMARK RANGE', skipOffstage: false),
         findsOneWidget,
       );
-      expect(find.text('OPZ FLOOR', skipOffstage: false), findsOneWidget);
-      expect(find.text('OPZ CEILING', skipOffstage: false), findsOneWidget);
+      // Per-Daypart Targets V1 / Slice 2: OPZ now lives in the
+      // daypart table's "OPZ RANGE" column + Whole Day rollup; the
+      // old "Targets Derived from Benchmark" card is cut. Wages +
+      // theoretical % rehome to the slim strip with Option B labels.
+      expect(find.text('OPZ RANGE', skipOffstage: false), findsOneWidget);
+      expect(find.text('Whole Day', skipOffstage: false), findsOneWidget);
       expect(
-        find.text('TOTAL THEORETICAL %', skipOffstage: false),
+        find.text('Theoretical Labor %: The Floor', skipOffstage: false),
         findsOneWidget,
+      );
+      expect(
+        find.text('Operating Wage Mix', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Total %', skipOffstage: false),
+        findsOneWidget,
+      );
+      // Old card section header must be gone.
+      expect(
+        find.text('TARGETS DERIVED FROM BENCHMARK', skipOffstage: false),
+        findsNothing,
       );
       expect(
         find.text('CHOOSE STAR SHIFTS', skipOffstage: false),
@@ -389,9 +406,16 @@ void main() {
     });
   });
 
-  // ── G. Profile-precedence on _BaselineTargetsCard (7.55p.5a) ──────────────
+  // ── G. Profile-precedence on the Slice 2 strip + daypart table ───────────
+  //
+  // Per-Daypart Targets V1 / Slice 2: the "Targets Derived from
+  // Benchmark" card is cut. Whole-day wages + theoretical % rehome to
+  // `_OperatingStrip`; targets + OPZ move to the `DaypartTable`. The
+  // test profile carries an empty `dayparts` list, so the daypart
+  // table's per-period rows + Whole Day rollup fall back to the pool
+  // fields (Gap 42), proving profile precedence on the new surfaces.
 
-  group('G. _BaselineTargetsCard prefers ActiveTargetProfile', () {
+  group('G. Slice 2 strip + daypart table prefer ActiveTargetProfile', () {
     // Intentionally different from BaselineData values to prove precedence.
     const testProfile = ActiveTargetProfile(
       targetProfileId: 'test_profile',
@@ -410,7 +434,8 @@ void main() {
       builtAt: '2026-04-13T00:00:00Z',
     );
 
-    testWidgets('with profile: targets card shows profile values, not BaselineData',
+    testWidgets(
+        'with profile: strip + daypart table show profile values, not BaselineData',
         (tester) async {
       final notifier = ActiveTargetProfileNotifier.fromProfile(testProfile);
 
@@ -421,52 +446,62 @@ void main() {
         ),
       );
 
-      // Profile target CPLH (5.55) should appear; BaselineData's should not
-      // dominate the targets card.
+      // Profile target CPLH (5.55) appears in the daypart table — the
+      // test profile has an empty `dayparts` list so every per-period
+      // row + the Whole Day rollup fall back to the pool (Gap 42).
       expect(find.text(skipOffstage: false, '5.55'), findsWidgets,
-          reason: 'profile targetCPLH should be displayed');
+          reason: 'profile targetCPLH should drive the daypart table');
 
-      // Profile OPZ bounds
-      expect(find.text(skipOffstage: false, '4.80'), findsWidgets,
-          reason: 'profile opzFloorCPLH should be displayed');
-      expect(find.text(skipOffstage: false, '6.30'), findsWidgets,
-          reason: 'profile opzCeilingCPLH should be displayed');
+      // Profile OPZ bounds render as a single combined "OPZ RANGE"
+      // cell, e.g. "4.80 – 6.30" (Slice 2 column fold).
+      expect(find.text(skipOffstage: false, '4.80 – 6.30'), findsWidgets,
+          reason: 'profile OPZ floor/ceiling fold into one OPZ Range cell');
 
-      // Profile wages
+      // Profile wages — slim strip, Operating Wage Mix half.
       expect(find.text(skipOffstage: false, '\$19.00'), findsOneWidget,
-          reason: 'profile fohWage should be displayed');
+          reason: 'profile fohWage should be displayed in the strip');
       expect(find.text(skipOffstage: false, '\$24.00'), findsOneWidget,
-          reason: 'profile bohWage should be displayed');
+          reason: 'profile bohWage should be displayed in the strip');
 
-      // Profile theoretical output — FOH / BOH / total
+      // Profile theoretical % — slim strip, Theoretical Labor %: The
+      // Floor half.
       expect(find.text(skipOffstage: false, '9.2%'), findsOneWidget,
-          reason: 'profile FOH theoretical % should be displayed');
+          reason: 'profile FOH theoretical % should be in the strip');
       expect(find.text(skipOffstage: false, '12.1%'), findsOneWidget,
-          reason: 'profile BOH theoretical % should be displayed');
+          reason: 'profile BOH theoretical % should be in the strip');
       expect(find.text(skipOffstage: false, '21.3%'), findsOneWidget,
-          reason: 'profile TOTAL theoretical % should be displayed');
+          reason: 'profile TOTAL theoretical % should be in the strip');
 
-      // Profile target PPA
-      expect(find.text(skipOffstage: false, '\$38.50'), findsOneWidget,
-          reason: 'profile targetPPA should be displayed');
+      // Profile target PPA in the daypart table (rows + rollup).
+      expect(find.text(skipOffstage: false, '\$38.50'), findsWidgets,
+          reason: 'profile targetPPA should drive the daypart table');
 
       notifier.dispose();
     });
 
-    testWidgets('without profile: targets card falls back to BaselineData safely',
+    testWidgets(
+        'without profile: strip falls back to BaselineData safely',
         (tester) async {
-      // Mount without any provider — the card uses BaselineData fallbacks.
+      // Mount without any provider — bridge-only mode means the strip
+      // uses BaselineData fallbacks and the daypart table shows an
+      // honest dash for the profile-backed target/OPZ columns (Design
+      // Rule 2 — missing is null/dash, never sentinel 0).
       await pumpBaseline(
           tester, const MaterialApp(home: BaselineTracker()));
 
-      // Card renders without error.
-      expect(find.text(skipOffstage: false, 'OPZ FLOOR'), findsOneWidget);
-      expect(find.text(skipOffstage: false, 'OPZ CEILING'), findsOneWidget);
-      expect(find.text(skipOffstage: false, 'TOTAL THEORETICAL %'), findsOneWidget);
+      // New surfaces render without error.
+      expect(find.text(skipOffstage: false, 'Operating Wage Mix'),
+          findsOneWidget);
+      expect(find.text(skipOffstage: false, 'Theoretical Labor %: The Floor'),
+          findsOneWidget);
+      expect(find.text(skipOffstage: false, 'OPZ RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'Whole Day'), findsOneWidget);
 
-      // Values come from BaselineData fallbacks.
-      expect(find.text(skipOffstage: false, BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
-      expect(find.text(skipOffstage: false, BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
+      // Strip wage value comes from the BaselineData fallback.
+      expect(
+          find.text(skipOffstage: false,
+              '\$${MeridianConfig.fohWage.toStringAsFixed(2)}'),
+          findsOneWidget);
     });
   });
 

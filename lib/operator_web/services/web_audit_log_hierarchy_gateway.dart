@@ -179,10 +179,11 @@ abstract class WebAuditLogHierarchyGateway {
 }
 
 /// Mixin signalling that an operator-web auth source exposes a live
-/// hierarchy-filtered audit log gateway. Mirrors B6's
-/// `OperatorWebBenchmarksGatewayProvider` shape so the router can
-/// resolve the live binding when available and fall back to a demo /
-/// in-memory implementation otherwise.
+/// hierarchy-filtered audit log gateway. Follows the same
+/// gateway-provider sentinel shape as the other operator-web gateway
+/// providers (e.g. `OperatorWebDataAccuracyGatewayProvider`) so the
+/// router can resolve the live binding when available and fall back to
+/// a demo / in-memory implementation otherwise.
 abstract class OperatorWebAuditLogHierarchyGatewayProvider {
   WebAuditLogHierarchyGateway get auditLogHierarchyGateway;
 }

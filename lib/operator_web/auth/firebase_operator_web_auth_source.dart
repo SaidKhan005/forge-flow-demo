@@ -37,7 +37,8 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         OperatorWebBusinessTimingWriteGatewayProvider,
         OperatorWebDataAccuracyGatewayProvider,
         OperatorWebVendorApplicabilityGatewayProvider,
-        OperatorWebBenchmarksGatewayProvider,
+        // Per-Daypart Targets V1 / Slice 2 (Gap 35): no
+        // OperatorWebBenchmarksGatewayProvider — override surface cut.
         OperatorWebTeamUsersGatewayProvider,
         OperatorWebTeamRolesGatewayProvider,
         OperatorWebTeamHierarchyGatewayProvider,
@@ -92,10 +93,8 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
        ),
-       benchmarksGateway = OperatorWebHttpBenchmarksGateway(
-         client: proxyClient,
-         idTokenProvider: authClient.currentIdToken,
-       ),
+       // Per-Daypart Targets V1 / Slice 2 (Gap 35): benchmarksGateway
+       // init removed — operator-web Benchmarks override surface cut.
        teamUsersGateway = WebTeamUsersGatewayLive(
          proxyBaseUri: proxyClient.baseUri,
          idTokenProvider: authClient.currentIdToken,
@@ -192,8 +191,8 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
   @override
   final WebVendorApplicabilityGateway vendorApplicabilityGateway;
 
-  @override
-  final OperatorWebBenchmarksGateway benchmarksGateway;
+  // Per-Daypart Targets V1 / Slice 2 (Gap 35): benchmarksGateway field
+  // removed — operator-web Benchmarks override surface cut.
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
