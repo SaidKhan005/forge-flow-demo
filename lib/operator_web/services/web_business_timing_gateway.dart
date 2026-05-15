@@ -193,6 +193,18 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
 }
 
 /// Service-period payload shared by create and read paths.
+///
+/// Per-Daypart Targets V1 / Slice 2.5 (Gap 28): the editor and gateway
+/// carry three additional fields that mirror the canonical
+/// `ServicePeriodDefinition` model so operators can express
+/// day-restricted periods (e.g. "Weekend Brunch" Sat/Sun only):
+///   - `applicableDays`  ISO weekdays the period runs on (1=Mon..7=Sun).
+///   - `shortLabel`      compact label for tight UI surfaces (e.g. "L").
+///   - `sortOrder`       display order; lower sorts first.
+///
+/// Backwards compatibility: when the server omits any of the three
+/// fields, [fromJson] supplies safe defaults (`[1..7]`, `''`, `0`)
+/// so older payloads do NOT throw `malformed_service_period`.
 @immutable
 class ServicePeriod {
   const ServicePeriod({
@@ -201,6 +213,9 @@ class ServicePeriod {
     required this.startLocal,
     required this.endLocal,
     required this.rollsPastMidnight,
+    this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
+    this.shortLabel = '',
+    this.sortOrder = 0,
   });
 
   final String key;
@@ -208,6 +223,9 @@ class ServicePeriod {
   final String startLocal;
   final String endLocal;
   final bool rollsPastMidnight;
+  final List<int> applicableDays;
+  final String shortLabel;
+  final int sortOrder;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'key': key,
@@ -215,6 +233,9 @@ class ServicePeriod {
         'startLocal': startLocal,
         'endLocal': endLocal,
         'rollsPastMidnight': rollsPastMidnight,
+        'applicableDays': applicableDays,
+        'shortLabel': shortLabel,
+        'sortOrder': sortOrder,
       };
 
   static ServicePeriod fromJson(Map<String, Object?> json) {
@@ -237,6 +258,9 @@ class ServicePeriod {
       startLocal: startLocal,
       endLocal: endLocal,
       rollsPastMidnight: json['rollsPastMidnight'] == true,
+      applicableDays: _readApplicableDays(json['applicableDays']),
+      shortLabel: _readShortLabel(json['shortLabel']),
+      sortOrder: _readSortOrder(json['sortOrder']),
     );
   }
 }
@@ -248,34 +272,56 @@ class ServicePeriodCreate {
     required this.label,
     required this.startLocal,
     required this.endLocal,
+    this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
+    this.shortLabel = '',
+    this.sortOrder = 0,
   });
 
   final String key;
   final String label;
   final String startLocal;
   final String endLocal;
+  final List<int> applicableDays;
+  final String shortLabel;
+  final int sortOrder;
 
   Map<String, Object?> toJson() => <String, Object?>{
         'key': key,
         'label': label,
         'startLocal': startLocal,
         'endLocal': endLocal,
+        'applicableDays': applicableDays,
+        'shortLabel': shortLabel,
+        'sortOrder': sortOrder,
       };
 }
 
 @immutable
 class ServicePeriodPatch {
-  const ServicePeriodPatch({this.label, this.startLocal, this.endLocal});
+  const ServicePeriodPatch({
+    this.label,
+    this.startLocal,
+    this.endLocal,
+    this.applicableDays,
+    this.shortLabel,
+    this.sortOrder,
+  });
 
   final String? label;
   final String? startLocal;
   final String? endLocal;
+  final List<int>? applicableDays;
+  final String? shortLabel;
+  final int? sortOrder;
 
   Map<String, Object?> toJson() {
     final json = <String, Object?>{};
     if (label != null) json['label'] = label;
     if (startLocal != null) json['startLocal'] = startLocal;
     if (endLocal != null) json['endLocal'] = endLocal;
+    if (applicableDays != null) json['applicableDays'] = applicableDays;
+    if (shortLabel != null) json['shortLabel'] = shortLabel;
+    if (sortOrder != null) json['sortOrder'] = sortOrder;
     return json;
   }
 }
@@ -437,6 +483,36 @@ String? _readString(Object? value) {
   if (value is! String) return null;
   final trimmed = value.trim();
   return trimmed.isEmpty ? null : trimmed;
+}
+
+/// Default ISO weekday set used when older payloads omit
+/// `applicableDays`. Mirrors the implicit pre-Slice-2.5 behavior where
+/// every period was assumed to apply every day of the week.
+const List<int> _kDefaultApplicableDays = <int>[1, 2, 3, 4, 5, 6, 7];
+
+List<int> _readApplicableDays(Object? value) {
+  if (value is! List) return _kDefaultApplicableDays;
+  final days = <int>[];
+  for (final item in value) {
+    if (item is int) {
+      days.add(item);
+    } else if (item is num) {
+      days.add(item.toInt());
+    }
+  }
+  if (days.isEmpty) return _kDefaultApplicableDays;
+  return List<int>.unmodifiable(days);
+}
+
+String _readShortLabel(Object? value) {
+  if (value is String) return value;
+  return '';
+}
+
+int _readSortOrder(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return 0;
 }
 
 class _OperatorPathViolation implements Exception {

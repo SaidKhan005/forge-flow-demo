@@ -256,6 +256,162 @@ void main() {
         isTrue,
       );
     });
+
+    // Slice 2.5 / Gap 28 — `applicableDays` validation surface.
+    test('empty applicableDays rejected with invalid_applicable_days', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          applicableDays: <int>[],
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(
+        result.errors.any((e) => e.code == 'invalid_applicable_days'),
+        isTrue,
+      );
+    });
+
+    test('out-of-range applicableDays rejected with invalid_applicable_days',
+        () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          applicableDays: <int>[0, 8],
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(
+        result.errors.any((e) => e.code == 'invalid_applicable_days'),
+        isTrue,
+      );
+    });
+
+    test('weekend-only Sat/Sun applicableDays accepted', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'brunch',
+          label: 'Weekend Brunch',
+          startLocal: '10:00',
+          endLocal: '14:00',
+          applicableDays: <int>[6, 7],
+        ),
+      ]);
+      expect(result.isValid, isTrue);
+    });
+  });
+
+  // Slice 2.5 / Gap 28 — pure value-object behavior on the new fields.
+  group('ServicePeriodDraft (Slice 2.5 fields)', () {
+    test('default constructor seeds all 7 weekdays + empty short label + 0 sort',
+        () {
+      const draft = ServicePeriodDraft(
+        key: 'lunch',
+        label: 'Lunch',
+        startLocal: '11:00',
+        endLocal: '15:00',
+      );
+      expect(draft.applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
+      expect(draft.shortLabel, '');
+      expect(draft.sortOrder, 0);
+    });
+
+    test('copyWith round-trips the three new fields without mutating others',
+        () {
+      const original = ServicePeriodDraft(
+        key: 'lunch',
+        label: 'Lunch',
+        startLocal: '11:00',
+        endLocal: '15:00',
+      );
+      final next = original.copyWith(
+        applicableDays: const <int>[6, 7],
+        shortLabel: 'L',
+        sortOrder: 3,
+      );
+      expect(next.key, original.key);
+      expect(next.label, original.label);
+      expect(next.startLocal, original.startLocal);
+      expect(next.endLocal, original.endLocal);
+      expect(next.applicableDays, <int>[6, 7]);
+      expect(next.shortLabel, 'L');
+      expect(next.sortOrder, 3);
+    });
+
+    test('copyWith leaving new fields null preserves the originals', () {
+      const original = ServicePeriodDraft(
+        key: 'brunch',
+        label: 'Brunch',
+        startLocal: '10:00',
+        endLocal: '14:00',
+        applicableDays: <int>[6, 7],
+        shortLabel: 'B',
+        sortOrder: 2,
+      );
+      final next = original.copyWith(label: 'Weekend Brunch');
+      expect(next.label, 'Weekend Brunch');
+      expect(next.applicableDays, <int>[6, 7]);
+      expect(next.shortLabel, 'B');
+      expect(next.sortOrder, 2);
+    });
+  });
+
+  group('ServicePeriodEditorController (Slice 2.5 defaults)', () {
+    test('addPeriod defaults applicableDays to all 7 weekdays', () {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      );
+      controller.addPeriod();
+      expect(controller.periods.last.applicableDays,
+          <int>[1, 2, 3, 4, 5, 6, 7]);
+      expect(controller.periods.last.shortLabel, '');
+    });
+
+    test('addPeriod defaults sortOrder to current period count', () {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      );
+      controller.addPeriod();
+      expect(controller.periods.last.sortOrder, 1);
+    });
+
+    test('updateAt with copyWith propagates day-chip toggles', () {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'brunch',
+            label: 'Brunch',
+            startLocal: '10:00',
+            endLocal: '14:00',
+          ),
+        ],
+      );
+      controller.updateAt(
+        0,
+        controller.periods[0].copyWith(applicableDays: const <int>[6, 7]),
+      );
+      expect(controller.periods[0].applicableDays, <int>[6, 7]);
+    });
   });
 
   group('ServicePeriodEditor widget', () {
@@ -355,7 +511,91 @@ void main() {
       );
     });
 
+    // Slice 2.5 / Gap 28 — day chip row renders + toggles work.
+    testWidgets('renders 7 day chips per period', (tester) async {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(ServicePeriodEditor(controller: controller)),
+      );
+      for (var iso = 1; iso <= 7; iso++) {
+        expect(
+          find.byKey(ValueKey('service_period_editor_day_0_$iso')),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets('tapping a day chip toggles applicableDays', (tester) async {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'brunch',
+            label: 'Brunch',
+            startLocal: '10:00',
+            endLocal: '14:00',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(ServicePeriodEditor(controller: controller)),
+      );
+      // Default is all 7 days. Tap Mon (ISO=1) to deselect it.
+      await tester.tap(
+        find.byKey(const ValueKey('service_period_editor_day_0_1')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        controller.periods[0].applicableDays.contains(1),
+        isFalse,
+      );
+      expect(controller.periods[0].applicableDays, <int>[2, 3, 4, 5, 6, 7]);
+    });
+
+    testWidgets('renders the short label and sort order text fields',
+        (tester) async {
+      final controller = ServicePeriodEditorController(
+        initial: const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(ServicePeriodEditor(controller: controller)),
+      );
+      expect(
+        find.byKey(const ValueKey('service_period_editor_short_label_0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('service_period_editor_sort_order_0')),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('overlap shows banner with the right code', (tester) async {
+      // Slice 2.5: rows are taller now (extra chip row + short
+      // label / sort order fields), so size the viewport tall enough
+      // to fit two periods plus the validation banner without an
+      // overflow assertion.
+      tester.view.physicalSize = const Size(1200, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
       final controller = ServicePeriodEditorController(
         initial: const <ServicePeriodDraft>[
           ServicePeriodDraft(
@@ -373,7 +613,9 @@ void main() {
         ],
       );
       await tester.pumpWidget(
-        wrap(ServicePeriodEditor(controller: controller)),
+        wrap(SingleChildScrollView(
+          child: ServicePeriodEditor(controller: controller),
+        )),
       );
       expect(
         find.byKey(

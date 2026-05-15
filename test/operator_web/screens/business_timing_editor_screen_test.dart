@@ -217,4 +217,145 @@ void main() {
       findsOneWidget,
     );
   });
+
+  // Slice 2.5 / Gap 28 — seed + save round-trip the three new fields.
+
+  BusinessTimingProfileWriteResult profileWith(
+    List<ServicePeriod> periods,
+  ) =>
+      BusinessTimingProfileWriteResult(
+        profileId: 'profile-existing',
+        versionId: 'profile-existing',
+        scopeKind: 'operator',
+        scopeId: 'op-1',
+        effectiveAtBusinessDate: '2026-05-10',
+        ianaTimezone: 'America/Toronto',
+        weekStartDay: 'monday',
+        businessDayStartLocal: '04:00',
+        servicePeriods: periods,
+        createdAt: DateTime.utc(2026, 5, 6, 18),
+        updatedAt: DateTime.utc(2026, 5, 6, 18),
+      );
+
+  testWidgets(
+    'seeds editor from existing profile carrying day-restricted period',
+    (tester) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      final gateway = _FakeBusinessTimingGateway();
+      // updateProfile is what the screen calls when there is an
+      // existing profile; teach the fake to capture and return it.
+      await tester.pumpWidget(
+        wrap(
+          BusinessTimingEditorScreen(
+            session: session,
+            gateway: gateway,
+            existingProfile: profileWith(<ServicePeriod>[
+              const ServicePeriod(
+                key: 'brunch',
+                label: 'Weekend Brunch',
+                startLocal: '10:00',
+                endLocal: '14:00',
+                rollsPastMidnight: false,
+                applicableDays: <int>[6, 7],
+                shortLabel: 'B',
+                sortOrder: 0,
+              ),
+            ]),
+          ),
+        ),
+      );
+      // The Sat (6) + Sun (7) chips should be present in the rendered
+      // editor; the rest are still rendered but unselected.
+      expect(
+        find.byKey(const ValueKey('service_period_editor_day_0_6')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey('service_period_editor_day_0_7')),
+        findsOneWidget,
+      );
+      // Short label field exists and surfaces the seeded value.
+      expect(
+        find.byKey(const ValueKey('service_period_editor_short_label_0')),
+        findsOneWidget,
+      );
+      expect(find.text('B'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'save sends applicableDays / shortLabel / sortOrder on the wire',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeBusinessTimingGateway();
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          BusinessTimingEditorScreen(session: session, gateway: gateway),
+        ),
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.creates, hasLength(1));
+      final create = gateway.creates.single;
+      // Defaults: every period applies every weekday, blank short
+      // label, and sortOrder reflects the seeded order. Verifies the
+      // save path serializes the new fields, not just the UI.
+      for (final p in create.servicePeriods) {
+        expect(p.applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
+        expect(p.shortLabel, '');
+      }
+      // Encoded JSON must include the new keys with camelCase.
+      final json = create.toJson();
+      final periodsJson = json['servicePeriods'] as List<Object?>;
+      final firstPeriod = periodsJson.first as Map<String, Object?>;
+      expect(firstPeriod.containsKey('applicableDays'), isTrue);
+      expect(firstPeriod.containsKey('shortLabel'), isTrue);
+      expect(firstPeriod.containsKey('sortOrder'), isTrue);
+    },
+  );
+
+  testWidgets(
+    'tapping day chips before save emits filtered applicableDays',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeBusinessTimingGateway();
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          BusinessTimingEditorScreen(session: session, gateway: gateway),
+        ),
+      );
+      // Default seed has two periods (Lunch, Dinner). Restrict the
+      // first to weekends only by deselecting Mon..Fri (ISO 1..5).
+      for (var iso = 1; iso <= 5; iso++) {
+        await tester.ensureVisible(
+          find.byKey(ValueKey('service_period_editor_day_0_$iso')),
+        );
+        await tester.tap(
+          find.byKey(ValueKey('service_period_editor_day_0_$iso')),
+        );
+        await tester.pumpAndSettle();
+      }
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.pumpAndSettle();
+      expect(gateway.creates, hasLength(1));
+      final create = gateway.creates.single;
+      expect(create.servicePeriods.first.applicableDays, <int>[6, 7]);
+      // Other period was untouched and still defaults to all 7.
+      expect(create.servicePeriods[1].applicableDays,
+          <int>[1, 2, 3, 4, 5, 6, 7]);
+    },
+  );
 }
