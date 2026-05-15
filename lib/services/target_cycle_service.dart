@@ -58,6 +58,7 @@ import 'baseline_authority_service.dart';
 import 'baseline_manager_service.dart';
 import 'baseline_selection_analytics_service.dart';
 import '../domain/constants/app_defaults.dart';
+import 'restaurant_timing_config_read_service.dart';
 import 'wage_standard_context_service.dart';
 
 /// Thrown when a manager override is denied by [TargetCyclePolicy] rules.
@@ -88,11 +89,16 @@ class TargetCycleService {
   /// Loads the active cycle for [restaurantId] on [businessDate].
   ///
   /// - If no active cycle exists, creates a recommended one.
-  /// - If the active cycle is past its effective end, creates a new
+  /// - If the active cycle is past its effective end AND the business date
+  ///   is the operator's configured week-start day, creates a new
   ///   recommended cycle (auto-refresh). All existing active cycles are
-  ///   deactivated before the new one is written.
-  /// - Otherwise returns the active cycle unchanged, repairing the
-  ///   companion [BenchmarkSelectionSummary] if it is missing (7.56b.1).
+  ///   deactivated before the new one is written. Per-daypart-targets V1
+  ///   (Slice 0) gates rollover to the operator-configured `week_start_day`
+  ///   so cycle refresh cannot land mid-week; cycle length becomes 60–66
+  ///   days per operator.
+  /// - Otherwise returns the active cycle unchanged (including the
+  ///   past-effective-end-but-not-yet-week-start deferral case), repairing
+  ///   the companion [BenchmarkSelectionSummary] if it is missing (7.56b.1).
   Future<TargetCycle> getOrCreateActiveCycle(
       String restaurantId, String businessDate) async {
     final existing = await _cycleRepo.getActiveCycle(restaurantId);
@@ -101,7 +107,16 @@ class TargetCycleService {
       return _createRecommendedCycle(restaurantId, businessDate);
     }
 
-    if (TargetCyclePolicy.needsAutoRefresh(existing, businessDate)) {
+    // Resolve the operator's configured business-week start day so the
+    // cycle-rollover boundary aligns with the weekly-plan-lock boundary.
+    // Falls back to DateTime.monday when the timing config has not been
+    // persisted yet (bootstrap / older demo scopes).
+    final timingConfig = await RestaurantTimingConfigReadService.instance
+        .getTimingConfig(restaurantId);
+    final weekStartDay = timingConfig?.weekStartDay ?? DateTime.monday;
+
+    if (TargetCyclePolicy.needsAutoRefresh(existing, businessDate,
+        weekStartDay: weekStartDay)) {
       final newCycle =
           await _createRecommendedCycle(restaurantId, businessDate);
       // Persist passive notification for cycle rollover (7.55p.4d).

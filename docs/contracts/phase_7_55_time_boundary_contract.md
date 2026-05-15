@@ -280,24 +280,45 @@ Until that is wired, Monday is only a default, not a permanent truth.
 `TargetCycle.effectiveStart` and `effectiveEnd` are inclusive business-date
 boundaries.
 
+`effectiveStart` aligns with the operator's configured `week_start_day`
+(see Rule 4). `effectiveEnd = effectiveStart + 59 days` (inclusive), so a
+freshly written cycle spans exactly 60 business dates.
+
 The current cycle remains active while:
 
 ```text
 effectiveStart <= businessDate <= effectiveEnd
 ```
 
+When `businessDate > effectiveEnd`, the cycle is past expiry but stays
+active until the next configured week-start day. The auto-refresh check
+defers the rollover (see Rule 6). Effective cycle length therefore ranges
+from 60 days (boundary lands on the week-start day) to 66 days (boundary
+lands the day after the week-start day, so refresh defers a full week).
+
 Manager override is allowed once per active cycle. Admin replacement can
 replace before expiry.
 
-### Rule 6 - Midweek cycle refresh does not rewrite the locked week
+### Rule 6 - Cycle refresh aligns to the configured business-week start
 
-If a 60-day cycle boundary lands during a week:
+Cycle refresh aligns to the operator's configured `week_start_day` (see
+Rule 4). A 60-day cycle boundary that lands within a week defers refresh
+to the next week-start day. Mid-week cycle refresh is structurally
+eliminated — cycles cannot refresh mid-week under the new policy.
 
-- the already locked weekly snapshot remains in force
-- the new cycle affects the next weekly snapshot
-- the current week is not regraded midweek
+Concretely:
 
-This rule already exists conceptually and should stay explicit.
+- `TargetCyclePolicy.needsAutoRefresh(cycle, businessDate, weekStartDay)`
+  returns true only when `businessDate > effectiveEnd` AND
+  `weekdayOf(businessDate) == weekStartDay`.
+- The already locked weekly snapshot remains in force throughout.
+- The new cycle, when it eventually lands on the next week-start day,
+  becomes the comparison context for the week it opens.
+- The week in force at the moment of refresh is never regraded midweek
+  because refresh cannot land midweek.
+
+This eliminates the previous "midweek cycle refresh does not rewrite the
+locked week" scenario at the source — there is no midweek cycle refresh.
 
 ### Rule 7 - Weekly snapshot lock happens at business-week start
 

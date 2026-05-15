@@ -30,10 +30,30 @@ class TargetCyclePolicy {
     return isActiveForDate(cycle, businessDate) && !cycle.managerOverrideUsed;
   }
 
-  /// Whether the [businessDate] is past the cycle end, meaning the app
-  /// should auto-switch to the next recommended cycle.
-  static bool needsAutoRefresh(TargetCycle cycle, String businessDate) {
-    return businessDate.compareTo(cycle.effectiveEnd) > 0;
+  /// Whether the [businessDate] is past the cycle end AND today is the
+  /// operator's configured business-week start day, meaning the app should
+  /// auto-switch to the next recommended cycle.
+  ///
+  /// Per-daypart-targets V1 (Slice 0): cycle rollover gates to the
+  /// operator-configured `week_start_day` so cycles cannot refresh mid-week.
+  /// Cycle length becomes 60–66 days per operator depending on where the
+  /// 60-day boundary falls relative to the week-start. Jim Taylor's
+  /// "minimum 60 days" promise is preserved by the past-effective-end
+  /// precondition.
+  ///
+  /// [weekStartDay] follows the `DateTime` weekday convention
+  /// (1 = Monday, …, 7 = Sunday). Mirrors
+  /// [WeeklyPlanSnapshotPolicy.weekStartForDate] / `weekKeyForDate` so the
+  /// cycle-rollover boundary aligns with the weekly-plan-lock boundary.
+  /// Defaults to [DateTime.monday] for callers that have not yet wired
+  /// the operator's timing config.
+  static bool needsAutoRefresh(
+    TargetCycle cycle,
+    String businessDate, {
+    int weekStartDay = DateTime.monday,
+  }) {
+    if (businessDate.compareTo(cycle.effectiveEnd) <= 0) return false;
+    return _parseDate(businessDate).weekday == weekStartDay;
   }
 
   /// Calendar days from [businessDate] to the cycle's effective end.
