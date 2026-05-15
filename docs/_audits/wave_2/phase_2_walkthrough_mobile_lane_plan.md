@@ -171,11 +171,11 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 - [x] P2-05 — First-frame Shift dashboard — same as P2-01 (merged for capture efficiency)
 - [x] (bonus) **Cold-boot drawer regression test** — `p2_02_drawer_cold_boot.png`. PR #756 verified live on cold boot — drawer renders Barrio Legado + check icon even when dashboard is empty.
 - [x] P2-Variance — Variance tab cold-boot — `p2_03_variance_cold_boot.png`. FULLY POPULATED. Variance reads `shift_records` + `week_records` which ARE seeded by the cold-boot demo writer. Only `WeeklyPlanSnapshot` (the locked plan) is missing. `FU-mobile-notification-tray-inconsistent-with-locked-plan-state` filed (notification badge appeared on cold boot referencing a "Weekly Plan Locked" event while Shift says "no plan locked").
-- [ ] P2-06 — Pull-to-refresh on each tab — deferred to next Pass 2 batch
-- [ ] P2-07 — Settings → Account empty state — N/A (Account tab not on mobile per Pass 1 finding `FU-mobile-settings-account-tab-not-on-mobile`)
-- [ ] P2-08 — Settings → Integrations empty state — deferred to next batch
-- [ ] P2-09 — Settings → Setup empty state — deferred to next batch
-- [ ] P2-10 — Notifications empty state — deferred to next batch
+- [ ] P2-06 — Pull-to-refresh on each tab — deferred (could not reproduce a pull-to-refresh affordance reliably in this batch; the Integrations "Pull to refresh" hint copy was visible but no actual gesture-based refresh was exercised)
+- [🚧] P2-07 — Settings → Account empty state — N/A (Account tab not on mobile per Pass 1 finding `FU-mobile-settings-account-tab-not-on-mobile`)
+- [x] P2-Integrations — Settings → Integrations cold boot — `p2_07_settings_integrations_cold_boot.png`. Different copy than warm-boot; `FU-mobile-cold-boot-integrations-copy-divergence` filed.
+- [x] P2-Setup — Settings → Setup cold boot — `p2_06_settings_setup_cold_boot.png`. Fully populated identical to warm-boot.
+- [x] P2-10 — Notifications fullscreen cold boot — `p2_08_notifications_cold_boot.png`. 1 historical notification for 2026-03-23/29 plan lock — confirms my earlier "inconsistency" finding was a false positive; downgraded to UX nit.
 
 ---
 
