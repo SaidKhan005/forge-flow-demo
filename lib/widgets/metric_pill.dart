@@ -258,9 +258,18 @@ class MetricPill extends StatelessWidget {
         ),
         if (provenance.tooltip != null) ...[
           const SizedBox(height: 4),
-          Text(
-            provenance.tooltip!,
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          // FU-mobile-shift-card-overflow-17px: cap tooltip at 2 lines +
+          // ellipsis and wrap in Flexible so an unbounded-width
+          // intrinsic-height pass (e.g. IntrinsicHeight + Row + Expanded
+          // in `_OutputsSection`) cannot under-report the tooltip's
+          // wrapped height and trigger a ~17px RenderFlex overflow.
+          Flexible(
+            child: Text(
+              provenance.tooltip!,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ],
@@ -279,9 +288,18 @@ class MetricPill extends StatelessWidget {
         ),
         if (provenance.tooltip != null) ...[
           const SizedBox(height: 4),
-          Text(
-            provenance.tooltip!,
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          // FU-mobile-shift-card-overflow-17px: cap tooltip at 2 lines +
+          // ellipsis and wrap in Flexible so an unbounded-width
+          // intrinsic-height pass (e.g. IntrinsicHeight + Row + Expanded
+          // in `_OutputsSection`) cannot under-report the tooltip's
+          // wrapped height and trigger a ~17px RenderFlex overflow.
+          Flexible(
+            child: Text(
+              provenance.tooltip!,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ],
