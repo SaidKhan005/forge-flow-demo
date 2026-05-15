@@ -97,6 +97,118 @@ void main() {
       },
     );
 
+    test(
+      // Mobile-FU-business-scope-drawer-seed — demo (and any
+      // no-client) bootstrap must hydrate `availableScopes` from
+      // local SQLite so the drawer does not render the empty state.
+      'seedAvailableScopesFromLocal hydrates availableScopes from local restaurants',
+      () async {
+        final repo = _FakeActiveScopeRepository();
+        final notifier = RestaurantScopeNotifier.fromRestaurant(
+          _restaurant('demo_restaurant_001'),
+        );
+
+        await notifier.seedAvailableScopesFromLocal(
+          userId: 'user-demo',
+          operatorId: 'demo-operator',
+          localRestaurantsReader: () async => <RestaurantLocation>[
+            RestaurantLocation(
+              restaurantId: 'demo_restaurant_001',
+              displayName: 'Barrio Legado',
+              businessTimezone: 'America/St_Johns',
+              createdAt: '2026-05-15T00:00:00Z',
+              updatedAt: '2026-05-15T00:00:00Z',
+            ),
+          ],
+          activeScopeRepository: repo,
+        );
+
+        expect(notifier.availableScopes, hasLength(1));
+        final scope = notifier.availableScopes.single;
+        expect(scope.scopeType, 'location');
+        expect(scope.locationId, 'demo_restaurant_001');
+        expect(scope.operatorId, 'demo-operator');
+        expect(scope.label, 'Barrio Legado');
+        expect(scope.businessTimezone, 'America/St_Johns');
+        expect(notifier.activeScope?.stableKey, 'location:demo_restaurant_001');
+        expect(repo.saved?.stableKey, 'location:demo_restaurant_001');
+        expect(notifier.isLoading, isFalse);
+      },
+    );
+
+    test(
+      // Mobile-FU-business-scope-drawer-seed — when no rows are
+      // seeded yet the empty state is still legitimate (matches the
+      // pre-existing renderer behavior in `_buildBusinessScopeDrawer`).
+      'seedAvailableScopesFromLocal leaves availableScopes empty when no restaurants exist',
+      () async {
+        final repo = _FakeActiveScopeRepository();
+        final notifier = RestaurantScopeNotifier.fromRestaurant(
+          _restaurant('demo_restaurant_001'),
+        );
+
+        await notifier.seedAvailableScopesFromLocal(
+          userId: 'user-demo',
+          operatorId: 'demo-operator',
+          localRestaurantsReader: () async => const <RestaurantLocation>[],
+          activeScopeRepository: repo,
+        );
+
+        expect(notifier.availableScopes, isEmpty);
+        expect(notifier.isLoading, isFalse);
+        expect(repo.saved, isNull);
+        expect(repo.clearCalls, 0);
+      },
+    );
+
+    test(
+      // Mobile-FU-business-scope-drawer-seed — the local seed must
+      // honor a previously-persisted active scope when it still
+      // resolves against the local list (otherwise a re-seed could
+      // silently switch the operator's view).
+      'seedAvailableScopesFromLocal prefers the persisted active scope when it still resolves',
+      () async {
+        final repo = _FakeActiveScopeRepository(
+          stored: BusinessScope(
+            scopeId: 'loc-b',
+            scopeType: 'location',
+            operatorId: 'demo-operator',
+            locationId: 'loc-b',
+            label: 'Harbour',
+          ),
+        );
+        final notifier = RestaurantScopeNotifier.fromRestaurant(
+          _restaurant('loc-a'),
+        );
+
+        await notifier.seedAvailableScopesFromLocal(
+          userId: 'user-demo',
+          operatorId: 'demo-operator',
+          localRestaurantsReader: () async => <RestaurantLocation>[
+            RestaurantLocation(
+              restaurantId: 'loc-a',
+              displayName: 'Legado',
+              businessTimezone: 'America/St_Johns',
+              createdAt: '2026-05-15T00:00:00Z',
+              updatedAt: '2026-05-15T00:00:00Z',
+            ),
+            RestaurantLocation(
+              restaurantId: 'loc-b',
+              displayName: 'Harbour',
+              businessTimezone: 'America/St_Johns',
+              createdAt: '2026-05-15T00:00:00Z',
+              updatedAt: '2026-05-15T00:00:00Z',
+            ),
+          ],
+          activeScopeRepository: repo,
+        );
+
+        expect(notifier.availableScopes, hasLength(2));
+        expect(notifier.activeScope?.locationId, 'loc-b');
+        expect(repo.saved?.locationId, 'loc-b');
+      },
+    );
+
     test('does not publish during a cold first scope load', () async {
       final repo = _FakeActiveScopeRepository();
       final client = _FakeBusinessScopeClient(<BusinessScope>[
