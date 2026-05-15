@@ -270,6 +270,11 @@ The locked 60-day standards window. Owns target CPLH, target SPLH, target
 PPA, OPZ bounds, source provenance.
 
 - Standards lock for 60 days
+- Cycle effective windows align to the operator's configured
+  `week_start_day`. Cycle length is 60–66 days per operator depending on
+  where the 60-day boundary falls relative to the week-start. Auto-refresh
+  defers to the next week-start day when the 60-day boundary lands
+  mid-week (see Phase 7.55 Time Boundary Contract, Rules 5–6).
 - Manager can override once per cycle
 - Admin can replace with explicit provenance
 - A new cycle affects future comparison context only
@@ -346,9 +351,11 @@ logic.
 ### Layer 8 — WeeklyPlanSnapshot
 
 The locked week-in-force comparison plan. One per business week. Once
-locked, does not rewrite midweek. If a 60-day cycle changes midweek, the
-next week uses the new cycle; the already-locked week stays attached to
-the cycle in force when that week was generated.
+locked, does not rewrite midweek. Because cycle rollover gates to the
+operator's configured week-start day (see Layer 4 + Phase 7.55 Time
+Boundary Contract Rules 5–6), WeeklyPlanSnapshot's reference to the
+cycle in force at week-generation time always equals the active cycle
+inside that week — no cross-cycle drift within a week.
 
 ### Layer 9 — Shift
 

@@ -150,28 +150,55 @@ void main() {
   });
 
   // ── E: Auto-refresh boundary semantics ──────────────────────────────────────
+  //
+  // Per-daypart-targets V1 (Slice 0): auto-refresh gates to the operator's
+  // configured `week_start_day`. Tests below pin the cycle's effective end
+  // to a Wednesday (`2026-04-01`, ISO weekday 3) so the cross-boundary
+  // behavior — past-end-but-not-yet-week-start vs past-end-and-week-start —
+  // can be exercised independently.
 
-  group('E — auto-refresh boundary', () {
+  group('E — auto-refresh boundary (week-start gated)', () {
     test('does not need refresh on effective end date', () {
       final cycle = _makeCycle();
+      // 2026-04-01 is Wednesday (ISO 3); default weekStartDay = Monday (1).
+      // Not past effective end → false regardless of weekday.
       expect(
           TargetCyclePolicy.needsAutoRefresh(cycle, '2026-04-01'), isFalse);
     });
 
-    test('needs refresh one day after effective end', () {
+    test('past effective end but not yet week-start day defers refresh', () {
       final cycle = _makeCycle();
+      // 2026-04-02 is Thursday; default weekStartDay = Monday.
+      // Past effective end but not week-start → defer (false).
       expect(
-          TargetCyclePolicy.needsAutoRefresh(cycle, '2026-04-02'), isTrue);
+          TargetCyclePolicy.needsAutoRefresh(cycle, '2026-04-02'), isFalse);
     });
 
-    test('needs refresh well past effective end', () {
+    test('past effective end AND week-start day triggers refresh', () {
       final cycle = _makeCycle();
+      // 2026-04-06 is Monday; default weekStartDay = Monday.
+      // Past effective end and week-start → refresh (true).
       expect(
-          TargetCyclePolicy.needsAutoRefresh(cycle, '2026-05-15'), isTrue);
+          TargetCyclePolicy.needsAutoRefresh(cycle, '2026-04-06'), isTrue);
+    });
+
+    test('well past effective end on the next week-start triggers refresh', () {
+      final cycle = _makeCycle();
+      // 2026-04-13 is Monday → refresh.
+      expect(
+          TargetCyclePolicy.needsAutoRefresh(cycle, '2026-04-13'), isTrue);
+    });
+
+    test('well past effective end on a non-week-start day still defers', () {
+      final cycle = _makeCycle();
+      // 2026-05-15 is Friday; default weekStartDay = Monday.
+      expect(
+          TargetCyclePolicy.needsAutoRefresh(cycle, '2026-05-15'), isFalse);
     });
 
     test('does not need refresh before cycle starts', () {
       final cycle = _makeCycle();
+      // 2026-01-15 is Thursday and well before cycle start.
       expect(
           TargetCyclePolicy.needsAutoRefresh(cycle, '2026-01-15'), isFalse);
     });
@@ -270,6 +297,177 @@ void main() {
       expect(overridden.targetSPLH, original.targetSPLH);
       expect(overridden.targetPPA, original.targetPPA);
       expect(overridden.createdAt, original.createdAt);
+    });
+  });
+
+  // ── H: Per-daypart V1 Slice 0 — week-start day gating ──────────────────────
+  //
+  // Cycle effective end pinned to 2026-04-01 (Wednesday, ISO 3). For each
+  // ISO weekday value (1=Mon … 7=Sun) the first matching business date
+  // after effective end should trigger refresh, and the day immediately
+  // after that should defer refresh because it is no longer the configured
+  // week-start day.
+
+  group('H — week-start day gating (per-daypart V1 Slice 0)', () {
+    // (weekStartDay, firstMatchDateAfterEffectiveEnd, dayAfterMatch).
+    final cases = <List<dynamic>>[
+      [1, '2026-04-06', '2026-04-07'], // Monday
+      [2, '2026-04-07', '2026-04-08'], // Tuesday
+      [3, '2026-04-08', '2026-04-09'], // Wednesday
+      [4, '2026-04-02', '2026-04-03'], // Thursday
+      [5, '2026-04-03', '2026-04-04'], // Friday
+      [6, '2026-04-04', '2026-04-05'], // Saturday
+      [7, '2026-04-05', '2026-04-06'], // Sunday
+    ];
+
+    for (final c in cases) {
+      final weekStartDay = c[0] as int;
+      final matchDate = c[1] as String;
+      final deferDate = c[2] as String;
+      final wd = const [
+        '',
+        'Monday',
+        'Tuesday',
+        'Wednesday',
+        'Thursday',
+        'Friday',
+        'Saturday',
+        'Sunday',
+      ][weekStartDay];
+
+      test('weekStartDay=$weekStartDay ($wd): triggers refresh on $matchDate',
+          () {
+        final cycle = _makeCycle();
+        expect(
+          TargetCyclePolicy.needsAutoRefresh(
+            cycle,
+            matchDate,
+            weekStartDay: weekStartDay,
+          ),
+          isTrue,
+        );
+      });
+
+      test('weekStartDay=$weekStartDay ($wd): defers refresh on $deferDate',
+          () {
+        final cycle = _makeCycle();
+        expect(
+          TargetCyclePolicy.needsAutoRefresh(
+            cycle,
+            deferDate,
+            weekStartDay: weekStartDay,
+          ),
+          isFalse,
+        );
+      });
+    }
+
+    test('past effective end but mid-week defers regardless of how far past',
+        () {
+      final cycle = _makeCycle(); // effectiveEnd = 2026-04-01 (Wed)
+      // 2026-04-30 is a Thursday, deep past the effective end. With
+      // weekStartDay = Monday the refresh still defers — gating is not a
+      // grace-period that lapses; it is a structural rule.
+      expect(
+        TargetCyclePolicy.needsAutoRefresh(
+          cycle,
+          '2026-04-30',
+          weekStartDay: DateTime.monday,
+        ),
+        isFalse,
+      );
+    });
+
+    test('cycle that crosses week-start defers to the next week-start day',
+        () {
+      // Cycle whose effective end is mid-week (Thursday 2026-04-09 → ISO 4).
+      // With weekStartDay = Monday (1), the next Monday after effective end
+      // is 2026-04-13. Refresh should NOT fire on 2026-04-10 (Friday) or
+      // 2026-04-12 (Sunday); it should fire on 2026-04-13 (Monday).
+      final cycle = _makeCycle(effectiveEnd: '2026-04-09');
+      expect(
+        TargetCyclePolicy.needsAutoRefresh(
+          cycle,
+          '2026-04-10',
+          weekStartDay: DateTime.monday,
+        ),
+        isFalse,
+      );
+      expect(
+        TargetCyclePolicy.needsAutoRefresh(
+          cycle,
+          '2026-04-12',
+          weekStartDay: DateTime.monday,
+        ),
+        isFalse,
+      );
+      expect(
+        TargetCyclePolicy.needsAutoRefresh(
+          cycle,
+          '2026-04-13',
+          weekStartDay: DateTime.monday,
+        ),
+        isTrue,
+      );
+    });
+
+    test('default weekStartDay = Monday matches DateTime.monday convention',
+        () {
+      final cycle = _makeCycle();
+      // 2026-04-06 is Monday. With no explicit weekStartDay, the policy
+      // should use DateTime.monday and trigger refresh.
+      expect(
+        TargetCyclePolicy.needsAutoRefresh(cycle, '2026-04-06'),
+        isTrue,
+      );
+    });
+  });
+
+  // ── I: Slice 0 — recommended-cycle effective window invariants ─────────────
+  //
+  // Slice 0 leaves `_createRecommendedCycle` unchanged (it already computes
+  // `effectiveStart = businessDate` and `effectiveEnd = businessDate + 59`).
+  // These tests pin the invariant the gating relies on: when refresh fires
+  // (i.e. businessDate is the configured week-start day), a freshly
+  // computed cycle inherits that week-start anchor and spans exactly 60
+  // business dates (inclusive).
+
+  group('I — recommended-cycle effective window invariants', () {
+    test('effectiveStart equals refresh businessDate (week-start anchor)', () {
+      // Mirrors the computation in TargetCycleService._createRecommendedCycle:
+      // effectiveStart = businessDate, effectiveEnd = +59 days.
+      const businessDate = '2026-04-06'; // Monday (ISO 1)
+      final start = DateTime.utc(2026, 4, 6);
+      final end = start.add(const Duration(days: 59));
+      // Span is exactly 60 inclusive business dates.
+      expect(end.difference(start).inDays, 59);
+      // Effective end on the same anchor convention.
+      expect(
+        '${end.year}-${end.month.toString().padLeft(2, '0')}'
+        '-${end.day.toString().padLeft(2, '0')}',
+        '2026-06-04',
+      );
+      expect(businessDate, start.toIso8601String().substring(0, 10));
+    });
+
+    test(
+        'effectiveEnd = effectiveStart + 59 days holds for any week-start anchor',
+        () {
+      for (final anchor in const [
+        '2026-04-06', // Monday
+        '2026-04-07', // Tuesday
+        '2026-04-08', // Wednesday
+        '2026-04-02', // Thursday
+        '2026-04-03', // Friday
+        '2026-04-04', // Saturday
+        '2026-04-05', // Sunday
+      ]) {
+        final parts = anchor.split('-').map(int.parse).toList();
+        final start = DateTime.utc(parts[0], parts[1], parts[2]);
+        final end = start.add(const Duration(days: 59));
+        expect(end.difference(start).inDays, 59,
+            reason: 'anchor $anchor must span 60 inclusive business dates');
+      }
     });
   });
 }

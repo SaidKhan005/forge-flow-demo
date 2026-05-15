@@ -175,17 +175,21 @@ void main() {
   // ── C: Auto-refresh after cycle end ────────────────────────────────────
 
   group('C — auto-refresh after cycle end', () {
-    test('creates new cycle when one day past effective end', () async {
+    test('creates new cycle on first week-start day past effective end',
+        () async {
+      // Per-daypart V1 (Slice 0): auto-refresh gates to the operator's
+      // configured `week_start_day`. The demo seed sets weekStartDay = Monday.
+      // effectiveEnd = 2026-05-25 (Monday). The next Monday strictly past
+      // effective end is 2026-06-01.
       final first = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
 
-      // effectiveEnd = 2026-05-25, so day after = 2026-05-26
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       expect(refreshed.cycleId, isNot(first.cycleId));
       expect(refreshed.source, TargetCycleSource.recommended);
-      expect(refreshed.effectiveStart, '2026-05-26');
+      expect(refreshed.effectiveStart, '2026-06-01');
     });
 
     test('refreshed cycle has fresh 60-day window', () async {
@@ -193,21 +197,41 @@ void main() {
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
 
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
-      // May 26 + 59 = July 24
-      expect(refreshed.effectiveEnd, '2026-07-24');
+      // June 1 + 59 = July 30
+      expect(refreshed.effectiveEnd, '2026-07-30');
     });
 
-    test('creates new cycle when well past effective end', () async {
+    test('creates new cycle when well past effective end on a week-start day',
+        () async {
+      // 2026-08-17 is a Monday (the configured week-start). The cycle
+      // boundary lapsed long ago; refresh fires on the first week-start
+      // day the operator opens the app.
       final first = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
 
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-08-15');
+          .getOrCreateActiveCycle(restaurantId, '2026-08-17');
 
       expect(refreshed.cycleId, isNot(first.cycleId));
-      expect(refreshed.effectiveStart, '2026-08-15');
+      expect(refreshed.effectiveStart, '2026-08-17');
+    });
+
+    test('defers refresh until the next configured week-start day', () async {
+      // Slice 0: cycle past effective end but business date is mid-week —
+      // existing cycle returned unchanged. Demo seed weekStartDay = Monday.
+      // effectiveEnd = 2026-05-25 (Mon); 2026-05-26 (Tue) is mid-week.
+      final first = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+
+      final deferred = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+
+      expect(deferred.cycleId, first.cycleId,
+          reason: 'mid-week defer keeps the active cycle');
+      expect(deferred.effectiveEnd, '2026-05-25',
+          reason: 'cycle window is unchanged during the deferral period');
     });
   });
 
@@ -217,8 +241,9 @@ void main() {
     test('old cycle is not returned as active after refresh', () async {
       final first = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      // 2026-06-01 is the next Monday (week-start) past effectiveEnd.
       await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       final active = await SqliteTargetCycleRepository.instance
           .getActiveCycle(restaurantId);
@@ -230,7 +255,7 @@ void main() {
       await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
       await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       // Verify old row still exists in the database with deactivated_at set
       final db = await SqliteDatabase.instance.database;
@@ -276,8 +301,9 @@ void main() {
     test('standards survive deactivation of old cycle and creation of new', () async {
       final first = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      // 2026-06-01 is the next Monday (week-start) past effectiveEnd.
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       // New cycle should also have valid standards
       expect(refreshed.targetCPLH, greaterThan(0));
@@ -322,9 +348,11 @@ void main() {
       await SqliteTargetProfileRepository.instance
           .upsertActiveTargetProfile(staleProfile);
 
-      // Trigger auto-refresh (effectiveEnd = 2026-05-25)
+      // Trigger auto-refresh (effectiveEnd = 2026-05-25). Slice 0 gates
+      // refresh to the configured week-start day (Monday); 2026-06-01 is
+      // the first Monday strictly past effective end.
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       // The refreshed cycle must NOT have the sentinel value.
       // It should have rebuilt from explicit recommendation inputs
@@ -387,8 +415,9 @@ void main() {
     test('only one active row exists after auto-refresh', () async {
       await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      // 2026-06-01 is the next Monday (week-start) past effectiveEnd.
       await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       final db = await SqliteDatabase.instance.database;
       final activeRows = await db.query('target_cycles',
@@ -490,9 +519,12 @@ void main() {
         'created_at': '2026-03-01T00:00:00Z',
       });
 
-      // Now create a proper cycle via the service
+      // Now create a proper cycle via the service. Slice 0 gates refresh
+      // to the operator's configured week-start day (Monday in the demo
+      // seed); 2026-05-04 is the next Monday past both stale rows'
+      // effective_end values.
       await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-01');
+          .getOrCreateActiveCycle(restaurantId, '2026-05-04');
 
       final activeRows = await db.query('target_cycles',
           where: 'restaurant_id = ? AND deactivated_at IS NULL',
@@ -548,9 +580,10 @@ void main() {
       expect(BaselineData.derivedTargetCPLH, 777.0,
           reason: 'sentinel must be in effect before refresh');
 
-      // Auto-refresh past effective end (2026-05-25 + 1 day)
+      // Auto-refresh past effective end on the next configured week-start
+      // day (Monday 2026-06-01). Slice 0 gates refresh to week-start.
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       expect(refreshed.targetCPLH, isNot(777.0),
           reason: 'refreshed cycle must not carry poisoned in-memory value');
@@ -944,9 +977,10 @@ void main() {
       final profileBefore = await readProfile();
       expect(profileBefore, isNotNull);
 
-      // Auto-refresh past effective end (2026-05-25 + 1 day)
+      // Auto-refresh past effective end on the next configured week-start
+      // day (Monday 2026-06-01). Slice 0 gates refresh to week-start.
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       final profileAfter = await readProfile();
       expect(profileAfter, isNotNull);
@@ -1116,8 +1150,9 @@ void main() {
     test('auto-refresh persists new summary for refreshed cycle', () async {
       final first = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      // 2026-06-01 is the next Monday (week-start) past effectiveEnd.
       final refreshed = await TargetCycleService.instance
-          .getOrCreateActiveCycle(restaurantId, '2026-05-26');
+          .getOrCreateActiveCycle(restaurantId, '2026-06-01');
 
       expect(refreshed.cycleId, isNot(first.cycleId));
 
