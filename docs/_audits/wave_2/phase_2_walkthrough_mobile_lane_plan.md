@@ -162,16 +162,20 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 
 ## Surface inventory (Pass 2 — cold boot)
 
-- [ ] P2-01 — Splash (first paint after `adb install` + launch)
-- [ ] P2-02 — Welcome / sign-in landing (demo build behavior TBD on uninstall+reinstall)
-- [ ] P2-03 — Login screen
-- [ ] P2-04 — MFA challenge (if demo seed pre-enrolls a factor)
-- [ ] P2-05 — First-frame Shift dashboard (any empty-state copy bugs?)
-- [ ] P2-06 — Pull-to-refresh on each tab (catches demo-seed-not-loaded state)
-- [ ] P2-07 — Settings → Account empty state
-- [ ] P2-08 — Settings → Integrations empty state (zero vendors connected)
-- [ ] P2-09 — Settings → Setup empty state (no covers / timing / wage seeded)
-- [ ] P2-10 — Notifications empty state (zero unread)
+> **Cold-boot method used**: `adb shell pm clear com.forgeflow.app` (wipes app data + SQLite, keeps APK). The standalone demo flavor never reaches a login/MFA flow (`requireAuth: false` builds skip the AuthGate per PR #756 root-cause), so P2-02 / P2-03 / P2-04 are STUB.
+
+- [x] P2-01 — Splash / First-frame Shift dashboard — `p2_01_splash_first_paint.png`. EMPTY STATE: "LOCKED PLAN UNAVAILABLE" (clean copy, no null-interpolation bugs). Restaurant header missing on cold-boot — `FU-mobile-cold-boot-shift-header-missing` filed.
+- [🚧] P2-02 — Welcome / sign-in landing — STUB: demo flavor builds with `requireAuth: false`, no welcome screen on cold boot
+- [🚧] P2-03 — Login screen — STUB: same reason
+- [🚧] P2-04 — MFA challenge — STUB: same reason
+- [x] P2-05 — First-frame Shift dashboard — same as P2-01 (merged for capture efficiency)
+- [x] (bonus) **Cold-boot drawer regression test** — `p2_02_drawer_cold_boot.png`. PR #756 verified live on cold boot — drawer renders Barrio Legado + check icon even when dashboard is empty.
+- [x] P2-Variance — Variance tab cold-boot — `p2_03_variance_cold_boot.png`. FULLY POPULATED. Variance reads `shift_records` + `week_records` which ARE seeded by the cold-boot demo writer. Only `WeeklyPlanSnapshot` (the locked plan) is missing. `FU-mobile-notification-tray-inconsistent-with-locked-plan-state` filed (notification badge appeared on cold boot referencing a "Weekly Plan Locked" event while Shift says "no plan locked").
+- [ ] P2-06 — Pull-to-refresh on each tab — deferred to next Pass 2 batch
+- [ ] P2-07 — Settings → Account empty state — N/A (Account tab not on mobile per Pass 1 finding `FU-mobile-settings-account-tab-not-on-mobile`)
+- [ ] P2-08 — Settings → Integrations empty state — deferred to next batch
+- [ ] P2-09 — Settings → Setup empty state — deferred to next batch
+- [ ] P2-10 — Notifications empty state — deferred to next batch
 
 ---
 
