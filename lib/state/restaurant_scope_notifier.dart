@@ -6,6 +6,11 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_active_scope_re
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../services/scope/business_scope_repository.dart';
 
+/// Lazy reader that returns the locally-seeded
+/// [RestaurantLocation] rows. Injected by tests; defaults to the
+/// shared [SqliteRestaurantScopeRepository] singleton.
+typedef LocalRestaurantsReader = Future<List<RestaurantLocation>> Function();
+
 class RestaurantScopeNotifier extends ChangeNotifier {
   RestaurantLocation? _restaurant;
   BusinessScope? _activeScope;
@@ -65,6 +70,83 @@ class RestaurantScopeNotifier extends ChangeNotifier {
       await repo.clearActiveScope(userId);
       SqliteRestaurantScopeRepository.instance.clearRuntimeRestaurantOverride();
       _restaurant = null;
+    }
+    _isLoading = false;
+    notifyListeners();
+  }
+
+  /// Populates [availableScopes] from the locally-seeded
+  /// `restaurant_locations` rows when no [BusinessScopeClient] is
+  /// wired (demo bootstrap, offline first boot, or the brief window
+  /// before the proxy fetch resolves).
+  ///
+  /// Mirrors the shape [loadBusinessScopes] would produce had a
+  /// network client been available: one location-scoped
+  /// [BusinessScope] per row, tagged with the active session's
+  /// [operatorId]. Picks the previously-persisted active scope when
+  /// it still resolves; otherwise falls back to the first location.
+  ///
+  /// Architectural notes:
+  /// - HP #2 (demo is a writer-side switch): this is NOT a `kDemoMode`
+  ///   reader carve-out. The demo writer side already seeds
+  ///   `restaurant_locations` with `restaurant_id =
+  ///   'demo_restaurant_001'`; production receives the same rows
+  ///   either via the proxy fetch or via local cache hydration. Both
+  ///   paths feed the same drawer renderer.
+  /// - The networked [loadBusinessScopes] still wins when a
+  ///   [BusinessScopeClient] is wired — that call overwrites
+  ///   [_availableScopes] with the proxy-authoritative list.
+  Future<void> seedAvailableScopesFromLocal({
+    required String userId,
+    required String operatorId,
+    LocalRestaurantsReader? localRestaurantsReader,
+    ActiveBusinessScopeRepository? activeScopeRepository,
+  }) async {
+    final reader =
+        localRestaurantsReader ??
+        SqliteRestaurantScopeRepository.instance.listRestaurants;
+    final activeRepo =
+        activeScopeRepository ?? SqliteActiveScopeRepository.instance;
+    final restaurants = await reader();
+    if (restaurants.isEmpty) {
+      // Nothing to surface — fall through with empty list. The
+      // drawer's pre-existing "Your available locations will appear
+      // here." empty-state still renders for this branch.
+      _availableScopes = const <BusinessScope>[];
+      _isLoading = false;
+      notifyListeners();
+      return;
+    }
+    final scopes = <BusinessScope>[
+      for (final r in restaurants)
+        BusinessScope(
+          scopeId: r.restaurantId,
+          scopeType: 'location',
+          operatorId: operatorId,
+          locationId: r.restaurantId,
+          label: r.displayName,
+          businessTimezone: r.businessTimezone.isEmpty
+              ? null
+              : r.businessTimezone,
+        ),
+    ];
+    final persisted = await activeRepo.getActiveScope(userId);
+    final persistedMatch = _findMatchingScope(scopes, persisted);
+    final activeRestaurantId = _restaurant?.restaurantId;
+    final activeMatch = activeRestaurantId == null
+        ? null
+        : scopes
+              .where(
+                (s) =>
+                    s.isLocationScope && s.locationId == activeRestaurantId,
+              )
+              .firstOrNull;
+    final selected = persistedMatch ?? activeMatch ?? scopes.first;
+    _availableScopes = scopes;
+    _activeScope = selected;
+    if (selected.isLocationScope) {
+      await activeRepo.saveActiveScope(userId: userId, scope: selected);
+      await _activateRestaurantForScope(selected);
     }
     _isLoading = false;
     notifyListeners();
