@@ -24,6 +24,14 @@ import '../../theme/app_theme.dart';
 
 /// Pure value object for a service period in the editor. Times use
 /// "HH:MM" 24-hour local strings to match the route contract.
+///
+/// Per-Daypart Targets V1 / Slice 2.5 (Gap 28): three additional
+/// fields mirror the canonical `ServicePeriodDefinition` so operators
+/// can express day-restricted periods (e.g. "Weekend Brunch" Sat/Sun
+/// only) and have full parity with what the mobile app reads:
+///   - [applicableDays]  ISO weekdays (1=Mon..7=Sun); default = all 7.
+///   - [shortLabel]      compact label for tight UI (e.g. "L"); default = ''.
+///   - [sortOrder]       display order; lower sorts first; default = 0.
 @immutable
 class ServicePeriodDraft {
   const ServicePeriodDraft({
@@ -31,12 +39,29 @@ class ServicePeriodDraft {
     required this.label,
     required this.startLocal,
     required this.endLocal,
+    this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
+    this.shortLabel = '',
+    this.sortOrder = 0,
   });
 
   final String key;
   final String label;
   final String startLocal;
   final String endLocal;
+
+  /// ISO weekdays this period applies to. 1 = Monday .. 7 = Sunday.
+  /// An empty list (or any value outside 1..7) is INVALID and surfaces
+  /// as `invalid_applicable_days` from [validateServicePeriods].
+  final List<int> applicableDays;
+
+  /// Compact label for tight UI surfaces (e.g. "L" for Lunch). Empty
+  /// string is a legitimate value, not a sentinel — the mobile app
+  /// falls back to the long [label] when this is empty.
+  final String shortLabel;
+
+  /// Display sort order. Lower values sort first. 0 is a legitimate
+  /// value (canonical model treats it as the first slot).
+  final int sortOrder;
 
   /// True when the end time is at or before the start time (mod 24h),
   /// meaning the period wraps past midnight. e.g. 22:00 -> 01:00.
@@ -52,12 +77,18 @@ class ServicePeriodDraft {
     String? label,
     String? startLocal,
     String? endLocal,
+    List<int>? applicableDays,
+    String? shortLabel,
+    int? sortOrder,
   }) =>
       ServicePeriodDraft(
         key: key ?? this.key,
         label: label ?? this.label,
         startLocal: startLocal ?? this.startLocal,
         endLocal: endLocal ?? this.endLocal,
+        applicableDays: applicableDays ?? this.applicableDays,
+        shortLabel: shortLabel ?? this.shortLabel,
+        sortOrder: sortOrder ?? this.sortOrder,
       );
 }
 
@@ -155,6 +186,26 @@ ServicePeriodValidation validateServicePeriods(
         ServicePeriodValidationError(
           code: 'invalid_service_period_label',
           message: 'Service period ${i + 1} needs a label your team will see.',
+          periodIndex: i,
+        ),
+      );
+    }
+
+    // Slice 2.5 / Gap 28: at least one weekday must be selected, and
+    // every entry must be a valid ISO weekday (1=Mon..7=Sun). The
+    // server enforces the same rule; surfacing it client-side avoids
+    // a 400 round-trip when the operator deselects every chip.
+    final days = period.applicableDays;
+    final hasInvalidDay = days.any((d) => d < 1 || d > 7);
+    if (days.isEmpty || hasInvalidDay) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'invalid_applicable_days',
+          message: days.isEmpty
+              ? 'Pick at least one day for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}". '
+                  'A service period needs to apply on at least one weekday.'
+              : 'The days for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+                  'must be Monday through Sunday (1-7).',
           periodIndex: i,
         ),
       );
@@ -441,6 +492,8 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
   late final TextEditingController _key;
   late final TextEditingController _start;
   late final TextEditingController _end;
+  late final TextEditingController _shortLabel;
+  late final TextEditingController _sortOrder;
 
   @override
   void initState() {
@@ -449,6 +502,9 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
     _key = TextEditingController(text: widget.period.key);
     _start = TextEditingController(text: widget.period.startLocal);
     _end = TextEditingController(text: widget.period.endLocal);
+    _shortLabel = TextEditingController(text: widget.period.shortLabel);
+    _sortOrder =
+        TextEditingController(text: widget.period.sortOrder.toString());
   }
 
   @override
@@ -466,6 +522,12 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
     if (oldWidget.period.endLocal != widget.period.endLocal) {
       _end.text = widget.period.endLocal;
     }
+    if (oldWidget.period.shortLabel != widget.period.shortLabel) {
+      _shortLabel.text = widget.period.shortLabel;
+    }
+    if (oldWidget.period.sortOrder != widget.period.sortOrder) {
+      _sortOrder.text = widget.period.sortOrder.toString();
+    }
   }
 
   @override
@@ -474,6 +536,8 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
     _key.dispose();
     _start.dispose();
     _end.dispose();
+    _shortLabel.dispose();
+    _sortOrder.dispose();
     super.dispose();
   }
 
@@ -615,6 +679,71 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          // Slice 2.5 / Gap 28: day-restriction chip row. Operator can
+          // toggle which ISO weekdays this period applies to. Default
+          // is all 7 (matches pre-2.5 implicit behavior). Empty list
+          // surfaces an inline `invalid_applicable_days` error.
+          _DayChipRow(
+            index: widget.index,
+            selectedDays: widget.period.applicableDays,
+            onChanged: (next) => widget.onChanged(
+              widget.period.copyWith(applicableDays: next),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              SizedBox(
+                width: 160,
+                child: TextField(
+                  key: ValueKey(
+                    'service_period_editor_short_label_${widget.index}',
+                  ),
+                  controller: _shortLabel,
+                  decoration: const InputDecoration(
+                    labelText: 'Short label (e.g. L, D, B)',
+                    border: OutlineInputBorder(),
+                    helperText: 'Compact label for tight UI.',
+                  ),
+                  onChanged: (value) => widget.onChanged(
+                    widget.period.copyWith(shortLabel: value),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              SizedBox(
+                width: 130,
+                child: TextField(
+                  key: ValueKey(
+                    'service_period_editor_sort_order_${widget.index}',
+                  ),
+                  controller: _sortOrder,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Sort order',
+                    border: OutlineInputBorder(),
+                    helperText: 'Lower sorts first.',
+                  ),
+                  onChanged: (value) {
+                    final parsed = int.tryParse(value.trim());
+                    if (parsed == null) return;
+                    widget.onChanged(
+                      widget.period.copyWith(sortOrder: parsed),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Pick the days this period runs. Leave the short label '
+                  'blank to use the long label everywhere.',
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+              ),
+            ],
+          ),
           if (widget.errors.isNotEmpty) ...[
             const SizedBox(height: 8),
             for (final error in widget.errors)
@@ -631,6 +760,78 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Slice 2.5 / Gap 28: row of seven small toggle chips (Mon..Sun)
+/// that drive the period's `applicableDays` ISO weekday set. Selected
+/// chips have the sunset accent; unselected chips show a subtle
+/// outline. Tapping a chip toggles its membership and emits the
+/// updated list (sorted ascending) via [onChanged].
+class _DayChipRow extends StatelessWidget {
+  const _DayChipRow({
+    required this.index,
+    required this.selectedDays,
+    required this.onChanged,
+  });
+
+  final int index;
+  final List<int> selectedDays;
+  final ValueChanged<List<int>> onChanged;
+
+  static const List<({int isoDay, String label})> _days =
+      <({int isoDay, String label})>[
+    (isoDay: 1, label: 'Mon'),
+    (isoDay: 2, label: 'Tue'),
+    (isoDay: 3, label: 'Wed'),
+    (isoDay: 4, label: 'Thu'),
+    (isoDay: 5, label: 'Fri'),
+    (isoDay: 6, label: 'Sat'),
+    (isoDay: 7, label: 'Sun'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = selectedDays.toSet();
+    return Wrap(
+      key: ValueKey('service_period_editor_days_$index'),
+      spacing: 6,
+      runSpacing: 6,
+      children: <Widget>[
+        for (final day in _days)
+          FilterChip(
+            key: ValueKey(
+              'service_period_editor_day_${index}_${day.isoDay}',
+            ),
+            label: Text(day.label),
+            selected: selected.contains(day.isoDay),
+            onSelected: (isSelected) {
+              final next = <int>{...selected};
+              if (isSelected) {
+                next.add(day.isoDay);
+              } else {
+                next.remove(day.isoDay);
+              }
+              final sorted = next.toList()..sort();
+              onChanged(sorted);
+            },
+            selectedColor: AppColors.sunset.withValues(alpha: 0.18),
+            checkmarkColor: AppColors.sunsetDark,
+            labelStyle: AppTextStyles.mono11(
+              color: selected.contains(day.isoDay)
+                  ? AppColors.sunsetDark
+                  : AppColors.textSecondary,
+            ),
+            side: BorderSide(
+              color: selected.contains(day.isoDay)
+                  ? AppColors.sunsetDark.withValues(alpha: 0.45)
+                  : AppColors.borderSubtle,
+            ),
+            visualDensity: VisualDensity.compact,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          ),
+      ],
     );
   }
 }
@@ -752,6 +953,11 @@ class ServicePeriodEditorController extends ChangeNotifier {
 
   void addPeriod({ServicePeriodDraft? template}) {
     if (_periods.length >= 4) return;
+    // Slice 2.5: a brand-new period defaults to all 7 weekdays
+    // (matches pre-2.5 implicit behavior — every period applied every
+    // day), an empty short label, and a sortOrder equal to its index
+    // in the list at insert time. The operator can adjust any of the
+    // three after add via the chip row + auxiliary fields.
     _periods.add(
       template ??
           ServicePeriodDraft(
@@ -759,6 +965,9 @@ class ServicePeriodEditorController extends ChangeNotifier {
             label: '',
             startLocal: '00:00',
             endLocal: '00:00',
+            applicableDays: const <int>[1, 2, 3, 4, 5, 6, 7],
+            shortLabel: '',
+            sortOrder: _periods.length,
           ),
     );
     notifyListeners();

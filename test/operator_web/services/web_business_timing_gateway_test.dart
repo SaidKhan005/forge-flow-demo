@@ -264,5 +264,117 @@ void main() {
       );
       expect(capturedRequests, isEmpty);
     });
+
+    // Slice 2.5 / Gap 28 — DTO carries the three new fields end-to-end.
+    test('ServicePeriodCreate.toJson emits applicableDays, shortLabel, sortOrder',
+        () {
+      const create = ServicePeriodCreate(
+        key: 'brunch',
+        label: 'Weekend Brunch',
+        startLocal: '10:00',
+        endLocal: '14:00',
+        applicableDays: <int>[6, 7],
+        shortLabel: 'B',
+        sortOrder: 2,
+      );
+      final json = create.toJson();
+      expect(json['applicableDays'], <int>[6, 7]);
+      expect(json['shortLabel'], 'B');
+      expect(json['sortOrder'], 2);
+    });
+
+    test('ServicePeriodCreate.toJson defaults all 7 weekdays + 0 sort + empty short',
+        () {
+      const create = ServicePeriodCreate(
+        key: 'lunch',
+        label: 'Lunch',
+        startLocal: '11:00',
+        endLocal: '15:00',
+      );
+      final json = create.toJson();
+      expect(json['applicableDays'], <int>[1, 2, 3, 4, 5, 6, 7]);
+      expect(json['shortLabel'], '');
+      expect(json['sortOrder'], 0);
+    });
+
+    test('ServicePeriodPatch.toJson emits only present fields', () {
+      const patch = ServicePeriodPatch(
+        applicableDays: <int>[6, 7],
+        shortLabel: 'L',
+      );
+      final json = patch.toJson();
+      expect(json.keys.toSet(), <String>{'applicableDays', 'shortLabel'});
+      expect(json['applicableDays'], <int>[6, 7]);
+      expect(json['shortLabel'], 'L');
+    });
+
+    test(
+      'ServicePeriod.fromJson defaults the three new fields when server omits them',
+      () {
+        final period = ServicePeriod.fromJson(<String, Object?>{
+          'key': 'lunch',
+          'label': 'Lunch',
+          'startLocal': '11:00',
+          'endLocal': '15:00',
+          'rollsPastMidnight': false,
+          // Older payloads omit applicableDays / shortLabel / sortOrder
+          // entirely. fromJson must NOT throw `malformed_service_period`.
+        });
+        expect(period.applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
+        expect(period.shortLabel, '');
+        expect(period.sortOrder, 0);
+      },
+    );
+
+    test('ServicePeriod.fromJson reads the three fields when present', () {
+      final period = ServicePeriod.fromJson(<String, Object?>{
+        'key': 'brunch',
+        'label': 'Brunch',
+        'startLocal': '10:00',
+        'endLocal': '14:00',
+        'rollsPastMidnight': false,
+        'applicableDays': <int>[6, 7],
+        'shortLabel': 'B',
+        'sortOrder': 1,
+      });
+      expect(period.applicableDays, <int>[6, 7]);
+      expect(period.shortLabel, 'B');
+      expect(period.sortOrder, 1);
+    });
+
+    test(
+      'createProfile emits applicableDays / shortLabel / sortOrder on the wire',
+      () async {
+        final gateway = buildGateway();
+        await gateway.createProfile(
+          const BusinessTimingProfileCreate(
+            scopeKind: 'location',
+            scopeId: 'location-1',
+            effectiveAtBusinessDate: '2026-05-10',
+            ianaTimezone: 'America/Toronto',
+            weekStartDay: 'monday',
+            businessDayStartLocal: '04:00',
+            servicePeriods: <ServicePeriodCreate>[
+              ServicePeriodCreate(
+                key: 'brunch',
+                label: 'Weekend Brunch',
+                startLocal: '10:00',
+                endLocal: '14:00',
+                applicableDays: <int>[6, 7],
+                shortLabel: 'B',
+                sortOrder: 0,
+              ),
+            ],
+          ),
+        );
+        final request = capturedRequests.single;
+        final json = jsonDecode(request.body) as Map<String, Object?>;
+        final periods = json['servicePeriods'] as List<Object?>;
+        final first = periods.single as Map<String, Object?>;
+        expect(first['applicableDays'], <int>[6, 7]);
+        expect(first['shortLabel'], 'B');
+        expect(first['sortOrder'], 0);
+      },
+    );
   });
 }
