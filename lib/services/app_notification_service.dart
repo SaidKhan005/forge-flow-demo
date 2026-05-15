@@ -125,7 +125,7 @@ class AppNotificationService {
       eventKey: eventKey,
       title: 'Authenticator App Removed',
       body:
-          'Two-factor authentication was removed. Add a new authenticator app if this was unexpected.',
+          'Two-factor sign-in was removed. Add a new authenticator app if this was unexpected.',
       businessDate: businessDate,
       createdAt: nowIsoUtc(),
     );

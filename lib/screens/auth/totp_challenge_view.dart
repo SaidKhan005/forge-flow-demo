@@ -14,7 +14,7 @@ class TotpChallengeView extends StatefulWidget {
     this.errorMessage,
     this.helpMessage,
     this.onRequestHelp,
-    this.title = 'Two-factor authentication',
+    this.title = 'Two-factor sign-in',
     this.sectionTitle = 'Authenticator app',
     this.instructions =
         'Open your authenticator app and enter the 6-digit code.',

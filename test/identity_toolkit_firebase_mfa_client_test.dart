@@ -364,7 +364,7 @@ void main() {
         expect(failure.code, equals('too_many_attempts_try_later'));
         expect(
           failure.message,
-          equals('MFA enrollment failed. Please try again.'),
+          equals('Two-factor sign-in setup failed. Please try again.'),
         );
       },
     );
@@ -418,7 +418,7 @@ void main() {
         expect(failure.code, equals('mfa_finalize_missing_id_token'));
         expect(
           failure.message,
-          equals('MFA enrollment could not be verified. Please try again.'),
+          equals('Two-factor sign-in could not be verified. Please try again.'),
         );
         // Lookup must not run when finalize did not return a fresh idToken.
         expect(httpClient.requests, hasLength(1));

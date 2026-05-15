@@ -468,7 +468,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // U-7 MO-5d — subtitle "Review the authenticator..."
                   // dropped per debug.md:295.
                   _settingsSection(
-                    title: 'Two-factor authentication',
+                    title: 'Two-factor sign-in',
                     child: SettingsMfaSection(
                       gateway: widget.mfaOperationsGateway,
                       actor:
@@ -485,7 +485,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       child: SettingsPointerRow(
-                        label: 'Manage two-factor authentication on Ops Web',
+                        label: 'Manage two-factor sign-in on Ops Web',
                         opWebPath: 'my-account#security',
                         navId: 'my_account',
                         handoffCodeGateway: widget.handoffCodeGateway,

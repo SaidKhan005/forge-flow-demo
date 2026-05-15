@@ -365,7 +365,7 @@ const _kLegacyNotificationCopy = <String, _FallbackCopy>{
   'mfa_authenticator_removed': _FallbackCopy(
     title: 'Authenticator App Removed',
     body:
-        'Two-factor authentication was removed. Add a new authenticator app if this was unexpected.',
+        'Two-factor sign-in was removed. Add a new authenticator app if this was unexpected.',
   ),
 };
 

@@ -29,7 +29,7 @@ void main() {
 
     expect(
       find.text(
-        'Two-factor issue: MFA operations are not configured for this runtime.',
+        'Two-factor sign-in issue: MFA operations are not configured for this runtime.',
       ),
       findsOneWidget,
     );
@@ -200,7 +200,7 @@ void main() {
     expect(find.byKey(const Key('mfa_recovery_codes_row')), findsNothing);
     expect(
       find.text(
-        'Two-factor authentication update: Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.',
+        'Two-factor sign-in update: Authenticator app added. If you lose access, ask your restaurant admin to reset two-factor sign-in.',
       ),
       findsOneWidget,
     );
