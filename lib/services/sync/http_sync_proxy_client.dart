@@ -857,10 +857,11 @@ class HttpSyncProxyClient
           ),
         )
         .toList(growable: false);
-    final shiftCloseAuthority =
-        _readString(json['shift_close_authority']) ??
-        _readString(json['close_authority']) ??
-        ShiftCloseAuthority.vendorFinalization.value;
+    // Per-Daypart V1 Slice 1.5: ignore any legacy
+    // `shift_close_authority` / `close_authority` /
+    // `local_close_fallback` fields the proxy still emits. They have
+    // no consumer; close-authority is auto-derived per shift from the
+    // vendor capability lookup.
     final now = DateTime.now().toUtc().toIso8601String();
     return RestaurantTimingConfig(
       restaurantId: _readString(json['restaurant_id']) ?? fallbackRestaurantId,
@@ -873,11 +874,6 @@ class HttpSyncProxyClient
           '04:00',
       weekStartDay: _readInt(json['week_start_day']) ?? DateTime.monday,
       servicePeriodDefinitions: definitions,
-      shiftCloseAuthority: ShiftCloseAuthority.fromValue(shiftCloseAuthority),
-      localCloseFallback: _normalizeTime(
-        _readString(json['local_close_fallback']) ??
-            _readString(json['local_close_fallback_time']),
-      ),
       createdAt: _readString(json['created_at']) ?? now,
       updatedAt: _readString(json['updated_at']) ?? now,
     );

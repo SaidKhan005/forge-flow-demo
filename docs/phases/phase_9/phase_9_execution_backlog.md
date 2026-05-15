@@ -176,8 +176,15 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`,
-  which is the Wave 2 RP-9 `team.roles.default_catalog.view` +
+  `202605150400_per_daypart_v1_drop_close_authority.sql`, which is
+  the Per-Daypart V1 Slice 1.5 deprecation step on
+  `public.business_timing_profiles` (drops the cross-column CHECK +
+  NOT NULL on `close_authority`; close-authority is auto-derived per
+  shift from the per-vendor `CloseAuthorityCapability` lookup +
+  `business_day_start_local_time` fallback; full column drop deferred
+  to a follow-up Postgres-only slice). Prior cutoff
+  `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`
+  is the Wave 2 RP-9 `team.roles.default_catalog.view` +
   `team.roles.default_catalog.edit` permission keys + baseline grants
   (F&F super_admin write; super_admin + ff_support read). Promotes the
   role-tier gate on `default_role_catalog_admin_screen.dart` +

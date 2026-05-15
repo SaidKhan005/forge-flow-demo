@@ -272,6 +272,12 @@ void main() {
   setUp(() async {
     await SqliteDatabase.instance.reseedDemo();
     // Restore Monday-default demo config.
+    //
+    // Per-Daypart V1 Slice 1.5: `shift_close_authority` /
+    // `local_close_fallback` were dropped from this row. The
+    // per-row close authority is auto-derived from each shift's
+    // `sourceSystem` POS vendor id via
+    // `lib/services/integration/close_authority_capability.dart`.
     final db = await SqliteDatabase.instance.database;
     await db.delete('restaurant_timing_configs');
     final now = DateTime.now().toUtc().toIso8601String();
@@ -284,8 +290,6 @@ void main() {
         {'id': 'dinner', 'label': 'Dinner', 'short_label': 'D', 'sort_order': 2, 'start_local_time': '17:00', 'end_local_time': '23:00', 'rolls_past_midnight': false, 'applicable_days': [1, 2, 3, 4, 5, 6, 7]},
         {'id': 'late_night', 'label': 'Late Night', 'short_label': 'LN', 'sort_order': 3, 'start_local_time': '23:00', 'end_local_time': '02:00', 'rolls_past_midnight': true, 'applicable_days': [5, 6]},
       ]),
-      'shift_close_authority': 'app_local_cutoff_fallback',
-      'local_close_fallback': '04:00',
       'created_at': now,
       'updated_at': now,
     });
@@ -321,11 +325,19 @@ void main() {
     });
 
     test('vendorFinalization: same-business-date rows are included', () async {
-      // Switch to vendorFinalization authority.
+      // Per-Daypart V1 Slice 1.5: close-authority is auto-derived per
+      // shift from `sourceSystem`. Re-stamp every seeded closed row's
+      // `source_system` to `toast` (a reliable POS vendor per
+      // `close_authority_capability.dart`) so the boundary resolver
+      // classifies every closed row as `vendorFinalization` and lets
+      // the same-business-date Fri lunch row count as finalized.
       final db = await SqliteDatabase.instance.database;
-      await db.update('restaurant_timing_configs',
-          {'shift_close_authority': 'vendor_finalization'},
-          where: 'restaurant_id = ?', whereArgs: [restaurantId]);
+      await db.update(
+        'shift_records',
+        {'source_system': 'toast'},
+        where: 'restaurant_id = ? AND status = ?',
+        whereArgs: [restaurantId, 'closed'],
+      );
       SqliteRestaurantTimingConfigRepository.instance.resetDao();
 
       // Clear snapshot to regenerate.
@@ -358,8 +370,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -437,8 +447,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.wednesday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );

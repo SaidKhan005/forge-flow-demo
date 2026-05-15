@@ -1,3 +1,8 @@
+// Per-Daypart V1 Slice 1.5: `shift_close_authority` and
+// `local_close_fallback` were dropped from `restaurant_timing_configs`.
+// Close-authority is auto-derived per shift from
+// `lib/services/integration/close_authority_capability.dart`.
+
 import 'dart:convert';
 import '../../../../domain/models/restaurant_location.dart';
 import '../../../../domain/models/restaurant_timing_config.dart';
@@ -60,10 +65,6 @@ class SqliteRestaurantTimingConfigRepository
       businessDayStartLocalTime: raw['business_day_start_local_time'] as String,
       weekStartDay: raw['week_start_day'] as int,
       servicePeriodDefinitions: definitions,
-      shiftCloseAuthority: ShiftCloseAuthority.fromValue(
-        raw['shift_close_authority'] as String,
-      ),
-      localCloseFallback: raw['local_close_fallback'] as String?,
       createdAt: raw['created_at'] as String,
       updatedAt: raw['updated_at'] as String,
     );
@@ -78,8 +79,6 @@ class SqliteRestaurantTimingConfigRepository
       businessDayStartLocalTime: config.businessDayStartLocalTime,
       weekStartDay: config.weekStartDay,
       servicePeriodDefinitions: config.servicePeriodDefinitions,
-      shiftCloseAuthority: config.shiftCloseAuthority,
-      localCloseFallback: config.localCloseFallback,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
     );

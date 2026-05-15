@@ -34,9 +34,10 @@ void main() {
       expect(config!.restaurantId, 'demo_restaurant_001');
       expect(config.businessDayStartLocalTime, '04:00');
       expect(config.weekStartDay, DateTime.monday);
-      expect(config.shiftCloseAuthority,
-          ShiftCloseAuthority.appLocalCutoffFallback);
-      expect(config.localCloseFallback, '04:00');
+      // Per-Daypart V1 Slice 1.5: `shiftCloseAuthority` /
+      // `localCloseFallback` were dropped from RestaurantTimingConfig.
+      // Close-authority is auto-derived per shift from
+      // `lib/services/integration/close_authority_capability.dart`.
     });
 
     test('restaurant_timing_configs table is queryable', () async {
@@ -156,8 +157,6 @@ void main() {
           businessDayStartLocalTime: original!.businessDayStartLocalTime,
           weekStartDay: original.weekStartDay,
           servicePeriodDefinitions: original.servicePeriodDefinitions,
-          shiftCloseAuthority: original.shiftCloseAuthority,
-          localCloseFallback: original.localCloseFallback,
           createdAt: '2026-05-07T00:00:00.000Z',
           updatedAt: '2026-05-07T00:00:00.000Z',
         ),
@@ -312,11 +311,13 @@ void main() {
         'business_day_start_local_time',
         'week_start_day',
         'service_period_definitions_json',
-        'shift_close_authority',
-        'local_close_fallback',
         'created_at',
         'updated_at',
       ]));
+      // Per-Daypart V1 Slice 1.5: `shift_close_authority` +
+      // `local_close_fallback` dropped (operator decision 2026-05-15).
+      expect(colNames, isNot(contains('shift_close_authority')));
+      expect(colNames, isNot(contains('local_close_fallback')));
     });
   });
 
@@ -333,8 +334,6 @@ void main() {
         'business_day_start_local_time': '04:00',
         'week_start_day': 1,
         'service_period_definitions_json': '[]',
-        'shift_close_authority': 'app_local_cutoff_fallback',
-        'local_close_fallback': '04:00',
         'created_at': '2026-04-13T00:00:00Z',
         'updated_at': '2026-04-13T00:00:00Z',
       });
@@ -404,8 +403,6 @@ void main() {
         businessDayStartLocalTime: '04:00',
         weekStartDay: 1,
         servicePeriodDefinitions: defs,
-        shiftCloseAuthority: ShiftCloseAuthority.appLocalCutoffFallback,
-        localCloseFallback: '04:00',
         createdAt: '2026-04-13T00:00:00Z',
         updatedAt: '2026-04-13T00:00:00Z',
       );
@@ -454,8 +451,6 @@ void main() {
         businessDayStartLocalTime: '04:00',
         weekStartDay: 1,
         servicePeriodDefinitions: defs,
-        shiftCloseAuthority: ShiftCloseAuthority.appLocalCutoffFallback,
-        localCloseFallback: '04:00',
         createdAt: '2026-04-13T00:00:00Z',
         updatedAt: '2026-04-13T00:00:00Z',
       );

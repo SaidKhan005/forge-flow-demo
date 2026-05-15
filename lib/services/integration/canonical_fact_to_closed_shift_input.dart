@@ -79,10 +79,14 @@ import '../../domain/models/closed_shift_input.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/demand_forecast_context.dart';
+import '../../domain/models/schedule_distribution_weights.dart';
 import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/daypart_bucketer.dart';
 import '../../infrastructure/persistence/postgres/operator_scoped_repository.dart';
 import '../../infrastructure/persistence/postgres/postgres_executor.dart';
 import '../../infrastructure/persistence/postgres/tenant_context.dart';
+import '../daypart_plan_allocator.dart';
+import 'close_authority_capability.dart';
 import 'iana_timezone_converter.dart';
 import 'labor_wage_source_class.dart';
 import 'pos_covers_capability.dart';
@@ -156,6 +160,28 @@ class CanonicalFactToClosedShiftInputAggregator
   /// Returns null only when no covers source resolves (5-way decision
   /// stage 5: unavailable). All other branches return a non-null
   /// result; the writer is the next consumer.
+  ///
+  /// Per-Daypart V1 — Slice 1.5 (Gaps 20, 21, 25, 26):
+  ///   * POS / reservation rows are filtered through [DaypartBucketer]
+  ///     so the closed-shift aggregator uses the same boundary-inclusive
+  ///     semantics as the live read.
+  ///   * Labor punches are read over a 3-day business-date window and
+  ///     split into per-period segments via
+  ///     [DaypartBucketer.bucketLaborPunch] so cross-period and
+  ///     cross-(business-date) punches contribute the correct minutes
+  ///     to each (business_date, service_period_id) slot.
+  ///   * The stage-4 forecast-covers fallback now uses
+  ///     [DaypartPlanAllocator] with the operator's full
+  ///     [allServicePeriodDefinitions] list and optional
+  ///     [distributionWeights]; the legacy "uniform / 3" divide is
+  ///     gone.
+  ///
+  /// [allServicePeriodDefinitions] is the operator's full configured
+  /// list of service periods (lunch, dinner, late_night, brunch, etc.).
+  /// When omitted, the aggregator falls back to `[periodDefinition]`
+  /// only — this preserves backward compatibility with callers that
+  /// haven't been upgraded yet, but the forecast-fallback covers split
+  /// will degrade to whole-day allocation.
   Future<AggregatorResult?> aggregate({
     required String operatorId,
     required String locationId,
@@ -165,6 +191,8 @@ class CanonicalFactToClosedShiftInputAggregator
     required String dayLabel,
     required Daypart daypart,
     required ServicePeriodDefinition periodDefinition,
+    List<ServicePeriodDefinition>? allServicePeriodDefinitions,
+    ScheduleDistributionWeights? distributionWeights,
     String? businessTimingProfileId,
     String? businessTimingProfileVersionId,
     DemandForecastContext? forecastContext,
@@ -198,6 +226,22 @@ class CanonicalFactToClosedShiftInputAggregator
         locationId: locationId,
       );
 
+      // Per-Daypart V1 Slice 1.5: every fact-bucketing call goes
+      // through the canonical [DaypartBucketer] so the closed-shift
+      // aggregator and the live `OpenShiftSnapshotProjector` share
+      // boundary-inclusivity, applicableDays handling, and
+      // cross-(business-date) splits.
+      final bucketingContext = BucketingLocationContext(
+        iana: locationMeta.timezone,
+        businessDayStartLocalTime:
+            locationMeta.businessDayStartLocalTime,
+      );
+      final periodDefinitions = allServicePeriodDefinitions == null
+          ? <ServicePeriodDefinition>[periodDefinition]
+          : List<ServicePeriodDefinition>.unmodifiable(
+              allServicePeriodDefinitions,
+            );
+
       // ─── Walk POS cover_facts → buckets to this daypart ──────────
       final coverFacts = await _readCoverFactsForDaypart(
         exec,
@@ -205,7 +249,8 @@ class CanonicalFactToClosedShiftInputAggregator
         locationId: locationId,
         businessDate: businessDate,
         periodDefinition: periodDefinition,
-        timezone: locationMeta.timezone,
+        periodDefinitions: periodDefinitions,
+        bucketingContext: bucketingContext,
       );
 
       final posVendorIds = coverFacts
@@ -223,13 +268,28 @@ class CanonicalFactToClosedShiftInputAggregator
       }
       final posVendorId = posVendorIds.isNotEmpty ? posVendorIds.first : null;
 
-      // ─── Walk labor_punches for slot ─────────────────────────────
-      final laborPunches = await _readLaborPunchesForDaypart(
+      // ─── Walk labor_punches → per-period interval split ─────────
+      //
+      // Per-Daypart V1 Slice 1.5 (Gap 21, Promise 3): an 8-hour FOH
+      // punch crossing lunch→dinner is split into the minutes that
+      // overlap each period via [DaypartBucketer.bucketLaborPunch],
+      // not attributed wholesale to the period containing the punch's
+      // start instant. Cross-(business-date) handling (Gap 26) reads
+      // punches whose stored `business_date` is the day before or the
+      // day after [businessDate], then keeps only the segments whose
+      // anchored period belongs to [businessDate].
+      final laborPunches = await _readLaborPunchesForBusinessDate(
         exec,
         operatorId: operatorId,
         locationId: locationId,
         businessDate: businessDate,
-        periodDefinition: periodDefinition,
+      );
+      final laborSplit = _splitLaborPunchesByPeriod(
+        punches: laborPunches,
+        bucketingContext: bucketingContext,
+        periodDefinitions: periodDefinitions,
+        targetServicePeriodId: periodDefinition.id,
+        targetBusinessDateIso: _isoDate(businessDate),
         timezone: locationMeta.timezone,
       );
 
@@ -240,7 +300,8 @@ class CanonicalFactToClosedShiftInputAggregator
         locationId: locationId,
         businessDate: businessDate,
         periodDefinition: periodDefinition,
-        timezone: locationMeta.timezone,
+        periodDefinitions: periodDefinitions,
+        bucketingContext: bucketingContext,
       );
 
       // ─── Read prior shift_records row → target + timing preservation
@@ -257,12 +318,15 @@ class CanonicalFactToClosedShiftInputAggregator
         settings: settings,
         keyedServicePeriodSetting: keyedServicePeriodSetting,
         businessDate: businessDate,
+        dayLabel: dayLabel,
         daypart: daypart,
         coverFacts: coverFacts,
         posVendorId: posVendorId,
         reservationFacts: reservationFacts,
         forecastContext: forecastContext,
         periodDefinition: periodDefinition,
+        periodDefinitions: periodDefinitions,
+        distributionWeights: distributionWeights,
         walkInOverride: walkInOverride,
       );
       if (coversResolution == null) {
@@ -273,7 +337,10 @@ class CanonicalFactToClosedShiftInputAggregator
       // ─── 4-way wage resolution ───────────────────────────────────
       final laborResolution = _resolveLaborDollars(
         settings: settings,
-        laborPunches: laborPunches,
+        laborPunches: laborSplit.punchesForPeriod,
+        fohHoursOverride: laborSplit.fohHoursInPeriod,
+        bohHoursOverride: laborSplit.bohHoursInPeriod,
+        perPunchHoursInPeriod: laborSplit.perPunchHoursInPeriod,
       );
 
       // ─── Sales (POS-derived; sums actual_sales across cover_facts) ─
@@ -314,6 +381,14 @@ class CanonicalFactToClosedShiftInputAggregator
         sourceShiftId: null,
       );
 
+      // Per-Daypart V1 Slice 1.5 — auto-derive close-authority
+      // provenance from the POS vendor's capability. No operator
+      // setting input — the choice is per-vendor + business-day-start
+      // fallback (operator decision 2026-05-15).
+      final closeAuthorityProvenance = _closeAuthorityProvenance(
+        posVendorId: posVendorId,
+      );
+
       return AggregatorResult(
         input: input,
         provenance: AggregatorProvenanceContext(
@@ -325,9 +400,28 @@ class CanonicalFactToClosedShiftInputAggregator
           priorBusinessTimingProfileVersionId:
               priorShift?.businessTimingProfileVersionId,
           priorServicePeriodKey: priorShift?.servicePeriodKey,
+          closeAuthorityProvenance: closeAuthorityProvenance,
         ),
       );
     });
+  }
+
+  /// Per-Daypart V1 Slice 1.5 — close-authority provenance string.
+  /// Reads the per-vendor capability from
+  /// [closeAuthorityCapabilityFor] and stamps the wire shape consumed
+  /// by downstream finalization-eligibility checks.
+  static String _closeAuthorityProvenance({required String? posVendorId}) {
+    if (posVendorId == null || posVendorId.isEmpty) {
+      return 'no_pos_vendor_business_day_start_fallback';
+    }
+    final capability = resolveCloseAuthorityCapability(posVendorId);
+    switch (capability) {
+      case CloseAuthorityCapability.vendorReliableFinalization:
+        return 'vendor_${posVendorId}_reliable_finalization';
+      case CloseAuthorityCapability.unreliableFallbackToBusinessDayStart:
+        return 'vendor_${posVendorId}_unreliable_finalization_'
+            'business_day_start_fallback';
+    }
   }
 
   // ─── 5-way covers resolution ───────────────────────────────────────
@@ -336,12 +430,15 @@ class CanonicalFactToClosedShiftInputAggregator
     required DataAccuracySettings settings,
     required DataAccuracyServicePeriodSetting? keyedServicePeriodSetting,
     required DateTime businessDate,
+    required String dayLabel,
     required Daypart daypart,
     required List<Map<String, Object?>> coverFacts,
     required String? posVendorId,
     required List<Map<String, Object?>> reservationFacts,
     required DemandForecastContext? forecastContext,
     required ServicePeriodDefinition periodDefinition,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required ScheduleDistributionWeights? distributionWeights,
     required ReservationWalkInOverride? walkInOverride,
   }) {
     // Hardening Wave B1 — prefer the keyed setting; legacy column is
@@ -447,18 +544,39 @@ class CanonicalFactToClosedShiftInputAggregator
     }
 
     // Stage 4 — forecast substitution (POS missing covers, forecast
-    // available). Allocates the resolved weekly forecast across the
-    // 7 days of the week; per the contract this is the F&F-derived
-    // fallback, never vendor-supplied.
+    // available). Per-Daypart V1 Slice 1.5 (Gap 25): the previous
+    // `dailyShare / 3` hardcode is replaced by
+    // [DaypartPlanAllocator.allocate] so the per-period split honors
+    // the operator's full configured period list + optional
+    // distribution weights, instead of pretending every restaurant
+    // has exactly three uniformly-weighted dayparts.
     final resolvedWeekly = forecastContext?.resolvedWeeklyForecastCovers;
     if (resolvedWeekly != null && resolvedWeekly > 0) {
-      // Allocate weekly average proportionally to number of dayparts
-      // per day (3) and 7 days; the daypart split rule lives in the
-      // existing `daypart_plan_allocator.dart` consumer. The spine
-      // ships the simple uniform split as the V1 fallback (the
-      // dashboard pill flags it as forecast-substituted).
       final dailyShare = (resolvedWeekly / 7).round();
-      final daypartShare = (dailyShare / 3).clamp(0, dailyShare).round();
+      final allocations = DaypartPlanAllocator.allocate(
+        day: dayLabel,
+        dayCovers: dailyShare,
+        // Sales / hours don't affect the cover split; pass through
+        // safe zero values that won't influence the largest-remainder
+        // math.
+        daySales: 0,
+        dayFohHours: 0,
+        dayBohHours: 0,
+        definitions: periodDefinitions,
+        distributionWeights: distributionWeights,
+      );
+      final allocation = allocations.firstWhere(
+        (a) => a.daypartId == periodDefinition.id,
+        orElse: () => const DaypartAllocation(
+          daypartId: '',
+          label: '',
+          forecastCovers: 0,
+          forecastSales: 0,
+          requiredFohHours: 0,
+          requiredBohHours: 0,
+        ),
+      );
+      final daypartShare = allocation.forecastCovers;
       final vendorBase = posVendorId ?? 'unknown';
       return _CoversResolution(
         covers: daypartShare,
@@ -511,9 +629,19 @@ class CanonicalFactToClosedShiftInputAggregator
   _LaborResolution _resolveLaborDollars({
     required DataAccuracySettings settings,
     required List<Map<String, Object?>> laborPunches,
+    int? fohHoursOverride,
+    int? bohHoursOverride,
+    Map<Map<String, Object?>, double>? perPunchHoursInPeriod,
   }) {
-    final fohHours = _sumHours(laborPunches, isFoh: true);
-    final bohHours = _sumHours(laborPunches, isFoh: false);
+    // Per-Daypart V1 Slice 1.5 (Gap 21): hours come from
+    // `DaypartBucketer.bucketLaborPunch` per-period segments, not from
+    // summing punch-level `hours_worked` (which would over-attribute
+    // cross-period punches). [perPunchHoursInPeriod] (when present)
+    // carries the per-punch minutes-in-period the splitter computed,
+    // letting the rate × hours stages compute dollars from the
+    // exact per-period overlap rather than the punch's full duration.
+    final fohHours = fohHoursOverride ?? _sumHours(laborPunches, isFoh: true);
+    final bohHours = bohHoursOverride ?? _sumHours(laborPunches, isFoh: false);
 
     // Stage 1 — operator manual mix override (always wins).
     if (settings.wageSource == WageSource.manualMix) {
@@ -548,9 +676,22 @@ class CanonicalFactToClosedShiftInputAggregator
     // Stage 2 — perEmployeeWithDollars (vendor sums per-shift dollars
     // directly). Currently no Wave B vendor in this class; future
     // 7shifts /reports/hours_and_wages upgrade lands here.
+    //
+    // Per-period scaling: dollars per row are multiplied by
+    // `minutesInPeriod / punchDurationMinutes` so a punch spanning
+    // lunch + dinner contributes the correct slice of its `actual_dollars`
+    // to each period.
     if (wageClass == LaborWageSourceClass.perEmployeeWithDollars) {
-      final fohDollars = _sumDollars(laborPunches, isFoh: true);
-      final bohDollars = _sumDollars(laborPunches, isFoh: false);
+      final fohDollars = _sumDollars(
+        laborPunches,
+        isFoh: true,
+        perPunchHoursInPeriod: perPunchHoursInPeriod,
+      );
+      final bohDollars = _sumDollars(
+        laborPunches,
+        isFoh: false,
+        perPunchHoursInPeriod: perPunchHoursInPeriod,
+      );
       if (fohDollars != null || bohDollars != null) {
         return _LaborResolution(
           fohHours: fohHours,
@@ -566,8 +707,16 @@ class CanonicalFactToClosedShiftInputAggregator
     // wage_role_rows; aggregator computes dollars via rate × hours
     // per role.
     if (wageClass == LaborWageSourceClass.perPositionWithRates) {
-      final fohDollars = _computeRateTimesHours(laborPunches, isFoh: true);
-      final bohDollars = _computeRateTimesHours(laborPunches, isFoh: false);
+      final fohDollars = _computeRateTimesHours(
+        laborPunches,
+        isFoh: true,
+        perPunchHoursInPeriod: perPunchHoursInPeriod,
+      );
+      final bohDollars = _computeRateTimesHours(
+        laborPunches,
+        isFoh: false,
+        perPunchHoursInPeriod: perPunchHoursInPeriod,
+      );
       if (fohDollars != null || bohDollars != null) {
         return _LaborResolution(
           fohHours: fohHours,
@@ -584,8 +733,16 @@ class CanonicalFactToClosedShiftInputAggregator
     // perPositionWithRates but the qualifier suffix preserves the
     // distinction in provenance so the renderer can disambiguate.
     if (wageClass == LaborWageSourceClass.perEmployeeWithRates) {
-      final fohDollars = _computeRateTimesHours(laborPunches, isFoh: true);
-      final bohDollars = _computeRateTimesHours(laborPunches, isFoh: false);
+      final fohDollars = _computeRateTimesHours(
+        laborPunches,
+        isFoh: true,
+        perPunchHoursInPeriod: perPunchHoursInPeriod,
+      );
+      final bohDollars = _computeRateTimesHours(
+        laborPunches,
+        isFoh: false,
+        perPunchHoursInPeriod: perPunchHoursInPeriod,
+      );
       if (fohDollars != null || bohDollars != null) {
         return _LaborResolution(
           fohHours: fohHours,
@@ -762,9 +919,12 @@ class CanonicalFactToClosedShiftInputAggregator
       );
     }
     final row = rows.single;
+    final rolloverHour = (row['business_day_rollover_hour'] as int?) ?? 0;
     return _LocationMeta(
       timezone: (row['timezone'] as String?) ?? 'UTC',
-      businessDayRolloverHour: (row['business_day_rollover_hour'] as int?) ?? 0,
+      businessDayRolloverHour: rolloverHour,
+      businessDayStartLocalTime:
+          '${rolloverHour.toString().padLeft(2, '0')}:00',
     );
   }
 
@@ -776,7 +936,8 @@ class CanonicalFactToClosedShiftInputAggregator
     required String locationId,
     required DateTime businessDate,
     required ServicePeriodDefinition periodDefinition,
-    required String timezone,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required BucketingLocationContext bucketingContext,
   }) async {
     final rows = await exec.query(
       'select vendor_id, vendor_entity_id, vendor_modified_at, covers, '
@@ -793,45 +954,49 @@ class CanonicalFactToClosedShiftInputAggregator
     );
     return rows
         .where(
-          (row) => _bucketsToDaypart(
+          (row) => _posInstantInPeriod(
             instant: row['closed_at'],
-            periodDefinition: periodDefinition,
-            timezone: timezone,
+            bucketingContext: bucketingContext,
+            periodDefinitions: periodDefinitions,
+            targetServicePeriodId: periodDefinition.id,
           ),
         )
         .toList(growable: false);
   }
 
-  Future<List<Map<String, Object?>>> _readLaborPunchesForDaypart(
+  /// Per-Daypart V1 Slice 1.5 (Gaps 21, 26): read every punch row whose
+  /// stored `business_date` is within ±1 day of [businessDate]. The
+  /// caller then runs `DaypartBucketer.bucketLaborPunch` per row and
+  /// keeps only the per-period segments whose anchored business date
+  /// matches [businessDate]. The 3-day window is the minimum that
+  /// captures (a) a punch starting before [businessDate]'s rollover
+  /// whose tail bleeds into [businessDate]'s lunch, and (b) a punch
+  /// starting before [businessDate]'s late-night that bleeds past
+  /// [businessDate]'s next-day rollover.
+  Future<List<Map<String, Object?>>> _readLaborPunchesForBusinessDate(
     PostgresExecutor exec, {
     required String operatorId,
     required String locationId,
     required DateTime businessDate,
-    required ServicePeriodDefinition periodDefinition,
-    required String timezone,
   }) async {
+    final priorDate = businessDate.subtract(const Duration(days: 1));
+    final nextDate = businessDate.add(const Duration(days: 1));
     final rows = await exec.query(
       'select vendor_id, vendor_entity_id, employee_source_id, role_name, '
       'shift_start, shift_end, hours_worked, pay_rate, business_date '
       'from public.labor_punches '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid '
-      'and business_date = @business_date::date',
+      'and business_date between @prior_business_date::date '
+      'and @next_business_date::date',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
-        'business_date': _isoDate(businessDate),
+        'prior_business_date': _isoDate(priorDate),
+        'next_business_date': _isoDate(nextDate),
       },
     );
-    return rows
-        .where(
-          (row) => _bucketsToDaypart(
-            instant: row['shift_start'],
-            periodDefinition: periodDefinition,
-            timezone: timezone,
-          ),
-        )
-        .toList(growable: false);
+    return rows.toList(growable: false);
   }
 
   Future<List<Map<String, Object?>>> _readReservationFactsForDaypart(
@@ -840,7 +1005,8 @@ class CanonicalFactToClosedShiftInputAggregator
     required String locationId,
     required DateTime businessDate,
     required ServicePeriodDefinition periodDefinition,
-    required String timezone,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required BucketingLocationContext bucketingContext,
   }) async {
     final rows = await exec.query(
       'select vendor_id, vendor_entity_id, reservation_at, party_size, '
@@ -867,10 +1033,11 @@ class CanonicalFactToClosedShiftInputAggregator
               status.toUpperCase() != 'COMPLETED') {
             return false;
           }
-          return _bucketsToDaypart(
+          return _posInstantInPeriod(
             instant: row['reservation_at'],
-            periodDefinition: periodDefinition,
-            timezone: timezone,
+            bucketingContext: bucketingContext,
+            periodDefinitions: periodDefinitions,
+            targetServicePeriodId: periodDefinition.id,
           );
         })
         .toList(growable: false);
@@ -917,34 +1084,140 @@ class CanonicalFactToClosedShiftInputAggregator
     );
   }
 
-  // ─── Daypart bucketing ─────────────────────────────────────────────
+  // ─── Daypart bucketing (Per-Daypart V1 Slice 1.5) ──────────────────
+  //
+  // Every bucketing decision now flows through the canonical
+  // [DaypartBucketer]. The closed-shift aggregator and the live read
+  // (`OpenShiftSnapshotProjector`) MUST share boundary inclusivity so
+  // the audit pool-consistency check is honest — a POS check closing
+  // exactly at 15:00:00 belongs to Lunch in both paths, not just one.
 
-  bool _bucketsToDaypart({
+  /// Returns true when [instant] (a UTC `DateTime` or ISO string) buckets
+  /// to [targetServicePeriodId] via [DaypartBucketer.bucketPosLine]. Used
+  /// for point-in-time facts (POS lines, reservations).
+  bool _posInstantInPeriod({
     required Object? instant,
-    required ServicePeriodDefinition periodDefinition,
-    required String timezone,
+    required BucketingLocationContext bucketingContext,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required String targetServicePeriodId,
   }) {
     final utcInstant = _coerceUtc(instant);
     if (utcInstant == null) return false;
     final local = _timezoneConverter.toBusinessLocal(
-      restaurantTimezone: timezone,
+      restaurantTimezone: bucketingContext.iana,
       instant: utcInstant,
     );
-    final start = _parseHHmm(periodDefinition.startLocalTime);
-    final end = _parseHHmm(periodDefinition.endLocalTime);
-    final localMinutes = local.hour * 60 + local.minute;
-    final startMinutes = start.hour * 60 + start.minute;
-    final endMinutes = end.hour * 60 + end.minute;
-    if (periodDefinition.rollsPastMidnight) {
-      // e.g. late_night 22:00 → 02:00 spans midnight.
-      return localMinutes >= startMinutes || localMinutes < endMinutes;
-    }
-    return localMinutes >= startMinutes && localMinutes < endMinutes;
+    final bucketed = DaypartBucketer.bucketPosLine(
+      BucketingPosLine(sourceId: '', eventLocalTimestamp: local),
+      bucketingContext,
+      periodDefinitions,
+    );
+    return bucketed == targetServicePeriodId;
   }
 
-  static ({int hour, int minute}) _parseHHmm(String hhmm) {
-    final parts = hhmm.split(':');
-    return (hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+  /// Per-Daypart V1 Slice 1.5 (Gaps 21, 26) — per-period labor split.
+  ///
+  /// For each labor punch row in [punches], walks segments returned by
+  /// [DaypartBucketer.bucketLaborPunch] and sums minutes whose
+  /// `servicePeriodId == targetServicePeriodId` AND whose anchored
+  /// business date equals [targetBusinessDateIso]. Cross-(business-date)
+  /// punches contribute only the minutes that fall inside this slot.
+  ///
+  /// Also returns a filtered list of the original punch rows that
+  /// contributed any non-zero minutes — used by the wage-resolution
+  /// path to scope the rate × hours math to the punches that actually
+  /// touched this period.
+  _LaborPunchSplit _splitLaborPunchesByPeriod({
+    required List<Map<String, Object?>> punches,
+    required BucketingLocationContext bucketingContext,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required String targetServicePeriodId,
+    required String targetBusinessDateIso,
+    required String timezone,
+  }) {
+    var fohMinutes = 0;
+    var bohMinutes = 0;
+    final touchedRows = <Map<String, Object?>>[];
+    final perPunchHoursInPeriod = <Map<String, Object?>, double>{};
+
+    for (final row in punches) {
+      final startUtc = _coerceUtc(row['shift_start']);
+      final endUtc = _coerceUtc(row['shift_end']);
+      if (startUtc == null || endUtc == null) continue;
+      if (!endUtc.isAfter(startUtc)) continue;
+
+      final startLocal = _timezoneConverter.toBusinessLocal(
+        restaurantTimezone: timezone,
+        instant: startUtc,
+      );
+      final endLocal = _timezoneConverter.toBusinessLocal(
+        restaurantTimezone: timezone,
+        instant: endUtc,
+      );
+
+      final segments = DaypartBucketer.bucketLaborPunch(
+        BucketingLaborPunch(
+          sourceId: '',
+          clockedInLocal: startLocal,
+          clockedOutLocal: endLocal,
+        ),
+        bucketingContext,
+        periodDefinitions,
+      );
+
+      var minutesInPeriod = 0;
+      for (final seg in segments) {
+        if (seg.servicePeriodId != targetServicePeriodId) continue;
+        // Cross-(business-date) gate: the segment may belong to the
+        // period under a different business_date (e.g. a late_night
+        // segment on Friday vs Saturday). Resolve the segment's
+        // anchored business date and keep only segments matching the
+        // call's target.
+        final segBusinessDate = _businessDateForLocalTime(
+          local: seg.startLocal,
+          businessDayStartLocalTime:
+              bucketingContext.businessDayStartLocalTime,
+        );
+        if (segBusinessDate != targetBusinessDateIso) continue;
+        minutesInPeriod += seg.minutes;
+      }
+      if (minutesInPeriod == 0) continue;
+
+      touchedRows.add(row);
+      perPunchHoursInPeriod[row] = minutesInPeriod / 60.0;
+      if (_isFohPunch(row)) {
+        fohMinutes += minutesInPeriod;
+      } else {
+        bohMinutes += minutesInPeriod;
+      }
+    }
+
+    return _LaborPunchSplit(
+      punchesForPeriod: touchedRows,
+      perPunchHoursInPeriod: perPunchHoursInPeriod,
+      fohHoursInPeriod: (fohMinutes / 60).round(),
+      bohHoursInPeriod: (bohMinutes / 60).round(),
+    );
+  }
+
+  /// Same business-date rule as `DaypartBucketer._classifyInstant`: an
+  /// instant whose local time is before [businessDayStartLocalTime]
+  /// belongs to the prior calendar date's business day; an instant at
+  /// or after rolls into the current calendar date's business day.
+  static String _businessDateForLocalTime({
+    required DateTime local,
+    required String businessDayStartLocalTime,
+  }) {
+    final parts = businessDayStartLocalTime.split(':');
+    final cutoffMinutes = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    final localMinutes = local.hour * 60 + local.minute;
+    final base = DateTime(local.year, local.month, local.day);
+    final anchorDay = localMinutes < cutoffMinutes
+        ? base.subtract(const Duration(days: 1))
+        : base;
+    return '${anchorDay.year.toString().padLeft(4, '0')}-'
+        '${anchorDay.month.toString().padLeft(2, '0')}-'
+        '${anchorDay.day.toString().padLeft(2, '0')}';
   }
 
   // ─── Hours / dollars summing helpers ───────────────────────────────
@@ -959,35 +1232,71 @@ class CanonicalFactToClosedShiftInputAggregator
     return total.round();
   }
 
+  /// Per-punch dollar share scaled by `(hoursInPeriod / fullPunchHours)`
+  /// when [perPunchHoursInPeriod] is supplied (Per-Daypart V1 Slice
+  /// 1.5). When omitted, behavior matches the pre-1.5 implementation
+  /// (whole-punch dollars).
   double? _sumDollars(
     List<Map<String, Object?>> punches, {
     required bool isFoh,
+    Map<Map<String, Object?>, double>? perPunchHoursInPeriod,
   }) {
     double? total;
     for (final punch in punches) {
       if (_isFohPunch(punch) != isFoh) continue;
       final raw = punch['actual_dollars'];
       if (raw is num) {
-        total = (total ?? 0) + raw.toDouble();
+        final scaled = _scaleByPeriodFraction(
+          value: raw.toDouble(),
+          punch: punch,
+          perPunchHoursInPeriod: perPunchHoursInPeriod,
+        );
+        total = (total ?? 0) + scaled;
       }
     }
     return total;
   }
 
+  /// Rate × hours per punch. When [perPunchHoursInPeriod] is supplied,
+  /// uses the per-period overlap minutes (Per-Daypart V1 Slice 1.5);
+  /// otherwise falls back to the punch's `hours_worked` field.
   double? _computeRateTimesHours(
     List<Map<String, Object?>> punches, {
     required bool isFoh,
+    Map<Map<String, Object?>, double>? perPunchHoursInPeriod,
   }) {
     double? total;
     for (final punch in punches) {
       if (_isFohPunch(punch) != isFoh) continue;
-      final hours = punch['hours_worked'];
       final rate = punch['pay_rate'];
-      if (hours is num && rate is num) {
-        total = (total ?? 0) + hours.toDouble() * rate.toDouble();
+      if (rate is! num) continue;
+      final hoursInPeriod = perPunchHoursInPeriod?[punch];
+      final double hours;
+      if (hoursInPeriod != null) {
+        hours = hoursInPeriod;
+      } else {
+        final raw = punch['hours_worked'];
+        if (raw is! num) continue;
+        hours = raw.toDouble();
       }
+      total = (total ?? 0) + hours * rate.toDouble();
     }
     return total;
+  }
+
+  static double _scaleByPeriodFraction({
+    required double value,
+    required Map<String, Object?> punch,
+    required Map<Map<String, Object?>, double>? perPunchHoursInPeriod,
+  }) {
+    if (perPunchHoursInPeriod == null) return value;
+    final hoursInPeriod = perPunchHoursInPeriod[punch];
+    final raw = punch['hours_worked'];
+    if (hoursInPeriod == null || raw is! num) return value;
+    final fullHours = raw.toDouble();
+    if (fullHours <= 0) return value;
+    final fraction = (hoursInPeriod / fullHours).clamp(0.0, 1.0);
+    return value * fraction;
   }
 
   /// Stable role → bucket mapping. FOH = front-of-house (servers,
@@ -1078,9 +1387,35 @@ class _LocationMeta {
   const _LocationMeta({
     required this.timezone,
     required this.businessDayRolloverHour,
+    required this.businessDayStartLocalTime,
   });
   final String timezone;
   final int businessDayRolloverHour;
+  final String businessDayStartLocalTime;
+}
+
+/// Per-Daypart V1 Slice 1.5 — result of bucketing labor punches into a
+/// single (business_date, service_period_id) slot.
+class _LaborPunchSplit {
+  const _LaborPunchSplit({
+    required this.punchesForPeriod,
+    required this.perPunchHoursInPeriod,
+    required this.fohHoursInPeriod,
+    required this.bohHoursInPeriod,
+  });
+
+  /// Subset of the input punch rows that contributed any non-zero
+  /// minutes to this slot.
+  final List<Map<String, Object?>> punchesForPeriod;
+
+  /// For each retained punch, the fractional hours that fell inside
+  /// the target service period × target business date.
+  final Map<Map<String, Object?>, double> perPunchHoursInPeriod;
+
+  /// Aggregate FOH/BOH minutes-in-period (rounded to integer hours
+  /// matching the pre-1.5 `_sumHours` return shape).
+  final int fohHoursInPeriod;
+  final int bohHoursInPeriod;
 }
 
 class _PriorShiftRecordProvenance {
