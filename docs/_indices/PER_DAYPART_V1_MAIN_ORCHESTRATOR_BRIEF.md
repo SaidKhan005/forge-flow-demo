@@ -19,24 +19,30 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 
 | Slice | Owner | Status | Notes |
 |---|---|---|---|
-| 0 — Cycle rollover gating + contract amendments | **Main** | dispatchable now | No schema change. Touches `TargetCyclePolicy`, `target_cycle_service.dart`, 3 contract docs. Auth-sensitive (contract amendment) → operator approves merge. |
-| 1 — Per-period data layer foundation | **Main** | **BLOCKED on Gap 42 operator decision** | Schema + cycle-write path + demo reseed + `closeShift` timing-field carry. Auth/RLS-sensitive. |
-| 1.5 — Closed-shift aggregator → DaypartBucketer routing | **Main** | dispatchable now | Must land before Slice 6. Replaces inline `_bucketsToDaypart` with `DaypartBucketer` + per-period accumulator + cross-(business-date) split + stage-4 fallback fix + 14-shifts hardcode removal. Integration-spine sensitive → operator approves. |
-| 2 — Benchmark tab redesign | **Main** | BLOCKED on Gap 35 + Gap 36 operator decisions | Daypart Breakdown table redesign + card cut + strip rehome + 4 UI sites de-hardcoded + operator-web Benchmarks decision. |
-| 2.5 — Service period editor field completeness | **Claude 2** | dispatchable now | `applicableDays`, `shortLabel`, `sortOrder` on `ServicePeriodDraft` + editor UI. Isolated operator-web work. |
-| 3 — Plan tab persistence wiring | **Main or Claude 2** | depends on Slice 1 | Allocator retirement + sub-row read swap + `schedule_builder` sentinel-0 cleanup. |
-| 4 — Shift daypart card full parity | **Claude 2** preferred | depends on Slice 1 | UX overhaul: Outputs + Inputs + FOH Productivity per period. Mostly UX work. |
-| 5 — Variance read-seam swap | **Main or Claude 2** | depends on Slice 1 | Small read swap. |
-| 6 — Audit scorer extension | **Main** | depends on Slices 1 + 1.5 | Per-period check shapes + pool-consistency + wage-at-lock-time + structural ordering bug fix. |
+| 0 — Cycle rollover gating + contract amendments | **Main** | ✅ MERGED #761 (`1460d45d`) | No schema change. Touched `TargetCyclePolicy`, `target_cycle_service.dart`, 3 contract docs. |
+| 1 — Per-period data layer foundation | **Main** | ⏸ PARKED for operator merge approval — PR #767 (`claude/per-daypart-slice-1-per-period-data-foundation`). Pattern B audit CLEAN — see `docs/_audits/per_daypart_v1/slice_1_per_period_data_foundation_orchestrator_review.md`. Schema-touching → CLAUDE.md operator-gate. | SQLite V36 + Postgres `202605160000` migration; 32 files; pool consistency + Gap 42 fallback + Gap 23 carry verified. |
+| 1.5 — Closed-shift aggregator → DaypartBucketer routing | **Main** | ✅ MERGED #763 (`d392d4d1`) | Late-night regression test ✅ MERGED #768 (`6e843798`). |
+| 2 — Benchmark tab redesign | **Main** | UNBLOCKED (Gap 35 + 36 resolved). Waiting on Slice 1 merge. | Daypart Breakdown swap (avg→target + Avg Covers stays + OPZ single column) + card cut + strip rehome. |
+| 2.5 — Service period editor field completeness | **Claude 2** | ✅ MERGED #762 (`4e2a6c94`) | `applicableDays` + `shortLabel` + `sortOrder` landed. |
+| 3 — Plan tab persistence wiring | **Main or Claude 2** | Waiting on Slice 1 merge. | Allocator retirement + sub-row read swap + `schedule_builder` sentinel-0 cleanup. |
+| 4 — Shift daypart card full parity | **Claude 2** preferred | Waiting on Slice 1 merge. | UX overhaul: Outputs + Inputs + FOH Productivity per period. |
+| 5 — Variance read-seam swap | **Main or Claude 2** | Waiting on Slice 1 merge. | Small read swap. |
+| 6 — Audit scorer extension | **Main** | Waiting on Slice 1 merge. | Per-period check shapes + pool-consistency + wage-at-lock-time + structural ordering bug fix. |
+| 7a — Tock reservation business_date | **Claude 2** | ✅ MERGED #766 (`baa4047a`) | Gap 45 closed via `IanaTimezoneConverter`. |
+| 7b — Sub-hour business-day cutoff precision (Gap 46+47) | TBD | ⏸ PARKED — operator decides option (a) widen INT→TIME vs (b) sink-side `BusinessDateResolver` resolution. Research doc merged #765 (`56f234c3`). | See `docs/_audits/per_daypart_v1/slice_7b_research_2026_05_15.md`. |
 
-## Operator decisions queued (BLOCK relevant slices)
+## Operator decisions queued
 
-1. **Gap 42 — MeridianConfig insufficient-recommendation fallback shape.** Options: (a) widen `MeridianConfig` to per-period, (b) write all-periods-identical fallback rows, (c) leave `target_cycle_dayparts` empty + fall back to parent pool at read time. **Main recommendation: (c).** **BLOCKS Slice 1 dispatch.**
-2. **Gap 31 — `shift_close_authority` operator-editability.** Either expose on operator-web business timing editor OR document as backend-only carve-out per HP #11. **Separate follow-up; does NOT block per-daypart V1.**
-3. **Gap 36 — Legacy `covers_source_lunch/dinner/late_night` vs keyed `data_accuracy_service_period_settings` precedence.** **BLOCKS Slice 2 dispatch.**
-4. **Gap 35 — Operator-web Benchmarks override write-seam decision.** Either make override per-period (mirror mobile Baseline Manager) or add copy explaining pool-write semantics. **BLOCKS Slice 2 dispatch.**
+**All 4 prior gaps RESOLVED (locked in plan doc 29ad4c8d + 686d8b5d):**
+- Gap 42 → option (c): empty `target_cycle_dayparts` + `MeridianConfig` whole-day fallback.
+- Gap 31 → delete `shift_close_authority` entirely; auto-derive from per-vendor capability + business-day-start (absorbed into Slice 1.5).
+- Gap 36 → kill legacy `covers_source_lunch/dinner/late_night` columns.
+- Gap 35 → cut operator-web Benchmarks override surface entirely.
 
-Slice 0 + Slice 1.5 + Slice 2.5 do not depend on any of these. Dispatch immediately.
+**Open operator decisions (parked during operator break 2026-05-15):**
+
+1. **Slice 1 merge approval (schema-touching gate).** PR #767. Pattern B audit clean. Recommended: APPROVE — merge unlocks Slices 2/3/4/5/6 parallel dispatch.
+2. **Slice 7b option choice — (a) widen INT→TIME schema vs (b) sink-side BusinessDateResolver resolution.** Research doc on master at `docs/_audits/per_daypart_v1/slice_7b_research_2026_05_15.md`. Claude's recommendation: option (b) if Slice 1 lands by 2026-05-16, else (a) as tactical patch. Sub-decisions: (b1)/(b2) for SQL trigger handling; converge 3 scattered fallback cutoff hardcodes onto a single value (recommend 4h to match operator convention); is Slice 7b OK to wait for Slice 1 merge or needed before Phase 12?
 
 ## Dispatch contract (every worker agent)
 
@@ -68,11 +74,20 @@ Slice 0 + Slice 1.5 + Slice 2.5 do not depend on any of these. Dispatch immediat
 - Shared docs (plan doc, brief, ledger): both lanes annotate own slice rows inline; never overwrite the other lane's annotations. Status board sections per lane.
 - Coordination via Git only — no real-time channel.
 
-## Active work (this session)
+## Active work (2026-05-15 — operator on break, autonomous mode)
 
-1. **Slice 0 worker dispatched** — see worker agent task.
-2. **Slice 1.5 worker dispatched** — see worker agent task.
-3. Awaiting operator decisions on Gaps 42, 35, 36 before Slice 1 + Slice 2 dispatches.
+**Merged in current wave** (chronological): Slice 0 (#761) → Slice 2.5 (#762) → Slice 1.5 (#763) → architecture-verification audit (#764) → Slice 7a Tock (#766) → Slice 1.5 regression test (#768) → Slice 7b research doc (#765).
+
+**Awaiting operator return:**
+1. **Slice 1 merge approval** — PR #767, schema-touching gate.
+2. **Slice 7b option pick** — (a) vs (b) vs sub-decisions; research is on master.
+
+**Dispatchable on Slice 1 merge** (one-shot parallel wave):
+- Slices 2 / 3 / 5 / 6 → Main parallel workers
+- Slice 4 → Claude 2
+- Slice 7b → after operator picks option
+
+Pre-staged worker prompts: `docs/_indices/PER_DAYPART_V1_POST_SLICE1_DISPATCH.md` (populated on first dispatch).
 
 ## Stop conditions
 
