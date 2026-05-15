@@ -12,7 +12,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/domain/models/metric_provenance.dart';
 import 'package:forge_and_flow/widgets/metric_pill.dart';
 
 /// Wraps [child] in a minimal [MaterialApp] + [Scaffold].
@@ -295,5 +294,145 @@ void main() {
 
       expect(find.byKey(const Key('metric_pill_label_PPA')), findsOneWidget);
     });
+  });
+
+  // ── FU-mobile-shift-card-overflow-17px regression guard ───────────────────
+  //
+  // Reproduces the SHIFT OUTPUTS row-2 layout (IntrinsicHeight + Row +
+  // Expanded children) at a narrow per-card width. Before the fix, the
+  // long unavailable / empty-state tooltip wrapped from 1 line (during
+  // the IntrinsicHeight intrinsic-height pass with unbounded width) to
+  // 2 lines (during actual layout at the constrained width), and the
+  // Column's natural height exceeded the height that IntrinsicHeight
+  // had locked in — producing a "RenderFlex overflowed by ~17 PIXELS"
+  // exception. The fix wraps the tooltip Text in a Flexible with
+  // maxLines:2 + ellipsis so the Column can shrink that child instead
+  // of overflowing.
+  //
+  // Note: in widget tests the default font is a fixed-width fallback
+  // (not IBM Plex Mono), so the tooltip strings here are deliberately
+  // longer than the production copy to guarantee the wrap-trigger fires
+  // at the chosen test width.
+  group('MetricPill — overflow guard (FU-mobile-shift-card-overflow-17px)',
+      () {
+    /// Tooltip long enough to wrap to 2+ lines at the per-card width
+    /// used below. Mirrors the production copy
+    /// "Connect a labor vendor to see blended wage." but extended so
+    /// the wrap happens reliably with the widget-test fallback font.
+    const longUnavailableTooltip =
+        'Connect a labor vendor to see blended wage. '
+        'Once a labor vendor is connected, this card will show the '
+        'blended hourly wage across FOH and BOH for the active shift.';
+
+    const longEmptyTooltip =
+        'Connect a labor vendor to see covers per labor hour. '
+        'Once a labor vendor is connected, this card will show CPLH '
+        'across FOH and BOH for the active shift.';
+
+    testWidgets(
+      'no RenderFlex overflow when long unavailable tooltip lives '
+      'inside IntrinsicHeight + Row + Expanded at narrow width',
+      (tester) async {
+        // Force a narrow logical width close to a Pixel 9 half-screen
+        // card so the long tooltip wraps during real layout.
+        tester.view.physicalSize = const Size(372, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: MetricPill(
+                        state: MetricState.live,
+                        provenance:
+                            MetricPillProvenance(label: 'Toast'),
+                        label: 'COVERS',
+                        value: 80,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: MetricPill(
+                        state: MetricState.unavailable,
+                        provenance: MetricPillProvenance(
+                          label: 'Unknown',
+                          tooltip: longUnavailableTooltip,
+                        ),
+                        label: 'BLENDED WAGE',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(tester.takeException(), isNull,
+            reason: 'IntrinsicHeight + Expanded + long unavailable tooltip '
+                'must not overflow at narrow widths.');
+        // Sanity: the unavailable em dash is still rendered.
+        expect(find.byKey(const Key('metric_pill_unavailable_BLENDED WAGE')),
+            findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'no RenderFlex overflow when long empty-state tooltip lives '
+      'inside IntrinsicHeight + Row + Expanded at narrow width',
+      (tester) async {
+        tester.view.physicalSize = const Size(372, 1600);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: Scaffold(
+              body: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(
+                      child: MetricPill(
+                        state: MetricState.live,
+                        provenance:
+                            MetricPillProvenance(label: 'Toast'),
+                        label: 'COVERS',
+                        value: 80,
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: MetricPill(
+                        state: MetricState.empty,
+                        provenance: MetricPillProvenance(
+                          label: 'Unknown',
+                          tooltip: longEmptyTooltip,
+                        ),
+                        label: 'CPLH',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(tester.takeException(), isNull,
+            reason: 'IntrinsicHeight + Expanded + long empty-state tooltip '
+                'must not overflow at narrow widths.');
+        expect(find.text('No data yet'), findsOneWidget);
+      },
+    );
   });
 }
