@@ -78,6 +78,20 @@ class ShiftRecord {
   final double? theoreticalFohLaborPct;
   final double? theoreticalBohLaborPct;
 
+  // ── Per-Daypart V1 (Slice 1) — per-shift per-period target stamps ─────
+  //
+  // Promise 2: closed truth retains its stamp from close time. When the
+  // cycle in force at close had a per-period row for this shift's
+  // period, these columns mirror that row's values; otherwise they stay
+  // null and consumers fall back to the whole-day `target*` fields
+  // above (Gap 42 fallback semantics — Design Rule 2 forbids `0`
+  // sentinels).
+  final double? daypartTargetCPLH;
+  final double? daypartTargetSPLH;
+  final double? daypartTargetPPA;
+  final double? daypartOpzFloorCPLH;
+  final double? daypartOpzCeilingCPLH;
+
   /// Snapshot-sourced blended wage for open/projected rows.
   /// Populated from [OpenShiftSnapshot.blendedWage] via
   /// [CurrentWeekState.shiftRecordFromSnapshot]. Null for closed rows
@@ -147,6 +161,11 @@ class ShiftRecord {
     this.opzCeilingCPLH,
     this.theoreticalFohLaborPct,
     this.theoreticalBohLaborPct,
+    this.daypartTargetCPLH,
+    this.daypartTargetSPLH,
+    this.daypartTargetPPA,
+    this.daypartOpzFloorCPLH,
+    this.daypartOpzCeilingCPLH,
     this.snapshotBlendedWage,
     this.planForecastSales,
     this.businessDate,
@@ -327,6 +346,16 @@ class ShiftRecord {
           theoreticalFohLaborPct ?? defaultTheoreticalFohLaborPct,
       theoreticalBohLaborPct:
           theoreticalBohLaborPct ?? defaultTheoreticalBohLaborPct,
+      // Per-Daypart V1 (Slice 1): per-period stamps are preserved if
+      // already populated. We do NOT fall through to defaults here —
+      // null is the honest signal that the cycle had no per-period row
+      // for the shift's period (Gap 42 fallback). Substituting whole-day
+      // defaults would violate Design Rule 2.
+      daypartTargetCPLH: daypartTargetCPLH,
+      daypartTargetSPLH: daypartTargetSPLH,
+      daypartTargetPPA: daypartTargetPPA,
+      daypartOpzFloorCPLH: daypartOpzFloorCPLH,
+      daypartOpzCeilingCPLH: daypartOpzCeilingCPLH,
       snapshotBlendedWage: snapshotBlendedWage,
       planForecastSales: planForecastSales,
       businessDate: businessDate,
@@ -395,6 +424,12 @@ class ShiftRecord {
     'opz_ceiling_cplh': opzCeilingCPLH,
     'theoretical_foh_labor_pct': theoreticalFohLaborPct,
     'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+    // Per-Daypart V1 (Slice 1) — per-period locked target stamps.
+    'daypart_target_cplh': daypartTargetCPLH,
+    'daypart_target_splh': daypartTargetSPLH,
+    'daypart_target_ppa': daypartTargetPPA,
+    'daypart_opz_floor_cplh': daypartOpzFloorCPLH,
+    'daypart_opz_ceiling_cplh': daypartOpzCeilingCPLH,
     'snapshot_blended_wage': snapshotBlendedWage,
     'business_date': businessDate,
     'business_timing_profile_id': businessTimingProfileId,
@@ -442,6 +477,13 @@ class ShiftRecord {
         ?.toDouble(),
     theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num?)
         ?.toDouble(),
+    daypartTargetCPLH: (m['daypart_target_cplh'] as num?)?.toDouble(),
+    daypartTargetSPLH: (m['daypart_target_splh'] as num?)?.toDouble(),
+    daypartTargetPPA: (m['daypart_target_ppa'] as num?)?.toDouble(),
+    daypartOpzFloorCPLH:
+        (m['daypart_opz_floor_cplh'] as num?)?.toDouble(),
+    daypartOpzCeilingCPLH:
+        (m['daypart_opz_ceiling_cplh'] as num?)?.toDouble(),
     snapshotBlendedWage: (m['snapshot_blended_wage'] as num?)?.toDouble(),
     businessDate: m['business_date'] as String?,
     businessTimingProfileId: m['business_timing_profile_id'] as String?,

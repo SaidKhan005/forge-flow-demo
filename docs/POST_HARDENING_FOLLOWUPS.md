@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**53 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605150400_per_daypart_v1_drop_close_authority.sql`;
+**54 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605160000_per_daypart_v1_per_period_target_persistence.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -91,8 +91,9 @@ Production1 apply.
 | `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql` | Wave 2 U-FU-hp11-account per-location override schema for the three AccountScreen settings (region, business-day rollover, identity contact email + phone). Adds `public.location_account_overrides` keyed by `(operator_id, location_id)` with NULL columns inheriting the business defaults from `public.operators`. RLS via `app_current_operator()` wrapper + operator-leading B-tree index per HP #4. Reuses the existing operator_owner / operator_admin role gate — no new permission key. Business display name stays operator-wide (single business name doctrine); the location-scoped Identity card edits contact email + phone only. | code-ready |
 | `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql` | Wave 2 RP-9 `team.roles.default_catalog.view` + `team.roles.default_catalog.edit` permission keys + baseline grants (F&F super_admin write; super_admin + ff_support read). Promotes the role-tier gate on `default_role_catalog_admin_screen.dart` + `tool/advisor_proxy/admin_default_role_catalog_routes.dart` to a granular permission key registered in the catalog. F&F-internal admin scope — NOT widened to operator-tier roles. | code-ready |
 | `202605150400_per_daypart_v1_drop_close_authority.sql` | Per-Daypart V1 Slice 1.5 deprecation step on `public.business_timing_profiles`: drops the `business_timing_profiles_local_close_required_check` cross-column CHECK and drops the NOT NULL constraint on `close_authority`. Operator decision 2026-05-15: close-authority is now auto-derived per shift from the per-vendor `CloseAuthorityCapability` lookup (`lib/services/integration/close_authority_capability.dart`) + `business_day_start_local_time` fallback. Full column drop deferred to a follow-up Postgres-only slice that also refactors `BusinessTimingProfilesRepository`'s `closeAuthority` / `localCloseFallbackTime` write surface. | code-ready |
+| `202605160000_per_daypart_v1_per_period_target_persistence.sql` | Per-Daypart V1 Slice 1 per-period data layer foundation. Adds `target_cycle_dayparts` (per-(cycle, service_period) locked CPLH/SPLH/PPA + OPZ + cover_count for cover-weighted whole-day pool rollup) and `weekly_plan_snapshot_day_dayparts` (per-(snapshot, business_date, service_period) demand-derived values + theoretical FOH/BOH dollars at lock time). Adds `weekly_plan_snapshots.wage_at_lock_time_json` (JSONB stamp — Design Rule 8: audit checks compare locked dollars against this column, not current wages). Adds 5 per-shift per-period target stamp columns on `shift_records` so closed truth retains its period band stamp per Promise 2. Both new tables are operator-scoped + RLS-policy-protected with the four sanctioned wrapper functions; B-tree indexes lead with `(operator_id, location_id)` per `hardening_rls_and_repository_pattern_contract.md`. | code-ready |
 
-**Action:** apply all 53 in next Production1 event per
+**Action:** apply all 54 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

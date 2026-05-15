@@ -1,5 +1,21 @@
 // Phase 7.55l.6b — WeeklyPlanSnapshot persistence + auto-lock spine.
 //
+// Per-Daypart Targets V1 (Slice 1) extensions:
+//   - The lock-time generation path now also computes one
+//     [WeeklyPlanSnapshotDayDaypart] row per (business_date, service_period)
+//     pair and stamps it on the new persisted child table.
+//   - The snapshot row's new `wage_at_lock_time_json` column is populated
+//     with `{"foh_wage", "boh_wage", "blended_wage"}` from the cycle in
+//     force at lock time (Design Rule 8 — audit checks compare against
+//     this column, not against `ActiveTargetProfile` current wages).
+//   - Per-period required hours math:
+//       requiredFohHours = period forecast covers / period target CPLH
+//       requiredBohHours = period forecast sales  / period target SPLH
+//     Per-period theoretical dollars math (Design Rule 5, wages
+//     stay whole-day):
+//       theoreticalFohDollars = required FOH hours × whole-day FOH wage
+//       theoreticalBohDollars = required BOH hours × whole-day BOH wage
+//
 // Narrow runtime seam for current-week snapshot access:
 // - determines current business date via BusinessDateAuthorityService
 //   (shared planning-anchor precedence)
@@ -24,7 +40,9 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_plan.dart';
+import '../domain/models/target_cycle.dart';
 import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
 import '../domain/services/weekly_plan_snapshot_policy.dart';
@@ -162,6 +180,34 @@ class WeeklyPlanSnapshotService {
     // and business dates stay aligned.
     final dayRows = _buildDayRows(plan, weekStart, weekStartDay: weekStartDay);
 
+    // Per-Daypart V1 (Slice 1) — compute per-(day, period) sub-rows
+    // from the cycle's per-period rows + the operator-configured
+    // service-period weights. When the cycle has no per-period rows
+    // (Gap 42 fallback) the list stays empty and read consumers fall
+    // back to the whole-day day_rows.
+    final dayDayparts = _buildDayDaypartRowsForLock(
+      restaurantId: restaurantId,
+      cycle: cycle,
+      dayRows: dayRows,
+    );
+
+    // Per-Daypart V1 (Slice 1) — wage stamp at lock time. Pull wages
+    // from the cycle's parent (cycle-in-force wages, not current).
+    // Blended wage uses the canonical cover-independent formula on the
+    // ActiveTargetProfile model so this stamp can't drift from the
+    // shared seam.
+    final wageStamp = WeeklyPlanSnapshotWagesAtLockTime(
+      fohWage: cycle.fohWage,
+      bohWage: cycle.bohWage,
+      blendedWage: ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: cycle.targetCPLH,
+        targetSPLH: cycle.targetSPLH,
+        targetPPA: cycle.targetPPA,
+        fohWage: cycle.fohWage,
+        bohWage: cycle.bohWage,
+      ),
+    );
+
     final now = nowIsoUtc();
     final snapshot = WeeklyPlanSnapshot(
       snapshotId: '${restaurantId}_snapshot_${weekStart.replaceAll('-', '')}',
@@ -180,6 +226,8 @@ class WeeklyPlanSnapshotService {
       generatedAt: now,
       lockedAt: now,
       dayRows: dayRows,
+      dayDayparts: dayDayparts,
+      wageAtLockTime: wageStamp,
     );
 
     await _snapshotRepo.upsertSnapshot(snapshot);
@@ -272,6 +320,165 @@ class WeeklyPlanSnapshotService {
         requiredBohHours: dayPlan.requiredBohHours,
       );
     });
+  }
+
+  /// Per-Daypart V1 (Slice 1) — compute per-(day, period) sub-rows for
+  /// the locked snapshot.
+  ///
+  /// Allocation strategy:
+  ///   1. For each day-row in [dayRows], iterate the
+  ///      operator-configured service periods applicable to that day.
+  ///   2. Allocate the day's `forecastCovers` across the applicable
+  ///      periods using the cycle's per-period `coverCount` as the
+  ///      proportion source (the recommendation engine already weighted
+  ///      the cover signal from real evidence in the 60-day calibration
+  ///      window). When the cycle has no per-period rows, returns
+  ///      empty — read consumers fall back to whole-day rows.
+  ///   3. Per-period forecast sales = period forecast covers × period
+  ///      target PPA (from the cycle's per-period row).
+  ///   4. Per-period required FOH hours = period forecast covers /
+  ///      period target CPLH.
+  ///   5. Per-period required BOH hours = period forecast sales /
+  ///      period target SPLH.
+  ///   6. Per-period theoretical FOH dollars = required FOH hours ×
+  ///      whole-day FOH wage (wages stay whole-day, Design Rule 5).
+  ///   7. Per-period theoretical BOH dollars = required BOH hours ×
+  ///      whole-day BOH wage.
+  ///
+  /// This helper is sync (no I/O); all the inputs are already in
+  /// memory at lock time.
+  ///
+  /// Public for testing; private wiring stays through
+  /// `_generateAndPersistSnapshot`.
+  @visibleForTesting
+  static List<WeeklyPlanSnapshotDayDaypart> debugBuildDayDaypartRows({
+    required TargetCycle cycle,
+    required List<WeeklyPlanSnapshotDay> dayRows,
+    Map<int, List<String>>? applicablePeriodIdsByWeekday,
+  }) =>
+      _buildDayDaypartRows(
+        cycle: cycle,
+        dayRows: dayRows,
+        applicablePeriodIdsByWeekday: applicablePeriodIdsByWeekday,
+      );
+
+  List<WeeklyPlanSnapshotDayDaypart> _buildDayDaypartRowsForLock({
+    required String restaurantId,
+    required TargetCycle cycle,
+    required List<WeeklyPlanSnapshotDay> dayRows,
+  }) =>
+      _buildDayDaypartRows(cycle: cycle, dayRows: dayRows);
+
+  static List<WeeklyPlanSnapshotDayDaypart> _buildDayDaypartRows({
+    required TargetCycle cycle,
+    required List<WeeklyPlanSnapshotDay> dayRows,
+    Map<int, List<String>>? applicablePeriodIdsByWeekday,
+  }) {
+    if (cycle.dayparts.isEmpty) {
+      // Gap 42 fallback: no per-period rows on the cycle → no
+      // per-(day, period) sub-rows on the snapshot. Read consumers
+      // fall back to whole-day day_rows honestly.
+      return const <WeeklyPlanSnapshotDayDaypart>[];
+    }
+
+    // Per-period total cover weight from the cycle (recommendation
+    // engine's 60-day evidence). Used to allocate each day's forecast
+    // covers across applicable periods.
+    final periodCoverWeights = <String, int>{
+      for (final dp in cycle.dayparts) dp.servicePeriodId: dp.coverCount,
+    };
+
+    final out = <WeeklyPlanSnapshotDayDaypart>[];
+    for (final dayRow in dayRows) {
+      // Determine which periods are applicable on this weekday. When
+      // the caller hasn't supplied a map, fall back to the cycle's
+      // entire per-period set (all applicable). This is acceptable
+      // because the cycle was built from the operator's actual
+      // calibration window evidence; periods that never serve a given
+      // weekday simply contribute zero covers to that day.
+      final periodIds = applicablePeriodIdsByWeekday == null
+          ? cycle.dayparts.map((d) => d.servicePeriodId).toList()
+          : (applicablePeriodIdsByWeekday[
+                  _isoWeekdayFromLabel(dayRow.day)] ??
+              cycle.dayparts.map((d) => d.servicePeriodId).toList());
+
+      final totalWeight = periodIds
+          .map((id) => periodCoverWeights[id] ?? 0)
+          .fold<int>(0, (a, b) => a + b);
+      for (final periodId in periodIds) {
+        final cycleDp = cycle.daypartFor(periodId);
+        if (cycleDp == null) continue;
+        final w = periodCoverWeights[periodId] ?? 0;
+        final periodCovers = totalWeight > 0
+            ? ((dayRow.forecastCovers * w) / totalWeight).round()
+            : 0;
+        final periodSales = periodCovers * cycleDp.targetPPA;
+        final periodReqFohHours = cycleDp.targetCPLH > 0
+            ? periodCovers / cycleDp.targetCPLH
+            : 0.0;
+        final periodReqBohHours = cycleDp.targetSPLH > 0
+            ? periodSales / cycleDp.targetSPLH
+            : 0.0;
+        final periodFohDollars = periodReqFohHours * cycle.fohWage;
+        final periodBohDollars = periodReqBohHours * cycle.bohWage;
+        out.add(WeeklyPlanSnapshotDayDaypart(
+          businessDate: dayRow.businessDate,
+          servicePeriodId: periodId,
+          forecastCovers: periodCovers,
+          forecastSales: periodSales,
+          requiredFohHours: periodReqFohHours,
+          requiredBohHours: periodReqBohHours,
+          theoreticalFohDollars: periodFohDollars,
+          theoreticalBohDollars: periodBohDollars,
+        ));
+      }
+    }
+    return out;
+  }
+
+  static int _isoWeekdayFromLabel(String dayLabel) {
+    // 1=Mon..7=Sun. Mirrors ScheduleDistributionWeights.canonicalDayOrder.
+    switch (dayLabel) {
+      case 'Mon':
+        return 1;
+      case 'Tue':
+        return 2;
+      case 'Wed':
+        return 3;
+      case 'Thu':
+        return 4;
+      case 'Fri':
+        return 5;
+      case 'Sat':
+        return 6;
+      case 'Sun':
+        return 7;
+      default:
+        return 0;
+    }
+  }
+
+  /// Public adapter that maps timing-config service periods into
+  /// `applicableDays`-keyed lookup. Provided here so the cover
+  /// allocator above can read operator-configured restrictions when
+  /// they're available; the legacy fallback (no map) treats every
+  /// per-period row as applicable on every weekday.
+  static Map<int, List<String>> applicablePeriodIdsByWeekday(
+    List<dynamic> servicePeriodDefinitions,
+  ) {
+    final out = <int, List<String>>{};
+    // We don't import `ServicePeriodDefinition` directly to keep the
+    // dependency boundary minimal; rely on duck typing on `.id` and
+    // `.applicableDays` which both `ServicePeriodDefinition` and any
+    // future replacement carry.
+    for (final def in servicePeriodDefinitions) {
+      final id = def.id as String;
+      final days = (def.applicableDays as List).cast<int>();
+      for (final d in days) {
+        (out[d] ??= <String>[]).add(id);
+      }
+    }
+    return out;
   }
 
   // ── Date helpers ────────────────────────────────────────────────────────

@@ -86,18 +86,52 @@ class RecommendedBenchmarkSelection {
   final Map<String, DaypartCohortStats> perDaypartStats;
 
   /// Union of per-daypart OPZ floors / ceilings. Legacy consumer field.
+  ///
+  /// Per-Daypart Targets V1 (Slice 1): the cycle write path now reads
+  /// per-period OPZ bands directly from [perDaypartStats] and recomputes
+  /// the union inside the write path. This pooled-union field is kept
+  /// for backward compatibility with legacy callers but is no longer
+  /// the persistence target.
+  @Deprecated(
+    'Per-period OPZ bands are computed inside the cycle write path '
+    'from perDaypartStats post-Slice-1. Use '
+    'perDaypartStats[periodId].opzFloorCPLH / opzCeilingCPLH directly.',
+  )
   final double unionOpzFloorCPLH;
+  @Deprecated(
+    'Per-period OPZ bands are computed inside the cycle write path '
+    'from perDaypartStats post-Slice-1. Use '
+    'perDaypartStats[periodId].opzFloorCPLH / opzCeilingCPLH directly.',
+  )
   final double unionOpzCeilingCPLH;
 
   /// Cover-weighted means across qualifying dayparts. Legacy consumer
   /// fields. Not a substitute for `perDaypartStats[d].recommendedTarget*`.
+  ///
+  /// Per-Daypart Targets V1 (Slice 1): pool is now computed inside the
+  /// cycle write path as a cover-weighted rollup of per-period rows
+  /// (Design Rule 4). These fields are retained for callers that have
+  /// not yet migrated to `perDaypartStats[periodId].recommendedTarget*`.
+  @Deprecated(
+    'Pool computed inside cycle write path post-Slice-1; use '
+    'perDaypartStats[periodId].recommendedTargetCPLH directly.',
+  )
   final double pooledRecommendedTargetCPLH;
+  @Deprecated(
+    'Pool computed inside cycle write path post-Slice-1; use '
+    'perDaypartStats[periodId].recommendedTargetSPLH directly.',
+  )
   final double pooledRecommendedTargetSPLH;
+  @Deprecated(
+    'Pool computed inside cycle write path post-Slice-1; use '
+    'perDaypartStats[periodId].recommendedTargetPPA directly.',
+  )
   final double pooledRecommendedTargetPPA;
 
   final String overallQuality;
   final String explanationMetadata;
 
+  // ignore_for_file: deprecated_member_use_from_same_package
   const RecommendedBenchmarkSelection({
     required this.selectedRecordIds,
     required this.excludedOutlierIds,
