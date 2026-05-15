@@ -176,8 +176,13 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605160000_per_daypart_v1_per_period_target_persistence.sql`,
-  which is the Per-Daypart V1 Slice 1 per-period data layer foundation
+  `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
+  (a `COMMENT ON COLUMN` only — additive, no DDL/data change — landed
+  by Per-Daypart V1 / Slice 7b option (b) to mark
+  `locations.business_day_rollover_hour` as deprecated by the canonical
+  `business_timing_profiles` chain). The prior cutoff
+  `202605160000_per_daypart_v1_per_period_target_persistence.sql` is the
+  Per-Daypart V1 Slice 1 per-period data layer foundation
   (adds `target_cycle_dayparts` + `weekly_plan_snapshot_day_dayparts`
   child tables with RLS-policy-protected operator scoping,
   `weekly_plan_snapshots.wage_at_lock_time_json` JSONB column for
