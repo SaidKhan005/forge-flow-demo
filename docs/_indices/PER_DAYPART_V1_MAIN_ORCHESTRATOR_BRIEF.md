@@ -87,6 +87,17 @@ Worker execution moves off the orchestrator's interactive subscription onto the 
 - Shared docs (plan doc, brief, ledger): both lanes annotate own slice rows inline; never overwrite the other lane's annotations. Status board sections per lane.
 - Coordination via Git only — no real-time channel.
 
+## Live walkthrough wave (2026-05-15 evening — emulator pressure-test)
+
+Operator-driven emulator walkthrough (F&F demo, `emulator-5554`) surfaced 6 findings; Claude root-causes + dispatches fixes via the **headless `scripts/dispatch_worker.ps1`** harness (now validated live — 3 Windows bugs fixed: main-worktree resolution, `Invoke-Git` native-stderr, `cmd.exe`+stdin launch).
+
+- **Finding 1** Shift daypart card: closed-period misclassified + phantom `0.0%`/`$0.00` → **MERGED #785**.
+- **Finding 2** Demo seed never wrote per-period cycle rows (identical Benchmark targets) → **MERGED #784** (canonical `TargetCycleDao.upsertCycle`; lunch 4.40/dinner 4.80/late_night 3.90).
+- **Finding 3** Settings raw-URL under buttons → **MERGED #783** (shared `SettingsPointerRow`, deep-link reuse).
+- **Finding 4/5/6** Full operational demo-data overhaul: spec'd at `docs/_audits/per_daypart_v1/full_demo_data_spec.md` — 6 chunked slices (A hierarchy → B driver-variance "all covers" fix → C per-location data → D Gap-39 Learn narration → E vendor/demo_mode_state → F HP#11 overrides+notifications). No schema change; HP #2 clean. **Operator decisions: full breadth every surface; Gap 39 Learn narration PULLED IN-SCOPE.** Sequenced AFTER Finding 2 (#784, merged) since shared seed files; demo wave now unblocked.
+
+Next: reseed + hot-restart emulator (operator sees Findings 1/2/3 live) → run 6-slice demo-data wave → re-pressure-test fully operational.
+
 ## Active work (2026-05-15 — autonomous orchestration; V1 implementation complete)
 
 **Merged this session:** Slice 0 (#761) → 2.5 (#762) → 1.5 (#763) → arch-verify (#764) → 7a (#766) → 1.5 regression (#768) → 7b research (#765) → Slice 1 audit (#770) → 7b coord (#772) → dispatch harness (#773) → **Slice 1 #767 (operator-approved)** → **Slices 2/3/4/5/6 parallel wave #774-#778 (all audited clean, merged)** → wave-close + harness fixes (#779) → notes update (this).
