@@ -5,6 +5,58 @@ import 'package:forge_and_flow/services/auth/handoff_code_client.dart';
 import 'package:forge_and_flow/services/auth/handoff_code_gateway.dart';
 
 void main() {
+  testWidgets('renders an OutlinedButton.icon for the operator-web deflection', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        SettingsPointerRow(
+          label: 'Manage Account on Ops Web',
+          opWebPath: 'my-account',
+          navId: 'my_account',
+          handoffCodeGateway: _FakeHandoffGateway(
+            link: Uri.parse(
+              'https://app.forgeflow.app/handoff?code=abc&nav=my_account',
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // FU-mobile-settings-pointer-buttons: the row now renders as a
+    // real button rather than tappable text with a leading icon.
+    // `OutlinedButton.icon` returns a private `_OutlinedButtonWithIcon`
+    // subtype, so we match by `is OutlinedButton` via predicate rather
+    // than `find.byType(OutlinedButton)` (which is exact-type only).
+    final buttonFinder = find.byWidgetPredicate((w) => w is OutlinedButton);
+    expect(buttonFinder, findsOneWidget);
+    expect(find.text('Manage Account on Ops Web'), findsOneWidget);
+    // The helper URL line is still rendered for context.
+    expect(find.text('https://app.forgeflow.app/my-account'), findsOneWidget);
+
+    final button = tester.widget<OutlinedButton>(buttonFinder);
+    expect(button.onPressed, isNotNull);
+  });
+
+  testWidgets('renders a disabled OutlinedButton when opWebPath is empty', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const SettingsPointerRow(
+          label: 'Manage future thing',
+          opWebPath: '',
+        ),
+      ),
+    );
+
+    final buttonFinder = find.byWidgetPredicate((w) => w is OutlinedButton);
+    expect(buttonFinder, findsOneWidget);
+    final button = tester.widget<OutlinedButton>(buttonFinder);
+    expect(button.onPressed, isNull);
+    expect(find.text('Manage future thing (coming soon)'), findsOneWidget);
+  });
+
   testWidgets('mints and launches Operator Web handoff URL', (tester) async {
     final gateway = _FakeHandoffGateway(
       link: Uri.parse(
