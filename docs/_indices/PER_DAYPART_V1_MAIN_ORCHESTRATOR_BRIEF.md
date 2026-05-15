@@ -29,7 +29,7 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 | 5 — Variance read-seam swap | **Main or Claude 2** | Waiting on Slice 1 merge. | Small read swap. |
 | 6 — Audit scorer extension | **Main** | Waiting on Slice 1 merge. | Per-period check shapes + pool-consistency + wage-at-lock-time + structural ordering bug fix. |
 | 7a — Tock reservation business_date | **Claude 2** | ✅ MERGED #766 (`baa4047a`) | Gap 45 closed via `IanaTimezoneConverter`. |
-| 7b — Sub-hour business-day cutoff precision (Gap 46+47) | TBD | ⏸ PARKED — operator decides option (a) widen INT→TIME vs (b) sink-side `BusinessDateResolver` resolution. Research doc merged #765 (`56f234c3`). | See `docs/_audits/per_daypart_v1/slice_7b_research_2026_05_15.md`. |
+| 7b — Sub-hour business-day cutoff precision (Gap 46+47) | **Claude 2** | RESOLVED — operator chose option (b) proper fix (sink-side `BusinessDateResolver`). Claude 2 implementing + handling doc merges. | Orchestrator defaults handed to Claude 2: (b1) keep SQL trigger as legacy backup; converge 3 fallback cutoff hardcodes onto 4h. Operator may override on return. |
 
 ## Operator decisions queued
 
@@ -42,7 +42,9 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 **Open operator decisions (parked during operator break 2026-05-15):**
 
 1. **Slice 1 merge approval (schema-touching gate).** PR #767. Pattern B audit clean. Recommended: APPROVE — merge unlocks Slices 2/3/4/5/6 parallel dispatch.
-2. **Slice 7b option choice — (a) widen INT→TIME schema vs (b) sink-side BusinessDateResolver resolution.** Research doc on master at `docs/_audits/per_daypart_v1/slice_7b_research_2026_05_15.md`. Claude's recommendation: option (b) if Slice 1 lands by 2026-05-16, else (a) as tactical patch. Sub-decisions: (b1)/(b2) for SQL trigger handling; converge 3 scattered fallback cutoff hardcodes onto a single value (recommend 4h to match operator convention); is Slice 7b OK to wait for Slice 1 merge or needed before Phase 12?
+2. ~~Slice 7b option choice~~ — RESOLVED. Operator chose option (b) proper fix; Claude 2 implementing + doc merges. Orchestrator defaults handed down: (b1) keep SQL trigger as legacy backup; converge 3 fallback cutoff hardcodes onto 4h. Operator may override either on return — not blocking.
+
+**Net: the ONLY operator decision blocking forward progress is #1 (Slice 1 merge approval).**
 
 ## Dispatch contract (every worker agent)
 
@@ -79,13 +81,13 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 **Merged in current wave** (chronological): Slice 0 (#761) → Slice 2.5 (#762) → Slice 1.5 (#763) → architecture-verification audit (#764) → Slice 7a Tock (#766) → Slice 1.5 regression test (#768) → Slice 7b research doc (#765).
 
 **Awaiting operator return:**
-1. **Slice 1 merge approval** — PR #767, schema-touching gate.
-2. **Slice 7b option pick** — (a) vs (b) vs sub-decisions; research is on master.
+1. **Slice 1 merge approval** — PR #767, schema-touching gate. SOLE blocker.
+
+**In flight (Claude 2):** Slice 7b option (b) proper fix + doc merges.
 
 **Dispatchable on Slice 1 merge** (one-shot parallel wave):
 - Slices 2 / 3 / 5 / 6 → Main parallel workers
 - Slice 4 → Claude 2
-- Slice 7b → after operator picks option
 
 Pre-staged worker prompts: `docs/_indices/PER_DAYPART_V1_POST_SLICE1_DISPATCH.md` (populated on first dispatch).
 
