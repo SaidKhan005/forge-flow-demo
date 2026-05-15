@@ -171,7 +171,7 @@ class _BusinessTimingEditorScreenState
       default:
         return widget.locationId?.trim().isNotEmpty == true
             ? widget.locationId!.trim()
-            : widget.session.primaryLocationId;
+            : (widget.session.primaryLocationId ?? '');
     }
   }
 

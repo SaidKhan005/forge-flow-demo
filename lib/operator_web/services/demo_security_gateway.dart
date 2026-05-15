@@ -61,6 +61,33 @@ class DemoWebSecurityGateway implements WebSecurityGateway {
   final Map<String, WebSecurityTotpEnrollment> _pendingTotpEnrollments =
       <String, WebSecurityTotpEnrollment>{};
 
+  /// Demo-scenario seeding helper: drops a pending MFA removal row
+  /// into the gateway's in-memory state without driving the public
+  /// [revokeFactor] mutation path (which would consume an idempotency
+  /// key and append a login-history event). Used by the
+  /// `mfa-pending-removal` scenario in `main_operator_web.dart` so the
+  /// `MfaCardStage.removalRequested` walkthrough lands on a populated
+  /// pending-removal posture on first paint.
+  ///
+  /// Returns the seeded request id so the scenario wiring can log /
+  /// reference it. No-op when [factorId] does not match an existing
+  /// factor.
+  String? seedPendingFactorRemoval({
+    required String factorId,
+    Duration delay = const Duration(hours: 18),
+  }) {
+    if (!_factors.containsKey(factorId)) return null;
+    final requestId = 'demo-security-removal-scenario-${_removals.length + 1}';
+    final executeAfter = _now.add(delay);
+    _removals[requestId] = WebSecurityMfaRemoval(
+      requestId: requestId,
+      factorId: factorId,
+      status: 'pending',
+      executeAfter: executeAfter,
+    );
+    return requestId;
+  }
+
   /// Cached responses keyed by the screen-minted idempotency key, so
   /// a re-submission of the same write returns the original outcome
   /// rather than mutating again.

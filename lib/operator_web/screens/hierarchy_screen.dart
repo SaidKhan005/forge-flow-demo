@@ -187,7 +187,7 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
     return TeamOrgHierarchyListCommand(
       actorUserId: widget.session.uid,
       operatorId: widget.session.operatorId,
-      locationId: widget.session.primaryLocationId,
+      locationId: widget.session.primaryLocationId ?? '',
     );
   }
 
@@ -215,7 +215,7 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
         TeamOrgUnitCreateCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           parentOrgUnitId: parent.orgUnitId,
           unitType: draft.unitType,
           label: draft.label,
@@ -265,7 +265,7 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
         TeamLocationOrgUnitMoveCommand(
           actorUserId: widget.session.uid,
           operatorId: widget.session.operatorId,
-          locationId: widget.session.primaryLocationId,
+          locationId: widget.session.primaryLocationId ?? '',
           targetLocationId: location.locationId,
           parentOrgUnitId: selected.orgUnitId,
         ),

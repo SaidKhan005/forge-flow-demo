@@ -282,7 +282,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
           TeamRoleCreateCommand(
             actorUserId: widget.session.uid,
             operatorId: widget.session.operatorId,
-            locationId: widget.session.primaryLocationId,
+            locationId: widget.session.primaryLocationId ?? '',
             roleKey: _deriveRoleKey(_displayNameController.text.trim()),
             displayName: _displayNameController.text.trim(),
             description: _descriptionController.text.trim(),
@@ -297,7 +297,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
           TeamRolePatchCommand(
             actorUserId: widget.session.uid,
             operatorId: widget.session.operatorId,
-            locationId: widget.session.primaryLocationId,
+            locationId: widget.session.primaryLocationId ?? '',
             roleId: widget.existing!.roleId,
             displayName: _displayNameController.text.trim(),
             description: _descriptionController.text.trim(),

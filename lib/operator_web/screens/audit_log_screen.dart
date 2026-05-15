@@ -488,7 +488,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
               teamHierarchyGateway: widget.teamHierarchyGateway!,
               actorUserId: widget.session.uid,
               operatorId: widget.session.operatorId,
-              locationId: widget.session.primaryLocationId,
+              locationId: widget.session.primaryLocationId ?? '',
               clock: widget.hierarchyPaneClock,
             ),
             const SizedBox(height: 18),

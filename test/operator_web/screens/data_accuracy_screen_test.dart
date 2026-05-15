@@ -75,7 +75,7 @@ void main() {
   }) {
     return VendorConnectionsBundle(
       operatorId: session.operatorId,
-      locationId: session.primaryLocationId,
+      locationId: session.primaryLocationId ?? '',
       locationName: session.primaryLocationName,
       posConnection: pos,
       laborConnection: labor,
@@ -121,7 +121,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
             ),
           ),
@@ -172,7 +172,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -201,7 +201,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: locationManagerSession,
-            locationId: locationManagerSession.primaryLocationId,
+            locationId: locationManagerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -254,7 +254,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: squareGateway,
             ),
           ),
@@ -294,7 +294,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: lightspeedGateway,
             ),
           ),
@@ -340,7 +340,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: gateway,
             businessDateIso: '2026-05-06',
             onSaveSettings: saves.add,
@@ -390,7 +390,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: squareGateway,
           ),
         ),
@@ -412,7 +412,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -443,7 +443,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -478,7 +478,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
             tierEmailGateway: gateway,
             tierEmailIdempotencyKeyFactory: () => 'idem-test-1',
@@ -540,7 +540,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
             tierEmailGateway: gateway,
             tierEmailIdempotencyKeyFactory: () => 'idem-test-2',
@@ -590,7 +590,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
             tierEmailGateway: gateway,
           ),
@@ -634,7 +634,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
           ),
         ),
@@ -703,7 +703,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
             ),
           ),
@@ -810,7 +810,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
@@ -861,7 +861,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
@@ -892,7 +892,7 @@ void main() {
         wrap(
           DataAccuracyScreen(
             session: ownerSession,
-            locationId: ownerSession.primaryLocationId,
+            locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
             initialSettings: _settingsWithWage(WageSource.manualMix),
             vendorApplicabilityGateway: applicabilityGateway,
@@ -920,7 +920,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               initialSettings: _settingsWithWage(WageSource.manualMix),
               vendorApplicabilityGateway: applicabilityGateway,
@@ -957,7 +957,7 @@ void main() {
             DataAccuracyServicePeriodSetting(
               id: 'period-1',
               operatorId: ownerSession.operatorId,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               servicePeriodKey: 'breakfast',
               coversSource: ServicePeriodCoversSource.reservationPlusWalkin,
               wageSource: ServicePeriodWageSource.targetSubstitution,
@@ -971,7 +971,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               dataAccuracyGateway: gateway,
             ),
@@ -1003,7 +1003,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               dataAccuracyGateway: gateway,
               businessDateIso: '2026-05-08',
@@ -1077,7 +1077,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               dataAccuracyGateway: gateway,
               businessDateIso: '2026-05-08',
@@ -1141,7 +1141,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               wageAuthorityGateway: wageGateway,
             ),
@@ -1203,7 +1203,7 @@ void main() {
           wrap(
             DataAccuracyScreen(
               session: ownerSession,
-              locationId: ownerSession.primaryLocationId,
+              locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
               wageAuthorityGateway: wageGateway,
               wageAuthorityIdempotencyKeyFactory: () {

@@ -50,8 +50,8 @@ class OperatorWebSession {
     required this.displayName,
     required this.operatorId,
     required this.businessName,
-    required this.primaryLocationId,
     required this.primaryLocationName,
+    this.primaryLocationId,
     this.roles = const <String>[],
     this.permissions = const <String>{},
     this.phone,
@@ -83,7 +83,17 @@ class OperatorWebSession {
 
   /// Primary location id for the operator. Used to seed the default
   /// `/locations/:location_id/vendor-connections` deep link.
-  final String primaryLocationId;
+  ///
+  /// `null` (or an empty string after trimming) indicates the session
+  /// is **not** pinned to a single location — e.g. a multi-unit owner
+  /// whose default management scope is "All locations". Consumers that
+  /// need a non-nullable `String` should fall back to `?? ''`; the
+  /// router + scope-aware screens already gate on
+  /// `trim().isNotEmpty` so an empty value is treated as "business
+  /// scope". Drives the OW-4 inverse demo scenario where the Locations
+  /// nav item appears in the left rail because the session is not
+  /// location-scoped.
+  final String? primaryLocationId;
 
   /// Display name of the primary location.
   final String primaryLocationName;
@@ -480,10 +490,21 @@ class MfaEnrollmentArtifact {
 /// fixture operator. Walkthrough copy assumes this source.
 class DemoOperatorWebAuthSource
     implements OperatorWebAuthSource, OperatorWebBenchmarksGatewayProvider {
-  DemoOperatorWebAuthSource({OperatorWebAuthState? initial})
-    : _state = initial ?? const OperatorWebSignedOut() {
+  DemoOperatorWebAuthSource({
+    OperatorWebAuthState? initial,
+    bool emitNeedsSignInOnSignOut = false,
+  }) : _state = initial ?? const OperatorWebSignedOut(),
+       _emitNeedsSignInOnSignOut = emitNeedsSignInOnSignOut {
     _controller.add(_state);
   }
+
+  /// Demo scenario knob: when true, [signOut] emits
+  /// [OperatorWebNeedsSignIn] instead of [OperatorWebSignedOut] so the
+  /// demo renders the live `OperatorWebSignInScreen` (the U-1 demo
+  /// scenario "signed-out-live"). Default behavior keeps the
+  /// fixture-driven Welcome / NeedsToken landing for the magic-link
+  /// walkthrough.
+  final bool _emitNeedsSignInOnSignOut;
 
   /// Convenience factory: starts on the magic-link landing surface
   /// so the walkthrough can drive token entry first.
@@ -786,6 +807,15 @@ class DemoOperatorWebAuthSource
 
   @override
   Future<void> signOut() async {
+    if (_emitNeedsSignInOnSignOut) {
+      // U-1 demo scenario: sign-out lands on the live LoginScreen
+      // surface (`OperatorWebNeedsSignIn`) so the walkthrough can
+      // exercise the live email/password card without flipping
+      // `OPERATOR_WEB_DEMO_AUTH` off. Production live source emits
+      // `OperatorWebNeedsSignIn` after sign-out; this matches.
+      _emit(const OperatorWebNeedsSignIn());
+      return;
+    }
     _emit(const OperatorWebSignedOut());
   }
 
@@ -866,6 +896,52 @@ const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
   rolloverHour: 4,
   primaryLocationTimezone: 'America/Toronto',
 );
+
+/// Demo session for the OW-4 inverse: an owner with no pinned
+/// location (`primaryLocationId == null`). Drives the demo scenario
+/// `owner-business`, where the left-nav surfaces the Locations item
+/// because the management scope defaults to the operator (business)
+/// scope rather than a location leaf.
+const OperatorWebSession kDemoOperatorWebBusinessSession = OperatorWebSession(
+  uid: 'demo-operator-owner-business',
+  email: 'owner@demo.forgeflow.test',
+  displayName: 'Demo Operator Owner',
+  operatorId: 'demo-operator',
+  businessName: 'Demo Restaurant Group',
+  primaryLocationId: null,
+  primaryLocationName: 'Demo Restaurant Group',
+  roles: <String>['operator_owner'],
+  logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
+  currencyCode: 'CAD',
+  localeTag: 'en-CA',
+  weekStartDay: 'monday',
+  rolloverHour: 4,
+  primaryLocationTimezone: 'America/Toronto',
+);
+
+/// Demo session for OW-8c `MfaCardStage.enrolled` walkthrough: same
+/// owner-at-location identity as [kDemoOperatorWebSession] but with
+/// `mfaEnrolled: true` so the My account MFA card lands on the
+/// post-enrollment CTA branch (view recovery codes / manage 2FA)
+/// without first running the onboarding click path.
+const OperatorWebSession kDemoOperatorWebMfaEnrolledSession =
+    OperatorWebSession(
+      uid: 'demo-operator-owner',
+      email: 'owner@demo.forgeflow.test',
+      displayName: 'Demo Operator Owner',
+      operatorId: 'demo-operator',
+      businessName: 'Demo Restaurant Group',
+      primaryLocationId: 'demo-location',
+      primaryLocationName: 'Demo Main Street',
+      roles: <String>['operator_owner'],
+      mfaEnrolled: true,
+      logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
+      currencyCode: 'CAD',
+      localeTag: 'en-CA',
+      weekStartDay: 'monday',
+      rolloverHour: 4,
+      primaryLocationTimezone: 'America/Toronto',
+    );
 
 /// Demo session for the `location_manager` read-only branch. Drives
 /// the `11W.7` Account screen permission-gate walkthrough — same
