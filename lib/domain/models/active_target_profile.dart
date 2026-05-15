@@ -114,6 +114,44 @@ class ActiveTargetProfile {
     return null;
   }
 
+  /// Per-Daypart V1 (Slice 5): the per-period theoretical labor % for
+  /// [servicePeriodId].
+  ///
+  /// Returns `null` when the cycle wrote no per-period row for the
+  /// period (Gap 42 fallback path — Design Rule 2: missing means
+  /// `null`, never a `0` sentinel). The caller is responsible for
+  /// falling back to the whole-day [theoreticalLaborPct] pool field.
+  ///
+  /// Derived from the period row's rate targets and the profile's
+  /// whole-day wages using the same canonical formula as [build]:
+  ///   `fohPct = fohWage / (daypartTargetCPLH × daypartTargetPPA) × 100`
+  ///   `bohPct = bohWage / daypartTargetSPLH × 100`
+  /// Wages stay whole-day (Design Rule 5 / V1 deferral — there is no
+  /// per-period wage variant); only the per-period rate targets differ
+  /// from the pool. The `daypart`-prefixed name keeps Design Rule 1's
+  /// scope-obvious contract: a caller cannot accidentally substitute
+  /// the whole-day [theoreticalLaborPct] without changing the call
+  /// site.
+  ///
+  /// Preserves the legacy divide-by-zero boundary from [build]
+  /// (returns `0.0` for a degenerate period row whose `CPLH`/`PPA`/
+  /// `SPLH` are non-positive) so this accessor matches the whole-day
+  /// scalar's existing behaviour; the broader `0.0`-vs-`null` sentinel
+  /// follow-up is tracked against `ActiveTargetProfile.build` and is
+  /// out of scope here (read-only Slice 5, Design Rule 4).
+  double? daypartTheoreticalLaborPctFor(String servicePeriodId) {
+    final row = daypartFor(servicePeriodId);
+    if (row == null) return null;
+    final fohPct =
+        (row.daypartTargetCPLH > 0 && row.daypartTargetPPA > 0)
+            ? fohWage / (row.daypartTargetCPLH * row.daypartTargetPPA) * 100
+            : 0.0;
+    final bohPct = row.daypartTargetSPLH > 0
+        ? bohWage / row.daypartTargetSPLH * 100
+        : 0.0;
+    return fohPct + bohPct;
+  }
+
   /// Builds an [ActiveTargetProfile] from explicit source-of-truth inputs.
   ///
   /// This is the canonical constructor for live standards-authoring paths:

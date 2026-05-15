@@ -19,6 +19,16 @@
 /// Defaults to [ServicePeriodDefinitionResolver.demoDefinitions] for
 /// backward compatibility with pure-data tests that don't have a
 /// persisted config.
+///
+/// Per-Daypart V1 (Slice 5 — Gap 7): non-closed rows' theoretical-%
+/// contribution now reads the period-scoped value from the current
+/// profile (`daypartTheoreticalLaborPctFor(row.daypart)`) rather than
+/// the whole-day pool scalar, falling back to the whole-day pool when
+/// the active cycle wrote no per-period row (Gap 42). The collapsed
+/// WTD/Full-Week variance points become period-accurate underneath
+/// with no UX change (Option B — layout stays flat). Closed rows are
+/// unchanged (Rule 4 locked-stamp exception); wages stay whole-day so
+/// `_laborDollarsForRow` is untouched (Design Rule 5).
 library;
 
 import '../domain/constants/app_defaults.dart';
@@ -213,9 +223,25 @@ class VarianceWeekProjectionReadService {
 
   /// 7.55q.4: per-row theoretical % source.
   /// - Closed rows: locked `shift.theoreticalLaborPct` (Rule 4).
-  /// - Non-closed rows: `currentTargetProfile.theoreticalLaborPct`
-  ///   when provided (Rule 3). Falls back to `shift.theoreticalLaborPct`
-  ///   when no current profile is passed (backward-compatible).
+  /// - Non-closed rows: the CURRENT shared Benchmark target's
+  ///   theoretical % when a profile is provided (Rule 3). Falls back
+  ///   to `shift.theoreticalLaborPct` when no current profile is
+  ///   passed (backward-compatible pure-data path).
+  ///
+  /// Per-Daypart V1 (Slice 5 — Gap 7): for non-closed rows the
+  /// theoretical % now reads the period-scoped value
+  /// `currentTargetProfile.daypartTheoreticalLaborPctFor(row.daypart)`
+  /// instead of the whole-day pool scalar. `row.daypart` is the shift's
+  /// resolved service-period key (saved timing identity or
+  /// `shift.daypart`), which is the same key Slice 1 stamps
+  /// `ActiveTargetProfile.dayparts` rows under. When the active cycle
+  /// wrote no per-period row for that period (Gap 42 insufficient-data
+  /// fallback) the accessor returns `null` and we fall back to the
+  /// whole-day pool `theoreticalLaborPct` exactly as before — never a
+  /// `0` sentinel (Design Rule 2). Wages stay whole-day (Design
+  /// Rule 5); only the per-period rate targets feed this %, so
+  /// `_laborDollarsForRow` is unchanged. Read-only; the canonical
+  /// write path is untouched (Design Rule 4).
   static double _theoreticalPctForRow(
     ProjectionDaypartRow row,
     ActiveTargetProfile? currentTargetProfile,
@@ -223,7 +249,8 @@ class VarianceWeekProjectionReadService {
     if (row.status == RowStatus.closed || currentTargetProfile == null) {
       return row.shift.theoreticalLaborPct;
     }
-    return currentTargetProfile.theoreticalLaborPct;
+    return currentTargetProfile.daypartTheoreticalLaborPctFor(row.daypart) ??
+        currentTargetProfile.theoreticalLaborPct;
   }
 
   static double _weightedTheoreticalPct(

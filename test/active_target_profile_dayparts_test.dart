@@ -114,4 +114,98 @@ void main() {
               'rows live in a child table when persisted');
     });
   });
+
+  // Per-Daypart V1 (Slice 5 — Gap 7): the per-period theoretical-%
+  // accessor that the Variance read seam swaps onto. Locks: null when
+  // no per-period row (Gap 42 fallback — Design Rule 2), per-period
+  // rates + whole-day wages (Design Rule 5), and the legacy
+  // divide-by-zero boundary parity with the whole-day scalar.
+  group('ActiveTargetProfile.daypartTheoreticalLaborPctFor', () {
+    test('returns null when no per-period row exists (Gap 42 fallback)', () {
+      final profile = ActiveTargetProfile.build(
+        restaurantId: 'r1',
+        sourceType: 'cycle_recommended',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 40.0,
+        fohWage: 16.5,
+        bohWage: 21.0,
+        opzFloorCPLH: 4.0,
+        opzCeilingCPLH: 5.0,
+      );
+      expect(profile.daypartTheoreticalLaborPctFor('lunch'), isNull,
+          reason: 'no per-period row → null so the caller falls back to '
+              'the whole-day pool; never a 0 sentinel (Design Rule 2)');
+    });
+
+    test(
+        'derives per-period % from period rates + whole-day wages '
+        '(matches build() formula)', () {
+      const lunch = ActiveTargetProfileDaypart(
+        servicePeriodId: 'lunch',
+        daypartTargetCPLH: 4.0,
+        daypartTargetSPLH: 150.0,
+        daypartTargetPPA: 35.0,
+        daypartOpzFloorCPLH: 3.5,
+        daypartOpzCeilingCPLH: 4.5,
+      );
+      final profile = ActiveTargetProfile.build(
+        restaurantId: 'r1',
+        sourceType: 'cycle_recommended',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 40.0,
+        fohWage: 16.5,
+        bohWage: 21.0,
+        opzFloorCPLH: 4.0,
+        opzCeilingCPLH: 5.0,
+        dayparts: [lunch],
+      );
+      // Same canonical formula as build(), but with the lunch period's
+      // rate targets and the profile's whole-day wages (Design Rule 5).
+      final expectedFohPct = 16.5 / (4.0 * 35.0) * 100;
+      final expectedBohPct = 21.0 / 150.0 * 100;
+      expect(
+        profile.daypartTheoreticalLaborPctFor('lunch'),
+        closeTo(expectedFohPct + expectedBohPct, 1e-9),
+      );
+      // Period-scoped value differs from the whole-day pool scalar —
+      // proves the seam is genuinely per-period, not the pool in
+      // disguise.
+      expect(
+        profile.daypartTheoreticalLaborPctFor('lunch'),
+        isNot(closeTo(profile.theoreticalLaborPct, 1e-6)),
+      );
+      // Unknown period id resolves to null (Gap 42 fallback contract).
+      expect(profile.daypartTheoreticalLaborPctFor('dinner'), isNull);
+    });
+
+    test('degenerate period row keeps the legacy 0.0 divide-by-zero boundary',
+        () {
+      const degenerate = ActiveTargetProfileDaypart(
+        servicePeriodId: 'late_night',
+        daypartTargetCPLH: 0.0,
+        daypartTargetSPLH: 0.0,
+        daypartTargetPPA: 0.0,
+        daypartOpzFloorCPLH: 0.0,
+        daypartOpzCeilingCPLH: 0.0,
+      );
+      final profile = ActiveTargetProfile.build(
+        restaurantId: 'r1',
+        sourceType: 'cycle_recommended',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 40.0,
+        fohWage: 16.5,
+        bohWage: 21.0,
+        opzFloorCPLH: 4.0,
+        opzCeilingCPLH: 5.0,
+        dayparts: [degenerate],
+      );
+      // A present-but-degenerate row is NOT the Gap 42 "no row" case —
+      // it returns the same 0.0 boundary the whole-day build() scalar
+      // produces for non-positive rates (parity, not a new sentinel).
+      expect(profile.daypartTheoreticalLaborPctFor('late_night'), 0.0);
+    });
+  });
 }
