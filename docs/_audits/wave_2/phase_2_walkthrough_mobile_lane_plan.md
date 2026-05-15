@@ -67,8 +67,8 @@ worktree agent gets spawned with the standard contract (branch → fix
 | Emulator | Pixel_9, `emulator-5554`, API 36, `com.forgeflow.app` (recreate if gone) |
 | Flutter run task | recreate per resume prompt (prior `bam7vhie1` is dead) |
 | Live monitor task | restart per "Live monitor" section below |
-| Captured so far | `p1_00_baseline_post_v3.png` through `p1_04_shift_late_night.png` in `phase_2_walkthrough_evidence/mobile/` (carried over from prior worktree) |
-| Pass | mid Pass 1 — resume at first surface whose `Captured` column is blank in the verification matrix |
+| Captured so far | `p1_00` through `p1_08` (9 captures + thumbs) covering surfaces 00, 01, 02, 03, 04, 05, 06, 07 (surface 01 ticked `[!]` — gap filed) |
+| Pass | mid Pass 1 — resume at surface 08 (MO-H-1 live button explainer) next |
 | Screenshot dimension cap | Pixel 9 emulator captures are 1080×2424 — exceeds Anthropic's 2000px many-image cap. Capture full-res to evidence dir, save a ≤1600px thumb for Claude. Do NOT bulk-attach; show Claude a thumbnail only when investigating an anomaly. The matrix annotation is the durable record. |
 
 ---
@@ -103,16 +103,16 @@ as the operator-web `U-FU-hp11-account-demo-defaults` we fixed).
 Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 
 ### Top bar + drawer (every screen)
-- [ ] 00 — Boot baseline (Shift dashboard, demo-seeded) — captured pre-plan as `00_boot_state.png`
-- [ ] 01 — Drawer open (☰ → business scope picker: operator + location)
-- [ ] 02 — Notifications screen (🔔 → fullscreen dialog) + mark-as-read tick
-- [ ] 03 — Sync state badge tap (if interactive)
+- [x] 00 — Boot baseline (Shift dashboard, demo-seeded) — `p1_00_baseline_post_v3.png` + `p1_05_resume_baseline.png`
+- [!] 01 — Drawer open (☰ → business scope picker: operator + location) — drawer titled "Locations" + empty in demo; filed `Mobile-FU-business-scope-drawer-empty-in-demo`; `p1_07_business_scope_picker.png`
+- [x] 02 — Notifications screen (🔔 → fullscreen dialog) + mark-as-read tick — `p1_08_notifications_screen.png`
+- [x] 03 — Sync state badge tap (if interactive) — non-interactive (read-only); parity with operator-web
 
 ### Shift tab
-- [ ] 04 — Whole Day (default, authoritative)
-- [ ] 05 — Lunch daypart (chip selected) + driver chip + lever card + time-into-service header
-- [ ] 06 — Dinner daypart (chip selected, the ACTIVE NOW one from boot capture)
-- [ ] 07 — Late Night daypart (chip selected, empty/idle expected)
+- [x] 04 — Whole Day (default, authoritative) — `p1_01_shift_whole_day_populated.png`
+- [x] 05 — Lunch daypart (chip selected) + driver chip + lever card + time-into-service header — `p1_02_shift_lunch.png`
+- [x] 06 — Dinner daypart (chip selected, the ACTIVE NOW one from boot capture) — `p1_03_shift_dinner.png`
+- [x] 07 — Late Night daypart (chip selected, empty/idle expected) — `p1_04_shift_late_night.png`
 - [ ] 08 — MO-H-1 live button explainer
 
 ### Variance tab

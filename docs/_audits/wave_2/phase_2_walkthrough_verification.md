@@ -1005,3 +1005,56 @@ The admin shell is bootable + every Phase A/B/C/D/E/F/G surface that was clicked
 5. ✅ Dev patches reverted before this commit; tree clean against the AC-1 commit.
 6. ✅ Master plan Status board flipped: **Admin lane → ✅ DONE**.
 
+---
+
+## Phase 2 walkthrough verification matrix (mobile lane)
+
+> **Pass started 2026-05-14 night by Main orchestrator.** Pixel_9 AVD on
+> `emulator-5554` (API 36), `com.forgeflow.app` installed, demo seed loaded
+> via `--dart-define=kDemoMode=true`. Resume after PR #754 (Mobile-lane
+> crash/freeze fixes + plan doc) merged at master `ffc4bf70`. Continuation
+> branch: `claude/mobile-lane-pass-1` (prior `claude/blissful-roentgen-e365a2`
+> merged). Tooling: `scripts/capture_surface.ps1` writes full-res PNGs to
+> `phase_2_walkthrough_evidence/mobile/` plus <=1600px thumbnails to
+> `mobile/thumbs/` (Pixel 9 captures are 1080x2424 which exceeds Anthropic's
+> 2000px many-image dimension cap). Logcat error monitor uses an `*:E *:W`
+> grep that excludes the pre-fix Crashlytics no-app loop (see
+> `phase_2_walkthrough_mobile_lane_plan.md` "Live monitor"). Demo restaurant
+> displayed throughout: **"Barrio Legado"** (the F&F demo seed; not the
+> Barrio flavor — same `com.forgeflow.app` package, F&F design system).
+
+### Pass 1 — surfaces driven (post-PR-754 fixes verified live)
+
+| # | Surface | Live state | Evidence |
+|---|---|---|---|
+| 00 | **Boot baseline** — Shift dashboard after cold-launch on demo seed | ✅ DONE-LIVE | `p1_00_baseline_post_v3.png` + `p1_05_resume_baseline.png` (re-capture after PR #754 merge). Status bar 12:27 / 12:33; header band has ☰ (content-desc "Business", bounds `[42,158][158,271]`) + F&F monogram + 🔔 (content-desc "Notifications", `[796,158][912,271]`) + ⚙️ (content-desc "Settings", `[933,158][1049,271]`). Body: **"Barrio Legado"** restaurant name + business-date row "Friday • Mar 27" + restaurant-local clock "12:27 AM" + **● Live** sync pill. Daypart chips: Whole Day (selected) / Lunch / Dinner / Late Night. **Labor: not yet connected** pill (MO-H-1 affordance — see surface 08). Shift outputs (Sales $6,119 vs Forecast $8,121 → -$2,003 / Labor % 12.7% vs Theoretical 20.1% → -7.3 pts / Covers 147 unknown / Blended wage —). Shift inputs (PPA $41.62 unknown / CPLH —). Bottom nav: Shift (selected) / Variance / Plan / Benchmark. **No RenderFlex overflow, no Bad-state**. The 3 crash/freeze fixes from PR #754 verified live: app survives bottom-nav taps + daypart-chip taps + edge swipes + drawer/notifications taps without the first-frame freeze that motivated commits `e337645b` / `10473270` / `bb9d961c`. Logcat shows the Firebase no-app errors still firing from a non-CrashReporter caller (Flutter framework `SchedulerBinding._invokeFrameCallback` → `PlatformDispatcher._dispatchError`) but the v1 try/catch + v2 init-gating prevents the recursion. Filed as `FU-mobile-firebase-app-call-residual` below — non-blocking, contained. |
+| 01 | **Drawer (business scope picker)** — ☰ tap | 🐛 GAP-FOUND | `p1_06_drawer_open.png` (capture before tap; drawer didn't respond to edge-swipe `input swipe 0 1200 700 1200 250`, only to explicit hamburger tap) + `p1_07_business_scope_picker.png` (drawer open). **The drawer that opens is titled `Locations`** (hardcoded at [lib/forge_flow_app.dart:931](lib/forge_flow_app.dart:931) inside `_buildBusinessScopeDrawer` at [lib/forge_flow_app.dart:913](lib/forge_flow_app.dart:913)), NOT the "operator + location" two-level picker the mobile-lane plan inventory predicted. Empty state **"Your available locations will appear here."** at [lib/forge_flow_app.dart:988](lib/forge_flow_app.dart:988) fires because `filterBusinessScopeLocationsForDrawer(scopes, '')` returns `[]` — `RestaurantScopeNotifier._availableScopes` ([lib/state/restaurant_scope_notifier.dart:12](lib/state/restaurant_scope_notifier.dart:12)) starts at `const <BusinessScope>[]` and the demo seed never populates it. Even though the operator is actively scoped to "Barrio Legado" (visible in the dashboard body behind the drawer scrim), the active scope is not shown in the drawer list. The hamburger button's `content-desc="Business"` (uiautomator dump) suggests an intent mismatch: a11y label says "Business", drawer title says "Locations", inventory expected "operator + location". Filed `Mobile-FU-business-scope-drawer-empty-in-demo` below. |
+| 02 | **Notifications screen** — 🔔 tap | ✅ DONE-LIVE | `p1_08_notifications_screen.png`. Fullscreen scaffold (not a dialog — covers status bar except for the system bar). Header row: X (close) on the left + F&F monogram + bold **"Notifications"** title + ✓✓ mark-all-as-read affordance on the right. 1 demo notification row: calendar-tick icon + **"New Weekly Plan Locked"** / "Weekly operating plan for 2026-03-23 to 2026-03-29 is now active." / "51m ago" timestamp + a green left border accent indicating unread state. Below the row: empty area + bottom system bar. **No overflow, no Bad state, no error from logcat.** Mark-all-as-read tick exposed as the trailing top-bar icon — matches the inventory note "+ mark-as-read tick". Plan inventory phrasing "fullscreen dialog" is loose — it's actually a route push, not a `showDialog`, but visually equivalent for the operator. |
+| 03 | **Sync state badge tap** — green "● Live" pill | 🟢 SURFACE-LIVE (read-only) | uiautomator dump confirms the badge is `clickable="false"` at bounds `[960,492][1038,537]` (content-desc "Live"). Inventory note "Sync state badge tap (if interactive)" → the badge is intentionally non-interactive in this build. Plumbing is the operator-web-equivalent `SyncStateBadge` reading from the realtime websocket subscription wired in `lib/main_forgeflow.dart:43-55` after PR #754; mobile renders the badge as a status indicator, not an action. **Decision needed**: the operator-web equivalent is also non-interactive in V1, so this is parity, not a gap. Recording as parity rather than filing a gap. |
+| 04 | **Shift tab — Whole Day daypart** | ✅ DONE-LIVE | `p1_01_shift_whole_day_populated.png`. Same as boot baseline body (Whole Day is the default chip). Authoritative whole-day view per the architecture guardrail: "Shift's whole-day view is authoritative; 10.5 adds daypart alongside, never replacing." All Shift output + input cards populated with the demo seed's deterministic numbers. |
+| 05 | **Shift tab — Lunch daypart chip selected** | ✅ DONE-LIVE | `p1_02_shift_lunch.png`. Lunch chip filled with the same terracotta accent as Whole Day was; body re-renders to Lunch-bucketed metrics. Daypart picker chip group at the top of the body acts as a service-period filter — does not change the underlying source-truth (whole day) per the doctrine. |
+| 06 | **Shift tab — Dinner daypart chip selected** | ✅ DONE-LIVE | `p1_03_shift_dinner.png`. Dinner is the **ACTIVE NOW** daypart at the captured business time (12:30 AM is technically late-night, but the demo's `Friday • Mar 27` business date plus the demo's restaurant-local clock map dinner to the seeded shift; matches the doc's observation in the resume-prompt that "Dinner is the ACTIVE NOW one from boot capture"). |
+| 07 | **Shift tab — Late Night daypart chip selected** | ✅ DONE-LIVE | `p1_04_shift_late_night.png`. Late Night chip selected; body shows the late-night bucket (empty/idle expected per inventory note, and confirmed visually — sparse seeded data for the 22:00-02:00 service-period window). No empty-state copy bugs spotted. |
+
+### Pass 1 — surfaces deferred (next batch in this session)
+
+- `08` MO-H-1 live button explainer — Labor pill ("Labor: not yet connected") is visible on the Shift dashboard. Tap-through to the explainer + source-trace deferred to the next batch.
+- `09`-`13` Variance tab (This Week / History / Learn / row drill / daypart toggle).
+- `14`-`17` Plan tab (ScheduleBuilder, edit baseline, publish).
+- `18`-`24` Benchmark tab (BaselineTracker, star-shift, override banner, RP-15 cap).
+- `25`-`41` Settings (Setup / Integrations / Data / Account tabs + drills).
+
+### Gaps filed in Pass 1 batch 1
+
+| ID | Surface | Why it's a gap | Severity |
+|---|---|---|---|
+| `Mobile-FU-business-scope-drawer-empty-in-demo` | 01 — drawer | The hamburger drawer (`_buildBusinessScopeDrawer` at [lib/forge_flow_app.dart:913](lib/forge_flow_app.dart:913)) renders the empty-state "Your available locations will appear here." in demo mode because `RestaurantScopeNotifier._availableScopes` is never seeded. The active scope (Barrio Legado) is also missing — even when populated, the drawer presumably needs an "active scope" row so the operator orients. **Three sub-issues bundled**: (a) demo seed must populate at least one location scope so the drawer is non-empty in demo; (b) drawer title is hardcoded `'Locations'` ([line 931](lib/forge_flow_app.dart:931)) but inventory expected operator+location picker — UX decision needed; (c) hamburger button's `content-desc="Business"` mismatches the drawer's `'Locations'` title — pick one and apply consistently across a11y + visible label. | UX decision + demo-fidelity bug. **Not V1-blocking** if the V1 demo only seeds one location and the operator is always boot-scoped to it (the active-location indicator on the dashboard body satisfies the "where am I" question without the drawer). Recommend bundling a/b/c into a single label+seed slice. |
+| `FU-mobile-firebase-app-call-residual` | 00 — boot baseline | Logcat shows residual `E/flutter MethodChannelFirebase.app` errors firing from `firebase_core/src/firebase.dart:92:41` via `SchedulerBinding._invokeFrameCallback` → `FlutterError.reportError`. PR #754's v2 fix moved `CrashReporter.instance.initialize()` into the `FORGE_FLOW_USE_FIREBASE_AUTH` branch so it's no longer wired in demo, AND the v1 try/catch suppresses recursion. So the error is contained — no freeze. But some other code path (not CrashReporter) is still calling `Firebase.app()` from a frame callback in demo builds, allocating frames + logging on every error. Owner unknown; needs `git grep` for `Firebase.app(` callers + a gate on `kDemoMode`. | Low-priority cleanup. Non-blocking — contained by PR #754 try/catch. |
+
+### Notes — tooling + workflow validated this batch
+
+1. **PowerShell 5.1 byte-pipe is unusable** for `screencap -p` stdout (`Set-Content -Encoding Byte` rejects strings). `scripts/capture_surface.ps1` uses the `screencap -p /sdcard/...` + `adb pull` two-step instead. Robust + works on both emulator and physical device.
+2. **GDI+ ignores PowerShell's `$PWD`** — `[Image]::FromFile()` and `[Bitmap]::Save()` must take absolute paths. Helper resolves both via `.ProviderPath` + `[System.IO.Path]::GetFullPath`.
+3. **Git Bash mangles `/sdcard/...` paths** for adb. `MSYS_NO_PATHCONV=1` env var fixes pulls; PowerShell calls don't need it.
+4. **uiautomator dump → tap-by-content-desc** is the right driving primitive. Edge-swipe-from-left does NOT open the drawer (gesture detector not wired for that pattern); only the hamburger tap works. Coordinate math from a thumb-back-to-source ratio is error-prone — dump the semantic tree, grep for the `content-desc`, tap the bounds center.
+5. **Resume cadence**: capture → Read one thumb → annotate → next surface. Every 4-6 surfaces, commit + push. This batch (8 surfaces driven, 5 ✅ + 2 ✅ derivatives + 1 🐛) consumed maybe ~10% of Pass 1; full Pass 1 budget is the doc's "2-3 hours" estimate.
