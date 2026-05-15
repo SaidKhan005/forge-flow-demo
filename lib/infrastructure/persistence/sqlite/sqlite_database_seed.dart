@@ -6,10 +6,12 @@
 // `_ensureDemoSeedCycle`, `_seedDemoDataFromReplay`,
 // `_ensureDemoRestaurant`), the replay snapshot seeders
 // (`_seedOpenShiftSnapshotsFromReplay`,
-// `_seedReservationBookSnapshotsFromReplay`), the locked-target
-// backfill (`_backfillLockedTargets`), and the small helper
-// functions (`_seedRecommendationCandidates`, `_addIsoDays`,
-// `_deterministicHash`). Seed content is unchanged.
+// `_seedReservationBookSnapshotsFromReplay`,
+// `_seedWeeklyPlanSnapshotFromReplay` — FU-mobile-cold-boot fix),
+// the locked-target backfill (`_backfillLockedTargets`), and the
+// small helper functions (`_seedRecommendationCandidates`,
+// `_addIsoDays`, `_deterministicHash`). Seed content is unchanged
+// except for the new weekly-plan-snapshot bootstrap.
 
 part of 'sqlite_database.dart';
 
@@ -262,6 +264,340 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
   await batch.commit(noResult: true);
+}
+
+/// FU-mobile-cold-boot-shift-stale-state: bootstrap-time seeder for
+/// `weekly_plan_snapshots`.
+///
+/// Cold-boot path (`_onCreate`) and replay-advance path
+/// (`reseedMockReplayForBusinessDate`) both call this so the locked
+/// weekly plan for the in-force week is persisted synchronously before
+/// the dashboard notifiers fire. Without it, `ShiftDashboardNotifier`'s
+/// first read of `getExistingCurrentLockedWeeklyPlan()` finds nothing
+/// and caches `lockedPlanUnavailable = true` — a stale state the user
+/// only escapes by tapping a Settings write that fires the invalidation
+/// bus.
+///
+/// HP #2 compliance: this is a writer-side bootstrap path. The reader
+/// (`ShiftDashboardNotifier._load()`) is unchanged and never branches
+/// on `kDemoMode`. The seeded row uses the same schema and columns as
+/// the runtime `WeeklyPlanSnapshotService._generateAndPersistSnapshot`
+/// pipeline.
+///
+/// Behaviour:
+/// - Computes the configured week-start day from `restaurant_timing_configs`
+///   (falls back to Monday) so the week span matches what the runtime
+///   policy would derive.
+/// - No-ops when a snapshot already exists for the week-in-force, so
+///   same-week replay advance never rewrites locked truth.
+/// - Aggregates the weekly forecast covers from `replay.currentWeekShifts`
+///   (every shift carries its own forecast covers per daypart) and
+///   delegates the day-level distribution to the pure
+///   [SchedulePlanResolver] — the same resolver the runtime live path
+///   uses, so the seeded shape is byte-equivalent to what the
+///   auto-generator would have produced.
+/// - Requires the demo target cycle to be seeded first (it is — `_onCreate`
+///   calls `_seedDemoActiveTargetProfile` before this, and the advance
+///   path runs `_backfillLockedTargets` ahead of this call).
+Future<void> _seedWeeklyPlanSnapshotFromReplay(
+  Database db, {
+  required String businessDate,
+}) async {
+  // Resolve the configured week-start day; default to Monday when no
+  // timing config exists (mirrors WeeklyPlanSnapshotService).
+  int weekStartDay = DateTime.monday;
+  if (await _tableExists(db, 'restaurant_timing_configs')) {
+    final configRows = await db.query(
+      'restaurant_timing_configs',
+      columns: const ['week_start_day'],
+      where: 'restaurant_id = ?',
+      whereArgs: [DemoScope.restaurantId],
+      limit: 1,
+    );
+    if (configRows.isNotEmpty) {
+      final raw = configRows.first['week_start_day'];
+      if (raw is int) {
+        weekStartDay = raw;
+      } else if (raw is num) {
+        weekStartDay = raw.toInt();
+      }
+    }
+  }
+
+  final weekStart = WeeklyPlanSnapshotPolicy.weekStartForDate(
+    businessDate,
+    weekStartDay: weekStartDay,
+  );
+  final weekEnd = WeeklyPlanSnapshotPolicy.weekEndForDate(
+    businessDate,
+    weekStartDay: weekStartDay,
+  );
+  final weekKey =
+      WeeklyPlanSnapshotPolicy.weekKeyFromSpan(weekStart, weekEnd);
+
+  // No-op when a snapshot already covers the in-force week. Preserves
+  // the locked-snapshot-survives-same-week-advance contract (7.55l.6b1).
+  final existing = await db.query(
+    'weekly_plan_snapshots',
+    columns: const ['snapshot_id'],
+    where: 'restaurant_id = ? AND week_key = ?',
+    whereArgs: [DemoScope.restaurantId, weekKey],
+    limit: 1,
+  );
+  if (existing.isNotEmpty) return;
+
+  // Require the demo target cycle (seeded earlier in the same path).
+  // If it's missing for any reason, degrade silently — the runtime
+  // auto-generator will pick up the slack on first access.
+  final cycleRows = await db.query(
+    'target_cycles',
+    where: 'restaurant_id = ? AND deactivated_at IS NULL',
+    whereArgs: [DemoScope.restaurantId],
+    orderBy: 'created_at DESC',
+    limit: 1,
+  );
+  if (cycleRows.isEmpty) return;
+  final cycle = TargetCycle.fromMap(cycleRows.first);
+
+  // Mirror DemandForecastContextService.getContextForAnchorDate exactly:
+  // weekly forecast covers come from the just-seeded closed shifts in
+  // the 60-day baseline + 21-day recent windows. This keeps the seeded
+  // snapshot byte-equivalent to what the runtime auto-generator would
+  // have produced (the same SchedulePlanResolver runs over the same
+  // demand + same data-driven weights), so the contract test
+  // `weekly_plan_snapshot_service_test D — snapshot matches generated
+  // SchedulePlan` still holds.
+  final weeklyForecastCovers = await _resolveSeedDemandWeeklyCovers(
+    db,
+    anchorBusinessDate: businessDate,
+  );
+  if (weeklyForecastCovers <= 0) return;
+
+  // Build data-driven distribution weights from the just-seeded closed
+  // shifts using the same 60-day baseline + 21-day recent windows the
+  // runtime `SchedulePlanReadService.loadDistributionWeights` reads.
+  // Without these, the resolver falls back to its hardcoded default
+  // day weights and the seeded snapshot would diverge from what the
+  // runtime path produces (test D-day-rows enforces parity).
+  final distributionWeights = await _buildSeedDistributionWeights(
+    db,
+    anchorBusinessDate: businessDate,
+  );
+
+  // Delegate to the same pure resolver the runtime live path uses so
+  // the seeded shape stays byte-equivalent (forecast sales, day
+  // rotation, largest-remainder allocation, data-driven day weights).
+  final plan = SchedulePlanResolver.resolveFromValues(
+    forecastCovers: weeklyForecastCovers,
+    targetPPA: cycle.targetPPA,
+    targetCPLH: cycle.targetCPLH,
+    targetSPLH: cycle.targetSPLH,
+    fohWage: cycle.fohWage,
+    bohWage: cycle.bohWage,
+    coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+    salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
+    distributionWeights: distributionWeights,
+  );
+
+  // Map SchedulePlan day rows → WeeklyPlanSnapshotDay with business dates.
+  // dayPlans is Mon-first; rotate to match configured week start the
+  // same way WeeklyPlanSnapshotService._buildDayRows does.
+  final rotationOffset = (weekStartDay - 1) % 7;
+  final rotated = rotationOffset == 0
+      ? plan.dayPlans
+      : <ScheduleDayPlan>[
+          ...plan.dayPlans.sublist(rotationOffset),
+          ...plan.dayPlans.sublist(0, rotationOffset),
+        ];
+
+  final startDate = DateTime.utc(
+    int.parse(weekStart.split('-')[0]),
+    int.parse(weekStart.split('-')[1]),
+    int.parse(weekStart.split('-')[2]),
+  );
+
+  final dayRows = List<WeeklyPlanSnapshotDay>.generate(rotated.length, (i) {
+    final dayPlan = rotated[i];
+    final date = startDate.add(Duration(days: i));
+    final iso = '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    return WeeklyPlanSnapshotDay(
+      day: dayPlan.day,
+      businessDate: iso,
+      forecastCovers: dayPlan.forecastCovers,
+      forecastSales: dayPlan.forecastSales,
+      requiredFohHours: dayPlan.requiredFohHours,
+      requiredBohHours: dayPlan.requiredBohHours,
+    );
+  });
+
+  final now = nowIsoUtc();
+  final snapshot = WeeklyPlanSnapshot(
+    snapshotId:
+        '${DemoScope.restaurantId}_snapshot_${weekStart.replaceAll('-', '')}',
+    restaurantId: DemoScope.restaurantId,
+    weekStartDate: weekStart,
+    weekEndDate: weekEnd,
+    targetCycleId: cycle.cycleId,
+    forecastCovers: plan.forecastCovers,
+    forecastSales: plan.forecastSales,
+    requiredFohHours: plan.requiredFohHours,
+    requiredBohHours: plan.requiredBohHours,
+    theoreticalFohLaborDollars: plan.theoreticalFohLaborDollars,
+    theoreticalBohLaborDollars: plan.theoreticalBohLaborDollars,
+    coversSource: plan.coversSource,
+    salesSource: plan.salesSource,
+    generatedAt: now,
+    lockedAt: now,
+    dayRows: dayRows,
+  );
+
+  // Persist via the same map shape WeeklyPlanSnapshotDao.upsertSnapshot
+  // writes (day_rows_json, forecast_context_json, metadata, is_active
+  // coercions) — inlined here because the DAO can't be reached during
+  // _onCreate (it would re-enter the database getter).
+  final map = snapshot.toMap();
+  final encodedDayRows =
+      jsonEncode(map.remove('day_rows') as List<dynamic>);
+  final forecastContext = map.remove('forecast_context');
+  map['day_rows_json'] = encodedDayRows;
+  map['forecast_context_json'] =
+      forecastContext == null ? null : jsonEncode(forecastContext);
+  if (map.containsKey('metadata')) {
+    final rawMetadata = map['metadata'];
+    map['metadata'] = rawMetadata == null ? null : jsonEncode(rawMetadata);
+  }
+  if (map.containsKey('is_active')) {
+    final raw = map['is_active'];
+    if (raw is bool) {
+      map['is_active'] = raw ? 1 : 0;
+    }
+  }
+  await db.insert(
+    'weekly_plan_snapshots',
+    map,
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+}
+
+/// Inlined replica of `DemandForecastContextService.getContextForAnchorDate`
+/// resolved-weekly-covers math, run directly against the in-flight
+/// `_onCreate` database handle. Must not call the runtime singleton
+/// (`SqliteDatabase.instance.database`) because we are still inside
+/// `_initDb()` — `_db` has not been assigned yet and a singleton read
+/// would re-enter `openDatabase` and deadlock.
+///
+/// Mirrors the runtime contract:
+///   - 60-day baseline window weekly avg = totalCovers / (60/7)
+///   - 21-day recent window weekly avg   = totalCovers / 3
+///   - resolved = max(0, baseline + (recent - baseline)/2) when 21-day is non-empty,
+///     else baseline.
+Future<int> _resolveSeedDemandWeeklyCovers(
+  Database db, {
+  required String anchorBusinessDate,
+}) async {
+  const weeksIn60DayWindow = 60 / 7;
+  const weeksIn21DayWindow = 3;
+
+  final baselineStart = _subtractIsoDays(anchorBusinessDate, 59);
+  final baselineRows = await db.query(
+    'shift_records',
+    columns: const ['covers'],
+    where: "restaurant_id = ? "
+        "AND status = 'closed' "
+        "AND business_date >= ? "
+        "AND business_date <= ?",
+    whereArgs: [DemoScope.restaurantId, baselineStart, anchorBusinessDate],
+  );
+  if (baselineRows.isEmpty) return 0;
+  final baselineTotal = baselineRows.fold<int>(
+    0,
+    (sum, row) => sum + ((row['covers'] as num?)?.toInt() ?? 0),
+  );
+  final baselineWeeklyAvg = (baselineTotal / weeksIn60DayWindow).round();
+
+  final recentStart = _subtractIsoDays(anchorBusinessDate, 20);
+  final recentRows = await db.query(
+    'shift_records',
+    columns: const ['covers'],
+    where: "restaurant_id = ? "
+        "AND status = 'closed' "
+        "AND business_date >= ? "
+        "AND business_date <= ?",
+    whereArgs: [DemoScope.restaurantId, recentStart, anchorBusinessDate],
+  );
+
+  if (recentRows.isEmpty) return baselineWeeklyAvg;
+
+  final recentTotal = recentRows.fold<int>(
+    0,
+    (sum, row) => sum + ((row['covers'] as num?)?.toInt() ?? 0),
+  );
+  final recentWeeklyAvg = (recentTotal / weeksIn21DayWindow).round();
+  final trendDelta = recentWeeklyAvg - baselineWeeklyAvg;
+  final resolved = baselineWeeklyAvg + (trendDelta / 2).round();
+  return resolved < 0 ? 0 : resolved;
+}
+
+String _subtractIsoDays(String isoDate, int days) {
+  final parts = isoDate.split('-');
+  final dt = DateTime.utc(
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+    int.parse(parts[2]),
+  );
+  final result = dt.subtract(Duration(days: days));
+  return '${result.year.toString().padLeft(4, '0')}-'
+      '${result.month.toString().padLeft(2, '0')}-'
+      '${result.day.toString().padLeft(2, '0')}';
+}
+
+/// Inlined replica of `SchedulePlanReadService.loadDistributionWeights`
+/// driven directly from the in-flight `_onCreate` database handle.
+///
+/// Reads the closed shift_records in the 60-day baseline + 21-day recent
+/// windows and delegates to the pure
+/// `DistributionWeightBuilder.fromDateWindowShifts` — the same builder
+/// the runtime live path uses. Returns null when the resulting weights
+/// are unavailable, which lets the resolver fall back to its default
+/// day weights honestly.
+Future<ScheduleDistributionWeights?> _buildSeedDistributionWeights(
+  Database db, {
+  required String anchorBusinessDate,
+}) async {
+  final baselineStart = _subtractIsoDays(anchorBusinessDate, 59);
+  final baselineRows = await db.query(
+    'shift_records',
+    where: "restaurant_id = ? "
+        "AND status = 'closed' "
+        "AND business_date >= ? "
+        "AND business_date <= ?",
+    whereArgs: [DemoScope.restaurantId, baselineStart, anchorBusinessDate],
+  );
+
+  final recentStart = _subtractIsoDays(anchorBusinessDate, 20);
+  final recentRows = await db.query(
+    'shift_records',
+    where: "restaurant_id = ? "
+        "AND status = 'closed' "
+        "AND business_date >= ? "
+        "AND business_date <= ?",
+    whereArgs: [DemoScope.restaurantId, recentStart, anchorBusinessDate],
+  );
+
+  final baselineShifts = baselineRows
+      .map((row) => ShiftRecord.fromMap(Map<String, dynamic>.from(row)))
+      .toList();
+  final recentShifts = recentRows
+      .map((row) => ShiftRecord.fromMap(Map<String, dynamic>.from(row)))
+      .toList();
+
+  final weights = DistributionWeightBuilder.fromDateWindowShifts(
+    baselineShifts: baselineShifts,
+    recentShifts: recentShifts,
+  );
+  return weights.isAvailable ? weights : null;
 }
 
 /// Seeds a reservation book snapshot for the scenario's open shift.
