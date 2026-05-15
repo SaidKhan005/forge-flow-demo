@@ -1,6 +1,6 @@
 # Per-Daypart Targets V1 — Slice 2.5 audit
 
-> PR number: TBD (rename file to `pr_<n>_slice_2_5.md` after `gh pr create`).
+> PR: https://github.com/SaidKhan005/forge-flow-demo/pull/762
 
 ## Slice intent (from `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`)
 
