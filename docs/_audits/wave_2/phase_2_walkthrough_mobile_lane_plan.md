@@ -104,7 +104,7 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 
 ### Top bar + drawer (every screen)
 - [x] 00 — Boot baseline (Shift dashboard, demo-seeded) — `p1_00_baseline_post_v3.png` + `p1_05_resume_baseline.png`
-- [!] 01 — Drawer open (☰ → business scope picker: operator + location) — drawer titled "Locations" + empty in demo; filed `Mobile-FU-business-scope-drawer-empty-in-demo`; `p1_07_business_scope_picker.png`
+- [🟢] 01 — Drawer open (☰ → business scope picker) — empty-state gap resolved via PR #755 (master `871bf60e`); UX label decision (title vs a11y) parked separately; live re-drive after flutter rebuild pending; `p1_07_business_scope_picker.png` (pre-fix)
 - [x] 02 — Notifications screen (🔔 → fullscreen dialog) + mark-as-read tick — `p1_08_notifications_screen.png`
 - [x] 03 — Sync state badge tap (if interactive) — non-interactive (read-only); parity with operator-web
 
