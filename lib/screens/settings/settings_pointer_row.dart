@@ -6,6 +6,22 @@
 // `app.forgeflow.app/<path>`. C-5 replaces the default tap behavior
 // with the redemption-code handoff flow and keeps clipboard as the
 // explicit offline/proxy-5xx fallback.
+//
+// FU-mobile-settings-pointer-buttons (Wave 2): the row now renders the
+// deflection affordance as a proper `OutlinedButton.icon` instead of
+// tappable text with a leading icon. The button sits inside the same
+// `SettingsCard` shell so the Settings tab's visual cadence (card
+// chrome, padding, divider rhythm) is unchanged, and the URL/coming-
+// soon helper line is kept below the button as a subtle hint. The
+// button itself is `OutlinedButton.icon` — secondary tone, matching
+// the existing "deflect to another surface" pattern already used in
+// `lib/screens/auth/totp_challenge_view.dart` and
+// `lib/screens/auth/login_screen.dart`.
+//
+// Behavior is unchanged: URL launch via `url_launcher`, opaque-code
+// handoff via `HandoffCodeGateway`, clipboard fallback on proxy-5xx,
+// and the same snackbar copy. The `onLaunch` / `launchExternalUrl` /
+// `copyToClipboard` test seams are preserved.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,8 +33,8 @@ import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
 
 /// Pointer to an Operator Web surface for sections whose editor lives
-/// outside the mobile app. When [opWebPath] is empty, the row renders
-/// as "coming soon" copy and tapping is a no-op.
+/// outside the mobile app. When [opWebPath] is empty, the button
+/// renders disabled with "coming soon" helper copy.
 class SettingsPointerRow extends StatelessWidget {
   const SettingsPointerRow({
     super.key,
@@ -32,12 +48,12 @@ class SettingsPointerRow extends StatelessWidget {
   });
 
   /// Plain-English copy describing what the operator can do at the
-  /// Operator Web surface.
+  /// Operator Web surface. Rendered as the button label.
   final String label;
 
   /// Path under `app.forgeflow.app/` (no leading slash). Pass an empty
-  /// string when no route exists yet - the row renders the "coming
-  /// soon" affordance instead of a tappable link.
+  /// string when no route exists yet - the button renders disabled
+  /// with "coming soon" helper copy.
   final String opWebPath;
 
   /// Stable Operator Web nav id carried by `/handoff?nav=...`.
@@ -80,46 +96,60 @@ class SettingsPointerRow extends StatelessWidget {
       padding: const EdgeInsets.only(top: 10),
       child: SettingsCard(
         children: [
-          InkWell(
-            onTap: _isComingSoon ? null : () => _onTap(context),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    _isComingSoon
-                        ? Icons.hourglass_empty_rounded
-                        : Icons.open_in_new_rounded,
-                    size: 18,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isComingSoon ? '$label (coming soon)' : label,
-                          style: AppTextStyles.mono12(
-                            color: AppColors.textPrimary,
-                            weight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _isComingSoon
-                              ? 'This section will move to Operator Web in an upcoming release.'
-                              : _resolvedUrl,
-                          style: AppTextStyles.body12(
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _isComingSoon ? null : () => _onTap(context),
+                    icon: Icon(
+                      _isComingSoon
+                          ? Icons.hourglass_empty_rounded
+                          : Icons.open_in_new_rounded,
+                      size: 18,
+                      color: _isComingSoon
+                          ? AppColors.textMuted
+                          : AppColors.sunset,
+                    ),
+                    label: Text(
+                      _isComingSoon ? '$label (coming soon)' : label,
+                      style: AppTextStyles.mono12(
+                        color: _isComingSoon
+                            ? AppColors.textMuted
+                            : AppColors.sunset,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.sunset,
+                      side: BorderSide(
+                        color: _isComingSoon
+                            ? AppColors.borderSubtle
+                            : AppColors.sunset.withValues(alpha: 0.6),
+                        width: 1,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      alignment: Alignment.center,
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  _isComingSoon
+                      ? 'This section will move to Operator Web in an upcoming release.'
+                      : _resolvedUrl,
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                ),
+              ],
             ),
           ),
         ],
