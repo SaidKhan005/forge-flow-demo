@@ -20,14 +20,14 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 | Slice | Owner | Status | Notes |
 |---|---|---|---|
 | 0 — Cycle rollover gating + contract amendments | **Main** | ✅ MERGED #761 (`1460d45d`) | No schema change. Touched `TargetCyclePolicy`, `target_cycle_service.dart`, 3 contract docs. |
-| 1 — Per-period data layer foundation | **Main** | ⏸ PARKED for operator merge approval — PR #767 (`claude/per-daypart-slice-1-per-period-data-foundation`). Pattern B audit CLEAN — see `docs/_audits/per_daypart_v1/slice_1_per_period_data_foundation_orchestrator_review.md`. Schema-touching → CLAUDE.md operator-gate. | SQLite V36 + Postgres `202605160000` migration; 32 files; pool consistency + Gap 42 fallback + Gap 23 carry verified. |
+| 1 — Per-period data layer foundation | **Main** | ✅ MERGED #767 (`~21:24Z 2026-05-15`) — operator-approved. Audit: `slice_1_per_period_data_foundation_orchestrator_review.md`. | SQLite V36 + Postgres `202605160000`; 32 files; pool consistency + Gap 42 fallback + Gap 23 carry verified. |
 | 1.5 — Closed-shift aggregator → DaypartBucketer routing | **Main** | ✅ MERGED #763 (`d392d4d1`) | Late-night regression test ✅ MERGED #768 (`6e843798`). |
-| 2 — Benchmark tab redesign | **Main** | UNBLOCKED (Gap 35 + 36 resolved). Waiting on Slice 1 merge. | Daypart Breakdown swap (avg→target + Avg Covers stays + OPZ single column) + card cut + strip rehome. |
+| 2 — Benchmark tab redesign | **Main** | ✅ MERGED #778 (`7b4d7139`) | Daypart Breakdown swap + card cut + Operating strip + operator-web Benchmarks surface severed (Gap 35 UI half). Audit: `slice_2_benchmark_tab.md`. |
 | 2.5 — Service period editor field completeness | **Claude 2** | ✅ MERGED #762 (`4e2a6c94`) | `applicableDays` + `shortLabel` + `sortOrder` landed. |
-| 3 — Plan tab persistence wiring | **Main or Claude 2** | Waiting on Slice 1 merge. | Allocator retirement + sub-row read swap + `schedule_builder` sentinel-0 cleanup. |
-| 4 — Shift daypart card full parity | **Claude 2** preferred | Waiting on Slice 1 merge. | UX overhaul: Outputs + Inputs + FOH Productivity per period. |
-| 5 — Variance read-seam swap | **Main or Claude 2** | Waiting on Slice 1 merge. | Small read swap. |
-| 6 — Audit scorer extension | **Main** | Waiting on Slice 1 merge. | Per-period check shapes + pool-consistency + wage-at-lock-time + structural ordering bug fix. |
+| 3 — Plan tab persistence wiring | **Main** | ✅ MERGED #776 (`e6ef5b10`) | Persisted-row reader swap; `DaypartPlanAllocator` @Deprecated (3 live consumers); sentinel-0 → MeridianConfig defaults. Audit: `slice_3_plan_persistence.md`. |
+| 4 — Shift daypart card full parity | **Main** | ✅ MERGED #777 (`90ef6c47`) | 3-section parity card; whole-day card byte-untouched (Promise 3). 2 plan-legit deferrals. Audit: `slice_4_shift_card.md`. |
+| 5 — Variance read-seam swap | **Main** | ✅ MERGED #775 (`8f97f699`) | Per-period read + new derived `daypartTheoreticalLaborPctFor` accessor (formula = canonical `build()`). Audit: `slice_5_variance_read_seam.md`. |
+| 6 — Audit scorer extension | **Main** | ✅ MERGED #774 (`a6c6359a`) | Gap-8 structural ordering fix + pool-consistency + wage-at-lock-time audit groups. Audit: `slice_6_audit_scorer.md`. |
 | 7a — Tock reservation business_date | **Claude 2** | ✅ MERGED #766 (`baa4047a`) | Gap 45 closed via `IanaTimezoneConverter`. |
 | 7b — Sub-hour business-day cutoff precision (Gap 46+47) | **Claude 2** | RESOLVED — operator chose option (b) proper fix (sink-side `BusinessDateResolver`). Claude 2 implementing + handling doc merges. | Orchestrator defaults handed to Claude 2: (b1) keep SQL trigger as legacy backup; converge 3 fallback cutoff hardcodes onto 4h. Operator may override on return. |
 
@@ -39,12 +39,15 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 - Gap 36 → kill legacy `covers_source_lunch/dinner/late_night` columns.
 - Gap 35 → cut operator-web Benchmarks override surface entirely.
 
-**Open operator decisions (parked during operator break 2026-05-15):**
+**Open operator decisions:**
 
-1. **Slice 1 merge approval (schema-touching gate).** PR #767. Pattern B audit clean. Recommended: APPROVE — merge unlocks Slices 2/3/4/5/6 parallel dispatch.
-2. ~~Slice 7b option choice~~ — RESOLVED. Operator chose option (b) proper fix; Claude 2 implementing + doc merges. Orchestrator defaults handed down: (b1) keep SQL trigger as legacy backup; converge 3 fallback cutoff hardcodes onto 4h. Operator may override either on return — not blocking.
+1. ~~Slice 1 merge approval~~ — DONE. Operator approved; merged #767 ~21:24Z 2026-05-15.
+2. ~~Slice 7b option choice~~ — RESOLVED. Claude 2 owns option (b) + doc merges.
 
-**Net: the ONLY operator decision blocking forward progress is #1 (Slice 1 merge approval).**
+**Per-Daypart V1 implementation slices ALL MERGED** (0, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 7a). Only 7b remains, in Claude 2's lane. Post-merge master analyze: 5 info-level deprecation lints only (planned `DaypartPlanAllocator` migration tail), zero errors/warnings.
+
+**New follow-up (NOT blocking V1 — needs its own slice + operator approval):**
+- **Gap 35 backend half.** Slice 2 severed the operator-web Benchmarks *UI* surface. The backend half — drop the `benchmark_overrides` Postgres table + remove `_writeReplacementCycle`'s admin-replacement path in `target_cycle_service.dart` — was correctly deferred (schema-touching + proxy-touching → needs operator approval + own slice). Server-side resolver/repository/proxy routes are currently UI-unreachable but still live. Tracked: `docs/_audits/per_daypart_v1/slice_2_benchmark_tab.md` Follow-ups §1.
 
 ## Dispatch transport (NEW STANDARD 2026-05-15 — testing)
 
@@ -52,6 +55,7 @@ Worker execution moves off the orchestrator's interactive subscription onto the 
 - **Headless (preferred for slice workers):** `scripts/dispatch_worker.ps1 -Branch <b> -PromptFile <f>` launches a fully-autonomous `claude -p` process in an isolated worktree, logs to `.claude/worker-logs/<leaf>.log`. Poll `gh pr list --head <b>` for the returning PR. v1 flags are a first guess — tune on real runs.
 - **Agent tool (fallback / quick research):** in-session sub-agent, draws subscription. Use when headless proves flaky or for short audits the orchestrator needs results from before proceeding.
 - Rationale + open test questions: user memory `feedback_agent_sdk_credit_dispatch.md`.
+- **Test status (2026-05-15):** first headless canary attempt surfaced 2 harness bugs — (1) repo-root resolved to the invoking worktree not the main tree; (2) PowerShell 5.1 treated git's informational stderr as fatal under `ErrorActionPreference=Stop`. Both FIXED in `scripts/dispatch_worker.ps1` (main-worktree resolution via `git worktree list --porcelain`; `Invoke-Git` helper that only throws on non-zero exit; pwsh→powershell hook fallback). Parses clean; live end-to-end headless validation deferred to the next real headless dispatch need. The 5-slice Slices-2/3/4/5/6 wave shipped via the Agent-tool fallback (documented contingency) — zero velocity loss.
 
 ## Dispatch contract (every worker agent)
 

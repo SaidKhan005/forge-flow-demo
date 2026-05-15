@@ -53,13 +53,35 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# --- Resolve repo root (this script lives in <root>/scripts) ---------------
-$repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not (Test-Path (Join-Path $repoRoot ".git"))) {
-  # Worktree case: .git is a file pointing elsewhere; trust git instead.
-  Push-Location $PSScriptRoot
-  $repoRoot = (git rev-parse --show-toplevel).Trim()
-  Pop-Location
+# Native git writes progress to stderr; under ErrorActionPreference=Stop
+# PowerShell 5.1 wraps each stderr line as a terminating NativeCommandError
+# even on exit code 0. Run git through this helper: stderr is captured (not
+# fatal), only a non-zero exit code throws.
+function Invoke-Git {
+  param([Parameter(ValueFromRemainingArguments = $true)] [string[]] $GitArgs)
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  $out = & git @GitArgs 2>&1
+  $code = $LASTEXITCODE
+  $ErrorActionPreference = $prev
+  if ($code -ne 0) {
+    throw "git $($GitArgs -join ' ') failed (exit $code): $out"
+  }
+  return $out
+}
+
+# --- Resolve the MAIN working tree root ------------------------------------
+# This script may be invoked from inside a linked worktree (its scripts/ dir
+# is a per-worktree copy), so `git rev-parse --show-toplevel` would return
+# the wrong tree. `git worktree list --porcelain` always lists the main
+# worktree first.
+Push-Location $PSScriptRoot
+$wtList   = Invoke-Git worktree list --porcelain
+Pop-Location
+$mainLine = ($wtList | Select-String '^worktree ' | Select-Object -First 1).ToString()
+$repoRoot = ($mainLine -replace '^worktree ', '').Trim()
+if (-not (Test-Path $repoRoot)) {
+  throw "Could not resolve main worktree root (got: '$repoRoot')"
 }
 
 if (-not (Test-Path $PromptFile)) {
@@ -76,18 +98,24 @@ New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 # --- Create the worktree off latest origin/master --------------------------
 Push-Location $repoRoot
-git fetch origin --quiet
+Invoke-Git fetch origin --quiet | Out-Null
 if (Test-Path $worktree) {
   Write-Host "[dispatch] worktree exists, reusing: $worktree"
 } else {
-  git worktree add -b $Branch $worktree origin/master
+  Invoke-Git worktree add -b $Branch $worktree origin/master | Out-Null
 }
 Pop-Location
 
 # --- Install canonical hooks in the worktree (per house rule) --------------
+# pwsh may not be on PATH (Windows PowerShell-only host); fall back.
+$hookScript = Join-Path $repoRoot "scripts/install_git_hooks.ps1"
 Push-Location $worktree
 try {
-  pwsh (Join-Path $repoRoot "scripts/install_git_hooks.ps1") | Out-Null
+  if (Get-Command pwsh -ErrorAction SilentlyContinue) {
+    pwsh -NoProfile -File $hookScript | Out-Null
+  } else {
+    powershell -NoProfile -ExecutionPolicy Bypass -File $hookScript | Out-Null
+  }
 } catch {
   Write-Warning "[dispatch] hook install warning: $_"
 }
