@@ -52,6 +52,20 @@ class SqliteRestaurantScopeRepository implements RestaurantScopeRepository {
     return location;
   }
 
+  /// Returns every `restaurant_locations` row currently seeded in the
+  /// local SQLite db. Used by [RestaurantScopeNotifier] to populate the
+  /// in-app business-scope drawer when no networked
+  /// `BusinessScopeClient` is wired (demo bootstrap, offline first
+  /// boot, or the brief window before the proxy fetch resolves).
+  ///
+  /// Mirrors HP #2: the demo writer side already seeds these rows the
+  /// same way production would receive them; this reader is shared
+  /// across both paths and contains no `kDemoMode` branch.
+  Future<List<RestaurantLocation>> listRestaurants() async {
+    final dao = await _daoReady;
+    return dao.getAllRestaurants();
+  }
+
   Future<void> activateRuntimeRestaurant(RestaurantLocation location) async {
     final dao = await _daoReady;
     final existing = await dao.getRestaurant(location.restaurantId);
