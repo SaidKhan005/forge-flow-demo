@@ -7,21 +7,29 @@
 // with the redemption-code handoff flow and keeps clipboard as the
 // explicit offline/proxy-5xx fallback.
 //
-// FU-mobile-settings-pointer-buttons (Wave 2): the row now renders the
-// deflection affordance as a proper `OutlinedButton.icon` instead of
-// tappable text with a leading icon. The button sits inside the same
-// `SettingsCard` shell so the Settings tab's visual cadence (card
-// chrome, padding, divider rhythm) is unchanged, and the URL/coming-
-// soon helper line is kept below the button as a subtle hint. The
-// button itself is `OutlinedButton.icon` — secondary tone, matching
-// the existing "deflect to another surface" pattern already used in
-// `lib/screens/auth/totp_challenge_view.dart` and
-// `lib/screens/auth/login_screen.dart`.
+// fix-settings-deeplink-buttons (Per-Daypart V1): the row renders ONLY
+// a polished primary button — the raw operator-web URL that used to be
+// dumped as visible `Text` below the button is gone. Operators never
+// see a bare `https://app.forgeflow.app/...` string in the UI; the
+// button label states the destination + action and the deep-link does
+// the navigation. The button is a `FilledButton.icon` in the app's
+// primary tone (sunset fill / surface foreground, radius 6) — the same
+// system as the canonical primary action in
+// `lib/screens/auth/login_screen.dart` — so it reads as an intentional,
+// sanctioned escape hatch rather than a default outline with a stray
+// link under it. The button still lives inside the same `SettingsCard`
+// shell so the Settings tab's visual cadence is unchanged.
 //
-// Behavior is unchanged: URL launch via `url_launcher`, opaque-code
-// handoff via `HandoffCodeGateway`, clipboard fallback on proxy-5xx,
-// and the same snackbar copy. The `onLaunch` / `launchExternalUrl` /
-// `copyToClipboard` test seams are preserved.
+// The coming-soon variant keeps a short plain-English helper line
+// explaining why the button is disabled. That line is contextual copy,
+// NOT a URL, so it does not violate the "no raw URL rendered" rule.
+//
+// Mobile Settings stays read-only; this button is the only sanctioned
+// path to the operator-web write surface. Behavior is otherwise
+// unchanged: opaque-code handoff via `HandoffCodeGateway` (the existing
+// C-5 / U-FU-mobile-deeplink seam — no parallel mechanism), clipboard
+// fallback on proxy-5xx, same snackbar copy. The `onLaunch` /
+// `launchExternalUrl` / `copyToClipboard` test seams are preserved.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -103,52 +111,51 @@ class SettingsPointerRow extends StatelessWidget {
               children: [
                 SizedBox(
                   width: double.infinity,
-                  child: OutlinedButton.icon(
+                  height: 46,
+                  child: FilledButton.icon(
                     onPressed: _isComingSoon ? null : () => _onTap(context),
                     icon: Icon(
                       _isComingSoon
                           ? Icons.hourglass_empty_rounded
                           : Icons.open_in_new_rounded,
                       size: 18,
-                      color: _isComingSoon
-                          ? AppColors.textMuted
-                          : AppColors.sunset,
                     ),
                     label: Text(
                       _isComingSoon ? '$label (coming soon)' : label,
-                      style: AppTextStyles.mono12(
-                        color: _isComingSoon
-                            ? AppColors.textMuted
-                            : AppColors.sunset,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sunset,
+                      foregroundColor: AppColors.backgroundSurface,
+                      disabledBackgroundColor: AppColors.sunset.withValues(
+                        alpha: 0.30,
+                      ),
+                      disabledForegroundColor: AppColors.backgroundSurface
+                          .withValues(alpha: 0.85),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      textStyle: AppTextStyles.mono12(
                         weight: FontWeight.w600,
                       ),
                     ),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.sunset,
-                      side: BorderSide(
-                        color: _isComingSoon
-                            ? AppColors.borderSubtle
-                            : AppColors.sunset.withValues(alpha: 0.6),
-                        width: 1,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 10,
-                      ),
-                      alignment: Alignment.center,
-                    ),
                   ),
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  _isComingSoon
-                      ? 'This section will move to Operator Web in an upcoming release.'
-                      : _resolvedUrl,
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                ),
+                // Coming-soon variant keeps a short plain-English reason
+                // for the disabled state. This is contextual helper copy,
+                // NOT a URL — the raw operator-web URL is intentionally
+                // never rendered (fix-settings-deeplink-buttons).
+                if (_isComingSoon) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'This section will move to Operator Web in an '
+                    'upcoming release.',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                  ),
+                ],
               ],
             ),
           ),
