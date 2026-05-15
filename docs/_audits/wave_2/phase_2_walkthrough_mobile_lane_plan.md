@@ -67,8 +67,8 @@ worktree agent gets spawned with the standard contract (branch → fix
 | Emulator | Pixel_9, `emulator-5554`, API 36, `com.forgeflow.app` (recreate if gone) |
 | Flutter run task | recreate per resume prompt (prior `bam7vhie1` is dead) |
 | Live monitor task | restart per "Live monitor" section below |
-| Captured so far | `p1_00` through `p1_16` (17 captures + thumbs) covering surfaces 00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14, 15. Surface 01 ticked `[!]` (gap filed). Surfaces 12, 16, 17 are 🚧 STUB per Agent B's source-trace — code-anchored, not driveable. |
-| Pass | mid Pass 1 — resume at surface 18 (Benchmark tab BaselineTracker) next; ~17 of ~22 top surfaces driven |
+| Captured so far | `p1_00` through `p1_24` (25 captures + thumbs) covering surfaces 00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14, 15, 17 (drawer post-PR-755), 18, 19, 20+21+22 (combined), 23. Surface 01 ticked `[!]` (gap re-opened post-PR-755 live re-drive). Surfaces 12, 16, 17, 24 are 🚧 STUB or cut-from-V1 — code-anchored, not driveable. |
+| Pass | mid Pass 1 — Bottom-nav tabs (Shift / Variance / Plan / Benchmark) COMPLETE. Remaining: top-bar Settings drawer (`⚙` gear) → surfaces 25-41 across Setup / Integrations / Data / Account tabs. |
 | Screenshot dimension cap | Pixel 9 emulator captures are 1080×2424 — exceeds Anthropic's 2000px many-image cap. Capture full-res to evidence dir, save a ≤1600px thumb for Claude. Do NOT bulk-attach; show Claude a thumbnail only when investigating an anomaly. The matrix annotation is the durable record. |
 
 ---
@@ -129,13 +129,11 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 - [🚧] 17 — Publish path + conflict resolution dialog (if reachable) — STUB per Agent B (server state machine exists; UI not wired)
 
 ### Benchmark tab (BaselineTracker)
-- [ ] 18 — Default view (range graph + Baseline targets card)
-- [ ] 19 — Manager override CTA → BaselineManagerScreen (calendar of shifts)
-- [ ] 20 — Star a shift (tap one to add to selection) — Pass 1 happy path, single star
-- [ ] 21 — Day detail drill
-- [ ] 22 — Preview + actions
-- [ ] 23 — Return to Benchmark with override banner "1 STAR SHIFT SELECTED" visible
-- [ ] 24 — RP-15 cap state (only if reachable as Owner; otherwise code-anchor + file FU)
+- [x] 18 — Default view (range graph + Baseline targets card) — `p1_18_benchmark_default.png`
+- [x] 19 — Manager override CTA → BaselineManagerScreen (calendar of shifts) — `p1_19_baseline_manager_screen.png`
+- [x] 20+21+22 — Star a shift + Day detail drill + Preview/actions (one screen, three inventory items) — `p1_21_star_lunch_selected.png` (LUNCH starred; PLAN IMPACT live-populated)
+- [x] 23 — Return to Benchmark with override banner — `p1_24_benchmark_with_override.png` ("MANAGER OVERRIDE ACTIVE / 1 STAR SHIFTS SELECTED" banner + OPZ RANGE TOO NARROW + advisor prose)
+- [🚧] 24 — RP-15 cap state — CUT FROM V1 per `project_v1_lean_cut_2026_05_03` memory
 
 ### Settings — Setup tab
 - [ ] 25 — Setup tab landing (tab order verify: Setup / Integrations / Data / Account)
