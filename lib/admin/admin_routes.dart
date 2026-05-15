@@ -65,6 +65,7 @@ import 'services/pricing_tier_admin_gateway.dart';
 import 'services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'services/vendor_applicability_admin_gateway.dart';
 import 'widgets/admin_setup_workspace.dart';
+import '../domain/models/data_accuracy_settings.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
 
 /// CODE_OPS_DEBT Theme A item 1 — overridable MFA-freshness resolver
@@ -3246,52 +3247,102 @@ final DefaultRoleCatalogAdminGateway _defaultRoleCatalogAdminDemoGateway =
 /// & Pricing without a backing service. Tier definitions are baked from
 /// `kDemoStandardTierDefinition` / `kDemoPremiumTierDefinition` /
 /// `kDemoCustomTierDefinition`. One illustrative tier change request
-/// drives the Tab 2 Card 4 demo path.
-final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway =
-    InMemoryDataAccuracyAdminGateway(
-      operatorLocations: const <OperatorLocationRef>[
-        OperatorLocationRef(
-          operatorId: '00000000-0000-4000-8000-000000000001',
+/// drives the Tab 2 Card 4 demo path. Demo Diner Co. → Toronto Yorkville
+/// is pre-seeded with a historical admin override so the per-location
+/// Data Accuracy audit panel shows a real audit row (RP-15 admin-undo
+/// path) instead of the "0 events / No admin overrides recorded yet."
+/// empty state.
+final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
+  const dinerOperatorId = '00000000-0000-4000-8000-000000000001';
+  const yorkvilleLocationId = '00000000-0000-4000-8000-0000000000a1';
+  const yorkvilleSettingsKey = '$dinerOperatorId/$yorkvilleLocationId';
+  final overrideAppliedAt = DateTime.utc(2026, 5, 10, 14, 17);
+  return InMemoryDataAccuracyAdminGateway(
+    operatorLocations: const <OperatorLocationRef>[
+      OperatorLocationRef(
+        operatorId: dinerOperatorId,
+        businessName: 'Demo Diner Co.',
+        locationId: yorkvilleLocationId,
+        locationName: 'Toronto Yorkville',
+      ),
+      OperatorLocationRef(
+        operatorId: dinerOperatorId,
+        businessName: 'Demo Diner Co.',
+        locationId: '00000000-0000-4000-8000-0000000000a2',
+        locationName: 'Vancouver Robson',
+      ),
+      OperatorLocationRef(
+        operatorId: '00000000-0000-4000-8000-000000000002',
+        businessName: 'Sunset Cafe Group',
+        locationId: '00000000-0000-4000-8000-0000000000b1',
+        locationName: 'Brooklyn Williamsburg',
+      ),
+    ],
+    initialSettings: <String, DataAccuracySettings>{
+      yorkvilleSettingsKey: DataAccuracySettings(
+        settingId: 'demo-setting-$yorkvilleSettingsKey',
+        operatorId: dinerOperatorId,
+        locationId: yorkvilleLocationId,
+        coversSourceLunch: CoversSource.manual,
+        coversSourceDinner: CoversSource.vendor,
+        coversSourceLateNight: CoversSource.vendor,
+        coversManualEntries: const <String, Map<String, int>>{},
+        wageSource: WageSource.manualMix,
+        createdAt: DateTime.utc(2026, 5, 1, 9),
+        updatedAt: overrideAppliedAt,
+        updatedBy: 'support@forgeflow.app',
+      ),
+    },
+    initialTierDefinitions: <PollingTierKey, TierDefinition>{
+      PollingTierKey.standard: kDemoStandardTierDefinition(),
+      PollingTierKey.premium: kDemoPremiumTierDefinition(),
+      PollingTierKey.custom: kDemoCustomTierDefinition(),
+    },
+    initialChangeRequests: <TierChangeRequest>[
+      TierChangeRequest(
+        requestId: 'demo-change-request-1',
+        operatorRef: const OperatorLocationRef(
+          operatorId: dinerOperatorId,
           businessName: 'Demo Diner Co.',
-          locationId: '00000000-0000-4000-8000-0000000000a1',
+          locationId: yorkvilleLocationId,
           locationName: 'Toronto Yorkville',
         ),
-        OperatorLocationRef(
-          operatorId: '00000000-0000-4000-8000-000000000001',
-          businessName: 'Demo Diner Co.',
-          locationId: '00000000-0000-4000-8000-0000000000a2',
-          locationName: 'Vancouver Robson',
-        ),
-        OperatorLocationRef(
-          operatorId: '00000000-0000-4000-8000-000000000002',
-          businessName: 'Sunset Cafe Group',
-          locationId: '00000000-0000-4000-8000-0000000000b1',
-          locationName: 'Brooklyn Williamsburg',
-        ),
-      ],
-      initialTierDefinitions: <PollingTierKey, TierDefinition>{
-        PollingTierKey.standard: kDemoStandardTierDefinition(),
-        PollingTierKey.premium: kDemoPremiumTierDefinition(),
-        PollingTierKey.custom: kDemoCustomTierDefinition(),
-      },
-      initialChangeRequests: <TierChangeRequest>[
-        TierChangeRequest(
-          requestId: 'demo-change-request-1',
-          operatorRef: const OperatorLocationRef(
-            operatorId: '00000000-0000-4000-8000-000000000001',
-            businessName: 'Demo Diner Co.',
-            locationId: '00000000-0000-4000-8000-0000000000a1',
-            locationName: 'Toronto Yorkville',
-          ),
-          currentTier: PollingTierKey.standard,
-          requestedTier: PollingTierKey.premium,
-          operatorNote:
-              'We need tighter mid-service awareness on dinner volume.',
-          submittedAt: DateTime.utc(2026, 5, 4, 14, 30),
-          status: TierChangeRequestStatus.pending,
-        ),
-      ],
-    );
+        currentTier: PollingTierKey.standard,
+        requestedTier: PollingTierKey.premium,
+        operatorNote:
+            'We need tighter mid-service awareness on dinner volume.',
+        submittedAt: DateTime.utc(2026, 5, 4, 14, 30),
+        status: TierChangeRequestStatus.pending,
+      ),
+    ],
+    initialAuditLog: <DataAccuracyAdminAuditEvent>[
+      DataAccuracyAdminAuditEvent(
+        eventId: 'demo-audit-rp15-1',
+        eventType: 'admin.data_accuracy.override',
+        occurredAt: overrideAppliedAt,
+        actorUserId: 'support@forgeflow.app',
+        operatorId: dinerOperatorId,
+        locationId: yorkvilleLocationId,
+        diff: const <String, Object?>{
+          'covers_source_lunch': <String, Object?>{
+            'from': 'vendor',
+            'to': 'manual',
+          },
+          'wage_source': <String, Object?>{
+            'from': 'vendor',
+            'to': 'manual_mix',
+          },
+        },
+        reasonNote:
+            'Operator reported Toast lunch covers drift; switching to '
+            'manual entry while the integration is investigated.',
+        actorDisplayName: 'F&F Support',
+        actorRole: 'Forge & Flow admin',
+        actorEmail: 'support@forgeflow.app',
+      ),
+    ],
+  );
+}();
 
 final VendorApplicabilityAdminGateway _defaultVendorApplicabilityDemoGateway =
     _InMemoryVendorApplicabilityAdminGateway(

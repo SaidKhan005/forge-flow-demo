@@ -3966,8 +3966,16 @@ class _LocationActionButton extends StatelessWidget {
               : AppColors.borderSubtle)
         : AppColors.borderSubtle;
 
+    // Tooltip is hover-only mouse helper; excluding from the semantic
+    // tree keeps the inner OutlinedButton.icon's `label` Text as the
+    // sole semantic leaf for each location action button. Walkthrough
+    // automation (and screen readers) then find buttons by their
+    // visible label ("Support view", "People", "Access", ...) without
+    // the tooltip message overwriting the button's accessible name.
+    // Filed gap: `Support-FU-admin-walkthrough` (Phase 2 walkthrough).
     return Tooltip(
       message: tooltip,
+      excludeFromSemantics: true,
       child: OutlinedButton.icon(
         key: buttonKey,
         onPressed: onPressed,
