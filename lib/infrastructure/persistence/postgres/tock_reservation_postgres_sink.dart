@@ -40,6 +40,15 @@
 //     SQL string of the INSERT statement. Test H grep enforces.
 //   * `partySize` (the reservation analog of POS covers; covers source
 //     classification = `not_applicable`) lands on `party_size`.
+//   * `business_date` is derived by reading the per-restaurant
+//     `timezone` + `business_day_rollover_hour` from `public.locations`
+//     inside the tenant transaction, then projecting the UTC
+//     `reservation_at` instant via
+//     [IanaTimezoneConverter.toBusinessDate]. Mirrors the OpenTable
+//     (`.OT`) and Libro (`.LB`) sinks. Default fallback when the
+//     location row is missing matches Libro: `'UTC'` + `4`. Per-Daypart
+//     V1 / Slice 7a (Gap 45, 2026-05-15) closes the prior stub that
+//     used the raw UTC calendar date.
 //
 // Hard-Promise alignment (CLAUDE.md):
 //   * HP #1 (pure transport swap): writes hit the existing
@@ -69,6 +78,7 @@ import 'dart:convert';
 import '../../../integrations/reservation/tock_reservation_adapter.dart';
 import '../../../integrations/reservation/tock_webhook_signature_verifier.dart';
 import '../../../services/integration/canonical_sink.dart';
+import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -92,10 +102,13 @@ class TockReservationPostgresSink extends OperatorScopedRepository
     implements TockFactSink {
   TockReservationPostgresSink({
     required TenantTransactionWrapper tenantWrapper,
+    IanaTimezoneConverter? timezoneConverter,
     DateTime Function()? now,
-  })  : _now = now ?? DateTime.now,
+  })  : _timezoneConverter = timezoneConverter ?? IanaTimezoneConverter.shared,
+        _now = now ?? DateTime.now,
         super(tenantWrapper);
 
+  final IanaTimezoneConverter _timezoneConverter;
   final DateTime Function() _now;
 
   // ─── TockFactSink: canonical fact upsert ───────────────────────────
@@ -153,12 +166,39 @@ class TockReservationPostgresSink extends OperatorScopedRepository
         'vendor_modified_at — adapter contract violated',
       );
     }
-    // Tock's public reference times are UTC (ISO-8601 with trailing
-    // `Z`); derive `business_date` as the UTC calendar date of
-    // `reservation_at`. The `8R.TC.live.sandbox` slice confirms via
-    // observed payloads if a per-restaurant tz projection is needed;
-    // the engineering slice does not assume one.
-    final businessDate = _utcDateString(reservationAt);
+    // Resolve the per-restaurant timezone + business-day rollover hour
+    // from `public.locations` and project `reservation_at` (UTC) to the
+    // restaurant-local `business_date` via [IanaTimezoneConverter]. The
+    // SELECT runs inside the same tenant transaction as the INSERT so a
+    // tenant cannot read another operator's location settings. Tock's
+    // public reference times are UTC (ISO-8601 with trailing `Z`); the
+    // converter handles DST + sub-midnight rollover correctly. Default
+    // fallback when the location row is missing mirrors Libro: `'UTC'`
+    // + `4` (the operator-default business-day-start hour).
+    final locationRows = await exec.query(
+      'select timezone, business_day_rollover_hour '
+      'from public.locations '
+      'where operator_id = @operator_id::uuid '
+      '  and location_id = @location_id::uuid '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    final restaurantTimezone = locationRows.isNotEmpty
+        ? ((locationRows.single['timezone'] as String?) ?? 'UTC')
+        : 'UTC';
+    final rolloverHour = locationRows.isNotEmpty
+        ? ((locationRows.single['business_day_rollover_hour'] as int?) ?? 4)
+        : 4;
+    final businessDate = _formatDate(
+      _timezoneConverter.toBusinessDate(
+        restaurantTimezone: restaurantTimezone,
+        businessDayRolloverHour: rolloverHour,
+        instant: reservationAt,
+      ),
+    );
 
     final affected = await exec.execute(
       'insert into public.reservation_facts ('
@@ -615,9 +655,10 @@ DateTime? _coerceUtc(Object? raw) {
   return null;
 }
 
-String _utcDateString(DateTime utc) {
-  final y = utc.year.toString().padLeft(4, '0');
-  final m = utc.month.toString().padLeft(2, '0');
-  final d = utc.day.toString().padLeft(2, '0');
-  return '$y-$m-$d';
+String _formatDate(DateTime value) {
+  final utc = value.toUtc();
+  final yyyy = utc.year.toString().padLeft(4, '0');
+  final mm = utc.month.toString().padLeft(2, '0');
+  final dd = utc.day.toString().padLeft(2, '0');
+  return '$yyyy-$mm-$dd';
 }
