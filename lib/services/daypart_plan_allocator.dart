@@ -44,6 +44,38 @@ class DaypartAllocation {
 }
 
 /// Pure deterministic daypart plan-target allocator.
+///
+/// Per-Daypart V1 (Slice 3) — RETIRED from the production locked read
+/// path. The Plan tab's daypart sub-rows now READ the locked
+/// per-(day, service_period) values stamped at lock time
+/// (`weekly_plan_snapshot_day_dayparts`, via
+/// `WeeklyPlanSnapshot.dayDayparts` /
+/// `WeeklyPlanSnapshot.dayDaypartFor`) instead of regenerating them on
+/// every render (plan Gap 6 / Gap 12, Design Rule 4 — read through the
+/// persisted canonical write path; never bypass it).
+///
+/// This allocator is intentionally NOT deleted because it still has
+/// legitimate non-locked-read consumers:
+///   - live / preview Schedule mode (no persisted snapshot exists — the
+///     plan is resolved from inputs, so there is nothing persisted to
+///     read), and the locked-snapshot empty-`dayDayparts` fallback
+///     (legacy snapshots / Gap 42 insufficient-recommendation), both in
+///     `ScheduleForecastNotifier`;
+///   - `ShiftService.getFullWeekShifts` (Variance Full Week non-closed
+///     row construction — its persisted-row swap is plan Slice 5);
+///   - `data_alignment_audit_read_service.dart` (audit scorer — plan
+///     Slice 6).
+///
+/// New code MUST NOT call this for any path that has a persisted locked
+/// snapshot available — read `WeeklyPlanSnapshot.dayDayparts` instead.
+@Deprecated(
+  'Per-Daypart V1 Slice 3: read locked sub-rows from '
+  'WeeklyPlanSnapshot.dayDayparts (weekly_plan_snapshot_day_dayparts) '
+  'instead of regenerating per-period values at render time. This '
+  'allocator survives only as the live/preview + legacy/Gap-42 '
+  'fallback and for the not-yet-swapped Variance (Slice 5) / audit '
+  '(Slice 6) consumers.',
+)
 class DaypartPlanAllocator {
   const DaypartPlanAllocator._();
 
