@@ -14,6 +14,19 @@ When this plan and a contract conflict, the contract wins. When this plan and a 
 
 ---
 
+## Operator decisions locked (2026-05-15)
+
+The 4 operator decisions that gated slice dispatch are resolved.
+
+| # | Question | Operator decision | Slice impact |
+|---|---|---|---|
+| Gap 42 | Fallback shape when insufficient recommendation | **Be honest.** Leave per-period child table empty when `recommendation.isInsufficient`; read layer falls back to parent whole-day pool. App is designed to get a 60-day vendor backfill on first connect, so insufficient cycles are rare in practice. | Slice 1 unblocked. |
+| Gap 31 | `shift_close_authority` operator-editability | **Keep F&F-controlled.** Document as backend-only carve-out per HP #11. Close authority is per-restaurant (not per-daypart) and depends on per-vendor finalization behavior which only F&F integration testing knows correctly. | No slice change; contract amendment in Slice 0 adds the HP #11 documented carve-out. |
+| Gap 36 | Legacy `covers_source_*` columns vs keyed table | **Kill the old columns.** Backfill any existing data from the three named columns into the keyed `data_accuracy_service_period_settings` table during Slice 2 demo reseed, then drop the old columns. Pre-production so no real operator data to preserve carefully. | Slice 2 extension: one-time backfill + column drop migration. |
+| Gap 35 | Operator-web Benchmarks override write-seam | **Cut the operator-web override entirely.** Mobile Baseline Manager star-shift selector is the only override path. Operator-web Benchmarks screen becomes read-only (still shows current targets, but no pin-to-override button). | Slice 2 extension: remove override write path from `benchmarks_screen.dart` + `operator_web_benchmarks_gateway.dart`; drop `benchmark_overrides` table; remove `_writeReplacementCycle`'s admin-replacement path that read from this table. |
+
+---
+
 ## Why this work exists
 
 The recommendation engine in `lib/domain/services/recommended_benchmark_selection_service.dart` already computes per-service-period targets cleanly. It walks 60 days of closed shifts, runs Jim Taylor's CPLH / SPLH / PPA / OPZ math at the period level, and produces a target per period at lines 122–294. Then at lines 305–332 those per-period values get pooled into one whole-day cover-weighted scalar and the per-period resolution is thrown away. Only the pooled scalars get persisted to `target_cycles`. Every downstream screen reaches for the whole-day target because that's the only thing in the database.
