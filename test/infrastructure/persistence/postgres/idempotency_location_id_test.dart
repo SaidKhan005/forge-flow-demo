@@ -277,8 +277,14 @@ class _FakeTransaction implements PostgresTransaction {
   }) async {
     if (sql.contains('select set_config(')) return const <PostgresRow>[];
 
-    if (sql.contains(
-        'select timezone, business_day_rollover_hour from public.locations')) {
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler.
+    if (sql.contains('from public.business_timing_profiles p')) {
+      return const <PostgresRow>[];
+    }
+    if (sql.contains('from public.locations')) {
       final opId = parameters['operator_id'] as String;
       final locId = parameters['location_id'] as String;
       final row = _pool._locations['$opId|$locId'];
@@ -286,7 +292,6 @@ class _FakeTransaction implements PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{
           'timezone': row['timezone'],
-          'business_day_rollover_hour': row['business_day_rollover_hour'],
         },
       ];
     }

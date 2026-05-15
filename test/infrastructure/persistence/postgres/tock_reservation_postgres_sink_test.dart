@@ -724,6 +724,39 @@ void main() {
               '\'seated_at\' (e.g. as a parameter map key or read key).');
     });
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — Tock no longer reads `business_day_rollover_hour`.
+  // Slice 7a injected `IanaTimezoneConverter`; Slice 7b routes through
+  // the canonical `BusinessTimingProfilesRepository` chain via
+  // `SinkBusinessDateProjector`.
+  group(
+      'TockReservationPostgresSink — Slice 7b. Per-Daypart V1 Slice 7b '
+      'business_date projection via canonical timing chain (Gap 47 static)',
+      () {
+    test(
+      '7b.4 sink source contains zero references to '
+      'business_day_rollover_hour as live code',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/tock_reservation_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Tock sink — Per-Daypart V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 /// Strip `//` line comments and `/* */` block comments so the banned-
@@ -944,14 +977,19 @@ class _FakeTx implements PostgresTransaction {
           .toList(growable: false);
     }
 
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler. Returning empty triggers
+    // the projector's `'04:00'` fallback (matches the Tock Slice 7a
+    // legacy `(timezone, rollover_hour=4)` projection).
+    if (lower.contains('from public.business_timing_profiles p')) {
+      return const <PostgresRow>[];
+    }
     if (lower.contains('from public.locations')) {
-      // Per-Daypart V1 / Slice 7a (Gap 45): the sink resolves
-      // (timezone, business_day_rollover_hour) for `business_date`
-      // projection inside the same tenant transaction as the INSERT.
-      // The fake honors what `seedLocation` registered; if no row was
-      // seeded the SELECT returns empty and the sink falls back to
-      // `('UTC', 4)` (Libro fallback) — the sink defaults are tested
-      // separately by the I.4 group below.
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the sink no
+      // longer reads `business_day_rollover_hour`; it now SELECTs
+      // `timezone` only.
       final operatorId = parameters['operator_id'] as String?;
       final locationId = parameters['location_id'] as String?;
       final loc = db.locations['$operatorId|$locationId'];
@@ -959,7 +997,6 @@ class _FakeTx implements PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{
           'timezone': loc.restaurantTimezone,
-          'business_day_rollover_hour': loc.businessDayRolloverHour,
         },
       ];
     }

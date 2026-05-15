@@ -60,9 +60,11 @@ import '../../../integrations/reservation/sevenrooms_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
+import 'repositories/business_timing_profiles_repository.dart';
 import 'tenant_context.dart';
 import 'tenant_transaction.dart';
 
@@ -87,12 +89,29 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
   SevenRoomsReservationPostgresSink({
     required TenantTransactionWrapper tenantWrapper,
     IanaTimezoneConverter? timezoneConverter,
+    SinkBusinessDateProjector? businessDateProjector,
+    BusinessTimingProfilesRepository? profilesRepository,
     DateTime Function()? now,
-  })  : _timezoneConverter = timezoneConverter ?? IanaTimezoneConverter.shared,
+  })  : _businessDateProjector = businessDateProjector ??
+            SinkBusinessDateProjector(
+              profilesRepository: profilesRepository ??
+                  BusinessTimingProfilesRepository(tenantWrapper),
+              timezoneConverter:
+                  timezoneConverter ?? IanaTimezoneConverter.shared,
+            ),
         _now = now ?? DateTime.now,
         super(tenantWrapper);
 
-  final IanaTimezoneConverter _timezoneConverter;
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): SevenRooms no
+  // longer reads `locations.business_day_rollover_hour`. The cutoff is
+  // resolved through the canonical `BusinessTimingProfilesRepository`
+  // chain inside the projector. The bespoke
+  // `SevenRoomsReservationGateway.writeReservationFact` surface still
+  // accepts `restaurantTimezone` + `businessDayRolloverHour` parameters
+  // for adapter back-compat (the adapter is out of Slice 7b's scope),
+  // but the sink ignores `businessDayRolloverHour` and routes through
+  // the projector.
+  final SinkBusinessDateProjector _businessDateProjector;
   final DateTime Function() _now;
 
   // ─── SevenRoomsReservationGateway: connection lookups ─────────────
@@ -257,11 +276,18 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
     required String restaurantTimezone,
     required int businessDayRolloverHour,
     required DateTime vendorModifiedAtUtc,
-  }) {
-    final businessDate = _timezoneConverter.toBusinessDate(
+  }) async {
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15):
+    // `businessDayRolloverHour` is intentionally ignored — the sink
+    // routes through the canonical `BusinessTimingProfilesRepository`
+    // chain via `_businessDateProjector.projectBusinessDate`. The
+    // parameter remains on the bespoke gateway surface for adapter
+    // back-compat; closing it out is a Phase 8 follow-up.
+    final businessDate = await _businessDateProjector.projectBusinessDate(
+      operatorId: tenant.operatorId,
+      locationId: tenant.locationId,
       restaurantTimezone: restaurantTimezone,
-      businessDayRolloverHour: businessDayRolloverHour,
-      instant: reservationAtUtc,
+      instantUtc: reservationAtUtc.toUtc(),
     );
     final transitionsIso = statusTransitions.map(
       (key, value) => MapEntry<String, String>(key, value.toUtc().toIso8601String()),
@@ -631,8 +657,13 @@ class _SevenRoomsCanonicalSinkView implements CanonicalSink {
     }
     final restaurantTimezone =
         (canonicalReservation['restaurant_timezone'] as String?) ?? 'UTC';
-    final businessDayRolloverHour =
-        (canonicalReservation['business_day_rollover_hour'] as int?) ?? 0;
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the canonical
+    // map's `business_day_rollover_hour` (when present) is no longer
+    // read; the sink's `writeReservationFact` ignores its
+    // `businessDayRolloverHour` parameter and routes through the
+    // canonical timing chain. The legacy parameter is passed as `0`
+    // purely to satisfy the bespoke gateway signature; the value is
+    // dead.
     return sink.writeReservationFact(
       tenant:
           TenantContext(operatorId: operatorId, locationId: locationId),
@@ -643,7 +674,7 @@ class _SevenRoomsCanonicalSinkView implements CanonicalSink {
       status: status,
       statusTransitions: transitions,
       restaurantTimezone: restaurantTimezone,
-      businessDayRolloverHour: businessDayRolloverHour,
+      businessDayRolloverHour: 0,
       vendorModifiedAtUtc: vendorModifiedAt,
     );
   }

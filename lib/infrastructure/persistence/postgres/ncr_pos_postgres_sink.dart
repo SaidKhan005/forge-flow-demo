@@ -38,10 +38,15 @@
 //
 //   3. Computes `business_date` at write time from
 //      `cover_facts.closed_at` (projected from the NCR `closedAt`
-//      field) plus `location.timezone` /
-//      `location.business_day_rollover_hour` via the IANA-backed
-//      converter. The denormalized DATE never re-derives at read
-//      (Phase 7.55 Rule 11).
+//      field) via the canonical `BusinessTimingProfilesRepository` →
+//      `BusinessTimingProfileResolver` → `BusinessDateResolver` chain
+//      (Per-Daypart V1 / Slice 7b option (b), 2026-05-15). The chain
+//      honors operator → org_unit → location precedence per HP #11 and
+//      consumes a sub-hour-aware HH:MM cutoff per Gap 46. The sink
+//      reads `location.timezone` only — it no longer reads
+//      `location.business_day_rollover_hour` (deprecated in Slice 7b;
+//      the column drop is deferred to a follow-up). The denormalized
+//      DATE never re-derives at read (Phase 7.55 Rule 11).
 //
 //   4. Persists watermark advances via
 //      `connector_sync_watermark` (resource = `'pos.guest_checks'`).
@@ -82,8 +87,10 @@ import 'dart:convert';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
+import 'repositories/business_timing_profiles_repository.dart';
 import 'tenant_context.dart';
 
 /// Vendor identifier for NCR Simphony POS systems.
@@ -110,11 +117,27 @@ class NcrPostgresSink extends OperatorScopedRepository
   NcrPostgresSink(
     super.tenantWrapper, {
     IanaTimezoneConverter? timezoneConverter,
+    SinkBusinessDateProjector? businessDateProjector,
+    BusinessTimingProfilesRepository? profilesRepository,
     DateTime Function()? clock,
-  })  : _timezoneConverter = timezoneConverter ?? IanaTimezoneConverter.shared,
+  })  : _businessDateProjector = businessDateProjector ??
+            SinkBusinessDateProjector(
+              profilesRepository: profilesRepository ??
+                  BusinessTimingProfilesRepository(tenantWrapper),
+              timezoneConverter:
+                  timezoneConverter ?? IanaTimezoneConverter.shared,
+            ),
         _clock = clock ?? DateTime.now;
 
-  final IanaTimezoneConverter _timezoneConverter;
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): NCR no longer
+  // reads `locations.business_day_rollover_hour`. The cutoff is
+  // resolved through the canonical `BusinessTimingProfilesRepository`
+  // chain inside the projector. The legacy
+  // `IanaTimezoneConverter.toBusinessDate` API is no longer called from
+  // this sink; the `timezoneConverter` named parameter is preserved so
+  // existing call sites compile and tests can inject a stub IANA
+  // converter (threaded into the projector).
+  final SinkBusinessDateProjector _businessDateProjector;
   final DateTime Function() _clock;
 
   /// In-memory per-(operator, location) counter of inserts since the
@@ -191,8 +214,13 @@ class NcrPostgresSink extends OperatorScopedRepository
         // adapter. No write; counter unaffected.
         return false;
       }
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the SELECT
+      // returns `timezone` only — no `business_day_rollover_hour`. The
+      // cutoff itself is resolved through the canonical
+      // `BusinessTimingProfilesRepository` chain inside
+      // `_businessDateProjector.projectBusinessDate`.
       final locationRows = await exec.query(
-        'select timezone, business_day_rollover_hour '
+        'select timezone '
         'from public.locations '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid',
@@ -211,12 +239,13 @@ class NcrPostgresSink extends OperatorScopedRepository
       }
       final locationRow = locationRows.single;
       final timezone = (locationRow['timezone'] as String?) ?? 'UTC';
-      final rolloverHour =
-          (locationRow['business_day_rollover_hour'] as int?) ?? 0;
-      final businessDate = _timezoneConverter.toBusinessDate(
-        restaurantTimezone: timezone,
-        businessDayRolloverHour: rolloverHour,
-        instant: closedAt,
+      final businessDate = _formatDate(
+        await _businessDateProjector.projectBusinessDate(
+          operatorId: operatorId,
+          locationId: locationId,
+          restaurantTimezone: timezone,
+          instantUtc: closedAt,
+        ),
       );
 
       final rows = await exec.query(
@@ -544,6 +573,17 @@ class NcrPostgresSink extends OperatorScopedRepository
       return DateTime.parse(raw).toUtc();
     }
     return null;
+  }
+
+  /// Format the projector's UTC-midnight `DateTime` as 'YYYY-MM-DD' for
+  /// the `cover_facts.business_date::date` cast (Per-Daypart V1 / Slice
+  /// 7b option (b)).
+  static String _formatDate(DateTime value) {
+    final utc = value.toUtc();
+    final yyyy = utc.year.toString().padLeft(4, '0');
+    final mm = utc.month.toString().padLeft(2, '0');
+    final dd = utc.day.toString().padLeft(2, '0');
+    return '$yyyy-$mm-$dd';
   }
 
   static String _categoryToDb(IntegrationCategory category) {

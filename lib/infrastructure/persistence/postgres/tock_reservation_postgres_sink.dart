@@ -41,14 +41,18 @@
 //   * `partySize` (the reservation analog of POS covers; covers source
 //     classification = `not_applicable`) lands on `party_size`.
 //   * `business_date` is derived by reading the per-restaurant
-//     `timezone` + `business_day_rollover_hour` from `public.locations`
-//     inside the tenant transaction, then projecting the UTC
-//     `reservation_at` instant via
-//     [IanaTimezoneConverter.toBusinessDate]. Mirrors the OpenTable
-//     (`.OT`) and Libro (`.LB`) sinks. Default fallback when the
-//     location row is missing matches Libro: `'UTC'` + `4`. Per-Daypart
-//     V1 / Slice 7a (Gap 45, 2026-05-15) closes the prior stub that
-//     used the raw UTC calendar date.
+//     `timezone` from `public.locations` inside the tenant transaction
+//     and resolving the cutoff through the canonical
+//     `BusinessTimingProfilesRepository` →
+//     `BusinessTimingProfileResolver` → `BusinessDateResolver` chain
+//     via [SinkBusinessDateProjector] (Per-Daypart V1 / Slice 7b
+//     option (b), 2026-05-15). The chain honors operator → org_unit →
+//     location precedence per HP #11 and consumes a sub-hour-aware
+//     HH:MM cutoff per Gap 46. The sink no longer reads
+//     `location.business_day_rollover_hour` (deprecated in Slice 7b).
+//     Slice 7a (Gap 45, 2026-05-15) closed the prior stub that used
+//     the raw UTC calendar date; Slice 7b routes through the canonical
+//     chain.
 //
 // Hard-Promise alignment (CLAUDE.md):
 //   * HP #1 (pure transport swap): writes hit the existing
@@ -80,9 +84,11 @@ import '../../../integrations/reservation/tock_webhook_signature_verifier.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
+import 'repositories/business_timing_profiles_repository.dart';
 import 'tenant_context.dart';
 import 'tenant_transaction.dart';
 
@@ -103,12 +109,26 @@ class TockReservationPostgresSink extends OperatorScopedRepository
   TockReservationPostgresSink({
     required TenantTransactionWrapper tenantWrapper,
     IanaTimezoneConverter? timezoneConverter,
+    SinkBusinessDateProjector? businessDateProjector,
+    BusinessTimingProfilesRepository? profilesRepository,
     DateTime Function()? now,
-  })  : _timezoneConverter = timezoneConverter ?? IanaTimezoneConverter.shared,
+  })  : _businessDateProjector = businessDateProjector ??
+            SinkBusinessDateProjector(
+              profilesRepository: profilesRepository ??
+                  BusinessTimingProfilesRepository(tenantWrapper),
+              timezoneConverter:
+                  timezoneConverter ?? IanaTimezoneConverter.shared,
+            ),
         _now = now ?? DateTime.now,
         super(tenantWrapper);
 
-  final IanaTimezoneConverter _timezoneConverter;
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Tock no longer
+  // reads `locations.business_day_rollover_hour`. The cutoff is
+  // resolved through the canonical `BusinessTimingProfilesRepository`
+  // chain inside the projector. Slice 7a injected
+  // `IanaTimezoneConverter`; Slice 7b routes through the projector
+  // (the projector internally uses `IanaTimezoneConverter.shared`).
+  final SinkBusinessDateProjector _businessDateProjector;
   final DateTime Function() _now;
 
   // ─── TockFactSink: canonical fact upsert ───────────────────────────
@@ -166,17 +186,17 @@ class TockReservationPostgresSink extends OperatorScopedRepository
         'vendor_modified_at — adapter contract violated',
       );
     }
-    // Resolve the per-restaurant timezone + business-day rollover hour
-    // from `public.locations` and project `reservation_at` (UTC) to the
-    // restaurant-local `business_date` via [IanaTimezoneConverter]. The
-    // SELECT runs inside the same tenant transaction as the INSERT so a
-    // tenant cannot read another operator's location settings. Tock's
-    // public reference times are UTC (ISO-8601 with trailing `Z`); the
-    // converter handles DST + sub-midnight rollover correctly. Default
-    // fallback when the location row is missing mirrors Libro: `'UTC'`
-    // + `4` (the operator-default business-day-start hour).
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the SELECT
+    // returns `timezone` only — no `business_day_rollover_hour`. The
+    // cutoff itself comes from the canonical
+    // `BusinessTimingProfilesRepository` chain inside
+    // `_businessDateProjector.projectBusinessDate`, which honors the
+    // operator → org_unit → location inheritance per HP #11 and
+    // consumes a sub-hour-aware HH:MM cutoff per Gap 46. The projector's
+    // `'04:00'` fallback applies when the chain returns no candidates
+    // (matches the prior Libro-pattern `?? 4`).
     final locationRows = await exec.query(
-      'select timezone, business_day_rollover_hour '
+      'select timezone '
       'from public.locations '
       'where operator_id = @operator_id::uuid '
       '  and location_id = @location_id::uuid '
@@ -189,14 +209,12 @@ class TockReservationPostgresSink extends OperatorScopedRepository
     final restaurantTimezone = locationRows.isNotEmpty
         ? ((locationRows.single['timezone'] as String?) ?? 'UTC')
         : 'UTC';
-    final rolloverHour = locationRows.isNotEmpty
-        ? ((locationRows.single['business_day_rollover_hour'] as int?) ?? 4)
-        : 4;
     final businessDate = _formatDate(
-      _timezoneConverter.toBusinessDate(
+      await _businessDateProjector.projectBusinessDate(
+        operatorId: operatorId,
+        locationId: locationId,
         restaurantTimezone: restaurantTimezone,
-        businessDayRolloverHour: rolloverHour,
-        instant: reservationAt,
+        instantUtc: reservationAt,
       ),
     );
 

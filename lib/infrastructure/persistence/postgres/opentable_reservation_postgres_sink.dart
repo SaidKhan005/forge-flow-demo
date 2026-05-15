@@ -67,9 +67,11 @@ import '../../../integrations/reservation/opentable_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
+import 'repositories/business_timing_profiles_repository.dart';
 import 'tenant_context.dart';
 import 'tenant_transaction.dart';
 
@@ -94,12 +96,26 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
   OpenTableReservationPostgresSink({
     required TenantTransactionWrapper tenantWrapper,
     IanaTimezoneConverter? timezoneConverter,
+    SinkBusinessDateProjector? businessDateProjector,
+    BusinessTimingProfilesRepository? profilesRepository,
     DateTime Function()? now,
-  })  : _timezoneConverter = timezoneConverter ?? IanaTimezoneConverter.shared,
+  })  : _businessDateProjector = businessDateProjector ??
+            SinkBusinessDateProjector(
+              profilesRepository: profilesRepository ??
+                  BusinessTimingProfilesRepository(tenantWrapper),
+              timezoneConverter:
+                  timezoneConverter ?? IanaTimezoneConverter.shared,
+            ),
         _now = now ?? DateTime.now,
         super(tenantWrapper);
 
-  final IanaTimezoneConverter _timezoneConverter;
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): OpenTable no
+  // longer reads `locations.business_day_rollover_hour`. The cutoff is
+  // resolved through the canonical `BusinessTimingProfilesRepository`
+  // chain inside the projector. The historical Dart fallback `?? 0` is
+  // also gone — the projector's `'04:00'` fallback applies (positive
+  // default, not a sentinel).
+  final SinkBusinessDateProjector _businessDateProjector;
   final DateTime Function() _now;
 
   // ─── OpenTableGateway: connect lifecycle ─────────────────────────────
@@ -255,13 +271,15 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
       locationId: fact.locationId,
     );
     return withTenant<bool>(tenant, (exec) async {
-      // Resolve the per-restaurant timezone + rollover hour from
-      // `public.locations`. The sink mirrors the Tock / SR pattern of
-      // pulling the projection settings inside the same tenant
-      // transaction as the write so a tenant cannot read another
-      // operator's location settings.
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the SELECT
+      // returns `timezone` only — no `business_day_rollover_hour`. The
+      // cutoff itself comes from the canonical
+      // `BusinessTimingProfilesRepository` chain inside
+      // `_businessDateProjector.projectBusinessDate`, which honors the
+      // operator → org_unit → location inheritance per HP #11 and
+      // consumes a sub-hour-aware HH:MM cutoff per Gap 46.
       final locationRows = await exec.query(
-        'select timezone, business_day_rollover_hour '
+        'select timezone '
         'from public.locations '
         'where operator_id = @operator_id::uuid '
         '  and location_id = @location_id::uuid '
@@ -274,13 +292,11 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
       final restaurantTimezone = locationRows.isNotEmpty
           ? ((locationRows.single['timezone'] as String?) ?? 'UTC')
           : 'UTC';
-      final rolloverHour = locationRows.isNotEmpty
-          ? ((locationRows.single['business_day_rollover_hour'] as int?) ?? 0)
-          : 0;
-      final businessDate = _timezoneConverter.toBusinessDate(
+      final businessDate = await _businessDateProjector.projectBusinessDate(
+        operatorId: fact.operatorId,
+        locationId: fact.locationId,
         restaurantTimezone: restaurantTimezone,
-        businessDayRolloverHour: rolloverHour,
-        instant: fact.reservationAt.toUtc(),
+        instantUtc: fact.reservationAt.toUtc(),
       );
 
       final connectionId = await _resolveConnectionIdInTx(

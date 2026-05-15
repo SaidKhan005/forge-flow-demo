@@ -405,6 +405,60 @@ void main() {
       }
     });
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — sink no longer reads `business_day_rollover_hour`.
+  // SevenRooms is a special-pattern sink: the bespoke gateway's
+  // `writeReservationFact` still accepts `businessDayRolloverHour`
+  // for adapter back-compat (out of Slice 7b's scope), but the sink
+  // ignores it and routes through the projector.
+  group(
+      'SevenRoomsReservationPostgresSink — I. Per-Daypart V1 Slice 7b '
+      'business_date projection via canonical timing chain (Gap 47 static)',
+      () {
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as a live SQL column or location-row '
+      'read (the bespoke gateway parameter still appears for adapter '
+      'back-compat — that is allowed)',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/sevenrooms_reservation_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        // The bespoke `writeReservationFact` parameter is allowed to
+        // appear (back-compat). What is forbidden is reading the
+        // location-row column or using the value to project
+        // business_date. The two surviving live-code occurrences are
+        // intentional: (1) the gateway parameter declaration; (2) the
+        // canonical-sink path passing `0` to satisfy the bespoke
+        // signature. Pin the count so a future refactor that
+        // accidentally re-introduces a SELECT or projection trips the
+        // suite.
+        final occurrences = 'businessDayRolloverHour'.allMatches(
+          executableLines,
+        ).length;
+        expect(occurrences, lessThanOrEqualTo(4),
+            reason: 'businessDayRolloverHour appears only on the bespoke '
+                'gateway surface for back-compat — at most one parameter '
+                'declaration + one call-site pass. A higher count means '
+                'a regression to reading the legacy field.');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour (snake_case SQL column) '
+              'must not appear as live code in the SevenRooms sink — '
+              'Per-Daypart V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 /// Strip `//` line comments and `/* */` block comments so the banned-
