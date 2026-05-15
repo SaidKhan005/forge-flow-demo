@@ -11,6 +11,18 @@ import '../services/scope/business_scope_repository.dart';
 /// shared [SqliteRestaurantScopeRepository] singleton.
 typedef LocalRestaurantsReader = Future<List<RestaurantLocation>> Function();
 
+/// Sentinel `operator_id` used for the session-independent
+/// boot-time fallback seed in [RestaurantScopeNotifier._load].
+/// `BusinessScope.operatorId` is internal scope metadata never
+/// rendered to the user; the drawer only shows the location label.
+/// Production builds overwrite it via [RestaurantScopeNotifier
+/// .loadBusinessScopes] within milliseconds of the first proxy fetch.
+/// Demo builds carry it for the lifetime of the process — fine
+/// because demo never reaches the operator-scoped APIs that consume
+/// `operatorId` (HP #2: demo is a writer-side switch; readers are
+/// symmetric in shape, not in the wire traffic they trigger).
+const String _kBootFallbackOperatorId = 'demo-operator';
+
 class RestaurantScopeNotifier extends ChangeNotifier {
   RestaurantLocation? _restaurant;
   BusinessScope? _activeScope;
@@ -168,8 +180,82 @@ class RestaurantScopeNotifier extends ChangeNotifier {
   Future<void> _load() async {
     _restaurant = await SqliteRestaurantScopeRepository.instance
         .getOrCreateActiveRestaurant();
+    // Mobile-FU-drawer-seed-followup — PR #755 added the
+    // [seedAvailableScopesFromLocal] fallback for the session-bearing
+    // but client-less path (Barrio-embedded demo, brief proxy-warmup
+    // window, etc.). The post-merge live drive surfaced that the
+    // standalone demo flavor builds with `requireAuth: false` (no
+    // `AuthGate` mounted in `main_forgeflow.dart` when
+    // `FORGE_FLOW_USE_FIREBASE_AUTH` is unset). In that build
+    // `AuthSessionNotifier.session` stays null forever, so the
+    // call-site guard at `_loadBusinessScopesIfNeeded` (`if (session
+    // == null) return;`) short-circuits before the fallback runs.
+    //
+    // The dashboard renders content because [_restaurant] is populated
+    // here in `_load()` — a session-independent path. Seed
+    // [_availableScopes] on the SAME path so the drawer hydrates
+    // alongside the dashboard, no session required. When a real
+    // session arrives later (production sign-in via
+    // `loadBusinessScopes`, or a wired client via
+    // `seedAvailableScopesFromLocal`), it still overwrites
+    // [_availableScopes] with proxy-authoritative data — preserving
+    // existing behavior. HP #2 compliant: no `kDemoMode` reader
+    // branch; the seed runs identically in demo and prod, but in prod
+    // the network path overwrites within milliseconds.
+    await _seedAvailableScopesFromBootIfEmpty();
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Populates [_availableScopes] from the locally-cached
+  /// `restaurant_locations` rows on the session-independent boot
+  /// path, so the in-app business-scope drawer renders the active
+  /// location instead of the empty state in demo builds that never
+  /// produce an [AuthSessionNotifier.session].
+  ///
+  /// Only fires when [_availableScopes] is empty; a prior
+  /// [loadBusinessScopes] / [seedAvailableScopesFromLocal] call wins.
+  /// Uses [_kBootFallbackOperatorId] as the `operator_id` sentinel —
+  /// production overwrites it within milliseconds via
+  /// [loadBusinessScopes]. The operatorId on a [BusinessScope] is
+  /// internal scope metadata that the drawer never displays; it only
+  /// renders [BusinessScope.label].
+  ///
+  /// Picks the active scope to match [_restaurant] when set (the
+  /// session-independent dashboard read), otherwise the first
+  /// location row. Never overwrites [_activeScope] if it is already
+  /// set (a prior `seedAvailableScopesFromLocal` call may have
+  /// resolved a persisted active scope first).
+  Future<void> _seedAvailableScopesFromBootIfEmpty() async {
+    if (_availableScopes.isNotEmpty) return;
+    final restaurants = await SqliteRestaurantScopeRepository.instance
+        .listRestaurants();
+    if (restaurants.isEmpty) return;
+    const operatorId = _kBootFallbackOperatorId;
+    final scopes = <BusinessScope>[
+      for (final r in restaurants)
+        BusinessScope(
+          scopeId: r.restaurantId,
+          scopeType: 'location',
+          operatorId: operatorId,
+          locationId: r.restaurantId,
+          label: r.displayName,
+          businessTimezone: r.businessTimezone.isEmpty
+              ? null
+              : r.businessTimezone,
+        ),
+    ];
+    final activeRestaurantId = _restaurant?.restaurantId;
+    final activeMatch = activeRestaurantId == null
+        ? null
+        : scopes
+              .where(
+                (s) =>
+                    s.isLocationScope && s.locationId == activeRestaurantId,
+              )
+              .firstOrNull;
+    _availableScopes = scopes;
+    _activeScope ??= activeMatch ?? scopes.first;
   }
 
   Future<void> _activateRestaurantForScope(BusinessScope scope) async {
