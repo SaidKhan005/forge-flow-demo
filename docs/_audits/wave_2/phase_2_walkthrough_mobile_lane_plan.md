@@ -136,29 +136,24 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 - [🚧] 24 — RP-15 cap state — CUT FROM V1 per `project_v1_lean_cut_2026_05_03` memory
 
 ### Settings — Setup tab
-- [ ] 25 — Setup tab landing (tab order verify: Setup / Integrations / Data / Account)
-- [ ] 26 — Covers setup section + Add entry / per-shift override modal
-- [ ] 27 — Business timing section (HP #11 triple: scope / inherited-from / effective)
-- [ ] 28 — Wage authority section + per-position wage editor
+- [x] 25 — Setup tab landing — `p1_25_settings_setup_tab.png`. **3 tabs only** (Setup/Integrations/Data) — Account tab absent on mobile; `FU-mobile-settings-account-tab-not-on-mobile` filed.
+- [x] 26 — Covers setup section + Type-today's-covers card — same capture. `FU-mobile-covers-setup-hp11-triad-missing` filed (Applies to: scope visible but no inherited-from/effective).
+- [🟢] 27 — Business timing section — partial below-fold capture (Timezone/Week starts/Business day visible); deferred to scroll-capture.
+- [ ] 28 — Wage authority section + per-position wage editor — below fold, not captured this batch.
 
 ### Settings — Integrations tab
-- [ ] 29 — Integrations tab landing (vendor list, MP-1)
-- [ ] 30 — Per-vendor row → detail (status, needs-reauth path if seeded)
-- [ ] 31 — B11.1 handoff-code generator
-- [ ] 32 — Demo→Live master switch row (observe presence + label; do not flip yet)
+- [x] 29 — Integrations tab landing — `p1_26_settings_integrations.png`. 3 category cards (POS/Reservations/Labor) + delegate-to-operator-console row.
+- [🟢] 30 — Per-vendor row → detail — GATED on location selection; not driveable from this surface.
+- [🟢] 31 — B11.1 handoff-code generator — not on Integrations landing; deferred to source-trace.
+- [x] 32 — Demo→Live master switch row — same capture. "Demo mode" card + "Live switch unavailable in this build" + disabled toggle. Matches `settings_demo_live_switch.dart` carve-out.
 
 ### Settings — Data tab (F&F-admin only — may be hidden in demo)
-- [ ] 33 — Data tab landing + per-table freshness rows
-- [ ] 34 — Account info row (verify "Two-factor sign-in: Off" canonical post-PR #753)
-- [ ] 35 — Reset / refresh actions
+- [x] 33 — Data tab landing — `p1_27_settings_data.png`. **NOT hidden from demo operator** (inventory was wrong). DEMO pill + 8-row freshness table + Data reset section partial.
+- [🟢] 34 — Account info row ("Two-factor sign-in: Off" canonical) — not visible on Data tab; mobile may not have a parallel surface. `Mobile-FU-account-info-row-on-data-tab` filed.
+- [🟢] 35 — Reset / refresh actions — partial capture (Data reset section visible below fold).
 
 ### Settings — Account tab
-- [ ] 36 — Account tab landing (Identity card)
-- [ ] 37 — Change password drill
-- [ ] 38 — MFA section "Two-factor sign-in" header (PR #753 canonical) + enroll CTA
-- [ ] 39 — Active Sessions list
-- [ ] 40 — Per-session remote sign-out confirm dialog
-- [ ] 41 — U-FU-mobile-deeplink handoff-code generator
+- [🚧] 36-41 — ALL surfaces NOT ON MOBILE. Account tab is absent (`Tab N of 3` only). Filed as `FU-mobile-settings-account-tab-not-on-mobile`. Operator decision required: reconcile inventory or add the tab.
 
 ### Auth (Pass 2 covers cold-boot login flow; Pass 1 captures already-signed-in only)
 - [ ] 42 — (deferred to Pass 2)
