@@ -46,6 +46,13 @@ You are the **main orchestrator** for Per-Daypart Targets V1 implementation. You
 
 **Net: the ONLY operator decision blocking forward progress is #1 (Slice 1 merge approval).**
 
+## Dispatch transport (NEW STANDARD 2026-05-15 — testing)
+
+Worker execution moves off the orchestrator's interactive subscription onto the Agent SDK / `claude -p` $200/mo credit. Orchestrator stays interactive. Two transports, same contract:
+- **Headless (preferred for slice workers):** `scripts/dispatch_worker.ps1 -Branch <b> -PromptFile <f>` launches a fully-autonomous `claude -p` process in an isolated worktree, logs to `.claude/worker-logs/<leaf>.log`. Poll `gh pr list --head <b>` for the returning PR. v1 flags are a first guess — tune on real runs.
+- **Agent tool (fallback / quick research):** in-session sub-agent, draws subscription. Use when headless proves flaky or for short audits the orchestrator needs results from before proceeding.
+- Rationale + open test questions: user memory `feedback_agent_sdk_credit_dispatch.md`.
+
 ## Dispatch contract (every worker agent)
 
 - `isolation: "worktree"` — agents run in `.claude/worktrees/<lane>-<hash>/`.
