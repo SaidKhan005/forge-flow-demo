@@ -208,6 +208,10 @@ For Claude Preview MCP, swap `-d chrome` for `-d web-server --web-port=8182 --we
 - [ ] `adb install` the resulting APK to the Samsung
 - [ ] Confirm demo seed flows (mock replay)
 
+### First slice (queued from operator-web lane closeout, 2026-05-14 evening 3)
+
+- [ ] **MO-5b-FU-mobile-recanonicalize** — Mirror PR #747's operator-web + admin sweep on the mobile side. Mobile PR #735 shipped "Two-factor authentication"; V1 canonical is now "Two-factor sign-in". Drop into a worktree agent on the first mobile lane session; mirrors the PR #747 sweep scope (badge strings, audit-log action labels, body copy) against `lib/services/auth/auth_operations_gateway.dart` + mobile screens. Do this **before** driving mobile MO-5a/b/c surfaces so the walkthrough copy matches what operators see in operator-web + admin.
+
 ### Surfaces to drive
 
 (To be populated after admin lane closes. Seed list — from debug.md 257-306 + MP-1 + MO-* ledger rows:)
