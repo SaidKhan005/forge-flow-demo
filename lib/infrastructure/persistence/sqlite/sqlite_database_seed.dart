@@ -461,6 +461,16 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   final encodedDayRows =
       jsonEncode(map.remove('day_rows') as List<dynamic>);
   final forecastContext = map.remove('forecast_context');
+  // Per-Daypart V1 (Slice 1): the seed's snapshot model now also
+  // carries `day_dayparts` and `wage_at_lock_time_json`. Strip
+  // `day_dayparts` from the parent insert (it's persisted into the
+  // child table by the DAO at runtime; the seed path doesn't yet
+  // need to persist them because the seed never sets them) and
+  // JSON-encode the wage stamp for its dedicated column.
+  map.remove('day_dayparts');
+  final wageAtLockTimeJson = map.remove('wage_at_lock_time_json');
+  map['wage_at_lock_time_json'] =
+      wageAtLockTimeJson == null ? null : jsonEncode(wageAtLockTimeJson);
   map['day_rows_json'] = encodedDayRows;
   map['forecast_context_json'] =
       forecastContext == null ? null : jsonEncode(forecastContext);
@@ -882,6 +892,20 @@ String _addIsoDays(String isoDate, int days) {
 Future<void> _seedDemoDataFromReplay(Database db, MockReplayOutput replay) async {
   final now = DateTime.now().toIso8601String();
   final importRunId = 'mock_replay_seed_${now.replaceAll(RegExp(r'[^0-9]'), '')}';
+
+  // Per-Daypart V1 (Slice 1, Decision 4) — pre-production reseed wipes
+  // demo-scope closed shifts before regenerating so newly added
+  // timing-provenance / per-period target stamp columns are populated
+  // uniformly across every row. There is no "transition period" /
+  // "dual shapes" / "retroactive re-grading" concern because the demo
+  // restaurant has no real operator data to preserve. Production
+  // behavior is "closed truth retains its stamp from close time"
+  // (Promise 2) — that rule applies only to non-demo scopes.
+  await db.delete(
+    'shift_records',
+    where: 'restaurant_id = ?',
+    whereArgs: [DemoScope.restaurantId],
+  );
 
   final batch = db.batch();
 

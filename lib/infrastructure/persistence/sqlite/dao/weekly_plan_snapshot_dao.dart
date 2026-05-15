@@ -23,7 +23,7 @@ class WeeklyPlanSnapshotDao {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return _fromRow(rows.first);
+    return _fromRowWithChildren(rows.first);
   }
 
   /// Returns the snapshot matching [weekKey], or null.
@@ -38,18 +38,69 @@ class WeeklyPlanSnapshotDao {
       limit: 1,
     );
     if (rows.isEmpty) return null;
-    return _fromRow(rows.first);
+    return _fromRowWithChildren(rows.first);
+  }
+
+  Future<WeeklyPlanSnapshot> _fromRowWithChildren(
+    Map<String, dynamic> row,
+  ) async {
+    final base = _fromRow(row);
+    // Per-Daypart V1 (Slice 1) — attach the per-(day, period) sub-rows
+    // persisted alongside the parent snapshot.
+    final children = await getDayDaypartsForSnapshot(base.snapshotId);
+    if (children.isEmpty && base.wageAtLockTime == null) return base;
+    return WeeklyPlanSnapshot(
+      snapshotId: base.snapshotId,
+      restaurantId: base.restaurantId,
+      weekStartDate: base.weekStartDate,
+      weekEndDate: base.weekEndDate,
+      targetCycleId: base.targetCycleId,
+      forecastContextId: base.forecastContextId,
+      forecastCovers: base.forecastCovers,
+      forecastSales: base.forecastSales,
+      requiredFohHours: base.requiredFohHours,
+      requiredBohHours: base.requiredBohHours,
+      theoreticalFohLaborDollars: base.theoreticalFohLaborDollars,
+      theoreticalBohLaborDollars: base.theoreticalBohLaborDollars,
+      coversSource: base.coversSource,
+      salesSource: base.salesSource,
+      generatedAt: base.generatedAt,
+      lockedAt: base.lockedAt,
+      forecastContext: base.forecastContext,
+      dayRows: base.dayRows,
+      dayDayparts: children,
+      wageAtLockTime: base.wageAtLockTime,
+      isActive: base.isActive,
+      supersedesSnapshotId: base.supersedesSnapshotId,
+      lockReason: base.lockReason,
+      lockedByUserId: base.lockedByUserId,
+      metadata: base.metadata,
+    );
   }
 
   /// Inserts or replaces a snapshot.
+  ///
+  /// Per-Daypart V1 (Slice 1): the snapshot's `dayDayparts` list is
+  /// persisted to the `weekly_plan_snapshot_day_dayparts` child table
+  /// (replace-for-snapshot semantics — legacy rows for the same
+  /// snapshot_id are deleted before the new ones land). The
+  /// `wageAtLockTime` stamp is JSON-encoded into
+  /// `weekly_plan_snapshots.wage_at_lock_time_json`.
   Future<void> upsertSnapshot(WeeklyPlanSnapshot snapshot) async {
     final map = snapshot.toMap();
     final dayRows = map.remove('day_rows') as List<dynamic>;
     final forecastContext = map.remove('forecast_context');
+    final dayDayparts =
+        (map.remove('day_dayparts') as List<dynamic>? ?? const []);
+    final wageAtLockTimeJson = map.remove('wage_at_lock_time_json');
     map['day_rows_json'] = jsonEncode(dayRows);
     map['forecast_context_json'] = forecastContext == null
         ? null
         : jsonEncode(forecastContext);
+    // Per-Daypart V1 (Slice 1) — JSON-encode the wage stamp for the
+    // dedicated column.
+    map['wage_at_lock_time_json'] =
+        wageAtLockTimeJson == null ? null : jsonEncode(wageAtLockTimeJson);
     // Theme H#6 — `metadata` is a Map<String, Object?> on the snapshot
     // model. SQLite can't store maps directly, so encode it as JSON for
     // the cell value the same way day_rows / forecast_context are.
@@ -65,11 +116,44 @@ class WeeklyPlanSnapshotDao {
         map['is_active'] = raw ? 1 : 0;
       }
     }
-    await _db.insert(
-      'weekly_plan_snapshots',
-      map,
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    // Wrap parent write + child replace in a transaction so partial
+    // writes never leave the snapshot with stale child rows that don't
+    // match the new parent.
+    await _db.transaction((txn) async {
+      await txn.insert(
+        'weekly_plan_snapshots',
+        map,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+      await txn.delete(
+        'weekly_plan_snapshot_day_dayparts',
+        where: 'snapshot_id = ?',
+        whereArgs: [snapshot.snapshotId],
+      );
+      if (dayDayparts.isEmpty) return;
+      final nowIso = DateTime.now().toUtc().toIso8601String();
+      for (final raw in dayDayparts) {
+        final dp = Map<String, dynamic>.from(raw as Map);
+        dp['snapshot_id'] = snapshot.snapshotId;
+        dp['created_at'] = nowIso;
+        await txn.insert('weekly_plan_snapshot_day_dayparts', dp);
+      }
+    });
+  }
+
+  /// Per-Daypart V1 (Slice 1) — returns the per-(day, period) sub-rows
+  /// persisted for [snapshotId], or an empty list when none exist
+  /// (legacy snapshot path).
+  Future<List<WeeklyPlanSnapshotDayDaypart>> getDayDaypartsForSnapshot(
+    String snapshotId,
+  ) async {
+    final rows = await _db.query(
+      'weekly_plan_snapshot_day_dayparts',
+      where: 'snapshot_id = ?',
+      whereArgs: [snapshotId],
+      orderBy: 'business_date ASC, service_period_id ASC',
     );
+    return rows.map((r) => WeeklyPlanSnapshotDayDaypart.fromMap(r)).toList();
   }
 
   Future<int> attachForecastContext({
@@ -166,6 +250,17 @@ class WeeklyPlanSnapshotDao {
     map['day_rows'] = jsonDecode(dayRowsJson) as List<dynamic>;
     if (forecastContextJson != null && forecastContextJson.trim().isNotEmpty) {
       map['forecast_context'] = jsonDecode(forecastContextJson);
+    }
+    // Per-Daypart V1 (Slice 1) — decode the wage stamp from its JSON
+    // column so the snapshot model's fromMap can rehydrate it. Null on
+    // legacy rows written before Slice 1.
+    final wageRaw = map['wage_at_lock_time_json'];
+    if (wageRaw is String && wageRaw.trim().isNotEmpty) {
+      try {
+        map['wage_at_lock_time_json'] = jsonDecode(wageRaw);
+      } catch (_) {
+        map['wage_at_lock_time_json'] = null;
+      }
     }
     // Theme H#6 — decode the metadata JSON cell back to a Map. The
     // snapshot model handles Map / null gracefully; we just need to

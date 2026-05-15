@@ -109,6 +109,9 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       'theoretical_foh_labor_pct, theoretical_boh_labor_pct, '
       'business_timing_profile_id, business_timing_profile_version_id, '
       'service_period_key, '
+      // Per-Daypart V1 (Slice 1) — per-shift per-period locked target stamps.
+      'daypart_target_cplh, daypart_target_splh, daypart_target_ppa, '
+      'daypart_opz_floor_cplh, daypart_opz_ceiling_cplh, '
       'source_system, source_shift_id, '
       'covers_provenance, labor_dollars_provenance, '
       'created_at, updated_at'
@@ -129,6 +132,8 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       '@business_timing_profile_id::uuid, '
       '@business_timing_profile_version_id::uuid, '
       '@service_period_key, '
+      '@daypart_target_cplh, @daypart_target_splh, @daypart_target_ppa, '
+      '@daypart_opz_floor_cplh, @daypart_opz_ceiling_cplh, '
       '@source_system, @source_shift_id, '
       '@covers_provenance, @labor_dollars_provenance, '
       'now(), now()'
@@ -171,6 +176,14 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       'business_timing_profile_version_id = '
       'excluded.business_timing_profile_version_id, '
       'service_period_key = excluded.service_period_key, '
+      // Per-Daypart V1 (Slice 1) per-period stamps follow excluded
+      // semantics — re-aggregation rewrites them to match the cycle's
+      // current per-period row for the shift's service period.
+      'daypart_target_cplh = excluded.daypart_target_cplh, '
+      'daypart_target_splh = excluded.daypart_target_splh, '
+      'daypart_target_ppa = excluded.daypart_target_ppa, '
+      'daypart_opz_floor_cplh = excluded.daypart_opz_floor_cplh, '
+      'daypart_opz_ceiling_cplh = excluded.daypart_opz_ceiling_cplh, '
       'source_system = excluded.source_system, '
       'source_shift_id = excluded.source_shift_id, '
       'covers_provenance = excluded.covers_provenance, '
@@ -214,6 +227,14 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
         'business_timing_profile_id': resolvedTiming.profileId,
         'business_timing_profile_version_id': resolvedTiming.versionId,
         'service_period_key': resolvedTiming.servicePeriodKey,
+        // Per-Daypart V1 (Slice 1) — per-period stamps come from the
+        // TargetSnapshot, which the builder populated from the active
+        // profile's per-period row (when present at close time).
+        'daypart_target_cplh': snap.daypartTargetCPLH,
+        'daypart_target_splh': snap.daypartTargetSPLH,
+        'daypart_target_ppa': snap.daypartTargetPPA,
+        'daypart_opz_floor_cplh': snap.daypartOpzFloorCPLH,
+        'daypart_opz_ceiling_cplh': snap.daypartOpzCeilingCPLH,
         'source_system': shiftFact.sourceSystem,
         'source_shift_id': shiftFact.sourceShiftId,
         'covers_provenance': provenance.coversProvenance,

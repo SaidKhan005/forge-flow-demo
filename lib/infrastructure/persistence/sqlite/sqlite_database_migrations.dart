@@ -312,6 +312,106 @@ Future<void> _migrateToV34(Database db) async {
   }
 }
 
+/// Per-Daypart V1 Slice 1 — per-period data layer foundation.
+///
+/// Adds the two new child tables, the `wage_at_lock_time_json` column
+/// on `weekly_plan_snapshots`, and the five per-shift per-period target
+/// stamp columns on `shift_records`. All additions are additive +
+/// nullable for backward compatibility with legacy rows; demo reseed
+/// regenerates closed shifts under the new schema with the stamps
+/// populated.
+///
+/// Schema:
+/// - `target_cycle_dayparts(cycle_id, service_period_id, ...)` — one row
+///   per (cycle, period). Carries target CPLH/SPLH/PPA + OPZ floor/ceiling +
+///   `cover_count` (per-period candidate cover total at compute time, used
+///   for cover-weighted whole-day pool rollup).
+/// - `weekly_plan_snapshot_day_dayparts(snapshot_id, business_date,
+///   service_period_id, ...)` — one row per (snapshot, day, period).
+///   Carries forecast covers/sales + required FOH/BOH hours + theoretical
+///   FOH/BOH dollars (wages stay whole-day per Design Rule 5).
+/// - `weekly_plan_snapshots.wage_at_lock_time_json` — JSON stamp of
+///   `{"foh_wage", "boh_wage", "blended_wage"}` at lock time. Audit
+///   checks compare locked dollars against THIS column, not against
+///   `ActiveTargetProfile` current wages (Design Rule 8).
+/// - `shift_records.daypart_target_*` — per-shift per-period target
+///   stamps at close time. Demo reseed populates them uniformly;
+///   production behavior is "closed truth retains the stamp from its
+///   close time" per Promise 2.
+Future<void> _migrateToV36(Database db) async {
+  // target_cycle_dayparts ----------------------------------------------------
+  if (!await _tableExists(db, 'target_cycle_dayparts')) {
+    await db.execute('''
+      CREATE TABLE target_cycle_dayparts (
+        cycle_id           TEXT NOT NULL,
+        service_period_id  TEXT NOT NULL,
+        target_cplh        REAL NOT NULL,
+        target_splh        REAL NOT NULL,
+        target_ppa         REAL NOT NULL,
+        opz_floor_cplh     REAL NOT NULL,
+        opz_ceiling_cplh   REAL NOT NULL,
+        cover_count        INTEGER NOT NULL,
+        created_at         TEXT NOT NULL,
+        PRIMARY KEY (cycle_id, service_period_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX ix_target_cycle_dayparts_cycle
+      ON target_cycle_dayparts(cycle_id)
+    ''');
+  }
+
+  // weekly_plan_snapshot_day_dayparts ---------------------------------------
+  if (!await _tableExists(db, 'weekly_plan_snapshot_day_dayparts')) {
+    await db.execute('''
+      CREATE TABLE weekly_plan_snapshot_day_dayparts (
+        snapshot_id              TEXT NOT NULL,
+        business_date            TEXT NOT NULL,
+        service_period_id        TEXT NOT NULL,
+        forecast_covers          INTEGER NOT NULL,
+        forecast_sales           REAL NOT NULL,
+        required_foh_hours       REAL NOT NULL,
+        required_boh_hours       REAL NOT NULL,
+        theoretical_foh_dollars  REAL NOT NULL,
+        theoretical_boh_dollars  REAL NOT NULL,
+        created_at               TEXT NOT NULL,
+        PRIMARY KEY (snapshot_id, business_date, service_period_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE INDEX ix_weekly_plan_snapshot_day_dayparts_snapshot
+      ON weekly_plan_snapshot_day_dayparts(snapshot_id)
+    ''');
+  }
+
+  // weekly_plan_snapshots.wage_at_lock_time_json ----------------------------
+  if (!await _columnExists(
+    db,
+    'weekly_plan_snapshots',
+    'wage_at_lock_time_json',
+  )) {
+    await db.execute(
+      'ALTER TABLE weekly_plan_snapshots '
+      'ADD COLUMN wage_at_lock_time_json TEXT',
+    );
+  }
+
+  // shift_records per-shift per-period target stamps -------------------------
+  // All five additive + nullable; demo reseed populates them.
+  const perShiftColumns = [
+    'daypart_target_cplh',
+    'daypart_target_splh',
+    'daypart_target_ppa',
+    'daypart_opz_floor_cplh',
+    'daypart_opz_ceiling_cplh',
+  ];
+  for (final col in perShiftColumns) {
+    if (!await _columnExists(db, 'shift_records', col)) {
+      await db.execute('ALTER TABLE shift_records ADD COLUMN $col REAL');
+    }
+  }
+}
+
 /// Per-Daypart V1 Slice 1.5 — drop the `shift_close_authority` +
 /// `local_close_fallback` columns from `restaurant_timing_configs`.
 ///

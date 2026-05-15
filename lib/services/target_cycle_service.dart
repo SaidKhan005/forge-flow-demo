@@ -1,6 +1,26 @@
 // Phase 7.55l.2a+2b+2c+3a+3b — TargetCycle persistence, auto-refresh,
 // override write path.
 //
+// Per-Daypart Targets V1 (Slice 1) extensions:
+//   - `_writeReplacementCycle` and `_createRecommendedCycle` now build
+//     per-period `TargetCycleDaypart` rows from `recommendation.perDaypartStats`
+//     and compute the parent's whole-day pool as a cover-weighted rollup
+//     of the per-period rows (Design Rule 4 — pool is derived from
+//     period inside the write path; never the other way around).
+//   - Per-period OPZ floor = min of period floors; ceiling = max of
+//     period ceilings.
+//   - Gap 42 fallback: when `recommendation.isInsufficient`, the parent
+//     row is written with `MeridianConfig` whole-day defaults and the
+//     `dayparts` list stays empty. Read-layer consumers fall back to
+//     the parent pool when `cycle.daypartFor(periodId)` returns null.
+//   - `_syncActiveTargetProfile` projects the cycle through to the
+//     persisted `ActiveTargetProfile` AND attaches the per-period rows
+//     so per-period consumers can read through the profile without a
+//     second join (`ActiveTargetProfile.daypartFor(...)`).
+//   - Manager-override path also bucket the selected candidates by
+//     daypart and emit per-period rows; the pool then rolls up from
+//     those rows the same way recommended cycles do.
+//
 // Narrow runtime seam: load/create/auto-refresh/override the active
 // TargetCycle. Does not migrate consumers or change Benchmark/Manager
 // Override UX.
@@ -256,32 +276,40 @@ class TargetCycleService {
 
     ActiveTargetProfileBuildResult build;
     RecommendedBenchmarkSelection? recommendation;
+    List<TargetCycleDaypart> cycleDayparts;
     if (hasOverride) {
       final selected = await _selectedManagerOverrideCandidates(
         restaurantId,
         businessDate,
       );
+      final overrideResult = _buildManagerOverrideProfileAndDayparts(
+        restaurantId: restaurantId,
+        wageFoh: wageCtx.fohWage ?? MeridianConfig.fohWage,
+        wageBoh: wageCtx.bohWage ?? MeridianConfig.bohWage,
+        selectedCandidates: selected,
+        sourceType: source == TargetCycleSource.adminReplacement
+            ? 'admin_replacement'
+            : 'manager_override',
+      );
       build = ActiveTargetProfileBuildResult(
-        profile: _buildManagerOverrideProfile(
-          restaurantId: restaurantId,
-          wageFoh: wageCtx.fohWage ?? MeridianConfig.fohWage,
-          wageBoh: wageCtx.bohWage ?? MeridianConfig.bohWage,
-          selectedCandidates: selected,
-          sourceType: source == TargetCycleSource.adminReplacement
-              ? 'admin_replacement'
-              : 'manager_override',
-        ),
+        profile: overrideResult.profile,
         sourceLabel: source.label,
       );
+      cycleDayparts = overrideResult.dayparts;
     } else {
       recommendation = await BaselineManagerService.instance
           .resolveRecommendedSelection(restaurantId, businessDate);
-      build = _buildRecommendedProfile(
+      final recResult = _buildRecommendedProfileAndDayparts(
         restaurantId: restaurantId,
         wageFoh: wageCtx.fohWage,
         wageBoh: wageCtx.bohWage,
         recommendation: recommendation,
       );
+      build = ActiveTargetProfileBuildResult(
+        profile: recResult.profile,
+        sourceLabel: recResult.sourceLabel,
+      );
+      cycleDayparts = recResult.dayparts;
     }
 
     final profile = build.profile;
@@ -323,6 +351,7 @@ class TargetCycleService {
       managerOverrideAt: managerOverrideAt,
       adminReplacedAt: adminReplacedAt,
       createdAt: now,
+      dayparts: cycleDayparts,
     );
 
     await _cycleRepo.upsertCycle(replacement);
@@ -370,14 +399,14 @@ class TargetCycleService {
     // applyManagerOverrideCycle/write-replacement path.
     final recommendation = await BaselineManagerService.instance
         .resolveRecommendedSelection(restaurantId, businessDate);
-    final build = _buildRecommendedProfile(
+    final recResult = _buildRecommendedProfileAndDayparts(
       restaurantId: restaurantId,
       wageFoh: wageCtx.fohWage,
       wageBoh: wageCtx.bohWage,
       recommendation: recommendation,
     );
 
-    final profile = build.profile;
+    final profile = recResult.profile;
 
     // Enforce one-active-per-restaurant: deactivate all existing active
     // cycles before writing the new one.
@@ -405,25 +434,35 @@ class TargetCycleService {
       opzFloorCPLH: profile.opzFloorCPLH,
       opzCeilingCPLH: profile.opzCeilingCPLH,
       createdAt: nowIsoUtc(),
+      dayparts: recResult.dayparts,
     );
 
     await _cycleRepo.upsertCycle(cycle);
     await _syncActiveTargetProfile(cycle);
     await _persistSelectionSummary(
       cycle,
-      build.sourceLabel,
+      recResult.sourceLabel,
       fromRecommendation: recommendation,
     );
     return cycle;
   }
 
-  /// Builds a profile for the recommended path. When the recommendation
-  /// is `'insufficient'`, falls back to `MeridianConfig` hard defaults
-  /// rather than the seed-selected `BaselineData` cohort. That keeps
-  /// the bridge honest: we either teach from app-owned recommendation
-  /// output, or we admit we do not have a recommendation and fall back
-  /// to the Config Default standards.
-  ActiveTargetProfileBuildResult _buildRecommendedProfile({
+  /// Per-Daypart V1 (Slice 1) — recommended-path profile + per-period
+  /// rows. Replaces the legacy `_buildRecommendedProfile` which read
+  /// from `recommendation.pooledRecommendedTargetCPLH` etc. Now:
+  ///
+  /// 1. For each daypart with stats in `recommendation.perDaypartStats`,
+  ///    emit a `TargetCycleDaypart` row.
+  /// 2. Compute the parent's whole-day pool as a cover-weighted rollup
+  ///    of those rows (Design Rule 4).
+  /// 3. OPZ floor = min of period floors; ceiling = max of period
+  ///    ceilings.
+  /// 4. Gap 42 fallback (binding operator decision 2026-05-15): when
+  ///    `recommendation.isInsufficient`, write the parent with
+  ///    `MeridianConfig` whole-day defaults and leave the per-period
+  ///    list empty. Read-layer consumers fall back to the parent pool
+  ///    when `daypartFor` returns null.
+  _RecommendedBuildResult _buildRecommendedProfileAndDayparts({
     required String restaurantId,
     required double? wageFoh,
     required double? wageBoh,
@@ -431,8 +470,12 @@ class TargetCycleService {
   }) {
     final resolvedFohWage = wageFoh ?? MeridianConfig.fohWage;
     final resolvedBohWage = wageBoh ?? MeridianConfig.bohWage;
+
     if (recommendation.isInsufficient) {
-      return ActiveTargetProfileBuildResult(
+      // Gap 42 fallback: parent gets MeridianConfig whole-day defaults;
+      // no per-period rows. Read-layer falls back to parent pool when
+      // `cycle.daypartFor(periodId)` returns null.
+      return _RecommendedBuildResult(
         profile: ActiveTargetProfile.build(
           restaurantId: restaurantId,
           sourceType: 'system_baseline_insufficient',
@@ -444,22 +487,45 @@ class TargetCycleService {
           opzFloorCPLH: MeridianConfig.opzFloorCPLH,
           opzCeilingCPLH: MeridianConfig.opzCeilingCPLH,
         ),
+        dayparts: const <TargetCycleDaypart>[],
         sourceLabel: 'cycle_recommended_insufficient',
       );
     }
 
-    return ActiveTargetProfileBuildResult(
+    // Build per-period rows from the recommendation's per-daypart stats.
+    // The recommendation service has already done the heavy lifting
+    // (eligibility gating, MAD-outlier filtering, CPLH-first top-N) per
+    // daypart; this just lifts the stats into persistence shape.
+    final dayparts = <TargetCycleDaypart>[];
+    for (final entry in recommendation.perDaypartStats.entries) {
+      final stats = entry.value;
+      dayparts.add(TargetCycleDaypart(
+        servicePeriodId: entry.key,
+        targetCPLH: stats.recommendedTargetCPLH,
+        targetSPLH: stats.recommendedTargetSPLH,
+        targetPPA: stats.recommendedTargetPPA,
+        opzFloorCPLH: stats.opzFloorCPLH,
+        opzCeilingCPLH: stats.opzCeilingCPLH,
+        coverCount: stats.selectedCount,
+      ));
+    }
+
+    // Recompute pool from the per-period rows (Design Rule 4).
+    final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
+
+    return _RecommendedBuildResult(
       profile: ActiveTargetProfile.build(
         restaurantId: restaurantId,
         sourceType: 'system_baseline',
-        targetCPLH: recommendation.pooledRecommendedTargetCPLH,
-        targetSPLH: recommendation.pooledRecommendedTargetSPLH,
-        targetPPA: recommendation.pooledRecommendedTargetPPA,
+        targetCPLH: pool.targetCPLH,
+        targetSPLH: pool.targetSPLH,
+        targetPPA: pool.targetPPA,
         fohWage: resolvedFohWage,
         bohWage: resolvedBohWage,
-        opzFloorCPLH: recommendation.unionOpzFloorCPLH,
-        opzCeilingCPLH: recommendation.unionOpzCeilingCPLH,
+        opzFloorCPLH: pool.opzFloorCPLH,
+        opzCeilingCPLH: pool.opzCeilingCPLH,
       ),
+      dayparts: dayparts,
       sourceLabel: 'cycle_recommended',
     );
   }
@@ -478,7 +544,24 @@ class TargetCycleService {
     return candidates.where((c) => c.isSelected).toList();
   }
 
-  ActiveTargetProfile _buildManagerOverrideProfile({
+  /// Per-Daypart V1 (Slice 1) — manager-override profile + per-period
+  /// rows.
+  ///
+  /// The override input is `selectedCandidates` (one candidate per
+  /// (week, day, period) the manager pinned). We bucket by `daypart` to
+  /// produce one row per period: per-period CPLH/SPLH/PPA are means of
+  /// the candidates in that bucket; OPZ floor/ceiling are the min/max
+  /// CPLH within the bucket; cover_count is the sum of the bucket's
+  /// candidate covers (used for cover-weighted pool rollup).
+  ///
+  /// The parent profile's whole-day pool is then computed from those
+  /// per-period rows (Design Rule 4 — pool derives from period, never
+  /// the other way around).
+  ///
+  /// When the manager has pinned zero candidates the function still
+  /// throws — the caller should not be on the manager-override write
+  /// path without at least one selected candidate.
+  _OverrideBuildResult _buildManagerOverrideProfileAndDayparts({
     required String restaurantId,
     required double wageFoh,
     required double wageBoh,
@@ -492,40 +575,91 @@ class TargetCycleService {
       );
     }
 
-    double targetCPLH = 0;
-    double targetSPLH = 0;
-    double targetPPA = 0;
-    double opzFloor = selectedCandidates.first.cplh;
-    double opzCeiling = selectedCandidates.first.cplh;
-
-    for (final candidate in selectedCandidates) {
-      targetCPLH += candidate.cplh;
-      targetSPLH += candidate.splh;
-      targetPPA += candidate.ppa;
-      if (candidate.cplh < opzFloor) opzFloor = candidate.cplh;
-      if (candidate.cplh > opzCeiling) opzCeiling = candidate.cplh;
+    // Bucket candidates by daypart so we can emit one per-period row
+    // per pinned daypart.
+    final byDaypart = <String, List<BaselineCandidateShift>>{};
+    for (final c in selectedCandidates) {
+      (byDaypart[c.daypart] ??= <BaselineCandidateShift>[]).add(c);
     }
 
-    final count = selectedCandidates.length.toDouble();
-    return ActiveTargetProfile.build(
-      restaurantId: restaurantId,
-      sourceType: sourceType,
-      targetCPLH: targetCPLH / count,
-      targetSPLH: targetSPLH / count,
-      targetPPA: targetPPA / count,
-      fohWage: wageFoh,
-      bohWage: wageBoh,
-      opzFloorCPLH: opzFloor,
-      opzCeilingCPLH: opzCeiling,
+    final dayparts = <TargetCycleDaypart>[];
+    for (final entry in byDaypart.entries) {
+      final periodId = entry.key;
+      final cohort = entry.value;
+      double sumCPLH = 0;
+      double sumSPLH = 0;
+      double sumPPA = 0;
+      double opzFloor = cohort.first.cplh;
+      double opzCeiling = cohort.first.cplh;
+      int sumCovers = 0;
+      for (final c in cohort) {
+        sumCPLH += c.cplh;
+        sumSPLH += c.splh;
+        sumPPA += c.ppa;
+        sumCovers += c.covers;
+        if (c.cplh < opzFloor) opzFloor = c.cplh;
+        if (c.cplh > opzCeiling) opzCeiling = c.cplh;
+      }
+      final n = cohort.length;
+      dayparts.add(TargetCycleDaypart(
+        servicePeriodId: periodId,
+        targetCPLH: sumCPLH / n,
+        targetSPLH: sumSPLH / n,
+        targetPPA: sumPPA / n,
+        opzFloorCPLH: opzFloor,
+        opzCeilingCPLH: opzCeiling,
+        coverCount: sumCovers,
+      ));
+    }
+
+    // Pool computed from the per-period rows (Design Rule 4). When
+    // every period has zero covers (degenerate cohort) the helper
+    // falls back to unweighted mean.
+    final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
+
+    return _OverrideBuildResult(
+      profile: ActiveTargetProfile.build(
+        restaurantId: restaurantId,
+        sourceType: sourceType,
+        targetCPLH: pool.targetCPLH,
+        targetSPLH: pool.targetSPLH,
+        targetPPA: pool.targetPPA,
+        fohWage: wageFoh,
+        bohWage: wageBoh,
+        opzFloorCPLH: pool.opzFloorCPLH,
+        opzCeilingCPLH: pool.opzCeilingCPLH,
+      ),
+      dayparts: dayparts,
     );
   }
 
   // ── Cycle -> ActiveTargetProfile projection (7.55l.4a) ────────────────
+  //
+  // Per-Daypart V1 (Slice 1): the projector now also carries the per-period
+  // rows through to the persisted profile so per-period consumers can
+  // read through `ActiveTargetProfile.daypartFor(...)` without a second
+  // join. The persisted parent profile row in SQLite is still the legacy
+  // flat shape — the per-period rows live alongside on the cycle's child
+  // table and are reattached on read via the cycle DAO.
 
   Future<void> _syncActiveTargetProfile(TargetCycle cycle) async {
-    final profile =
-        TargetCycleActiveTargetProfileProjector.project(cycle);
-    await _profileRepo.upsertActiveTargetProfile(profile);
+    final projected = TargetCycleActiveTargetProfileProjector.project(cycle);
+    // Mirror the cycle's per-period rows onto the active profile shape
+    // so consumers reading the profile (via the standard read seam) get
+    // the same per-period data the write path emitted onto the cycle.
+    final profileWithDayparts = projected.withDayparts(
+      cycle.dayparts
+          .map((d) => ActiveTargetProfileDaypart(
+                servicePeriodId: d.servicePeriodId,
+                daypartTargetCPLH: d.targetCPLH,
+                daypartTargetSPLH: d.targetSPLH,
+                daypartTargetPPA: d.targetPPA,
+                daypartOpzFloorCPLH: d.opzFloorCPLH,
+                daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+              ))
+          .toList(),
+    );
+    await _profileRepo.upsertActiveTargetProfile(profileWithDayparts);
   }
 
   // ── Benchmark selection summary persistence (7.55l.8c + 7.55p.5g) ─────
@@ -547,13 +681,17 @@ class TargetCycleService {
       selectedCount = fromRecommendation.selectedRecordIds.length;
       // Use the union band's floor/ceiling to compute the spread-quality
       // label. This matches how the union band is actually surfaced by
-      // legacy consumers today.
+      // legacy consumers today. Per-period OPZ bands replace these
+      // pooled fields in V1 — this summary path still reads the union
+      // for spread-quality continuity until Slice 6's audit overhaul
+      // lands and the summary itself becomes per-period.
+      // ignore: deprecated_member_use_from_same_package
+      final unionFloor = fromRecommendation.unionOpzFloorCPLH;
+      // ignore: deprecated_member_use_from_same_package
+      final unionCeiling = fromRecommendation.unionOpzCeilingCPLH;
       cplhValues = fromRecommendation.selectedRecordIds.isEmpty
           ? <double>[]
-          : <double>[
-              fromRecommendation.unionOpzFloorCPLH,
-              fromRecommendation.unionOpzCeilingCPLH,
-            ];
+          : <double>[unionFloor, unionCeiling];
     } else {
       final selected =
           BaselineData.records.where((r) => r.isSelected).toList();
@@ -663,12 +801,13 @@ class TargetCycleService {
       }
 
       selectedCount = recommendation.selectedRecordIds.length;
+      // ignore: deprecated_member_use_from_same_package
+      final unionFloor = recommendation.unionOpzFloorCPLH;
+      // ignore: deprecated_member_use_from_same_package
+      final unionCeiling = recommendation.unionOpzCeilingCPLH;
       cplhValues = recommendation.selectedRecordIds.isEmpty
           ? <double>[]
-          : <double>[
-              recommendation.unionOpzFloorCPLH,
-              recommendation.unionOpzCeilingCPLH,
-            ];
+          : <double>[unionFloor, unionCeiling];
     }
 
     final analytics = BaselineSelectionAnalyticsService.computeAnalytics(
@@ -782,5 +921,31 @@ class ActiveTargetProfileBuildResult {
   const ActiveTargetProfileBuildResult({
     required this.profile,
     required this.sourceLabel,
+  });
+}
+
+/// Per-Daypart V1 (Slice 1) — internal carrier for recommended-path
+/// writes. Pairs the freshly-built [ActiveTargetProfile] with the
+/// matching per-period [TargetCycleDaypart] rows the cycle write path
+/// will persist on the cycle's child table.
+class _RecommendedBuildResult {
+  final ActiveTargetProfile profile;
+  final List<TargetCycleDaypart> dayparts;
+  final String sourceLabel;
+  const _RecommendedBuildResult({
+    required this.profile,
+    required this.dayparts,
+    required this.sourceLabel,
+  });
+}
+
+/// Per-Daypart V1 (Slice 1) — internal carrier for manager-override
+/// (and admin-replacement-with-override) cycle writes.
+class _OverrideBuildResult {
+  final ActiveTargetProfile profile;
+  final List<TargetCycleDaypart> dayparts;
+  const _OverrideBuildResult({
+    required this.profile,
+    required this.dayparts,
   });
 }

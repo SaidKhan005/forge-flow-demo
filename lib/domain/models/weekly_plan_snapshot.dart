@@ -51,6 +51,90 @@ class WeeklyPlanSnapshotDay {
       );
 }
 
+/// Per-Daypart V1 (Slice 1) — per-(day, service_period) row inside a
+/// locked [WeeklyPlanSnapshot]. Stamped at lock time so post-lock reads
+/// don't quietly re-derive from a regenerated allocator output (Design
+/// Rule 3).
+///
+/// Theoretical FOH/BOH dollars use whole-day wages × per-period
+/// required hours (Design Rule 5 — wages stay whole-day; per-period
+/// labor-dollar math is `period hours × whole-day wage`).
+class WeeklyPlanSnapshotDayDaypart {
+  final String businessDate;
+  final String servicePeriodId;
+  final int forecastCovers;
+  final double forecastSales;
+  final double requiredFohHours;
+  final double requiredBohHours;
+  final double theoreticalFohDollars;
+  final double theoreticalBohDollars;
+
+  const WeeklyPlanSnapshotDayDaypart({
+    required this.businessDate,
+    required this.servicePeriodId,
+    required this.forecastCovers,
+    required this.forecastSales,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+    required this.theoreticalFohDollars,
+    required this.theoreticalBohDollars,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'business_date': businessDate,
+        'service_period_id': servicePeriodId,
+        'forecast_covers': forecastCovers,
+        'forecast_sales': forecastSales,
+        'required_foh_hours': requiredFohHours,
+        'required_boh_hours': requiredBohHours,
+        'theoretical_foh_dollars': theoreticalFohDollars,
+        'theoretical_boh_dollars': theoreticalBohDollars,
+      };
+
+  factory WeeklyPlanSnapshotDayDaypart.fromMap(Map<String, dynamic> m) =>
+      WeeklyPlanSnapshotDayDaypart(
+        businessDate: m['business_date'] as String,
+        servicePeriodId: m['service_period_id'] as String,
+        forecastCovers: (m['forecast_covers'] as num).toInt(),
+        forecastSales: (m['forecast_sales'] as num).toDouble(),
+        requiredFohHours: (m['required_foh_hours'] as num).toDouble(),
+        requiredBohHours: (m['required_boh_hours'] as num).toDouble(),
+        theoreticalFohDollars: (m['theoretical_foh_dollars'] as num).toDouble(),
+        theoreticalBohDollars: (m['theoretical_boh_dollars'] as num).toDouble(),
+      );
+}
+
+/// Per-Daypart V1 (Slice 1) — wages-at-lock-time stamp.
+///
+/// Audit checks comparing locked dollar values must compare against
+/// these wages (Design Rule 8), not `ActiveTargetProfile` current wages.
+class WeeklyPlanSnapshotWagesAtLockTime {
+  final double fohWage;
+  final double bohWage;
+  final double blendedWage;
+
+  const WeeklyPlanSnapshotWagesAtLockTime({
+    required this.fohWage,
+    required this.bohWage,
+    required this.blendedWage,
+  });
+
+  Map<String, Object?> toJson() => {
+        'foh_wage': fohWage,
+        'boh_wage': bohWage,
+        'blended_wage': blendedWage,
+      };
+
+  factory WeeklyPlanSnapshotWagesAtLockTime.fromJson(
+    Map<String, Object?> json,
+  ) =>
+      WeeklyPlanSnapshotWagesAtLockTime(
+        fohWage: (json['foh_wage'] as num).toDouble(),
+        bohWage: (json['boh_wage'] as num).toDouble(),
+        blendedWage: (json['blended_wage'] as num).toDouble(),
+      );
+}
+
 /// Weekly-level locked plan snapshot.
 class WeeklyPlanSnapshot {
   final String snapshotId;
@@ -83,6 +167,17 @@ class WeeklyPlanSnapshot {
 
   // ── Locked day rows ──────────────────────────────────────────────────────
   final List<WeeklyPlanSnapshotDay> dayRows;
+
+  /// Per-Daypart V1 (Slice 1) — locked per-(day, service_period) sub-rows.
+  /// Empty when the writer pre-dates Slice 1 (legacy snapshots) — read
+  /// consumers must check and fall back to whole-day day rows.
+  final List<WeeklyPlanSnapshotDayDaypart> dayDayparts;
+
+  /// Per-Daypart V1 (Slice 1) — wages-at-lock-time stamp. Audit checks
+  /// for locked dollar values reference this field (Design Rule 8),
+  /// not `ActiveTargetProfile` current wages. Null on legacy snapshots
+  /// written before Slice 1.
+  final WeeklyPlanSnapshotWagesAtLockTime? wageAtLockTime;
 
   // ── Metadata ─────────────────────────────────────────────────────────────
   final String generatedAt;
@@ -121,12 +216,15 @@ class WeeklyPlanSnapshot {
     required this.lockedAt,
     this.forecastContext,
     List<WeeklyPlanSnapshotDay> dayRows = const [],
+    List<WeeklyPlanSnapshotDayDaypart> dayDayparts = const [],
+    this.wageAtLockTime,
     this.isActive,
     this.supersedesSnapshotId,
     this.lockReason,
     this.lockedByUserId,
     this.metadata,
-  }) : dayRows = List.unmodifiable(dayRows);
+  })  : dayRows = List.unmodifiable(dayRows),
+        dayDayparts = List.unmodifiable(dayDayparts);
 
   // ── Derived ──────────────────────────────────────────────────────────────
 
@@ -166,6 +264,12 @@ class WeeklyPlanSnapshot {
     'locked_at': lockedAt,
     'forecast_context': forecastContext?.toMap(),
     'day_rows': dayRows.map((d) => d.toMap()).toList(),
+    // Per-Daypart V1 (Slice 1) — per-(day, period) sub-rows + wages
+    // stamp. Map shape uses snake-case keys consistent with the rest
+    // of the snapshot payload.
+    'day_dayparts': dayDayparts.map((d) => d.toMap()).toList(),
+    if (wageAtLockTime != null)
+      'wage_at_lock_time_json': wageAtLockTime!.toJson(),
     if (isActive != null) 'is_active': isActive,
     if (supersedesSnapshotId != null)
       'supersedes_snapshot_id': supersedesSnapshotId,
@@ -196,6 +300,21 @@ class WeeklyPlanSnapshot {
             .toList() ??
         [];
 
+    // Per-Daypart V1 (Slice 1) — per-(day, period) sub-rows. Empty
+    // when legacy snapshots are loaded.
+    final rawDayDayparts = m['day_dayparts'] as List<dynamic>?;
+    final dayDaypartsList = rawDayDayparts
+            ?.map(
+              (d) =>
+                  WeeklyPlanSnapshotDayDaypart.fromMap(d as Map<String, dynamic>),
+            )
+            .toList() ??
+        const <WeeklyPlanSnapshotDayDaypart>[];
+
+    final wageAtLockTime = _wageAtLockTimeFromMapValue(
+      m['wage_at_lock_time_json'],
+    );
+
     return WeeklyPlanSnapshot(
       snapshotId: m['snapshot_id'] as String,
       restaurantId: m['restaurant_id'] as String,
@@ -221,6 +340,8 @@ class WeeklyPlanSnapshot {
       lockedAt: m['locked_at'] as String,
       forecastContext: _forecastContextFromMapValue(m['forecast_context']),
       dayRows: dayRowsList,
+      dayDayparts: dayDaypartsList,
+      wageAtLockTime: wageAtLockTime,
       isActive: _readBoolValue(m['is_active']),
       supersedesSnapshotId: m['supersedes_snapshot_id'] as String?,
       lockReason: m['lock_reason'] as String?,
@@ -228,6 +349,52 @@ class WeeklyPlanSnapshot {
       metadata: _readMapValue(m['metadata']),
     );
   }
+
+  /// Returns the per-(day, service_period) sub-row for the given
+  /// `(businessDate, servicePeriodId)`, or null when none is persisted
+  /// (legacy snapshots or Gap 42 fallback).
+  WeeklyPlanSnapshotDayDaypart? dayDaypartFor({
+    required String businessDate,
+    required String servicePeriodId,
+  }) {
+    for (final d in dayDayparts) {
+      if (d.businessDate == businessDate &&
+          d.servicePeriodId == servicePeriodId) {
+        return d;
+      }
+    }
+    return null;
+  }
+}
+
+WeeklyPlanSnapshotWagesAtLockTime? _wageAtLockTimeFromMapValue(Object? value) {
+  if (value == null) return null;
+  Map<String, Object?>? coerced;
+  if (value is Map<String, Object?>) {
+    coerced = value;
+  } else if (value is Map) {
+    coerced = <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): entry.value,
+    };
+  } else if (value is String) {
+    // Postgres path stores JSONB which round-trips as string in some
+    // bridge surfaces. Try to decode; on failure fall through to null
+    // so legacy bridge artifacts don't crash the read.
+    try {
+      final decoded = value.isEmpty ? null : value;
+      if (decoded == null) return null;
+      // Avoid pulling in `dart:convert` just for this; the SQLite path
+      // always stores the decoded Map (jsonEncode handled by the
+      // repository layer). Strings here mean bridge desync — skip
+      // honestly rather than synthesize.
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+  if (coerced == null) return null;
+  return WeeklyPlanSnapshotWagesAtLockTime.fromJson(coerced);
 }
 
 bool? _readBoolValue(Object? value) {

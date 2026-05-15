@@ -1,7 +1,15 @@
 // Phase 7.14 — Learn Teaching Summary
 // Immutable model combining History pattern analysis with active Baseline truth.
+//
+// Per-Daypart Targets V1 (Slice 1) — Gap 39 model layer:
+// Per-period target rows mirror the shape of ActiveTargetProfile.dayparts
+// so the Learn narration update (deferred follow-up) can render
+// period-scoped patterns like "Friday dinner: covers down" instead of
+// "Friday: covers down". Decision 13 — no V1 UX overhaul; the analyzer
+// narration update is out of scope for Slice 1.
 
 import 'cross_axis_pair_record.dart';
+import 'learn_benchmark_context.dart';
 
 class LearnTeachingSummary {
   final int weekCount;
@@ -47,6 +55,13 @@ class LearnTeachingSummary {
   /// pair pattern is present.
   final List<CrossAxisPairRecord> crossAxisPairs;
 
+  /// Per-Daypart V1 (Slice 1, Gap 39): per-period target rows mirroring
+  /// `ActiveTargetProfile.dayparts`. Empty when the underlying cycle
+  /// wrote no per-period child rows (Gap 42 fallback). Decision 13 —
+  /// V1 ships with the data plumbed through to this model; the
+  /// analyzer narration update is a follow-up.
+  final List<LearnBenchmarkContextDaypart> dayparts;
+
   const LearnTeachingSummary({
     required this.weekCount,
     required this.benchmarkSourceLabel,
@@ -71,5 +86,6 @@ class LearnTeachingSummary {
     required this.primaryBenchmarkCount,
     required this.hasBenchmarkPatterns,
     this.crossAxisPairs = const [],
+    this.dayparts = const [],
   });
 }

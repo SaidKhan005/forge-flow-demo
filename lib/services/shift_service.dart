@@ -272,10 +272,18 @@ class ShiftService {
     );
     await _profileRepo.insertTargetProfileVersion(version);
 
-    // 3. Build locked target snapshot from the active profile + version
+    // 3. Build locked target snapshot from the active profile + version.
+    //
+    // Per-Daypart V1 (Slice 1): pass the shift's service period id so
+    // the snapshot's `daypart*` fields can be populated from the
+    // profile's per-period row when one exists. Prefer the explicit
+    // `servicePeriodKey` (V1 canonical) and fall back to `daypart`
+    // (legacy alias that still carries the same identifier in
+    // ClosedShiftInput).
     final targetSnapshot = TargetSnapshotBuilder.fromActiveTargetProfile(
       profile,
       targetProfileVersionId: versionId,
+      servicePeriodId: input.servicePeriodKey ?? input.daypart,
     );
 
     // 4. Build normalized shift fact
@@ -362,6 +370,24 @@ class ShiftService {
   }
 
   // ── Private: convert ShiftFact → ShiftRecord ─────────────────────────────────
+  //
+  // Per-Daypart V1 (Slice 1, Gap 23 fix): previously this conversion
+  // dropped `businessTimingProfileId` / `businessTimingProfileVersionId`
+  // / `servicePeriodKey` even though `ShiftFact` (and its underlying
+  // `ClosedShiftInput`) already carry them. The Postgres path
+  // (`PostgresShiftRecordWriter`) preserves them; the SQLite-direct
+  // mobile close-shift path silently stripped them. Now both paths
+  // carry timing fields uniformly.
+  //
+  // Per-Daypart V1 (Slice 1) addition: per-period locked target stamps
+  // (`daypartTarget*`) are also carried through to ShiftRecord. The
+  // TargetSnapshot now resolves these from the cycle's per-period rows
+  // (when present) so each closed shift gets its period's locked target
+  // band stamped at close time. Promise 2: closed truth retains its
+  // stamp. When the cycle has no per-period row for the shift's period
+  // (Gap 42 fallback), the targetSnapshot's daypart fields are null and
+  // the ShiftRecord retains null in those columns — consumers fall back
+  // to the whole-day `targetCPLH` etc. on the same row.
 
   ShiftRecord _shiftRecordFromFact(ShiftFact fact) {
     final ts = fact.targetSnapshot;
@@ -400,6 +426,21 @@ class ShiftService {
       opzCeilingCPLH: ts.opzCeilingCPLH,
       theoreticalFohLaborPct: ts.theoreticalFohLaborPct,
       theoreticalBohLaborPct: ts.theoreticalBohLaborPct,
+      // Per-Daypart V1 (Slice 1, Gap 23): carry timing-provenance fields
+      // from ShiftFact through to ShiftRecord. Mirrors the Postgres
+      // writer behavior at `postgres_shift_record_writer.dart:214-216`.
+      businessTimingProfileId: fact.businessTimingProfileId,
+      businessTimingProfileVersionId: fact.businessTimingProfileVersionId,
+      servicePeriodKey: fact.servicePeriodKey,
+      // Per-Daypart V1 (Slice 1): per-period locked target stamps from
+      // the TargetSnapshot. Nullable — when the cycle wrote no per-period
+      // row for the shift's period (Gap 42 fallback) these stay null
+      // and consumers fall back to the whole-day target* fields above.
+      daypartTargetCPLH: ts.daypartTargetCPLH,
+      daypartTargetSPLH: ts.daypartTargetSPLH,
+      daypartTargetPPA: ts.daypartTargetPPA,
+      daypartOpzFloorCPLH: ts.daypartOpzFloorCPLH,
+      daypartOpzCeilingCPLH: ts.daypartOpzCeilingCPLH,
       sourceSystem: fact.sourceSystem,
       sourceShiftId: fact.sourceShiftId,
     );
