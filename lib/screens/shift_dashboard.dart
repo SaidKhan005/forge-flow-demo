@@ -1077,6 +1077,14 @@ class _DaypartScaffoldSection extends StatelessWidget {
                 _DaypartScaffoldCard(
                   definition: selectedDefinition,
                   isActive: selectedDefinition.id == activeId,
+                  phase: localNow == null
+                      ? null
+                      : resolveServicePeriodPhase(
+                          localNow: localNow,
+                          businessDayStartLocalTime: cutoff,
+                          definitions: definitions,
+                          periodId: selectedDefinition.id,
+                        ),
                   bucket: buckets?[selectedDefinition.id],
                   targetContext: periodNotifier?.daypartTargetFor(
                         selectedDefinition.id,
@@ -1097,8 +1105,9 @@ class _DaypartScaffoldSection extends StatelessWidget {
   }
 }
 
-/// Per-Daypart V1 (Slice 4) — the Shift daypart card, now a full 1:1
-/// mirror of the whole-day card's three-section grammar (Decision 7 in
+/// Per-Daypart V1 (Slice 4 + closed-state fix) — the Shift daypart
+/// card, a full 1:1 mirror of the whole-day card's three-section
+/// grammar (Decision 7 in
 /// `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`):
 ///
 ///   * **Outputs** — Sales (forecast progress) + Labor % side by side,
@@ -1109,16 +1118,38 @@ class _DaypartScaffoldSection extends StatelessWidget {
 ///     whole-day card renders, scoped to this period's CPLH + locked
 ///     OPZ floor/ceiling.
 ///
-/// The whole-day half of the screen is untouched (Promise 3 / Layer 9 —
-/// daypart sits adjacent, never replaces). Per-period target values come
-/// from [targetContext]: a closed period reads its own per-shift stamp
-/// (Promise 2); an open period falls back to the active profile's
-/// per-period row. Missing values render as "—" (Design Rule 2 — never
-/// a `0` sentinel) and the OPZ band hides entirely when the locked band
-/// is absent rather than drawing a zero-anchored gauge.
+/// **Every** period state renders the full three sections — the card
+/// never collapses to a one-line message (operator decision: "Full
+/// card, dashes — maximum 1:1 parity"). When there are no actuals (no
+/// bucket data, or labor not connected) every metric falls back to the
+/// honest "—" the whole-day card uses, never a `0.0%` / `$0.00` /
+/// sentinel `0` (Design Rule 2 + Metric Honesty Doctrine). The locked
+/// per-period targets from [targetContext] render regardless of whether
+/// actuals exist, so a closed-with-no-data period still shows what its
+/// standard was.
+///
+/// A small tri-state status line ([phase]) sits inside the card —
+/// **not** a replacement for it: future → "Opens at {start}"; active →
+/// "Active now"; past/closed → "Period closed"; missing timezone →
+/// "Timezone not configured — metrics unavailable." This replaces the
+/// prior binary text that wrongly told the operator an *already-closed*
+/// period was "unavailable until this period opens".
+///
+/// The whole-day half of the screen is byte-untouched (Promise 3 /
+/// Layer 9 — daypart sits adjacent, never replaces). Per-period target
+/// values come from [targetContext]: a closed period reads its own
+/// per-shift stamp (Promise 2); an open period falls back to the active
+/// profile's per-period row. The OPZ band hides entirely when the
+/// locked band is absent rather than drawing a zero-anchored gauge.
 class _DaypartScaffoldCard extends StatelessWidget {
   final ServicePeriodDefinition definition;
   final bool isActive;
+
+  /// Past / active / future phase, business-date-aware (see
+  /// [ShiftServicePeriodNotifier.servicePeriodPhase]). Null only when
+  /// the restaurant has no usable clock — the status line then degrades
+  /// to the honest "Opens at …" rather than ever claiming "closed".
+  final ServicePeriodPhase? phase;
   final ServicePeriodAccumulator? bucket;
   final DaypartTargetContext targetContext;
   final LeverCardData? primaryLeverCard;
@@ -1127,6 +1158,7 @@ class _DaypartScaffoldCard extends StatelessWidget {
   const _DaypartScaffoldCard({
     required this.definition,
     required this.isActive,
+    required this.phase,
     required this.bucket,
     required this.targetContext,
     this.primaryLeverCard,
@@ -1136,7 +1168,11 @@ class _DaypartScaffoldCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = isActive ? AppColors.sunset : AppColors.borderSubtle;
-    final hasData = bucket?.hasAnyData ?? false;
+    // Always render the full three-section card. A missing bucket is an
+    // empty accumulator, not a reason to collapse the card — the
+    // sections render honest "—" actuals next to the locked targets.
+    final effectiveBucket =
+        bucket ?? ServicePeriodAccumulator(servicePeriodId: definition.id);
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -1185,48 +1221,100 @@ class _DaypartScaffoldCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 6),
+          // Tri-state status line — small, inside the full card, never a
+          // replacement for it. Corrects the prior binary text that
+          // mislabeled an already-closed period as "until this period
+          // opens".
+          _DaypartStatusLine(
+            missingTimezone: missingTimezone,
+            phase: phase,
+            startLocalTime: definition.startLocalTime,
+          ),
           const SizedBox(height: 12),
-          if (hasData) ...[
-            // ── Section 1 — Outputs ──
-            const _DaypartSectionHeader(label: 'OUTPUTS'),
-            const SizedBox(height: 8),
-            _DaypartOutputsSection(
-              bucket: bucket!,
-              targetContext: targetContext,
-            ),
-            const SizedBox(height: 16),
-            // ── Section 2 — Inputs ──
-            const _DaypartSectionHeader(label: 'INPUTS'),
-            const SizedBox(height: 8),
-            _DaypartInputsSection(
-              bucket: bucket!,
-              targetContext: targetContext,
-            ),
-            const SizedBox(height: 16),
-            // ── Section 3 — FOH Productivity ──
-            const _DaypartSectionHeader(label: 'FOH PRODUCTIVITY'),
-            const SizedBox(height: 8),
-            _DaypartFohProductivitySection(
-              bucket: bucket!,
-              targetContext: targetContext,
-            ),
-            const SizedBox(height: 12),
-            // Phase 10.5.3 — per-period primary driver chip. Resolves
-            // through `LeverCards.lookup`; null surfaces as the
-            // "No pattern yet" degraded state per 7.58 F-1 / F-6
-            // (no silent fall-through to a real lever).
-            _DaypartDriverChip(card: primaryLeverCard),
-          ] else
-            Text(
-              missingTimezone
-                  ? 'Timezone not configured — metrics unavailable.'
-                  : isActive
-                  ? 'No data yet for this period.'
-                  : 'Projected / unavailable until this period opens.',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
+          // ── Section 1 — Outputs ──
+          const _DaypartSectionHeader(label: 'OUTPUTS'),
+          const SizedBox(height: 8),
+          _DaypartOutputsSection(
+            bucket: effectiveBucket,
+            targetContext: targetContext,
+          ),
+          const SizedBox(height: 16),
+          // ── Section 2 — Inputs ──
+          const _DaypartSectionHeader(label: 'INPUTS'),
+          const SizedBox(height: 8),
+          _DaypartInputsSection(
+            bucket: effectiveBucket,
+            targetContext: targetContext,
+          ),
+          const SizedBox(height: 16),
+          // ── Section 3 — FOH Productivity ──
+          const _DaypartSectionHeader(label: 'FOH PRODUCTIVITY'),
+          const SizedBox(height: 8),
+          _DaypartFohProductivitySection(
+            bucket: effectiveBucket,
+            targetContext: targetContext,
+          ),
+          const SizedBox(height: 12),
+          // Phase 10.5.3 — per-period primary driver chip. Resolves
+          // through `LeverCards.lookup`; null surfaces as the
+          // "No pattern yet" degraded state per 7.58 F-1 / F-6
+          // (no silent fall-through to a real lever).
+          _DaypartDriverChip(card: primaryLeverCard),
         ],
       ),
+    );
+  }
+}
+
+/// Per-Daypart V1 (Slice 4 closed-state fix) — the tri-state status
+/// line rendered inside (never instead of) the full daypart card.
+///
+/// Copy is intentionally minimal and reads as training (UX Writing
+/// Standard):
+///   * missing timezone → "Timezone not configured — metrics
+///     unavailable." (kept verbatim from the prior implementation);
+///   * [ServicePeriodPhase.past] → "Period closed" (the bug: a
+///     past/closed period previously fell through to the future copy);
+///   * [ServicePeriodPhase.active] → "Active now";
+///   * [ServicePeriodPhase.future] (or null clock) → "Opens at
+///     {startLocalTime}" — only a genuinely not-yet-open period is
+///     framed as opening.
+class _DaypartStatusLine extends StatelessWidget {
+  final bool missingTimezone;
+  final ServicePeriodPhase? phase;
+  final String startLocalTime;
+
+  const _DaypartStatusLine({
+    required this.missingTimezone,
+    required this.phase,
+    required this.startLocalTime,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final String text;
+    if (missingTimezone) {
+      text = 'Timezone not configured — metrics unavailable.';
+    } else {
+      switch (phase) {
+        case ServicePeriodPhase.past:
+          text = 'Period closed';
+          break;
+        case ServicePeriodPhase.active:
+          text = 'Active now';
+          break;
+        case ServicePeriodPhase.future:
+        case null:
+          // Null clock degrades to the honest "opens at" framing — it
+          // must never claim a period is closed without proof.
+          text = 'Opens at $startLocalTime';
+          break;
+      }
+    }
+    return Text(
+      text,
+      style: AppTextStyles.mono10(color: AppColors.textMuted),
     );
   }
 }
@@ -1311,7 +1399,10 @@ class _DaypartOutputsSection extends StatelessWidget {
               Expanded(
                 child: _MetricCell(
                   label: 'COVERS',
-                  value: '${bucket.covers}',
+                  // No POS covers yet → honest "—", never a sentinel 0
+                  // (Design Rule 2 — mirrors the whole-day covers pill's
+                  // unavailable state).
+                  value: bucket.covers > 0 ? '${bucket.covers}' : '—',
                 ),
               ),
               const SizedBox(width: 8),
@@ -1350,7 +1441,12 @@ class _DaypartLaborCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actualLaborDollars = bucket.fohWageDollars + bucket.bohWageDollars;
-    final double? actualPct = bucket.sales > 0
+    // Labor % is honest only when BOTH labor punches and sales are
+    // present. Labor-unconnected (no in-period minutes) must render
+    // "—", never a phantom `0.0%` computed off `$0 ÷ sales`
+    // (Design Rule 2 + Metric Honesty Doctrine — mirrors the whole-day
+    // card's unavailable Labor treatment).
+    final double? actualPct = (bucket.totalMinutes > 0 && bucket.sales > 0)
         ? actualLaborDollars / bucket.sales * 100
         : null;
 
