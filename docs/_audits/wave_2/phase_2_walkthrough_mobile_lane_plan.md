@@ -48,11 +48,12 @@ device, sequential state machine, single log channel). Claude 2 stays
 on its admin V1.1 carry-overs. See parallelism notes at the bottom.
 
 Worktree agents are NOT used for this lane — orchestrator drives
-directly on `claude/blissful-roentgen-e365a2` because the work is
-screenshots + matrix annotations, not source edits. If a demo-fidelity
-bug surfaces that needs a source edit > 20 LoC, then a worktree agent
-gets spawned with the standard contract (branch → fix → self-audit →
-commit → push → open PR → STOP).
+directly on `claude/mobile-lane-pass-1` (continuation from
+`claude/blissful-roentgen-e365a2`, merged via PR #754) because the work
+is screenshots + matrix annotations, not source edits. If a demo-
+fidelity bug surfaces that needs a source edit > 20 LoC, then a
+worktree agent gets spawned with the standard contract (branch → fix
+→ self-audit → commit → push → open PR → STOP).
 ```
 
 ---
@@ -61,13 +62,14 @@ commit → push → open PR → STOP).
 
 | Item | Value |
 |---|---|
-| Branch | `claude/blissful-roentgen-e365a2` |
-| Emulator | Pixel_9, `emulator-5554`, API 36, `com.forgeflow.app` installed |
-| Flutter run task | `bam7vhie1` (background) |
+| Branch | `claude/mobile-lane-pass-1` (continuation; prior branch merged via PR #754) |
+| Worktree | `C:/Git Local Repos/forge_flow_demo/.claude/worktrees/mobile-lane-pass-1` |
+| Emulator | Pixel_9, `emulator-5554`, API 36, `com.forgeflow.app` (recreate if gone) |
+| Flutter run task | recreate per resume prompt (prior `bam7vhie1` is dead) |
 | Live monitor task | restart per "Live monitor" section below |
-| First screenshot | `docs/_audits/wave_2/phase_2_walkthrough_evidence/mobile/00_boot_state.png` (Shift dashboard, demo-seeded) |
-| Pass | starting Pass 1 |
-| Last completed surface | none yet (boot capture is the baseline, not a driven surface) |
+| Captured so far | `p1_00_baseline_post_v3.png` through `p1_04_shift_late_night.png` in `phase_2_walkthrough_evidence/mobile/` (carried over from prior worktree) |
+| Pass | mid Pass 1 — resume at first surface whose `Captured` column is blank in the verification matrix |
+| Screenshot dimension cap | Pixel 9 emulator captures are 1080×2424 — exceeds Anthropic's 2000px many-image cap. Capture full-res to evidence dir, save a ≤1600px thumb for Claude. Do NOT bulk-attach; show Claude a thumbnail only when investigating an anomaly. The matrix annotation is the durable record. |
 
 ---
 
