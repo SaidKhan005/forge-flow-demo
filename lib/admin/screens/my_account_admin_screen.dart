@@ -500,7 +500,7 @@ class _AdminSecurityCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _AdminAccountField(
-            label: 'Two-step verification',
+            label: 'Two-factor sign-in',
             value: mfaLabel,
             valueWidget: Row(
               key: const Key('admin_my_account_mfa_status'),
