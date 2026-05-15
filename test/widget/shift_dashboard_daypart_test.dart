@@ -170,13 +170,38 @@ void main() {
           findsOneWidget,
         );
 
-        // Lunch card metrics rendered (per-period values from the notifier).
+        // Per-Daypart V1 Slice 4 — the card is now a full 1:1 mirror of
+        // the whole-day card's three-section grammar (Decision 7).
+        expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
+        expect(find.text('INPUTS', skipOffstage: false), findsOneWidget);
+        expect(
+          find.text('FOH PRODUCTIVITY', skipOffstage: false),
+          findsWidgets,
+        );
+
+        // Outputs: covers + blended wage. Sales renders via the shared
+        // SalesForecastCard (Fmt.dollars adds thousands separators).
         expect(find.text('100', skipOffstage: false), findsOneWidget);
-        expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$4,200', skipOffstage: false), findsOneWidget);
+
+        // Inputs: per-period actuals vs locked target. No target context
+        // was injected, so every target sub-line is the honest em dash
+        // (Design Rule 2 — never a 0 sentinel).
         expect(find.text(r'$42.00', skipOffstage: false), findsOneWidget);
         expect(find.text('12.50', skipOffstage: false), findsOneWidget);
         expect(find.text(r'$525', skipOffstage: false), findsOneWidget);
-        expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
+        expect(find.text('Target —', skipOffstage: false), findsWidgets);
+
+        // FOH Productivity: no locked OPZ band → honest empty state,
+        // never a zero-anchored gauge.
+        expect(
+          find.text(
+            'No locked productivity zone for this period yet.',
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
 
         // Only the selected period card renders.
         expect(
@@ -378,9 +403,11 @@ void main() {
       await tester.pump();
 
       // Lunch card should now show the new POS line's covers / sales
-      // because the notifier listened-to-by-the-widget fired.
+      // because the notifier listened-to-by-the-widget fired. Sales
+      // renders via the shared SalesForecastCard (Fmt.dollars adds the
+      // thousands separator) after the Slice 4 full-parity rebuild.
       expect(find.text('100', skipOffstage: false), findsOneWidget);
-      expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
+      expect(find.text(r'$4,200', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('whole-day view is unchanged when buckets are present — no '

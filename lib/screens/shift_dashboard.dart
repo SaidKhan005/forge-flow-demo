@@ -1078,6 +1078,10 @@ class _DaypartScaffoldSection extends StatelessWidget {
                   definition: selectedDefinition,
                   isActive: selectedDefinition.id == activeId,
                   bucket: buckets?[selectedDefinition.id],
+                  targetContext: periodNotifier?.daypartTargetFor(
+                        selectedDefinition.id,
+                      ) ??
+                      DaypartTargetContext.none,
                   primaryLeverCard: periodNotifier?.primaryLeverCardFor(
                     selectedDefinition.id,
                   ),
@@ -1093,10 +1097,30 @@ class _DaypartScaffoldSection extends StatelessWidget {
   }
 }
 
+/// Per-Daypart V1 (Slice 4) — the Shift daypart card, now a full 1:1
+/// mirror of the whole-day card's three-section grammar (Decision 7 in
+/// `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`):
+///
+///   * **Outputs** — Sales (forecast progress) + Labor % side by side,
+///     Covers + Blended Wage pills (mirrors `_OutputsSection`).
+///   * **Inputs** — PPA / CPLH / SPLH pills + FOH/BOH hours columns
+///     (mirrors `_InputsSection`).
+///   * **FOH Productivity** — the same [ZoneStatusCard] OPZ band the
+///     whole-day card renders, scoped to this period's CPLH + locked
+///     OPZ floor/ceiling.
+///
+/// The whole-day half of the screen is untouched (Promise 3 / Layer 9 —
+/// daypart sits adjacent, never replaces). Per-period target values come
+/// from [targetContext]: a closed period reads its own per-shift stamp
+/// (Promise 2); an open period falls back to the active profile's
+/// per-period row. Missing values render as "—" (Design Rule 2 — never
+/// a `0` sentinel) and the OPZ band hides entirely when the locked band
+/// is absent rather than drawing a zero-anchored gauge.
 class _DaypartScaffoldCard extends StatelessWidget {
   final ServicePeriodDefinition definition;
   final bool isActive;
   final ServicePeriodAccumulator? bucket;
+  final DaypartTargetContext targetContext;
   final LeverCardData? primaryLeverCard;
   final bool missingTimezone;
 
@@ -1104,6 +1128,7 @@ class _DaypartScaffoldCard extends StatelessWidget {
     required this.definition,
     required this.isActive,
     required this.bucket,
+    required this.targetContext,
     this.primaryLeverCard,
     this.missingTimezone = false,
   });
@@ -1160,10 +1185,32 @@ class _DaypartScaffoldCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           if (hasData) ...[
-            _DaypartMetricGrid(bucket: bucket!),
-            const SizedBox(height: 10),
+            // ── Section 1 — Outputs ──
+            const _DaypartSectionHeader(label: 'OUTPUTS'),
+            const SizedBox(height: 8),
+            _DaypartOutputsSection(
+              bucket: bucket!,
+              targetContext: targetContext,
+            ),
+            const SizedBox(height: 16),
+            // ── Section 2 — Inputs ──
+            const _DaypartSectionHeader(label: 'INPUTS'),
+            const SizedBox(height: 8),
+            _DaypartInputsSection(
+              bucket: bucket!,
+              targetContext: targetContext,
+            ),
+            const SizedBox(height: 16),
+            // ── Section 3 — FOH Productivity ──
+            const _DaypartSectionHeader(label: 'FOH PRODUCTIVITY'),
+            const SizedBox(height: 8),
+            _DaypartFohProductivitySection(
+              bucket: bucket!,
+              targetContext: targetContext,
+            ),
+            const SizedBox(height: 12),
             // Phase 10.5.3 — per-period primary driver chip. Resolves
             // through `LeverCards.lookup`; null surfaces as the
             // "No pattern yet" degraded state per 7.58 F-1 / F-6
@@ -1178,6 +1225,383 @@ class _DaypartScaffoldCard extends StatelessWidget {
                   : 'Projected / unavailable until this period opens.',
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Section divider inside the daypart card. Mirrors the whole-day
+/// screen's `StickySectionDelegate` header text ('SHIFT OUTPUTS' etc.)
+/// but scoped to a single period inside the card, so the operator's eye
+/// reads the same grammar without the card needing its own sliver.
+class _DaypartSectionHeader extends StatelessWidget {
+  final String label;
+  const _DaypartSectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      label,
+      style: AppTextStyles.mono10(
+        color: AppColors.sunsetDark,
+      ).copyWith(fontWeight: FontWeight.w700, letterSpacing: 1.2),
+    );
+  }
+}
+
+/// Honest per-period number formatting. Returns the formatted value
+/// when present, or an em dash when the value is null OR not yet
+/// derivable (covers/hours == 0). Design Rule 2: never render `0` as if
+/// it were a real target/actual.
+String _dpFmt(double? v, {String prefix = '', int decimals = 2}) {
+  if (v == null) return '—';
+  return '$prefix${v.toStringAsFixed(decimals)}';
+}
+
+/// Per-Daypart V1 (Slice 4) — Outputs section: Sales (forecast progress)
+/// + Labor % side by side, Covers + Blended Wage pills below. Mirrors
+/// the whole-day `_OutputsSection` layout (Sales/Labor row + Covers/Wage
+/// row) scoped to this period.
+class _DaypartOutputsSection extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  final DaypartTargetContext targetContext;
+
+  const _DaypartOutputsSection({
+    required this.bucket,
+    required this.targetContext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Per-period forecast sales = covers × the locked per-period PPA
+    // target. Null target → no forecast (honest "no forecast" state in
+    // SalesForecastCard), never a 0-anchored progress bar.
+    final ppaTarget = targetContext.targetPPA;
+    final forecastSales =
+        ppaTarget != null ? bucket.covers * ppaTarget : 0.0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: SalesForecastCard(
+                  currentSales: bucket.sales,
+                  forecastSales: forecastSales,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _DaypartLaborCard(
+                  bucket: bucket,
+                  targetContext: targetContext,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _MetricCell(
+                  label: 'COVERS',
+                  value: '${bucket.covers}',
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MetricCell(
+                  label: 'BLENDED WAGE',
+                  value: bucket.totalMinutes > 0
+                      ? '\$${bucket.blendedWage.toStringAsFixed(2)}'
+                      : '—',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Per-period Labor % card. Mirrors the whole-day `_LaborVarianceSection`
+/// (current %, theoretical % reference, delta pill). Actual labor % uses
+/// this period's wage dollars ÷ sales. The theoretical reference is
+/// derived from the locked per-period CPLH/SPLH/PPA + restaurant-wide
+/// wages (wages stay whole-day per Decision 11). When the locked target
+/// or sales are absent the card shows "—" and no delta pill (Design
+/// Rule 2).
+class _DaypartLaborCard extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  final DaypartTargetContext targetContext;
+
+  const _DaypartLaborCard({
+    required this.bucket,
+    required this.targetContext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final actualLaborDollars = bucket.fohWageDollars + bucket.bohWageDollars;
+    final double? actualPct = bucket.sales > 0
+        ? actualLaborDollars / bucket.sales * 100
+        : null;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'LABOR %',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            actualPct == null ? '—' : '${actualPct.toStringAsFixed(1)}%',
+            style: AppTextStyles.mono28(
+              color: actualPct == null
+                  ? AppColors.textMuted
+                  : AppColors.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Per-Daypart V1 (Slice 4) — Inputs section: PPA / CPLH / SPLH pills
+/// (actual vs locked per-period target) + FOH/BOH hours columns.
+/// Mirrors the whole-day `_InputsSection`. Per-period scheduled-vs-
+/// needed hours are not tracked yet, so the hours columns show actual
+/// in-period hours with no synthetic target (the "needed" line reads
+/// "—" instead of a fabricated `0`).
+class _DaypartInputsSection extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  final DaypartTargetContext targetContext;
+
+  const _DaypartInputsSection({
+    required this.bucket,
+    required this.targetContext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fohHrs = bucket.fohMinutes > 0
+        ? (bucket.fohMinutes / 60).toStringAsFixed(
+            bucket.fohMinutes % 60 == 0 ? 0 : 1,
+          )
+        : '—';
+    final bohHrs = bucket.bohMinutes > 0
+        ? (bucket.bohMinutes / 60).toStringAsFixed(
+            bucket.bohMinutes % 60 == 0 ? 0 : 1,
+          )
+        : '—';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _DaypartTargetedCell(
+                label: 'PPA',
+                value: bucket.covers > 0
+                    ? '\$${bucket.ppa.toStringAsFixed(2)}'
+                    : '—',
+                target: _dpFmt(
+                  targetContext.targetPPA,
+                  prefix: r'Target $',
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _DaypartTargetedCell(
+                label: 'CPLH',
+                value: bucket.totalMinutes > 0
+                    ? bucket.cplh.toStringAsFixed(2)
+                    : '—',
+                target: targetContext.targetCPLH == null
+                    ? 'Target —'
+                    : 'Target ${targetContext.targetCPLH!.toStringAsFixed(2)}',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _DaypartTargetedCell(
+                label: 'SPLH',
+                value: bucket.totalMinutes > 0
+                    ? '\$${bucket.splh.toStringAsFixed(0)}'
+                    : '—',
+                target: _dpFmt(
+                  targetContext.targetSPLH,
+                  prefix: r'Target $',
+                  decimals: 0,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _MetricCell(label: 'FOH HRS', value: fohHrs),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MetricCell(label: 'BOH HRS', value: bohHrs),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Per-Daypart V1 (Slice 4) — FOH Productivity section. Renders the
+/// same [ZoneStatusCard] OPZ band the whole-day FOH PRODUCTIVITY section
+/// renders, scoped to this period's CPLH and the period's locked OPZ
+/// floor/ceiling. When the locked OPZ band is absent (no closed-shift
+/// stamp, no open-shift profile row) the gauge is replaced with an
+/// honest "no locked productivity zone" line rather than a band drawn
+/// off `0` (Design Rule 2).
+class _DaypartFohProductivitySection extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  final DaypartTargetContext targetContext;
+
+  const _DaypartFohProductivitySection({
+    required this.bucket,
+    required this.targetContext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!targetContext.hasOpzBand) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.backgroundMid, AppColors.cardGlow],
+          ),
+          border: Border.all(
+            color: AppColors.borderSubtle.withValues(alpha: 0.7),
+            width: 1,
+          ),
+        ),
+        child: Text(
+          'No locked productivity zone for this period yet.',
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+      );
+    }
+
+    final currentCplh = bucket.totalMinutes > 0 ? bucket.cplh : 0.0;
+    final floor = targetContext.opzFloorCPLH!;
+    final ceiling = targetContext.opzCeilingCPLH!;
+    final target = targetContext.targetCPLH!;
+    final opzStatus = currentCplh < floor
+        ? 'below'
+        : currentCplh > ceiling
+            ? 'above'
+            : 'in';
+    final opzLabel = opzStatus == 'below'
+        ? 'BELOW OPZ'
+        : opzStatus == 'above'
+            ? 'ABOVE OPZ'
+            : 'IN OPZ';
+    final opzSubLabel = opzStatus == 'below'
+        ? 'Productivity is below the OPZ floor. Too many labor hours '
+            'for the volume.'
+        : opzStatus == 'above'
+            ? 'Productivity is above the OPZ ceiling. Service quality '
+                'may suffer.'
+            : 'Team is producing. Watch covers.';
+
+    return ZoneStatusCard(
+      currentCPLH: currentCplh,
+      opzFloorCPLH: floor,
+      opzCeilingCPLH: ceiling,
+      targetCPLH: target,
+      opzStatus: opzStatus,
+      opzLabel: opzLabel,
+      opzSubLabel: opzSubLabel,
+    );
+  }
+}
+
+/// Compact actual-over-target metric cell for the daypart Inputs grid.
+/// Mirrors the whole-day `MetricPill` shape (value + target sub-line)
+/// in the daypart card's tighter footprint.
+class _DaypartTargetedCell extends StatelessWidget {
+  final String label;
+  final String value;
+  final String target;
+  const _DaypartTargetedCell({
+    required this.label,
+    required this.value,
+    required this.target,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: AppTextStyles.mono16(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            target,
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
         ],
       ),
     );
@@ -1226,86 +1650,6 @@ class _DaypartDriverChip extends StatelessWidget {
           color: accent,
         ).copyWith(fontWeight: FontWeight.w700),
       ),
-    );
-  }
-}
-
-/// Compact 3-row metric grid for a single service-period bucket.
-///
-/// Layout (per-period, all values are actuals — no plan target on
-/// purpose, since per-period plan targets are not yet shipped):
-///   row 1: COVERS · SALES
-///   row 2: PPA · CPLH · SPLH
-///   row 3: HRS (FOH/BOH) · BLENDED WAGE
-class _DaypartMetricGrid extends StatelessWidget {
-  final ServicePeriodAccumulator bucket;
-  const _DaypartMetricGrid({required this.bucket});
-
-  @override
-  Widget build(BuildContext context) {
-    final fohHrs = (bucket.fohMinutes / 60).toStringAsFixed(
-      bucket.fohMinutes % 60 == 0 ? 0 : 1,
-    );
-    final bohHrs = (bucket.bohMinutes / 60).toStringAsFixed(
-      bucket.bohMinutes % 60 == 0 ? 0 : 1,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(label: 'COVERS', value: '${bucket.covers}'),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'SALES',
-                value: '\$${bucket.sales.toStringAsFixed(0)}',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(
-                label: 'PPA',
-                value: '\$${bucket.ppa.toStringAsFixed(2)}',
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'CPLH',
-                value: bucket.cplh.toStringAsFixed(2),
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'SPLH',
-                value: '\$${bucket.splh.toStringAsFixed(0)}',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(
-                label: 'HRS',
-                value: '$fohHrs FOH / $bohHrs BOH',
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'BLENDED WAGE',
-                value: '\$${bucket.blendedWage.toStringAsFixed(2)}',
-              ),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }
