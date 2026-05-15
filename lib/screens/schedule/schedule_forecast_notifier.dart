@@ -40,6 +40,28 @@ enum _ScheduleAuthorityMode { live, locked }
 enum ScheduleLockedPlanLoadState { idle, loading, available, unavailable }
 
 class ScheduleForecastNotifier extends ChangeNotifier {
+  // Lifecycle guard. The async loaders (loadLockedPlan,
+  // _loadServicePeriodDefinitions, etc.) `await` between widget mounts
+  // and the listener notification, so when an operator navigates away
+  // mid-load (Schedule -> Benchmark star-shift, for example) the
+  // widget tree disposes this notifier before the await resolves.
+  // Without the guard, the follow-up notifyListeners() throws
+  // "A ScheduleForecastNotifier was used after being disposed" and
+  // freezes / blanks the screen.
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   // Wages + PPA — used by planned-package math + daypart subrow sales
   // presentation. Updatable in BOTH modes via [updateTargets].
   double _fohWage;
