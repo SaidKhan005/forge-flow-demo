@@ -814,6 +814,419 @@ void main() {
       expect(snap.hasAnyAuditDrift, anyDrift);
     });
   });
+
+  // ── Per-Daypart V1 / Slice 6 — pool-consistency invariant ──────────────
+  //
+  // Design Rule 4: the whole-day pool scalars on the active TargetCycle
+  // are the cover-weighted rollup of the per-period child rows. The
+  // pool-consistency group recomputes the rollup from the persisted
+  // child rows and flags drift when the parent scalars diverge.
+
+  group('computeAuditChecks — group: pool consistency', () {
+    test('consistent pool (parent = cover-weighted rollup) passes', () {
+      final cycle = _cycleWithDayparts(consistent: true);
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: cycle,
+        snapshot: null,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final pool = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.poolConsistency)
+          .toList();
+      expect(pool.length, 5,
+          reason: 'CPLH/SPLH/PPA + OPZ floor + OPZ ceiling = 5 invariants');
+      expect(
+        pool.every((c) => c.status == DriftCheckStatus.aligned),
+        isTrue,
+        reason: 'parent pool == cover-weighted rollup of period rows',
+      );
+    });
+
+    test('pool drift (parent scalar tampered) surfaces as drifted', () {
+      final cycle = _cycleWithDayparts(consistent: false);
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: cycle,
+        snapshot: null,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final cplh = checks.firstWhere(
+          (c) => c.label == 'Pool CPLH = cover-weighted Σ(period CPLH)');
+      expect(cplh.status, DriftCheckStatus.drifted,
+          reason: 'parent CPLH was set away from the rollup');
+      // OPZ band is the union (min floor / max ceiling) and was left
+      // consistent, so those two invariants still align.
+      final floor = checks.firstWhere(
+          (c) => c.label == 'Pool OPZ floor = min(period OPZ floors)');
+      expect(floor.status, DriftCheckStatus.aligned);
+    });
+
+    test('Gap 42 fallback (empty dayparts) degrades to unavailable', () {
+      // A cycle written under the insufficient-recommendation fallback
+      // persists NO per-period child rows. There is nothing to
+      // reconcile — every invariant must be unavailable, never false
+      // drift, never a sentinel 0.
+      final cycle = _cycleWithDayparts(consistent: true).copyWith(
+        dayparts: const [],
+      );
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: cycle,
+        snapshot: null,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final pool = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.poolConsistency)
+          .toList();
+      expect(pool.length, 5);
+      expect(
+        pool.every((c) => c.status == DriftCheckStatus.unavailable),
+        isTrue,
+        reason:
+            'no per-period rows → rollup undefined → honest unavailable',
+      );
+    });
+
+    test('null cycle degrades pool group to unavailable', () {
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: null,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final pool = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.poolConsistency)
+          .toList();
+      expect(pool.length, 5);
+      expect(
+        pool.every((c) => c.status == DriftCheckStatus.unavailable),
+        isTrue,
+      );
+    });
+  });
+
+  // ── Per-Daypart V1 / Slice 6 — wage-at-lock-time provenance ────────────
+  //
+  // Design Rule 8: locked dollar reconciliation compares against the
+  // snapshot's wage_at_lock_time stamp, never the live profile wages.
+
+  group('computeAuditChecks — group: wage-at-lock-time', () {
+    test('stamped snapshot whose locked dollars reproduce -> aligned', () {
+      final snap = _makeSnapshotWithWageStamp();
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: snap,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final wage = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.wageAtLockTime)
+          .toList();
+      expect(wage.length, 4,
+          reason: 'stamp presence + FOH \$ + BOH \$ + blended wage');
+      expect(
+        wage.every((c) => c.status == DriftCheckStatus.aligned),
+        isTrue,
+      );
+    });
+
+    test('locked dollars reconcile to LOCK-TIME wages, not live profile',
+        () {
+      // The snapshot was locked at FOH 16 / BOH 18. The operator since
+      // bumped wages — _profile() carries the *current* FOH 18 / BOH 20.
+      // The check must reconcile against the stamp; comparing to the
+      // live profile would have falsely flagged drift.
+      final snap = _makeSnapshotWithWageStamp(fohWage: 16.00, bohWage: 18.00);
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(fohWage: 18.00, bohWage: 20.00),
+        targetCycle: null,
+        snapshot: snap,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final foh = checks.firstWhere((c) =>
+          c.label == 'Locked FOH \$ = lock-time FOH wage x locked FOH hrs');
+      expect(foh.status, DriftCheckStatus.aligned,
+          reason: 'reconciled against lock-time stamp, not live profile');
+    });
+
+    test('tampered locked FOH dollars surface as drifted', () {
+      final snap = _makeSnapshotWithWageStamp(tamperFohDollars: true);
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: snap,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final foh = checks.firstWhere((c) =>
+          c.label == 'Locked FOH \$ = lock-time FOH wage x locked FOH hrs');
+      expect(foh.status, DriftCheckStatus.drifted);
+    });
+
+    test('legacy snapshot without stamp degrades to unavailable', () {
+      // _makeSnapshot() (the pre-existing helper) writes no
+      // wage_at_lock_time stamp — exactly a legacy pre-Slice-1 row.
+      final snap = _makeSnapshot();
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: snap,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final wage = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.wageAtLockTime)
+          .toList();
+      expect(wage.length, 4);
+      expect(
+        wage.every((c) => c.status == DriftCheckStatus.unavailable),
+        isTrue,
+        reason: 'missing stamp is honest absence, not drift',
+      );
+    });
+  });
+
+  // ── Per-Daypart V1 / Slice 6 — Gap 38 structural ordering fix ──────────
+  //
+  // computeAuditChecks is the pure seam; the structural-ordering bug
+  // itself lives in the I/O orchestration (loadSnapshot fetched the
+  // cycle only when a snapshot existed). The pure-seam consequence the
+  // fix unblocks: a cycle present WITHOUT a locked snapshot must still
+  // produce live (non-unavailable) benchmark-authority + pool-
+  // consistency checks. Before the fix the cycle was null in that
+  // window, so every such check degraded to unavailable.
+
+  group('computeAuditChecks — Gap 38 structural-ordering consequence', () {
+    test(
+        'cycle present + no snapshot still produces live authority + pool '
+        'checks (the state the ordering fix unblocks)', () {
+      final cycle = _cycleWithDayparts(consistent: true);
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: cycle,
+        snapshot: null, // no locked weekly plan yet
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final authority = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.benchmarkAuthority)
+          .toList();
+      final liveAuthority = authority.where(
+          (c) => c.status != DriftCheckStatus.unavailable);
+      expect(liveAuthority, isNotEmpty,
+          reason:
+              'cycle-without-snapshot must still drive TargetCycle -> '
+              'Profile authority checks (Gap 38 fix)');
+
+      final pool = checks
+          .where((c) =>
+              c.groupId == DataAlignmentAuditGroup.poolConsistency)
+          .where((c) => c.status != DriftCheckStatus.unavailable);
+      expect(pool, isNotEmpty,
+          reason:
+              'cycle-without-snapshot must still drive pool-consistency '
+              'invariant (Gap 38 fix)');
+    });
+  });
+}
+
+/// A cycle with three per-period child rows. When [consistent] is true
+/// the parent pool scalars equal the cover-weighted rollup of the child
+/// rows (the post-write invariant). When false the parent CPLH is
+/// shoved off the rollup to simulate a pool-only mutation (plan Gap 14
+/// risk) so the pool-consistency check fires.
+TargetCycle _cycleWithDayparts({required bool consistent}) {
+  const dayparts = <TargetCycleDaypart>[
+    TargetCycleDaypart(
+      servicePeriodId: 'lunch',
+      targetCPLH: 2.00,
+      targetSPLH: 90.00,
+      targetPPA: 35.00,
+      opzFloorCPLH: 1.80,
+      opzCeilingCPLH: 2.40,
+      coverCount: 100,
+    ),
+    TargetCycleDaypart(
+      servicePeriodId: 'dinner',
+      targetCPLH: 3.00,
+      targetSPLH: 120.00,
+      targetPPA: 50.00,
+      opzFloorCPLH: 2.60,
+      opzCeilingCPLH: 3.40,
+      coverCount: 300,
+    ),
+    TargetCycleDaypart(
+      servicePeriodId: 'late_night',
+      targetCPLH: 2.50,
+      targetSPLH: 100.00,
+      targetPPA: 40.00,
+      opzFloorCPLH: 2.20,
+      opzCeilingCPLH: 2.90,
+      coverCount: 100,
+    ),
+  ];
+  final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
+  return TargetCycle(
+    cycleId: 'cycle_pool',
+    restaurantId: 'r1',
+    source: TargetCycleSource.recommended,
+    effectiveStart: '2026-03-01',
+    effectiveEnd: '2026-04-29',
+    calibrationWindowStart: '2026-01-01',
+    calibrationWindowEnd: '2026-02-28',
+    // Parent scalars = the rollup when consistent; CPLH shoved off the
+    // rollup when not.
+    targetCPLH: consistent ? pool.targetCPLH : pool.targetCPLH + 0.50,
+    targetSPLH: pool.targetSPLH,
+    targetPPA: pool.targetPPA,
+    fohWage: 18.00,
+    bohWage: 20.00,
+    opzFloorCPLH: pool.opzFloorCPLH,
+    opzCeilingCPLH: pool.opzCeilingCPLH,
+    createdAt: '2026-03-01T00:00:00Z',
+    dayparts: dayparts,
+  );
+}
+
+/// Builds a snapshot that carries a wage-at-lock-time stamp whose
+/// wages reproduce the locked theoretical labor dollars. The locked
+/// FOH/BOH dollars are derived from the STAMP wages × locked hours so
+/// the reconciliation passes when honest. [fohWage]/[bohWage] are the
+/// LOCK-TIME wages (intentionally allowed to differ from the live
+/// profile to prove Design Rule 8). [tamperFohDollars] breaks the
+/// locked FOH dollars to drive the drifted assertion.
+WeeklyPlanSnapshot _makeSnapshotWithWageStamp({
+  double fohWage = 18.00,
+  double bohWage = 20.00,
+  bool tamperFohDollars = false,
+}) {
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const perDayCovers = 200;
+  const targetPPA = 40.00;
+  const targetCPLH = 2.50;
+  const targetSPLH = 100.00;
+  const perDaySales = perDayCovers * targetPPA;
+  final perDayFoh = (perDayCovers / targetCPLH).round();
+  final perDayBoh = (perDaySales / targetSPLH).round();
+
+  final dayRows = <WeeklyPlanSnapshotDay>[];
+  for (var i = 0; i < days.length; i++) {
+    dayRows.add(WeeklyPlanSnapshotDay(
+      day: days[i],
+      businessDate: '2026-03-${(23 + i).toString().padLeft(2, '0')}',
+      forecastCovers: perDayCovers,
+      forecastSales: perDaySales,
+      requiredFohHours: perDayFoh,
+      requiredBohHours: perDayBoh,
+    ));
+  }
+  final weeklyCovers =
+      dayRows.fold<int>(0, (s, d) => s + d.forecastCovers);
+  final weeklySales =
+      dayRows.fold<double>(0, (s, d) => s + d.forecastSales);
+  final weeklyFoh =
+      dayRows.fold<int>(0, (s, d) => s + d.requiredFohHours);
+  final weeklyBoh =
+      dayRows.fold<int>(0, (s, d) => s + d.requiredBohHours);
+
+  final fohDollars =
+      (weeklyFoh * fohWage) + (tamperFohDollars ? 5000.0 : 0.0);
+  final bohDollars = weeklyBoh * bohWage;
+  final totalHours = weeklyFoh + weeklyBoh;
+  final blended = totalHours > 0
+      ? (weeklyFoh * fohWage + weeklyBoh * bohWage) / totalHours
+      : 0.0;
+
+  return WeeklyPlanSnapshot(
+    snapshotId: 'snap_wage',
+    restaurantId: 'r1',
+    weekStartDate: '2026-03-23',
+    weekEndDate: '2026-03-29',
+    targetCycleId: 'cycle_1',
+    forecastCovers: weeklyCovers,
+    forecastSales: weeklySales,
+    requiredFohHours: weeklyFoh,
+    requiredBohHours: weeklyBoh,
+    theoreticalFohLaborDollars: fohDollars,
+    theoreticalBohLaborDollars: bohDollars,
+    coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+    salesSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+    generatedAt: '2026-03-23T00:00:00Z',
+    lockedAt: '2026-03-23T00:00:01Z',
+    dayRows: dayRows,
+    wageAtLockTime: WeeklyPlanSnapshotWagesAtLockTime(
+      fohWage: fohWage,
+      bohWage: bohWage,
+      blendedWage: blended,
+    ),
+  );
 }
 
 /// Builds a synthetic snapshot that satisfies the plan-formula

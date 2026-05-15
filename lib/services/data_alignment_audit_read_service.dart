@@ -102,12 +102,30 @@ class DataAlignmentAuditReadService {
         ? null
         : WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
 
-    // Load the linked target cycle so the provenance row can surface
-    // effective + calibration windows. Null when missing or deactivated.
+    // Load the target cycle so the provenance row can surface effective
+    // + calibration windows AND so the benchmark-authority + pool-
+    // consistency checks have a cycle to audit.
+    //
+    // Per-Daypart V1 / Slice 6 — Gap 38 (structural ordering bug) fix.
+    // Previously the cycle was only fetched when a locked snapshot
+    // existed (`if (snapshot != null)`). That made every TargetCycle ->
+    // Profile authority check and the new pool-consistency invariant
+    // degrade to "unavailable" for the entire window between cycle
+    // creation and the first weekly-plan lock — exactly when an
+    // operator most needs the audit to confirm the freshly-recommended
+    // cycle is internally consistent. The cycle's existence is
+    // independent of whether a weekly plan has been locked yet, so the
+    // fetch must be too. When a snapshot exists we still link by its
+    // locked `targetCycleId` (the cycle the plan was generated under,
+    // which may differ from the now-active cycle after a rollover);
+    // otherwise we fall back to the active cycle.
     TargetCycle? targetCycle;
     if (snapshot != null) {
       targetCycle = await _safeLoad(() => SqliteTargetCycleRepository.instance
           .getCycleById(snapshot.targetCycleId));
+    } else {
+      targetCycle = await _safeLoad(() => SqliteTargetCycleRepository.instance
+          .getActiveCycle(restaurantId));
     }
 
     final provenance = _buildProvenance(
@@ -469,6 +487,206 @@ class DataAlignmentAuditReadService {
       servicePeriodDefinitions: servicePeriodDefinitions,
       distributionWeights: distributionWeights,
     ));
+    out.addAll(_poolConsistencyChecks(targetCycle: targetCycle));
+    out.addAll(_wageAtLockTimeChecks(snapshot: snapshot));
+    return out;
+  }
+
+  // ── Group: pool consistency (Design Rule 4) ──────────────────────────────
+  //
+  // Per-Daypart V1 / Slice 6. The whole-day pool scalars on the active
+  // TargetCycle are a *derived cache* — recomputed inside the cycle
+  // write path (`_writeReplacementCycle`) as the cover-weighted rollup
+  // of the per-period `target_cycle_dayparts` rows:
+  //
+  //   pooled_cplh = Σ(cover × cplh) / Σ(cover)   (same shape for SPLH/PPA)
+  //   pooled_opz_floor   = min over all period floors  (union floor)
+  //   pooled_opz_ceiling = max over all period ceilings (union ceiling)
+  //
+  // No code path outside the write path may mutate the parent pool
+  // fields directly. A future override UI that edited only the pool
+  // (plan Gap 14) would silently break the per-period doctrine. This
+  // check recomputes the rollup from the persisted child rows and
+  // compares it against the persisted parent scalars; drift means the
+  // pool diverged from its periods.
+  //
+  // Gap 42 path: a cycle written under the insufficient-recommendation
+  // fallback persists *no* per-period child rows. The pool scalars are
+  // then MeridianConfig whole-day defaults, not a rollup. There is
+  // nothing to reconcile, so every check degrades to `unavailable`
+  // (honest "no per-period rows" — never false drift). Per Design
+  // Rule 2 the empty list is a legitimate state, not a sentinel.
+
+  static List<DataAlignmentAuditCheck> _poolConsistencyChecks({
+    required TargetCycle? targetCycle,
+  }) {
+    final out = <DataAlignmentAuditCheck>[];
+
+    const labels = <String>[
+      'Pool CPLH = cover-weighted Σ(period CPLH)',
+      'Pool SPLH = cover-weighted Σ(period SPLH)',
+      'Pool PPA = cover-weighted Σ(period PPA)',
+      'Pool OPZ floor = min(period OPZ floors)',
+      'Pool OPZ ceiling = max(period OPZ ceilings)',
+    ];
+
+    // Cycle missing entirely, or Gap 42 fallback (no child rows): the
+    // rollup is undefined. Emit one unavailable row per invariant so
+    // the group count is honest (it must NOT look "all aligned" by
+    // omitting the checks).
+    if (targetCycle == null || targetCycle.dayparts.isEmpty) {
+      for (final label in labels) {
+        out.add(DataAlignmentAuditCheck.numeric(
+          groupId: DataAlignmentAuditGroup.poolConsistency,
+          label: label,
+          expectedValue: null,
+          comparedValue: null,
+          tolerance: _rateTolerance,
+        ));
+      }
+      return out;
+    }
+
+    final pool = TargetCycleDaypartPool.fromDayparts(targetCycle.dayparts);
+
+    out.addAll([
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.poolConsistency,
+        label: labels[0],
+        expectedValue: pool.targetCPLH,
+        comparedValue: targetCycle.targetCPLH,
+        tolerance: _rateTolerance,
+      ),
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.poolConsistency,
+        label: labels[1],
+        expectedValue: pool.targetSPLH,
+        comparedValue: targetCycle.targetSPLH,
+        tolerance: _splhTolerance,
+      ),
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.poolConsistency,
+        label: labels[2],
+        expectedValue: pool.targetPPA,
+        comparedValue: targetCycle.targetPPA,
+        tolerance: _dollarTolerance,
+      ),
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.poolConsistency,
+        label: labels[3],
+        expectedValue: pool.opzFloorCPLH,
+        comparedValue: targetCycle.opzFloorCPLH,
+        tolerance: _rateTolerance,
+      ),
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.poolConsistency,
+        label: labels[4],
+        expectedValue: pool.opzCeilingCPLH,
+        comparedValue: targetCycle.opzCeilingCPLH,
+        tolerance: _rateTolerance,
+      ),
+    ]);
+
+    return out;
+  }
+
+  // ── Group: wage-at-lock-time provenance (Design Rule 8) ──────────────────
+  //
+  // Per-Daypart V1 / Slice 6. The locked weekly plan's theoretical
+  // labor dollars were computed from the wages *as they were at lock
+  // time*, stamped into `weekly_plan_snapshots.wage_at_lock_time_json`.
+  // After the week locks the operator may change the wage mix; the
+  // current `ActiveTargetProfile` wages then no longer reproduce the
+  // locked dollars. Any audit check that reconciles a locked dollar
+  // value MUST use the lock-time stamp, not the live profile wage
+  // (Design Rule 8) — otherwise a legitimate post-lock wage edit shows
+  // up as false plan drift.
+  //
+  // These checks recompute the snapshot's locked FOH/BOH labor dollars
+  // and blended wage from the lock-time stamp × the locked required
+  // hours and confirm they reproduce the persisted locked dollars.
+  // Missing snapshot, or a legacy snapshot with no stamp (written
+  // before Slice 1), degrades to `unavailable` (honest absence — never
+  // false drift, never a sentinel `0`).
+
+  static List<DataAlignmentAuditCheck> _wageAtLockTimeChecks({
+    required WeeklyPlanSnapshot? snapshot,
+  }) {
+    final out = <DataAlignmentAuditCheck>[];
+
+    const fohLabel = 'Locked FOH \$ = lock-time FOH wage x locked FOH hrs';
+    const bohLabel = 'Locked BOH \$ = lock-time BOH wage x locked BOH hrs';
+    const blendedLabel =
+        'Lock-time blended wage = locked \$ / locked hrs';
+    const stampLabel = 'Snapshot carries wage-at-lock-time stamp';
+
+    final wages = snapshot?.wageAtLockTime;
+    if (snapshot == null || wages == null) {
+      // Presence row: legacy snapshot (pre-Slice-1) or none at all.
+      // Unavailable, not drifted — the absence is honest, and a missing
+      // stamp on an older snapshot is not architectural drift.
+      out.add(DataAlignmentAuditCheck.presence(
+        groupId: DataAlignmentAuditGroup.wageAtLockTime,
+        label: stampLabel,
+        actualLabel: null,
+      ));
+      for (final label in [fohLabel, bohLabel, blendedLabel]) {
+        out.add(DataAlignmentAuditCheck.numeric(
+          groupId: DataAlignmentAuditGroup.wageAtLockTime,
+          label: label,
+          expectedValue: null,
+          comparedValue: null,
+          tolerance: _bigDollarTolerance,
+        ));
+      }
+      return out;
+    }
+
+    out.add(DataAlignmentAuditCheck.presence(
+      groupId: DataAlignmentAuditGroup.wageAtLockTime,
+      label: stampLabel,
+      actualLabel: 'weekly_plan_snapshots.wage_at_lock_time_json',
+    ));
+
+    // Locked dollars are reconciled against the LOCK-TIME stamp, never
+    // the live ActiveTargetProfile wages (Design Rule 8).
+    final expectedFohDollars = snapshot.requiredFohHours * wages.fohWage;
+    final expectedBohDollars = snapshot.requiredBohHours * wages.bohWage;
+
+    out.addAll([
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.wageAtLockTime,
+        label: fohLabel,
+        expectedValue: expectedFohDollars,
+        comparedValue: snapshot.theoreticalFohLaborDollars,
+        tolerance: _bigDollarTolerance,
+      ),
+      DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.wageAtLockTime,
+        label: bohLabel,
+        expectedValue: expectedBohDollars,
+        comparedValue: snapshot.theoreticalBohLaborDollars,
+        tolerance: _bigDollarTolerance,
+      ),
+    ]);
+
+    // Blended wage cross-check: the stamped blended wage should equal
+    // the locked total labor dollars divided by the locked total
+    // required hours. Degenerate zero-hours plans degrade to
+    // unavailable rather than dividing by zero (Design Rule 2 — zero
+    // hours is "no plan", not a sentinel-driven false drift).
+    final totalHours = snapshot.totalRequiredHours;
+    final double? observedBlended = totalHours > 0
+        ? snapshot.theoreticalTotalLaborDollars / totalHours
+        : null;
+    out.add(DataAlignmentAuditCheck.numeric(
+      groupId: DataAlignmentAuditGroup.wageAtLockTime,
+      label: blendedLabel,
+      expectedValue: totalHours > 0 ? wages.blendedWage : null,
+      comparedValue: observedBlended,
+      tolerance: _dollarTolerance,
+    ));
+
     return out;
   }
 
