@@ -61,11 +61,14 @@ void main() {
     });
 
     test('service and service_principal collapse to the same '
-        '"Automated service" label', () {
-      expect(ActorKindLabelCatalog.labelFor('service'), 'Automated service');
+        '"Service account" label', () {
+      // Operator decision 2026-05-14: canonical actor_kind labels are
+      // "Team member" + "Service account" (resolves
+      // `AC-1-FU-admin-actor-kind-catalog-drift`).
+      expect(ActorKindLabelCatalog.labelFor('service'), 'Service account');
       expect(
         ActorKindLabelCatalog.labelFor('service_principal'),
-        'Automated service',
+        'Service account',
       );
     });
 
@@ -85,7 +88,7 @@ void main() {
         'wire value does not bypass the catalog', () {
       expect(ActorKindLabelCatalog.labelFor('FORGE_ADMIN'), 'F&F admin');
       expect(ActorKindLabelCatalog.labelFor(' user '), 'Team member');
-      expect(ActorKindLabelCatalog.labelFor('Service'), 'Automated service');
+      expect(ActorKindLabelCatalog.labelFor('Service'), 'Service account');
     });
 
     test('null returns the friendly Unknown actor sentinel', () {
