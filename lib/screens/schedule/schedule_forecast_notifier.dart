@@ -16,7 +16,9 @@ import '../../domain/models/schedule_distribution_weights.dart';
 import '../../domain/models/schedule_forecast_demand.dart';
 import '../../domain/models/schedule_plan.dart';
 import '../../domain/models/service_period_definition.dart';
+import '../../domain/models/weekly_plan_snapshot.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
+import '../../domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
 import '../../services/daypart_plan_allocator.dart';
 import '../../services/labor_model.dart';
 import 'schedule_view_models.dart';
@@ -92,6 +94,28 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// - live mode: demand is unavailable.
   /// - locked mode: snapshot is unavailable, OR not yet loaded.
   SchedulePlan? _plan;
+
+  /// Per-Daypart V1 (Slice 3): the locked [WeeklyPlanSnapshot] backing
+  /// [_plan] in locked mode.
+  ///
+  /// The Plan tab's expandable daypart sub-rows read the locked
+  /// per-(day, service_period) values stamped at lock time
+  /// (`weekly_plan_snapshot_day_dayparts`) from this snapshot rather
+  /// than regenerating them at render time via [DaypartPlanAllocator]
+  /// (plan Gap 6 / Gap 12, Design Rule 4 — read through the persisted
+  /// canonical write path; do not bypass it).
+  ///
+  /// Null when:
+  /// - live / preview mode: there is no persisted snapshot (the live
+  ///   path resolves the plan from inputs, so the allocator remains the
+  ///   honest fallback there).
+  /// - locked mode: snapshot is unavailable, OR not yet loaded.
+  ///
+  /// When the snapshot has an empty `dayDayparts` list (legacy snapshots
+  /// written before Slice 1, or the Gap 42 insufficient-recommendation
+  /// fallback) [adjustedDayViews] degrades to the allocator so the Plan
+  /// tab still renders honest sub-rows.
+  WeeklyPlanSnapshot? _lockedSnapshot;
 
   /// 7.55q.2: authority mode is fixed at construction time.
   final _ScheduleAuthorityMode _mode;
@@ -206,14 +230,26 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     await _loadServicePeriodDefinitions();
     await _loadDistributionWeightsIfUnavailable();
     try {
-      final plan = await SchedulePlanReadService.instance
-          .getExistingCurrentLockedWeeklyPlan();
+      // Per-Daypart V1 (Slice 3): load the raw locked snapshot so the
+      // Plan tab's daypart sub-rows can read the persisted
+      // per-(day, period) rows stamped at lock time instead of
+      // regenerating them via the allocator at render time (Design
+      // Rule 4). The projected [SchedulePlan] drops `dayDayparts`, so
+      // the snapshot itself is retained alongside it. Both reads route
+      // through the read-only, side-effect-free snapshot path.
+      final snapshot = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedSnapshot();
+      _lockedSnapshot = snapshot;
+      final plan = snapshot == null
+          ? null
+          : WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
       _plan = plan;
       _lockedPlanLoadState = plan != null
           ? ScheduleLockedPlanLoadState.available
           : ScheduleLockedPlanLoadState.unavailable;
     } catch (_) {
       _plan = null;
+      _lockedSnapshot = null;
       _lockedPlanLoadState = ScheduleLockedPlanLoadState.unavailable;
     }
     notifyListeners();
@@ -287,6 +323,35 @@ class ScheduleForecastNotifier extends ChangeNotifier {
       );
     }
     _plan = plan;
+    _lockedSnapshot = null;
+    _lockedPlanLoadState = state;
+    notifyListeners();
+  }
+
+  /// Per-Daypart V1 (Slice 3): test-only seam — inject a locked
+  /// [WeeklyPlanSnapshot] so unit tests can prove [adjustedDayViews]
+  /// reads the persisted `dayDayparts` sub-rows (instead of the
+  /// allocator), and that an empty `dayDayparts` list degrades back to
+  /// the allocator.
+  ///
+  /// Projects the snapshot to [_plan] the same way [loadLockedPlan]
+  /// does so the day-level rows and the sub-rows come from one source.
+  /// Throws when called on a live-mode notifier — locked sub-row
+  /// persistence only applies to the locked production authority path.
+  @visibleForTesting
+  void setLockedSnapshotForTest(
+    WeeklyPlanSnapshot? snapshot, {
+    ScheduleLockedPlanLoadState state = ScheduleLockedPlanLoadState.available,
+  }) {
+    if (_mode != _ScheduleAuthorityMode.locked) {
+      throw StateError(
+        'setLockedSnapshotForTest is only valid in locked-authority mode',
+      );
+    }
+    _lockedSnapshot = snapshot;
+    _plan = snapshot == null
+        ? null
+        : WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
     _lockedPlanLoadState = state;
     notifyListeners();
   }
@@ -423,14 +488,20 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   double get theoreticalLaborPct => _theoreticalLaborPct;
 
   /// Day views from the shared [SchedulePlan] day rows.
-  /// Daypart sub-rows are a presentation concern — built from plan day covers.
   ///
-  /// 7.56c.0: routes through the shared [DaypartPlanAllocator] so
-  /// Schedule's subrow split is the same allocation Variance Full Week
-  /// non-closed rows now consume. When [_distributionWeights] has
-  /// day-specific daypart weights with at least one positive value for
-  /// the day, those weights drive the subrow split. Otherwise the
-  /// allocator falls back to its built-in daypart cover proportions.
+  /// Per-Daypart V1 (Slice 3): the daypart sub-rows are READ from the
+  /// locked snapshot's persisted `weekly_plan_snapshot_day_dayparts`
+  /// rows when a locked snapshot with per-period rows is loaded — the
+  /// canonical, lock-time-stamped values (plan Gap 6 / Gap 12, Design
+  /// Rule 4). The read-time [DaypartPlanAllocator] regeneration is
+  /// retired from the production locked path; it survives only as the
+  /// honest fallback for:
+  ///   - live / preview mode (no persisted snapshot exists — the plan
+  ///     is resolved from inputs, so there is nothing persisted to
+  ///     read), and
+  ///   - locked snapshots with an empty `dayDayparts` list (legacy
+  ///     snapshots written before Slice 1, or the Gap 42
+  ///     insufficient-recommendation fallback).
   ///
   /// 7.55q.6: per-day and per-daypart planned labor packages are gone
   /// (planned labor package killed). Day rows and daypart subrows
@@ -439,28 +510,24 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// daypart granularity in the repo today.
   List<ScheduleDayView> get adjustedDayViews {
     if (_plan == null) return [];
-    return _plan!.dayPlans.map((dp) {
-      final allocations = DaypartPlanAllocator.allocate(
-        day: dp.day,
-        dayCovers: dp.forecastCovers,
-        daySales: dp.forecastSales,
-        dayFohHours: dp.requiredFohHours,
-        dayBohHours: dp.requiredBohHours,
-        definitions: _servicePeriodDefinitions,
-        distributionWeights: _distributionWeights,
-      );
 
-      final subrows = allocations
-          .map(
-            (a) => ScheduleDaySubrow(
-              label: a.label,
-              forecastCovers: a.forecastCovers,
-              forecastSales: a.forecastSales,
-              requiredFohHours: a.requiredFohHours,
-              requiredBohHours: a.requiredBohHours,
-            ),
-          )
-          .toList();
+    // Per-Daypart V1 (Slice 3): map each day label to its locked
+    // business date so the persisted per-(business_date, period)
+    // sub-rows can be looked up. The snapshot's whole-day `dayRows`
+    // carry both the canonical label and the business date.
+    final snapshot = _lockedSnapshot;
+    final hasPersistedDayparts =
+        snapshot != null && snapshot.dayDayparts.isNotEmpty;
+    final businessDateByDay = <String, String>{
+      if (snapshot != null)
+        for (final dr in snapshot.dayRows) dr.day: dr.businessDate,
+    };
+
+    return _plan!.dayPlans.map((dp) {
+      final subrows = hasPersistedDayparts
+          ? _persistedSubrowsForDay(
+              snapshot, businessDateByDay[dp.day])
+          : _allocatorSubrowsForDay(dp);
 
       return ScheduleDayView(
         day: dp.day,
@@ -471,5 +538,79 @@ class ScheduleForecastNotifier extends ChangeNotifier {
         subrows: subrows,
       );
     }).toList();
+  }
+
+  /// Per-Daypart V1 (Slice 3): builds the daypart sub-rows for [day]
+  /// from the locked snapshot's persisted
+  /// `weekly_plan_snapshot_day_dayparts` rows.
+  ///
+  /// Returns an empty list when the day has no business date mapped or
+  /// no persisted per-period rows — the caller still renders the
+  /// whole-day row honestly with no sub-rows rather than fabricating
+  /// values. Sub-rows are returned in canonical service-period order
+  /// (sortOrder, then id) and labelled via the active
+  /// service-period definitions, matching the prior allocator
+  /// presentation contract exactly.
+  List<ScheduleDaySubrow> _persistedSubrowsForDay(
+    WeeklyPlanSnapshot snapshot,
+    String? businessDate,
+  ) {
+    if (businessDate == null) return const [];
+    final rows = snapshot.dayDayparts
+        .where((d) => d.businessDate == businessDate)
+        .toList()
+      ..sort((a, b) => ServicePeriodDefinitionResolver.sortKey(
+              _servicePeriodDefinitions, a.servicePeriodId)
+          .compareTo(ServicePeriodDefinitionResolver.sortKey(
+              _servicePeriodDefinitions, b.servicePeriodId)));
+    return rows
+        .map(
+          (r) => ScheduleDaySubrow(
+            label: ServicePeriodDefinitionResolver.labelForId(
+                _servicePeriodDefinitions, r.servicePeriodId),
+            forecastCovers: r.forecastCovers,
+            forecastSales: r.forecastSales,
+            // Persisted per-period hours are doubles (Design Rule 5 —
+            // period hours × whole-day wage). The Plan sub-row view
+            // model contract is integer hours; round at the read seam
+            // so the rendered table is unchanged. No `0`-as-null
+            // substitution (Design Rule 2) — a genuine zero-hour
+            // period stays an honest 0.
+            requiredFohHours: r.requiredFohHours.round(),
+            requiredBohHours: r.requiredBohHours.round(),
+          ),
+        )
+        .toList();
+  }
+
+  /// Fallback daypart sub-rows for [dp] via the read-time
+  /// [DaypartPlanAllocator].
+  ///
+  /// Per-Daypart V1 (Slice 3): retired from the production locked path
+  /// (replaced by [_persistedSubrowsForDay]). Retained for live /
+  /// preview mode and for locked snapshots with no persisted
+  /// `dayDayparts` (legacy / Gap 42 fallback) so the Plan tab still
+  /// renders honest sub-rows.
+  List<ScheduleDaySubrow> _allocatorSubrowsForDay(ScheduleDayPlan dp) {
+    final allocations = DaypartPlanAllocator.allocate(
+      day: dp.day,
+      dayCovers: dp.forecastCovers,
+      daySales: dp.forecastSales,
+      dayFohHours: dp.requiredFohHours,
+      dayBohHours: dp.requiredBohHours,
+      definitions: _servicePeriodDefinitions,
+      distributionWeights: _distributionWeights,
+    );
+    return allocations
+        .map(
+          (a) => ScheduleDaySubrow(
+            label: a.label,
+            forecastCovers: a.forecastCovers,
+            forecastSales: a.forecastSales,
+            requiredFohHours: a.requiredFohHours,
+            requiredBohHours: a.requiredBohHours,
+          ),
+        )
+        .toList();
   }
 }

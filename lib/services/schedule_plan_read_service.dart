@@ -33,6 +33,7 @@
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_distribution_weights.dart';
 import '../domain/models/schedule_plan.dart';
+import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/services/distribution_weight_builder.dart';
 import '../domain/services/schedule_forecast_demand_resolver.dart';
 import '../domain/services/schedule_plan_resolver.dart';
@@ -122,6 +123,28 @@ class SchedulePlanReadService {
         .getExistingCurrentWeekSnapshot();
     if (snapshot == null) return null;
     return WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
+  }
+
+  /// Per-Daypart V1 (Slice 3): read-only access to the persisted current
+  /// locked [WeeklyPlanSnapshot] itself (not the projected
+  /// [SchedulePlan]).
+  ///
+  /// The Plan tab's expandable daypart sub-rows must read the locked
+  /// per-(day, service_period) values stamped at lock time
+  /// (`weekly_plan_snapshot_day_dayparts`) rather than regenerating them
+  /// at render time via [DaypartPlanAllocator] (plan Gap 6 / Gap 12,
+  /// Design Rule 4). The projector intentionally drops `dayDayparts`
+  /// when it flattens to [SchedulePlan]; locked-mode callers that need
+  /// the persisted sub-rows take this path and keep the raw snapshot.
+  ///
+  /// Side-effect-free: routes through
+  /// [WeeklyPlanSnapshotService.getExistingCurrentWeekSnapshot], the
+  /// read-only sibling that never auto-generates. Returns null when no
+  /// snapshot is persisted for the current business week (honest
+  /// degradation — same boundary as
+  /// [getExistingCurrentLockedWeeklyPlan]).
+  Future<WeeklyPlanSnapshot?> getExistingCurrentLockedSnapshot() async {
+    return WeeklyPlanSnapshotService.instance.getExistingCurrentWeekSnapshot();
   }
 
   /// Resolves a preview [SchedulePlan] from explicit target values and the
