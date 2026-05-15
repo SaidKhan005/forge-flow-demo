@@ -50,7 +50,10 @@ import '../services/web_team_sessions_gateway.dart';
 import '../services/web_team_users_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/audit_log_screen.dart';
-import '../screens/benchmarks_screen.dart';
+// Per-Daypart Targets V1 / Slice 2 (Gap 35): the operator-web
+// Benchmarks override surface was cut entirely. Mobile Baseline
+// Manager star-shift selection is the only override path. No
+// `benchmarks_screen.dart` import remains.
 import '../screens/business_setup_screen.dart';
 import '../screens/business_timing_editor_screen.dart';
 import '../screens/my_account_screen.dart';
@@ -83,7 +86,8 @@ const String kOperatorWebNavAccount = 'account';
 const String kOperatorWebNavMyAccount = 'my_account';
 const String kOperatorWebNavBusinessSetup = 'business_setup';
 const String kOperatorWebNavBusinessTimingEditor = 'business_timing_editor';
-const String kOperatorWebNavBenchmarks = 'benchmarks';
+// Per-Daypart Targets V1 / Slice 2 (Gap 35): operator-web Benchmarks
+// override nav removed; no `kOperatorWebNavBenchmarks` constant.
 const String kOperatorWebNavMembers = 'members';
 const String kOperatorWebNavRoles = 'roles';
 const String kOperatorWebNavLocations = 'locations';
@@ -237,7 +241,8 @@ String? _navIdFromRaw(String? raw) {
     'my_account' => kOperatorWebNavMyAccount,
     'business_setup' => kOperatorWebNavBusinessSetup,
     'business_timing_editor' => kOperatorWebNavBusinessSetup,
-    'benchmarks' => kOperatorWebNavBenchmarks,
+    // 'benchmarks' route dropped — operator-web override surface cut
+    // (Per-Daypart Targets V1 / Slice 2, Gap 35).
     'members' => kOperatorWebNavMembers,
     'roles' => kOperatorWebNavRoles,
     'locations' => kOperatorWebNavLocations,
@@ -986,12 +991,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.storefront_outlined,
         group: 'Business',
       ),
-      const OperatorWebNavItem(
-        id: kOperatorWebNavBenchmarks,
-        title: 'Benchmarks',
-        icon: Icons.speed_outlined,
-        group: 'Business',
-      ),
+      // Per-Daypart Targets V1 / Slice 2 (Gap 35): the Benchmarks
+      // override nav item was removed. Mobile Baseline Manager
+      // star-shift selection is the only override path.
       if (!isLocationScope)
         const OperatorWebNavItem(
           id: kOperatorWebNavLocations,
@@ -1095,14 +1097,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           );
         }
         break;
-      case kOperatorWebNavBenchmarks:
-        body = BenchmarksScreen(
-          session: session,
-          selectedScope: managementScope,
-          benchmarksGateway: _benchmarksGateway,
-          hierarchyGateway: _teamHierarchyGateway,
-        );
-        break;
+      // Per-Daypart Targets V1 / Slice 2 (Gap 35): no Benchmarks
+      // override route — surface cut entirely.
       case kOperatorWebNavMembers:
         body = MembersScreen(
           session: session,
@@ -1352,14 +1348,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             .vendorApplicabilityGateway
       : null;
 
-  OperatorWebBenchmarksGateway get _benchmarksGateway {
-    final source = widget.source;
-    if (source is OperatorWebBenchmarksGatewayProvider) {
-      return (source as OperatorWebBenchmarksGatewayProvider).benchmarksGateway;
-    }
-    return _routerOwnedDemoBenchmarksGateway ??=
-        DemoOperatorWebBenchmarksGateway();
-  }
+  // Per-Daypart Targets V1 / Slice 2 (Gap 35): the `_benchmarksGateway`
+  // getter was removed along with the operator-web Benchmarks override
+  // surface. Mobile Baseline Manager star-shift selection is the only
+  // override path.
 
   /// Lane B B8.b — operator-web hierarchy-filtered audit-log gateway.
   /// Live wiring mixes [OperatorWebAuditLogHierarchyGatewayProvider]
@@ -1440,7 +1432,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   DemoWebTeamUsersGateway? _routerOwnedDemoGateway;
   BusinessTimingGateway? _routerOwnedTimingGateway;
   DemoWebTeamRolesGateway? _routerOwnedDemoRolesGateway;
-  DemoOperatorWebBenchmarksGateway? _routerOwnedDemoBenchmarksGateway;
+  // _routerOwnedDemoBenchmarksGateway removed — operator-web Benchmarks
+  // override surface cut (Per-Daypart Targets V1 / Slice 2, Gap 35).
   InMemoryWebAuditLogHierarchyGateway?
       _routerOwnedDemoAuditLogHierarchyGateway;
 

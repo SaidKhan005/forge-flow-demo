@@ -115,7 +115,12 @@ class _BaselineTrackerState extends State<BaselineTracker> {
               ],
             ),
 
-          // Daypart breakdown
+          // Daypart breakdown — per-period Target columns + OPZ Range,
+          // plus a Whole Day rollup row. Per-period values read through
+          // the active profile's `daypartFor` accessor; the slim strip
+          // below carries the whole-day-only wage + theoretical % the
+          // old "Targets Derived from Benchmark" card used to hold
+          // (Decision 9 / Decision 10).
           if (view != null)
             SliverMainAxisGroup(
               slivers: [
@@ -124,22 +129,18 @@ class _BaselineTrackerState extends State<BaselineTracker> {
                   delegate: StickySectionDelegate('DAYPART BREAKDOWN'),
                 ),
                 SliverToBoxAdapter(
-                  child: DaypartTable(dayparts: view.daypartRanges),
+                  child: DaypartTable(
+                    dayparts: view.daypartRanges,
+                    profile:
+                        context.watch<ActiveTargetProfileNotifier?>()?.profile,
+                    servicePeriodDefinitions: view.servicePeriodDefinitions,
+                  ),
                 ),
+                const SliverToBoxAdapter(
+                    child: _OperatingStrip()),
+                const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
-
-          // Baseline targets
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('TARGETS DERIVED FROM BENCHMARK'),
-              ),
-              SliverToBoxAdapter(child: _BaselineTargetsCard()),
-              const SliverToBoxAdapter(child: SizedBox(height: 24)),
-            ],
-          ),
         ],
       ),
     );
@@ -494,17 +495,29 @@ class _CplhRangeBar extends StatelessWidget {
   }
 }
 
-class _BaselineTargetsCard extends StatelessWidget {
+/// Per-Daypart Targets V1 / Slice 2 — slim strip below the Daypart
+/// Breakdown table (Decision 9 + Decision 10).
+///
+/// The old "Targets Derived from Benchmark" card is cut: its Target
+/// Inputs + OPZ Range groups moved into the daypart table's per-period
+/// columns. Its Wage + Theoretical Output groups can't fold into the
+/// table because wages are restaurant-wide and theoretical % is
+/// whole-day-only math (Decision 11), so they rehome here as a slim
+/// two-half strip.
+///
+/// Labels are Option B (Jim Taylor vocabulary). No em dash anywhere
+/// in the copy — "Theoretical Labor %: The Floor" uses a colon.
+class _OperatingStrip extends StatelessWidget {
+  const _OperatingStrip();
+
   @override
   Widget build(BuildContext context) {
-    // Phase 7.55p.5: Resolve all target-authority fields from the persisted
-    // ActiveTargetProfile wherever available. This is the same runtime target
-    // authority used by Shift, Variance, and downstream surfaces.
-    //
-    // Bridge fallbacks are test-only. In production, missing profile state
-    // degrades honestly above instead of silently reusing BaselineData.
-    // The graph/range-quality source stays separate because it represents
-    // selection-context truth, not runtime target authority.
+    // Resolve all whole-day fields from the persisted
+    // ActiveTargetProfile wherever available — the same runtime target
+    // authority Shift / Variance / downstream surfaces read. Bridge
+    // fallbacks are test-only; in production missing profile state
+    // degrades honestly (the screen shows the unavailable message
+    // above this strip via the CPLH range bar's honest badges).
     final profile = context.watch<ActiveTargetProfileNotifier?>()?.profile;
     final useBridgeFallbacks = BenchmarkTrackerReadService.instance.isBridgeOnly;
 
@@ -523,15 +536,14 @@ class _BaselineTargetsCard extends StatelessWidget {
       );
     }
 
-    // Wages
+    // Wages — whole-day; Jim treats these as operational inputs, not
+    // targets, and they have no per-period variant (Decision 11).
     final fohWage = profile?.fohWage ?? MeridianConfig.fohWage;
     final bohWage = profile?.bohWage ?? MeridianConfig.bohWage;
 
-    // 7.55q.3: blended wage is a Benchmark-owned target metric. Read it
-    // from the shared `ActiveTargetProfile.targetBlendedWage` seam (the
-    // same seam Variance WTD now consumes via
-    // `WeekData.theoreticalBlendedWage`) so Benchmark and WTD cannot
-    // drift on the same active target state. The fallback path is only
+    // 7.55q.3: blended wage is a Benchmark-owned target metric read
+    // from the shared `ActiveTargetProfile.targetBlendedWage` seam so
+    // Benchmark and Variance WTD cannot drift. Fallback path is only
     // exercised in bridge-only tests.
     final blendedWage = profile?.targetBlendedWage ??
         ActiveTargetProfile.computeTargetBlendedWage(
@@ -542,86 +554,97 @@ class _BaselineTargetsCard extends StatelessWidget {
           bohWage: bohWage,
         );
 
-    // OPZ bounds — from persisted profile (locked on TargetCycle)
-    final opzFloor = profile?.opzFloorCPLH ?? BaselineData.opzFloorCPLH;
-    final opzCeiling = profile?.opzCeilingCPLH ?? BaselineData.opzCeilingCPLH;
-    final targetCPLH = profile?.targetCPLH ?? BaselineData.derivedTargetCPLH;
-    final headroom = opzCeiling - targetCPLH;
+    // Theoretical labor % — whole-day-only math (whole-day wages ×
+    // whole-day forecast). Per-period theoretical % shows up only where
+    // it has period-specific inputs (Variance non-closed rows).
+    final fohTheoreticalPct = profile?.theoreticalFohLaborPct ??
+        BaselineData.derivedFohTheoreticalLaborPct;
+    final bohTheoreticalPct = profile?.theoreticalBohLaborPct ??
+        BaselineData.derivedBohTheoreticalLaborPct;
+    final totalTheoreticalPct = profile?.theoreticalLaborPct ??
+        BaselineData.derivedTheoreticalLaborPct;
 
-    // Target inputs — from persisted profile
-    final targetSPLH = profile?.targetSPLH ?? BaselineData.derivedTargetSPLH;
-    final targetPPA = profile?.targetPPA ?? BaselineData.derivedTargetPPA;
-
-    // Theoretical output — FOH, BOH, and total from persisted profile
-    final fohTheoreticalPct = profile?.theoreticalFohLaborPct
-        ?? BaselineData.derivedFohTheoreticalLaborPct;
-    final bohTheoreticalPct = profile?.theoreticalBohLaborPct
-        ?? BaselineData.derivedBohTheoreticalLaborPct;
-    final totalTheoreticalPct = profile?.theoreticalLaborPct
-        ?? BaselineData.derivedTheoreticalLaborPct;
-
-    // Grouped in preferred product order: wage → OPZ → inputs → output
-    final groups = <(String, List<(String, String)>)>[
-      ('WAGE', [
-        ('FOH WAGE', '\$${fohWage.toStringAsFixed(2)}'),
-        ('BOH WAGE', '\$${bohWage.toStringAsFixed(2)}'),
-        ('BLENDED WAGE', '\$${blendedWage.toStringAsFixed(2)}'),
-      ]),
-      ('OPZ RANGE', [
-        ('OPZ FLOOR', opzFloor.toStringAsFixed(2)),
-        ('OPZ CEILING', opzCeiling.toStringAsFixed(2)),
-        ('HEADROOM', headroom.toStringAsFixed(2)),
-      ]),
-      ('TARGET INPUTS', [
-        ('CPLH', targetCPLH.toStringAsFixed(2)),
-        ('SPLH', '\$${targetSPLH.toStringAsFixed(0)}'),
-        ('PPA', '\$${targetPPA.toStringAsFixed(2)}'),
-      ]),
-      ('THEORETICAL OUTPUT', [
-        ('FOH THEORETICAL %', '${fohTheoreticalPct.toStringAsFixed(1)}%'),
-        ('BOH THEORETICAL %', '${bohTheoreticalPct.toStringAsFixed(1)}%'),
-        ('TOTAL THEORETICAL %', '${totalTheoreticalPct.toStringAsFixed(1)}%'),
-      ]),
+    final wageRows = <(String, String)>[
+      ('FOH Wage', '\$${fohWage.toStringAsFixed(2)}'),
+      ('BOH Wage', '\$${bohWage.toStringAsFixed(2)}'),
+      ('Blended Wage', '\$${blendedWage.toStringAsFixed(2)}'),
+    ];
+    final pctRows = <(String, String)>[
+      ('FOH %', '${fohTheoreticalPct.toStringAsFixed(1)}%'),
+      ('BOH %', '${bohTheoreticalPct.toStringAsFixed(1)}%'),
+      ('Total %', '${totalTheoreticalPct.toStringAsFixed(1)}%'),
     ];
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppColors.backgroundMid,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var gi = 0; gi < groups.length; gi++) ...[
-            if (gi > 0) const SizedBox(height: 12),
-            // Group header
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Text(groups[gi].$1,
-                  style: AppTextStyles.mono8(color: AppColors.textSecondary)),
+          Expanded(
+            child: _StripHalf(
+              title: 'Operating Wage Mix',
+              rows: wageRows,
             ),
-            // Group rows
-            ...groups[gi].$2.map((t) => Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(t.$1,
-                          style: AppTextStyles.mono10(
-                              color: AppColors.textMuted)),
-                      Text(
-                        t.$2,
-                        style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary),
-                      ),
-                    ],
-                  ),
-                )),
-          ],
+          ),
+          const SizedBox(width: 16),
+          Container(width: 1, height: 96, color: AppColors.borderSubtle),
+          const SizedBox(width: 16),
+          Expanded(
+            child: _StripHalf(
+              // No em dash — Option B uses a colon (Decision 10).
+              title: 'Theoretical Labor %: The Floor',
+              rows: pctRows,
+            ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _StripHalf extends StatelessWidget {
+  final String title;
+  final List<(String, String)> rows;
+
+  const _StripHalf({required this.title, required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            title,
+            style: AppTextStyles.mono8(color: AppColors.textSecondary),
+          ),
+        ),
+        ...rows.map((t) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Flexible(
+                    child: Text(
+                      t.$1,
+                      style: AppTextStyles.mono10(color: AppColors.textMuted),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    t.$2,
+                    style: AppTextStyles.mono14(color: AppColors.textPrimary),
+                  ),
+                ],
+              ),
+            )),
+      ],
     );
   }
 }

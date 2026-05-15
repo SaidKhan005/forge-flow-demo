@@ -1,10 +1,13 @@
 import '../domain/models/benchmark_selection_summary.dart';
+import '../domain/models/service_period_definition.dart';
 import '../domain/models/target_cycle.dart';
 import '../domain/repositories/benchmark_selection_summary_repository.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'business_date_authority_service.dart';
 import 'baseline_authority_service.dart';
+import 'restaurant_timing_config_read_service.dart';
 import 'target_cycle_service.dart';
 import '../models/baseline_candidate_shift.dart';
 import 'baseline_manager_service.dart';
@@ -34,12 +37,18 @@ class BenchmarkTrackerReadService {
   bool get isBridgeOnly => _useBridgeOnly;
 
   BenchmarkTrackerView bridgeView() {
+    // Bridge-only widget tests have no persisted timing config; use the
+    // canonical fixture-era definitions so labels/order match the
+    // legacy bridge ranges. Period set still comes from the resolver,
+    // never a hardcoded list inside this service (Design Rule:
+    // period set + boundaries come from operator timing config).
     return BenchmarkTrackerView(
       hasManagerOverride: BaselineData.hasManagerOverride,
       selectedShiftCount: BaselineData.selectedRecordCount,
       historicalTotalCoversTracked: BaselineData.historicalTotalCoversTracked,
       daypartRanges: BaselineData.daypartRanges,
       rangeGraphModel: BaselineData.rangeGraphModel,
+      servicePeriodDefinitions: ServicePeriodDefinitionResolver.demoDefinitions,
     );
   }
 
@@ -69,18 +78,30 @@ class BenchmarkTrackerReadService {
       );
     }
 
-    return _buildCanonical(candidates, cycle, summary);
+    // Period set + labels + ordering come from the operator's persisted
+    // timing config, never a hardcoded `['lunch','dinner','late_night']`
+    // list (Gap 15 / Design Rule: period set comes from operator timing
+    // config). Falls back to the canonical fixture-era definitions when
+    // no timing config is persisted yet.
+    final timingConfig = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
+    final defs = (timingConfig?.servicePeriodDefinitions.isNotEmpty ?? false)
+        ? timingConfig!.servicePeriodDefinitions
+        : ServicePeriodDefinitionResolver.demoDefinitions;
+
+    return _buildCanonical(candidates, cycle, summary, defs);
   }
 
   BenchmarkTrackerView _buildCanonical(
     List<BaselineCandidateShift> candidates,
     TargetCycle cycle,
     BenchmarkSelectionSummary? summary,
+    List<ServicePeriodDefinition> defs,
   ) {
     final selected = candidates.where((c) => c.isSelected).toList();
     final historicalTotalCovers =
         candidates.fold<int>(0, (sum, c) => sum + c.covers);
-    final daypartRanges = _buildDaypartRanges(candidates);
+    final daypartRanges = _buildDaypartRanges(candidates, defs);
     final graph = _buildGraph(
       candidates: candidates,
       selected: selected,
@@ -94,22 +115,30 @@ class BenchmarkTrackerReadService {
       historicalTotalCoversTracked: historicalTotalCovers,
       daypartRanges: daypartRanges,
       rangeGraphModel: graph,
+      servicePeriodDefinitions: defs,
     );
   }
 
-  List<DaypartRange> _buildDaypartRanges(List<BaselineCandidateShift> all) {
-    return ['lunch', 'dinner', 'late_night']
-        .map((id) => _rangeFor(id, all))
+  List<DaypartRange> _buildDaypartRanges(
+    List<BaselineCandidateShift> all,
+    List<ServicePeriodDefinition> defs,
+  ) {
+    return ServicePeriodDefinitionResolver.ordered(defs)
+        .map((d) => _rangeFor(d.id, all, defs))
         .toList();
   }
 
-  DaypartRange _rangeFor(String id, List<BaselineCandidateShift> records) {
+  DaypartRange _rangeFor(
+    String id,
+    List<BaselineCandidateShift> records,
+    List<ServicePeriodDefinition> defs,
+  ) {
     final all = records.where((r) => r.daypart == id).toList();
     final selected = all.where((r) => r.isSelected).toList();
     if (all.isEmpty) {
       return DaypartRange(
         id: id,
-        label: _labelFor(id),
+        label: ServicePeriodDefinitionResolver.labelForId(defs, id),
         sampleSize: 0,
         selectedCount: 0,
         avgCovers: 0,
@@ -131,7 +160,7 @@ class BenchmarkTrackerReadService {
 
     return DaypartRange(
       id: id,
-      label: _labelFor(id),
+      label: ServicePeriodDefinitionResolver.labelForId(defs, id),
       sampleSize: all.length,
       selectedCount: selected.length,
       avgCovers: all.fold<int>(0, (s, r) => s + r.covers) ~/ all.length,
@@ -148,19 +177,6 @@ class BenchmarkTrackerReadService {
           source.fold<double>(0, (s, r) => s + r.ppa) / source.length,
       targetCovers: source.fold<int>(0, (s, r) => s + r.covers) ~/ source.length,
     );
-  }
-
-  String _labelFor(String id) {
-    switch (id) {
-      case 'lunch':
-        return 'Lunch';
-      case 'dinner':
-        return 'Dinner';
-      case 'late_night':
-        return 'Late Night';
-      default:
-        return id;
-    }
   }
 
   BaselineRangeGraphModel _buildGraph({
@@ -300,12 +316,17 @@ class BenchmarkTrackerReadService {
 
     switch (summary.rangeQualityLabel) {
       case 'OPZ RANGE TOO WIDE':
+        // Period names are operator-configured; do not hardcode
+        // 'Lunch, dinner, and late night' here (Design Rule: period
+        // set comes from operator timing config). The honest message
+        // stays period-agnostic.
         return const _GraphHonesty(
           tier: 'weak',
           isDegenerate: true,
           badgeLabel: 'RANGE TOO WIDE TO TEACH',
           explanation:
-              'Lunch, dinner, and late night are behaving differently. This needs daypart-specific coaching.',
+              'Your service periods are behaving differently from each '
+              'other. This needs period-specific coaching.',
           fallbackMessage:
               'Use this as a broad guide for now, not one standard for every period.',
         );
@@ -338,12 +359,19 @@ class BenchmarkTrackerView {
   final List<DaypartRange> daypartRanges;
   final BaselineRangeGraphModel rangeGraphModel;
 
+  /// Operator-configured service-period definitions (ordered). The
+  /// Daypart Breakdown table reads labels + ordering from here instead
+  /// of a hardcoded period list (Gap 15 / Design Rule: period set
+  /// comes from operator timing config).
+  final List<ServicePeriodDefinition> servicePeriodDefinitions;
+
   const BenchmarkTrackerView({
     required this.hasManagerOverride,
     required this.selectedShiftCount,
     required this.historicalTotalCoversTracked,
     required this.daypartRanges,
     required this.rangeGraphModel,
+    this.servicePeriodDefinitions = const [],
   });
 }
 

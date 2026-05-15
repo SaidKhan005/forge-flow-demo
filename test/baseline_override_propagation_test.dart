@@ -117,6 +117,11 @@ void main() {
   });
 
   // â”€â”€ B: baseline visible target reflects override â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  //
+  // Per-Daypart Targets V1 / Slice 2: the "TARGETS DERIVED FROM
+  // BENCHMARK" card was cut. The override-reactive CPLH target now
+  // surfaces on the CPLH RANGE & TARGET range bar (still BaselineData-
+  // backed in bridge-only mode). Re-pointed at that surface.
 
   group('B â€” baseline derived target reflects override selection', () {
     testWidgets('BaselineTracker shows override CPLH after rebuild',
@@ -134,30 +139,33 @@ void main() {
       expect(overrideTargetText, isNot(equals(seedTargetText)),
           reason: 'Override CPLH must differ from seed to be a meaningful test');
 
-      // Pump baseline tab with no override â€” override target not visible
+      // Pump baseline tab with no override â€” override target not
+      // visible. Keyed so the next pump forces a fresh State (initState
+      // re-reads the bridge view; structurally identical widgets reuse
+      // State otherwise and the override would never propagate).
       await tester.pumpWidget(
-          const MaterialApp(home: Scaffold(body: BaselineTracker())));
+          const MaterialApp(
+              home: Scaffold(
+                  body: BaselineTracker(key: ValueKey('no-override')))));
       await tester.pump();
       expect(find.text(overrideTargetText), findsNothing);
 
-      // Apply override and repump â€” fresh build reads updated BaselineData
+      // Apply override and repump under a NEW key â€” fresh State reads
+      // updated BaselineData. Pump extra frames so the CustomScrollView
+      // slivers (incl. the CPLH range bar's LayoutBuilder Stack) lay
+      // out.
       BaselineData.applyManagerOverride(_overrideRecords);
       await tester.pumpWidget(
-          const MaterialApp(home: Scaffold(body: BaselineTracker())));
-      await tester.pump();
+          const MaterialApp(
+              home: Scaffold(
+                  body: BaselineTracker(key: ValueKey('override')))));
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
 
-      // Scroll the Baseline targets card into view. Above it live the
-      // CPLH range bar + daypart breakdown; on the default test surface the
-      // targets card is below the fold.
-      await tester.scrollUntilVisible(
-        find.text('TARGETS DERIVED FROM BENCHMARK'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-
-      // Override target must now appear in the Baseline targets card
-      expect(find.text(overrideTargetText), findsWidgets);
+      // The CPLH RANGE & TARGET range bar renders graph.targetCPLH,
+      // which reflects the override selection in bridge-only mode.
+      expect(find.text(skipOffstage: false, overrideTargetText), findsWidgets);
     });
   });
 
