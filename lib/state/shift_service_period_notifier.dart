@@ -55,6 +55,13 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   bool _isLoading = true;
   bool _missingTimezone = false;
 
+  // Per-Daypart V1 / Slice 4: cache the active target profile so the
+  // Shift daypart card can resolve per-period targets via
+  // `profile.daypartFor(servicePeriodId)` without each card re-loading
+  // it. Null when the bootstrap path failed (degrades to honest
+  // unavailable state per `metric_card_honesty_contract.md`).
+  ActiveTargetProfile? _profile;
+
   /// Per-service-period accumulators keyed by `ServicePeriodId`. Null
   /// while loading; an empty map (or one with empty accumulators) when
   /// no canonical facts are available for the current business date.
@@ -78,6 +85,15 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
 
   bool get isLoading => _isLoading;
   bool get missingTimezone => _missingTimezone;
+
+  /// Per-Daypart V1 / Slice 4: the active target profile resolved at
+  /// load time. Per-period card consumers call
+  /// `profile?.daypartFor(servicePeriodId)` to obtain per-period locked
+  /// targets (CPLH, SPLH, PPA, OPZ floor/ceiling). Null when no
+  /// profile is available; per Design Rule 2 / `metric_card_honesty_contract.md`,
+  /// callers must NOT substitute whole-day pool fields — render
+  /// `MetricState.unavailable` instead.
+  ActiveTargetProfile? get profile => _profile;
 
   /// Phase 10.5.3 — per-period primary driver id (lowercase canonical
   /// form per `7.61` R-STOR-1) for [periodId], or `null` when:
@@ -116,6 +132,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
     String? iana,
     String businessDayStartLocalTime = _defaultBusinessDayStartLocalTime,
     Map<String, String?> primaryLeverIds = const {},
+    ActiveTargetProfile? profile,
   })  : _readService = const ShiftServicePeriodReadService(),
         _buckets = buckets,
         _primaryLeverIds = primaryLeverIds,
@@ -124,6 +141,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
         _businessDate = businessDate,
         _iana = iana,
         _businessDayStartLocalTime = businessDayStartLocalTime,
+        _profile = profile,
         _isLoading = false,
         _missingTimezone = iana == null || iana.trim().isEmpty;
 
@@ -212,6 +230,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
 
     // Phase 10.5.3 — mint per-period primary drivers off the accumulator.
     final profile = await _safeLoadActiveTargetProfile(restaurantId);
+    _profile = profile;
     final forecastCoversByPeriod = forecastCoversByPeriodFromSnapshots(
       snapshots: relevant,
       definitions: _definitions,

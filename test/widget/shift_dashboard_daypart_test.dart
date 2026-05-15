@@ -171,12 +171,23 @@ void main() {
         );
 
         // Lunch card metrics rendered (per-period values from the notifier).
+        // Per-Daypart V1 / Slice 4 (Decision 7): the per-period card now
+        // mirrors the whole-day card. CPLH 12.50 appears twice — once
+        // in the Inputs section pill and once as the big PERIOD CPLH
+        // header in the FOH Productivity section.
+        // Per Decisions 11 + 13 wages stay whole-day, so the per-period
+        // card no longer surfaces a per-period $22.50 blended wage; it
+        // shows the restaurant-wide blended wage labeled
+        // "RESTAURANT BLENDED WAGE" instead.
         expect(find.text('100', skipOffstage: false), findsOneWidget);
         expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
         expect(find.text(r'$42.00', skipOffstage: false), findsOneWidget);
-        expect(find.text('12.50', skipOffstage: false), findsOneWidget);
+        expect(find.text('12.50', skipOffstage: false), findsNWidgets(2));
         expect(find.text(r'$525', skipOffstage: false), findsOneWidget);
-        expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
+        expect(
+          find.text('RESTAURANT BLENDED WAGE', skipOffstage: false),
+          findsOneWidget,
+        );
 
         // Only the selected period card renders.
         expect(

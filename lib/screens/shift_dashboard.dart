@@ -7,6 +7,7 @@ import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 import '../theme/app_theme.dart';
 import '../domain/constants/app_defaults.dart';
+import '../domain/models/active_target_profile.dart';
 import '../domain/models/restaurant_location.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
@@ -1082,6 +1083,25 @@ class _DaypartScaffoldSection extends StatelessWidget {
                     selectedDefinition.id,
                   ),
                   missingTimezone: missingTimezone,
+                  // Per-Daypart V1 / Slice 4: per-period card mirrors the
+                  // whole-day card (Outputs · Inputs · FOH Productivity).
+                  // Per-period targets come from `profile.daypartFor`;
+                  // wages stay whole-day per Decisions 11 + 13 — the
+                  // restaurant-wide blended wage is read off the
+                  // ShiftDashboard read model.
+                  daypartProfile: periodNotifier?.profile?.daypartFor(
+                    selectedDefinition.id,
+                  ),
+                  wholeDayBlendedWage:
+                      context
+                          .watch<ShiftDashboardNotifier>()
+                          .readModel
+                          ?.blendedWage ??
+                      0.0,
+                  wholeDayBlendedWageProvenance: context
+                      .watch<ShiftDashboardNotifier>()
+                      .readModel
+                      ?.blendedWageProvenance,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -1093,12 +1113,34 @@ class _DaypartScaffoldSection extends StatelessWidget {
   }
 }
 
+/// Per-period scaffold card.
+///
+/// Per-Daypart V1 / Slice 4 (Decision 7): mirrors the whole-day card
+/// fully — Outputs (Sales · Labor · Covers · Blended Wage) + Inputs
+/// (PPA · CPLH · SPLH · FOH/BOH Hrs) + FOH Productivity (CPLH actual,
+/// per-period OPZ band) — all scoped to [definition].
+///
+/// Per-period targets come from [daypartProfile] (a row out of
+/// `ActiveTargetProfile.daypartFor(servicePeriodId)`). When that row
+/// is null AND no closed-shift per-period stamp is available, the
+/// affected pills render `MetricState.unavailable` per
+/// `metric_card_honesty_contract.md` — they do NOT silently fall back
+/// to whole-day pool values.
+///
+/// Wages stay whole-day per Decisions 11 + 13: the per-period card
+/// reuses [wholeDayBlendedWage] (the restaurant-wide blended wage
+/// already shown on the whole-day Outputs section). No per-period
+/// blended wage exists in Jim Taylor's framework; coming up with one
+/// here would invent data.
 class _DaypartScaffoldCard extends StatelessWidget {
   final ServicePeriodDefinition definition;
   final bool isActive;
   final ServicePeriodAccumulator? bucket;
   final LeverCardData? primaryLeverCard;
   final bool missingTimezone;
+  final ActiveTargetProfileDaypart? daypartProfile;
+  final double wholeDayBlendedWage;
+  final MetricProvenance? wholeDayBlendedWageProvenance;
 
   const _DaypartScaffoldCard({
     required this.definition,
@@ -1106,6 +1148,9 @@ class _DaypartScaffoldCard extends StatelessWidget {
     required this.bucket,
     this.primaryLeverCard,
     this.missingTimezone = false,
+    this.daypartProfile,
+    this.wholeDayBlendedWage = 0.0,
+    this.wholeDayBlendedWageProvenance,
   });
 
   @override
@@ -1162,7 +1207,25 @@ class _DaypartScaffoldCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (hasData) ...[
-            _DaypartMetricGrid(bucket: bucket!),
+            // Per-Daypart V1 / Slice 4 — full mirror of the whole-day
+            // card. Three sticky-equivalent sections rendered as a
+            // single card body. Targets come from `daypartProfile`;
+            // wages stay whole-day; honest fallback for missing data.
+            _DaypartOutputsSection(
+              bucket: bucket!,
+              wholeDayBlendedWage: wholeDayBlendedWage,
+              wholeDayBlendedWageProvenance: wholeDayBlendedWageProvenance,
+            ),
+            const SizedBox(height: 12),
+            _DaypartInputsSection(
+              bucket: bucket!,
+              daypartProfile: daypartProfile,
+            ),
+            const SizedBox(height: 12),
+            _DaypartFohProductivitySection(
+              bucket: bucket!,
+              daypartProfile: daypartProfile,
+            ),
             const SizedBox(height: 10),
             // Phase 10.5.3 — per-period primary driver chip. Resolves
             // through `LeverCards.lookup`; null surfaces as the
@@ -1230,106 +1293,517 @@ class _DaypartDriverChip extends StatelessWidget {
   }
 }
 
-/// Compact 3-row metric grid for a single service-period bucket.
-///
-/// Layout (per-period, all values are actuals — no plan target on
-/// purpose, since per-period plan targets are not yet shipped):
-///   row 1: COVERS · SALES
-///   row 2: PPA · CPLH · SPLH
-///   row 3: HRS (FOH/BOH) · BLENDED WAGE
-class _DaypartMetricGrid extends StatelessWidget {
+// ─── Per-period sections (Per-Daypart V1 / Slice 4 — Decision 7) ──────────
+//
+// The per-period card mirrors the whole-day card's three-section layout
+// (Outputs · Inputs · FOH Productivity), scoped to one
+// `ServicePeriodAccumulator`. Each section uses `MetricPill` so the
+// state + provenance honesty rules from `metric_card_honesty_contract.md`
+// flow through unchanged.
+//
+// Per-period locked targets (CPLH, SPLH, PPA, OPZ floor/ceiling) come
+// from `ActiveTargetProfile.daypartFor(servicePeriodId)`. When that row
+// is null, the affected pills render `MetricState.unavailable` —
+// they do NOT fall back to whole-day pool values (Design Rule 2 +
+// honest fallback per Slice 4 brief).
+//
+// Wages stay whole-day per Decisions 11 + 13. The per-period card
+// reuses the restaurant-wide blended wage from `ShiftDashboardReadModel.blendedWage`;
+// per-period blended wage is not a real metric in Jim Taylor's framework.
+
+/// Outputs section — Sales · Labor · Covers · Blended Wage,
+/// scoped to one service-period bucket. Mirrors `_OutputsSection`.
+class _DaypartOutputsSection extends StatelessWidget {
   final ServicePeriodAccumulator bucket;
-  const _DaypartMetricGrid({required this.bucket});
+  final double wholeDayBlendedWage;
+  final MetricProvenance? wholeDayBlendedWageProvenance;
+
+  const _DaypartOutputsSection({
+    required this.bucket,
+    required this.wholeDayBlendedWage,
+    required this.wholeDayBlendedWageProvenance,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final fohHrs = (bucket.fohMinutes / 60).toStringAsFixed(
-      bucket.fohMinutes % 60 == 0 ? 0 : 1,
-    );
-    final bohHrs = (bucket.bohMinutes / 60).toStringAsFixed(
-      bucket.bohMinutes % 60 == 0 ? 0 : 1,
-    );
+    // Covers / sales come from the bucket; honest unavailable when no
+    // POS data yet. We do NOT emit zero — design rule 2 forbids
+    // sentinel zero, so `state == unavailable` renders the em dash.
+    final coversState = bucket.covers > 0
+        ? MetricState.live
+        : MetricState.unavailable;
+    final salesState = bucket.sales > 0
+        ? MetricState.live
+        : MetricState.unavailable;
+
+    // Wages stay whole-day (Decisions 11 + 13). The per-period card
+    // surfaces the same blended wage the whole-day Outputs section
+    // shows; the label clarifies "RESTAURANT" so the operator does
+    // not interpret it as period-specific.
+    final wageProv = wholeDayBlendedWageProvenance;
+    final wageState = wageProv?.state ?? MetricState.unavailable;
+    final wageValue = wageState == MetricState.unavailable
+        ? null
+        : wholeDayBlendedWage;
+
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(label: 'COVERS', value: '${bucket.covers}'),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'SALES',
-                value: '\$${bucket.sales.toStringAsFixed(0)}',
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: MetricPill(
+                  state: salesState,
+                  provenance: MetricPillProvenance(
+                    label: salesState == MetricState.live
+                        ? 'Period total'
+                        : 'Period',
+                    tooltip: salesState == MetricState.unavailable
+                        ? 'No POS sales in this period yet.'
+                        : null,
+                  ),
+                  label: 'SALES',
+                  value: salesState == MetricState.unavailable
+                      ? null
+                      : bucket.sales,
+                  formatter: (v) => '\$${v.toStringAsFixed(0)}',
+                ),
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              Expanded(
+                child: MetricPill(
+                  state: coversState,
+                  provenance: MetricPillProvenance(
+                    label: coversState == MetricState.live
+                        ? 'Period total'
+                        : 'Period',
+                    tooltip: coversState == MetricState.unavailable
+                        ? 'No covers in this period yet.'
+                        : null,
+                  ),
+                  label: 'COVERS',
+                  value: coversState == MetricState.unavailable
+                      ? null
+                      : bucket.covers,
+                  formatter: (v) => '${v.toInt()}',
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(
-                label: 'PPA',
-                value: '\$${bucket.ppa.toStringAsFixed(2)}',
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: MetricPill(
+                  state: wageState,
+                  provenance: MetricPillProvenance(
+                    label: wageProv != null
+                        ? _provenanceLabelFor(wageProv.provenance)
+                        : 'Restaurant',
+                    tooltip: wageState == MetricState.unavailable
+                        ? 'Connect a labor vendor to see blended wage.'
+                        : null,
+                  ),
+                  // Per-period card uses the whole-day label
+                  // "RESTAURANT BLENDED WAGE" so the operator can tell
+                  // this is the restaurant-wide rate (Decisions 11 +
+                  // 13 — no per-period wage exists in Jim Taylor's
+                  // framework).
+                  label: 'RESTAURANT BLENDED WAGE',
+                  value: wageValue,
+                  formatter: (v) => '\$${v.toStringAsFixed(2)}',
+                ),
               ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'CPLH',
-                value: bucket.cplh.toStringAsFixed(2),
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'SPLH',
-                value: '\$${bucket.splh.toStringAsFixed(0)}',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(
-                label: 'HRS',
-                value: '$fohHrs FOH / $bohHrs BOH',
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'BLENDED WAGE',
-                value: '\$${bucket.blendedWage.toStringAsFixed(2)}',
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
-class _MetricCell extends StatelessWidget {
-  final String label;
-  final String value;
-  const _MetricCell({required this.label, required this.value});
+/// Inputs section — PPA · CPLH · SPLH and FOH/BOH hours, scoped to one
+/// service-period bucket. Mirrors `_InputsSection`.
+///
+/// Per-period locked targets come from [daypartProfile]; when null
+/// the targets surface as unavailable (no whole-day fall-back).
+class _DaypartInputsSection extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  final ActiveTargetProfileDaypart? daypartProfile;
+
+  const _DaypartInputsSection({
+    required this.bucket,
+    required this.daypartProfile,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Actuals — unavailable when divisor isn't present yet.
+    final ppaState = bucket.covers > 0
+        ? MetricState.live
+        : MetricState.unavailable;
+    final cplhState = bucket.totalMinutes > 0
+        ? MetricState.live
+        : MetricState.unavailable;
+    final splhState = bucket.totalMinutes > 0
+        ? MetricState.live
+        : MetricState.unavailable;
+
+    final fohMinutes = bucket.fohMinutes;
+    final bohMinutes = bucket.bohMinutes;
+    final fohHrs = (fohMinutes / 60).toStringAsFixed(
+      fohMinutes % 60 == 0 ? 0 : 1,
+    );
+    final bohHrs = (bohMinutes / 60).toStringAsFixed(
+      bohMinutes % 60 == 0 ? 0 : 1,
+    );
+
+    // Per-period locked targets — honest fallback when missing.
+    final hasTargets = daypartProfile != null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: AppTextStyles.mono14(
-            color: AppColors.textPrimary,
-            weight: FontWeight.w700,
+        GridView.count(
+          crossAxisCount: 2,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 8,
+          mainAxisSpacing: 8,
+          childAspectRatio: 1.05,
+          children: [
+            _PerPeriodInputPill(
+              label: 'PPA',
+              actualState: ppaState,
+              actualValue: bucket.ppa,
+              actualFormatter: (v) => '\$${v.toStringAsFixed(2)}',
+              targetValue: hasTargets ? daypartProfile!.daypartTargetPPA : null,
+              targetFormatter: (v) => 'Target \$${v.toStringAsFixed(2)}',
+              unavailableTooltipActual:
+                  'Connect a POS vendor to see per-person average.',
+              unavailableTooltipTarget:
+                  'No per-period target locked for this period.',
+            ),
+            _PerPeriodInputPill(
+              label: 'CPLH',
+              actualState: cplhState,
+              actualValue: bucket.cplh,
+              actualFormatter: (v) => v.toStringAsFixed(2),
+              targetValue:
+                  hasTargets ? daypartProfile!.daypartTargetCPLH : null,
+              targetFormatter: (v) => 'Target ${v.toStringAsFixed(2)}',
+              unavailableTooltipActual:
+                  'Connect a labor vendor to see covers per labor hour.',
+              unavailableTooltipTarget:
+                  'No per-period target locked for this period.',
+            ),
+            _PerPeriodInputPill(
+              label: 'SPLH',
+              actualState: splhState,
+              actualValue: bucket.splh,
+              actualFormatter: (v) => '\$${v.toStringAsFixed(0)}',
+              targetValue:
+                  hasTargets ? daypartProfile!.daypartTargetSPLH : null,
+              targetFormatter: (v) => 'Target \$${v.toStringAsFixed(0)}',
+              unavailableTooltipActual:
+                  'Connect a labor vendor to see sales per labor hour.',
+              unavailableTooltipTarget:
+                  'No per-period target locked for this period.',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: _PerPeriodHoursPill(
+                  label: 'FOH HRS',
+                  hrs: fohHrs,
+                  hasData: fohMinutes > 0,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _PerPeriodHoursPill(
+                  label: 'BOH HRS',
+                  hrs: bohHrs,
+                  hasData: bohMinutes > 0,
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// FOH Productivity section — per-period CPLH actual against the
+/// per-period OPZ band (`daypartOpzFloorCPLH` ... `daypartOpzCeilingCPLH`).
+///
+/// Per Slice 4 brief: mirrors the whole-day `ZoneStatusCard` shape.
+/// Falls back honestly when the per-period target row is null (no
+/// OPZ band → render an "OPZ band not yet available" cell, not a
+/// fabricated zone).
+class _DaypartFohProductivitySection extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  final ActiveTargetProfileDaypart? daypartProfile;
+
+  const _DaypartFohProductivitySection({
+    required this.bucket,
+    required this.daypartProfile,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasActual = bucket.totalMinutes > 0;
+    final hasTarget = daypartProfile != null;
+    final actualCplh = bucket.cplh;
+
+    // OPZ band — only computed when the per-period band is present.
+    String? opzStatus;
+    String? opzLabel;
+    if (hasTarget && hasActual) {
+      final floor = daypartProfile!.daypartOpzFloorCPLH;
+      final ceiling = daypartProfile!.daypartOpzCeilingCPLH;
+      if (actualCplh < floor) {
+        opzStatus = 'below';
+        opzLabel = 'BELOW OPZ';
+      } else if (actualCplh > ceiling) {
+        opzStatus = 'above';
+        opzLabel = 'ABOVE OPZ';
+      } else {
+        opzStatus = 'in';
+        opzLabel = 'IN OPZ';
+      }
+    }
+
+    final opzColor = opzStatus == 'in'
+        ? AppColors.positive
+        : opzStatus == 'below'
+        ? AppColors.negative
+        : opzStatus == 'above'
+        ? AppColors.warning
+        : AppColors.textMuted;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'PERIOD CPLH',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                hasActual ? actualCplh.toStringAsFixed(2) : '—',
+                style: AppTextStyles.mono28(
+                  color: hasActual
+                      ? AppColors.textPrimary
+                      : AppColors.textMuted,
+                ),
+              ),
+              const Spacer(),
+              if (opzLabel != null)
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerRight,
+                    child: Text(
+                      opzLabel,
+                      style: AppTextStyles.mono14(color: opzColor),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (hasTarget) ...[
+            Text(
+              'OPZ ${daypartProfile!.daypartOpzFloorCPLH.toStringAsFixed(2)} – '
+              '${daypartProfile!.daypartOpzCeilingCPLH.toStringAsFixed(2)}',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              'Target ${daypartProfile!.daypartTargetCPLH.toStringAsFixed(2)} · '
+              'SPLH \$${daypartProfile!.daypartTargetSPLH.toStringAsFixed(0)}',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+          ] else
+            Text(
+              'OPZ band not yet available for this period.',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact two-row pill rendering an actual + per-period target.
+///
+/// Wraps `MetricPill` for the actual (so `MetricState.unavailable`
+/// rules apply) and renders the target as a small line beneath. When
+/// [targetValue] is null the target line renders an explicit "Target
+/// not yet locked" string per the honest-fallback rule — never a
+/// zero or whole-day substitute.
+class _PerPeriodInputPill extends StatelessWidget {
+  final String label;
+  final MetricState actualState;
+  final double actualValue;
+  final String Function(num) actualFormatter;
+  final double? targetValue;
+  final String Function(num) targetFormatter;
+  final String unavailableTooltipActual;
+  final String unavailableTooltipTarget;
+
+  const _PerPeriodInputPill({
+    required this.label,
+    required this.actualState,
+    required this.actualValue,
+    required this.actualFormatter,
+    required this.targetValue,
+    required this.targetFormatter,
+    required this.unavailableTooltipActual,
+    required this.unavailableTooltipTarget,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 6),
+          if (actualState == MetricState.unavailable)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '—',
+                  style: AppTextStyles.mono28(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  unavailableTooltipActual,
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            )
+          else
+            Text(
+              actualFormatter(actualValue),
+              style: AppTextStyles.mono28(color: AppColors.textPrimary),
+            ),
+          const SizedBox(height: 6),
+          // Per-period target line — honest fallback when null.
+          if (targetValue != null)
+            Text(
+              targetFormatter(targetValue!),
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            )
+          else
+            Text(
+              'Target not yet locked',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Hours pill — no per-period required-hours target (Slice 4 brief:
+/// FOH/BOH Hrs sub-rows are not in scope; per-period required hours
+/// land in Slice 3's persisted `weekly_plan_snapshot_day_dayparts`).
+/// Renders the period's actual hours; honest fallback when no labor
+/// data is recorded yet.
+class _PerPeriodHoursPill extends StatelessWidget {
+  final String label;
+  final String hrs;
+  final bool hasData;
+
+  const _PerPeriodHoursPill({
+    required this.label,
+    required this.hrs,
+    required this.hasData,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          const SizedBox(height: 6),
+          if (hasData)
+            Text(hrs, style: AppTextStyles.mono28())
+          else ...[
+            Text(
+              '—',
+              style: AppTextStyles.mono28(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'No labor in this period yet.',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
