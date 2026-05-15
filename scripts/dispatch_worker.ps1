@@ -122,18 +122,26 @@ try {
 Pop-Location
 
 # --- Launch headless claude -p in background -------------------------------
-# bypassPermissions: headless has no TTY to approve tool use; the worker
-# must run fully autonomously. Scope is contained by the worktree + the
-# prompt's explicit forbidden list (no --no-verify, no tracker edits).
-$claudeArgs = @(
-  "-p", $promptText,
-  "--permission-mode", "bypassPermissions",
-  "--add-dir", $worktree
-)
-if ($Model -ne "") { $claudeArgs += @("--model", $Model) }
+# Windows specifics:
+#   * `claude` on Windows is `claude.cmd` (an npm shim batch file). Start-Process
+#     cannot exec a .cmd as -FilePath ("%1 is not a valid Win32 application"),
+#     so we go through the command processor ($env:ComSpec / cmd.exe).
+#   * The prompt is far larger than cmd.exe's ~8191-char command-line limit, so
+#     it MUST NOT be passed as an argument. `claude -p` reads the prompt from
+#     stdin when no positional prompt is given; we redirect the prompt file in
+#     via cmd's `<` so there is no length ceiling.
+#   * bypassPermissions: headless has no TTY to approve tool use; the worker
+#     runs fully autonomously. Scope is contained by the worktree + the
+#     prompt's explicit forbidden list (no --no-verify, no tracker edits).
+$modelArg = ""
+if ($Model -ne "") { $modelArg = " --model $Model" }
+$innerCmd =
+  "claude -p --permission-mode bypassPermissions" +
+  " --add-dir `"$worktree`"$modelArg" +
+  " < `"$PromptFile`""
 
-$proc = Start-Process -FilePath "claude" `
-  -ArgumentList $claudeArgs `
+$proc = Start-Process -FilePath $env:ComSpec `
+  -ArgumentList @("/c", $innerCmd) `
   -WorkingDirectory $worktree `
   -RedirectStandardOutput $logFile `
   -RedirectStandardError "$logFile.err" `
