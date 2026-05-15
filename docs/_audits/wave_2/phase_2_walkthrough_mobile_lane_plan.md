@@ -67,8 +67,8 @@ worktree agent gets spawned with the standard contract (branch → fix
 | Emulator | Pixel_9, `emulator-5554`, API 36, `com.forgeflow.app` (recreate if gone) |
 | Flutter run task | recreate per resume prompt (prior `bam7vhie1` is dead) |
 | Live monitor task | restart per "Live monitor" section below |
-| Captured so far | `p1_00` through `p1_08` (9 captures + thumbs) covering surfaces 00, 01, 02, 03, 04, 05, 06, 07 (surface 01 ticked `[!]` — gap filed) |
-| Pass | mid Pass 1 — resume at surface 08 (MO-H-1 live button explainer) next |
+| Captured so far | `p1_00` through `p1_16` (17 captures + thumbs) covering surfaces 00, 01, 02, 03, 04, 05, 06, 07, 08, 09, 10, 11, 13, 14, 15. Surface 01 ticked `[!]` (gap filed). Surfaces 12, 16, 17 are 🚧 STUB per Agent B's source-trace — code-anchored, not driveable. |
+| Pass | mid Pass 1 — resume at surface 18 (Benchmark tab BaselineTracker) next; ~17 of ~22 top surfaces driven |
 | Screenshot dimension cap | Pixel 9 emulator captures are 1080×2424 — exceeds Anthropic's 2000px many-image cap. Capture full-res to evidence dir, save a ≤1600px thumb for Claude. Do NOT bulk-attach; show Claude a thumbnail only when investigating an anomaly. The matrix annotation is the durable record. |
 
 ---
@@ -113,20 +113,20 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 - [x] 05 — Lunch daypart (chip selected) + driver chip + lever card + time-into-service header — `p1_02_shift_lunch.png`
 - [x] 06 — Dinner daypart (chip selected, the ACTIVE NOW one from boot capture) — `p1_03_shift_dinner.png`
 - [x] 07 — Late Night daypart (chip selected, empty/idle expected) — `p1_04_shift_late_night.png`
-- [ ] 08 — MO-H-1 live button explainer
+- [x] 08 — MO-H-1 live button explainer — `p1_10_labor_not_connected_explainer.png` (Data sources bottom-sheet)
 
 ### Variance tab
-- [ ] 09 — This Week sub-tab (default)
-- [ ] 10 — History sub-tab
-- [ ] 11 — Learn sub-tab
-- [ ] 12 — Variance row drill → WeekDetailScreen
-- [ ] 13 — Daypart toggle within each variance tab (if present)
+- [x] 09 — This Week sub-tab (default) — `p1_11_variance_this_week.png` (🟡 possible CPLH color-polarity finding logged in matrix)
+- [x] 10 — History sub-tab — `p1_12_variance_history.png`
+- [x] 11 — Learn sub-tab — `p1_13_variance_learn.png`
+- [🚧] 12 — Variance row drill → WeekDetailScreen — STUB per Agent B source-trace (onTap wired in `_VariancePill` but no detail route)
+- [x] 13 — Daypart toggle — `p1_14_variance_thisweek_daypart.png` (reuses Shift's daypart chip-group pattern)
 
 ### Plan tab (ScheduleBuilder)
-- [ ] 14 — Day rows collapsed (default week view)
-- [ ] 15 — Day row expanded → per-daypart forecast rows
-- [ ] 16 — Edit baseline path (drill or in-place)
-- [ ] 17 — Publish path + conflict resolution dialog (if reachable)
+- [x] 14 — Day rows collapsed (default week view) — `p1_15_plan_week_collapsed.png`
+- [🟢] 15 — Day row expanded → per-daypart forecast rows — `p1_16_plan_mon_expanded.png` (chevron toggle confirmed; expanded sub-rows below viewport, partial capture)
+- [🚧] 16 — Edit baseline path (drill or in-place) — STUB per Agent B (permission key only, no mobile edit screen)
+- [🚧] 17 — Publish path + conflict resolution dialog (if reachable) — STUB per Agent B (server state machine exists; UI not wired)
 
 ### Benchmark tab (BaselineTracker)
 - [ ] 18 — Default view (range graph + Baseline targets card)
