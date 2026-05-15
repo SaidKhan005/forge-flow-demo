@@ -92,6 +92,12 @@ class EffectiveBusinessTimingProfile {
     this.localCloseFallback,
   });
 
+  /// Per-Daypart V1 Slice 1.5: [RestaurantTimingConfig] no longer
+  /// carries `shiftCloseAuthority` / `localCloseFallback`. The
+  /// [EffectiveBusinessTimingProfile]'s own copies of those fields are
+  /// preserved for the inheritance resolver (and any callers that still
+  /// need them as advisory), but they no longer flow into the
+  /// SQLite-mirror config row.
   RestaurantTimingConfig toRestaurantTimingConfig({
     required String restaurantId,
     required String createdAt,
@@ -103,8 +109,6 @@ class EffectiveBusinessTimingProfile {
       businessDayStartLocalTime: businessDayStartLocalTime,
       weekStartDay: weekStartDay,
       servicePeriodDefinitions: servicePeriodDefinitions,
-      shiftCloseAuthority: shiftCloseAuthority,
-      localCloseFallback: localCloseFallback,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );

@@ -312,6 +312,41 @@ Future<void> _migrateToV34(Database db) async {
   }
 }
 
+/// Per-Daypart V1 Slice 1.5 — drop the `shift_close_authority` +
+/// `local_close_fallback` columns from `restaurant_timing_configs`.
+///
+/// Operator decision 2026-05-15: the close-authority toggle is now
+/// auto-derived per shift from the per-vendor `CloseAuthorityCapability`
+/// lookup + the operator's `business_day_start_local_time` fallback.
+/// There is no operator-facing setting any more.
+///
+/// SQLite supports `ALTER TABLE … DROP COLUMN` from 3.35 onward. The
+/// sqflite_common_ffi bundle used in the demo desktop build is well
+/// past that. Guard each `DROP COLUMN` with a `_columnExists` check so
+/// the migration is idempotent on partially-upgraded demo DBs.
+Future<void> _migrateToV35(Database db) async {
+  if (await _columnExists(
+    db,
+    'restaurant_timing_configs',
+    'shift_close_authority',
+  )) {
+    await db.execute(
+      'ALTER TABLE restaurant_timing_configs '
+      'DROP COLUMN shift_close_authority',
+    );
+  }
+  if (await _columnExists(
+    db,
+    'restaurant_timing_configs',
+    'local_close_fallback',
+  )) {
+    await db.execute(
+      'ALTER TABLE restaurant_timing_configs '
+      'DROP COLUMN local_close_fallback',
+    );
+  }
+}
+
 /// Theme H#6 — weekly_plan_snapshots lifecycle columns.
 ///
 /// Adds the 5 server-truth fields the proxy emits but the SQLite model

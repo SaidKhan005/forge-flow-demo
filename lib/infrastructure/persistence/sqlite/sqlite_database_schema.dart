@@ -392,14 +392,18 @@ Future<void> _createAllTables(Database db) async {
   ''');
 
   // ── Restaurant timing config layer (7.55n.1) ─────────────────────────
+  //
+  // Per-Daypart V1 Slice 1.5: the legacy `shift_close_authority` +
+  // `local_close_fallback` columns were dropped (operator decision
+  // 2026-05-15). Close-authority is auto-derived per shift from the
+  // per-vendor `CloseAuthorityCapability` lookup plus the
+  // `business_day_start_local_time` fallback.
   await db.execute('''
     CREATE TABLE restaurant_timing_configs (
       restaurant_id                    TEXT PRIMARY KEY NOT NULL,
       business_day_start_local_time    TEXT NOT NULL,
       week_start_day                   INTEGER NOT NULL,
       service_period_definitions_json  TEXT NOT NULL,
-      shift_close_authority            TEXT NOT NULL,
-      local_close_fallback             TEXT,
       created_at                       TEXT NOT NULL,
       updated_at                       TEXT NOT NULL
     )

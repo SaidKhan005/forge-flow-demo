@@ -38,6 +38,8 @@ void main() {
     final db = await SqliteDatabase.instance.database;
     await db.delete('restaurant_timing_configs');
     final now = DateTime.now().toUtc().toIso8601String();
+    // Per-Daypart V1 Slice 1.5: `shift_close_authority` /
+    // `local_close_fallback` dropped from this row.
     await db.insert('restaurant_timing_configs', {
       'restaurant_id': restaurantId,
       'business_day_start_local_time': '04:00',
@@ -47,8 +49,6 @@ void main() {
         {'id': 'dinner', 'label': 'Dinner', 'short_label': 'D', 'sort_order': 2, 'start_local_time': '17:00', 'end_local_time': '23:00', 'rolls_past_midnight': false, 'applicable_days': [1, 2, 3, 4, 5, 6, 7]},
         {'id': 'late_night', 'label': 'Late Night', 'short_label': 'LN', 'sort_order': 3, 'start_local_time': '23:00', 'end_local_time': '02:00', 'rolls_past_midnight': true, 'applicable_days': [5, 6]},
       ]),
-      'shift_close_authority': 'app_local_cutoff_fallback',
-      'local_close_fallback': '04:00',
       'created_at': now,
       'updated_at': now,
     });
@@ -88,8 +88,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -135,8 +133,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -180,8 +176,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -264,8 +258,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -360,8 +352,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -437,8 +427,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.sunday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );
@@ -519,8 +507,6 @@ void main() {
         businessDayStartLocalTime: config.businessDayStartLocalTime,
         weekStartDay: DateTime.wednesday,
         servicePeriodDefinitions: config.servicePeriodDefinitions,
-        shiftCloseAuthority: config.shiftCloseAuthority,
-        localCloseFallback: config.localCloseFallback,
         createdAt: config.createdAt,
         updatedAt: DateTime.now().toUtc().toIso8601String(),
       );

@@ -659,7 +659,6 @@ void main() {
               applicableDays: [1, 2, 3, 4, 5, 6, 7],
             ),
           ],
-          shiftCloseAuthority: ShiftCloseAuthority.vendorFinalization,
           createdAt: '2026-05-06T00:00:00.000Z',
           updatedAt: '2026-05-06T00:00:00.000Z',
         ),

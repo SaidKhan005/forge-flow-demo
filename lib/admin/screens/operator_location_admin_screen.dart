@@ -3575,12 +3575,14 @@ class _AdminLocationTimingDialog extends StatelessWidget {
                   label: 'Week starts',
                   value: _weekdayLabel(effective.weekStartDay),
                 ),
-                _TimingDialogRow(
-                  label: 'Shift close authority',
-                  value: _shiftCloseAuthorityLabel(
-                    effective.shiftCloseAuthority,
-                  ),
-                ),
+                // Per-Daypart V1 Slice 1.5: the "Shift close authority"
+                // row was removed (operator decision 2026-05-15 —
+                // close-authority is auto-derived per shift from the
+                // per-vendor capability lookup + business-day-start
+                // fallback). The admin candidate still seeds a default
+                // `ShiftCloseAuthority` value for the inheritance
+                // resolver, but there is no operator-facing display or
+                // edit any more.
               ],
               const SizedBox(height: 12),
               if (effective != null)
@@ -3853,13 +3855,6 @@ String _weekdayLabel(int weekStartDay) {
     DateTime.saturday => 'Saturday',
     DateTime.sunday => 'Sunday',
     _ => 'Unknown',
-  };
-}
-
-String _shiftCloseAuthorityLabel(ShiftCloseAuthority authority) {
-  return switch (authority) {
-    ShiftCloseAuthority.vendorFinalization => 'Vendor finalization',
-    ShiftCloseAuthority.appLocalCutoffFallback => 'App local cutoff fallback',
   };
 }
 

@@ -457,7 +457,6 @@ void main() {
         businessDayStartLocalTime: '06:00',
         weekStartDay: 1,
         servicePeriodDefinitions: [],
-        shiftCloseAuthority: ShiftCloseAuthority.appLocalCutoffFallback,
         createdAt: '2026-04-13T00:00:00Z',
         updatedAt: '2026-04-13T00:00:00Z',
       );

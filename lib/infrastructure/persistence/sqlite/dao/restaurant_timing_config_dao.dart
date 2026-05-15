@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import '../../../../domain/models/restaurant_timing_config.dart';
 import '../../../../domain/models/service_period_definition.dart';
 
 class RestaurantTimingConfigDao {
@@ -17,13 +16,15 @@ class RestaurantTimingConfigDao {
     return rows.first;
   }
 
+  /// Per-Daypart V1 Slice 1.5 — `shift_close_authority` +
+  /// `local_close_fallback` were dropped from the row. Close-authority
+  /// is auto-derived per shift from
+  /// `lib/services/integration/close_authority_capability.dart`.
   Future<void> upsert({
     required String restaurantId,
     required String businessDayStartLocalTime,
     required int weekStartDay,
     required List<ServicePeriodDefinition> servicePeriodDefinitions,
-    required ShiftCloseAuthority shiftCloseAuthority,
-    String? localCloseFallback,
     required String createdAt,
     required String updatedAt,
   }) async {
@@ -43,8 +44,6 @@ class RestaurantTimingConfigDao {
         'business_day_start_local_time': businessDayStartLocalTime,
         'week_start_day': weekStartDay,
         'service_period_definitions_json': defsJson,
-        'shift_close_authority': shiftCloseAuthority.value,
-        'local_close_fallback': localCloseFallback,
         'created_at': createdAt,
         'updated_at': updatedAt,
       },

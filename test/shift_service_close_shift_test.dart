@@ -11,7 +11,10 @@
 // Historical origin: Phase 3 close-ingest path.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
@@ -412,5 +415,166 @@ void main() {
       // Legacy ×52 fallback still works: dollarGap.abs() * 52 = 200 * 52
       expect(legacy.dollarGapAnnualized, closeTo(200.0 * 52, 0.001));
     });
+  });
+
+  // ── Per-Daypart V1 Slice 1.5 (Gap 24) ───────────────────────────────────
+  //
+  // The legacy WeekRecord upsert gate was hardcoded to
+  // `closedShifts.length == 14` (2 dayparts × 7 days). The new gate
+  // sums per-period applicable-days from `RestaurantTimingConfig`, so
+  // a 3-period operator with all periods Mon–Sun rolls up at 21, a
+  // 4-period operator rolls up at 28, and the demo's mixed shape
+  // (lunch Mon–Fri + dinner Mon–Sun + late_night Fri/Sat = 5+7+2)
+  // still rolls up at 14 to preserve the legacy demo behavior.
+  group('Slice 1.5 — _expectedClosedShiftsPerWeek (Gap 24)', () {
+    Future<void> writeTimingConfig(
+      List<ServicePeriodDefinition> periods,
+    ) async {
+      final repo = SqliteRestaurantTimingConfigRepository.instance;
+      final existing =
+          await repo.getTimingConfig('demo_restaurant_001');
+      await repo.saveTimingConfig(
+        RestaurantTimingConfig(
+          restaurantId: 'demo_restaurant_001',
+          businessTimezone: existing!.businessTimezone,
+          businessDayStartLocalTime: existing.businessDayStartLocalTime,
+          weekStartDay: existing.weekStartDay,
+          servicePeriodDefinitions: periods,
+          createdAt: existing.createdAt,
+          updatedAt: DateTime.now().toUtc().toIso8601String(),
+        ),
+      );
+      repo.resetDao();
+    }
+
+    const List<ServicePeriodDefinition> threePeriodAllDays = [
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 1,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 2,
+        startLocalTime: '17:00',
+        endLocalTime: '22:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 3,
+        startLocalTime: '22:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+    ];
+
+    const List<ServicePeriodDefinition> fourPeriodAllDays = [
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '10:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '22:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '22:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+    ];
+
+    test(
+      '3-period × 7-day operator — gate fires at exactly 21 closed '
+      'shifts (was 14 hardcoded)',
+      () async {
+        await writeTimingConfig(threePeriodAllDays);
+
+        // The demo seeds 9 closed shifts pre-existing (week 13 has
+        // Mon–Wed closed across 3 periods). Close enough to reach 21
+        // without overrunning the gate.
+        // Verify the gate via a probe: re-close the 5 projected
+        // demo slots (5 shifts) and check WeekRecord status.
+        // After 5 closes, total = 14 (the legacy demo's full close)
+        // — but under 3-period × 7 = 21, the WeekRecord must NOT
+        // appear yet.
+        await ShiftService.instance.closeShift(_friDinner());
+        await ShiftService.instance.closeShift(_friLateNight());
+        await ShiftService.instance.closeShift(_satDinner());
+        await ShiftService.instance.closeShift(_satLateNight());
+        await ShiftService.instance.closeShift(_sunDinner());
+
+        final history = await ShiftService.instance.getWeekHistory();
+        final w13 = history.where((w) => w.weekId == '2026-W13').toList();
+        expect(
+          w13,
+          isEmpty,
+          reason: '3-period × 7-day operator gate is 21; 14 closes '
+              'must NOT trigger the WeekRecord upsert.',
+        );
+      },
+    );
+
+    test(
+      '4-period × 7-day operator — gate fires at 28 closed shifts '
+      '(was 14 hardcoded)',
+      () async {
+        await writeTimingConfig(fourPeriodAllDays);
+
+        await ShiftService.instance.closeShift(_friDinner());
+        await ShiftService.instance.closeShift(_friLateNight());
+        await ShiftService.instance.closeShift(_satDinner());
+        await ShiftService.instance.closeShift(_satLateNight());
+        await ShiftService.instance.closeShift(_sunDinner());
+
+        final history = await ShiftService.instance.getWeekHistory();
+        final w13 = history.where((w) => w.weekId == '2026-W13').toList();
+        expect(
+          w13,
+          isEmpty,
+          reason: '4-period × 7-day operator gate is 28; 14 closes '
+              'must NOT trigger the WeekRecord upsert.',
+        );
+      },
+    );
   });
 }

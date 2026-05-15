@@ -687,6 +687,8 @@ Future<void> _seedDemoTimingConfig(Database db, String now) async {
       'applicable_days': [5, 6],
     },
   ];
+  // Per-Daypart V1 Slice 1.5: `shift_close_authority` +
+  // `local_close_fallback` dropped (operator decision 2026-05-15).
   await db.insert(
     'restaurant_timing_configs',
     {
@@ -694,8 +696,6 @@ Future<void> _seedDemoTimingConfig(Database db, String now) async {
       'business_day_start_local_time': '04:00',
       'week_start_day': DateTime.monday,
       'service_period_definitions_json': jsonEncode(demoServicePeriods),
-      'shift_close_authority': 'app_local_cutoff_fallback',
-      'local_close_fallback': '04:00',
       'created_at': now,
       'updated_at': now,
     },
