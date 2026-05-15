@@ -30,6 +30,7 @@ import '../../../domain/services/utc_metadata_timestamp.dart';
 import '../../../domain/services/weekly_plan_snapshot_policy.dart';
 import '../../../models/baseline_candidate_shift.dart';
 import '../../../models/shift_record.dart';
+import 'dao/target_cycle_dao.dart';
 
 part 'sqlite_database_schema.dart';
 part 'sqlite_database_seed.dart';

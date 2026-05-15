@@ -47,6 +47,26 @@ class MockReplayOutput {
   });
 }
 
+/// One service period's deterministic locked target band, exposed by
+/// [MockIntegrationReplaySeed.demoDaypartTargetBand] so the demo cycle
+/// seeder can stamp differentiated per-period rows without reaching into
+/// the seed's private maps.
+class DemoDaypartTargetBand {
+  final double targetCPLH;
+  final double targetSPLH;
+  final double targetPPA;
+  final double opzFloorCPLH;
+  final double opzCeilingCPLH;
+
+  const DemoDaypartTargetBand({
+    required this.targetCPLH,
+    required this.targetSPLH,
+    required this.targetPPA,
+    required this.opzFloorCPLH,
+    required this.opzCeilingCPLH,
+  });
+}
+
 /// Deterministic mock POS/labor replay generator.
 ///
 /// Produces operationally coherent shift and week records that behave like
@@ -102,6 +122,35 @@ class MockIntegrationReplaySeed {
     'dinner': 5.40,
     'late_night': 4.40,
   };
+
+  /// Service-period ids the demo scenario is built around, in display
+  /// order. These are the same keys used by the demo timing config's
+  /// `service_period_definitions_json` and by [demoDaypartTargetBand].
+  static const List<String> demoServicePeriodIds = [
+    'lunch',
+    'dinner',
+    'late_night',
+  ];
+
+  /// Per-Daypart V1 demo fidelity — the deterministic per-period locked
+  /// target band the demo seeder stamps onto the demo `TargetCycle`'s
+  /// per-period rows when the recommendation cohort yields no
+  /// per-period stats for [periodId]. Returns `null` for an unknown
+  /// period id (Design Rule 2 — absent means unavailable, never a `0`
+  /// sentinel; the caller decides the fallback). The five values are
+  /// the same constants already stamped onto demo closed shifts so the
+  /// cycle and the history grader agree.
+  static DemoDaypartTargetBand? demoDaypartTargetBand(String periodId) {
+    final cplh = _daypartTargetCPLH[periodId];
+    if (cplh == null) return null;
+    return DemoDaypartTargetBand(
+      targetCPLH: cplh,
+      targetSPLH: _daypartTargetSPLH[periodId] ?? _targetSPLH,
+      targetPPA: _daypartTargetPPA[periodId] ?? _targetPPA,
+      opzFloorCPLH: _daypartOpzFloor[periodId]!,
+      opzCeilingCPLH: _daypartOpzCeiling[periodId]!,
+    );
+  }
 
   /// Default mock replay business date (Friday dinner scenario).
   static const String defaultBusinessDate = '2026-03-27';

@@ -784,11 +784,14 @@ Future<TargetCycle> _ensureDemoSeedCycle(
     bohWageOverride: bohOverride,
     replay: replay ?? MockIntegrationReplaySeed.generateForDate(businessDate),
   );
-  await db.insert(
-    'target_cycles',
-    cycle.toMap(),
-    conflictAlgorithm: ConflictAlgorithm.replace,
-  );
+  // Persist through Slice 1's canonical cycle write path so the parent
+  // `target_cycles` row AND the per-period `target_cycle_dayparts`
+  // child rows land together in one transaction (Design Rule 4). The
+  // old raw single-table `db.insert('target_cycles', ...)` wrote only
+  // the parent, leaving `cycle.dayparts` unpersisted — every per-period
+  // read then fell back to the whole-day pool and the demo showed one
+  // identical number for every daypart.
+  await TargetCycleDao(db).upsertCycle(cycle);
   return cycle;
 }
 
@@ -798,13 +801,59 @@ TargetCycle _buildDemoSeedCycle({
   double? bohWageOverride,
   required MockReplayOutput replay,
 }) {
-  final recommendation = RecommendedBenchmarkSelectionService.instance.select(
-    _seedRecommendationCandidates(
-      replay,
-      businessDate: businessDate,
-    ),
+  final candidates = _seedRecommendationCandidates(
+    replay,
+    businessDate: businessDate,
   );
-  final isInsufficient = recommendation.isInsufficient;
+  final recommendation =
+      RecommendedBenchmarkSelectionService.instance.select(candidates);
+
+  // Per-period candidate cover totals over the same calibration-window
+  // closed-shift cohort the recommendation engine consumed, so the
+  // cover-weighted whole-day pool rollup matches the engine's view of
+  // demand mix (Design Rule 4 — pool is the rollup of the period rows).
+  final coversByPeriod = <String, int>{};
+  for (final c in candidates) {
+    coversByPeriod[c.daypart] = (coversByPeriod[c.daypart] ?? 0) + c.covers;
+  }
+
+  // Per-period locked rows. The demo MUST always show differentiated
+  // targets, so each period prefers its own recommendation cohort stats
+  // and otherwise falls back to the deterministic demo band (the same
+  // constants stamped onto demo closed shifts). The whole-day scalars
+  // are then the cover-weighted rollup of these rows — never the
+  // deprecated pooled/union recommendation accessors.
+  final dayparts = <TargetCycleDaypart>[];
+  for (final periodId in MockIntegrationReplaySeed.demoServicePeriodIds) {
+    final stats = recommendation.isInsufficient
+        ? null
+        : recommendation.perDaypartStats[periodId];
+    final coverCount = coversByPeriod[periodId] ?? 0;
+    if (stats != null) {
+      dayparts.add(TargetCycleDaypart(
+        servicePeriodId: periodId,
+        targetCPLH: stats.recommendedTargetCPLH,
+        targetSPLH: stats.recommendedTargetSPLH,
+        targetPPA: stats.recommendedTargetPPA,
+        opzFloorCPLH: stats.opzFloorCPLH,
+        opzCeilingCPLH: stats.opzCeilingCPLH,
+        coverCount: coverCount,
+      ));
+    } else {
+      final band = MockIntegrationReplaySeed.demoDaypartTargetBand(periodId)!;
+      dayparts.add(TargetCycleDaypart(
+        servicePeriodId: periodId,
+        targetCPLH: band.targetCPLH,
+        targetSPLH: band.targetSPLH,
+        targetPPA: band.targetPPA,
+        opzFloorCPLH: band.opzFloorCPLH,
+        opzCeilingCPLH: band.opzCeilingCPLH,
+        coverCount: coverCount,
+      ));
+    }
+  }
+
+  final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
 
   return TargetCycle(
     cycleId: 'demo_cycle_$businessDate',
@@ -814,24 +863,15 @@ TargetCycle _buildDemoSeedCycle({
     effectiveEnd: _addIsoDays(businessDate, 59),
     calibrationWindowStart: _addIsoDays(businessDate, -59),
     calibrationWindowEnd: businessDate,
-    targetCPLH: isInsufficient
-        ? MeridianConfig.targetCPLH
-        : recommendation.pooledRecommendedTargetCPLH,
-    targetSPLH: isInsufficient
-        ? MeridianConfig.targetSPLH
-        : recommendation.pooledRecommendedTargetSPLH,
-    targetPPA: isInsufficient
-        ? MeridianConfig.targetPPA
-        : recommendation.pooledRecommendedTargetPPA,
+    targetCPLH: pool.targetCPLH,
+    targetSPLH: pool.targetSPLH,
+    targetPPA: pool.targetPPA,
     fohWage: fohWageOverride ?? MeridianConfig.fohWage,
     bohWage: bohWageOverride ?? MeridianConfig.bohWage,
-    opzFloorCPLH: isInsufficient
-        ? MeridianConfig.opzFloorCPLH
-        : recommendation.unionOpzFloorCPLH,
-    opzCeilingCPLH: isInsufficient
-        ? MeridianConfig.opzCeilingCPLH
-        : recommendation.unionOpzCeilingCPLH,
+    opzFloorCPLH: pool.opzFloorCPLH,
+    opzCeilingCPLH: pool.opzCeilingCPLH,
     createdAt: nowIsoUtc(),
+    dayparts: dayparts,
   );
 }
 
