@@ -28,11 +28,13 @@ import '../domain/models/active_target_profile.dart';
 import '../domain/models/open_shift_snapshot.dart';
 import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/service_period_definition.dart';
+import '../models/shift_record.dart';
 import '../domain/services/business_date_resolver.dart';
 import '../domain/services/daypart_bucketer.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../services/restaurant_timing_config_read_service.dart';
 import '../services/shift_service_period_read_service.dart';
 import '../services/wage_standard_context_service.dart';
@@ -42,11 +44,69 @@ import '../services/wage_standard_context_service.dart';
 /// `business_day_start_local_time` and the 10.5.0 widget fallback.
 const String _defaultBusinessDayStartLocalTime = '04:00';
 
+/// Per-Daypart V1 (Slice 4) — the per-period locked target stamps the
+/// Shift daypart card renders alongside the live per-period actuals.
+///
+/// Two honest sources, in priority order:
+///   1. **Closed shift** — the per-shift `daypart_*` stamp columns on
+///      the day's closed [ShiftRecord] for this period. Promise 2:
+///      closed truth retains the stamp from its close time, so a closed
+///      period is graded against the cycle that was active when it
+///      closed, never re-graded under a later cycle.
+///   2. **Open shift** — `ActiveTargetProfile.daypartFor(periodId)`.
+///      The period has not closed yet, so the current cycle's per-period
+///      row is the honest target.
+///
+/// When neither source has a per-period row (Gap 42 insufficient-
+/// recommendation fallback, or no cycle yet) every field stays null.
+/// Design Rule 2: the card renders the honest empty state ("—"), never
+/// a `0` sentinel.
+class DaypartTargetContext {
+  /// `'closed_stamp'` when read from a closed shift's per-shift stamp,
+  /// `'open_profile'` when read from the active profile's per-period
+  /// row, or `'none'` when no per-period target exists for this period.
+  final String source;
+  final double? targetCPLH;
+  final double? targetSPLH;
+  final double? targetPPA;
+  final double? opzFloorCPLH;
+  final double? opzCeilingCPLH;
+
+  const DaypartTargetContext({
+    required this.source,
+    this.targetCPLH,
+    this.targetSPLH,
+    this.targetPPA,
+    this.opzFloorCPLH,
+    this.opzCeilingCPLH,
+  });
+
+  /// Honest empty context — no per-period target available for the
+  /// period. Every field null so the card shows "—" (Design Rule 2).
+  static const DaypartTargetContext none = DaypartTargetContext(
+    source: 'none',
+  );
+
+  /// True only when the full OPZ band + target CPLH are present, so the
+  /// FOH Productivity zone gauge can render. A partial stamp (some
+  /// fields null) keeps the gauge hidden rather than drawing a band off
+  /// a `0` sentinel.
+  bool get hasOpzBand =>
+      targetCPLH != null && opzFloorCPLH != null && opzCeilingCPLH != null;
+}
+
 class ShiftServicePeriodNotifier extends ChangeNotifier {
   final ShiftServicePeriodReadService _readService;
 
   Map<String, ServicePeriodAccumulator>? _buckets;
   Map<String, String?> _primaryLeverIds = const {};
+
+  /// Per-Daypart V1 (Slice 4) — per-period locked target context keyed
+  /// by `ServicePeriodId`. Resolved in [_load] from the day's closed
+  /// shift stamps (Promise 2) with an open-shift active-profile fallback.
+  /// Absent entries mean "no per-period target" — the card renders the
+  /// honest empty state, never `0`.
+  Map<String, DaypartTargetContext> _daypartTargets = const {};
   List<ServicePeriodDefinition> _definitions =
       ServicePeriodDefinitionResolver.demoDefinitions;
   String? _businessDate;
@@ -100,6 +160,14 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   LeverCardData? primaryLeverCardFor(String periodId) =>
       LeverCards.lookup(_primaryLeverIds[periodId]);
 
+  /// Per-Daypart V1 (Slice 4) — the locked per-period target context for
+  /// [periodId]. Returns [DaypartTargetContext.none] (all fields null)
+  /// when no closed-shift stamp and no open-shift profile row exist for
+  /// the period, so the daypart card renders the honest "—" empty state
+  /// instead of a `0` sentinel (Design Rule 2).
+  DaypartTargetContext daypartTargetFor(String periodId) =>
+      _daypartTargets[periodId] ?? DaypartTargetContext.none;
+
   ShiftServicePeriodNotifier({
     ShiftServicePeriodReadService readService =
         const ShiftServicePeriodReadService(),
@@ -116,9 +184,11 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
     String? iana,
     String businessDayStartLocalTime = _defaultBusinessDayStartLocalTime,
     Map<String, String?> primaryLeverIds = const {},
+    Map<String, DaypartTargetContext> daypartTargets = const {},
   })  : _readService = const ShiftServicePeriodReadService(),
         _buckets = buckets,
         _primaryLeverIds = primaryLeverIds,
+        _daypartTargets = daypartTargets,
         _definitions = definitions ??
             ServicePeriodDefinitionResolver.demoDefinitions,
         _businessDate = businessDate,
@@ -222,8 +292,94 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       profile: profile,
     );
 
+    // Per-Daypart V1 (Slice 4) — resolve the per-period locked target
+    // context for every defined period. Closed-shift stamps win
+    // (Promise 2); the open-shift active profile is the fallback for
+    // periods that have not closed yet.
+    _daypartTargets = await _resolveDaypartTargets(
+      restaurantId: restaurantId,
+      businessDate: _businessDate!,
+      profile: profile,
+    );
+
     _isLoading = false;
     notifyListeners();
+  }
+
+  /// Builds the per-period target context map for the active business
+  /// date.
+  ///
+  /// For each defined period:
+  ///   * If a **closed** [ShiftRecord] exists for that period on this
+  ///     business date, read its per-shift `daypart_*` stamp columns
+  ///     (Promise 2 — closed truth keeps its own stamp). A closed shift
+  ///     whose stamps are all null (cycle had no per-period row at
+  ///     close) yields [DaypartTargetContext.none] — it is NOT silently
+  ///     back-filled from the current profile, which would re-grade
+  ///     closed truth.
+  ///   * Otherwise (open / not-yet-closed period) fall back to the
+  ///     active profile's `daypartFor(periodId)` row, or
+  ///     [DaypartTargetContext.none] when the cycle wrote no per-period
+  ///     row (Gap 42 fallback).
+  Future<Map<String, DaypartTargetContext>> _resolveDaypartTargets({
+    required String restaurantId,
+    required String businessDate,
+    required ActiveTargetProfile? profile,
+  }) async {
+    final closedByPeriod = <String, ShiftRecord>{};
+    try {
+      final closed = await SqliteShiftRecordRepository.instance
+          .getClosedShiftsInDateRange(restaurantId, businessDate, businessDate);
+      for (final r in closed) {
+        closedByPeriod[r.daypart] = r;
+      }
+    } catch (_) {
+      // Defensive: a read failure degrades to the open-shift fallback
+      // path below rather than throwing the whole notifier load.
+    }
+
+    final result = <String, DaypartTargetContext>{};
+    for (final def in _definitions) {
+      final closed = closedByPeriod[def.id];
+      if (closed != null) {
+        // Promise 2: closed period reads its own stamp only. All-null
+        // stamps stay `none` — never re-grade with the live profile.
+        if (closed.daypartTargetCPLH == null &&
+            closed.daypartTargetSPLH == null &&
+            closed.daypartTargetPPA == null &&
+            closed.daypartOpzFloorCPLH == null &&
+            closed.daypartOpzCeilingCPLH == null) {
+          result[def.id] = DaypartTargetContext.none;
+        } else {
+          result[def.id] = DaypartTargetContext(
+            source: 'closed_stamp',
+            targetCPLH: closed.daypartTargetCPLH,
+            targetSPLH: closed.daypartTargetSPLH,
+            targetPPA: closed.daypartTargetPPA,
+            opzFloorCPLH: closed.daypartOpzFloorCPLH,
+            opzCeilingCPLH: closed.daypartOpzCeilingCPLH,
+          );
+        }
+        continue;
+      }
+
+      // Open / not-yet-closed period — fall back to the current cycle's
+      // per-period row.
+      final row = profile?.daypartFor(def.id);
+      if (row == null) {
+        result[def.id] = DaypartTargetContext.none;
+      } else {
+        result[def.id] = DaypartTargetContext(
+          source: 'open_profile',
+          targetCPLH: row.daypartTargetCPLH,
+          targetSPLH: row.daypartTargetSPLH,
+          targetPPA: row.daypartTargetPPA,
+          opzFloorCPLH: row.daypartOpzFloorCPLH,
+          opzCeilingCPLH: row.daypartOpzCeilingCPLH,
+        );
+      }
+    }
+    return result;
   }
 
   Future<ActiveTargetProfile?> _safeLoadActiveTargetProfile(
