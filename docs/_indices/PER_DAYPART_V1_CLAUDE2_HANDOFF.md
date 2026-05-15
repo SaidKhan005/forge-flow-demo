@@ -1,148 +1,188 @@
-# Per-Daypart Targets V1 — Claude 2 Parallel-Lane Handoff (paste-ready)
+# Per-Daypart Targets V1 — Claude 2 Parallel-Lane Handoff (paste-ready, v2 — 2026-05-15 evening)
 
 > **Operator: paste this whole document as the FIRST message into a fresh Claude session on the second device.** Claude 2 bootstraps from this prompt into the parallel-lane orchestrator role for Per-Daypart Targets V1.
+>
+> **Update log:**
+> - **v1 (2026-05-15 afternoon):** initial handoff. Tasks A (Slice 2.5) + B (architecture verification audit) dispatched.
+> - **v2 (2026-05-15 evening):** Tasks A + B COMPLETE + MERGED (#762 + #764). Adds Tasks C, D, E for the next wave. Main is on Slice 1.
 
 ---
 
-You are **Claude 2**, the parallel-lane orchestrator for the Forge & Flow Per-Daypart Targets V1 implementation. The main orchestrator (a separate Claude session on the operator's primary device) owns the architecturally-sensitive slices; you own a smaller, well-bounded slice plus a verification audit task. You and Main coordinate via Git only — no real-time channel.
+You are **Claude 2**, the parallel-lane orchestrator for the Forge & Flow Per-Daypart Targets V1 implementation. The main orchestrator (Claude session on the operator's primary device) is currently driving Slice 1 (per-period schema + demo reseed). You run focused parallel tasks that don't collide with Slice 1's file set.
 
 ## Bootstrap reads (do these BEFORE any other action)
 
-Read these docs cold, in this order:
+Read these cold, in this order:
 
-1. `CLAUDE.md` (project root) — workflow, authority order, 11 hard promises, design rules. Pay special attention to the **"Workflow"** section ("Agent-led slices — hard rule"), the **"Service-Layer Split"** section, and **HP #11 (Hierarchy-scoped settings)**.
-2. `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md` — the locked plan. 14 architectural decisions. 9 slices. 44 gaps. Reusable surface-coverage audit method appended. **This is your authority doc for everything below.**
-3. `docs/_indices/PER_DAYPART_V1_MAIN_ORCHESTRATOR_BRIEF.md` — Main's brief; describes the slice ownership split and concurrency rules.
-4. `docs/_indices/NEXT_WAVE_PLAN.md` — Phase 2.5 captures this work in the forward pipeline.
-5. `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md` — Jim Taylor's methodology, especially Chapter 09 (60-day tracking by daypart) and Chapter 08 (theoretical labor = the floor). Source of operator-facing label decisions.
+1. `CLAUDE.md` (project root) — workflow, authority order, 11 hard promises, design rules. Sections to absorb: "Authority Order", "Hard Promises", "Workflow", "House rules", "Agent-led slices — hard rule", "Service-Layer Split", "Architecture Guardrails", "Time Guardrails", "RLS-Ready Schema", "Commits & Push".
+2. `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md` — the locked plan, fully audited + post-Slice-1.5 verification appendix. Sections to absorb: "Operator decisions locked", "Schema changes", "Slice sequence amendments (post-audit)", "Vendor sink business_date gaps (post-Slice-1.5 end-to-end verification, 2026-05-15)" (this section is **where Tasks C and E come from**), "End-to-end verification 2026-05-15".
+3. `docs/_indices/PER_DAYPART_V1_MAIN_ORCHESTRATOR_BRIEF.md` — Main's brief.
+4. `docs/_audits/per_daypart_v1/architecture_verification_2026_05_15.md` — your own Task B output, now on master.
+5. `docs/_audits/per_daypart_v1/pr_762_slice_2_5.md` — your own Slice 2.5 Pattern B audit.
+6. `docs/_audits/per_daypart_v1/slice_1_5_aggregator_bucketer.md` — Main's Slice 1.5 audit (gives you the canonical-fact-aggregator + close-authority-sidecar context Task D needs).
+7. `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md` — Jim Taylor's methodology.
+
+## What landed today (status snapshot)
+
+- **Slice 0 (Main #761 → `1460d45d`):** cycle rollover gates to operator-configured `week_start_day`. Contract amendments live.
+- **Slice 2.5 (you #762 → `4e2a6c94`):** operator-web service period editor accepts `applicableDays` / `shortLabel` / `sortOrder`. ✅
+- **Slice 1.5 (Main #763 → `d392d4d1`):** closed-shift aggregator routes through `DaypartBucketer` + `CloseAuthorityCapability` sidecar replaces `shift_close_authority`. ✅
+- **Architecture verification audit (you #764 → `3c57c35d`):** plan citations verified against master; 4 cosmetic path drifts + minor wording sharpenings flagged. ✅
+- **Plan refresh (Main `7f431e1d`):** Gaps 45/46/47 filed + end-to-end verification appendix.
+- **Master tip:** `7f431e1d` (or wherever the live tip is at the moment you read this — `git pull origin master --rebase` first).
 
 ## Identity + scope
 
-You orchestrate worker agents in worktrees with the `claude2/` branch prefix. You do not write production code directly; worker agents do. You audit returning PRs and ping the operator for approval-required slices.
+You orchestrate worker agents in worktrees with the `claude2/` branch prefix. You do not write production code directly; worker agents do. You audit returning PRs and ping the operator for approval-required slices. Auto-merge eligible for non-controversial slices when audit is clean.
 
-## Your assigned work for this execution
+## Your assigned tasks for this wave
 
-### Task A — Slice 2.5: Service Period Editor field completeness (dispatchable now)
+### Task C — Slice 7a: Tock reservation `business_date` fix (Gap 45)
 
-**Scope.** Add `applicableDays`, `shortLabel`, and `sortOrder` to the operator-web service-period editor so operators can define day-restricted periods (e.g. "Weekend Brunch Sat/Sun only"). Plan reference: see "Slice 2.5 (NEW)" in the plan doc.
+**Scope.** `lib/infrastructure/persistence/postgres/tock_reservation_postgres_sink.dart` currently writes `business_date` as raw UTC calendar date via `_utcDateString(reservationAt)` at line 161 — no timezone conversion, no rollover. Any Tock reservation in any timezone other than UTC gets wrong attribution. The file's own comment at lines 156–160 acknowledges this is a stub pending `8R.TC.live.sandbox`. Per operator decision 2026-05-15 ("merge then fix"), this is now Slice 7a.
 
-**Touchpoints (verify in your audit):**
+**Implementation.** Mirror `lib/infrastructure/persistence/postgres/opentable_reservation_postgres_sink.dart`'s `business_date` computation:
 
-- `lib/operator_web/widgets/service_period_editor.dart` — `ServicePeriodDraft` model (lines 28-62). Add the three missing fields.
-- `lib/operator_web/screens/business_timing_editor_screen.dart` — wire the editor UI; add a day-restriction picker (e.g. Mon–Sun checkbox row).
-- `lib/operator_web/services/business_timing_gateway.dart` — round-trip the new fields server-bound.
-- `lib/domain/models/service_period_definition.dart:33-34` — canonical fields already exist on the model; verify the gateway maps them correctly.
-- Tests: cover a day-restricted period (e.g. Sat/Sun only) round-tripping through the gateway, and assert sort order is honored.
+1. Inject `IanaTimezoneConverter` (named param `timezoneConverter` defaulting to `const IanaTimezoneConverter()`).
+2. Read `restaurantTimezone` + `businessDayRolloverHour` from the location row (parallel to OpenTable's `_TenantCanonicalView` pattern).
+3. Compute `business_date` via `_timezoneConverter.toBusinessDate(timezone, businessDayRolloverHour, reservationAtUtc)` at the insert site (currently `:161`).
+4. Remove the `_utcDateString` helper.
 
-**Worker dispatch contract (paste into your Agent tool prompt):**
+**Tests.** Cover:
+- Reservation seated 01:30 Wed local in `America/Toronto` with `business_day_rollover_hour = 4` → `business_date = Tue-ISO` (not Wed).
+- Reservation seated 23:30 Tue local in `America/Toronto` with `business_day_rollover_hour = 4` → `business_date = Tue-ISO`.
+- Reservation seated 04:00 Wed local exactly (rollover instant) → `business_date = Wed-ISO`.
+- Default fallback when location row is missing (mirror Libro's `4` fallback at `libro_postgres_sink.dart:133` — confirm in code; otherwise OpenTable's pattern).
 
+**Worker dispatch contract:**
 - `isolation: "worktree"`.
-- Branch: `claude2/per-daypart-slice-2.5-service-period-editor-fields`.
-- First step in worker prompt: `pwsh scripts/install_git_hooks.ps1` (canonical hooks; otherwise push stalls).
-- Contract: **branch → implement → self-audit → commit + push → open PR → STOP**. Worker does NOT merge, does NOT bypass hooks, does NOT update trackers.
-- Worker self-audit: Pattern B exemplar table in PR body with file:line citations covering 14 audit lenses per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
-- Worker writes audit doc to `docs/_audits/per_daypart_v1/pr_<n>_slice_2_5.md`.
+- Branch: `claude2/slice-7a-tock-business-date-fix`.
+- First step: `pwsh scripts/install_git_hooks.ps1`.
+- Contract: branch → implement → self-audit → commit + push → open PR → STOP.
+- Worker self-audit: Pattern B 14-lens table in PR body.
+- Audit doc at `docs/_audits/per_daypart_v1/slice_7a_tock_business_date.md`.
 
-**Gate:** auto-merge after clean audit (Slice 2.5 is non-controversial UI/model extension; operator does not need to approve unless audit surfaces a contract conflict).
+**Gate:** auto-merge after clean audit (vendor sink fix, no schema, no proxy, no operator UX). If audit surfaces a contract conflict, escalate.
 
-### Task B — Architecture verification audit (run in parallel with Task A worker)
+### Task D — Slice 1.5 regression test (operator scenario lock)
 
-**Scope.** The operator queued a "full architecture code audit before implementation dispatch" so implementation is authoritative not blind. Your job: verify every file path, line number, class name, and function reference inside the per-daypart V1 plan doc against the current code on master. Produce a verification doc.
+**Scope.** Slice 1.5 merged without an explicit regression test for the operator's stated late-night-crossing-midnight scenario. Add one. Locks the scenario so a future change can't silently regress it.
 
-**Method:**
+**Test file.** Extend `test/services/integration/canonical_fact_to_closed_shift_input_test.dart` with a new group:
 
-1. Read the plan doc top to bottom.
-2. For every `<file>:<line>` citation in the plan, grep the current code at that file. Confirm:
-   - The file exists at the cited path.
-   - The line range cited actually contains the code described.
-   - The class / function names mentioned exist as named.
-   - Any "verify in audit" notes (e.g. `WeeklyPlanSnapshotGenerator (whatever it's called)` → real name is `WeeklyPlanSnapshotService`) get resolved with concrete file:line answers.
-3. For every gap in the consolidated table (Gaps 1–44), confirm the cited evidence still matches master code. Flag anything that's drifted since the audit ran.
-4. Particularly scrutinize:
-   - **Gap 19** (Production wiring of `CanonicalFactPeriodResolver`) — confirm production-cutover precondition status.
-   - **Gap 20, 21, 26** (Closed-shift aggregator bucketing) — these are the load-bearing Slice 1.5 gaps; confirm `canonical_fact_to_closed_shift_input.dart:922-943` still reimplements bucketing inline with `[startMinutes, endMinutes)` half-open semantics.
-   - **Gap 23** (`ShiftService.closeShift._shiftRecordFromFact` drops timing fields) — confirm the conversion at lines 315-349 still omits timing fields.
-   - **Gap 27** (Hardcoded `Daypart` enum + 4 UI sites) — confirm all four UI sites still hardcode.
-   - **Slice 1 writers** named in Main's brief — confirm `WeeklyPlanSnapshotService` is the writer for `wage_at_lock_time_json`.
+```
+group('P. Operator business-hours scenario — 23:00 Tue → 03:30 Wed (intent lock)', () {
+  // Setup: business_day_start_local_time = '04:00', Late Night 22:00-02:00 
+  // rollsPastMidnight=true, IANA America/Toronto.
+});
+```
 
-**Deliverable.** Write `docs/_audits/per_daypart_v1/architecture_verification_2026_05_15.md`:
+**Three sub-tests:**
 
-- Per-gap status (cited evidence valid / cited evidence drifted / cited evidence cannot be located).
-- Per-slice file-path validation table.
-- Any drift findings that should be folded into the plan doc before dispatches.
-- A "ready for implementation" verdict per slice (0, 1, 1.5, 2, 2.5, 3, 4, 5, 6).
+1. **POS check.** A `cover_facts` row with `closed_at = 23:00 Tue local` (in `America/Toronto`) → asserts the aggregator emits a `ClosedShiftInput` with `business_date = Tuesday-ISO` and `daypart = 'late_night'` / `service_period_key = 'late_night'`. Same for `closed_at = 01:30 Wed local`.
 
-**Concurrency rule for Task B:** read-only. Do not modify production code. Edits are only to the new audit doc.
+2. **Labor punch.** A `labor_punches` row with `shift_start = 23:00 Tue local` and `shift_end = 03:30 Wed local`. Assert:
+   - `DaypartBucketer._businessDatesSpanning` returns `[Tuesday-ISO]` only (single business date).
+   - The aggregator's `_splitLaborPunchesByPeriod` emits 180 minutes attributed to `late_night` on Tuesday (23:00 Tue → 02:00 Wed).
+   - The 02:00 Wed → 03:30 Wed sliver is a `non_service` gap segment (90 minutes); confirm it's excluded from per-period CPLH/SPLH denominators per the Jim Taylor rule.
 
-**Gate:** publish the audit doc, then ping the operator via the chat with a one-paragraph summary. Main will fold any drift findings into the plan doc.
+3. **Reservation.** A `reservation_facts` row with `reservation_at = 01:30 Wed local` → `business_date = Tuesday-ISO`, daypart classification `late_night`.
 
-## Concurrency rules
+**Optional composite assertion:** all three facts above on the same Tuesday business date with the same service period → aggregator emits one `ClosedShiftInput` row keyed `(Tuesday-ISO, late_night)` carrying the rolled-up actuals.
 
-You and Main may run in parallel. To prevent collision:
+**Worker dispatch contract:**
+- `isolation: "worktree"`.
+- Branch: `claude2/slice-1-5-regression-test-late-night-crossing`.
+- First step: `pwsh scripts/install_git_hooks.ps1`.
+- Contract: branch → write tests → self-audit → commit + push → open PR → STOP.
+- Worker self-audit: Pattern B with focus on Lens 8 (Testing seam) and Lens 14 (Honest disclosures).
+- Audit doc at `docs/_audits/per_daypart_v1/regression_test_slice_1_5_late_night_crossing.md`.
 
-- **Main owns these production paths.** Do NOT touch them in any worker dispatch:
-  - `lib/services/target_cycle_service.dart`
-  - `lib/services/integration/canonical_fact_to_closed_shift_input.dart`
-  - `lib/services/shift_service.dart`
-  - Anything under `lib/domain/services/target_cycle_*.dart`
-  - Anything under `db/migrations/*` for `target_cycle_dayparts` / `weekly_plan_snapshot_day_dayparts`
-  - Contract docs under `docs/contracts/` (Main amends as part of Slice 0)
-- **You own these production paths:**
-  - `lib/operator_web/widgets/service_period_editor.dart`
-  - `lib/operator_web/screens/business_timing_editor_screen.dart`
-  - `lib/operator_web/services/business_timing_gateway.dart`
-  - Tests covering operator-web service period editor flow
-- **Shared docs** (plan doc, brief, indices, ledger): annotate your own slice rows inline; never overwrite Main's annotations. Audit docs you write go to `docs/_audits/per_daypart_v1/`.
+**Gate:** auto-merge after clean audit (pure test addition, no production code touched).
 
-## Branch + worktree conventions
+### Task E (optional, only if Tasks C + D land smoothly) — Slice 7b: Sub-hour cutoff + hierarchy unification (Gap 46 + Gap 47)
 
-- Worker agents you dispatch: `claude2/<topic>` branches. Main's agents use `claude/<topic>`.
-- Each worker runs in its own worktree under `.claude/worktrees/<lane>-<hash>/`.
-- Workers MUST: install canonical hooks first (`pwsh scripts/install_git_hooks.ps1`).
-- Workers MUST NOT: merge, bypass hooks, update trackers, or edit Main's owned paths.
+**Scope (large; treat as research-then-implement).** Every vendor sink today uses `IanaTimezoneConverter.toBusinessDate(timezone, hour, instant)` which only accepts an integer hour. Operators with sub-hour cutoffs (e.g., `04:30`) silently truncate. Operators with hierarchy-scoped overrides (operator → org_unit → location) bypass the inheritance because sinks only read the location row.
 
-## Audit + merge workflow (your orchestrator side)
+**Two implementation options (research before dispatching):**
 
-For each returning PR from a `claude2/` worker:
+- **Option (a):** Widen `locations.business_day_rollover_hour` from `INTEGER 0..23` to `TIME` (HH:MM). Update `IanaTimezoneConverter.toBusinessDate` to accept the new shape. Update the SQL trigger `phase_8_set_business_date` at `db/migrations/202605071900_phase_8_set_business_date_hardening.sql:126-147`. Migration churns 19 sinks at the call site but Dart code is minimal.
 
-1. Pull PR diff + the worker's audit doc.
-2. Run your **own independent audit** against the plan doc. Flag any:
-   - Scope drift (touched files outside the slice's named paths — especially anything in Main's owned paths).
-   - Hardcodes or sentinels (especially `0`-as-null violations of plan Design Rule 2).
-   - Missing per-period iteration where the plan requires it.
-   - Whole-day field reuse where per-period names are required (Design Rule 1).
+- **Option (b):** Have each sink resolve the effective `business_timing_profiles` row via `BusinessTimingProfilesRepository.listCandidateProfilesForLocation` + `BusinessTimingProfileResolver.resolve` and feed `business_day_start_local_time` to `BusinessDateResolver.resolve` after the timezone conversion. **Also fixes Gap 47** (hierarchy inheritance honored). More Dart code per sink; deprecates `locations.business_day_rollover_hour`.
+
+**Operator decision required before dispatch:** which option? Option (b) is the architecturally cleaner answer (single canonical timing path) but bigger. **Surface the question to the operator and wait for their answer before dispatching Task E's worker.**
+
+**Stop conditions for Task E:**
+- Do not dispatch if Tasks C or D are still running.
+- Do not dispatch without operator decision on (a) vs (b).
+- Do not dispatch if Main's Slice 1 hasn't merged yet (avoid concurrent schema migration churn).
+
+If Tasks C + D land and Main's Slice 1 is still in flight, do a **research-only Task E investigation** instead: read every sink, identify the minimum surface needed for each option, produce a comparison doc at `docs/_audits/per_daypart_v1/slice_7b_research_2026_05_15.md` with recommendations. Operator decides (a) vs (b) from your research output.
+
+## Concurrency rules with Main
+
+**Main owns these production paths (DO NOT TOUCH):**
+- `lib/services/target_cycle_service.dart`
+- `lib/services/weekly_plan_snapshot_service.dart`
+- `lib/services/shift_service.dart` (for Slice 1's Gap 23 fix at `_shiftRecordFromFact`)
+- `lib/domain/models/active_target_profile.dart` + `target_cycle.dart` (Slice 1 extends these)
+- `lib/domain/services/recommended_benchmark_selection_service.dart` (Slice 1 stops the pooling kludge here)
+- `lib/domain/services/target_cycle_active_target_profile_projector.dart`
+- `lib/domain/services/target_snapshot_builder.dart` + `shift_fact_builder.dart`
+- `lib/dev/mock_integration_replay_seed.dart`
+- `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart` + `sqlite_database_migrations.dart` + `sqlite_database_schema.dart`
+- `lib/infrastructure/persistence/postgres/postgres_shift_record_writer.dart`
+- `lib/models/learn_benchmark_context.dart` + `learn_teaching_summary.dart`
+- `db/migrations/**` (new per-daypart V1 migrations)
+
+**You own these production paths:**
+- `lib/infrastructure/persistence/postgres/tock_reservation_postgres_sink.dart` (Task C)
+- For Task D: TEST FILE ONLY — `test/services/integration/canonical_fact_to_closed_shift_input_test.dart`. Do NOT touch the production aggregator under test.
+- For Task E (if dispatched after operator decision): the 19 vendor sinks + `IanaTimezoneConverter` + SQL trigger.
+
+**Shared docs:** annotate your own slice rows inline in plan / brief / ledger; never overwrite Main's annotations. Audit docs go to `docs/_audits/per_daypart_v1/`.
+
+## Workflow per returning PR
+
+1. Pull PR diff + worker's audit doc.
+2. Run your own independent audit against the plan. Flag scope drift, sentinel violations, missing test coverage, copy/UX issues.
 3. Verdict: approve-for-merge / fix-inline / send-back.
-4. **Slice 2.5 is auto-merge eligible** when your audit verdict is approve-for-merge AND no operator-decision findings surface.
-5. **Architecture verification audit (Task B)** publishes the audit doc and pings operator — no merge.
+4. **Task C** (Tock fix): auto-merge if clean. Schema-untouching, no operator UX, vendor sink only.
+5. **Task D** (regression test): auto-merge if clean. Pure test addition.
+6. **Task E** (if dispatched): operator-approval required (touches 19 sinks + SQL trigger).
+7. Post-merge: flip status in the plan doc's Slice sequence amendments section + ping operator with one-line summary.
 
 ## What to escalate to the operator
 
-- Any audit finding that requires a product / scope / UX decision (don't guess).
-- Any gap surfaced that wasn't in the plan doc's 44-gap table.
-- Any conflict with Main's slice paths (collision; coordinate via Git annotations + ping).
-- The architecture verification audit completion — ping with the one-paragraph summary.
+- Any audit finding that requires a product/scope/UX decision.
+- The Task E (a) vs (b) decision before dispatching its worker.
+- Any gap surfaced that wasn't in the plan doc's consolidated 47-gap table.
+- Any conflict with Main's file set.
 
 ## What NOT to do
 
-- Do NOT dispatch worker agents on Main's owned paths.
-- Do NOT touch any slice numbered 0, 1, 1.5, 2, 3, 4, 5, 6 — those are Main's. You own only Slice 2.5 + the architecture verification task.
-- Do NOT update PROJECT_TRACKER.md, NEXT_WAVE_PLAN.md, or the plan doc directly — Main owns those (annotations within your own slice rows are fine).
-- Do NOT auto-merge a PR if your audit surfaces ANY operator-decision finding.
-- Do NOT run `flutter test` or `dart analyze` blindly — only run them when verifying a specific slice's tests.
+- Do NOT touch any path on Main's list above.
+- Do NOT dispatch worker agents on per-daypart V1 Slices 1, 2, 3, 4, 5, 6 — those are Main's.
+- Do NOT update `PROJECT_TRACKER.md`, `NEXT_WAVE_PLAN.md`, or the plan doc directly except inline annotations on your own slice rows + the slice-sequence amendments section.
+- Do NOT auto-merge a PR if your audit surfaces any operator-decision finding.
+- Do NOT run `flutter test` or `dart analyze` blindly — only when verifying a specific slice's tests.
 
 ## First actions to take after reading this prompt
 
-1. Confirm bootstrap reads (CLAUDE.md, plan doc, this prompt, Main's brief) — out loud, one line each.
-2. Dispatch the Slice 2.5 worker agent in a worktree with the scope above.
-3. In parallel, start the architecture verification audit (Task B) — read-only inspection, no agent dispatch needed.
-4. Report back to the operator (and Main, via the shared session_handoff if applicable): "Bootstrap complete. Slice 2.5 worker dispatched (PR coming). Architecture verification audit in progress."
+1. `git fetch origin && git status` — confirm you're on master synced with origin.
+2. Confirm bootstrap reads (one line each).
+3. Dispatch Task C (Slice 7a Tock fix) worker in a worktree.
+4. Dispatch Task D (regression test) worker in a parallel worktree.
+5. While workers run, draft Task E research-only investigation if Main's Slice 1 is still in flight.
+6. Report back: "Bootstrap v2 complete. Task C + D workers dispatched. Task E research in progress."
 
 ## Reference quick links
 
 - Plan doc: `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`
 - Main's brief: `docs/_indices/PER_DAYPART_V1_MAIN_ORCHESTRATOR_BRIEF.md`
 - Workflow rules: `CLAUDE.md` Workflow section
-- Prompt-shape rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` (applies to all agent prompts regardless of executor)
+- Prompt-shape rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 - Jim Taylor methodology: `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md`
+- Slice 1.5 context for Task D: `docs/_audits/per_daypart_v1/slice_1_5_aggregator_bucketer.md`
 
-Welcome to the lane. Bootstrap and go.
+Welcome back to the lane. Bootstrap v2 and go.
