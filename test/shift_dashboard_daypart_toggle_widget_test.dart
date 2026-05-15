@@ -136,10 +136,17 @@ void main() {
       await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
-      // Whole-day sections are gone — daypart lens is the active view.
+      // Whole-day sticky sections are gone — daypart lens is the
+      // active view. The whole-day 'FOH PRODUCTIVITY' sliver is gone
+      // too, but the daypart card now renders its own 'FOH
+      // PRODUCTIVITY' section (Slice 4 closed-state fix — every period
+      // state renders the full 3-section card, never a one-liner).
       expect(find.text('SHIFT OUTPUTS', skipOffstage: false), findsNothing);
       expect(find.text('SHIFT INPUTS', skipOffstage: false), findsNothing);
-      expect(find.text('FOH PRODUCTIVITY', skipOffstage: false), findsNothing);
+      expect(
+        find.text('FOH PRODUCTIVITY', skipOffstage: false),
+        findsOneWidget,
+      );
 
       // Daypart scaffold is visible.
       expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
@@ -154,10 +161,10 @@ void main() {
 
       // 10.5.2 replaces the 10.5.0 "build out in upcoming 10.5 slices"
       // banner with live per-period accumulator metrics on each card.
-      // The banner is intentionally gone — the per-period read service
-      // is the deliverable. The empty-state placeholder
-      // ("No data yet for this period.") replaces it for buckets the
-      // notifier hasn't filled yet.
+      // The Slice 4 closed-state fix then made the card always render
+      // the full 3-section grammar with honest "—" actuals + a
+      // tri-state status line for buckets the notifier hasn't filled
+      // yet (no more "No data yet for this period." one-liner).
 
       // Active period chip surfaces exactly once — Lunch is live.
       expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);

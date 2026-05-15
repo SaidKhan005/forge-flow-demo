@@ -168,6 +168,26 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   DaypartTargetContext daypartTargetFor(String periodId) =>
       _daypartTargets[periodId] ?? DaypartTargetContext.none;
 
+  /// Per-Daypart V1 (Slice 4 fix) — the past / active / future phase of
+  /// [periodId] for a restaurant-local [localNow]. Resolved with the
+  /// exact business-date-aware clock the active-period chip already uses
+  /// ([resolveActiveServicePeriodId] → [BusinessDateResolver]), never
+  /// raw `DateTime.now().weekday` and never a naive-vs-tz instant
+  /// compare. The Shift daypart card uses this to render a correct
+  /// tri-state status line ("Period closed" / "Active now" /
+  /// "Opens at …") instead of the prior binary text that mislabeled an
+  /// already-closed period as "until this period opens".
+  ServicePeriodPhase servicePeriodPhase({
+    required String periodId,
+    required DateTime localNow,
+  }) =>
+      resolveServicePeriodPhase(
+        localNow: localNow,
+        businessDayStartLocalTime: businessDayStartLocalTime,
+        definitions: _definitions,
+        periodId: periodId,
+      );
+
   ShiftServicePeriodNotifier({
     ShiftServicePeriodReadService readService =
         const ShiftServicePeriodReadService(),
@@ -661,4 +681,98 @@ String? resolveActiveServicePeriodId({
   );
   if (interval == null) return null;
   return (start: interval.start, end: interval.end, definition: def);
+}
+
+/// Per-Daypart V1 (Slice 4 fix) — the phase a service period is in
+/// relative to a restaurant-local clock.
+enum ServicePeriodPhase {
+  /// The period already closed earlier on the active business date.
+  past,
+
+  /// The period is the currently-active period.
+  active,
+
+  /// The period has not opened yet on the active business date (or is
+  /// not applicable on this business weekday — it will not open today).
+  future,
+}
+
+/// Resolves whether [periodId] is in the past, active, or future for a
+/// restaurant-local [localNow], using the **same** business-date-aware
+/// machinery as [resolveActiveServicePeriodId]: the business-date
+/// weekday (via [BusinessDateResolver]) for applicability and the
+/// wall-clock time-of-day (full sub-minute precision) for the
+/// start/end comparison. It never reads `DateTime.now().weekday` and
+/// never compares a tz-aware instant against a naive interval
+/// `DateTime`, so the answer matches the active chip exactly.
+///
+/// Non-active period rules (inclusive end, mirroring
+/// [resolveActiveServicePeriodId] — active when `start <= t <= end`):
+///   * applicable today AND past the period's end → [ServicePeriodPhase.past]
+///     ("Period closed");
+///   * otherwise → [ServicePeriodPhase.future] ("Opens at …"). This
+///     covers "not opened yet today" and "not applicable on this
+///     business weekday" — both are honestly *not closed*, so the card
+///     never tells the operator a period that already ended is still
+///     waiting to open.
+///
+/// A `rollsPastMidnight` period that is not active is always treated as
+/// [ServicePeriodPhase.future]: its only non-active window is between
+/// its end and its next start on the same business day, i.e. it has not
+/// re-opened yet.
+ServicePeriodPhase resolveServicePeriodPhase({
+  required DateTime localNow,
+  required String businessDayStartLocalTime,
+  required List<ServicePeriodDefinition> definitions,
+  required String periodId,
+}) {
+  final activeId = resolveActiveServicePeriodId(
+    localNow: localNow,
+    businessDayStartLocalTime: businessDayStartLocalTime,
+    definitions: definitions,
+  );
+  if (activeId == periodId) return ServicePeriodPhase.active;
+
+  ServicePeriodDefinition? def;
+  for (final d in definitions) {
+    if (d.id == periodId) {
+      def = d;
+      break;
+    }
+  }
+  if (def == null) return ServicePeriodPhase.future;
+
+  final businessDateIso = BusinessDateResolver.resolve(
+    localTimestamp: localNow,
+    businessDayStartLocalTime: businessDayStartLocalTime,
+  );
+  final businessWeekday = DateTime.parse(businessDateIso).weekday;
+  if (!def.applicableDays.contains(businessWeekday)) {
+    // Not applicable on this business weekday — it will not open today.
+    // Honest framing is "Opens at …", never "Period closed".
+    return ServicePeriodPhase.future;
+  }
+
+  final startMin = _parseHm(def.startLocalTime);
+  final endMin = _parseHm(def.endLocalTime);
+  if (startMin == null || endMin == null) return ServicePeriodPhase.future;
+
+  if (def.rollsPastMidnight) {
+    // Not active (excluded above); a rolling period's only non-active
+    // window is between its end and its next start → has not re-opened.
+    return ServicePeriodPhase.future;
+  }
+
+  final localTimeOfDay = Duration(
+    hours: localNow.hour,
+    minutes: localNow.minute,
+    seconds: localNow.second,
+    milliseconds: localNow.millisecond,
+    microseconds: localNow.microsecond,
+  );
+  final end = Duration(minutes: endMin);
+  // Inclusive end matches resolveActiveServicePeriodId, so "past"
+  // begins strictly after the period's end instant.
+  if (localTimeOfDay > end) return ServicePeriodPhase.past;
+  return ServicePeriodPhase.future;
 }
