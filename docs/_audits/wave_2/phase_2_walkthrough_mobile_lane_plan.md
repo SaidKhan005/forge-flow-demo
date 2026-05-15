@@ -104,7 +104,7 @@ Legend: `[ ]` = not captured, `[x]` = captured + annotated, `[!]` = gap filed.
 
 ### Top bar + drawer (every screen)
 - [x] 00 — Boot baseline (Shift dashboard, demo-seeded) — `p1_00_baseline_post_v3.png` + `p1_05_resume_baseline.png`
-- [!] 01 — Drawer open (☰ → business scope picker) — PR #755 merged (master `871bf60e`) but **live re-drive shows drawer still empty** (`p1_17_drawer_post_pr755.png`); root-cause hypothesis: call-site session-null guard at [forge_flow_app.dart:820](lib/forge_flow_app.dart:820) short-circuits seed in demo; gap `Mobile-FU-business-scope-drawer-empty-in-demo` re-opened, audit doc postmortem appended at [docs/_audits/wave_2/pr_755_mobile_drawer_seed.md](docs/_audits/wave_2/pr_755_mobile_drawer_seed.md); side finding `FU-mobile-shift-card-overflow-17px` filed
+- [x] 01 — Drawer open (☰ → business scope picker) — ✅ RESOLVED via [PR #756](https://github.com/SaidKhan005/forge-flow-demo/pull/756) salvage (master `2c54abfa`); live re-drive at `p1_28_drawer_post_pr756_salvage.png` confirms drawer populates with Barrio Legado + active-row check icon; salvage audit at [docs/_audits/wave_2/pr_drawer_seed_followup_salvage.md](docs/_audits/wave_2/pr_drawer_seed_followup_salvage.md)
 - [x] 02 — Notifications screen (🔔 → fullscreen dialog) + mark-as-read tick — `p1_08_notifications_screen.png`
 - [x] 03 — Sync state badge tap (if interactive) — non-interactive (read-only); parity with operator-web
 
