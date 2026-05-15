@@ -16,14 +16,13 @@ import 'services/sync/http_sync_proxy_client.dart';
 
 Future<void> main() async {
   // MP1 — Crashlytics: initialize PII-scrubbing crash reporter once
-  // WidgetsFlutterBinding is ready (Firebase.initializeApp is called
-  // inside createFirebaseAuthRuntimeBindings / bootstrapAndRunApp).
-  // The recorder is a no-op on web and in environments where Firebase
-  // is not initialised.
-  if (!kIsWeb) {
-    CrashReporter.instance.initialize();
-  }
-
+  // WidgetsFlutterBinding is ready. Gated on the same flag that
+  // gates Firebase.initializeApp itself — in demo / kDemoMode builds
+  // there is no Firebase app, so wiring FlutterError.onError to
+  // FirebaseCrashlytics would recurse the first error back through
+  // the same handler and freeze the engine. The actual Firebase init
+  // happens inside createFirebaseAuthRuntimeBindings below, so the
+  // initialize() call moves there.
   if (const bool.fromEnvironment('FORGE_FLOW_USE_FIREBASE_AUTH')) {
     // Optional dart-define `FORGE_FLOW_PROXY_BASE_URI` (e.g.
     // `https://forge-flow-proxy.run.app`) wires the production
@@ -37,6 +36,12 @@ Future<void> main() async {
     final bindings = await createFirebaseAuthRuntimeBindings(
       proxyBaseUri: proxyBaseUri,
     );
+    // MP1 — Crashlytics wiring is gated on Firebase having been
+    // initialized (which createFirebaseAuthRuntimeBindings did just
+    // above). Skipped on web; skipped in demo/kDemoMode builds.
+    if (!kIsWeb) {
+      CrashReporter.instance.initialize();
+    }
     // Phase 10a.UX.0 — when the proxy URI is wired, construct the
     // realtime subscription against `wss://<proxy>/v1/realtime` so
     // the operator-facing [SyncStateBadge] renders Live /
