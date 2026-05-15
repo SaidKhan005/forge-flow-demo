@@ -1110,4 +1110,200 @@ void main() {
       expect(projection.dayRows.single.children.single.daypartLabel, 'Dinner');
     });
   });
+
+  // ── Q: Per-Daypart V1 (Slice 5 — Gap 7) variance read-seam swap ──────
+  //
+  // Non-closed rows' theoretical-% contribution to the collapsed
+  // day-row aggregate now reads the period-scoped value
+  // (`ActiveTargetProfile.daypartTheoreticalLaborPctFor(row.daypart)`)
+  // when the active cycle wrote a per-period row for that period, and
+  // falls back to the whole-day pool scalar when it did not (Gap 42 —
+  // Design Rule 2: never a 0 sentinel). Closed rows are unchanged
+  // (Rule 4 locked-stamp exception). Visual layout is unchanged
+  // (Option B) — only the variance math underneath becomes
+  // period-accurate.
+  group('Q — per-period variance read-seam (Slice 5 / Gap 7)', () {
+    // Cover-weighted whole-day pool scalar (24.0%) deliberately differs
+    // from each per-period theoretical % so the assertions can prove
+    // the seam reads the period row, not the pool.
+    ActiveTargetProfile profileWithPeriods() => ActiveTargetProfile.build(
+          restaurantId: 'demo_restaurant_001',
+          sourceType: 'cycle_recommended',
+          targetCPLH: 4.5,
+          targetSPLH: 180.0,
+          targetPPA: 40.0,
+          fohWage: 16.5,
+          bohWage: 21.0,
+          opzFloorCPLH: 4.0,
+          opzCeilingCPLH: 5.0,
+          dayparts: const [
+            ActiveTargetProfileDaypart(
+              servicePeriodId: 'lunch',
+              daypartTargetCPLH: 4.0,
+              daypartTargetSPLH: 150.0,
+              daypartTargetPPA: 35.0,
+              daypartOpzFloorCPLH: 3.5,
+              daypartOpzCeilingCPLH: 4.5,
+            ),
+            ActiveTargetProfileDaypart(
+              servicePeriodId: 'dinner',
+              daypartTargetCPLH: 5.0,
+              daypartTargetSPLH: 200.0,
+              daypartTargetPPA: 45.0,
+              daypartOpzFloorCPLH: 4.5,
+              daypartOpzCeilingCPLH: 5.5,
+            ),
+          ],
+        );
+
+    ActiveTargetProfile profileNoPeriods() => ActiveTargetProfile.build(
+          restaurantId: 'demo_restaurant_001',
+          sourceType: 'cycle_recommended',
+          targetCPLH: 4.5,
+          targetSPLH: 180.0,
+          targetPPA: 40.0,
+          fohWage: 16.5,
+          bohWage: 21.0,
+          opzFloorCPLH: 4.0,
+          opzCeilingCPLH: 5.0,
+        );
+
+    test(
+        'non-closed single-period day reads per-period theoretical %, '
+        'not the whole-day pool', () {
+      final profile = profileWithPeriods();
+      // Single open dinner row → day theoretical % collapses to the
+      // dinner period's theoretical %, NOT the whole-day pool scalar.
+      final projection = service.build(
+        [_openShift(dayLabel: 'Fri', daypart: 'dinner')],
+        currentTargetProfile: profile,
+      );
+      final day = projection.dayRows.single;
+      final expectedDinnerPct =
+          profile.daypartTheoreticalLaborPctFor('dinner');
+      expect(expectedDinnerPct, isNotNull);
+      expect(
+        day.theoreticalLaborPct,
+        closeTo(expectedDinnerPct!, 1e-6),
+        reason: 'open row theoretical % reads dinner period row',
+      );
+      expect(
+        day.theoreticalLaborPct,
+        isNot(closeTo(profile.theoreticalLaborPct, 1e-6)),
+        reason: 'period value differs from whole-day pool — proves the '
+            'seam is genuinely per-period (Gap 7)',
+      );
+    });
+
+    test(
+        'mixed-period non-closed day weights each row by its own '
+        'period theoretical %', () {
+      final profile = profileWithPeriods();
+      // Lunch + dinner both open, identical sales basis (planForecastSales
+      // injected equal) so the sales-weighted blend is the simple mean
+      // of the two distinct period theoretical %s.
+      final lunch = _openShift(
+        dayLabel: 'Sat',
+        daypart: 'lunch',
+        planForecastSales: 1000.0,
+      );
+      final dinner = _openShift(
+        dayLabel: 'Sat',
+        daypart: 'dinner',
+        planForecastSales: 1000.0,
+      );
+      final projection = service.build(
+        [lunch, dinner],
+        currentTargetProfile: profile,
+      );
+      final day = projection.dayRows.single;
+      final lunchPct = profile.daypartTheoreticalLaborPctFor('lunch')!;
+      final dinnerPct = profile.daypartTheoreticalLaborPctFor('dinner')!;
+      expect(
+        day.theoreticalLaborPct,
+        closeTo((lunchPct + dinnerPct) / 2, 1e-6),
+        reason: 'equal-sales blend is the mean of the two distinct '
+            'per-period theoretical %s, not the single pool scalar',
+      );
+    });
+
+    test(
+        'empty dayparts → falls back to whole-day pool exactly as before '
+        '(Gap 42 / Design Rule 2 — no 0 sentinel)', () {
+      final poolProfile = profileNoPeriods();
+      final projection = service.build(
+        [_openShift(dayLabel: 'Fri', daypart: 'dinner')],
+        currentTargetProfile: poolProfile,
+      );
+      final day = projection.dayRows.single;
+      expect(poolProfile.dayparts, isEmpty);
+      expect(
+        day.theoreticalLaborPct,
+        closeTo(poolProfile.theoreticalLaborPct, 1e-6),
+        reason: 'no per-period row → whole-day pool scalar, never 0',
+      );
+      expect(day.theoreticalLaborPct, isNot(0.0));
+    });
+
+    test(
+        'period present for one row but absent for another → each row '
+        'falls back independently', () {
+      final profile = profileWithPeriods(); // has lunch + dinner only
+      // late_night has NO per-period row → that row falls back to the
+      // whole-day pool; dinner uses its own period row. Equal sales so
+      // the day blend is the mean of (dinner period %, pool %).
+      final dinner = _openShift(
+        dayLabel: 'Sun',
+        daypart: 'dinner',
+        planForecastSales: 1000.0,
+      );
+      final lateNight = _openShift(
+        dayLabel: 'Sun',
+        daypart: 'late_night',
+        planForecastSales: 1000.0,
+      );
+      final projection = service.build(
+        [dinner, lateNight],
+        currentTargetProfile: profile,
+      );
+      final day = projection.dayRows.single;
+      final dinnerPct = profile.daypartTheoreticalLaborPctFor('dinner')!;
+      expect(profile.daypartTheoreticalLaborPctFor('late_night'), isNull);
+      expect(
+        day.theoreticalLaborPct,
+        closeTo((dinnerPct + profile.theoreticalLaborPct) / 2, 1e-6),
+        reason: 'dinner uses its period row; late_night (no row) falls '
+            'back to the whole-day pool — independent per-row fallback',
+      );
+    });
+
+    test('closed rows are unchanged — keep locked shift.theoreticalLaborPct',
+        () {
+      final profile = profileWithPeriods();
+      // The _closedShift helper leaves theoreticalLaborPct at its
+      // locked default (MeridianConfig.totalTheoreticalLaborPct = 20.6).
+      // The seam must NOT swap closed rows onto the current per-period
+      // profile (Rule 4 locked-stamp exception).
+      const lockedClosedPct = 20.6;
+      final projection = service.build(
+        [_closedShift(dayLabel: 'Mon', daypart: 'dinner', covers: 100)],
+        currentTargetProfile: profile,
+      );
+      final day = projection.dayRows.single;
+      expect(
+        day.theoreticalLaborPct,
+        closeTo(lockedClosedPct, 1e-6),
+        reason: 'closed row keeps its locked stamp; current per-period '
+            'profile must not rewrite it (Rule 4)',
+      );
+      expect(
+        day.theoreticalLaborPct,
+        isNot(closeTo(
+          profile.daypartTheoreticalLaborPctFor('dinner')!,
+          1e-6,
+        )),
+        reason: 'closed row did not pick up the per-period profile value',
+      );
+    });
+  });
 }
