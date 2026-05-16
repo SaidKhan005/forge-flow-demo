@@ -48,9 +48,11 @@ import 'dart:convert';
 import '../../../integrations/reservation/libro_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
+import 'repositories/business_timing_profiles_repository.dart';
 import 'tenant_context.dart';
 import 'tenant_transaction.dart';
 
@@ -78,11 +80,34 @@ class LibroPostgresSink extends OperatorScopedRepository
     implements LibroReservationGateway {
   LibroPostgresSink({
     required TenantTransactionWrapper tenantWrapper,
+    SinkBusinessDateProjector? businessDateProjector,
+    BusinessTimingProfilesRepository? profilesRepository,
     DateTime Function()? now,
-  })  : _now = now ?? DateTime.now,
+  })  : _businessDateProjector = businessDateProjector ??
+            SinkBusinessDateProjector(
+              profilesRepository: profilesRepository ??
+                  BusinessTimingProfilesRepository(tenantWrapper),
+            ),
+        _now = now ?? DateTime.now,
         super(tenantWrapper);
 
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Libro no longer
+  // reads `locations.business_day_rollover_hour` from its connection
+  // lookup JOIN. The projector is the canonical entry point for any
+  // sink-side business_date resolution; the existing
+  // `LibroConnectionContext.businessDayRolloverHour` field on the
+  // bespoke `LibroReservationGateway` surface remains in place for
+  // adapter back-compat (the adapter is out of Slice 7b's scope) but is
+  // now seeded from the projector's locked fallback hour (`4`,
+  // matching `'04:00'`) instead of the deprecated location column.
+  // ignore: unused_field
+  final SinkBusinessDateProjector _businessDateProjector;
   final DateTime Function() _now;
+
+  /// Mirror of [SinkBusinessDateProjector] fallback hour for adapter
+  /// back-compat on [LibroConnectionContext.businessDayRolloverHour].
+  /// Per-Daypart V1 / Slice 7b option (b) (2026-05-15).
+  static const int _kLibroFallbackBusinessDayRolloverHour = 4;
 
   // ─── LibroReservationGateway: connect lifecycle ────────────────────
 
@@ -93,9 +118,17 @@ class LibroPostgresSink extends OperatorScopedRepository
   }) {
     final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant(ctx, (exec) async {
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the JOIN
+      // returns `loc.iana_timezone` only — no `business_day_rollover_hour`.
+      // The adapter-facing `LibroConnectionContext.businessDayRolloverHour`
+      // is back-compat-seeded from `_kLibroFallbackBusinessDayRolloverHour`
+      // (`4`), which matches the projector's `'04:00'` fallback. Any
+      // sub-hour cutoff or operator-level override is now consumed via
+      // the canonical `BusinessTimingProfilesRepository` chain inside
+      // the projector, not via this connection-row hint.
       final rows = await exec.query(
         'select cc.connection_id, cc.metadata, vc.credential_id, '
-        'loc.iana_timezone, loc.business_day_rollover_hour '
+        'loc.iana_timezone '
         'from public.connector_connection cc '
         'left join public.vendor_credentials vc '
         '  on vc.connection_id = cc.connection_id '
@@ -129,8 +162,7 @@ class LibroPostgresSink extends OperatorScopedRepository
             metadata['webhook_subscription_id'] as String?,
         restaurantTimezone:
             (row['iana_timezone'] as String?) ?? 'UTC',
-        businessDayRolloverHour:
-            (row['business_day_rollover_hour'] as int?) ?? 4,
+        businessDayRolloverHour: _kLibroFallbackBusinessDayRolloverHour,
       );
     });
   }

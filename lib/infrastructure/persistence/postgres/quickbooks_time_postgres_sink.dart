@@ -72,9 +72,11 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
 import 'postgres_executor.dart';
+import 'repositories/business_timing_profiles_repository.dart';
 import 'tenant_context.dart';
 import 'tenant_transaction.dart';
 
@@ -106,12 +108,24 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
   QuickBooksTimePostgresSink({
     required TenantTransactionWrapper tenantWrapper,
     IanaTimezoneConverter? timezoneConverter,
+    SinkBusinessDateProjector? businessDateProjector,
+    BusinessTimingProfilesRepository? profilesRepository,
     DateTime Function()? now,
-  })  : _timezoneConverter = timezoneConverter ?? IanaTimezoneConverter.shared,
+  })  : _businessDateProjector = businessDateProjector ??
+            SinkBusinessDateProjector(
+              profilesRepository: profilesRepository ??
+                  BusinessTimingProfilesRepository(tenantWrapper),
+              timezoneConverter:
+                  timezoneConverter ?? IanaTimezoneConverter.shared,
+            ),
         _now = now ?? DateTime.now,
         super(tenantWrapper);
 
-  final IanaTimezoneConverter _timezoneConverter;
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): QuickBooks Time
+  // no longer reads `locations.business_day_rollover_hour`. The cutoff
+  // is resolved through the canonical `BusinessTimingProfilesRepository`
+  // chain inside the projector.
+  final SinkBusinessDateProjector _businessDateProjector;
   final DateTime Function() _now;
 
   // ─── CanonicalSink: covers / reservations are unsupported ─────────
@@ -267,7 +281,8 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       );
     }
 
-    final businessDate = await _resolveBusinessDate(exec, shiftStart);
+    final businessDate =
+        await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
     final affected = await exec.execute(
       'insert into public.labor_punches ('
       'operator_id, location_id, '
@@ -745,12 +760,18 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     return delta < 0 ? 0 : delta;
   }
 
+  /// Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the SELECT
+  /// returns `timezone` only — no `business_day_rollover_hour`. The
+  /// cutoff itself is resolved through the canonical
+  /// `BusinessTimingProfilesRepository` chain inside the projector.
   Future<DateTime> _resolveBusinessDate(
     PostgresExecutor exec,
+    String operatorId,
+    String locationId,
     DateTime shiftStartUtc,
   ) async {
     final rows = await exec.query(
-      'select timezone, business_day_rollover_hour from public.locations '
+      'select timezone from public.locations '
       'where operator_id = public.app_current_operator() '
       'and location_id = public.app_current_location() '
       'limit 1',
@@ -763,18 +784,17 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     }
     final row = rows.single;
     final timezone = row['timezone'];
-    final rollover = row['business_day_rollover_hour'];
     if (timezone is! String || timezone.isEmpty) {
       throw StateError(
         'locations.timezone missing for the active tenant context; '
         'cannot bucket business_date.',
       );
     }
-    final rolloverHour = rollover is int ? rollover : 0;
-    return _timezoneConverter.toBusinessDate(
+    return _businessDateProjector.projectBusinessDate(
+      operatorId: operatorId,
+      locationId: locationId,
       restaurantTimezone: timezone,
-      businessDayRolloverHour: rolloverHour,
-      instant: shiftStartUtc,
+      instantUtc: shiftStartUtc,
     );
   }
 

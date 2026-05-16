@@ -593,6 +593,40 @@ void main() {
       }
     });
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — sink no longer reads `business_day_rollover_hour`.
+  // Mirrors the I.4 group in square_pos_postgres_sink_test (Slice 7b.1).
+  // Behavioural tests (I.1–I.3) live in the POS exemplar
+  // aloha_ncr_voyix_pos_postgres_sink_test (Slice 7b.2 POS exemplar);
+  // the inline-pattern shape is identical, so the static check is the
+  // load-bearing per-sink regression here.
+  group(
+      'CloverPostgresSink — I. Per-Daypart V1 Slice 7b business_date '
+      'projection via canonical timing chain (Gap 47 static)', () {
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as live code',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/clover_pos_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Clover sink — Per-Daypart V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 // ─── Test doubles ────────────────────────────────────────────────────
@@ -670,8 +704,18 @@ class _FakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
-    if (sql.contains(
-        'select timezone, business_day_rollover_hour from public.locations')) {
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler.
+    if (sql.contains('from public.business_timing_profiles p')) {
+      // Returning empty triggers the projector's `'04:00'` fallback,
+      // which projects identically to the legacy
+      // `(timezone='America/Toronto', business_day_rollover_hour=4)`
+      // path — preserving every existing A–H assertion.
+      return const <PostgresRow>[];
+    }
+    if (sql.contains('from public.locations')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool._locations['$operatorId|$locationId'];
@@ -679,7 +723,6 @@ class _FakeTransaction implements PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{
           'timezone': row['timezone'],
-          'business_day_rollover_hour': row['business_day_rollover_hour'],
         },
       ];
     }

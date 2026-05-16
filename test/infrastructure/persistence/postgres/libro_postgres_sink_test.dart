@@ -427,6 +427,41 @@ void main() {
       }
     });
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — sink no longer reads `business_day_rollover_hour`.
+  // Libro is a special-pattern sink: the adapter, not the sink,
+  // computes business_date today; the sink's connection-lookup JOIN no
+  // longer SELECTs `business_day_rollover_hour`. The
+  // `LibroConnectionContext.businessDayRolloverHour` field stays for
+  // adapter back-compat (out of Slice 7b's scope) and is back-compat-
+  // seeded from the projector's locked fallback hour (`4`).
+  group(
+      'LibroPostgresSink — I. Per-Daypart V1 Slice 7b business_date '
+      'projection via canonical timing chain (Gap 47 static)', () {
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as live code',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/libro_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Libro sink — Per-Daypart V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 /// Strip `//` line comments and `/* */` block comments so the banned-

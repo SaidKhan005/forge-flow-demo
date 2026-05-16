@@ -729,6 +729,40 @@ void main() {
       },
     );
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — sink no longer reads `business_day_rollover_hour`.
+  // Behavioural Group I tests (I.1–I.3) live in the POS exemplar
+  // aloha_ncr_voyix_pos_postgres_sink_test (Slice 7b.2 POS exemplar);
+  // helper-pattern labor sinks share the structural shape, so the
+  // static check is the load-bearing per-sink regression here.
+  group(
+      'HumanityPostgresSink — I. Per-Daypart V1 Slice 7b business_date '
+      'projection via canonical timing chain (Gap 47 static)', () {
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as live code',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/humanity_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Humanity sink — Per-Daypart V1 Slice 7b '
+              'option (b).',
+        );
+      },
+    );
+  });
 }
 
 // ─── Fakes ──────────────────────────────────────────────────────────
@@ -760,7 +794,27 @@ class _SinkPool implements PostgresPool {
 
   final List<int> _insertAffectedSequence;
 
-  final List<_SinkTransaction> transactions = <_SinkTransaction>[];
+  /// Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the
+  /// SinkBusinessDateProjector's BusinessTimingProfilesRepository chain
+  /// opens its own short tenant transaction per labor_punches write
+  /// (mirrors the open-shift projector pattern). The fake records every
+  /// transaction; legacy `transactions` filters out those projector-only
+  /// look-ups so existing assertions stay valid. `allTransactions`
+  /// exposes the unfiltered list for tests that need it.
+  final List<_SinkTransaction> allTransactions = <_SinkTransaction>[];
+
+  List<_SinkTransaction> get transactions => allTransactions
+      .where((tx) => !_isProjectorOnly(tx))
+      .toList(growable: false);
+
+  static bool _isProjectorOnly(_SinkTransaction tx) {
+    return tx.executedSql.any((s) =>
+            s.contains('from public.business_timing_profiles p')) &&
+        !tx.executedSql.any((s) =>
+            s.contains('insert into public.') ||
+            s.contains('update public.') ||
+            s.contains('delete from public.'));
+  }
 
   int _drainInsertAffected() {
     if (_insertAffectedSequence.isEmpty) return 0;
@@ -774,7 +828,7 @@ class _SinkPool implements PostgresPool {
       connectionId: connectionId,
       drainInsertAffected: _drainInsertAffected,
     );
-    transactions.add(tx);
+    allTransactions.add(tx);
     return tx;
   }
 }
@@ -813,6 +867,15 @@ class _SinkTransaction extends PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{'connection_id': cid},
       ];
+    }
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler. Returning empty triggers
+    // the projector's `'04:00'` fallback, which projects identically to
+    // the legacy `(timezone='America/New_York', rollover_hour=4)` path.
+    if (sql.contains('from public.business_timing_profiles p')) {
+      return const <PostgresRow>[];
     }
     if (sql.contains('from public.locations')) {
       final row = locationTimezoneRow;

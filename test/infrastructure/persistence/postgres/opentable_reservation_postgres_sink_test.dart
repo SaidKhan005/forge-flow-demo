@@ -521,6 +521,39 @@ void main() {
       },
     );
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — sink no longer reads `business_day_rollover_hour`.
+  // Behavioural Group I tests (I.1–I.3) live in the POS exemplar
+  // aloha_ncr_voyix_pos_postgres_sink_test (Slice 7b.2 POS exemplar).
+  group(
+      'OpenTableReservationPostgresSink — I. Per-Daypart V1 Slice 7b '
+      'business_date projection via canonical timing chain (Gap 47 static)',
+      () {
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as live code',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/opentable_reservation_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the OpenTable sink — Per-Daypart V1 Slice 7b '
+              'option (b).',
+        );
+      },
+    );
+  });
 }
 
 // The literal `'seated_at'` token built up at runtime so the
@@ -892,6 +925,16 @@ class _FakeTx implements PostgresTransaction {
           .toList(growable: false);
     }
 
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler. Returning empty triggers
+    // the projector's `'04:00'` fallback, which projects identically to
+    // the legacy `(timezone, business_day_rollover_hour=4)` path
+    // (existing OT tests seed `businessDayRolloverHour: 4`).
+    if (lower.contains('from public.business_timing_profiles p')) {
+      return const <PostgresRow>[];
+    }
     if (lower.contains('from public.locations')) {
       final operatorId = parameters['operator_id'] as String?;
       final locationId = parameters['location_id'] as String?;
@@ -899,12 +942,10 @@ class _FakeTx implements PostgresTransaction {
       if (loc == null) return const <PostgresRow>[];
       return <PostgresRow>[
         <String, Object?>{
-          // Keys mirror the actual `public.locations` schema columns
-          // (`timezone`, `business_day_rollover_hour`); the in-memory
-          // field name `restaurantTimezone` is just the Dart-side name
-          // for the value.
+          // Keys mirror the actual `public.locations` schema column
+          // (`timezone`); per Slice 7b the sink no longer reads
+          // `business_day_rollover_hour`.
           'timezone': loc.restaurantTimezone,
-          'business_day_rollover_hour': loc.businessDayRolloverHour,
         },
       ];
     }

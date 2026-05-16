@@ -121,7 +121,13 @@ void main() {
       expect((row['actual_sales'] as num).toDouble(), closeTo(87.20, 0.001));
       expect(row['operator_id'], _opA);
       expect(row['location_id'], _locA);
-      expect(row['business_date'], isA<DateTime>());
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the sink now
+      // formats `business_date` as a 'YYYY-MM-DD' String for the SQL
+      // `::date` cast (was previously a `DateTime` from the legacy
+      // `IanaTimezoneConverter.toBusinessDate`). Both project to the
+      // same calendar date — the shape change is the visible
+      // difference.
+      expect(row['business_date'], '2026-05-04');
 
       // raw_payload is JSONB; the fake stores the encoded string so
       // the test asserts on a structural round-trip.
@@ -544,6 +550,179 @@ void main() {
       }
     });
   });
+
+  // ────────────────────────────────────────────────────────────────────
+  // Group I — Per-Daypart V1 / Slice 7b option (b) (2026-05-15):
+  // business_date now resolves through the canonical
+  // BusinessTimingProfilesRepository chain via SinkBusinessDateProjector.
+  // Closes Gap 46 (sub-hour cutoff truncation) AND Gap 47 (operator →
+  // org_unit → location hierarchy bypass). Mirrors the structural
+  // approach of group "I." in square_pos_postgres_sink_test.
+  // ────────────────────────────────────────────────────────────────────
+  group(
+      'AlohaNcrVoyixPostgresSink — I. Per-Daypart V1 Slice 7b business_date '
+      'projection via canonical timing chain (Gaps 46+47)', () {
+    test(
+      'I.1 late-night before rollover in America/Toronto buckets to '
+      'PRIOR business_date (01:30 local Wed → Tue business_date)',
+      () async {
+        final pool = _FakeAlohaPool()
+          ..seedLocation(operatorId: _opA, locationId: _locA)
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = AlohaNcrVoyixPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 13, 12, 0, 0),
+        );
+
+        // Wed 2026-05-13 01:30 EDT = Wed 2026-05-13 05:30 UTC. Local
+        // 01:30 < cutoff 04:00 → business_date = Tue 2026-05-12.
+        final canonical = <String, Object?>{
+          'vendor_entity_id': 'chk-tz1',
+          'vendor_modified_at': '2026-05-13T05:30:00.000Z',
+          'opened_at': '2026-05-13T04:00:00.000Z',
+          'closed_at': '2026-05-13T05:30:00.000Z',
+          'covers': 2,
+          'covers_source': 'direct',
+          'actual_sales': 35.00,
+        };
+        await sink.upsertCheckFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonical,
+          rawPayload: const <String, Object?>{},
+        );
+
+        expect(pool.coverFacts, hasLength(1));
+        expect(pool.coverFacts.values.single['business_date'], '2026-05-12');
+      },
+    );
+
+    test(
+      'I.2 sub-hour cutoff (04:30) — 04:15 local Wed projects to PRIOR '
+      'business_date. Closes Gap 46',
+      () async {
+        final pool = _FakeAlohaPool()
+          ..seedLocation(
+            operatorId: _opA,
+            locationId: _locA,
+            businessDayStartLocalTime: '04:30:00',
+          )
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = AlohaNcrVoyixPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 13, 12, 0, 0),
+        );
+
+        // Wed 2026-05-13 04:15 EDT = Wed 2026-05-13 08:15 UTC. Local
+        // 04:15 < cutoff 04:30 → business_date = Tue 2026-05-12. The
+        // legacy integer-hour path (rollover_hour = 4) would have
+        // returned Wed because predicate `4 < 4` is false. Slice 7b
+        // option (b) closes Gap 46.
+        final canonical = <String, Object?>{
+          'vendor_entity_id': 'chk-tz2',
+          'vendor_modified_at': '2026-05-13T08:15:00.000Z',
+          'opened_at': '2026-05-13T07:30:00.000Z',
+          'closed_at': '2026-05-13T08:15:00.000Z',
+          'covers': 1,
+          'covers_source': 'direct',
+          'actual_sales': 12.00,
+        };
+        await sink.upsertCheckFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonical,
+          rawPayload: const <String, Object?>{},
+        );
+
+        expect(pool.coverFacts.values.single['business_date'], '2026-05-12',
+            reason: 'Sub-hour cutoff 04:30 honors local 04:15 < 04:30 → '
+                'PRIOR business_date. Closes Gap 46.');
+      },
+    );
+
+    test(
+      'I.3 sink no longer reads business_day_rollover_hour — even when '
+      'the seeded location row carries a wildly wrong value (999), the '
+      'projection still uses the canonical-chain cutoff',
+      () async {
+        final pool = _FakeAlohaPool()
+          ..seedLocation(
+            operatorId: _opA,
+            locationId: _locA,
+            rolloverHour: 999,
+          )
+          ..seedConnection(
+            operatorId: _opA,
+            locationId: _locA,
+            connectionId: _connA,
+          );
+        final sink = AlohaNcrVoyixPostgresSink(
+          TenantTransactionWrapper(pool),
+          clock: () => DateTime.utc(2026, 5, 13, 12, 0, 0),
+        );
+
+        // Wed 2026-05-13 12:00 EDT = Wed 2026-05-13 16:00 UTC. Local
+        // 12:00 ≥ cutoff 04:00 (projector fallback) → Wed 2026-05-13.
+        // If the sink had retained the legacy path and read
+        // `rolloverHour = 999`, IanaTimezoneConverter.toBusinessDate
+        // would have thrown — `must be in [0, 23]`. Test passes ONLY
+        // because the legacy field is no longer read.
+        final canonical = <String, Object?>{
+          'vendor_entity_id': 'chk-tz3',
+          'vendor_modified_at': '2026-05-13T16:00:00.000Z',
+          'opened_at': '2026-05-13T15:00:00.000Z',
+          'closed_at': '2026-05-13T16:00:00.000Z',
+          'covers': 3,
+          'covers_source': 'direct',
+          'actual_sales': 22.00,
+        };
+        await sink.upsertCheckFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonical,
+          rawPayload: const <String, Object?>{},
+        );
+
+        expect(pool.coverFacts.values.single['business_date'], '2026-05-13',
+            reason: 'Aloha (NCR Voyix) no longer reads rollover_hour. The '
+                'canonical chain produced 04:00 as the cutoff; 12:00 local '
+                '≥ 04:00 → same business_date.');
+      },
+    );
+
+    test(
+      'I.4 sink source contains zero references to '
+      'business_day_rollover_hour as a query column or field-access '
+      'token (Gap 47 closed — pinned by static check)',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/aloha_ncr_voyix_pos_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Aloha (NCR Voyix) sink — it was removed by '
+              'Per-Daypart V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 // ─── Test doubles ────────────────────────────────────────────────────
@@ -639,10 +818,22 @@ class _FakeAlohaPool implements PostgresPool {
   void seedLocation({
     required String operatorId,
     required String locationId,
+    String timezone = 'America/Toronto',
+    String? businessDayStartLocalTime,
+    int? rolloverHour,
   }) {
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the canonical
+    // cutoff for the new business-date projection comes from
+    // `businessDayStartLocalTime` (HH:MM:SS, sub-hour aware), surfaced
+    // via the fake `business_timing_profiles p` candidate. The legacy
+    // `rolloverHour` is retained on the seed map so Group I.3 can prove
+    // the sink no longer reads `business_day_rollover_hour` (even with
+    // a hostile value).
     _locations['$operatorId|$locationId'] = <String, Object?>{
-      'timezone': 'America/Toronto',
-      'business_day_rollover_hour': 4,
+      'timezone': timezone,
+      if (businessDayStartLocalTime != null)
+        'business_day_start_local_time': businessDayStartLocalTime,
+      if (rolloverHour != null) 'business_day_rollover_hour': rolloverHour,
     };
   }
 
@@ -690,8 +881,68 @@ class _FakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
-    if (sql.contains(
-        'select timezone, business_day_rollover_hour from public.locations')) {
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler. Returning empty triggers
+    // the projector's `'04:00'` fallback (matches the legacy
+    // `(timezone='America/Toronto', business_day_rollover_hour=4)` path
+    // — preserving every existing A–H assertion). When `seedLocation`
+    // supplies a custom `businessDayStartLocalTime`, return a
+    // location-scoped profile candidate so Group I.2 (sub-hour cutoff
+    // regression — Gap 46) can prove the canonical chain consumed it.
+    if (sql.contains('from public.business_timing_profiles p')) {
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final loc = pool._locations['$operatorId|$locationId'];
+      final cutoff = loc?['business_day_start_local_time'] as String?;
+      if (cutoff == null) return const <PostgresRow>[];
+      final tz = (loc?['timezone'] as String?) ?? 'America/Toronto';
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': '99999999-9999-4999-8999-999999999999',
+          'operator_id': operatorId,
+          'scope_type': 'location',
+          'scope_id': locationId,
+          'display_name': null,
+          'business_day_start_local_time': cutoff,
+          'week_start_day': 1,
+          'close_authority': 'app_local_cutoff_fallback',
+          'local_close_fallback_time': null,
+          'effective_from_business_date': '2026-01-01',
+          'effective_until_business_date': null,
+          'supersedes_profile_id': null,
+          'created_by': null,
+          'updated_by': null,
+          'created_at': DateTime.utc(2026, 1, 1),
+          'updated_at': DateTime.utc(2026, 1, 1),
+          'location_timezone': tz,
+          // The resolver requires at least one service-period definition
+          // after inheritance — supply a single placeholder so the
+          // projector can resolve to the seeded `businessDayStartLocalTime`.
+          'service_periods': <Map<String, Object?>>[
+            <String, Object?>{
+              'service_period_id':
+                  '88888888-8888-4888-8888-888888888888',
+              'operator_id': operatorId,
+              'profile_id': '99999999-9999-4999-8999-999999999999',
+              'service_period_key': 'lunch',
+              'label': 'Lunch',
+              'short_label': 'L',
+              'sort_order': 1,
+              'start_local_time': '11:00',
+              'end_local_time': '15:00',
+              'rolls_past_midnight': false,
+              'applicable_weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
+            },
+          ],
+        },
+      ];
+    }
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the sink now
+    // SELECTs `timezone` only — `business_day_rollover_hour` is no
+    // longer read. Match the new shape via `from public.locations`.
+    if (sql.contains('from public.locations')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool._locations['$operatorId|$locationId'];
@@ -699,7 +950,6 @@ class _FakeTransaction implements PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{
           'timezone': row['timezone'],
-          'business_day_rollover_hour': row['business_day_rollover_hour'],
         },
       ];
     }
