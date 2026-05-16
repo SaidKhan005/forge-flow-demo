@@ -444,7 +444,7 @@ class ShiftDashboardReadModel {
       actualSplh: avgSPLH,
       targetSplh: profile.targetSPLH,
     );
-    final opzSubLabel = _computeOpzSubLabel(opzStatus, splhState);
+    final opzSubLabel = computeOpzSubLabel(opzStatus, splhState);
 
     // Metric cards
     final cards = _buildMetricCards(
@@ -558,7 +558,13 @@ class ShiftDashboardReadModel {
   // resolver falls back to the single-axis CPLH sentence. The +/- 5
   // percent tolerance mirrors the per-period driver threshold so the
   // two surfaces stay consistent.
-  static const double _splhTolerance = 0.05;
+  //
+  // Per-Daypart Targets V1: public so the per-period Shift lens
+  // (`_ShiftSectionViewData.fromPeriod`) classifies its SPLH band with
+  // the EXACT same ±5% band the whole-day lens uses — the daypart matrix
+  // and whole-day matrix must move on the same thresholds (1:1 parity,
+  // single source of truth for the band edge).
+  static const double splhTolerance = 0.05;
 
   static String? _computeSplhState({
     required int actualBohHours,
@@ -568,8 +574,8 @@ class ShiftDashboardReadModel {
     if (actualBohHours <= 0) return null;
     if (targetSplh <= 0) return null;
     final double ratio = actualSplh / targetSplh;
-    if (ratio < 1.0 - _splhTolerance) return 'below';
-    if (ratio > 1.0 + _splhTolerance) return 'above';
+    if (ratio < 1.0 - splhTolerance) return 'below';
+    if (ratio > 1.0 + splhTolerance) return 'above';
     return 'on';
   }
 
@@ -579,7 +585,12 @@ class ShiftDashboardReadModel {
   // SPLH state is absent or agrees with CPLH on the on-target reading.
   // Four cross-axis sentences swap in for the cells where the two axes
   // disagree, sourced from Jim Taylor labor-model deep dive ch. 7.
-  static String _computeOpzSubLabel(String cplhStatus, [String? splhState]) {
+  //
+  // Per-Daypart Targets V1: public so the per-period Shift lens reuses
+  // the identical resolver — daypart now gets the same four cross-axis
+  // diagnoses whole-day does, instead of only the three single-axis
+  // CPLH sentences.
+  static String computeOpzSubLabel(String cplhStatus, [String? splhState]) {
     if (splhState != null) {
       if (cplhStatus == 'below' && splhState == 'above') {
         return 'Below OPZ floor. Team executed. Volume problem, not '
@@ -615,7 +626,7 @@ class ShiftDashboardReadModel {
   static String computeOpzSubLabelForTest(
     String cplhStatus,
     String? splhState,
-  ) => _computeOpzSubLabel(cplhStatus, splhState);
+  ) => computeOpzSubLabel(cplhStatus, splhState);
 
   /// Test-only accessor for the SPLH band classifier.
   @visibleForTesting

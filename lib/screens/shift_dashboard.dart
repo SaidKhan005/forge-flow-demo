@@ -994,13 +994,43 @@ class _ShiftSectionViewData {
             : status == 'above'
                 ? 'ABOVE OPZ'
                 : 'IN OPZ';
-        final sub = status == 'below'
-            ? 'Productivity is below the OPZ floor. Too many labor hours '
-                'for the volume.'
-            : status == 'above'
-                ? 'Productivity is above the OPZ ceiling. Service quality '
-                    'may suffer.'
-                : 'Team is producing. Watch covers.';
+        // Per-Daypart Targets V1 — restore the SPLH (cross) axis for the
+        // daypart lens. Previously `fromPeriod` never computed an SPLH
+        // band, so `splhState` defaulted to null: the cross-axis matrix
+        // could never light a cell (its `active` test needs a non-null
+        // SPLH band) and the sub-label only ever used the three
+        // single-axis CPLH sentences. Classify the period's BOH
+        // productivity against its locked per-period `targetSPLH` with
+        // the EXACT ±band the whole-day lens uses
+        // (`ShiftDashboardReadModel.splhTolerance`), gated on the honest
+        // "kitchen punched in" signal (`bucket.bohMinutes > 0`) and a
+        // present locked target — null otherwise, which the matrix
+        // renders as nine dim cells with no phantom marker (Design
+        // Rule 2 / Metric Honesty Doctrine), identical to whole-day.
+        // SPLH = sales per BOH labor hour (`bucket.bohSplh`), the same
+        // BOH-only productivity axis the whole-day path classifies
+        // (7.58: SPLH is the BOH axis).
+        final targetSplh = tc.targetSPLH;
+        String? splhState;
+        if (bucket.bohMinutes > 0 &&
+            targetSplh != null &&
+            targetSplh > 0) {
+          final ratio = bucket.bohSplh / targetSplh;
+          splhState = ratio < 1.0 - ShiftDashboardReadModel.splhTolerance
+              ? 'below'
+              : ratio > 1.0 + ShiftDashboardReadModel.splhTolerance
+                  ? 'above'
+                  : 'on';
+        }
+        // Reuse the whole-day cross-axis resolver verbatim so the
+        // daypart lens gets the same four cross-axis diagnoses (forecast
+        // vs execution, kitchen vs dining room) it does — and falls back
+        // to the identical three single-axis CPLH sentences when SPLH is
+        // absent or agrees on-target. 1:1 parity, single copy source.
+        final sub = ShiftDashboardReadModel.computeOpzSubLabel(
+          status,
+          splhState,
+        );
         opz = _OpzBandData(
           currentCPLH: currentCplh,
           opzFloorCPLH: floor,
@@ -1009,6 +1039,7 @@ class _ShiftSectionViewData {
           opzStatus: status,
           opzLabel: label,
           opzSubLabel: sub,
+          splhState: splhState,
         );
       }
     }

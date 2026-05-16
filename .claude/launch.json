@@ -31,6 +31,25 @@
         "8182"
       ],
       "port": 8182
+    },
+    {
+      "name": "forgeflow-mobile-demo",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/run_flutter_dev.ps1",
+        "-App",
+        "forgeflow",
+        "-Mode",
+        "demo",
+        "-Device",
+        "web-server",
+        "--web-port=8183",
+        "--web-hostname=127.0.0.1"
+      ],
+      "port": 8183
     }
   ]
 }
