@@ -1714,7 +1714,63 @@ Future<void> _seedDemoDataFromReplay(Database db, MockReplayOutput replay) async
   // cold-boot seed path and the reseed/advance path (this function is
   // the single per-location seed-orchestration seam).
   await _seedAdditionalLocationsFromReplay(db, replay, now, importRunId);
+
+  // Demo-data Slice E pt2 (Gap G6) — arm the mobile-fold
+  // `demo_mode_state` source so Settings → Integrations + the
+  // `DemoModeBanner` render the per-(operator, location, category)
+  // vendor demo state, consistent with pt1's (#800) fixture. Single
+  // call site for this hook; both demo-seed paths (`_onCreate` cold
+  // boot AND reseed/advance) flow through `_seedDemoDataFromReplay`,
+  // mirroring the `_seedAdditionalLocationsFromReplay` seam above.
+  await _seedDemoVendorIntegrationModeStateSource();
 }
+
+/// Demo-data Slice E pt2 — mobile-fold `demo_mode_state` seed hook.
+///
+/// HP #2 (CLAUDE.md → Demo Mode): the mobile fold + banner read ONLY
+/// `DemoModeStateNotifier`, which is fed by an injected
+/// `SyncProxyClient.fetchDemoModeStates`. The demo flavor bootstraps
+/// with no proxy, so there is no SQLite `demo_mode_state` table to
+/// write and inventing a `demo_*` table is forbidden. Per the pt2
+/// prompt (Required #3) the "hook" instead WIRES pt1's fixture into the
+/// mobile notifier's demo source — the notifier-side analogue of
+/// `MockReplayDataSourceProvider`. This is a WRITER-side source swap,
+/// not a `kDemoMode` reader branch: every reader resolves the records
+/// through the SAME code path in demo and prod.
+///
+/// `_seedDemoDataFromReplay` runs in BOTH the demo flavor and ordinary
+/// (production) `_onCreate` because the demo restaurant rows coexist in
+/// the same tables (HP #2). The demo source must therefore arm ONLY in
+/// the demo flavor; the gate below is the `kDemoMode` /
+/// `FORGE_FLOW_DEMO_MODE` WRITER-side switch (HP #2 explicitly endorses
+/// `kDemoMode` as a writer-side switch — used here in the seeder, not a
+/// reader). In production the gate is false → the source is never armed
+/// → `DemoVendorIntegrationDemoModeSource.maybeClient()` stays null →
+/// the notifier resolves exactly the bootstrap proxy it always has, so
+/// the production read path is byte-unchanged.
+///
+/// Determinism + HP #4: `armForDemoSeed` materializes and asserts the
+/// canonical pt1 records for the 4 `DemoScope.locations` ×
+/// {pos, labor, reservation} for the demo operator — pure, no RNG, no
+/// `DateTime.now()`, no DB write, no cross-location/operator leakage.
+/// Two reseeds are byte-identical.
+Future<void> _seedDemoVendorIntegrationModeStateSource() async {
+  if (!_kDemoModeWriterSwitch) return;
+  DemoVendorIntegrationDemoModeSource.armForDemoSeed(
+    demoLocationIds: <String>[
+      for (final location in DemoScope.locations) location.restaurantId,
+    ],
+  );
+}
+
+/// `kDemoMode` / `FORGE_FLOW_DEMO_MODE` WRITER-side switch — the SAME
+/// pair `main_forgeflow.dart`'s `_demoAuthEnabled` and the demo
+/// `SettingsScreen` carve-outs use. Compile-time const; unset in
+/// production builds so `_seedDemoVendorIntegrationModeStateSource` is
+/// a no-op there and the demo source never arms.
+const bool _kDemoModeWriterSwitch =
+    bool.fromEnvironment('kDemoMode') ||
+    bool.fromEnvironment('FORGE_FLOW_DEMO_MODE');
 
 String _deterministicHash(String payload) {
   int hash = 0x811c9dc5;
