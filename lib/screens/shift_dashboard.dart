@@ -12,6 +12,7 @@ import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../services/integration/shift_vendor_source_resolver.dart';
 import '../services/shift_service_period_read_service.dart';
+import '../state/active_target_profile_notifier.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../state/shift_dashboard_notifier.dart';
 import '../state/shift_service_period_notifier.dart';
@@ -306,7 +307,8 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
 
       // Per-location vendor provenance + period lifecycle (Defects 2 & 3).
       // Same fixture-derived resolver the whole-day path and the
-      // DemoModeBanner use — no parallel signal, no kDemoMode fork.
+      // demo-mode state surface use — no parallel signal, no kDemoMode
+      // fork.
       final restaurant =
           context.watch<RestaurantScopeNotifier?>()?.restaurant;
       final restaurantId = restaurant?.restaurantId;
@@ -325,6 +327,16 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
               ) ==
               ServicePeriodPhase.future;
 
+      // Blended-wage target is period-invariant — the same shared
+      // benchmark value (`profile.targetBlendedWage`) the whole-day
+      // `_buildMetricCards` uses. Read-only passthrough so the per-period
+      // BLENDED WAGE pill shows the same actual-vs-target line; null when
+      // no profile is bound yet → pill falls back to honest behavior.
+      final periodBlendedWageTarget = context
+          .watch<ActiveTargetProfileNotifier?>()
+          ?.profile
+          ?.targetBlendedWage;
+
       slivers.addAll(
         _sectionGroups(
           data: _ShiftSectionViewData.fromPeriod(
@@ -332,6 +344,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             targetContext,
             vendorSource: vendorSource,
             periodNotStartedYet: periodNotStartedYet,
+            targetBlendedWage: periodBlendedWageTarget,
           ),
           outputsLabel: 'OUTPUTS',
           inputsLabel: 'INPUTS',
@@ -363,11 +376,11 @@ class _ShiftHeader extends StatelessWidget {
         'Restaurant';
     return AppScreenHeader(
       title: restaurantName,
-      trailing: _LiveClock(ticker: ticker),
       bottom: _ShiftHeaderMeta(
         day: readModel.day,
         businessDate: readModel.businessDate,
         daypart: readModel.daypart,
+        ticker: ticker,
         freshness: freshness,
       ),
     );
@@ -399,19 +412,23 @@ String _formatMonthDay(String isoDate) {
   return '${months[month - 1]} $day';
 }
 
-/// Bottom-row meta for the Shift header: day · live business date · optional
-/// daypart on the left, live clock + optional freshness chip on the right.
-/// Lives in the same slot where Variance shows its TabBar so all four tabs
-/// match in height.
+/// Bottom-row meta for the Shift header: status dot + day, live business
+/// date and the live clock on a single line at the left, with the optional
+/// freshness chip pushed to the right. The clock previously sat in the
+/// title row's trailing slot; moving it here frees the full title width
+/// for the restaurant name (less mid-word truncation). Lives in the same
+/// slot where Variance shows its TabBar so all four tabs match in height.
 class _ShiftHeaderMeta extends StatelessWidget {
   final String day;
   final String businessDate;
   final String daypart;
+  final ValueListenable<DateTime> ticker;
   final CurrentStateFreshness? freshness;
   const _ShiftHeaderMeta({
     required this.day,
     required this.businessDate,
     required this.daypart,
+    required this.ticker,
     this.freshness,
   });
 
@@ -421,31 +438,38 @@ class _ShiftHeaderMeta extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left group — dot + day · date
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: AppColors.sunset,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$day \u00b7 ${_formatMonthDay(businessDate)}',
-                style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-              ),
-            ],
+          // Left group: status dot, then day + date.
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.sunset,
+              shape: BoxShape.circle,
+            ),
           ),
-          // Clock moved to the title row trailing slot. Only the
-          // freshness chip remains here on the right.
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '$day \u00b7 ${_formatMonthDay(businessDate)}',
+              style: AppTextStyles.mono12(color: AppColors.sunsetDark),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Live time, pulled down from the old title-row trailing slot
+          // so the restaurant name gets the full title width (less
+          // mid-word truncation) and date + time read as one line.
+          const SizedBox(width: 8),
+          Text(
+            '·',
+            style: AppTextStyles.mono12(color: AppColors.textMuted),
+          ),
+          const SizedBox(width: 8),
+          _LiveClock(ticker: ticker),
           if (freshness != null) ...[
             const Spacer(),
+            const SizedBox(width: 12),
             _FreshnessLabel(freshness: freshness!),
           ],
         ],
@@ -536,7 +560,7 @@ class _LiveClock extends StatelessWidget {
           children: [
             Text(
               '$hour:$minute',
-              style: AppTextStyles.mono16(color: AppColors.textPrimary),
+              style: AppTextStyles.mono12(color: AppColors.textPrimary),
             ),
             const SizedBox(width: 4),
             Text(amPm, style: AppTextStyles.mono10(color: AppColors.textMuted)),
@@ -677,13 +701,21 @@ String _provenanceLabelFor(String provenanceId) {
 
 /// Adapts a [MetricProvenance] domain object to the widget-layer
 /// [MetricPillProvenance] descriptor used by [MetricPill].
+/// [targetLabel], when non-null, REPLACES the vendor source label in the
+/// live / stale / demo / partial / fallback branches with the metric's
+/// actual-vs-target reference line (parity with SALES / LABOR %). When
+/// null the prior source-label behavior is unchanged. The empty /
+/// unavailable tooltip is independent of [targetLabel] (honesty branch
+/// stays as-is).
 MetricPillProvenance _toPillProvenance(
   MetricProvenance prov, {
   String? unavailableTooltip,
+  String? targetLabel,
 }) {
   return MetricPillProvenance(
     label: _provenanceLabelFor(prov.provenance),
     tooltip: prov.state == MetricState.unavailable ? unavailableTooltip : null,
+    targetLabel: targetLabel,
   );
 }
 
@@ -778,6 +810,23 @@ class _ShiftSectionViewData {
   // FOH PRODUCTIVITY
   final _OpzBandData? opz;
 
+  // Actual-vs-target reference lines for the five MetricPills (COVERS,
+  // PPA, CPLH, SPLH, BLENDED WAGE). These mirror how SALES / LABOR %
+  // already show their target reference line: the small line under the
+  // pill value shows the metric's TARGET, not the vendor source label.
+  // Format strings are byte-identical to `ShiftDashboardReadModel.
+  // _buildMetricCards` (the authoritative target definitions); these are
+  // display passthroughs of existing read-model / target-context values,
+  // NOT new math. `null` when the target is genuinely unavailable for
+  // this scope (e.g. a per-period metric with no locked target) — the
+  // pill then falls back to its prior source-label / honest-empty
+  // behavior, never a fabricated `Target 0` (Metric Honesty Doctrine).
+  final String? coversTargetLabel;
+  final String? ppaTargetLabel;
+  final String? cplhTargetLabel;
+  final String? splhTargetLabel;
+  final String? blendedWageTargetLabel;
+
   // Per-location vendor + period lifecycle context (Defects 2 & 3).
   // Whole-day leaves these at the defaults so its render is byte-
   // identical; the per-period path supplies the real per-(operator,
@@ -809,6 +858,11 @@ class _ShiftSectionViewData {
     required this.fohHours,
     required this.bohHours,
     required this.opz,
+    this.coversTargetLabel,
+    this.ppaTargetLabel,
+    this.cplhTargetLabel,
+    this.splhTargetLabel,
+    this.blendedWageTargetLabel,
     this.posConnected = true,
     this.laborConnected = true,
     this.periodNotStartedYet = false,
@@ -882,6 +936,15 @@ class _ShiftSectionViewData {
         opzSubLabel: rm.opzSubLabel,
         splhState: rm.splhState,
       ),
+      // Actual-vs-target reference lines — byte-identical format to
+      // `ShiftDashboardReadModel._buildMetricCards` (the authoritative
+      // target definitions). Read-model passthroughs, no new math.
+      coversTargetLabel: 'Forecast ${rm.forecastCovers}',
+      ppaTargetLabel: 'Target \$${rm.targetPPA.toStringAsFixed(2)}',
+      cplhTargetLabel: 'Target ${rm.targetCPLH.toStringAsFixed(2)}',
+      splhTargetLabel: 'Target \$${rm.targetSPLH.toStringAsFixed(0)}',
+      blendedWageTargetLabel:
+          'Target \$${rm.targetBlendedWage.toStringAsFixed(2)}',
     );
   }
 
@@ -896,6 +959,7 @@ class _ShiftSectionViewData {
     DaypartTargetContext tc, {
     ShiftVendorSource vendorSource = ShiftVendorSource.none,
     bool periodNotStartedYet = false,
+    double? targetBlendedWage,
   }) {
     // Defect 2 — per-period labor must honest-degrade per location:
     // a location whose Labor category is NOT connected (e.g. Harbour,
@@ -1045,6 +1109,33 @@ class _ShiftSectionViewData {
       );
     }
 
+    // Per-period actual-vs-target reference lines. Format strings are
+    // byte-identical to `ShiftDashboardReadModel._buildMetricCards` (the
+    // authoritative target definitions). Each is `null` when the locked
+    // per-period target is genuinely absent (Gap-42 fallback / no locked
+    // value) so the pill keeps its prior honest-empty / source-label
+    // behavior rather than fabricating a `Target 0` (Metric Honesty
+    // Doctrine / Design Rule 2). COVERS has no per-period forecast-covers
+    // source on [DaypartTargetContext] — left `null` (no fabrication).
+    // Blended-wage target is period-invariant: the same shared benchmark
+    // value (`profile.targetBlendedWage`) `_buildMetricCards` uses,
+    // passed down by the caller; `null` when no profile is bound yet.
+    final ppaTargetForLabel = tc.targetPPA;
+    final cplhTargetForLabel = tc.targetCPLH;
+    final splhTargetForLabel = tc.targetSPLH;
+    final String? ppaTargetLabel = ppaTargetForLabel == null
+        ? null
+        : 'Target \$${ppaTargetForLabel.toStringAsFixed(2)}';
+    final String? cplhTargetLabel = cplhTargetForLabel == null
+        ? null
+        : 'Target ${cplhTargetForLabel.toStringAsFixed(2)}';
+    final String? splhTargetLabel = splhTargetForLabel == null
+        ? null
+        : 'Target \$${splhTargetForLabel.toStringAsFixed(0)}';
+    final String? blendedWageTargetLabel = targetBlendedWage == null
+        ? null
+        : 'Target \$${targetBlendedWage.toStringAsFixed(2)}';
+
     return _ShiftSectionViewData(
       currentSales: bucket.sales,
       forecastSales: forecastSales,
@@ -1061,6 +1152,12 @@ class _ShiftSectionViewData {
       fohHours: hoursColumn(bucket.fohMinutes, tc.requiredFohHours),
       bohHours: hoursColumn(bucket.bohMinutes, tc.requiredBohHours),
       opz: opz,
+      // COVERS: no per-period forecast-covers source → null (honest).
+      coversTargetLabel: null,
+      ppaTargetLabel: ppaTargetLabel,
+      cplhTargetLabel: cplhTargetLabel,
+      splhTargetLabel: splhTargetLabel,
+      blendedWageTargetLabel: blendedWageTargetLabel,
       posConnected: vendorSource.posConnected,
       laborConnected: laborConnected,
       periodNotStartedYet: periodNotStartedYet,
@@ -1175,6 +1272,7 @@ class _OutputsSection extends StatelessWidget {
                         isLabor: false,
                         metricPhrase: 'covers',
                       ),
+                      targetLabel: data.coversTargetLabel,
                     ),
                     label: 'COVERS',
                     value: coversProv.value,
@@ -1191,6 +1289,7 @@ class _OutputsSection extends StatelessWidget {
                         isLabor: true,
                         metricPhrase: 'blended wage',
                       ),
+                      targetLabel: data.blendedWageTargetLabel,
                     ),
                     label: 'BLENDED WAGE',
                     value: wageProv.value,
@@ -1245,6 +1344,7 @@ class _InputsSection extends StatelessWidget {
                     isLabor: false,
                     metricPhrase: 'per-person average',
                   ),
+                  targetLabel: data.ppaTargetLabel,
                 ),
                 label: 'PPA',
                 value: ppaProv.value,
@@ -1258,6 +1358,7 @@ class _InputsSection extends StatelessWidget {
                     isLabor: true,
                     metricPhrase: 'covers per labor hour',
                   ),
+                  targetLabel: data.cplhTargetLabel,
                 ),
                 label: 'CPLH',
                 value: cplhProv.value,
@@ -1271,6 +1372,7 @@ class _InputsSection extends StatelessWidget {
                     isLabor: true,
                     metricPhrase: 'sales per labor hour',
                   ),
+                  targetLabel: data.splhTargetLabel,
                 ),
                 label: 'SPLH',
                 value: splhProv.value,

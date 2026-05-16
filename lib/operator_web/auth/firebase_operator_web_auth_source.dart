@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 
 import '../../auth/mfa_freshness_redirect_listener.dart';
+import '../../auth/permission_keys.dart';
 import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/firebase_auth_client.dart';
 import '../account/operator_web_account_actions.dart';
@@ -624,16 +625,16 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         roles.add('location_manager');
       }
     }
-    if (snapshot.allows('integrations.configure')) {
+    if (snapshot.allows(PermissionKeys.integrationsConfigure)) {
       roles.add('operator_owner');
     }
     if (roles.isEmpty &&
         snapshot.allowedPermissions.any(
           const <String>{
-            'team.users.view',
-            'admin.users.view',
-            'forgeflow.settings.view',
-            'integrations.configure',
+            PermissionKeys.teamUsersView,
+            PermissionKeys.adminUsersView,
+            PermissionKeys.forgeflowSettingsView,
+            PermissionKeys.integrationsConfigure,
           }.contains,
         )) {
       roles.add('operator_manager');
@@ -645,10 +646,10 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
     if (session.roles.any(kOperatorWebAdmittedRoles.contains)) return true;
     return session.permissions.any(
       const <String>{
-        'team.users.view',
-        'admin.users.view',
-        'forgeflow.settings.view',
-        'integrations.configure',
+        PermissionKeys.teamUsersView,
+        PermissionKeys.adminUsersView,
+        PermissionKeys.forgeflowSettingsView,
+        PermissionKeys.integrationsConfigure,
       }.contains,
     );
   }

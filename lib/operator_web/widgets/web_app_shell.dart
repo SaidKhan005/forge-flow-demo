@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../../theme/app_theme.dart';
 import 'hierarchy_map_picker.dart';
+import 'operator_web_demo_banner.dart';
 
 /// One nav entry on the operator-web side rail.
 @immutable
@@ -73,6 +74,7 @@ class WebAppShell extends StatelessWidget {
     this.managementScopeLoading = false,
     this.managementScopeError,
     this.onSelectManagementScope,
+    this.isDemoSource = false,
   });
 
   final OperatorWebSession session;
@@ -86,6 +88,13 @@ class WebAppShell extends StatelessWidget {
   final bool managementScopeLoading;
   final String? managementScopeError;
   final ValueChanged<String>? onSelectManagementScope;
+
+  /// G19 — true only when the router's auth source is the
+  /// fixture-driven [DemoOperatorWebAuthSource]. Drives the persistent
+  /// [OperatorWebDemoBanner] so demo fixture data is unmistakable. A
+  /// live source leaves this false and the banner collapses to a
+  /// zero-height box (production operators never see it).
+  final bool isDemoSource;
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +113,10 @@ class WebAppShell extends StatelessWidget {
               managementScopeError: managementScopeError,
               onSelectManagementScope: onSelectManagementScope,
             ),
+            // G19 — persistent demo indicator, mounted once in the
+            // shell (not per screen). Collapses to a zero-height box
+            // for any live source.
+            OperatorWebDemoBanner(isDemoSource: isDemoSource),
             Expanded(
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
