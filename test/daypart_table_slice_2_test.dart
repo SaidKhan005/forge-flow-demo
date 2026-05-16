@@ -260,6 +260,17 @@ void main() {
       await tester.pump();
     }
 
+    // The DaypartTable must NOT contain a horizontal scroll view — the
+    // operator's binding finding (2026-05-16) is a simple table that just
+    // fits. (The test harness wraps it in a *vertical* SingleChildScrollView;
+    // that one is fine — we only forbid a horizontal-axis scroll inside the
+    // table.)
+    final horizontalScroll = find.byWidgetPredicate(
+      (w) =>
+          w is SingleChildScrollView &&
+          w.scrollDirection == Axis.horizontal,
+    );
+
     testWidgets('demo device width (1080) renders with no RenderFlex overflow',
         (tester) async {
       await pumpAt(tester, 1080);
@@ -267,26 +278,43 @@ void main() {
       // A RenderFlex overflow surfaces as a captured FlutterError.
       expect(tester.takeException(), isNull);
 
-      // All six columns + a sample per-period value still render.
+      // No horizontal scroll — one static table.
+      expect(horizontalScroll, findsNothing);
+
+      // All six columns + a sample per-period value still render, on
+      // screen (not offstage behind a scroll).
       expect(find.text('DAYPART'), findsOneWidget);
       expect(find.text('AVG COVERS'), findsOneWidget);
+      expect(find.text('TARGET CPLH'), findsOneWidget);
+      expect(find.text('TARGET SPLH'), findsOneWidget);
+      expect(find.text('TARGET PPA'), findsOneWidget);
       expect(find.text('OPZ RANGE'), findsOneWidget);
       expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
       expect(find.text('2.90 – 3.40'), findsOneWidget); // lunch OPZ range
     });
 
-    testWidgets('narrow phone width (360) scrolls instead of overflowing',
-        (tester) async {
+    testWidgets(
+        'narrow phone width (360) is a simple non-scrolling table — '
+        'no overflow, no horizontal scroll, no clipped data', (tester) async {
       await pumpAt(tester, 360);
 
-      // No overflow exception even at a cramped phone width — the table
-      // scrolls horizontally rather than clipping or throwing.
+      // No overflow exception at the 360px phone floor.
       expect(tester.takeException(), isNull);
 
-      // The label column stays on screen; off-stage numeric columns are
-      // reachable (the table is laid out, just horizontally scrollable).
+      // No horizontal scroll anywhere in the table subtree.
+      expect(horizontalScroll, findsNothing);
+
+      // Every column header + a sample value from each column is on
+      // screen (skipOffstage stays default: nothing is parked off-stage
+      // behind a scroll). No data is dropped or ellipsized.
       expect(find.text('DAYPART'), findsOneWidget);
-      expect(find.text('3.11', skipOffstage: false), findsOneWidget);
+      expect(find.text('AVG COVERS'), findsOneWidget);
+      expect(find.text('OPZ RANGE'), findsOneWidget);
+      expect(find.text('150'), findsOneWidget); // lunch AVG COVERS
+      expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
+      expect(find.text('\$161'), findsOneWidget); // lunch SPLH target
+      expect(find.text('\$38.10'), findsOneWidget); // lunch PPA target
+      expect(find.text('2.90 – 3.40'), findsOneWidget); // lunch OPZ range
     });
   });
 
@@ -546,11 +574,32 @@ void main() {
       expect(find.text('whole-day est.'), findsWidgets);
     });
 
-    testWidgets('no RenderFlex overflow at narrow phone width (360)',
+    testWidgets(
+        'narrow phone width (360): no overflow, no horizontal scroll, '
+        'pooled fallback marker still renders (honest semantics)',
         (tester) async {
       await pumpAt(tester, 360);
       expect(tester.takeException(), isNull);
+
+      // No horizontal scroll inside the table subtree.
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is SingleChildScrollView &&
+              w.scrollDirection == Axis.horizontal,
+        ),
+        findsNothing,
+      );
+
       expect(find.text('DAYPART'), findsOneWidget);
+      // The honest Gap 42 "whole-day est." marker survives the re-spaced
+      // narrow layout. With _dinnerOnlyProfile + mixed rows: lunch is
+      // empty (dashed, no marker), dinner has its own child row (no
+      // marker), late_night is populated with no child row → pooled →
+      // exactly one marker.
+      expect(find.text('whole-day est.'), findsOneWidget);
+      // dinner's true per-period target still distinct from the pool.
+      expect(find.text('4.77'), findsOneWidget);
     });
   });
 }

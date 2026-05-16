@@ -112,75 +112,9 @@ class DaypartTable extends StatelessWidget {
   static String _opzRange(double floor, double ceiling) =>
       '${floor.toStringAsFixed(2)} – ${ceiling.toStringAsFixed(2)}';
 
-  /// Minimum width that lets all six columns breathe without wrapping or
-  /// clipping any value. At the demo device width (1080px) and any wider
-  /// layout the table simply fills the space and the columns spread out;
-  /// only below this floor does it scroll horizontally instead — so there
-  /// is never a `RenderFlex overflowed` and text is never clipped.
-  static const double _minTableWidth = 720;
-
   @override
   Widget build(BuildContext context) {
     final p = profile;
-
-    final table = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // Header row
-        const _TableRow(
-          cells: [
-            'DAYPART',
-            'AVG COVERS',
-            'TARGET CPLH',
-            'TARGET SPLH',
-            'TARGET PPA',
-            'OPZ RANGE',
-          ],
-          isHeader: true,
-        ),
-        Container(height: 1, color: AppColors.rule),
-        // Per-period data rows
-        ...dayparts.map((stat) {
-          final targets = _targetCellsFor(stat);
-          final hasData = _hasData(stat);
-          return Column(
-            children: [
-              _TableRow(
-                cells: [
-                  _labelFor(stat),
-                  // Empty period → honest dash, never a phantom `0`.
-                  hasData ? stat.avgCovers.toString() : _missing,
-                  targets[0],
-                  targets[1],
-                  targets[2],
-                  targets[3],
-                ],
-                isHeader: false,
-                subLabel: _isPoolFallback(stat) ? _poolFallbackTag : null,
-              ),
-              Container(height: 1, color: AppColors.rule),
-            ],
-          );
-        }),
-        // Whole Day rollup row — cover-weighted pool. Same fields the
-        // CPLH Range & Target widget at the top of the tab reads, so
-        // the rollup row equals that widget's CPLH by construction.
-        _TableRow(
-          cells: [
-            'Whole Day',
-            dayparts.fold<int>(0, (s, r) => s + r.avgCovers).toString(),
-            p == null ? _missing : p.targetCPLH.toStringAsFixed(2),
-            p == null ? _missing : '\$${p.targetSPLH.toStringAsFixed(0)}',
-            p == null ? _missing : '\$${p.targetPPA.toStringAsFixed(2)}',
-            p == null
-                ? _missing
-                : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
-          ],
-          isHeader: false,
-          isRollup: true,
-        ),
-      ],
-    );
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -196,15 +130,97 @@ class DaypartTable extends StatelessWidget {
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          // Wide enough (the demo device is 1080px): let the columns
-          // spread across the full width.
-          if (constraints.maxWidth >= _minTableWidth) return table;
-          // Narrow (e.g. a 360px phone): scroll horizontally at the
-          // breathing-room width so the six columns stay readable and
-          // nothing overflows or gets clipped.
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SizedBox(width: _minTableWidth, child: table),
+          // One static table that always fits the available width — never
+          // a horizontally-scrolling table (operator finding 2026-05-16:
+          // a phone must show a simple table that just fits, comfortably
+          // spaced). Spacing breathes out on wide layouts and tightens
+          // (but stays readable) toward the 360px phone floor. The
+          // numeric/header cells are fit with `BoxFit.scaleDown`, so at
+          // the very narrowest widths a value shrinks a hair rather than
+          // clipping or ellipsizing — and stays full, uniform size at any
+          // comfortable width. The OPZ range wraps to two lines instead of
+          // shrinking, so the widest value never forces the rest tiny.
+          final w = constraints.maxWidth;
+          final compact = w < 480;
+          final hPad = compact ? 12.0 : 24.0;
+          final vPad = compact ? 16.0 : 20.0;
+          final gap = (w / 45).clamp(10.0, 26.0);
+
+          Widget rule() => Container(height: 1, color: AppColors.rule);
+
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header row
+              _TableRow(
+                cells: const [
+                  'DAYPART',
+                  'AVG COVERS',
+                  'TARGET CPLH',
+                  'TARGET SPLH',
+                  'TARGET PPA',
+                  'OPZ RANGE',
+                ],
+                isHeader: true,
+                hPad: hPad,
+                vPad: vPad,
+                gap: gap,
+              ),
+              rule(),
+              // Per-period data rows
+              ...dayparts.map((stat) {
+                final targets = _targetCellsFor(stat);
+                final hasData = _hasData(stat);
+                return Column(
+                  children: [
+                    _TableRow(
+                      cells: [
+                        _labelFor(stat),
+                        // Empty period → honest dash, never a phantom `0`.
+                        hasData ? stat.avgCovers.toString() : _missing,
+                        targets[0],
+                        targets[1],
+                        targets[2],
+                        targets[3],
+                      ],
+                      isHeader: false,
+                      subLabel:
+                          _isPoolFallback(stat) ? _poolFallbackTag : null,
+                      hPad: hPad,
+                      vPad: vPad,
+                      gap: gap,
+                    ),
+                    rule(),
+                  ],
+                );
+              }),
+              // Whole Day rollup row — cover-weighted pool. Same fields the
+              // CPLH Range & Target widget at the top of the tab reads, so
+              // the rollup row equals that widget's CPLH by construction.
+              _TableRow(
+                cells: [
+                  'Whole Day',
+                  dayparts
+                      .fold<int>(0, (s, r) => s + r.avgCovers)
+                      .toString(),
+                  p == null ? _missing : p.targetCPLH.toStringAsFixed(2),
+                  p == null
+                      ? _missing
+                      : '\$${p.targetSPLH.toStringAsFixed(0)}',
+                  p == null
+                      ? _missing
+                      : '\$${p.targetPPA.toStringAsFixed(2)}',
+                  p == null
+                      ? _missing
+                      : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
+                ],
+                isHeader: false,
+                isRollup: true,
+                hPad: hPad,
+                vPad: vPad,
+                gap: gap,
+              ),
+            ],
           );
         },
       ),
@@ -223,9 +239,19 @@ class _TableRow extends StatelessWidget {
   /// (Design Rule 1). Null on every other row.
   final String? subLabel;
 
+  /// Responsive spacing handed down from the [DaypartTable] LayoutBuilder
+  /// so the same row reads comfortably on a wide layout and still fits a
+  /// 360px phone without a horizontal scroll.
+  final double hPad;
+  final double vPad;
+  final double gap;
+
   const _TableRow({
     required this.cells,
     required this.isHeader,
+    required this.hPad,
+    required this.vPad,
+    required this.gap,
     this.isRollup = false,
     this.subLabel,
   });
@@ -234,45 +260,88 @@ class _TableRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: isRollup ? AppColors.cardGlow : null,
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           for (var i = 0; i < cells.length; i++) ...[
             // Gap between columns so values do not crowd the next
-            // header/value (the operator's "cramped" finding).
-            if (i != 0) const SizedBox(width: 14),
+            // header/value (the operator's "cramped" finding); it widens
+            // on roomier layouts and tightens on a phone.
+            if (i != 0) SizedBox(width: gap),
             Expanded(
-              // The label column gets extra room; the five numeric
-              // columns share the rest evenly so each value sits
+              // The label column and the OPZ-range column (last) get
+              // extra room — the label so long period names + the
+              // subordinate marker stay legible, OPZ so its wider
+              // "floor – ceiling" string can wrap to two clean lines
+              // instead of squeezing every other column. The remaining
+              // numeric columns share the rest evenly so each value sits
               // directly under its header.
-              flex: i == 0 ? 5 : 4,
-              child: (i == 0 && subLabel != null)
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          cells[i],
-                          style: _styleFor(i),
-                          textAlign: TextAlign.left,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subLabel!,
-                          style:
-                              AppTextStyles.mono8(color: AppColors.textMuted),
-                          textAlign: TextAlign.left,
-                        ),
-                      ],
-                    )
-                  : Text(
-                      cells[i],
-                      style: _styleFor(i),
-                      textAlign: i == 0 ? TextAlign.left : TextAlign.right,
-                    ),
+              flex: (i == 0 || i == cells.length - 1) ? 5 : 4,
+              child: _cell(i),
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  Widget _cell(int i) {
+    final isLabel = i == 0;
+    final isRange = i == cells.length - 1; // OPZ range / "OPZ RANGE"
+
+    // Label column on a data row: plain wrapping text so a long period
+    // name and the subordinate "whole-day est." marker stay fully
+    // legible — never shrunk, never clipped or ellipsized.
+    if (isLabel && !isHeader) {
+      final label = Text(
+        cells[i],
+        style: _styleFor(i),
+        textAlign: TextAlign.left,
+      );
+      if (subLabel == null) return label;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          label,
+          const SizedBox(height: 3),
+          Text(
+            subLabel!,
+            style: AppTextStyles.mono8(color: AppColors.textMuted),
+            textAlign: TextAlign.left,
+          ),
+        ],
+      );
+    }
+
+    // OPZ range cell (and its header): the widest token in the table.
+    // Let it wrap to two lines at full size rather than shrink, so it
+    // never forces every other column tiny. Still never clipped: a soft
+    // wrap, no ellipsis.
+    if (isRange) {
+      return Text(
+        cells[i],
+        style: _styleFor(i),
+        textAlign: TextAlign.right,
+        softWrap: true,
+        maxLines: 2,
+      );
+    }
+
+    // Every other cell (the DAYPART header + the single-token numeric
+    // values + their headers): a one-line atom fit with scaleDown, so at
+    // the 360px floor it shrinks a hair instead of clipping/ellipsizing,
+    // and stays full, uniform size at any comfortable width.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: isLabel ? Alignment.centerLeft : Alignment.centerRight,
+      child: Text(
+        cells[i],
+        style: _styleFor(i),
+        maxLines: 1,
+        softWrap: false,
+        textAlign: isLabel ? TextAlign.left : TextAlign.right,
       ),
     );
   }
