@@ -7,6 +7,7 @@ import '../models/app_data_status.dart';
 import '../models/current_state_freshness.dart';
 import '../models/shift_dashboard_read_model.dart';
 import '../services/current_state_freshness_service.dart';
+import '../services/integration/shift_vendor_source_resolver.dart';
 import '../services/app_data_status_service.dart';
 import '../services/schedule_plan_read_service.dart';
 import '../services/wage_standard_context_service.dart';
@@ -150,6 +151,15 @@ class ShiftDashboardNotifier extends ChangeNotifier {
             0, (s, r) => s + r.unseatedCovers);
 
         if (dayPlan != null) {
+          // Per-location vendor provenance (Defect 1): feed the EXISTING
+          // read-model honest-degrade gate the connected vendor ids for
+          // THIS scope, resolved off the same per-(operator, location,
+          // category) demo vendor fixture the DemoModeBanner uses. The
+          // gate bodies are unchanged — a location whose Labor category
+          // is disconnected still resolves `null` and keeps the honest
+          // "Connect a labor vendor" copy (HP #2: no kDemoMode fork).
+          final vendorSource =
+              ShiftVendorSourceResolver.forLocation(restaurantId);
           loadedReadModel = ShiftDashboardReadModel.buildWholeDay(
             snapshots: snapshots,
             profile: profile,
@@ -158,6 +168,8 @@ class ShiftDashboardNotifier extends ChangeNotifier {
             planFohHours: dayPlan.requiredFohHours,
             planBohHours: dayPlan.requiredBohHours,
             inTheBooksCovers: totalUnseated > 0 ? totalUnseated : null,
+            posSourceVendorId: vendorSource.posSourceVendorId,
+            laborSourceVendorId: vendorSource.laborSourceVendorId,
           );
         } else {
           // No persisted locked plan or no matching day row.

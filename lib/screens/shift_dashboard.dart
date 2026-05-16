@@ -10,6 +10,7 @@ import '../domain/constants/app_defaults.dart';
 import '../domain/models/restaurant_location.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
+import '../services/integration/shift_vendor_source_resolver.dart';
 import '../services/shift_service_period_read_service.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../state/shift_dashboard_notifier.dart';
@@ -302,9 +303,36 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
       final targetContext =
           periodNotifier?.daypartTargetFor(selectedDefinition.id) ??
               DaypartTargetContext.none;
+
+      // Per-location vendor provenance + period lifecycle (Defects 2 & 3).
+      // Same fixture-derived resolver the whole-day path and the
+      // DemoModeBanner use — no parallel signal, no kDemoMode fork.
+      final restaurant =
+          context.watch<RestaurantScopeNotifier?>()?.restaurant;
+      final restaurantId = restaurant?.restaurantId;
+      final vendorSource = restaurantId == null
+          ? ShiftVendorSource.none
+          : ShiftVendorSourceResolver.forLocation(restaurantId);
+      final cutoff = periodNotifier?.businessDayStartLocalTime ??
+          _defaultBusinessDayStartLocalTime;
+      final localNow = _restaurantLocalNow(restaurant);
+      final periodNotStartedYet = localNow != null &&
+          resolveServicePeriodPhase(
+                localNow: localNow,
+                businessDayStartLocalTime: cutoff,
+                definitions: definitions,
+                periodId: selectedDefinition.id,
+              ) ==
+              ServicePeriodPhase.future;
+
       slivers.addAll(
         _sectionGroups(
-          data: _ShiftSectionViewData.fromPeriod(bucket, targetContext),
+          data: _ShiftSectionViewData.fromPeriod(
+            bucket,
+            targetContext,
+            vendorSource: vendorSource,
+            periodNotStartedYet: periodNotStartedYet,
+          ),
           outputsLabel: 'OUTPUTS',
           inputsLabel: 'INPUTS',
           fohLabel: 'FOH PRODUCTIVITY',
@@ -750,6 +778,16 @@ class _ShiftSectionViewData {
   // FOH PRODUCTIVITY
   final _OpzBandData? opz;
 
+  // Per-location vendor + period lifecycle context (Defects 2 & 3).
+  // Whole-day leaves these at the defaults so its render is byte-
+  // identical; the per-period path supplies the real per-(operator,
+  // location, category) signal so an unavailable pill explains itself
+  // honestly: genuinely-not-connected vs the period simply not having
+  // started yet today.
+  final bool posConnected;
+  final bool laborConnected;
+  final bool periodNotStartedYet;
+
   const _ShiftSectionViewData({
     required this.currentSales,
     required this.forecastSales,
@@ -762,7 +800,32 @@ class _ShiftSectionViewData {
     required this.fohHours,
     required this.bohHours,
     required this.opz,
+    this.posConnected = true,
+    this.laborConnected = true,
+    this.periodNotStartedYet = false,
   });
+
+  /// Honest unavailable-state copy for a metric pill. Three states:
+  ///   (i)  vendor genuinely not connected for this location → the
+  ///        verbatim prior "Connect a POS/labor vendor to see ..."
+  ///        copy (no regression for not-connected);
+  ///   (ii) vendor connected but the service period has not started yet
+  ///        today → an honest pre-service line (never mislabels a
+  ///        not-connected vendor as "hasn't started");
+  ///   (iii) otherwise (period over / genuine zero) → the existing
+  ///        connect copy is the honest-zero fallback, unchanged.
+  String unavailableTooltip({
+    required bool isLabor,
+    required String metricPhrase,
+  }) {
+    final connected = isLabor ? laborConnected : posConnected;
+    if (connected && periodNotStartedYet) {
+      return "This service period hasn't started yet today — "
+          'numbers appear here once service begins.';
+    }
+    return 'Connect a ${isLabor ? 'labor' : 'POS'} vendor to see '
+        '$metricPhrase.';
+  }
 
   /// Whole-day projection — reproduces the pre-refactor whole-day render
   /// exactly. Every field that the whole-day card always drew is
@@ -813,8 +876,16 @@ class _ShiftSectionViewData {
   /// field flows straight through to a hidden sub-line / no band.
   factory _ShiftSectionViewData.fromPeriod(
     ServicePeriodAccumulator bucket,
-    DaypartTargetContext tc,
-  ) {
+    DaypartTargetContext tc, {
+    ShiftVendorSource vendorSource = ShiftVendorSource.none,
+    bool periodNotStartedYet = false,
+  }) {
+    // Defect 2 — per-period labor must honest-degrade per location:
+    // a location whose Labor category is NOT connected (e.g. Harbour,
+    // North Loop) must not render labor actuals even though the bucket
+    // carries minutes. ANDed ALONGSIDE the existing value gate; POS /
+    // covers / sales behavior is untouched.
+    final laborConnected = vendorSource.laborConnected;
     // Per-period SALES forecast footer — true 1:1 with whole-day, which
     // uses the plan-side `rm.forecastSales`. Prefer the locked
     // per-daypart `forecast_sales` from the in-force WeeklyPlanSnapshot
@@ -832,7 +903,7 @@ class _ShiftSectionViewData {
     // Labor % is honest only when BOTH labor punches and sales exist.
     final actualLaborDollars = bucket.fohWageDollars + bucket.bohWageDollars;
     final double? actualPct =
-        (bucket.totalMinutes > 0 && bucket.sales > 0)
+        (laborConnected && bucket.totalMinutes > 0 && bucket.sales > 0)
             ? actualLaborDollars / bucket.sales * 100
             : null;
     final double? theoreticalPct = tc.theoreticalLaborPct;
@@ -847,7 +918,7 @@ class _ShiftSectionViewData {
         ? MetricProvenance.live(value: value, provenance: 'vendor_unknown')
         : const MetricProvenance.unavailable();
 
-    final hasLabor = bucket.totalMinutes > 0;
+    final hasLabor = laborConnected && bucket.totalMinutes > 0;
     final hasCovers = bucket.covers > 0;
 
     _OpzBandData? opz;
@@ -865,16 +936,24 @@ class _ShiftSectionViewData {
         // is still shown (floor/ceiling/target) so the operator sees the
         // locked standard; `'pending'` makes ZoneStatusCard suppress the
         // needle, dash the CURRENT CPLH value, and neutralize the label.
+        // Honest reason for the suppressed score (Defect 2): a Labor
+        // vendor that is genuinely not connected for this location must
+        // not read as merely "waiting on punches" — that would imply
+        // data is coming when it is not. The band (locked standard) is
+        // still shown either way; only the reason copy differs.
         opz = _OpzBandData(
           currentCPLH: 0.0, // sentinel — not rendered in the pending state
           opzFloorCPLH: floor,
           opzCeilingCPLH: ceiling,
           targetCPLH: target,
           opzStatus: 'pending',
-          opzLabel: 'AWAITING ACTUALS',
-          opzSubLabel:
-              'Locked productivity zone is set. Waiting on labor punches '
-              'for this period before scoring.',
+          opzLabel:
+              laborConnected ? 'AWAITING ACTUALS' : 'LABOR NOT CONNECTED',
+          opzSubLabel: laborConnected
+              ? 'Locked productivity zone is set. Waiting on labor punches '
+                  'for this period before scoring.'
+              : 'Locked productivity zone is set. Connect a labor vendor '
+                  "to score this period's productivity.",
         );
       } else {
         final currentCplh = bucket.cplh;
@@ -955,8 +1034,70 @@ class _ShiftSectionViewData {
       fohHours: hoursColumn(bucket.fohMinutes, tc.requiredFohHours),
       bohHours: hoursColumn(bucket.bohMinutes, tc.requiredBohHours),
       opz: opz,
+      posConnected: vendorSource.posConnected,
+      laborConnected: laborConnected,
+      periodNotStartedYet: periodNotStartedYet,
     );
   }
+}
+
+/// Test-only probe over the private per-period projection (Defects 2 &
+/// 3). Mirrors exactly the fields the section widgets render so the
+/// acceptance tests can pin per-location honest-degrade + the 3-state
+/// unavailable copy without standing up the full provider widget tree.
+/// Same `@visibleForTesting` testing-seam pattern as
+/// [ShiftDashboard.clockOverride].
+@visibleForTesting
+class ShiftPeriodProvenanceProbe {
+  const ShiftPeriodProvenanceProbe({
+    required this.coversState,
+    required this.ppaState,
+    required this.blendedWageState,
+    required this.cplhState,
+    required this.splhState,
+    required this.laborActualPctPresent,
+    required this.opzLabel,
+    required this.posUnavailableCopy,
+    required this.laborUnavailableCopy,
+  });
+
+  final MetricState coversState;
+  final MetricState ppaState;
+  final MetricState blendedWageState;
+  final MetricState cplhState;
+  final MetricState splhState;
+  final bool laborActualPctPresent;
+  final String? opzLabel;
+  final String posUnavailableCopy;
+  final String laborUnavailableCopy;
+}
+
+@visibleForTesting
+ShiftPeriodProvenanceProbe debugShiftPeriodProvenance({
+  required ServicePeriodAccumulator bucket,
+  required DaypartTargetContext tc,
+  ShiftVendorSource vendorSource = ShiftVendorSource.none,
+  bool periodNotStartedYet = false,
+}) {
+  final d = _ShiftSectionViewData.fromPeriod(
+    bucket,
+    tc,
+    vendorSource: vendorSource,
+    periodNotStartedYet: periodNotStartedYet,
+  );
+  return ShiftPeriodProvenanceProbe(
+    coversState: d.covers.state,
+    ppaState: d.ppa.state,
+    blendedWageState: d.blendedWage.state,
+    cplhState: d.cplh.state,
+    splhState: d.splh.state,
+    laborActualPctPresent: d.labor.actualPct != null,
+    opzLabel: d.opz?.opzLabel,
+    posUnavailableCopy:
+        d.unavailableTooltip(isLabor: false, metricPhrase: 'covers'),
+    laborUnavailableCopy:
+        d.unavailableTooltip(isLabor: true, metricPhrase: 'blended wage'),
+  );
 }
 
 class _OutputsSection extends StatelessWidget {
@@ -1002,8 +1143,10 @@ class _OutputsSection extends StatelessWidget {
                     state: coversProv.state,
                     provenance: _toPillProvenance(
                       coversProv,
-                      unavailableTooltip:
-                          'Connect a POS vendor to see covers.',
+                      unavailableTooltip: data.unavailableTooltip(
+                        isLabor: false,
+                        metricPhrase: 'covers',
+                      ),
                     ),
                     label: 'COVERS',
                     value: coversProv.value,
@@ -1016,8 +1159,10 @@ class _OutputsSection extends StatelessWidget {
                     state: wageProv.state,
                     provenance: _toPillProvenance(
                       wageProv,
-                      unavailableTooltip:
-                          'Connect a labor vendor to see blended wage.',
+                      unavailableTooltip: data.unavailableTooltip(
+                        isLabor: true,
+                        metricPhrase: 'blended wage',
+                      ),
                     ),
                     label: 'BLENDED WAGE',
                     value: wageProv.value,
@@ -1068,8 +1213,10 @@ class _InputsSection extends StatelessWidget {
                 state: ppaProv.state,
                 provenance: _toPillProvenance(
                   ppaProv,
-                  unavailableTooltip:
-                      'Connect a POS vendor to see per-person average.',
+                  unavailableTooltip: data.unavailableTooltip(
+                    isLabor: false,
+                    metricPhrase: 'per-person average',
+                  ),
                 ),
                 label: 'PPA',
                 value: ppaProv.value,
@@ -1079,8 +1226,10 @@ class _InputsSection extends StatelessWidget {
                 state: cplhProv.state,
                 provenance: _toPillProvenance(
                   cplhProv,
-                  unavailableTooltip:
-                      'Connect a labor vendor to see covers per labor hour.',
+                  unavailableTooltip: data.unavailableTooltip(
+                    isLabor: true,
+                    metricPhrase: 'covers per labor hour',
+                  ),
                 ),
                 label: 'CPLH',
                 value: cplhProv.value,
@@ -1090,8 +1239,10 @@ class _InputsSection extends StatelessWidget {
                 state: splhProv.state,
                 provenance: _toPillProvenance(
                   splhProv,
-                  unavailableTooltip:
-                      'Connect a labor vendor to see sales per labor hour.',
+                  unavailableTooltip: data.unavailableTooltip(
+                    isLabor: true,
+                    metricPhrase: 'sales per labor hour',
+                  ),
                 ),
                 label: 'SPLH',
                 value: splhProv.value,
