@@ -401,6 +401,287 @@ void main() {
       });
     });
   });
+
+  // Fix #4 / S1 — GET
+  // /v1/operator/locations/:locationId/business-timing-resolution.
+  // Backend prerequisite for G13/G41/G42: returns the FULL canonical
+  // candidate chain in scope_depth order with scope ancestry + full
+  // service-period fields + location timezone so the Flutter client
+  // can run the one pure resolver.
+  group('GET business-timing-resolution', () {
+    Future<T> withRealHttp<T>(Future<T> Function() body) async {
+      final saved = HttpOverrides.current;
+      HttpOverrides.global = null;
+      try {
+        return await body();
+      } finally {
+        HttpOverrides.global = saved;
+      }
+    }
+
+    Future<({
+      HttpServer server,
+      HttpClient client,
+      Uri baseUri,
+      _RecordingTimingGateway timingGateway,
+      _SettableVerifier verifier,
+    })> spinUp({
+      ProxyJwtClaims? initialClaims,
+      bool routerConfigured = true,
+      bool seedChain = true,
+    }) async {
+      final verifier = _SettableVerifier();
+      verifier.claims = initialClaims ??
+          const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpA,
+            locationId: _kLoc,
+            roles: <String>['operator_owner'],
+          );
+      final guard = ProxyRequestGuard(verifier: verifier);
+      final timingGateway = _RecordingTimingGateway();
+      if (seedChain) timingGateway.seedResolutionChain();
+      final router = OperatorWriteRouter(
+        accountGateway: _RecordingAccountGateway(),
+        businessTimingGateway: timingGateway,
+        auditSink: _NoopAuditSink(),
+      );
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      // ignore: unawaited_futures
+      server.listen((request) async {
+        try {
+          await routeRequest(
+            request,
+            guard,
+            operatorWriteRouter: routerConfigured ? router : null,
+          );
+        } catch (_) {
+          try {
+            request.response.statusCode = 500;
+            await request.response.close();
+          } catch (_) {}
+        }
+      });
+      final client = HttpClient();
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
+      return (
+        server: server,
+        client: client,
+        baseUri: baseUri,
+        timingGateway: timingGateway,
+        verifier: verifier,
+      );
+    }
+
+    Uri resolutionUri(Uri baseUri, String locationId, {String? businessDate}) {
+      final path = operatorLocationBusinessTimingResolutionPrefix +
+          locationId +
+          operatorLocationBusinessTimingResolutionSuffix;
+      final base = baseUri.resolve(path);
+      if (businessDate == null) return base;
+      return base.replace(
+        queryParameters: <String, String>{'business_date': businessDate},
+      );
+    }
+
+    test('200 returns the 3-level chain in scope_depth order with full '
+        'period fields + timezone', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc, businessDate: '2026-05-10'),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['operatorId'], equals(_kOpA));
+          expect(body['locationId'], equals(_kLoc));
+          expect(body['businessDate'], equals('2026-05-10'));
+          expect(body['ianaTimezone'], equals('America/Toronto'));
+          final candidates = body['candidates'] as List<Object?>;
+          expect(candidates, hasLength(3));
+          final scopeTypes = <Object?>[
+            for (final c in candidates)
+              (c as Map<Object?, Object?>)['scopeType'],
+          ];
+          // Canonical resolver precedence: operator default first,
+          // location override last.
+          expect(scopeTypes, equals(<String>['operator', 'org_unit',
+              'location']));
+          final ranks = <Object?>[
+            for (final c in candidates)
+              (c as Map<Object?, Object?>)['scopeDepthRank'],
+          ];
+          expect(ranks, equals(<int>[0, 1, 2]));
+          final location = Map<Object?, Object?>.from(
+            candidates.last as Map<Object?, Object?>,
+          );
+          expect(location['scopeLabel'], equals('Flagship'));
+          final periods = location['servicePeriods'] as List<Object?>;
+          final brunch = Map<Object?, Object?>.from(
+            periods.single as Map<Object?, Object?>,
+          );
+          // G45/Gap 28 read round-trip: day-restricted period survives.
+          expect(brunch['applicableDays'], equals(<int>[6, 7]));
+          expect(brunch['shortLabel'], equals('Brn'));
+          expect(brunch['sortOrder'], equals(1));
+          expect(ctx.timingGateway.resolveCalls, equals(1));
+          expect(ctx.timingGateway.lastResolveOperatorId, equals(_kOpA));
+          expect(ctx.timingGateway.lastResolveLocationId, equals(_kLoc));
+          expect(
+            ctx.timingGateway.lastResolveBusinessDate,
+            equals('2026-05-10'),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('200 with empty candidate list + null timezone when none seeded',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(seedChain: false);
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['candidates'], isEmpty);
+          expect(body['ianaTimezone'], isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('403 location_scope_mismatch when path location != token scope',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            resolutionUri(
+              ctx.baseUri,
+              '99999999-9999-9999-9999-999999999999',
+            ),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(403));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('location_scope_mismatch'));
+          // Gateway must never be reached on a scope mismatch.
+          expect(ctx.timingGateway.resolveCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('403 when caller lacks operator_owner / operator_admin', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpA,
+            locationId: _kLoc,
+            roles: <String>['operator_member'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(403));
+          expect(ctx.timingGateway.resolveCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('400 invalid_business_date on a malformed query param', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc, businessDate: 'May-10'),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('invalid_business_date'));
+          expect(ctx.timingGateway.resolveCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('503 when the operator write router is not configured', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(routerConfigured: false);
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(503));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('cross-tenant: gateway only ever sees the JWT operatorId',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc),
+            authorization: 'Bearer fake.token',
+          );
+          expect(ctx.timingGateway.lastResolveOperatorId, equals(_kOpA));
+
+          // A token for operator B with location scope _kLoc still
+          // resolves only operator B (URL never supplies operator).
+          ctx.verifier.claims = const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpB,
+            locationId: _kLoc,
+            roles: <String>['operator_owner'],
+          );
+          await _httpGet(
+            ctx.client,
+            resolutionUri(ctx.baseUri, _kLoc),
+            authorization: 'Bearer fake.token',
+          );
+          expect(ctx.timingGateway.lastResolveOperatorId, equals(_kOpB));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
 }
 
 class _SettableVerifier implements ProxyJwtVerifier {
@@ -504,6 +785,120 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
       ],
       createdAt: DateTime.utc(2026, 5, 1),
       updatedAt: DateTime.utc(2026, 5, 6),
+    );
+  }
+
+  // Fix #4 / S1 — ordered 3-level resolution chain the new
+  // `/v1/operator/locations/:locationId/business-timing-resolution`
+  // route returns. `resolveCalls` / `lastResolve*` let the cross-
+  // tenant + happy-path tests assert the gateway only ever sees the
+  // JWT-scoped operator + the path location.
+  int resolveCalls = 0;
+  String? lastResolveOperatorId;
+  String? lastResolveLocationId;
+  String? lastResolveBusinessDate;
+  List<OperatorBusinessTimingResolutionCandidate>? _resolutionChain;
+
+  void seedResolutionChain() {
+    _resolutionChain = <OperatorBusinessTimingResolutionCandidate>[
+      OperatorBusinessTimingResolutionCandidate(
+        profileId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        scopeType: 'operator',
+        scopeId: _kOpA,
+        scopeLabel: 'Operator default',
+        scopeDepthRank: 0,
+        ianaTimezone: 'America/Toronto',
+        effectiveAtBusinessDate: '2026-01-01',
+        weekStartDay: 'monday',
+        businessDayStartLocal: '04:00',
+        servicePeriods: const <OperatorBusinessTimingServicePeriodRecord>[
+          OperatorBusinessTimingServicePeriodRecord(
+            key: 'all_day',
+            label: 'All day',
+            startLocal: '06:00',
+            endLocal: '22:00',
+            rollsPastMidnight: false,
+            shortLabel: 'All',
+            sortOrder: 1,
+            applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+          ),
+        ],
+        createdAt: DateTime.utc(2026, 1, 1),
+        updatedAt: DateTime.utc(2026, 1, 1),
+      ),
+      OperatorBusinessTimingResolutionCandidate(
+        profileId: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        scopeType: 'org_unit',
+        scopeId: '66666666-6666-6666-6666-666666666666',
+        scopeLabel: 'East region',
+        scopeDepthRank: 1,
+        ianaTimezone: 'America/Toronto',
+        effectiveAtBusinessDate: '2026-02-01',
+        weekStartDay: 'monday',
+        businessDayStartLocal: '04:00',
+        servicePeriods: const <OperatorBusinessTimingServicePeriodRecord>[
+          OperatorBusinessTimingServicePeriodRecord(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+            rollsPastMidnight: false,
+            shortLabel: 'Lun',
+            sortOrder: 1,
+            applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+          ),
+        ],
+        createdAt: DateTime.utc(2026, 2, 1),
+        updatedAt: DateTime.utc(2026, 2, 1),
+      ),
+      OperatorBusinessTimingResolutionCandidate(
+        profileId: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+        scopeType: 'location',
+        scopeId: _kLoc,
+        scopeLabel: 'Flagship',
+        scopeDepthRank: 2,
+        ianaTimezone: 'America/Toronto',
+        effectiveAtBusinessDate: '2026-03-01',
+        weekStartDay: 'monday',
+        businessDayStartLocal: '05:00',
+        servicePeriods: const <OperatorBusinessTimingServicePeriodRecord>[
+          OperatorBusinessTimingServicePeriodRecord(
+            key: 'brunch',
+            label: 'Weekend Brunch',
+            startLocal: '09:00',
+            endLocal: '14:00',
+            rollsPastMidnight: false,
+            shortLabel: 'Brn',
+            sortOrder: 1,
+            // Day-restricted (G45/Gap 28 read round-trip): Sat + Sun.
+            applicableDays: <int>[6, 7],
+          ),
+        ],
+        createdAt: DateTime.utc(2026, 3, 1),
+        updatedAt: DateTime.utc(2026, 3, 1),
+      ),
+    ];
+  }
+
+  @override
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocation({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    String? actorUserId,
+  }) async {
+    resolveCalls += 1;
+    lastResolveOperatorId = operatorId;
+    lastResolveLocationId = locationId;
+    lastResolveBusinessDate = businessDate;
+    final chain = _resolutionChain ??
+        const <OperatorBusinessTimingResolutionCandidate>[];
+    return OperatorBusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: chain.isEmpty ? null : chain.first.ianaTimezone,
+      candidates: chain,
     );
   }
 

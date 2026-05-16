@@ -104,6 +104,42 @@ const String operatorBusinessTimingProfilesPath =
 const String operatorBusinessTimingProfilePrefix =
     '$operatorBusinessTimingProfilesPath/';
 
+/// Fix #4 / S1 — dedicated operator-web location-scoped business-timing
+/// resolution route. GET only, read-only, no Idempotency-Key. Returns
+/// the FULL canonical candidate chain (operator default -> org-unit
+/// ancestors -> location override) in `scope_depth asc` order with
+/// scope ancestry + location timezone + full service-period fields so
+/// the Flutter client can run the one pure `BusinessTimingProfileResolver`
+/// without the proxy forking it. The locationId is taken from the path
+/// but the operatorId is ALWAYS the JWT operator; the dispatcher
+/// additionally rejects a path location that does not match the
+/// signed-in tenant scope (`location_scope_mismatch`, 403). Exported so
+/// the dispatcher and tests reference one canonical string.
+const String operatorLocationBusinessTimingResolutionPrefix =
+    '/v1/operator/locations/';
+const String operatorLocationBusinessTimingResolutionSuffix =
+    '/business-timing-resolution';
+
+/// Returns the path's `:locationId` segment when [path] is the
+/// location-scoped business-timing resolution route, else null.
+String? operatorLocationBusinessTimingResolutionIdOf(String path) {
+  if (!path.startsWith(operatorLocationBusinessTimingResolutionPrefix)) {
+    return null;
+  }
+  if (!path.endsWith(operatorLocationBusinessTimingResolutionSuffix)) {
+    return null;
+  }
+  final inner = path.substring(
+    operatorLocationBusinessTimingResolutionPrefix.length,
+    path.length - operatorLocationBusinessTimingResolutionSuffix.length,
+  );
+  if (inner.isEmpty || inner.contains('/')) return null;
+  return Uri.decodeComponent(inner);
+}
+
+bool isOperatorLocationBusinessTimingResolutionPath(String path) =>
+    operatorLocationBusinessTimingResolutionIdOf(path) != null;
+
 /// Operator role allow-list. Two strings: operator_owner is the
 /// seat-zero role, operator_admin is the delegated equivalent.
 const Set<String> kOperatorWriteRoles = <String>{
@@ -601,6 +637,49 @@ class OperatorWriteRouter {
         },
       );
     }
+  }
+
+  /// Fix #4 / S1 — handles
+  /// `GET /v1/operator/locations/:locationId/business-timing-resolution`.
+  /// [operatorId] is the JWT operator; [locationId] has already been
+  /// verified by the dispatcher to match the signed-in tenant scope.
+  /// [businessDate] is `today-in-restaurant-local` supplied by the
+  /// caller (validated `YYYY-MM-DD`), or null to default to UTC today,
+  /// matching the existing resolved-timing-config caller's default.
+  /// Read-only: delegates straight to the gateway which calls the
+  /// canonical `listCandidateProfilesForLocation` CTE. No resolver
+  /// fork, no write, no audit.
+  Future<({int statusCode, Map<String, Object?> body})>
+      handleBusinessTimingResolution({
+    required String operatorId,
+    required String locationId,
+    String? businessDate,
+  }) async {
+    final effectiveDate = businessDate ?? _todayUtcDate();
+    try {
+      final result = await businessTimingGateway.resolveForLocation(
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDate: effectiveDate,
+      );
+      return (statusCode: 200, body: result.toJson());
+    } on OperatorWriteRejected catch (rejected) {
+      return (
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+          ...rejected.extras,
+        },
+      );
+    }
+  }
+
+  static String _todayUtcDate() {
+    final now = DateTime.now().toUtc();
+    final mm = now.month.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$mm-$dd';
   }
 
   Future<({int statusCode, Map<String, Object?> body})> _handleAccountPatch({
