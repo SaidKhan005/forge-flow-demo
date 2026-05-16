@@ -636,6 +636,22 @@ class _StripHalf extends StatelessWidget {
 
   const _StripHalf({required this.title, required this.rows});
 
+  // Both halves reserve a header band tall enough for a TWO-line
+  // mono7 title so the hairline rule + every data row sit at the
+  // same vertical position whether the title wraps or not. Operator
+  // finding (live walkthrough): the long right title "Theoretical
+  // Labor %: The Floor" wraps to two lines at phone width while the
+  // short left title "Operating Wage Mix" stays one line, which
+  // pushed the right half's rule + rows down and made the strip read
+  // ragged. A fixed band makes the two halves deliberate, aligned
+  // siblings regardless of title length. `_kHeaderFontSize` mirrors
+  // `AppTextStyles.mono7`'s fontSize (11); the explicit line-height
+  // multiplier makes the two-line band deterministic across font
+  // metrics so the SizedBox height is exact.
+  static const double _kHeaderFontSize = 11;
+  static const double _kHeaderLineHeight = 1.3;
+  static const double _kHeaderLines = 2;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -643,12 +659,26 @@ class _StripHalf extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Sub-group header — same weight/case as the DaypartTable
-        // header cells.
+        // header cells. The title is left-aligned and vertically
+        // centered inside a fixed two-line band so a one-line and a
+        // two-line title occupy the same vertical space before the
+        // rule. maxLines: 2 + ellipsis is the safety net: it keeps
+        // the full text visible at phone/narrow width while
+        // guaranteeing the band can never grow past two lines.
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-          child: Text(
-            title,
-            style: AppTextStyles.mono7(color: AppColors.textSecondary),
+          child: SizedBox(
+            height: _kHeaderFontSize * _kHeaderLineHeight * _kHeaderLines,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                title,
+                style: AppTextStyles.mono7(color: AppColors.textSecondary)
+                    .copyWith(height: _kHeaderLineHeight),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
         ),
         Container(height: 1, color: AppColors.rule),
@@ -670,6 +700,19 @@ class _StripHalf extends StatelessWidget {
                           color: AppColors.primaryText,
                           style: FontStyle.normal,
                         ),
+                        // Single-line so every data row is exactly one
+                        // line tall in BOTH halves. The flex 5:4 column
+                        // split starves the (longer) left labels at
+                        // narrow width; left them to wrap, the left
+                        // half's rows grew taller than the right's and
+                        // the strip went ragged again below the now-
+                        // aligned header band. Ellipsis is the 360px
+                        // safety valve only — at the operator's phone
+                        // width the full label is visible (verified in
+                        // the widget test).
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 14),
@@ -680,6 +723,9 @@ class _StripHalf extends StatelessWidget {
                         style:
                             AppTextStyles.mono10(color: AppColors.primaryText),
                         textAlign: TextAlign.right,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
