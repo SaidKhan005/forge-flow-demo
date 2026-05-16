@@ -1,37 +1,35 @@
-// Phase 11W.0 — Operator Web Console auth source.
+// Phase 11W — Operator Web Console auth source.
 //
-// The operator-web shell drives the onboarding click path
-// (welcome → password → MFA → T&Cs → dashboard) off a single state
-// stream so the router can decide what to render without scattering
-// `if (alreadyHasMfa)` flags across the screens. The shape mirrors
-// `AdminAuthSource` (Phase 11A `lib/admin/admin_auth_gate.dart`) but
-// adds onboarding stages because the operator shell ships the full
-// first-login flow, while the admin shell only ships the post-login
-// gate.
+// G24/G3 S3′ (operator decision 2026-05-16): the operator-web invite
+// model is the **existing Firebase password-reset email**. The
+// invitee receives a reset email (sent server-side by
+// `repository_auth_operations_gateway.dart` `createInvite`), sets a
+// password on Firebase's hosted page, then signs in here with their
+// email + password through the standard
+// `signInWithEmailPassword` → `_completeCredential` path. The G66
+// invite-activation decorator flips `users.status` invited→active on
+// that first sign-in.
 //
-// Two implementations land with `11W.0`:
+// There is no magic-link / custom-token surface and no onboarding
+// click path (set-password / MFA-during-onboarding / ToS). MFA, when
+// required, is handled AFTER sign-in by the existing post-login
+// challenge + account-MFA surfaces — not as an onboarding stage.
+//
+// Two implementations:
 //
 //   * [DemoOperatorWebAuthSource] — fixture-driven walkthrough source.
-//     Lets widget tests + the local-dev demo walkthrough (
-//     `scripts/run_operator_web_dev.ps1` in a follow-up) exercise the
-//     whole onboarding click path without minting real Firebase users
-//     or hitting the proxy.
+//     Lets widget tests + the local-dev demo walkthrough exercise the
+//     sign-in + post-login surfaces without minting real Firebase
+//     users or hitting the proxy.
 //   * [FirebaseOperatorWebAuthSource] — live source. Wraps the
 //     shared `FirebaseAuthClient` adapter (already used by the mobile
 //     operator app and the admin console) so the live wiring is
-//     additive rather than a parallel auth stack. The actual magic-link
-//     verify / password / MFA-enroll / T&Cs-accept calls land on the
-//     existing Phase 9 proxy routes (`/v1/auth/magic-link`,
-//     `/v1/auth/password/*`, `/v1/auth/mfa/*`,
-//     `/v1/auth/tos/accept`); the gateway seam keeps them mockable.
-//
-// Slice scope: `11W.0` ships the shell + onboarding click path. The
-// live HTTP wiring against the proxy lands as a thin gateway in a
-// follow-up `11W.0.live` slice — exactly the same pattern Phase 11A
-// used (gate widget shipped first, HTTP gateway followed). Until that
-// lands, the deploy script refuses to publish a non-demo build that
-// would silently fall back to fixtures (mirrors
-// `scripts/deploy_admin_console.ps1`).
+//     additive rather than a parallel auth stack. Sign-in + password
+//     reset land on the existing Phase 9 proxy routes
+//     (`/v1/auth/password/*`, `/v1/auth/mfa/*`); the gateway seam
+//     keeps them mockable. The deploy script refuses to publish a
+//     non-demo build that would silently fall back to fixtures
+//     (mirrors `scripts/deploy_admin_console.ps1`).
 
 import 'dart:async';
 
@@ -157,37 +155,26 @@ class OperatorWebSession {
   final String? primaryLocationTimezone;
 }
 
-/// Onboarding stage the screen-router keys off. Linear progression
-/// (welcome → password → MFA → T&Cs → completed) plus terminal
-/// states for signed-out and forbidden.
+/// Auth stage the screen-router keys off. The invitee onboarding
+/// model is the Firebase password-reset email (set via the hosted
+/// page, then email+password sign-in here) so there is no onboarding
+/// click path — only sign-in, an optional post-sign-in MFA
+/// challenge, and the completed/forbidden/signed-out terminals.
 enum OnboardingStage {
   /// Bootstrap — auth source has not yet emitted its first state.
   loading,
 
-  /// Magic-link landing has not produced a verified Firebase session
-  /// yet. The router renders the welcome screen with the token field.
-  needsToken,
-
-  /// Live mode: no Firebase session exists yet. The router renders
-  /// an email/password sign-in form rather than the demo magic-link
-  /// walkthrough.
+  /// No Firebase session exists yet. The router renders an
+  /// email/password sign-in form. New invitees set their password
+  /// via the Firebase reset email first, then sign in here.
   signingIn,
 
   /// Live mode: Firebase accepted email/password but requires a TOTP
   /// challenge before it will issue an ID token.
   mfaChallenge,
 
-  /// Magic-link token verified; operator must set their password.
-  settingPassword,
-
-  /// Password set; operator must enroll MFA.
-  enrollingMfa,
-
-  /// MFA enrolled; operator must accept the inbound-vendor T&Cs.
-  acceptingTos,
-
-  /// Onboarding complete; the shell renders the post-onboarding
-  /// surfaces (Account placeholder, Vendor Connections placeholder).
+  /// Sign-in complete; the shell renders the post-sign-in surfaces
+  /// (Account, Vendor Connections, etc.).
   completed,
 
   /// Authenticated but the role catalog does not include
@@ -220,16 +207,6 @@ class OperatorWebLoading extends OperatorWebAuthState {
   OperatorWebSession? get session => null;
   @override
   String? get lastErrorMessage => null;
-}
-
-class OperatorWebNeedsToken extends OperatorWebAuthState {
-  const OperatorWebNeedsToken({this.lastErrorMessage});
-  @override
-  OnboardingStage get stage => OnboardingStage.needsToken;
-  @override
-  OperatorWebSession? get session => null;
-  @override
-  final String? lastErrorMessage;
 }
 
 class OperatorWebNeedsSignIn extends OperatorWebAuthState {
@@ -277,52 +254,6 @@ class OperatorWebSignInMfaChallenge extends OperatorWebAuthState {
   final String? lastErrorMessage;
 }
 
-class OperatorWebSettingPassword extends OperatorWebAuthState {
-  const OperatorWebSettingPassword({
-    required this.session,
-    this.lastErrorMessage,
-  });
-  @override
-  OnboardingStage get stage => OnboardingStage.settingPassword;
-  @override
-  final OperatorWebSession session;
-  @override
-  final String? lastErrorMessage;
-}
-
-class OperatorWebEnrollingMfa extends OperatorWebAuthState {
-  const OperatorWebEnrollingMfa({required this.session, this.lastErrorMessage});
-  @override
-  OnboardingStage get stage => OnboardingStage.enrollingMfa;
-  @override
-  final OperatorWebSession session;
-  @override
-  final String? lastErrorMessage;
-}
-
-class OperatorWebAcceptingTos extends OperatorWebAuthState {
-  const OperatorWebAcceptingTos({
-    required this.session,
-    required this.tosVersion,
-    required this.tosBodyMarkdown,
-    this.lastErrorMessage,
-  });
-  @override
-  OnboardingStage get stage => OnboardingStage.acceptingTos;
-  @override
-  final OperatorWebSession session;
-
-  /// Active T&Cs version the click-through writes against.
-  final TosVersion tosVersion;
-
-  /// Markdown body of the T&Cs — rendered in the click-through
-  /// scrollable region. Sourced from `tos_versions.body_markdown`.
-  final String tosBodyMarkdown;
-
-  @override
-  final String? lastErrorMessage;
-}
-
 class OperatorWebCompleted extends OperatorWebAuthState {
   const OperatorWebCompleted({required this.session});
   @override
@@ -364,32 +295,24 @@ const Set<String> kOperatorWebAdmittedRoles = <String>{
   'location_manager',
 };
 
-/// Active T&Cs version metadata, returned by the proxy in
-/// `GET /v1/auth/tos/active?scope=inbound_vendor_universal`.
-@immutable
-class TosVersion {
-  const TosVersion({
-    required this.versionId,
-    required this.scope,
-    required this.versionNumber,
-    required this.effectiveDate,
-  });
-
-  final String versionId;
-  final String scope;
-  final String versionNumber;
-  final DateTime effectiveDate;
-}
-
 /// Source of the operator-web auth state machine. Both demo and live
 /// implementations conform to this seam so the screens stay
 /// implementation-blind.
+///
+/// G24/G3 S3′: the invitee onboarding model is the Firebase
+/// password-reset email. There is no magic-link / set-password /
+/// onboarding-MFA / ToS step on this seam — invitees set their
+/// password on Firebase's hosted page and then sign in here via
+/// [signInWithEmailPassword]. Post-sign-in MFA (challenge +
+/// account-MFA enrollment) is handled by the existing post-login
+/// surfaces, not as an onboarding stage.
 abstract class OperatorWebAuthSource {
   Stream<OperatorWebAuthState> get stream;
   OperatorWebAuthState get current;
 
-  /// Live sign-in path. Demo implementations keep the magic-link
-  /// walkthrough and may leave this unsupported.
+  /// Email/password sign-in. This is the single entry point for both
+  /// returning users and new invitees (who set their password via the
+  /// Firebase reset email before signing in here).
   Future<void> signInWithEmailPassword({
     required String email,
     required String password,
@@ -411,42 +334,6 @@ abstract class OperatorWebAuthSource {
     throw UnsupportedError('password reset request is not wired');
   }
 
-  /// Phase 11W.0 — magic-link landing. The welcome screen passes the
-  /// `?token=` query param here. Implementations call the proxy
-  /// `/v1/auth/magic-link/verify` endpoint and establish a Firebase
-  /// session on success.
-  Future<void> verifyMagicLinkToken(String token);
-
-  /// Phase 11W.0 — password setup. Validates against HIBP +
-  /// `password_policy.dart` server-side; the demo source mirrors the
-  /// same minimum (≥12 chars, not in last 5 hashes).
-  Future<void> submitPassword({
-    required String password,
-    required String confirmation,
-  });
-
-  /// Phase 11W.0 — MFA enrollment. The operator picks a factor type
-  /// (TOTP or SMS); the source returns the enrollment artifact (QR
-  /// secret or SMS challenge id). The walkthrough calls
-  /// [confirmMfaEnrollment] with the verification code to finish.
-  Future<MfaEnrollmentArtifact> beginMfaEnrollment({
-    required MfaFactorType factorType,
-    String? phoneNumber,
-  });
-
-  /// Phase 11W.0 — confirm MFA enrollment with the operator's
-  /// verification code. On success the source advances to
-  /// [OnboardingStage.acceptingTos].
-  Future<void> confirmMfaEnrollment({
-    required String enrollmentId,
-    required String oneTimeCode,
-  });
-
-  /// Phase 11W.0 — universal T&Cs click-through. Writes a row to
-  /// `tos_acceptances` (Phase 9.8 schema) and advances to
-  /// [OnboardingStage.completed].
-  Future<void> acceptTos({required String versionId, required String scope});
-
   /// Sign out the current session.
   Future<void> signOut();
 
@@ -458,9 +345,10 @@ abstract class OperatorWebAuthSource {
 /// Phase 9 mobile MFA catalog — TOTP authenticator app + SMS.
 enum MfaFactorType { totp, sms }
 
-/// Artifact returned by [OperatorWebAuthSource.beginMfaEnrollment].
-/// TOTP enrollment carries the otpauth secret + QR text; SMS
-/// enrollment carries a challenge id only.
+/// Artifact returned by the post-login account-MFA enrollment path
+/// ([OperatorWebAccountActions.beginAccountMfaEnrollment]). TOTP
+/// enrollment carries the otpauth secret + QR text; SMS enrollment
+/// carries a challenge id only.
 @immutable
 class MfaEnrollmentArtifact {
   const MfaEnrollmentArtifact({
@@ -487,8 +375,13 @@ class MfaEnrollmentArtifact {
   final String? smsMaskedNumber;
 }
 
-/// Demo source — drives the full onboarding click path with a single
-/// fixture operator. Walkthrough copy assumes this source.
+/// Demo source — exercises the sign-in + post-sign-in surfaces with a
+/// single fixture operator. Walkthrough copy assumes this source.
+///
+/// G24/G3 S3′: there is no onboarding click path. The demo sign-in
+/// accepts any non-empty email/password and lands on the completed
+/// shell, mirroring the production "set password via Firebase reset
+/// email, then sign in with email + password" model.
 class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   DemoOperatorWebAuthSource({
     OperatorWebAuthState? initial,
@@ -501,20 +394,17 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   /// Demo scenario knob: when true, [signOut] emits
   /// [OperatorWebNeedsSignIn] instead of [OperatorWebSignedOut] so the
   /// demo renders the live `OperatorWebSignInScreen` (the U-1 demo
-  /// scenario "signed-out-live"). Default behavior keeps the
-  /// fixture-driven Welcome / NeedsToken landing for the magic-link
-  /// walkthrough.
+  /// scenario "signed-out-live").
   final bool _emitNeedsSignInOnSignOut;
 
-  /// Convenience factory: starts on the magic-link landing surface
-  /// so the walkthrough can drive token entry first.
+  /// Convenience factory: starts signed out.
   factory DemoOperatorWebAuthSource.signedOut() =>
       DemoOperatorWebAuthSource(initial: const OperatorWebSignedOut());
 
-  /// Convenience factory: starts already on the welcome screen, ready
-  /// to verify the demo token (`demo-magic-link-token`).
+  /// Convenience factory: starts on the sign-in surface so the
+  /// walkthrough can drive the email/password card directly.
   factory DemoOperatorWebAuthSource.atWelcome() =>
-      DemoOperatorWebAuthSource(initial: const OperatorWebNeedsToken());
+      DemoOperatorWebAuthSource(initial: const OperatorWebNeedsSignIn());
 
   /// Convenience factory: starts on the post-onboarding surface so
   /// router tests can assert /account + /vendor-connections without
@@ -526,8 +416,8 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   /// Convenience factory: starts on the post-onboarding surface as a
   /// `location_manager` so the `11W.7` Account screen walkthrough +
   /// permission-gate tests can exercise the read-only branch (Profile
-  /// + T&Cs visible; MFA + Password CTAs disabled with friendly-
-  /// error tooltip copy).
+  /// visible; MFA + Password CTAs disabled with friendly-error
+  /// tooltip copy).
   factory DemoOperatorWebAuthSource.completedAsLocationManager() =>
       DemoOperatorWebAuthSource(
         initial: const OperatorWebCompleted(
@@ -552,47 +442,6 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
     ),
   );
 
-  /// Demo magic-link token the walkthrough uses. Any other token
-  /// fails verification.
-  static const String kDemoMagicLinkToken = 'demo-magic-link-token';
-
-  /// Demo TOS version the click-through writes against. `static
-  /// final` (not const) because [DateTime.utc] is not a const
-  /// constructor; the body markdown is large enough that storing the
-  /// fixture as a single struct is easier to read than building the
-  /// version + body in two places.
-  static final TosVersionFixture kDemoTosVersion = TosVersionFixture(
-    version: TosVersion(
-      versionId: 'demo-tos-v1',
-      scope: 'inbound_vendor_universal',
-      versionNumber: '1.0.0',
-      effectiveDate: _kDemoTosEffectiveDate,
-    ),
-    bodyMarkdown:
-        '# Forge & Flow — Authorization to Access Your Business Data\n\n'
-        'To run Forge & Flow, we need permission to read data from your '
-        'existing systems. By continuing, you authorize Forge & Flow Inc. '
-        'to do the following on your behalf for **Demo Restaurant Group**:\n\n'
-        '- Connect to your POS, reservation, and scheduling systems when '
-        'you click "Connect" on each one.\n'
-        '- Read sales, covers, reservation, and labor data.\n'
-        '- Store this data in a secure database operated by F&F (Microsoft '
-        'Azure, Canada Central) for use in the F&F product.\n'
-        '- Stop reading data and delete what we\'ve stored within 30 days '
-        'of your written request.\n\n'
-        'We will never:\n\n'
-        '- Write back to your systems without a separate, explicit '
-        'approval flow.\n'
-        '- Sell your data, share it with third parties for marketing '
-        'purposes, or use it to train AI models for other customers.\n'
-        '- Access guest names, emails, or other personally identifiable '
-        'details unless you opt in to that feature later.\n\n'
-        'This authorization continues until you revoke it. You can revoke '
-        'at any time from Settings → Account → Privacy.',
-  );
-
-  static final DateTime _kDemoTosEffectiveDate = DateTime.utc(2026, 5, 3);
-
   final StreamController<OperatorWebAuthState> _controller =
       StreamController<OperatorWebAuthState>.broadcast();
   OperatorWebAuthState _state;
@@ -613,12 +462,19 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
     required String email,
     required String password,
   }) async {
-    _emit(
-      const OperatorWebNeedsToken(
-        lastErrorMessage:
-            'Demo mode uses the invite-code walkthrough. Enter demo-magic-link-token to continue.',
-      ),
-    );
+    if (email.trim().isEmpty || password.isEmpty) {
+      _emit(
+        const OperatorWebNeedsSignIn(
+          lastErrorMessage: 'Enter your email and password to continue.',
+        ),
+      );
+      return;
+    }
+    // Demo mirrors the production model: any new invitee sets their
+    // password via the Firebase reset email, then signs in here with
+    // email + password. The demo accepts any non-empty credentials
+    // and lands on the completed shell.
+    _emit(const OperatorWebCompleted(session: kDemoOperatorWebSession));
   }
 
   @override
@@ -626,142 +482,21 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
     required String oneTimeCode,
     String? factorId,
   }) async {
-    _emit(
-      const OperatorWebNeedsToken(
-        lastErrorMessage:
-            'Demo mode uses onboarding MFA after the invite code, not sign-in MFA.',
-      ),
-    );
-  }
-
-  @override
-  Future<void> requestPasswordReset({required String email}) async {
-    _emit(
-      const OperatorWebNeedsToken(
-        lastErrorMessage:
-            'Demo mode does not send email. Use demo-magic-link-token to continue.',
-      ),
-    );
-  }
-
-  @override
-  Future<void> verifyMagicLinkToken(String token) async {
-    final trimmed = token.trim();
-    if (trimmed.isEmpty) {
-      _emit(
-        const OperatorWebNeedsToken(
-          lastErrorMessage:
-              'Paste the link from your invite email. The link includes '
-              'a single-use code that signs you in.',
-        ),
-      );
-      return;
-    }
-    if (trimmed != kDemoMagicLinkToken) {
-      _emit(
-        const OperatorWebNeedsToken(
-          lastErrorMessage:
-              'That code did not match an active invite. Open the most '
-              'recent invite email and try the link again, or ask Forge '
-              '& Flow support to resend the invite.',
-        ),
-      );
-      return;
-    }
-    _emit(OperatorWebSettingPassword(session: kDemoOperatorWebSession));
-  }
-
-  @override
-  Future<void> submitPassword({
-    required String password,
-    required String confirmation,
-  }) async {
     final current = _state;
-    if (current is! OperatorWebSettingPassword) {
-      throw StateError(
-        'submitPassword requires OperatorWebSettingPassword state',
-      );
-    }
-    if (password.length < 12) {
+    if (current is! OperatorWebSignInMfaChallenge) {
       _emit(
-        OperatorWebSettingPassword(
-          session: current.session,
-          lastErrorMessage:
-              'Use at least 12 characters. A short phrase from a song or '
-              'book is easier to remember than a string of random '
-              'characters.',
+        const OperatorWebNeedsSignIn(
+          lastErrorMessage: 'The verification session expired. Sign in again.',
         ),
       );
       return;
     }
-    if (password != confirmation) {
+    if (oneTimeCode.trim() != '123456') {
       _emit(
-        OperatorWebSettingPassword(
-          session: current.session,
-          lastErrorMessage:
-              'The two passwords didn\'t match. Type the same password in '
-              'both fields and try again.',
-        ),
-      );
-      return;
-    }
-    _emit(OperatorWebEnrollingMfa(session: current.session));
-  }
-
-  @override
-  Future<MfaEnrollmentArtifact> beginMfaEnrollment({
-    required MfaFactorType factorType,
-    String? phoneNumber,
-  }) async {
-    final current = _state;
-    if (current is! OperatorWebEnrollingMfa) {
-      throw StateError(
-        'beginMfaEnrollment requires OperatorWebEnrollingMfa state',
-      );
-    }
-    if (factorType == MfaFactorType.sms &&
-        (phoneNumber == null || phoneNumber.trim().isEmpty)) {
-      _emit(
-        OperatorWebEnrollingMfa(
-          session: current.session,
-          lastErrorMessage:
-              'Enter the mobile number where you want the verification '
-              'code sent. SMS factors need a number Forge & Flow can text.',
-        ),
-      );
-      throw StateError('SMS enrollment requires a phone number');
-    }
-    return MfaEnrollmentArtifact(
-      enrollmentId: 'demo-enrollment-${factorType.name}',
-      factorType: factorType,
-      totpSharedSecret: factorType == MfaFactorType.totp
-          ? 'JBSWY3DPEHPK3PXP'
-          : null,
-      totpQrUri: factorType == MfaFactorType.totp
-          ? 'otpauth://totp/Forge%20%26%20Flow:${current.session.email}?'
-                'secret=JBSWY3DPEHPK3PXP&issuer=Forge%20%26%20Flow'
-          : null,
-      smsMaskedNumber: factorType == MfaFactorType.sms
-          ? _maskPhoneNumber(phoneNumber!)
-          : null,
-    );
-  }
-
-  @override
-  Future<void> confirmMfaEnrollment({
-    required String enrollmentId,
-    required String oneTimeCode,
-  }) async {
-    final current = _state;
-    if (current is! OperatorWebEnrollingMfa) {
-      throw StateError(
-        'confirmMfaEnrollment requires OperatorWebEnrollingMfa state',
-      );
-    }
-    if (oneTimeCode != '123456') {
-      _emit(
-        OperatorWebEnrollingMfa(
-          session: current.session,
+        OperatorWebSignInMfaChallenge(
+          email: current.email,
+          mfaSessionToken: current.mfaSessionToken,
+          factorIds: current.factorIds,
           lastErrorMessage:
               'That code did not match. Codes refresh every 30 seconds. '
               'If your authenticator app shows a different code now, type '
@@ -770,40 +505,28 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
       );
       return;
     }
-    _emit(
-      OperatorWebAcceptingTos(
-        session: current.session,
-        tosVersion: kDemoTosVersion.version,
-        tosBodyMarkdown: kDemoTosVersion.bodyMarkdown,
-      ),
-    );
+    _emit(const OperatorWebCompleted(session: kDemoOperatorWebSession));
   }
 
   @override
-  Future<void> acceptTos({
-    required String versionId,
-    required String scope,
-  }) async {
-    final current = _state;
-    if (current is! OperatorWebAcceptingTos) {
-      throw StateError('acceptTos requires OperatorWebAcceptingTos state');
-    }
-    if (versionId != current.tosVersion.versionId ||
-        scope != current.tosVersion.scope) {
+  Future<void> requestPasswordReset({required String email}) async {
+    final normalizedEmail = email.trim();
+    if (normalizedEmail.isEmpty) {
       _emit(
-        OperatorWebAcceptingTos(
-          session: current.session,
-          tosVersion: current.tosVersion,
-          tosBodyMarkdown: current.tosBodyMarkdown,
+        const OperatorWebNeedsSignIn(
           lastErrorMessage:
-              'The version of these terms changed while you were reading. '
-              'We refreshed the page so you see the latest version. Read '
-              'and accept again to continue.',
+              'Enter your email first, then request a reset link.',
         ),
       );
       return;
     }
-    _emit(OperatorWebCompleted(session: current.session));
+    _emit(
+      OperatorWebNeedsSignIn(
+        lastInfoMessage:
+            'If $normalizedEmail is registered, a password reset email is '
+            'on the way. Open it to set your password, then sign in here.',
+      ),
+    );
   }
 
   @override
@@ -821,7 +544,7 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   }
 
   /// Test helper: pin a state directly without driving through the
-  /// click path.
+  /// sign-in path.
   @visibleForTesting
   void emitForTesting(OperatorWebAuthState state) => _emit(state);
 
@@ -836,15 +559,6 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   }
 }
 
-/// Bundled version metadata + body so tests can drive the T&Cs screen
-/// against a stable fixture.
-@immutable
-class TosVersionFixture {
-  const TosVersionFixture({required this.version, required this.bodyMarkdown});
-
-  final TosVersion version;
-  final String bodyMarkdown;
-}
 
 /// Wave 2 W-5 — demo placeholder logo URL.
 ///
@@ -924,7 +638,7 @@ const OperatorWebSession kDemoOperatorWebBusinessSession = OperatorWebSession(
 /// owner-at-location identity as [kDemoOperatorWebSession] but with
 /// `mfaEnrolled: true` so the My account MFA card lands on the
 /// post-enrollment CTA branch (view recovery codes / manage 2FA)
-/// without first running the onboarding click path.
+/// without first running the post-login MFA enrollment flow.
 const OperatorWebSession kDemoOperatorWebMfaEnrolledSession =
     OperatorWebSession(
       uid: 'demo-operator-owner',
@@ -965,10 +679,3 @@ const OperatorWebSession kDemoOperatorWebLocationManagerSession =
       rolloverHour: 4,
       primaryLocationTimezone: 'America/Toronto',
     );
-
-String _maskPhoneNumber(String raw) {
-  final digits = raw.replaceAll(RegExp(r'\D'), '');
-  if (digits.length < 4) return raw;
-  final last4 = digits.substring(digits.length - 4);
-  return '••• ••• $last4';
-}

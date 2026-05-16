@@ -1,32 +1,32 @@
-// Phase 11W.0 - Operator Web Console entrypoint.
+// Phase 11W - Operator Web Console entrypoint.
 //
 // Flutter Web entrypoint for the Operator Web Console at
 // `app.forgeflow.app`. Lives on a separate Cloud Run service from the
 // operator-app proxy and the F&F Operations Console (per
 // `Dockerfile.operator_web` + `scripts/deploy_operator_web.ps1`).
 //
+// G24/G3 S3′ (operator decision 2026-05-16): the invitee onboarding
+// model is the existing Firebase password-reset email. Invitees set
+// their password on Firebase's hosted page, then sign in here with
+// email + password. There is no magic-link / set-password /
+// onboarding-MFA / ToS surface and no URL token to parse.
+//
 // Two run modes:
 //
 //   * Live (default for `flutter build web` and the deploy script).
 //     Wires the live Firebase Auth web SDK (`firebase_auth_web` is in
-//     `pubspec.yaml`) and a real `OperatorWebAuthSource` that calls
-//     the existing Phase 9 proxy routes for magic-link verify,
-//     password set, MFA enroll, and T&Cs accept.
-//
-//     The live source lands in a follow-up `11W.0.live` slice -
-//     exactly the same pattern Phase 11A used (gate widget shipped
-//     first, HTTP gateway followed). Until that lands, the deploy
-//     script refuses to publish a non-demo build that would silently
-//     fall back to fixtures.
+//     `pubspec.yaml`) and a real `FirebaseOperatorWebAuthSource` that
+//     calls the existing Phase 9 proxy routes for sign-in, password
+//     reset, and post-login MFA.
 //
 //   * Demo (opt-in only). `--dart-define=OPERATOR_WEB_DEMO_AUTH=true`
 //     swaps in `DemoOperatorWebAuthSource` for the slice walkthrough.
-//     This is what `scripts/run_operator_web_dev.ps1` (follow-up)
-//     invokes for local dev and the 11W.0 walkthrough; the deploy
-//     script requires an explicit `-DemoMode` switch with a loud
-//     warning to flip a Cloud Run deploy into demo, because demo auth
-//     on a publicly-routed `--allow-unauthenticated` Cloud Run
-//     service is a privilege bypass.
+//     This is what `scripts/run_operator_web_dev.ps1` invokes for
+//     local dev; the deploy script requires an explicit `-DemoMode`
+//     switch with a loud warning to flip a Cloud Run deploy into
+//     demo, because demo auth on a publicly-routed
+//     `--allow-unauthenticated` Cloud Run service is a privilege
+//     bypass.
 //
 // Web-only: this entrypoint must NOT import `dart:io` (transitively
 // either) or `sqflite` / `sqflite_common_ffi`. The operator app
@@ -37,8 +37,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-// ignore: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
 
 import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
@@ -139,19 +137,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
     final source = await _resolveAuthSource();
-    final magicLinkToken = _parseMagicLinkToken();
-    // A7 — strip the token from the address bar and browser history on
-    // first paint so it never appears in any subsequent Referer header,
-    // screen-share recording, or shared-device handoff. The token is
-    // captured above and passed to the welcome screen via constructor;
-    // URL cleaning happens BEFORE runApp so the first rendered frame
-    // never sees the query string.
-    if (magicLinkToken != null) {
-      html.window.history.replaceState(null, '', '/onboarding/welcome');
-    }
-    runApp(
-      OperatorWebApp(authSource: source, initialMagicLinkToken: magicLinkToken),
-    );
+    runApp(OperatorWebApp(authSource: source));
   } catch (error, stack) {
     // Fail-closed: any wiring error (Firebase init failure, missing
     // proxy URI, etc.) lands on the calm "wiring failed" surface
@@ -195,20 +181,6 @@ Future<OperatorWebAuthSource> _resolveAuthSource() async {
   );
 }
 
-/// Parses the magic-link token off `Uri.base`. The welcome screen
-/// pre-fills its token field with the result so a deep-link
-/// `/onboarding/welcome?token=...` lands the operator one tap away
-/// from password setup.
-String? _parseMagicLinkToken() {
-  try {
-    final base = Uri.base;
-    final token = base.queryParameters['token'];
-    if (token == null || token.trim().isEmpty) return null;
-    return token.trim();
-  } catch (_) {
-    return null;
-  }
-}
 
 /// Demo flavor wrapper that mixes
 /// [OperatorWebTeamUsersGatewayProvider] +
@@ -301,7 +273,7 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
 
   /// Maps a normalized scenario token to the initial auth state the
   /// demo source should emit. Unknown / unset tokens fall back to the
-  /// Welcome (NeedsToken) screen — historical default behavior.
+  /// sign-in screen (G24/G3 S3′ — no onboarding click path).
   static OperatorWebAuthState _initialStateForScenario(String scenario) {
     switch (scenario) {
       case 'owner-location-completed':
@@ -320,10 +292,9 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
           session: kDemoOperatorWebMfaEnrolledSession,
         );
       case 'signed-out-live':
-        return const OperatorWebNeedsSignIn();
       case 'owner-location':
       default:
-        return const OperatorWebNeedsToken();
+        return const OperatorWebNeedsSignIn();
     }
   }
 }

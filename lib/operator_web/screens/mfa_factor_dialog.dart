@@ -1,10 +1,9 @@
 // Phase 11W.6 - MFA factor enrollment dialog (post-onboarding manage
 // flow).
 //
-// Separate from `mfa_enrollment_screen.dart` (the onboarding flow
-// rendered when the auth source is in `OperatorWebEnrollingMfa`) -
-// this dialog is the Security surface's *manage* flow, popped from
-// the Security screen's `Add authenticator app` action.
+// This dialog is the Security surface's *manage* flow, popped from
+// the Security screen's `Add authenticator app` action. (G24/G3 S3′
+// removed the onboarding MFA screen; MFA is handled post-sign-in.)
 //
 // Two-step:
 //

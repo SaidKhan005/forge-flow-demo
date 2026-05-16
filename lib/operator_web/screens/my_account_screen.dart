@@ -1849,10 +1849,9 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
   String? _error;
   bool _submitting = false;
 
-  // Demo otpauth URI mirrors the MfaEnrollmentScreen artifact so the
-  // walkthrough fixtures stay consistent across the onboarding click
-  // path and the post-onboarding Account screen. 11W.0.live swaps in
-  // a real proxy enrollment id.
+  // Demo otpauth URI for the post-sign-in Account-screen MFA
+  // enrollment walkthrough. The live source swaps in a real proxy
+  // enrollment id.
   static const String _demoQrUri =
       'otpauth://totp/Forge%20%26%20Flow:demo?'
       'secret=JBSWY3DPEHPK3PXP&issuer=Forge%20%26%20Flow';

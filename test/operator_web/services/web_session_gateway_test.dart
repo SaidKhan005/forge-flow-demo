@@ -178,38 +178,6 @@ class _LifecycleFakeSource extends OperatorWebAuthSource {
     _emit(const OperatorWebNeedsSignIn());
   }
 
-  @override
-  Future<void> verifyMagicLinkToken(String token) async {}
-
-  @override
-  Future<void> submitPassword({
-    required String password,
-    required String confirmation,
-  }) async {}
-
-  @override
-  Future<MfaEnrollmentArtifact> beginMfaEnrollment({
-    required MfaFactorType factorType,
-    String? phoneNumber,
-  }) async {
-    return const MfaEnrollmentArtifact(
-      enrollmentId: 'fake',
-      factorType: MfaFactorType.totp,
-    );
-  }
-
-  @override
-  Future<void> confirmMfaEnrollment({
-    required String enrollmentId,
-    required String oneTimeCode,
-  }) async {}
-
-  @override
-  Future<void> acceptTos({
-    required String versionId,
-    required String scope,
-  }) async {}
-
   void _emit(OperatorWebAuthState next) {
     if (next is OperatorWebNeedsSignIn) {
       _currentSessionId = null;

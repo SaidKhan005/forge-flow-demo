@@ -647,14 +647,14 @@ class ProxyProductionBindings {
   final HeapSnapshotCaptureAuditSink heapSnapshotCaptureAuditSink;
 
   /// B1.S8 — per-email 5-min short-window rolling counter for the
-  /// password-reset / magic-link request endpoint. Keyed by
+  /// password-reset request endpoint. Keyed by
   /// SHA-256(normalised email). Volatile across proxy restarts; the
   /// same counter instance is shared across all requests so the window
   /// is server-process-wide.
   final RollingWindowAttemptCounter passwordResetEmailShortCounter;
 
-  /// B1.S8 — per-IP 24h rolling counter for the password-reset /
-  /// magic-link request endpoint. Keyed by SHA-256(client IP).
+  /// B1.S8 — per-IP 24h rolling counter for the password-reset
+  /// request endpoint. Keyed by SHA-256(client IP).
   /// Volatile across proxy restarts.
   final RollingWindowAttemptCounter passwordResetIpCounter;
 
@@ -1620,7 +1620,7 @@ ProxyProductionBindings buildProxyProductionBindings(
       window: kAuthPasswordResetWindow,
     ),
     // B1.S8 — per-email 5-min short-window + per-IP 24h rate limiters for
-    // password-reset and magic-link request endpoints. In-memory rolling
+    // the password-reset request endpoint. In-memory rolling
     // counters keyed by SHA-256(email) and SHA-256(IP) respectively.
     passwordResetEmailShortCounter: RollingWindowAttemptCounter(
       window: kAuthPasswordResetEmailShortWindow,

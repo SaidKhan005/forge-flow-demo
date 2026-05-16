@@ -33,114 +33,78 @@ void main() {
     });
   }
 
-  group('OperatorWebRouter onboarding stages', () {
+  group('OperatorWebRouter auth stages', () {
     testWidgets(
-      'signed-out state lands on the welcome screen with token field',
+      'signed-out state lands on the sign-in screen (no onboarding click '
+      'path); G24/G3 S3′ — invitee onboarding is the Firebase reset email',
       (tester) async {
         await sizeViewport(tester);
         final source = DemoOperatorWebAuthSource.signedOut();
         addTearDown(source.dispose);
 
-        await tester.pumpWidget(
-          wrap(OperatorWebRouter(source: source, initialMagicLinkToken: 'abc')),
-        );
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
+        // Sign-in surface, not a welcome/token screen.
+        expect(
+          find.byKey(const Key('operator_web_signin_email_field')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_signin_password_field')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_signin_submit')),
+          findsOneWidget,
+        );
+        // Invitee guidance points at the reset email, not a magic link.
+        expect(
+          find.byKey(const Key('operator_web_signin_invite_hint')),
+          findsOneWidget,
+        );
+        // No magic-link / onboarding-step affordances remain.
         expect(
           find.byKey(const Key('operator_web_welcome_token_field')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_welcome_submit')),
-          findsOneWidget,
-        );
-        // Step pill confirms we're on the welcome stage.
-        expect(find.text('Step 1 of 4 — Welcome'), findsOneWidget);
-        // Welcome explainer rendered.
-        expect(
-          find.byKey(const Key('operator_web_welcome_explainer')),
-          findsOneWidget,
+          findsNothing,
         );
       },
     );
 
-    testWidgets('settingPassword state renders the password screen', (
-      tester,
-    ) async {
-      await sizeViewport(tester);
-      final source = DemoOperatorWebAuthSource.atWelcome();
-      addTearDown(source.dispose);
-      source.emitForTesting(
-        const OperatorWebSettingPassword(session: kDemoOperatorWebSession),
-      );
+    testWidgets(
+      'email/password sign-in reaches the completed shell with no '
+      'magic-link / ToS step in between (invited-operator path)',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.signedOut();
+        addTearDown(source.dispose);
 
-      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-      expect(
-        find.byKey(const Key('operator_web_password_field')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_password_confirm_field')),
-        findsOneWidget,
-      );
-      expect(find.text('Step 2 of 4 — Password'), findsOneWidget);
-    });
+        await tester.enterText(
+          find.byKey(const Key('operator_web_signin_email_field')),
+          'invited.operator@forgeflow.test',
+        );
+        await tester.enterText(
+          find.byKey(const Key('operator_web_signin_password_field')),
+          'set-via-firebase-reset-email',
+        );
+        await tester.tap(
+          find.byKey(const Key('operator_web_signin_submit')),
+        );
+        await tester.pumpAndSettle();
 
-    testWidgets('enrollingMfa state renders the MFA factor picker', (
-      tester,
-    ) async {
-      await sizeViewport(tester);
-      final source = DemoOperatorWebAuthSource.atWelcome();
-      addTearDown(source.dispose);
-      source.emitForTesting(
-        const OperatorWebEnrollingMfa(session: kDemoOperatorWebSession),
-      );
-
-      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
-
-      expect(
-        find.byKey(const Key('operator_web_mfa_factor_picker')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_mfa_option_totp')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_mfa_option_sms')),
-        findsOneWidget,
-      );
-      expect(find.text('Step 3 of 4 — Two-factor sign-in'), findsOneWidget);
-    });
-
-    testWidgets('acceptingTos state renders the T&Cs click-through', (
-      tester,
-    ) async {
-      await sizeViewport(tester);
-      final source = DemoOperatorWebAuthSource.atWelcome();
-      addTearDown(source.dispose);
-      source.emitForTesting(
-        OperatorWebAcceptingTos(
-          session: kDemoOperatorWebSession,
-          tosVersion: DemoOperatorWebAuthSource.kDemoTosVersion.version,
-          tosBodyMarkdown:
-              DemoOperatorWebAuthSource.kDemoTosVersion.bodyMarkdown,
-        ),
-      );
-
-      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
-
-      expect(find.byKey(const Key('operator_web_tos_summary')), findsOneWidget);
-      expect(
-        find.byKey(const Key('operator_web_tos_body_panel')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('operator_web_tos_agreement_checkbox')),
-        findsOneWidget,
-      );
-      expect(find.text('Step 4 of 4 — Authorize data access'), findsOneWidget);
-    });
+        // Lands directly on the post-sign-in shell — no welcome, no
+        // set-password, no onboarding-MFA, no ToS surface.
+        expect(
+          find.byKey(const Key('operator_web_shell_scaffold')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_welcome_token_field')),
+          findsNothing,
+        );
+      },
+    );
 
     testWidgets(
       'completed state renders the post-onboarding shell with Account body',
@@ -760,10 +724,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(source.current, isA<OperatorWebSignedOut>());
-      // After sign-out the welcome screen reappears.
+      // G24/G3 S3′: after sign-out the sign-in screen reappears
+      // (no welcome / magic-link screen).
+      expect(
+        find.byKey(const Key('operator_web_signin_email_field')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const Key('operator_web_welcome_token_field')),
-        findsOneWidget,
+        findsNothing,
       );
     });
 

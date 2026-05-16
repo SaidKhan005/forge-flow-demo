@@ -1,24 +1,21 @@
-// Phase 11W.0 — Operator Web Console router.
+// Phase 11W — Operator Web Console router.
 //
 // Watches the [OperatorWebAuthSource] state stream and renders the
-// matching surface — onboarding click-path screens during the
-// pre-completed stages, and the [WebAppShell] (with the post-V1
-// placeholder Account / Vendor connections bodies) once
+// matching surface — the sign-in screen (and optional post-sign-in
+// MFA challenge) before sign-in completes, and the [WebAppShell] once
 // [OnboardingStage.completed] lands.
+//
+// G24/G3 S3′ (operator decision 2026-05-16): the invitee onboarding
+// model is the Firebase password-reset email, so there is no
+// onboarding click path (no welcome / set-password / onboarding-MFA /
+// ToS screens) and no URL token to parse. Invitees set their password
+// on Firebase's hosted page, then sign in here.
 //
 // The router is render-only on the auth state. State transitions are
 // driven by the auth source; the router does not push or pop routes
 // directly. That keeps the route guard from drifting from the auth
 // source — the auth source is the single source of truth for "where
-// is this user in the onboarding click path right now."
-//
-// Browser URL: 11W.0 ships the magic-link landing parser only. The
-// router reads `Uri.base.queryParameters['token']` once at startup so
-// `/onboarding/welcome?token=...` lands the operator on the welcome
-// screen with the token pre-filled. URL synchronization for the rest
-// of the click path is intentionally deferred to a follow-up so this
-// slice stays scoped — the Hard Promises forbid widening scope mid-
-// slice.
+// is this user right now."
 
 import 'dart:async';
 
@@ -61,18 +58,14 @@ import '../screens/custom_role_editor_screen.dart';
 import '../screens/data_accuracy_screen.dart';
 import '../screens/hierarchy_screen.dart';
 import '../screens/members_screen.dart';
-import '../screens/mfa_enrollment_screen.dart';
-import '../screens/password_setup_screen.dart';
 import '../screens/permission_explainer_screen.dart';
 import '../screens/roles_screen.dart';
 import '../screens/sessions_screen.dart';
 import '../screens/settings_notifications_screen.dart';
 import '../screens/schedule_screen.dart';
 import '../screens/sign_in_screen.dart';
-import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
 import '../screens/wage_authority_screen.dart';
-import '../screens/welcome_screen.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
 
@@ -269,19 +262,12 @@ class OperatorWebRouter extends StatefulWidget {
   const OperatorWebRouter({
     super.key,
     required this.source,
-    this.initialMagicLinkToken,
     this.initialNavId = kOperatorWebDefaultNavId,
     this.initialUri,
   });
 
   /// Auth source the router watches.
   final OperatorWebAuthSource source;
-
-  /// Optional magic-link token surfaced on the welcome screen. The
-  /// live entrypoint parses `Uri.base` and passes the result here;
-  /// tests pass fixtures directly so the assertion does not depend
-  /// on `Uri.base`.
-  final String? initialMagicLinkToken;
 
   /// Initial post-onboarding nav surface. Tests pass
   /// `kOperatorWebNavVendorConnections` to land directly on the
@@ -827,26 +813,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     final state = _state;
     return switch (state) {
       OperatorWebLoading() => const _LoadingSplash(),
-      OperatorWebSignedOut() => _buildWelcome(state.lastErrorMessage),
-      OperatorWebNeedsToken() => _buildWelcome(state.lastErrorMessage),
+      // G24/G3 S3′: signed-out and not-yet-signed-in both land on the
+      // single sign-in surface. New invitees set their password via
+      // the Firebase reset email, then sign in here with email +
+      // password — there is no separate welcome / onboarding screen.
+      OperatorWebSignedOut() => _buildSignIn(
+        errorMessage: state.lastErrorMessage,
+      ),
       OperatorWebNeedsSignIn(:final lastErrorMessage, :final lastInfoMessage) =>
-        OperatorWebSignInScreen(
-          onSignIn: ({required String email, required String password}) async {
-            await _withBusy(
-              () => widget.source.signInWithEmailPassword(
-                email: email,
-                password: password,
-              ),
-            );
-          },
-          onRequestPasswordReset: ({required String email}) async {
-            await _withBusy(
-              () => widget.source.requestPasswordReset(email: email),
-            );
-          },
+        _buildSignIn(
           errorMessage: lastErrorMessage,
           infoMessage: lastInfoMessage,
-          submitting: _busy,
         ),
       OperatorWebSignInMfaChallenge(
         :final email,
@@ -862,65 +839,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 oneTimeCode: oneTimeCode,
                 factorId: factorId,
               ),
-            );
-          },
-          errorMessage: lastErrorMessage,
-          submitting: _busy,
-        ),
-      OperatorWebSettingPassword(:final lastErrorMessage) =>
-        PasswordSetupScreen(
-          onSubmitPassword:
-              ({required String password, required String confirmation}) async {
-                await _withBusy(
-                  () => widget.source.submitPassword(
-                    password: password,
-                    confirmation: confirmation,
-                  ),
-                );
-              },
-          errorMessage: lastErrorMessage,
-          submitting: _busy,
-        ),
-      OperatorWebEnrollingMfa(:final session, :final lastErrorMessage) =>
-        MfaEnrollmentScreen(
-          operatorEmail: session.email,
-          onBeginEnrollment:
-              ({required MfaFactorType factorType, String? phoneNumber}) async {
-                return _withBusy(
-                  () => widget.source.beginMfaEnrollment(
-                    factorType: factorType,
-                    phoneNumber: phoneNumber,
-                  ),
-                );
-              },
-          onConfirmEnrollment:
-              ({
-                required String enrollmentId,
-                required String oneTimeCode,
-              }) async {
-                await _withBusy(
-                  () => widget.source.confirmMfaEnrollment(
-                    enrollmentId: enrollmentId,
-                    oneTimeCode: oneTimeCode,
-                  ),
-                );
-              },
-          errorMessage: lastErrorMessage,
-          submitting: _busy,
-        ),
-      OperatorWebAcceptingTos(
-        :final session,
-        :final tosVersion,
-        :final tosBodyMarkdown,
-        :final lastErrorMessage,
-      ) =>
-        TosAcceptScreen(
-          session: session,
-          tosVersion: tosVersion,
-          tosBodyMarkdown: tosBodyMarkdown,
-          onAccept: ({required String versionId, required String scope}) async {
-            await _withBusy(
-              () => widget.source.acceptTos(versionId: versionId, scope: scope),
             );
           },
           errorMessage: lastErrorMessage,
@@ -942,14 +860,24 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     };
   }
 
-  Widget _buildWelcome(String? error) {
-    return WelcomeScreen(
-      initialToken: widget.initialMagicLinkToken,
-      errorMessage: error,
-      submitting: _busy,
-      onSubmitToken: (token) async {
-        await _withBusy(() => widget.source.verifyMagicLinkToken(token));
+  Widget _buildSignIn({String? errorMessage, String? infoMessage}) {
+    return OperatorWebSignInScreen(
+      onSignIn: ({required String email, required String password}) async {
+        await _withBusy(
+          () => widget.source.signInWithEmailPassword(
+            email: email,
+            password: password,
+          ),
+        );
       },
+      onRequestPasswordReset: ({required String email}) async {
+        await _withBusy(
+          () => widget.source.requestPasswordReset(email: email),
+        );
+      },
+      errorMessage: errorMessage,
+      infoMessage: infoMessage,
+      submitting: _busy,
     );
   }
 

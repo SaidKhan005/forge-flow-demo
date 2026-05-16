@@ -13,7 +13,7 @@
 //   3. `DemoOperatorWebAuthSource` honors the
 //      `emitNeedsSignInOnSignOut` knob so the U-1 scenario
 //      (`signed-out-live`) lands sign-out on `OperatorWebNeedsSignIn`
-//      (the live LoginScreen) instead of the magic-link Welcome.
+//      (the live LoginScreen) instead of `OperatorWebSignedOut`.
 //   4. `DemoWebSecurityGateway.seedPendingFactorRemoval` populates
 //      the gateway's pending-removal slot so the OW-8c
 //      `MfaCardStage.removalRequested` walkthrough renders on first
@@ -110,7 +110,7 @@ void main() {
 
   group('DemoOperatorWebAuthSource.signOut', () {
     test(
-        'default sign-out emits OperatorWebSignedOut (Welcome / NeedsToken landing)',
+        'default sign-out emits OperatorWebSignedOut',
         () async {
       final source = DemoOperatorWebAuthSource(
         initial: const OperatorWebCompleted(session: kDemoOperatorWebSession),
