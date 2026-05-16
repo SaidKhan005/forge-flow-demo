@@ -572,8 +572,34 @@ class ShiftDashboardReadModel {
     required int actualBohHours,
     required double actualSplh,
     required double targetSplh,
+  }) =>
+      computeSplhState(
+        hasBohLabor: actualBohHours > 0,
+        actualSplh: actualSplh,
+        targetSplh: targetSplh,
+      );
+
+  /// Canonical CPLH x SPLH cross-axis band classifier shared by the
+  /// whole-day read model and the per-period (daypart) projection so
+  /// the OPZ matrix grid highlights the same cell on both surfaces.
+  ///
+  /// Keyed on a [hasBohLabor] boolean rather than an int hour count so a
+  /// daypart with sub-hour BOH minutes still resolves a band instead of
+  /// being silently nulled out by integer truncation. Returns `'below'`
+  /// / `'on'` / `'above'`, or null when the kitchen has not punched in
+  /// ([hasBohLabor] false) or no locked SPLH target exists — the matrix
+  /// then renders fully dim with no active marker (Metric Honesty
+  /// Doctrine: no band off a phantom zero).
+  ///
+  /// Authority: docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md
+  /// ch. 7 (CPLH and SPLH together); the +/- 5 percent tolerance mirrors
+  /// the per-period driver threshold so the two surfaces stay consistent.
+  static String? computeSplhState({
+    required bool hasBohLabor,
+    required double actualSplh,
+    required double targetSplh,
   }) {
-    if (actualBohHours <= 0) return null;
+    if (!hasBohLabor) return null;
     if (targetSplh <= 0) return null;
     final double ratio = actualSplh / targetSplh;
     if (ratio < 1.0 - _splhTolerance) return 'below';
@@ -587,7 +613,17 @@ class ShiftDashboardReadModel {
   // SPLH state is absent or agrees with CPLH on the on-target reading.
   // Four cross-axis sentences swap in for the cells where the two axes
   // disagree, sourced from Jim Taylor labor-model deep dive ch. 7.
-  static String _computeOpzSubLabel(String cplhStatus, [String? splhState]) {
+  static String _computeOpzSubLabel(String cplhStatus, [String? splhState]) =>
+      computeOpzSubLabel(cplhStatus, splhState);
+
+  /// Canonical OPZ sub-label resolver shared by the whole-day read model
+  /// and the per-period (daypart) projection so both surfaces speak the
+  /// same cross-axis diagnosis under the OPZ tile, not just the matrix
+  /// cell. When [splhState] is null (no BOH punches / no locked SPLH
+  /// target) it falls back to the single-axis CPLH sentence — identical
+  /// copy to the prior per-period text, so unscored periods do not
+  /// regress. Authority: Jim Taylor labor-model deep dive ch. 7.
+  static String computeOpzSubLabel(String cplhStatus, [String? splhState]) {
     if (splhState != null) {
       if (cplhStatus == 'below' && splhState == 'above') {
         return 'Below OPZ floor. Team executed. Volume problem, not '

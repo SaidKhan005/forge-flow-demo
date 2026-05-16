@@ -1058,13 +1058,38 @@ class _ShiftSectionViewData {
             : status == 'above'
                 ? 'ABOVE OPZ'
                 : 'IN OPZ';
-        final sub = status == 'below'
-            ? 'Productivity is below the OPZ floor. Too many labor hours '
-                'for the volume.'
-            : status == 'above'
-                ? 'Productivity is above the OPZ ceiling. Service quality '
-                    'may suffer.'
-                : 'Team is producing. Watch covers.';
+        // Per-Daypart V1 fix: feed the SPLH cross-axis band into the OPZ
+        // tile so the CPLH x SPLH matrix highlights the active cell in
+        // the daypart lens too — previously omitted here, so the matrix
+        // rendered fully dim for every per-period view even when the
+        // kitchen had punched in (whole-day already passed
+        // `rm.splhState`). The cross-axis matrix SPLH axis is the BOH
+        // productivity metric (sales per BOH labor hour) per Jim Taylor
+        // deep dive ch. 6/7 + the cross-axis pair catalog, so this uses
+        // `bucket.bohSplh` — the SAME definition the whole-day read
+        // model feeds its band (`totalSales / actBoh`) — against the
+        // locked `tc.targetSPLH`, through the SAME canonical classifier,
+        // so the two surfaces stay 1:1. (`bucket.splh` is sales over
+        // FOH+BOH for the per-period metric grid card; deliberately NOT
+        // the matrix axis.) Null when BOH has not punched in or no
+        // locked SPLH target exists → matrix stays honestly dim (Metric
+        // Honesty Doctrine).
+        final splhTarget = tc.targetSPLH;
+        final periodSplhState = splhTarget == null
+            ? null
+            : ShiftDashboardReadModel.computeSplhState(
+                hasBohLabor: bucket.bohMinutes > 0,
+                actualSplh: bucket.bohSplh,
+                targetSplh: splhTarget,
+              );
+        // Speak the SAME cross-axis diagnosis whole-day shows under its
+        // OPZ tile (true 1:1, Promise 3 / Layer 9): route the sub-label
+        // through the shared resolver. With a band it swaps in the Jim
+        // Taylor ch. 7 cross-axis sentence; with no band (null) it falls
+        // back to the single-axis CPLH copy — byte-identical to the
+        // prior per-period text, so unscored periods do not regress.
+        final sub =
+            ShiftDashboardReadModel.computeOpzSubLabel(status, periodSplhState);
         opz = _OpzBandData(
           currentCPLH: currentCplh,
           opzFloorCPLH: floor,
@@ -1073,6 +1098,7 @@ class _ShiftSectionViewData {
           opzStatus: status,
           opzLabel: label,
           opzSubLabel: sub,
+          splhState: periodSplhState,
         );
       }
     }
@@ -1182,6 +1208,8 @@ class ShiftPeriodProvenanceProbe {
     required this.splhState,
     required this.laborActualPctPresent,
     required this.opzLabel,
+    required this.opzSubLabel,
+    required this.opzMatrixSplhState,
     required this.posUnavailableCopy,
     required this.laborUnavailableCopy,
   });
@@ -1193,6 +1221,17 @@ class ShiftPeriodProvenanceProbe {
   final MetricState splhState;
   final bool laborActualPctPresent;
   final String? opzLabel;
+
+  /// The OPZ tile's cross-axis teaching sentence for this period. Lets
+  /// acceptance tests pin that the daypart lens speaks the same Jim
+  /// Taylor ch. 7 cross-axis diagnosis the whole-day view does.
+  final String? opzSubLabel;
+
+  /// The SPLH cross-axis band fed into the OPZ tile's CPLH x SPLH matrix
+  /// for this period (`'below'` / `'on'` / `'above'`, or null when the
+  /// matrix renders fully dim). Lets acceptance tests pin that the
+  /// daypart lens highlights the same cell the whole-day view does.
+  final String? opzMatrixSplhState;
   final String posUnavailableCopy;
   final String laborUnavailableCopy;
 }
@@ -1218,6 +1257,8 @@ ShiftPeriodProvenanceProbe debugShiftPeriodProvenance({
     splhState: d.splh.state,
     laborActualPctPresent: d.labor.actualPct != null,
     opzLabel: d.opz?.opzLabel,
+    opzSubLabel: d.opz?.opzSubLabel,
+    opzMatrixSplhState: d.opz?.splhState,
     posUnavailableCopy:
         d.unavailableTooltip(isLabor: false, metricPhrase: 'covers'),
     laborUnavailableCopy:
