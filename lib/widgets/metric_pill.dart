@@ -15,7 +15,9 @@
 //   stale       → grey formatted value, "Last synced ..." badge.
 //   empty       → "No data yet" + hint from provenance. Never "0".
 //   demo        → formatted value + "Demo" chip.
-//   unavailable → em dash + reason from provenance.tooltip.
+//   unavailable → em dash + the locked plan/benchmark reference line
+//                 (provenance.targetLabel) when one exists, else the
+//                 honest "why empty" reason from provenance.tooltip.
 //
 // The constructor asserts (debug-mode only) that value is non-null
 // when state == live, catching producer bugs at pump time.
@@ -56,8 +58,12 @@ class MetricPillProvenance {
   /// "Forecast 220", "Target \$3.25") instead of the vendor source name,
   /// mirroring how SALES / LABOR % already show their reference line.
   /// When null, behaviour is unchanged ([label] is shown) — back-compat.
-  /// The empty / unavailable branches always keep the honest tooltip and
-  /// are NOT affected by this field; the Demo / Stale badges are unchanged.
+  /// In the unavailable branch a non-null [targetLabel] is rendered as
+  /// the reference line beneath the em dash (parity with how SALES /
+  /// LABOR % surface a not-yet-started daypart's locked target); the
+  /// honest [tooltip] is still used verbatim when [targetLabel] is null.
+  /// The empty branch keeps the honest tooltip; the Demo / Stale badges
+  /// are unchanged.
   final String? targetLabel;
 }
 
@@ -291,6 +297,22 @@ class MetricPill extends StatelessWidget {
   }
 
   Widget _buildUnavailableState() {
+    // Per-Daypart V1 (Shift daypart ↔ whole-day reference-line parity):
+    // when a locked plan/benchmark reference line is supplied
+    // ([provenance.targetLabel] — e.g. "Forecast 120", "Target \$3.25"),
+    // render it beneath the em dash instead of the empty-state tooltip.
+    // This is the SAME treatment the SALES ("Forecast \$X") and LABOR %
+    // ("Theoretical X.X%") tiles already give a not-yet-started daypart:
+    // the actual is honestly "—", but the period's own locked target —
+    // which exists pre-service and is explicitly labelled "Target" /
+    // "Forecast", not presented as an actual — is shown so every sub-
+    // daypart reads consistently with Whole Day and the active dayparts.
+    // No fabricated value (Metric Honesty Doctrine / Design Rule 2): the
+    // tooltip honesty path is still used verbatim whenever there is NO
+    // target line (genuinely-not-connected vendor, Gap-42 no locked
+    // target, production unknown location) so the "why is this empty"
+    // copy never regresses.
+    final targetLine = provenance.targetLabel;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -300,7 +322,18 @@ class MetricPill extends StatelessWidget {
           key: Key('metric_pill_unavailable_$label'),
           style: AppTextStyles.mono28(color: AppColors.textMuted),
         ),
-        if (provenance.tooltip != null) ...[
+        if (targetLine != null) ...[
+          const SizedBox(height: 6),
+          // Same key / style / position as `_buildProvenanceLabel` so the
+          // not-yet-started reference line is visually byte-identical to
+          // the live pill's reference line (true 1:1 daypart parity) and
+          // downstream key-based tests stay stable.
+          Text(
+            targetLine,
+            key: Key('metric_pill_provenance_$label'),
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+        ] else if (provenance.tooltip != null) ...[
           const SizedBox(height: 4),
           // FU-mobile-shift-card-overflow-17px: cap tooltip at 2 lines +
           // ellipsis and wrap in Flexible so an unbounded-width
