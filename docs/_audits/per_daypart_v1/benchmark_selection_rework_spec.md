@@ -275,6 +275,17 @@ Decision 1, now mandatory before implementation).
   `docs/f&f Coaching/benchmark_states_mockup.html` (no app code; same
   widget chrome — IBM Plex Mono, sunset `#CC7A3E`, cream card).
 - No em-dashes in any operator-facing string.
+- **Decision 3 locked: target = median** of the all-three-strong cohort
+  CPLH (matches the validated harness; no re-validation needed).
+- **Decision 5 locked: running-hot = two-signal.** Flag only when the
+  strong-shift cohort median PPA is > 10% below the daypart-wide median
+  AND median labor-% is materially high (source-backed labor truth).
+- **Whole-day rollup locked: weight by real covers** (fix the
+  `coverCount = selectedCount` mislabel) and roll up **only teachable**
+  periods into the parent pool. Building/running-hot periods are excluded
+  from the whole-day number and shown only in the breakdown.
+- Execution: orchestrator + parallel worktree agents. Waves: S0 (serial
+  foundation) → SA ∥ SB → SC → SD. Every PR is approval-gated.
 
 ## 9. Final operator copy (verbatim — build prompt uses these exactly)
 
