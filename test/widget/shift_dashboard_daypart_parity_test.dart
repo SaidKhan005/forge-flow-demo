@@ -1,22 +1,25 @@
-// Per-Daypart Targets V1 — Slice 4: Shift daypart card full parity.
+// Per-Daypart Targets V1 — Shift daypart TRUE 1:1 layout parity.
 //
-// Pins Decision 7 (full 1:1 mirror of the whole-day card) + Promise 2
-// (closed truth keeps its own per-shift stamp) + Design Rule 2 (missing
-// = "—", never a 0 sentinel):
+// Updated for the shared-section-widget refactor: the daypart lens now
+// emits the SAME `_OutputsSection` / `_InputsSection` /
+// `_FohProductivitySection` sticky-section groups Whole Day does (fed
+// by `ShiftSectionViewData.fromPeriod`). The retired bespoke card's
+// "Target X" sub-lines no longer exist (Whole Day never showed them
+// either — that is the point of 1:1). The locked per-period stamp/
+// profile instead drives the SHARED `ZoneStatusCard` band + the Sales
+// forecast, exactly as Whole Day's profile does. Pins:
 //
 //   1. Three-section parity render — OUTPUTS / INPUTS / FOH PRODUCTIVITY
 //      all present, scoped to the selected period.
-//   2. Closed-shift stamp read-back — the locked per-period target
-//      sub-lines + OPZ band come from the injected closed-shift stamp
-//      context (`source: 'closed_stamp'`).
-//   3. Open-shift profile fallback — when the period has not closed,
-//      the active profile's per-period row drives the target sub-lines.
-//   4. Null / empty honest state — no per-period target context renders
-//      "Target —" and the "no locked productivity zone" line, never a
-//      zero-anchored gauge or a $0.00 target.
-//   5. Whole-day half is untouched (Promise 3 / Layer 9) — the
-//      authoritative top-half sections still render when daypart is
-//      open (additive only).
+//   2. Closed-shift stamp read-back (Promise 2) — the closed shift's own
+//      locked OPZ band drives the SHARED ZoneStatusCard.
+//   3. Open-shift profile fallback — the active profile's per-period row
+//      drives the SHARED band when the period has not closed.
+//   4. Null / empty honest state — no locked band → the honest no-zone
+//      line, never a zero-anchored gauge or a $0.00 target (Design
+//      Rule 2).
+//   5. Whole-day half is byte-untouched + daypart emits the same sticky
+//      section grammar (Promise 3 / Layer 9, true 1:1).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,6 +36,7 @@ import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/models/shift_dashboard_read_model.dart';
 import 'package:forge_and_flow/screens/shift_dashboard.dart';
+import 'package:forge_and_flow/widgets/zone_status_card.dart';
 
 ShiftDashboardReadModel _fixtureReadModel() {
   final profile = ActiveTargetProfile(
@@ -163,8 +167,8 @@ void main() {
     );
 
     testWidgets(
-      'closed-shift stamp read-back — locked per-period target + OPZ band '
-      "come from the closed shift's own stamp (Promise 2)",
+      'closed-shift stamp read-back — the closed shift\'s own locked OPZ '
+      'band drives the SHARED FOH ZoneStatusCard (Promise 2, true 1:1)',
       (tester) async {
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
@@ -186,24 +190,14 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
-        // Locked target sub-lines reflect the closed-shift stamp, NOT
-        // the live whole-day profile (Promise 2 — closed truth keeps
-        // its own stamp).
-        expect(
-          find.text('Target 13.00', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text(r'Target $540', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text(r'Target $41.50', skipOffstage: false),
-          findsOneWidget,
-        );
-
-        // The OPZ band renders (locked floor/ceiling present) — the
-        // honest "no locked productivity zone" line must NOT show.
+        // True 1:1: the daypart Inputs use the SAME MetricPill widgets
+        // as Whole Day (which never render a bespoke "Target X"
+        // sub-line). The closed-shift stamp instead feeds the SHARED
+        // ZoneStatusCard band — Promise 2 (closed truth keeps its own
+        // stamp). The retired bespoke "Target 13.00" sub-lines must NOT
+        // come back.
+        expect(find.byType(ZoneStatusCard, skipOffstage: false),
+            findsOneWidget);
         expect(
           find.text(
             'No locked productivity zone for this period yet.',
@@ -211,15 +205,17 @@ void main() {
           ),
           findsNothing,
         );
-        // Lunch bucket CPLH = 100*60 / 480 = 12.50, below the stamped
-        // floor of 11.50? No — 12.50 is inside [11.50, 14.50] → IN OPZ.
+        // Lunch bucket CPLH = 100*60 / 480 = 12.50, inside the stamped
+        // band [11.50, 14.50] → IN OPZ (band sourced from the stamp).
         expect(find.text('IN OPZ', skipOffstage: false), findsOneWidget);
+        // CPLH actual still surfaces via the shared pill (12.50).
+        expect(find.text('12.50', skipOffstage: false), findsWidgets);
       },
     );
 
     testWidgets(
       'open-shift profile fallback — active profile per-period row drives '
-      'the target sub-lines when the period has not closed',
+      'the SHARED FOH band when the period has not closed (true 1:1)',
       (tester) async {
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
@@ -241,26 +237,18 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
-        expect(
-          find.text('Target 12.00', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text(r'Target $500', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text(r'Target $40.00', skipOffstage: false),
-          findsOneWidget,
-        );
-        // CPLH 12.50 is inside [10.00, 13.00] → IN OPZ.
+        // Open-profile band feeds the SAME ZoneStatusCard Whole Day
+        // uses. CPLH 12.50 is inside [10.00, 13.00] → IN OPZ.
+        expect(find.byType(ZoneStatusCard, skipOffstage: false),
+            findsOneWidget);
         expect(find.text('IN OPZ', skipOffstage: false), findsOneWidget);
+        expect(find.text('12.50', skipOffstage: false), findsWidgets);
       },
     );
 
     testWidgets(
-      'null / empty honest state — no per-period target context renders '
-      '"Target —" + the no-zone line, never a 0 sentinel',
+      'null / empty honest state — no locked band → the honest no-zone '
+      'line, never a 0-anchored gauge (Design Rule 2)',
       (tester) async {
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
@@ -272,14 +260,13 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
-        // Every target sub-line is the honest em dash — never $0.00 /
-        // 0.00 (Design Rule 2).
-        expect(find.text('Target —', skipOffstage: false), findsWidgets);
+        // Never a fabricated 0-target text anywhere (Design Rule 2).
         expect(find.text(r'Target $0.00', skipOffstage: false), findsNothing);
         expect(find.text('Target 0.00', skipOffstage: false), findsNothing);
 
         // FOH Productivity degrades to the honest empty state, not a
-        // zero-anchored OPZ gauge.
+        // zero-anchored OPZ gauge — and the shared ZoneStatusCard is
+        // NOT mounted (no band to draw).
         expect(
           find.text(
             'No locked productivity zone for this period yet.',
@@ -287,14 +274,15 @@ void main() {
           ),
           findsOneWidget,
         );
+        expect(find.byType(ZoneStatusCard, skipOffstage: false), findsNothing);
         expect(find.text('IN OPZ', skipOffstage: false), findsNothing);
         expect(find.text('BELOW OPZ', skipOffstage: false), findsNothing);
       },
     );
 
     testWidgets(
-      'whole-day half is untouched when the daypart lens is open '
-      '(Promise 3 / Layer 9 — additive only)',
+      'whole-day half is byte-untouched + daypart emits the SAME sticky '
+      'section grammar (Promise 3 / Layer 9, true 1:1)',
       (tester) async {
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
@@ -302,7 +290,7 @@ void main() {
         await tester.pump();
         await tester.pump();
 
-        // Whole-day sticky sections still render before the toggle.
+        // Whole-day sticky sections render before the toggle.
         expect(
           find.text('SHIFT OUTPUTS', skipOffstage: false),
           findsOneWidget,
@@ -312,17 +300,30 @@ void main() {
           findsOneWidget,
         );
 
-        // Toggle to the period — the whole-day half is replaced in the
-        // viewport by the daypart half but the authoritative whole-day
-        // sliver tree is still mounted (additive, not destructive): the
-        // daypart card's own OUTPUTS section header appears.
+        // Toggle to the period — the bespoke single 'SERVICE PERIOD'
+        // sliver is RETIRED; the daypart lens now emits the SAME three
+        // pinned-header section groups as Whole Day (OUTPUTS / INPUTS /
+        // FOH PRODUCTIVITY), and the whole-day-only labels are gone.
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
         expect(
           find.text('SERVICE PERIOD', skipOffstage: false),
-          findsOneWidget,
+          findsNothing,
+        );
+        expect(
+          find.text('SHIFT OUTPUTS', skipOffstage: false),
+          findsNothing,
+        );
+        expect(
+          find.text('SHIFT INPUTS', skipOffstage: false),
+          findsNothing,
         );
         expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
+        expect(find.text('INPUTS', skipOffstage: false), findsOneWidget);
+        expect(
+          find.text('FOH PRODUCTIVITY', skipOffstage: false),
+          findsOneWidget,
+        );
       },
     );
 
