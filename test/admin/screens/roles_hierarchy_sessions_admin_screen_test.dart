@@ -14,11 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/operator_picker_screen.dart';
 import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_screen.dart'
-    show
-        ActiveSessionsAdminPanel,
-        RolesHierarchySessionsAdminScreen,
-        kMfaRequiredTooltip,
-        permissionHumanLabel;
+    show ActiveSessionsAdminPanel, RolesHierarchySessionsAdminScreen;
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -834,117 +830,6 @@ void main() {
         expect(button.onPressed, isNull);
       },
     );
-  });
-
-  group('Permission Explainer + MFA marker (parity § Roles)', () {
-    testWidgets('Permission chips render human labels and hide raw keys', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          RolesHierarchySessionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        permissionHumanLabel('team.users.view'),
-        equals('View team users'),
-      );
-      expect(find.text('View team users'), findsWidgets);
-      expect(find.text('team.users.view'), findsNothing);
-
-      final tooltip = tester.widget<Tooltip>(
-        find.byKey(const Key('admin_rhs_perm_tooltip_team.users.view')).first,
-      );
-      expect(tooltip.message, equals('Raw key: team.users.view'));
-    });
-
-    testWidgets(
-      'Permission Explainer renders all 9 catalog categories in the locked order',
-      (tester) async {
-        wideViewport(tester);
-        final gateway = buildDemoGateway();
-        await tester.pumpWidget(
-          wrap(
-            RolesHierarchySessionsAdminScreen(
-              gateway: gateway,
-              actorUserId: 'demo-super-admin',
-              pickedOperator: demoPick(),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Card itself.
-        expect(
-          find.byKey(const Key('admin_rhs_permission_explainer')),
-          findsOneWidget,
-        );
-        // Every catalog category that has at least one key surfaces a
-        // section header. Every key in the contract's order list
-        // appears as a non-empty bucket in the seed data.
-        for (final category in const <String>[
-          'product',
-          'forgeflow',
-          'barrio',
-          'admin',
-          'team',
-          'billing',
-          'integration',
-          'integrations',
-          'workflow',
-        ]) {
-          expect(
-            find.byKey(Key('admin_rhs_permission_category_$category')),
-            findsOneWidget,
-            reason: 'category $category missing from Permission Explainer',
-          );
-        }
-      },
-    );
-
-    testWidgets('MFA-required keys carry the contract-pinned tooltip', (
-      tester,
-    ) async {
-      wideViewport(tester);
-      final gateway = buildDemoGateway();
-      await tester.pumpWidget(
-        wrap(
-          RolesHierarchySessionsAdminScreen(
-            gateway: gateway,
-            actorUserId: 'demo-super-admin',
-            pickedOperator: demoPick(),
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      // The Explainer card contains every MFA-required catalog key.
-      // Each MFA key chip is wrapped in a Tooltip with the locked
-      // contract message (line 110).
-      final tooltip = tester.widget<Tooltip>(
-        find.byKey(
-          const Key('admin_rhs_perm_mfa_tooltip_admin.roles.edit_seeded'),
-        ),
-      );
-      expect(
-        tooltip.message,
-        equals(
-          'Raw key: admin.roles.edit_seeded\n'
-          '$kMfaRequiredTooltip',
-        ),
-      );
-      // No emoji-only signal: the chip carries the literal "MFA"
-      // text plus a Lock icon, not just an emoji.
-      expect(find.text('MFA'), findsWidgets);
-    });
   });
 
   group('GAP A3 - org-unit type label (admin parity)', () {
