@@ -594,6 +594,45 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   RealtimeEventBus? _businessScopeRealtimeBus;
   StreamSubscription<RealtimeEvent>? _businessScopeRealtimeSubscription;
 
+  // fix-qa-location-scope-not-propagated — re-scope the data surfaces
+  // when the active business scope flips.
+  //
+  // Selecting a location already propagates that location's
+  // `restaurantId` into the scope `getActiveRestaurantId()` resolves
+  // (`RestaurantScopeNotifier.activateBusinessScope` ->
+  // `_activateRestaurantForScope` ->
+  // `SqliteRestaurantScopeRepository.activateRuntimeRestaurant`). But
+  // the data notifiers (`ShiftDashboardNotifier`,
+  // `ShiftServicePeriodNotifier`, `WeekDataNotifier`,
+  // `ActiveTargetProfileNotifier`, demand / weights) only read scope
+  // once — in their constructors — and otherwise reload solely on
+  // pull-to-refresh. With nothing listening to the scope flip the
+  // header (which watches [RestaurantScopeNotifier] directly) updated
+  // while the Shift / Variance / Plan / Benchmark data stayed pinned to
+  // the previously-resolved location.
+  //
+  // This binds a listener to the provided [RestaurantScopeNotifier]
+  // (the same proven mechanism the demo-mode banner uses via
+  // [_demoModeScopeListenedTo]) and bridges a real `activeScope` flip
+  // to the canonical [AppRefreshCoordinator.refreshAll] seam — the
+  // exact path Settings wage changes already use to re-scope scope +
+  // active target + demand + weights, with the current-state surfaces
+  // (week, shift, service-period) re-scoped via the active-target ->
+  // ProxyProvider2 cascade. No refresh *logic* changes; only WHEN /
+  // at-what-scope it runs.
+  //
+  // #815 safety: the refresh is scheduled on a post-frame callback
+  // behind a `mounted` guard (mirroring `_syncDemoModeScope` ->
+  // `_applyDemoModeScope`), never synchronously inside build, so it can
+  // never `notifyListeners()` mid-build. `RestaurantScopeNotifier`
+  // notifies for many reasons (load / seed / isLoading toggles), so the
+  // handler dedupes by the active scope's `stableKey` and coalesces
+  // concurrent requests — a single switch triggers exactly one reload,
+  // and non-scope notifications are ignored.
+  RestaurantScopeNotifier? _scopeRefreshListenedTo;
+  String? _lastScopeRefreshKey;
+  bool _scopeRefreshScheduled = false;
+
   /// Foreground-only business-date boundary supervisor. Spawns one
   /// `CurrentStateBoundaryMonitor` per accessible `RestaurantLocation`
   /// so multi-location operators get independent restaurant-local
@@ -621,11 +660,77 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     });
   }
 
+  /// fix-qa-location-scope-not-propagated — bind a listener to the
+  /// provided [RestaurantScopeNotifier] so a location flip re-scopes
+  /// the data surfaces. Mirrors the demo-mode bind
+  /// ([_demoModeScopeListenedTo]); called from
+  /// [didChangeDependencies] where the Provider tree is available.
+  void _bindScopeRefreshNotifier() {
+    RestaurantScopeNotifier? scopeNotifier;
+    try {
+      scopeNotifier = Provider.of<RestaurantScopeNotifier>(
+        context,
+        listen: false,
+      );
+    } on ProviderNotFoundException {
+      scopeNotifier = null;
+    }
+    if (identical(scopeNotifier, _scopeRefreshListenedTo)) return;
+    _scopeRefreshListenedTo?.removeListener(_handleScopeChangedForRefresh);
+    _scopeRefreshListenedTo = scopeNotifier;
+    _scopeRefreshListenedTo?.addListener(_handleScopeChangedForRefresh);
+    // Seed the dedupe key with the current scope so the initial bind
+    // (notifiers already loaded their constructor scope) does NOT
+    // trigger a spurious cold-start reload — only a genuine *flip* to
+    // a different location does.
+    _lastScopeRefreshKey = scopeNotifier?.activeScope?.isLocationScope ?? false
+        ? scopeNotifier!.activeScope!.stableKey
+        : null;
+  }
+
+  /// fix-qa-location-scope-not-propagated — re-scope every data
+  /// surface when the operator switches the active location.
+  ///
+  /// [RestaurantScopeNotifier] notifies for many reasons (load / seed /
+  /// `isLoading` toggles), so this ignores non-location scopes and any
+  /// notification whose active-scope `stableKey` matches the last one
+  /// already handled. Only a genuine change to a new location schedules
+  /// a reload.
+  void _handleScopeChangedForRefresh() {
+    final scope = _scopeRefreshListenedTo?.activeScope;
+    if (scope == null || !scope.isLocationScope) return;
+    final key = scope.stableKey;
+    if (key == _lastScopeRefreshKey) return;
+    _lastScopeRefreshKey = key;
+    _scheduleScopeDataRefresh();
+  }
+
+  /// Schedules a single post-frame [AppRefreshCoordinator.refreshAll]
+  /// pass. Coalesced via [_scopeRefreshScheduled] so multiple flips
+  /// queued within one frame collapse into one reload; `mounted`-guarded
+  /// and wrapped so a tree without [ForgeFlowScope] (some widget tests)
+  /// is a safe no-op rather than a `ProviderNotFoundException`.
+  void _scheduleScopeDataRefresh() {
+    if (_scopeRefreshScheduled) return;
+    _scopeRefreshScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scopeRefreshScheduled = false;
+      if (!mounted) return;
+      try {
+        context.read<AppRefreshCoordinator>().refreshAll();
+      } on ProviderNotFoundException {
+        // No ForgeFlowScope in this tree (widget tests that mount the
+        // shell standalone) — nothing to refresh.
+      }
+    });
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _bindBusinessScopeRealtimeBus();
     _bindDemoModeNotifier();
+    _bindScopeRefreshNotifier();
   }
 
   /// 8.demo-mode-banner — bind the runtime demo-mode notifier to the
@@ -1128,6 +1233,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _businessScopeRealtimeSubscription?.cancel();
     _businessScopeRealtimeSubscription = null;
     _businessScopeRealtimeBus = null;
+    // fix-qa-location-scope-not-propagated — release the scope-flip
+    // refresh listener.
+    _scopeRefreshListenedTo?.removeListener(_handleScopeChangedForRefresh);
+    _scopeRefreshListenedTo = null;
     _businessScopesPendingReloadFor = null;
     _businessScopeSearchController.dispose();
     _scopeListenedFor?.removeListener(_syncSupervisorToScope);
