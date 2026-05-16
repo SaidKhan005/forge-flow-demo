@@ -439,33 +439,48 @@ class _ShiftHeaderMeta extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left group: status dot, then day + date.
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.sunset,
-              shape: BoxShape.circle,
+          // Left group: status dot, day, date and live time, wrapped in
+          // a single Expanded so it claims every pixel the freshness
+          // chip doesn't need. Previously a sibling Spacer (flex 1)
+          // split the leftover width 50/50 with the Flexible date text,
+          // which truncated "May 16" -> "May ..." even when the row had
+          // room. The date can still ellipsize, but only if the whole
+          // "day - date - time" run genuinely overruns the width.
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.sunset,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '$day \u00b7 ${_formatMonthDay(businessDate)}',
+                    style: AppTextStyles.mono12(color: AppColors.sunsetDark),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // Live time, pulled down from the old title-row trailing slot
+                // so the restaurant name gets the full title width (less
+                // mid-word truncation) and date + time read as one line.
+                const SizedBox(width: 8),
+                Text(
+                  '·',
+                  style: AppTextStyles.mono12(color: AppColors.textMuted),
+                ),
+                const SizedBox(width: 8),
+                _LiveClock(ticker: ticker),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              '$day \u00b7 ${_formatMonthDay(businessDate)}',
-              style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          // Live time, pulled down from the old title-row trailing slot
-          // so the restaurant name gets the full title width (less
-          // mid-word truncation) and date + time read as one line.
-          const SizedBox(width: 8),
-          Text('·', style: AppTextStyles.mono12(color: AppColors.textMuted)),
-          const SizedBox(width: 8),
-          _LiveClock(ticker: ticker),
           if (freshness != null) ...[
-            const Spacer(),
             const SizedBox(width: 12),
             _FreshnessLabel(freshness: freshness!),
           ],
@@ -1111,11 +1126,20 @@ class _ShiftSectionViewData {
     // per-period target is genuinely absent (Gap-42 fallback / no locked
     // value) so the pill keeps its prior honest-empty / source-label
     // behavior rather than fabricating a `Target 0` (Metric Honesty
-    // Doctrine / Design Rule 2). COVERS has no per-period forecast-covers
-    // source on [DaypartTargetContext] — left `null` (no fabrication).
+    // Doctrine / Design Rule 2). COVERS reads its per-period
+    // forecast-covers from [DaypartTargetContext.forecastCovers] — left `null` (no fabrication).
     // Blended-wage target is period-invariant: the same shared benchmark
     // value (`profile.targetBlendedWage`) `_buildMetricCards` uses,
     // passed down by the caller; `null` when no profile is bound yet.
+    // COVERS now has a per-period plan-side source: the locked
+    // `WeeklyPlanSnapshotDayDaypart.forecast_covers` carried on
+    // [DaypartTargetContext.forecastCovers]. Byte-identical "Forecast N"
+    // format to the whole-day branch (`'Forecast ${rm.forecastCovers}'`);
+    // `null` when the in-force snapshot has no per-period row → the pill
+    // keeps its honest-empty / source-label behavior (no fabrication).
+    final String? coversTargetLabel = tc.forecastCovers == null
+        ? null
+        : 'Forecast ${tc.forecastCovers}';
     final ppaTargetForLabel = tc.targetPPA;
     final cplhTargetForLabel = tc.targetCPLH;
     final splhTargetForLabel = tc.targetSPLH;
@@ -1148,8 +1172,9 @@ class _ShiftSectionViewData {
       fohHours: hoursColumn(bucket.fohMinutes, tc.requiredFohHours),
       bohHours: hoursColumn(bucket.bohMinutes, tc.requiredBohHours),
       opz: opz,
-      // COVERS: no per-period forecast-covers source → null (honest).
-      coversTargetLabel: null,
+      // COVERS: per-period locked plan forecast (honest null when the
+      // in-force snapshot has no per-period row).
+      coversTargetLabel: coversTargetLabel,
       ppaTargetLabel: ppaTargetLabel,
       cplhTargetLabel: cplhTargetLabel,
       splhTargetLabel: splhTargetLabel,
