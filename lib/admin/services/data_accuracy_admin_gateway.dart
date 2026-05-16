@@ -1272,6 +1272,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     Map<String, ForgeFlowPollingTierAssignment>? initialAssignments,
     Map<String, String>? initialAdminNotes,
     List<TierChangeRequest>? initialChangeRequests,
+    List<DataAccuracyAdminAuditEvent>? initialAuditLog,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now,
        _operatorLocations = List<OperatorLocationRef>.unmodifiable(
@@ -1285,7 +1286,8 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
          ...?initialAssignments,
        },
        _adminNotes = <String, String>{...?initialAdminNotes},
-       _changeRequests = <TierChangeRequest>[...?initialChangeRequests];
+       _changeRequests = <TierChangeRequest>[...?initialChangeRequests],
+       _auditLog = <DataAccuracyAdminAuditEvent>[...?initialAuditLog];
 
   final DateTime Function() _clock;
   final List<OperatorLocationRef> _operatorLocations;
@@ -1304,8 +1306,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       <ForgeFlowPollingTierAssignment>[];
   final Map<String, String> _adminNotes;
   final List<TierChangeRequest> _changeRequests;
-  final List<DataAccuracyAdminAuditEvent> _auditLog =
-      <DataAccuracyAdminAuditEvent>[];
+  final List<DataAccuracyAdminAuditEvent> _auditLog;
 
   /// Closed-out assignment history rows (tests + future Tab 2 Card 5
   /// can assert on this to verify the prior row was stamped with
