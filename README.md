@@ -162,9 +162,12 @@ host returned by `scripts\deploy_staging_proxy.ps1`.
 **F&F Operations Console** (`lib/main_admin.dart`)
 
 - Defaults to `-Device chrome`. Pass `-Device edge` or `-Device web-server`
-  for headless / port-scoped runs.
-- Demo-mode fixtures: `super.admin@` / `support@` / `operator@` (Phase 11A.0
-  walkthrough).
+  (or `-WebServer -WebPort 8182`) for headless / port-scoped runs.
+- Default `-Mode demo` lands signed in as F&F support with **no login screen**
+  via `ADMIN_SHARE_PREVIEW=true` (read-only). Pass `-DemoFixtureLogin` to
+  instead render the Phase 11A.0 walkthrough picker (`super.admin@` /
+  `support@` / `operator@`) backed by `ADMIN_DEMO_AUTH=true` — useful for
+  exercising the admit / fail-closed paths.
 - `.claude/launch.json` integrates with the Claude_Preview MCP tool — invoke
   the matching launch entry to attach the in-IDE preview panel.
 
