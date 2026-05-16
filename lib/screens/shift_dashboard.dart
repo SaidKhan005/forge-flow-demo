@@ -1450,6 +1450,34 @@ class _DaypartLaborCard extends StatelessWidget {
         ? actualLaborDollars / bucket.sales * 100
         : null;
 
+    // Per-period theoretical labor % reference — the 1:1 mirror of the
+    // whole-day card's `Theoretical X.X%` sub-line + delta pill. Sourced
+    // from the live profile's per-period theoretical (see
+    // `DaypartTargetContext.theoreticalLaborPct`); `null` when the cycle
+    // wrote no per-period row.
+    final double? theoreticalPct = targetContext.theoreticalLaborPct;
+
+    // Delta is honest only when BOTH sides are known. When either side
+    // is unknown the pill is hidden entirely — never a phantom
+    // `0.0 pts` (Design Rule 2 + Metric Honesty Doctrine), mirroring how
+    // the whole-day card degrades.
+    final bool hasVariance = actualPct != null && theoreticalPct != null;
+    final double? variancePts =
+        hasVariance ? actualPct - theoreticalPct : null;
+    final bool isOver = (variancePts ?? 0) > 0;
+    final Color accentColor =
+        isOver ? AppColors.negative : AppColors.positive;
+    final String ptSign = isOver ? '+' : '−';
+
+    // Value color matches the whole-day card (accent over/under) only
+    // when a variance can be computed; otherwise stay neutral rather
+    // than implying an over/under the data can't support.
+    final Color valueColor = actualPct == null
+        ? AppColors.textMuted
+        : hasVariance
+            ? accentColor
+            : AppColors.textPrimary;
+
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -1467,19 +1495,59 @@ class _DaypartLaborCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Label — byte-identical to the whole-day `_LaborVarianceSection`.
           Text(
             'LABOR %',
             style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
           const SizedBox(height: 6),
+          // Current value (honest "—" when labor unconnected).
           Text(
             actualPct == null ? '—' : '${actualPct.toStringAsFixed(1)}%',
-            style: AppTextStyles.mono28(
-              color: actualPct == null
-                  ? AppColors.textMuted
-                  : AppColors.textPrimary,
-            ),
+            style: AppTextStyles.mono28(color: valueColor),
           ),
+          // Theoretical reference — shown only when the period's
+          // theoretical % is known (Design Rule 2: never `Theoretical
+          // 0.0%`). Same spacing + style constants as the whole-day card.
+          if (theoreticalPct != null) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Theoretical ${theoreticalPct.toStringAsFixed(1)}%',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+          ],
+          // Delta pill — byte-consistent with the whole-day pill
+          // (padding / alpha / radius / icon size / text style). Hidden
+          // when either side is unknown.
+          if (variancePts != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: accentColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isOver ? Icons.arrow_upward : Icons.arrow_downward,
+                    size: 14,
+                    color: accentColor,
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '$ptSign${variancePts.abs().toStringAsFixed(1)} pts',
+                    style: AppTextStyles.mono12(
+                      color: accentColor,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );

@@ -325,5 +325,138 @@ void main() {
         expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
       },
     );
+
+    // Daypart LABOR % true 1:1 parity fix — Theoretical sub-line +
+    // delta pill mirror the whole-day `_LaborVarianceSection`, with
+    // honest degrade (Design Rule 2 / Metric Honesty Doctrine).
+
+    testWidgets(
+      'daypart LABOR tile shows Theoretical sub-line + delta pill '
+      'matching the whole-day structure for a period with a target',
+      (tester) async {
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
+
+        await tester.pumpWidget(_build(
+          buckets: _bucketsWithLunch(),
+          daypartTargets: const {
+            'lunch': DaypartTargetContext(
+              source: 'open_profile',
+              targetCPLH: 12.00,
+              targetSPLH: 500.00,
+              targetPPA: 40.00,
+              opzFloorCPLH: 10.00,
+              opzCeilingCPLH: 13.00,
+              theoreticalLaborPct: 30.0,
+            ),
+          },
+        ));
+        await tester.pump();
+        await tester.pump();
+        await tester.tap(find.text('Lunch', skipOffstage: false));
+        await tester.pump();
+
+        // Lunch bucket: (80 + 100) / 4200 × 100 = 4.2857… → "4.3%".
+        expect(find.text('4.3%', skipOffstage: false), findsOneWidget);
+        // Per-period theoretical reference (distinct from the whole-day
+        // fixture's derived theoretical, so findsOneWidget is safe).
+        expect(
+          find.text('Theoretical 30.0%', skipOffstage: false),
+          findsOneWidget,
+        );
+        // Delta pill: 4.2857 − 30.0 = −25.7 pts (under → U+2212 sign,
+        // mirroring the whole-day pill's exact format).
+        expect(
+          find.text('−25.7 pts', skipOffstage: false),
+          findsOneWidget,
+        );
+        // No phantom zero anywhere on the card (Metric Honesty).
+        expect(
+          find.text('Theoretical 0.0%', skipOffstage: false),
+          findsNothing,
+        );
+        expect(find.text('0.0 pts', skipOffstage: false), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'labor-unconnected period → actual "—", Theoretical still shown '
+      'when known, NO phantom delta pill (Design Rule 2)',
+      (tester) async {
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
+
+        // Every bucket empty → lunch has no in-period minutes/sales →
+        // actual labor % is honestly unknown ("—"), never $0 ÷ sales.
+        final emptyBuckets = <String, ServicePeriodAccumulator>{
+          for (final d in ServicePeriodDefinitionResolver.demoDefinitions)
+            d.id: ServicePeriodAccumulator(servicePeriodId: d.id),
+        };
+
+        await tester.pumpWidget(_build(
+          buckets: emptyBuckets,
+          daypartTargets: const {
+            'lunch': DaypartTargetContext(
+              source: 'open_profile',
+              targetCPLH: 12.00,
+              targetSPLH: 500.00,
+              targetPPA: 40.00,
+              opzFloorCPLH: 10.00,
+              opzCeilingCPLH: 13.00,
+              theoreticalLaborPct: 28.5,
+            ),
+          },
+        ));
+        await tester.pump();
+        await tester.pump();
+        await tester.tap(find.text('Lunch', skipOffstage: false));
+        await tester.pump();
+
+        // Theoretical line still renders (period theoretical is known)…
+        expect(
+          find.text('Theoretical 28.5%', skipOffstage: false),
+          findsOneWidget,
+        );
+        // …but the actual is the honest em dash, and there is NO
+        // phantom `0.0%` / `0.0 pts` and no delta pill computed off a
+        // null actual (mirrors how the whole-day card degrades).
+        expect(find.text('—', skipOffstage: false), findsWidgets);
+        expect(
+          find.text('Theoretical 0.0%', skipOffstage: false),
+          findsNothing,
+        );
+        expect(find.text('0.0 pts', skipOffstage: false), findsNothing);
+        expect(
+          find.text('−0.0 pts', skipOffstage: false),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'whole-day LABOR card render is unchanged — Theoretical sub-line '
+      '+ delta pill still present (Promise 3 / Layer 9, byte-untouched)',
+      (tester) async {
+        ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
+
+        await tester.pumpWidget(_build(buckets: _bucketsWithLunch()));
+        await tester.pump();
+        await tester.pump();
+
+        // Before any daypart toggle the authoritative whole-day labor
+        // card renders its label, a Theoretical reference, and a pts
+        // delta pill exactly as it did pre-fix.
+        expect(
+          find.text('LABOR %', skipOffstage: false),
+          findsWidgets,
+        );
+        expect(
+          find.textContaining('Theoretical ', skipOffstage: false),
+          findsWidgets,
+        );
+        expect(
+          find.textContaining(' pts', skipOffstage: false),
+          findsWidgets,
+        );
+      },
+    );
   });
 }
