@@ -26,7 +26,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_proxy_client.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
 
@@ -363,6 +367,349 @@ void main() {
         expect(
           captured[0].headers['idempotency-key'],
           isNot(captured[1].headers['idempotency-key']),
+        );
+      },
+    );
+  });
+
+  // OW-G72 — extends the #855/G60 caller-stable pattern to the two
+  // operator-web write gateways #855 left uncovered:
+  // OperatorWebHttpDataAccuracyGateway (saveSettings,
+  // saveServicePeriodSetting — the active per-daypart covers/wage
+  // SOURCE write) and OperatorWebHttpVendorConnectionsGateway
+  // (connectWithApiKey credential persist, disconnect). Same
+  // invariants as the #855 groups above.
+  group('OW-G72 stable idempotency key — OperatorWebHttpDataAccuracyGateway',
+      () {
+    OperatorWebHttpDataAccuracyGateway buildGateway(
+      List<http.Request> captured, {
+      List<Map<String, Object?>>? responses,
+    }) {
+      final mock = MockClient((request) async {
+        captured.add(request);
+        final pool =
+            responses ??
+                <Map<String, Object?>>[
+                  <String, Object?>{
+                    'data': <String, Object?>{
+                      'setting_id': 'setting-1',
+                      'operator_id': 'op-1',
+                      'location_id': 'loc-1',
+                      'covers_source_lunch': 'manual',
+                      'covers_source_dinner': 'vendor',
+                      'covers_source_late_night': 'forecast',
+                      'covers_manual_entries': <String, Object?>{},
+                      'wage_source': 'manual_mix',
+                      'walk_in_handling_mode':
+                          'walk_ins_added_to_reservations',
+                      'walk_in_manual_entries': <String, Object?>{},
+                      'created_at': '2026-05-06T12:00:00Z',
+                      'updated_at': '2026-05-06T12:01:00Z',
+                      'updated_by': 'user-1',
+                    },
+                  },
+                ];
+        // Reuse the last canned response once the pool is exhausted so
+        // a retried write (2nd identical call) still gets a 200.
+        final body = pool[
+            captured.length - 1 < pool.length
+                ? captured.length - 1
+                : pool.length - 1];
+        return http.Response(
+          jsonEncode(body),
+          200,
+          headers: const <String, String>{'content-type': 'application/json'},
+        );
+      });
+      return OperatorWebHttpDataAccuracyGateway(
+        client: OperatorWebProxyClient(
+          baseUri: Uri.parse('https://proxy.test/'),
+          httpClient: mock,
+          idempotencyKeyFactory: () => 'fresh-mint-${captured.length}',
+        ),
+        idTokenProvider: () async => 'tok',
+      );
+    }
+
+    DataAccuracySettings settings({String currency = 'USD'}) {
+      return DataAccuracySettings(
+        settingId: 'setting-1',
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        coversSourceLunch: CoversSource.manual,
+        coversSourceDinner: CoversSource.vendor,
+        coversSourceLateNight: CoversSource.forecast,
+        coversManualEntries: const <String, Map<String, int>>{},
+        wageSource: WageSource.manualMix,
+        walkInHandlingMode:
+            DataAccuracyWalkInHandlingMode.walkInsAddedToReservations,
+        walkInManualEntries: <String, int>{'2026-05-06': currency == 'USD' ? 8 : 9},
+        createdAt: DateTime.utc(2026, 5, 6, 12),
+        updatedAt: DateTime.utc(2026, 5, 6, 12, 1),
+        updatedBy: 'user-1',
+      );
+    }
+
+    test('retried saveSettings reuses the SAME stable key', () async {
+      final captured = <http.Request>[];
+      final gateway = buildGateway(captured);
+
+      final payload = settings();
+      await gateway.saveSettings(payload);
+      await gateway.saveSettings(payload);
+
+      expect(captured, hasLength(2));
+      final first = captured[0].headers['idempotency-key'];
+      expect(first, startsWith('op-web-data-accuracy-settings-save-'));
+      expect(
+        first,
+        captured[1].headers['idempotency-key'],
+        reason: 'retried identical settings write must reuse the same key',
+      );
+      expect(first, isNot(startsWith('fresh-mint-')));
+    });
+
+    test('distinct saveSettings payloads get DISTINCT keys', () async {
+      final captured = <http.Request>[];
+      final gateway = buildGateway(captured);
+
+      await gateway.saveSettings(settings(currency: 'USD'));
+      await gateway.saveSettings(settings(currency: 'CAD'));
+
+      expect(
+        captured[0].headers['idempotency-key'],
+        isNot(captured[1].headers['idempotency-key']),
+        reason: 'a different settings edit is a different logical action',
+      );
+    });
+
+    test(
+      'retried saveServicePeriodSetting reuses the SAME stable key; a '
+      'different period key differs',
+      () async {
+        final captured = <http.Request>[];
+        final periodRow = <String, Object?>{
+          'data': <String, Object?>{
+            'id': 'period-setting-1',
+            'operator_id': 'op-1',
+            'location_id': 'loc-1',
+            'service_period_key': 'breakfast',
+            'covers_source': 'reservation_plus_walkin',
+            'wage_source': 'target_substitution',
+            'effective_at_business_date': '2026-05-07',
+            'created_at': '2026-05-07T12:00:00Z',
+            'updated_at': '2026-05-07T12:01:00Z',
+            'updated_by': 'user-1',
+          },
+        };
+        final gateway = buildGateway(
+          captured,
+          responses: <Map<String, Object?>>[periodRow, periodRow, periodRow],
+        );
+
+        Future<void> save(String periodKey) => gateway.saveServicePeriodSetting(
+              operatorId: 'op-1',
+              locationId: 'loc-1',
+              servicePeriodKey: periodKey,
+              coversSource: ServicePeriodCoversSource.reservationPlusWalkin,
+              wageSource: ServicePeriodWageSource.targetSubstitution,
+              effectiveAtBusinessDateIso: '2026-05-07',
+            );
+
+        await save('breakfast');
+        await save('breakfast');
+        await save('lunch');
+
+        expect(captured, hasLength(3));
+        final first = captured[0].headers['idempotency-key'];
+        expect(
+          first,
+          startsWith('op-web-data-accuracy-service-period-save-'),
+        );
+        expect(
+          first,
+          captured[1].headers['idempotency-key'],
+          reason: 'retried identical per-daypart SOURCE write reuses key',
+        );
+        expect(
+          first,
+          isNot(captured[2].headers['idempotency-key']),
+          reason: 'a different service period is a distinct logical write',
+        );
+        expect(first, isNot(startsWith('fresh-mint-')));
+      },
+    );
+
+    test('GET loadSettings still auto-mints (read path unchanged)', () async {
+      final captured = <http.Request>[];
+      final gateway = buildGateway(captured);
+
+      await gateway.loadSettings(operatorId: 'op-1', locationId: 'loc-1');
+
+      expect(captured.single.method, 'GET');
+      expect(
+        captured.single.headers['idempotency-key'],
+        startsWith('fresh-mint-'),
+        reason: 'reads keep the per-request auto-mint fallback',
+      );
+    });
+  });
+
+  group(
+      'OW-G72 stable idempotency key — '
+      'OperatorWebHttpVendorConnectionsGateway', () {
+    OperatorWebHttpVendorConnectionsGateway buildGateway(
+      List<http.Request> captured,
+    ) {
+      final mock = MockClient((request) async {
+        captured.add(request);
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'connection_id': 'conn-1',
+            'connected_at': '2026-05-16T12:00:00Z',
+            'first_backfill_started': true,
+          }),
+          200,
+          headers: const <String, String>{'content-type': 'application/json'},
+        );
+      });
+      return OperatorWebHttpVendorConnectionsGateway(
+        proxyClient: OperatorWebProxyClient(
+          baseUri: Uri.parse('https://proxy.test/'),
+          httpClient: mock,
+          idempotencyKeyFactory: () => 'fresh-mint-${captured.length}',
+        ),
+        idTokenProvider: () async => 'tok',
+      );
+    }
+
+    test('retried connectWithApiKey reuses the SAME stable key', () async {
+      final captured = <http.Request>[];
+      final gateway = buildGateway(captured);
+
+      Future<void> connect() => gateway.connectWithApiKey(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            vendorId: 'square',
+            apiKey: 'sk-123',
+          );
+      await connect();
+      await connect();
+
+      expect(captured, hasLength(2));
+      final first = captured[0].headers['idempotency-key'];
+      expect(first, startsWith('op-web-vendor-connect-api-key-'));
+      expect(
+        first,
+        captured[1].headers['idempotency-key'],
+        reason:
+            'a retried credential persist must collapse against '
+            'proxy_requests UNIQUE, not create a second connection',
+      );
+      expect(first, isNot(startsWith('fresh-mint-')));
+    });
+
+    test(
+      'connectWithApiKey key differs by vendor / location / credential',
+      () async {
+        final captured = <http.Request>[];
+        final gateway = buildGateway(captured);
+
+        await gateway.connectWithApiKey(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          vendorId: 'square',
+          apiKey: 'sk-123',
+        );
+        await gateway.connectWithApiKey(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          vendorId: 'toast',
+          apiKey: 'sk-123',
+        );
+        await gateway.connectWithApiKey(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          vendorId: 'square',
+          apiKey: 'sk-ROTATED',
+        );
+
+        final keys = captured
+            .map((r) => r.headers['idempotency-key'])
+            .toSet();
+        expect(
+          keys,
+          hasLength(3),
+          reason:
+              'different vendor / rotated credential are distinct logical '
+              'writes',
+        );
+      },
+    );
+
+    test('retried disconnect reuses the SAME stable key', () async {
+      final captured = <http.Request>[];
+      final gateway = buildGateway(captured);
+
+      Future<void> disconnect() => gateway.disconnect(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            vendorId: 'square',
+            reason: 'operator_requested',
+          );
+      await disconnect();
+      await disconnect();
+
+      expect(captured, hasLength(2));
+      final first = captured[0].headers['idempotency-key'];
+      expect(first, startsWith('op-web-vendor-disconnect-'));
+      expect(
+        first,
+        captured[1].headers['idempotency-key'],
+        reason: 'retried disconnect must not double-apply',
+      );
+      expect(first, isNot(startsWith('fresh-mint-')));
+    });
+
+    test(
+      'startConnect / testConnection keep the per-request auto-mint '
+      'fallback (out of OW-G72 scope, unchanged)',
+      () async {
+        final captured = <http.Request>[];
+        final mock = MockClient((request) async {
+          captured.add(request);
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'auth_valid': true,
+              'elapsed_ms': 12,
+              'sample_summary': 'ok',
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          );
+        });
+        final gateway = OperatorWebHttpVendorConnectionsGateway(
+          proxyClient: OperatorWebProxyClient(
+            baseUri: Uri.parse('https://proxy.test/'),
+            httpClient: mock,
+            idempotencyKeyFactory: () => 'fresh-mint-${captured.length}',
+          ),
+          idTokenProvider: () async => 'tok',
+        );
+
+        await gateway.testConnection(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          vendorId: 'square',
+        );
+
+        expect(
+          captured.single.headers['idempotency-key'],
+          startsWith('fresh-mint-'),
+          reason:
+              'the test-connection probe is not a OW-G72 logical write',
         );
       },
     );

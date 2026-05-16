@@ -126,15 +126,25 @@ class OperatorWebHttpVendorConnectionsGateway
         remediation: 'Paste the API key from the vendor portal and try again.',
       );
     }
+    final connectBody = <String, Object?>{
+      'api_key': trimmedKey,
+      if (apiSecret != null && apiSecret.trim().isNotEmpty)
+        'api_secret': apiSecret.trim(),
+      'location_id': locationId,
+      if (module != null && module.trim().isNotEmpty) 'module': module.trim(),
+    };
     final body = await _postJson(
       '/v1/integrations/api-key/$vendorId/connect',
-      body: <String, Object?>{
-        'api_key': trimmedKey,
-        if (apiSecret != null && apiSecret.trim().isNotEmpty)
-          'api_secret': apiSecret.trim(),
-        'location_id': locationId,
-        if (module != null && module.trim().isNotEmpty) 'module': module.trim(),
-      },
+      body: connectBody,
+      // OW-G72 — caller-STABLE idempotency key, parity with #855/G60.
+      // Credential persist is a write: a retried connect of the SAME
+      // vendor at the SAME location with the SAME credential collapses
+      // against the proxy `proxy_requests` UNIQUE guard instead of
+      // persisting a duplicate connection. The credential payload is
+      // part of the key so rotating the key is a distinct logical
+      // write; a different vendor/location also differs.
+      idempotencyAction: 'vendor-connect-api-key',
+      idempotencyParts: <Object?>[locationId, vendorId, connectBody],
     );
     final connectionId =
         _readString(body['connection_id']) ??
@@ -202,6 +212,14 @@ class OperatorWebHttpVendorConnectionsGateway
     await _postJson(
       '/v1/integrations/$vendorId/disconnect',
       body: <String, Object?>{'location_id': locationId, 'reason': reason},
+      // OW-G72 — caller-STABLE idempotency key, parity with #855/G60.
+      // A retried disconnect of the SAME vendor connection at the SAME
+      // location collapses against the proxy `proxy_requests` UNIQUE
+      // guard instead of double-applying the disconnect. Keyed on the
+      // connection identity (location + vendor); the reason is included
+      // so a re-disconnect with a different reason is a distinct write.
+      idempotencyAction: 'vendor-disconnect',
+      idempotencyParts: <Object?>[locationId, vendorId, reason],
     );
   }
 
@@ -237,9 +255,17 @@ class OperatorWebHttpVendorConnectionsGateway
     }
   }
 
+  /// [idempotencyAction] / [idempotencyParts] are OW-G72: when supplied
+  /// the call carries a caller-STABLE `Idempotency-Key` (parity with
+  /// the #855/G60 pattern) so a retried logical write collapses against
+  /// the proxy `proxy_requests` UNIQUE guard. When omitted (OAuth begin
+  /// / test-connection probe) the proxy client's existing per-request
+  /// auto-mint fallback is unchanged.
   Future<Map<String, Object?>> _postJson(
     String path, {
     Map<String, Object?> body = const <String, Object?>{},
+    String? idempotencyAction,
+    List<Object?>? idempotencyParts,
   }) async {
     final token = await _requireToken();
     try {
@@ -247,10 +273,34 @@ class OperatorWebHttpVendorConnectionsGateway
         path,
         idToken: token,
         body: body,
+        extraHeaders: idempotencyAction == null
+            ? const <String, String>{}
+            : _stableKeyHeader(
+                idempotencyAction,
+                idempotencyParts ?? const <Object?>[],
+              ),
       )).body;
     } on OperatorWebProxyException catch (error) {
       throw _gatewayError(error);
     }
+  }
+
+  /// OW-G72 — builds the `Idempotency-Key` header carrying a
+  /// caller-STABLE key derived from [action] + [parts]. Same logical
+  /// write on retry => same key (proxy `proxy_requests` UNIQUE guard
+  /// collapses it); distinct actions / scopes / payloads => distinct
+  /// keys. Exact parity with the #855/G60 `_stableKeyHeader` in
+  /// `web_account_gateway.dart` / `web_business_timing_gateway.dart`.
+  static Map<String, String> _stableKeyHeader(
+    String action,
+    List<Object?> parts,
+  ) {
+    return <String, String>{
+      'Idempotency-Key': OperatorWebProxyClient.stableIdempotencyKey(
+        action,
+        parts,
+      ),
+    };
   }
 
   Future<String> _requireToken() async {

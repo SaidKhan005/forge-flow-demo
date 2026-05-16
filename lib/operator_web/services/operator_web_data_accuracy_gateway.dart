@@ -83,13 +83,27 @@ class OperatorWebHttpDataAccuracyGateway
     DataAccuracySettings settings,
   ) async {
     final token = await _requireToken();
+    final body = _settingsToJson(settings);
     final response = await _client.patchJson(
       dataAccuracySettingsPath(
         operatorId: settings.operatorId,
         locationId: settings.locationId,
       ),
       idToken: token,
-      body: _settingsToJson(settings),
+      body: body,
+      // OW-G72 — caller-STABLE idempotency key, parity with the
+      // #855/G60 fix in web_account_gateway.dart /
+      // web_business_timing_gateway.dart. The operator+location scope
+      // plus the full payload uniquely identifies this logical
+      // data-accuracy settings write, so a retried "Save" reuses the
+      // SAME key and the proxy `proxy_requests` UNIQUE guard collapses
+      // the duplicate instead of double-applying the settings PATCH. A
+      // different operator/location or a different edit gets a distinct
+      // key.
+      extraHeaders: _stableKeyHeader(
+        'data-accuracy-settings-save',
+        <Object?>[settings.operatorId, settings.locationId, body],
+      ),
     );
     final raw = response.body['data'];
     if (raw is! Map<Object?, Object?>) {
@@ -152,18 +166,30 @@ class OperatorWebHttpDataAccuracyGateway
     required String effectiveAtBusinessDateIso,
   }) async {
     final token = await _requireToken();
+    final body = <String, Object?>{
+      'service_period_key': servicePeriodKey,
+      'covers_source': coversSource.wire,
+      'wage_source': wageSource.wire,
+      'effective_at_business_date': effectiveAtBusinessDateIso,
+    };
     final response = await _client.patchJson(
       dataAccuracyServicePeriodSettingsPath(
         operatorId: operatorId,
         locationId: locationId,
       ),
       idToken: token,
-      body: <String, Object?>{
-        'service_period_key': servicePeriodKey,
-        'covers_source': coversSource.wire,
-        'wage_source': wageSource.wire,
-        'effective_at_business_date': effectiveAtBusinessDateIso,
-      },
+      body: body,
+      // OW-G72 — caller-STABLE idempotency key, parity with the
+      // #855/G60 fix. This is the active per-daypart covers/wage SOURCE
+      // write: the operator+location+service-period-key scope plus the
+      // full payload uniquely identifies this logical write, so a
+      // retried save reuses the SAME key (proxy `proxy_requests` UNIQUE
+      // guard collapses the duplicate) while a different period / a
+      // different edit gets a distinct key.
+      extraHeaders: _stableKeyHeader(
+        'data-accuracy-service-period-save',
+        <Object?>[operatorId, locationId, servicePeriodKey, body],
+      ),
     );
     final raw = response.body['data'];
     if (raw is! Map<Object?, Object?>) {
@@ -175,6 +201,25 @@ class OperatorWebHttpDataAccuracyGateway
       );
     }
     return _servicePeriodSettingFromJson(Map<String, Object?>.from(raw));
+  }
+
+  /// OW-G72 — builds the `Idempotency-Key` header carrying a
+  /// caller-STABLE key derived from [action] + [parts]. Same logical
+  /// write (same operator/location/payload) on retry => same key
+  /// (proxy `proxy_requests` UNIQUE guard collapses it); distinct
+  /// actions / scopes / payloads => distinct keys. Exact parity with
+  /// the #855/G60 `_stableKeyHeader` in `web_account_gateway.dart` and
+  /// `web_business_timing_gateway.dart`.
+  static Map<String, String> _stableKeyHeader(
+    String action,
+    List<Object?> parts,
+  ) {
+    return <String, String>{
+      'Idempotency-Key': OperatorWebProxyClient.stableIdempotencyKey(
+        action,
+        parts,
+      ),
+    };
   }
 
   Future<String> _requireToken() async {
