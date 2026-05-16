@@ -401,6 +401,8 @@ Future<void> _createAllTables(Database db) async {
       opz_floor_cplh     REAL NOT NULL,
       opz_ceiling_cplh   REAL NOT NULL,
       cover_count        INTEGER NOT NULL,
+      verdict            TEXT,
+      verdict_reason     TEXT,
       created_at         TEXT NOT NULL,
       PRIMARY KEY (cycle_id, service_period_id)
     )

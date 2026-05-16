@@ -32,6 +32,17 @@ class ActiveTargetProfileDaypart {
   final double daypartOpzFloorCPLH;
   final double daypartOpzCeilingCPLH;
 
+  /// Per-Daypart Targets V1 (S0): per-period verdict projected from the
+  /// active cycle's `TargetCycleDaypart`. One of `BenchmarkVerdict.all`,
+  /// or `null` when unassigned / projected from a pre-S0 cycle row.
+  /// Additive + nullable; missing map key → null. Does not change
+  /// [ActiveTargetProfile.daypartFor] semantics (null still means
+  /// "no per-period row → caller falls back", Design Rule 2).
+  final String? verdict;
+
+  /// Human-readable reason backing [verdict]. `null` when unset.
+  final String? verdictReason;
+
   const ActiveTargetProfileDaypart({
     required this.servicePeriodId,
     required this.daypartTargetCPLH,
@@ -39,6 +50,8 @@ class ActiveTargetProfileDaypart {
     required this.daypartTargetPPA,
     required this.daypartOpzFloorCPLH,
     required this.daypartOpzCeilingCPLH,
+    this.verdict,
+    this.verdictReason,
   });
 
   Map<String, dynamic> toMap() => {
@@ -48,6 +61,8 @@ class ActiveTargetProfileDaypart {
         'daypart_target_ppa': daypartTargetPPA,
         'daypart_opz_floor_cplh': daypartOpzFloorCPLH,
         'daypart_opz_ceiling_cplh': daypartOpzCeilingCPLH,
+        'verdict': verdict,
+        'verdict_reason': verdictReason,
       };
 
   factory ActiveTargetProfileDaypart.fromMap(Map<String, dynamic> m) =>
@@ -59,6 +74,30 @@ class ActiveTargetProfileDaypart {
         daypartOpzFloorCPLH: (m['daypart_opz_floor_cplh'] as num).toDouble(),
         daypartOpzCeilingCPLH:
             (m['daypart_opz_ceiling_cplh'] as num).toDouble(),
+        verdict: m['verdict'] as String?,
+        verdictReason: m['verdict_reason'] as String?,
+      );
+
+  ActiveTargetProfileDaypart copyWith({
+    String? servicePeriodId,
+    double? daypartTargetCPLH,
+    double? daypartTargetSPLH,
+    double? daypartTargetPPA,
+    double? daypartOpzFloorCPLH,
+    double? daypartOpzCeilingCPLH,
+    String? verdict,
+    String? verdictReason,
+  }) =>
+      ActiveTargetProfileDaypart(
+        servicePeriodId: servicePeriodId ?? this.servicePeriodId,
+        daypartTargetCPLH: daypartTargetCPLH ?? this.daypartTargetCPLH,
+        daypartTargetSPLH: daypartTargetSPLH ?? this.daypartTargetSPLH,
+        daypartTargetPPA: daypartTargetPPA ?? this.daypartTargetPPA,
+        daypartOpzFloorCPLH: daypartOpzFloorCPLH ?? this.daypartOpzFloorCPLH,
+        daypartOpzCeilingCPLH:
+            daypartOpzCeilingCPLH ?? this.daypartOpzCeilingCPLH,
+        verdict: verdict ?? this.verdict,
+        verdictReason: verdictReason ?? this.verdictReason,
       );
 }
 
