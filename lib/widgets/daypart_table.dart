@@ -5,22 +5,28 @@ import '../domain/services/service_period_definition_resolver.dart';
 import '../theme/app_theme.dart';
 import '../services/baseline_authority_service.dart';
 
-/// Per-Daypart Targets V1 / Slice 2 — Daypart Breakdown.
+/// Per-Daypart Targets V1 / Slice 2 — Daypart Target Breakdowns.
 ///
-/// Operator finding 2026-05-16 (binding): the prior six-column row
-/// table was still too condensed/unreadable on a phone even after the
-/// no-horizontal-scroll cleanup — values were `FittedBox`-shrunk to
-/// fit. This is the operator-chosen redesign: **one card per daypart**,
-/// stacked vertically. Each card carries the period name + avg covers
-/// in its header, then the four targets (CPLH · SPLH · PPA · OPZ Range)
-/// as full-size label/value rows — nothing shrinks, no horizontal
-/// scroll, every value at its natural size. A tinted Whole Day card at
-/// the bottom shows the cover-weighted pool (the same fields the CPLH
-/// Range & Target widget at the top of the tab reads — 1:1 by
-/// construction).
+/// Operator-chosen UX redesign 2026-05-16 (binding, strictly UX — no
+/// formula, fallback, or read-path change): one card per daypart,
+/// stacked vertically. Each card leads with the headline **Target
+/// CPLH** at display size, with a compact OPZ bullet bar beside it
+/// (same grammar as the `CPLH RANGE & TARGET` bar at the top of the
+/// tab) so the operator sees *where the target sits inside its OPZ
+/// band* at a glance instead of reading two unrelated numbers. The
+/// exact `floor – ceiling` range is kept verbatim as a quiet caption
+/// under the bar. SPLH + PPA pair into one divided footer row. Covers
+/// is the period's historical **average** (relabelled "Avg covers" so
+/// the one non-target value is unambiguous) and carries its share of
+/// the day. A tinted Whole Day rollup card at the bottom shows the
+/// cover-weighted pool — the same fields the CPLH Range & Target widget
+/// reads, 1:1 by construction. The word "Target" lives once in the
+/// section header (`DAYPART TARGET BREAKDOWNS`), not on every row.
 ///
 /// Reader contract (Design Rules, per
-/// `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`):
+/// `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`),
+/// unchanged by the redesign — the bar and every displayed string come
+/// from the SAME [_targetsFor] branch so there is no drift:
 ///   Rule 1 — per-period values read the `daypart*`-named accessors on
 ///     [ActiveTargetProfileDaypart]; whole-day field names are never
 ///     reused for a period row.
@@ -33,8 +39,8 @@ class DaypartTable extends StatelessWidget {
 
   /// Active target profile. Per-period rows + the whole-day pool both
   /// come from here. Null only in bridge-only widget tests with no
-  /// provider; the table then shows AVG COVERS and an honest dash for
-  /// the target/OPZ columns.
+  /// provider; the table then shows Avg covers and an honest dash for
+  /// the target/OPZ values.
   final ActiveTargetProfile? profile;
 
   /// Operator-configured service-period definitions for label lookup.
@@ -82,98 +88,114 @@ class DaypartTable extends StatelessWidget {
     );
   }
 
-  /// Per-period target cells. Reads the period's child row via the
-  /// `daypart*` accessors (Rule 1); falls back to the whole-day pool
-  /// when the period has no child row (Rule 2 — Gap 42), and to an
-  /// honest dash when no profile is in scope at all (never `0`).
-  List<String> _targetCellsFor(DaypartRange range) {
-    // Empty period — no historical evidence this range. The targets
-    // here would be either profile pool stand-ins or sentinel zeros;
-    // neither is an honest per-period number, so dash them (Metric
+  /// Single source of truth for a period's targets — both the displayed
+  /// strings AND the raw numbers the bullet bar positions from come out
+  /// of this one branch, so the visual can never disagree with the text
+  /// (Rule 1 child-row read; Rule 2 / Gap 42 whole-day-pool fallback;
+  /// honest dash + null numerics when there is no evidence or no
+  /// profile — never a sentinel `0`). The string formatting is byte-for-
+  /// byte the prior contract: CPLH 2dp, SPLH `$`+0dp, PPA `$`+2dp, OPZ
+  /// `floor – ceiling` via [_opzRange].
+  _DaypartTargets _targetsFor(DaypartRange range) {
+    // Empty period — no historical evidence this range. Any target here
+    // would be a profile pool stand-in or a sentinel zero; neither is an
+    // honest per-period number, so dash them and draw no bar (Metric
     // Honesty Doctrine: missing actuals → `—`, never `0`).
     if (!_hasData(range)) {
-      return const [_missing, _missing, _missing, _missing];
+      return const _DaypartTargets.missing();
     }
     final p = profile;
     if (p == null) {
-      return const [_missing, _missing, _missing, _missing];
+      return const _DaypartTargets.missing();
     }
     final period = p.daypartFor(range.id);
     if (period != null) {
-      return [
-        period.daypartTargetCPLH.toStringAsFixed(2),
-        '\$${period.daypartTargetSPLH.toStringAsFixed(0)}',
-        '\$${period.daypartTargetPPA.toStringAsFixed(2)}',
-        _opzRange(period.daypartOpzFloorCPLH, period.daypartOpzCeilingCPLH),
-      ];
+      return _DaypartTargets(
+        cplh: period.daypartTargetCPLH.toStringAsFixed(2),
+        splh: '\$${period.daypartTargetSPLH.toStringAsFixed(0)}',
+        ppa: '\$${period.daypartTargetPPA.toStringAsFixed(2)}',
+        opz: _opzRange(
+            period.daypartOpzFloorCPLH, period.daypartOpzCeilingCPLH),
+        cplhVal: period.daypartTargetCPLH,
+        opzFloor: period.daypartOpzFloorCPLH,
+        opzCeiling: period.daypartOpzCeilingCPLH,
+      );
     }
     // Gap 42: no per-period child row — fall back to the whole-day pool.
-    return [
-      p.targetCPLH.toStringAsFixed(2),
-      '\$${p.targetSPLH.toStringAsFixed(0)}',
-      '\$${p.targetPPA.toStringAsFixed(2)}',
-      _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
-    ];
+    return _DaypartTargets(
+      cplh: p.targetCPLH.toStringAsFixed(2),
+      splh: '\$${p.targetSPLH.toStringAsFixed(0)}',
+      ppa: '\$${p.targetPPA.toStringAsFixed(2)}',
+      opz: _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
+      cplhVal: p.targetCPLH,
+      opzFloor: p.opzFloorCPLH,
+      opzCeiling: p.opzCeilingCPLH,
+    );
+  }
+
+  /// Whole Day rollup targets — cover-weighted pool, identical to the
+  /// prior contract (honest dash, never `0`, when no profile).
+  _DaypartTargets _rollupTargets() {
+    final p = profile;
+    if (p == null) return const _DaypartTargets.missing();
+    return _DaypartTargets(
+      cplh: p.targetCPLH.toStringAsFixed(2),
+      splh: '\$${p.targetSPLH.toStringAsFixed(0)}',
+      ppa: '\$${p.targetPPA.toStringAsFixed(2)}',
+      opz: _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
+      cplhVal: p.targetCPLH,
+      opzFloor: p.opzFloorCPLH,
+      opzCeiling: p.opzCeilingCPLH,
+    );
   }
 
   static String _opzRange(double floor, double ceiling) =>
       '${floor.toStringAsFixed(2)} – ${ceiling.toStringAsFixed(2)}';
 
-  // Card-row metric labels. Mixed-case (card grammar, not the old
-  // uppercase column-header grammar) and read once per card.
-  static const String _labelCPLH = 'Target CPLH';
-  static const String _labelSPLH = 'Target SPLH';
-  static const String _labelPPA = 'Target PPA';
-  static const String _labelOPZ = 'OPZ Range';
-
   @override
   Widget build(BuildContext context) {
-    final p = profile;
+    // Whole-day cover basis — unchanged math (sum of per-period avg
+    // covers). Reused both for the rollup card's covers and to derive
+    // each period's honest share of the day.
+    final totalCovers =
+        dayparts.fold<int>(0, (s, r) => s + r.avgCovers);
 
     final cards = <Widget>[];
 
-    // One card per daypart.
     for (final stat in dayparts) {
-      final targets = _targetCellsFor(stat);
       final hasData = _hasData(stat);
+      final t = _targetsFor(stat);
+      // Share of day — only when the period has real covers and there
+      // is a non-zero basis. Honest: an empty period shows no share.
+      String? share;
+      if (hasData && totalCovers > 0) {
+        share = '${(stat.avgCovers / totalCovers * 100).round()}% of day';
+      }
       cards.add(
         _DaypartCard(
           title: _labelFor(stat),
           // Empty period → honest dash, never a phantom `0`.
-          covers: hasData ? stat.avgCovers.toString() : _missing,
+          coversValue: hasData ? stat.avgCovers.toString() : _missing,
+          share: share,
           // Gap 42 pooled stand-in marker — unchanged string + style.
           subLabel: _isPoolFallback(stat) ? _poolFallbackTag : null,
-          metrics: [
-            (_labelCPLH, targets[0]),
-            (_labelSPLH, targets[1]),
-            (_labelPPA, targets[2]),
-            (_labelOPZ, targets[3]),
-          ],
+          targets: t,
           isRollup: false,
         ),
       );
     }
 
-    // Whole Day rollup card — cover-weighted pool. Same fields the CPLH
+    // Whole Day rollup — cover-weighted pool. Same fields the CPLH
     // Range & Target widget at the top of the tab reads, so this card's
-    // CPLH equals that widget's by construction.
+    // CPLH equals that widget's by construction. No share (it is the
+    // 100% basis itself).
     cards.add(
       _DaypartCard(
         title: 'Whole Day',
-        covers: dayparts.fold<int>(0, (s, r) => s + r.avgCovers).toString(),
+        coversValue: totalCovers.toString(),
+        share: null,
         subLabel: null,
-        metrics: [
-          (_labelCPLH,
-              p == null ? _missing : p.targetCPLH.toStringAsFixed(2)),
-          (_labelSPLH,
-              p == null ? _missing : '\$${p.targetSPLH.toStringAsFixed(0)}'),
-          (_labelPPA,
-              p == null ? _missing : '\$${p.targetPPA.toStringAsFixed(2)}'),
-          (_labelOPZ,
-              p == null
-                  ? _missing
-                  : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH)),
-        ],
+        targets: _rollupTargets(),
         isRollup: true,
       ),
     );
@@ -185,32 +207,70 @@ class DaypartTable extends StatelessWidget {
   }
 }
 
-/// One daypart's card: a header band (period name + avg covers, plus the
-/// optional Gap 42 "whole-day est." marker) over a hairline rule, then
-/// the four targets as full-size label/value rows. Nothing is shrunk to
-/// fit — the card is the full content width, so every value renders at
-/// its natural size with no horizontal scroll (operator finding
-/// 2026-05-16). The rollup card uses a flat tinted surface so it reads
-/// as the deliberate summary of the cards above it.
+/// Resolved per-card targets: the display strings (byte-for-byte the
+/// prior formatting contract) plus the raw numerics the bullet bar
+/// positions from. [cplhVal]/[opzFloor]/[opzCeiling] are null exactly
+/// when the strings are the honest `—` (no evidence / no profile), so
+/// the bar is suppressed in lockstep with the dash.
+class _DaypartTargets {
+  final String cplh;
+  final String splh;
+  final String ppa;
+  final String opz;
+  final double? cplhVal;
+  final double? opzFloor;
+  final double? opzCeiling;
+
+  const _DaypartTargets({
+    required this.cplh,
+    required this.splh,
+    required this.ppa,
+    required this.opz,
+    required this.cplhVal,
+    required this.opzFloor,
+    required this.opzCeiling,
+  });
+
+  const _DaypartTargets.missing()
+      : cplh = DaypartTable._missing,
+        splh = DaypartTable._missing,
+        ppa = DaypartTable._missing,
+        opz = DaypartTable._missing,
+        cplhVal = null,
+        opzFloor = null,
+        opzCeiling = null;
+
+  bool get hasBar =>
+      cplhVal != null && opzFloor != null && opzCeiling != null;
+}
+
+/// One daypart's card: a header band (period name + Avg covers + share
+/// of day, plus the optional Gap 42 "whole-day est." marker), then the
+/// headline Target CPLH beside its OPZ bullet bar, the exact OPZ range
+/// as a quiet caption, and a divided SPLH / PPA footer. The rollup card
+/// uses a flat tinted surface with a heavier top accent so it reads as
+/// the deliberate summary of the cards above it. Nothing is shrunk to
+/// fit; the bar flexes via [Expanded] so there is no horizontal scroll
+/// and no RenderFlex overflow at any device width.
 class _DaypartCard extends StatelessWidget {
   final String title;
-  final String covers;
+  final String coversValue;
+  final String? share;
 
   /// Gap 42 pooled-stand-in marker, rendered muted under the title so a
   /// pooled target is visually distinct from a true per-period one
   /// (Design Rule 1). Null on every card that is not a pooled stand-in.
   final String? subLabel;
 
-  /// (label, value) pairs in display order: CPLH, SPLH, PPA, OPZ Range.
-  final List<(String, String)> metrics;
-
+  final _DaypartTargets targets;
   final bool isRollup;
 
   const _DaypartCard({
     required this.title,
-    required this.covers,
+    required this.coversValue,
+    required this.share,
     required this.subLabel,
-    required this.metrics,
+    required this.targets,
     required this.isRollup,
   });
 
@@ -231,14 +291,24 @@ class _DaypartCard extends StatelessWidget {
               ),
         color: isRollup ? AppColors.cardGlow : null,
         border: Border.all(color: AppColors.rule, width: 1),
+        // Heavier top accent marks the rollup as the deliberate summary.
         borderRadius: BorderRadius.circular(3),
       ),
+      foregroundDecoration: isRollup
+          ? const BoxDecoration(
+              border: Border(
+                top: BorderSide(color: AppColors.sunsetDark, width: 2),
+              ),
+            )
+          : null,
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Header band — period name (left) + avg covers (right).
+          // Header band — period name (left) + Avg covers / share
+          // (right). Title takes the slack; the covers cluster stays
+          // intrinsic so a long title never pushes it off-card.
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -266,63 +336,247 @@ class _DaypartCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              // Covers reads as one line ("91 covers") — the count at
-              // full mono size with a quiet trailing unit, baseline-
-              // aligned so the small unit sits on the number's baseline.
-              Row(
+              Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  // "<n> Avg covers" — count at full mono size, quiet
+                  // trailing unit on its baseline.
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        coversValue,
+                        style: AppTextStyles.mono14(
+                            color: AppColors.primaryText),
+                      ),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Avg covers',
+                        style:
+                            AppTextStyles.mono8(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                  if (share != null) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      share!,
+                      style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          // Headline Target CPLH + OPZ bullet bar. The big value and the
+          // bar both read from the same resolved targets.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    covers,
-                    style:
-                        AppTextStyles.mono14(color: AppColors.primaryText),
+                    targets.cplh,
+                    style: AppTextStyles.mono22(
+                        color: AppColors.primaryText),
                   ),
-                  const SizedBox(width: 5),
+                  const SizedBox(height: 3),
                   Text(
-                    'covers',
+                    'CPLH',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                 ],
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: targets.hasBar
+                    ? _OpzBar(
+                        floor: targets.opzFloor!,
+                        ceiling: targets.opzCeiling!,
+                        target: targets.cplhVal!,
+                      )
+                    : const SizedBox(height: _OpzBar.height),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Exact OPZ range, kept verbatim as a quiet caption so the
+          // precise floor/ceiling numbers are never lost behind the bar.
+          Row(
+            children: [
+              Text(
+                'OPZ',
+                style: AppTextStyles.mono8(color: AppColors.textMuted),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  targets.opz,
+                  style: AppTextStyles.mono10(color: AppColors.textSecondary),
+                ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Container(height: 1, color: AppColors.rule),
           const SizedBox(height: 12),
-          // Four target rows — label left (muted), value right, full
-          // size. The OPZ value is the widest token; it may wrap to two
-          // lines rather than shrink, so no value is ever clipped.
-          for (var i = 0; i < metrics.length; i++) ...[
-            if (i != 0) const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    metrics[i].$1,
-                    style:
-                        AppTextStyles.mono10(color: AppColors.textMuted),
-                  ),
-                ),
-                const SizedBox(width: 28),
-                Flexible(
-                  child: Text(
-                    metrics[i].$2,
-                    style: AppTextStyles.mono14(
-                      color: AppColors.primaryText,
-                    ),
-                    textAlign: TextAlign.right,
-                    softWrap: true,
-                    maxLines: 2,
-                  ),
-                ),
-              ],
-            ),
-          ],
+          // SPLH + PPA — one divided footer row. Labels muted/once,
+          // values full size; each value is its own Text node.
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: _FooterStat(label: 'SPLH', value: targets.splh)),
+              Container(
+                width: 1,
+                height: 30,
+                color: AppColors.rule,
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              Expanded(child: _FooterStat(label: 'PPA', value: targets.ppa)),
+            ],
+          ),
         ],
       ),
+    );
+  }
+}
+
+/// One footer metric — muted label over its full-size value.
+class _FooterStat extends StatelessWidget {
+  final String label;
+  final String value;
+  const _FooterStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: AppTextStyles.mono8(color: AppColors.textMuted)),
+        const SizedBox(height: 4),
+        Text(value,
+            style: AppTextStyles.mono14(color: AppColors.primaryText)),
+      ],
+    );
+  }
+}
+
+/// Compact OPZ bullet bar — shaded band = the OPZ range (floor →
+/// ceiling), tick/dot = where the Target CPLH lands inside it. Same
+/// grammar as the `CPLH RANGE & TARGET` bar at the top of the tab, so
+/// the operator learns the visual once. Purely presentational: every
+/// number is supplied by the caller's single resolved-targets branch.
+/// A degenerate floor==ceiling band collapses to one muted point
+/// instead of faking a width. Flexes to its [Expanded] width — no
+/// horizontal scroll, fixed height so the card never overflows.
+class _OpzBar extends StatelessWidget {
+  final double floor;
+  final double ceiling;
+  final double target;
+
+  const _OpzBar({
+    required this.floor,
+    required this.ceiling,
+    required this.target,
+  });
+
+  static const double height = 26.0;
+  // Inner inset on each side so the shaded band has visual breathing
+  // room and the tick can sit at the band edges without clipping.
+  static const double _inset = 0.12;
+
+  @override
+  Widget build(BuildContext context) {
+    final degenerate = (ceiling - floor).abs() < 0.0001;
+    return LayoutBuilder(
+      builder: (context, c) {
+        final w = c.maxWidth;
+        final zoneLeft = w * _inset;
+        final zoneRight = w * (1 - _inset);
+        final zoneW = (zoneRight - zoneLeft).clamp(2.0, w);
+        final double tickX;
+        if (degenerate) {
+          tickX = w / 2;
+        } else {
+          final frac =
+              ((target - floor) / (ceiling - floor)).clamp(0.0, 1.0);
+          tickX = zoneLeft + frac * (zoneRight - zoneLeft);
+        }
+        const trackH = 3.0;
+        const zoneH = 14.0;
+        const tickH = 18.0;
+        const dotD = 9.0;
+        return SizedBox(
+          height: height,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              // Neutral track across the full width.
+              Positioned(
+                left: 0,
+                right: 0,
+                top: (height - trackH) / 2,
+                child: Opacity(
+                  opacity: degenerate ? 0.45 : 1.0,
+                  child: Container(
+                    height: trackH,
+                    decoration: BoxDecoration(
+                      color: AppColors.borderSubtle,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              ),
+              // Shaded OPZ band — only when there is a real width.
+              if (!degenerate)
+                Positioned(
+                  left: zoneLeft,
+                  top: (height - zoneH) / 2,
+                  child: Container(
+                    width: zoneW,
+                    height: zoneH,
+                    decoration: BoxDecoration(
+                      color: AppColors.shimmer,
+                      border:
+                          Border.all(color: AppColors.borderSubtle, width: 1),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+              // Target tick + dot.
+              Positioned(
+                left: tickX - 1,
+                top: (height - tickH) / 2,
+                child: Container(
+                  width: 2,
+                  height: tickH,
+                  color: AppColors.sunsetDark,
+                ),
+              ),
+              Positioned(
+                left: tickX - dotD / 2,
+                top: (height - tickH) / 2 - 4,
+                child: Container(
+                  width: dotD,
+                  height: dotD,
+                  decoration: const BoxDecoration(
+                    color: AppColors.sunset,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

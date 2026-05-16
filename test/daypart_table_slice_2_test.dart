@@ -207,7 +207,7 @@ void main() {
   });
 
   group('Slice 2 — OPZ single-column render', () {
-    testWidgets('OPZ floor + ceiling fold into one "OPZ RANGE" cell',
+    testWidgets('OPZ floor + ceiling fold into one "floor – ceiling" caption',
         (tester) async {
       await _pump(
         tester,
@@ -219,9 +219,11 @@ void main() {
         ),
       );
 
-      // One "OPZ Range" row per card (3 periods + Whole Day rollup =
-      // 4), no separate Floor/Ceiling rows.
-      expect(find.text('OPZ Range'), findsNWidgets(4));
+      // One "OPZ" caption label per card (3 periods + Whole Day rollup
+      // = 4), no separate Floor/Ceiling rows. (2026-05-16 UX redesign:
+      // the OPZ row is now a bullet bar + a verbatim range caption; the
+      // "Range" word moved to the section header.)
+      expect(find.text('OPZ'), findsNWidgets(4));
       expect(find.text('OPZ FLOOR'), findsNothing);
       expect(find.text('OPZ CEILING'), findsNothing);
 
@@ -283,13 +285,15 @@ void main() {
       expect(horizontalScroll, findsNothing);
 
       // Card-per-daypart structure: 3 period cards + the Whole Day
-      // rollup = 4 cards, each carrying the four metric rows + a
-      // "covers" header label, all on screen (not offstage).
-      expect(find.text('Target CPLH'), findsNWidgets(4));
-      expect(find.text('Target SPLH'), findsNWidgets(4));
-      expect(find.text('Target PPA'), findsNWidgets(4));
-      expect(find.text('OPZ Range'), findsNWidgets(4));
-      expect(find.text('covers'), findsNWidgets(4));
+      // rollup = 4 cards, each carrying the headline CPLH + OPZ caption
+      // + SPLH/PPA footer + an "Avg covers" header label, all on screen
+      // (not offstage). 2026-05-16 UX redesign: "Target" moved to the
+      // section header, so the per-card labels are bare metric names.
+      expect(find.text('CPLH'), findsNWidgets(4));
+      expect(find.text('SPLH'), findsNWidgets(4));
+      expect(find.text('PPA'), findsNWidgets(4));
+      expect(find.text('OPZ'), findsNWidgets(4));
+      expect(find.text('Avg covers'), findsNWidgets(4));
       expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
       expect(find.text('2.90 – 3.40'), findsOneWidget); // lunch OPZ range
     });
@@ -308,8 +312,8 @@ void main() {
       // Every card's metric rows + a sample value from each are on
       // screen at full size (skipOffstage stays default: nothing is
       // parked off-stage behind a scroll). No data is shrunk to fit.
-      expect(find.text('Target CPLH'), findsNWidgets(4));
-      expect(find.text('OPZ Range'), findsNWidgets(4));
+      expect(find.text('CPLH'), findsNWidgets(4));
+      expect(find.text('OPZ'), findsNWidgets(4));
       expect(find.text('150'), findsOneWidget); // lunch AVG COVERS
       expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
       expect(find.text('\$161'), findsOneWidget); // lunch SPLH target
@@ -592,8 +596,8 @@ void main() {
       );
 
       // Cards rendered: 3 period cards + Whole Day rollup, each with
-      // its OPZ Range row at full size.
-      expect(find.text('OPZ Range'), findsNWidgets(4));
+      // its OPZ caption at full size.
+      expect(find.text('OPZ'), findsNWidgets(4));
       // The honest Gap 42 "whole-day est." marker survives the re-spaced
       // narrow layout. With _dinnerOnlyProfile + mixed rows: lunch is
       // empty (dashed, no marker), dinner has its own child row (no
