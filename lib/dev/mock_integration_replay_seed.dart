@@ -696,6 +696,19 @@ class MockIntegrationReplaySeed {
         splh: double.parse(baseSPLH.toStringAsFixed(2)),
         fohHours: foh,
         bohHours: boh,
+        // On-model labor-dollar source facts. The closed branch stamps
+        // `storedFohLaborDollar`/`storedBohLaborDollar` (hours × wage);
+        // the projected/open branch must too, or `ShiftRecord.blendedWage`
+        // falls through to `totalLaborDollar / totalHours = 0` (no
+        // source-backed dollars → 0), which then seeds the open-shift
+        // snapshot with `blendedWage = 0` and renders per-daypart LABOR %
+        // as a phantom 0%. On the on-model branch wages equal target
+        // (`_fohWage`/`_bohWage`, same constants this branch already
+        // passes to `determineLever` above), so model-hours × target-wage
+        // IS the honest on-model labor-dollar truth — not a fabricated
+        // figure.
+        storedFohLaborDollar: foh * _fohWage,
+        storedBohLaborDollar: boh * _bohWage,
         theoreticalLaborPct: _theoreticalLaborPct,
         primaryLever: projectedLever.toUpperCase(),
         sourceSystem: sourceSystem,

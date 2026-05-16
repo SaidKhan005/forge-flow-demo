@@ -495,12 +495,19 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       final row = profile?.daypartFor(def.id);
       if (row == null) {
         // No rate-target row, but the plan-side locked references may
-        // still exist independently — surface them so the SALES /
-        // FOH·BOH HRS footers populate even on a Gap-42 rate fallback.
-        // All fields null → equivalent to [DaypartTargetContext.none].
+        // still exist independently — surface them so the COVERS /
+        // SALES / FOH·BOH HRS footers populate even on a Gap-42 rate
+        // fallback. `forecastCovers` is the per-daypart analogue of the
+        // whole-day `rm.forecastCovers` footer and, like `forecastSales`
+        // / `required*Hours`, is plan-side (it does NOT depend on a
+        // closed shift or an in-period actual), so a not-yet-started
+        // daypart shows the same locked "Forecast N" the closed branches
+        // already render — `null` only when the in-force snapshot has no
+        // per-period row (Design Rule 2 honest empty, never `0`).
         result[def.id] = DaypartTargetContext(
           source: 'none',
           theoreticalLaborPct: theo,
+          forecastCovers: planForecastCovers,
           forecastSales: planForecastSales,
           requiredFohHours: planFohHours,
           requiredBohHours: planBohHours,
@@ -514,6 +521,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
           opzFloorCPLH: row.daypartOpzFloorCPLH,
           opzCeilingCPLH: row.daypartOpzCeilingCPLH,
           theoreticalLaborPct: theo,
+          forecastCovers: planForecastCovers,
           forecastSales: planForecastSales,
           requiredFohHours: planFohHours,
           requiredBohHours: planBohHours,
