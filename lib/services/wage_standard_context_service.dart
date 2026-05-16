@@ -14,6 +14,7 @@
 // Real current outputs are appConfiguredGenerator or configFallback.
 
 import '../domain/models/active_target_profile.dart';
+import '../domain/models/target_cycle.dart';
 import '../domain/models/wage_role_row.dart';
 import '../domain/models/wage_standard_context.dart';
 import '../domain/models/wage_standard_source.dart';
@@ -169,9 +170,21 @@ class WageStandardContextService {
           !_matchesCycleProjection(existing, projected)) {
         await SqliteTargetProfileRepository.instance
             .upsertActiveTargetProfile(projected);
-        return projected;
+        // Reattach the cycle's per-period rows onto the returned profile
+        // so per-period consumers (Shift daypart lens) read real
+        // `daypartFor(...)` rows instead of the Gap-42 whole-day pool.
+        // Mirrors `TargetCycleService._syncActiveTargetProfile`; the
+        // persisted SQLite parent row stays the legacy flat shape (the
+        // per-period rows live on the cycle's child table and are
+        // reattached on read — pure projection, no math).
+        return _reattachCycleDayparts(projected, cycle);
       }
-      return existing;
+      // The persisted `existing` profile is the legacy flat shape
+      // (`ActiveTargetProfile.fromMap` does not rehydrate per-period
+      // rows). Reattach the active cycle's locked per-period rows the
+      // same way the projected branch + `_syncActiveTargetProfile` do,
+      // so `daypartFor(...)` is non-null for seeded/locked dayparts.
+      return _reattachCycleDayparts(existing, cycle);
     }
 
     final existing = await SqliteTargetProfileRepository.instance
@@ -193,6 +206,31 @@ class WageStandardContextService {
     await SqliteTargetProfileRepository.instance
         .upsertActiveTargetProfile(profile);
     return profile;
+  }
+
+  /// Projects the active cycle's locked per-period rows onto [profile]
+  /// (pure field copy — no math), mirroring
+  /// `TargetCycleService._syncActiveTargetProfile`. Returns [profile]
+  /// unchanged when the cycle carries no per-period rows (Gap 42
+  /// fallback — `daypartFor(...)` then returns null and per-period
+  /// consumers honestly degrade to the whole-day pool, never a `0`).
+  static ActiveTargetProfile _reattachCycleDayparts(
+    ActiveTargetProfile profile,
+    TargetCycle cycle,
+  ) {
+    if (cycle.dayparts.isEmpty) return profile;
+    return profile.withDayparts(
+      cycle.dayparts
+          .map((d) => ActiveTargetProfileDaypart(
+                servicePeriodId: d.servicePeriodId,
+                daypartTargetCPLH: d.targetCPLH,
+                daypartTargetSPLH: d.targetSPLH,
+                daypartTargetPPA: d.targetPPA,
+                daypartOpzFloorCPLH: d.opzFloorCPLH,
+                daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+              ))
+          .toList(),
+    );
   }
 
   static bool _matchesCycleProjection(
