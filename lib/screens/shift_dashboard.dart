@@ -788,6 +788,15 @@ class _ShiftSectionViewData {
   final bool laborConnected;
   final bool periodNotStartedYet;
 
+  // Fix #839 D2/D3: true only for fixture-governed (demo) locations.
+  // The pre-service ("hasn't started yet") branch in
+  // [unavailableTooltip] fires ONLY when this is true, so an unknown
+  // (production) location keeps the verbatim "Connect a … vendor" copy
+  // byte-unchanged even though production `laborConnected` is now `true`
+  // under the value-based fallback (authority doc §4.2 / §6.4 — no
+  // production messaging regression).
+  final bool fixtureGoverned;
+
   const _ShiftSectionViewData({
     required this.currentSales,
     required this.forecastSales,
@@ -803,6 +812,7 @@ class _ShiftSectionViewData {
     this.posConnected = true,
     this.laborConnected = true,
     this.periodNotStartedYet = false,
+    this.fixtureGoverned = false,
   });
 
   /// Honest unavailable-state copy for a metric pill. Three states:
@@ -819,7 +829,14 @@ class _ShiftSectionViewData {
     required String metricPhrase,
   }) {
     final connected = isLabor ? laborConnected : posConnected;
-    if (connected && periodNotStartedYet) {
+    // Fix #839 D3: the pre-service line is a demo-only affordance —
+    // gate it on `fixtureGoverned` so an unknown (production) location
+    // (where `laborConnected` is now `true` under the value-based
+    // fallback) never flips to "hasn't started yet"; production keeps
+    // the verbatim "Connect a … vendor" copy byte-unchanged (authority
+    // doc §4.2 / §6.4). Demo governed locations behave exactly as
+    // before.
+    if (fixtureGoverned && connected && periodNotStartedYet) {
       return "This service period hasn't started yet today — "
           'numbers appear here once service begins.';
     }
@@ -885,7 +902,17 @@ class _ShiftSectionViewData {
     // North Loop) must not render labor actuals even though the bucket
     // carries minutes. ANDed ALONGSIDE the existing value gate; POS /
     // covers / sales behavior is untouched.
-    final laborConnected = vendorSource.laborConnected;
+    //
+    // Fix #839 D2 (authority doc §4.2 / §6.4): the per-location
+    // connection suppression applies ONLY to fixture-governed (demo)
+    // locations. An unknown (production) location is NOT
+    // fixture-governed, so `laborConnected` stays `true` here and the
+    // per-period render keeps the EXACT prior value-based behavior the
+    // investigation §4.2 calls "correct" — no production
+    // rendering-semantics regression. Demo governed locations resolve
+    // to their real per-(operator, location, category) connection.
+    final laborConnected =
+        !vendorSource.fixtureGoverned || vendorSource.laborConnected;
     // Per-period SALES forecast footer — true 1:1 with whole-day, which
     // uses the plan-side `rm.forecastSales`. Prefer the locked
     // per-daypart `forecast_sales` from the in-force WeeklyPlanSnapshot
@@ -1037,6 +1064,7 @@ class _ShiftSectionViewData {
       posConnected: vendorSource.posConnected,
       laborConnected: laborConnected,
       periodNotStartedYet: periodNotStartedYet,
+      fixtureGoverned: vendorSource.fixtureGoverned,
     );
   }
 }

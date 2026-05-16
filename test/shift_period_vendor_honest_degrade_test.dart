@@ -116,6 +116,48 @@ void main() {
       // unchanged) — the bucket has covers, so covers still render.
       expect(p.coversState, MetricState.live);
     });
+
+    // Fix #839 D2 (authority doc §4.2 / §6.4): an UNKNOWN (production)
+    // restaurant id is NOT fixture-governed, so the per-period render
+    // MUST fall back to the EXACT prior value-based gate — labor
+    // actuals render LIVE off the bucket and the OPZ label is NEVER
+    // the production-regression "LABOR NOT CONNECTED".
+    test('Unknown/production id (labor minutes present) → labor renders '
+        'LIVE (value-based, unchanged); OPZ not "LABOR NOT CONNECTED"', () {
+      final vs = ShiftVendorSourceResolver.forLocation('op_live_loc_xyz');
+      // Resolver invariant: unknown ⇒ none, NOT fixture-governed.
+      expect(vs.fixtureGoverned, isFalse);
+      final p = debugShiftPeriodProvenance(
+        bucket: _fullBucket(),
+        tc: _tcWithBand,
+        vendorSource: vs,
+      );
+      expect(p.cplhState, MetricState.live);
+      expect(p.splhState, MetricState.live);
+      expect(p.blendedWageState, MetricState.live);
+      expect(p.laborActualPctPresent, isTrue);
+      // The D2 regression guard: production must NEVER show the
+      // not-connected label off the value-based gate.
+      expect(p.opzLabel, isNot('LABOR NOT CONNECTED'));
+      // Bucket has labor minutes ⇒ OPZ is scored, exactly as before.
+      expect(p.opzLabel, isNot('AWAITING ACTUALS'));
+      expect(p.coversState, MetricState.live);
+      expect(p.ppaState, MetricState.live);
+    });
+
+    // Unknown/production id with a locked band but NO in-period labor
+    // punches: value-based gate → AWAITING ACTUALS (the prior honest
+    // pending state), NEVER "LABOR NOT CONNECTED".
+    test('Unknown/production id (no labor punches, band locked) → OPZ '
+        '"AWAITING ACTUALS", NOT "LABOR NOT CONNECTED"', () {
+      final p = debugShiftPeriodProvenance(
+        bucket: _emptyBucket(),
+        tc: _tcWithBand,
+        vendorSource: ShiftVendorSourceResolver.forLocation('op_live_loc_xyz'),
+      );
+      expect(p.opzLabel, 'AWAITING ACTUALS');
+      expect(p.opzLabel, isNot('LABOR NOT CONNECTED'));
+    });
   });
 
   group('Defect 3 — pre-service vs not-connected messaging', () {
@@ -172,6 +214,27 @@ void main() {
         // periodNotStartedYet defaults false (period over / genuine zero).
       );
       expect(p.posUnavailableCopy, 'Connect a POS vendor to see covers.');
+    });
+
+    // Fix #839 D3 (authority doc §4.2 / §6.4): an UNKNOWN (production)
+    // location is NOT fixture-governed. Even though the new value-based
+    // fallback makes production `laborConnected` true, the pre-service
+    // line is gated on `fixtureGoverned`, so production keeps the
+    // verbatim "Connect a … vendor" copy byte-unchanged — it must NOT
+    // flip to the "hasn't started yet" pre-service line.
+    test('Unknown/production id + pre-service → verbatim "Connect a … '
+        'vendor" copy (NOT the pre-service line)', () {
+      final p = debugShiftPeriodProvenance(
+        bucket: _emptyBucket(),
+        tc: DaypartTargetContext.none,
+        vendorSource: ShiftVendorSourceResolver.forLocation('op_live_loc_xyz'),
+        periodNotStartedYet: true,
+      );
+      expect(p.posUnavailableCopy, 'Connect a POS vendor to see covers.');
+      expect(p.laborUnavailableCopy,
+          'Connect a labor vendor to see blended wage.');
+      expect(p.posUnavailableCopy, isNot(contains("hasn't started")));
+      expect(p.laborUnavailableCopy, isNot(contains("hasn't started")));
     });
   });
 }

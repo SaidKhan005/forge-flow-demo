@@ -67,3 +67,26 @@ no RLS/proxy/auth, no `demo_*` table, no `kDemoMode` reader fork touched.
 | Riverside (all live) | "Connect a labor vendor" → **live** | rendered → **live** | as above |
 | North Loop (POS only) | "Connect a labor vendor" → **unavailable (honest)** | rendered for ALL → **honest-degraded (no labor actuals, OPZ "LABOR NOT CONNECTED")**; covers/sales unchanged | POS connected → "hasn't started yet"; labor → "Connect a labor vendor" |
 | Harbour (none) | "Connect a labor vendor" → **unavailable (honest)** | rendered for ALL → **honest-degraded**; covers value-gate unchanged | not connected → **still "Connect a POS vendor"** (never mislabeled as not-started) |
+
+## Orchestrator follow-up: D2 production-regression fix (fixtureGoverned)
+
+Orchestrator audit of PR #839 found a D2 production rendering-semantics regression: `_ShiftSectionViewData.fromPeriod` ANDed `vendorSource.laborConnected` into the per-period render path, but the resolver returns `ShiftVendorSource.none` (labor id null) for every unknown/production location. Result: in production every per-period Shift surface would suppress CPLH/SPLH/blended-wage/labor-%% and render `LABOR NOT CONNECTED` even with imported labor punches present — changing production rendering semantics away from the value-based gate the authority doc INVESTIGATION_labor_reservation_not_connected.md S4.2 classifies as "correct" (S6.4 lists production-rendering-semantics changes as ESCALATE / do-not-regress).
+
+Fix: distinguish fixture-governed (demo) locations from unknown (production) locations via a new `ShiftVendorSource.fixtureGoverned` flag; the per-period labor-connection suppression applies ONLY when `fixtureGoverned == true`. Unknown/production falls back to the EXACT prior value-based behavior (byte-unchanged for real operators); demo known-disconnected locations still honest-degrade.
+
+### Pattern B mini-table
+
+| # | Check | Worker (file:line citations) | Verdict |
+|---|---|---|---|
+| 1 | Resolver: new flag, none stays false, known branch true | `lib/services/integration/shift_vendor_source_resolver.dart`: field `fixtureGoverned` added (ctor `:46`, field `:64`); `ShiftVendorSource.none` keeps default `false` (`:70`, doc `:63,:68`); known-location branch sets `fixtureGoverned: true` (`:107`); `!knowsLocation` early-return still `ShiftVendorSource.none` (unchanged); header doc scopes the per-period gate to fixture-governed locations (`:24-37`) | PASS |
+| 2 | fromPeriod gate change | `lib/screens/shift_dashboard.dart`: `final laborConnected = !vendorSource.fixtureGoverned \|\| vendorSource.laborConnected;` with authority S4.2/S6.4 comment (`:914-915`, comment `:902-913`); `fixtureGoverned: vendorSource.fixtureGoverned` threaded into the returned view data (`:1067`) | PASS |
+| 3 | D3 pre-service guard | `lib/screens/shift_dashboard.dart`: new `_ShiftSectionViewData.fixtureGoverned` field (`:798`, ctor default `false` `:815`); pre-service branch in `unavailableTooltip` now gated `if (fixtureGoverned && connected && periodNotStartedYet)` so production keeps verbatim "Connect a ... vendor" copy (`:839`, comment `:832-838`) | PASS |
+| 4 | New test cases | `test/shift_period_vendor_honest_degrade_test.dart`: unknown/production w/ labor minutes -> LIVE + OPZ not "LABOR NOT CONNECTED" + `fixtureGoverned` false invariant (`:125-147`); unknown/production no punches -> "AWAITING ACTUALS" not "LABOR NOT CONNECTED" (`:151-160`); D3 unknown/production pre-service -> verbatim "Connect a ... vendor" (`:225-238`); Harbour/North Loop/Downtown/Riverside cases kept and re-confirmed | PASS |
+
+**production (unknown location) per-period labor: before=value-based / after=value-based (unchanged).** Production locations are not fixture-governed, so `laborConnected = !false || false = true`, restoring the exact pre-PR value-based gate (`bucket.totalMinutes > 0 && bucket.sales > 0`). D1 (whole-day) and D3 production copy are byte-unchanged: `fromWholeDay` uses the constructor defaults (`fixtureGoverned=false`), and the pre-service branch now additionally requires `fixtureGoverned`, so production `unavailableTooltip` returns the verbatim prior "Connect a ... vendor" strings.
+
+### Local verification
+
+- `flutter pub get` -> Got dependencies.
+- `flutter analyze lib/services/integration/shift_vendor_source_resolver.dart lib/screens/shift_dashboard.dart test/shift_period_vendor_honest_degrade_test.dart test/shift_vendor_source_provenance_test.dart` -> **No issues found!** (the known pre-existing `shift_service.dart:1194` DaypartPlanAllocator deprecation `info` is outside this diff set).
+- `flutter test test/shift_vendor_source_provenance_test.dart test/shift_period_vendor_honest_degrade_test.dart` -> **+22 All tests passed!** (11 provenance + 11 per-period incl. 3 new production-fallback cases).

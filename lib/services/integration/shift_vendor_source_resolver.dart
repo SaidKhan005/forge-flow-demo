@@ -20,6 +20,18 @@
 // fixture, so it resolves to [ShiftVendorSource.none] — preserving the
 // existing honest "connect a vendor" behavior with no production
 // regression (no value-based gate collapse, no formula change).
+//
+// PER-PERIOD GATE SCOPE (authority doc INVESTIGATION...
+// §4.2 / §6.4): the per-period labor-connection suppression in
+// `_ShiftSectionViewData.fromPeriod` applies ONLY to fixture-governed
+// (demo) locations. The `ShiftVendorSource.fixtureGoverned` flag is
+// `true` exclusively for locations resolved out of
+// [DemoVendorIntegrationStateFixture]. For any unknown (production)
+// location the resolver returns [ShiftVendorSource.none] with
+// `fixtureGoverned == false`, so the per-period render falls back to
+// the EXACT prior value-based gate the investigation §4.2 classifies
+// as "correct" — byte-unchanged for real operators (no production
+// rendering-semantics regression; §6.4 ESCALATE / do-not-regress).
 
 import '../../dev/demo_vendor_integration_state_fixture.dart';
 import 'integration_adapter_common.dart';
@@ -31,6 +43,7 @@ class ShiftVendorSource {
   const ShiftVendorSource({
     this.posSourceVendorId,
     this.laborSourceVendorId,
+    this.fixtureGoverned = false,
   });
 
   /// The connected POS vendor id (e.g. `'toast'`), or `null` when POS is
@@ -41,8 +54,19 @@ class ShiftVendorSource {
   /// Labor is disconnected / errored / unknown for this location.
   final String? laborSourceVendorId;
 
+  /// True only when this provenance was resolved from the demo vendor
+  /// fixture (a known demo location). The per-period labor-connection
+  /// suppression in `_ShiftSectionViewData.fromPeriod` is applied ONLY
+  /// when this is `true`; an unknown (production) location is NOT
+  /// fixture-governed, so the per-period render keeps the prior
+  /// value-based gate (authority doc §4.2 — no production regression).
+  /// [none] MUST have `fixtureGoverned == false`.
+  final bool fixtureGoverned;
+
   /// Neither category is connected — the honest "connect a vendor"
   /// state, and the resolution for any non-demo (production) location.
+  /// Not fixture-governed (`fixtureGoverned == false`), so the
+  /// per-period path falls back to the value-based gate.
   static const ShiftVendorSource none = ShiftVendorSource();
 
   bool get posConnected => posSourceVendorId != null;
@@ -78,6 +102,9 @@ class ShiftVendorSourceResolver {
       laborSourceVendorId: labor.connectionStatus == ConnectionStatus.connected
           ? labor.vendorId
           : null,
+      // Known demo location ⇒ the per-period labor-connection gate
+      // applies here (and ONLY here).
+      fixtureGoverned: true,
     );
   }
 }
