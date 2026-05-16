@@ -64,17 +64,6 @@ class TimingAuthoritySection extends StatelessWidget {
     return true;
   }
 
-  static String _formatShiftCloseRule(RestaurantTimingConfig config) {
-    switch (config.shiftCloseAuthority) {
-      case ShiftCloseAuthority.vendorFinalization:
-        return 'Vendor finalization';
-      case ShiftCloseAuthority.appLocalCutoffFallback:
-        final cutoff =
-            config.localCloseFallback ?? config.businessDayStartLocalTime;
-        return 'Local cutoff fallback (${_formatTime(cutoff)})';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<RestaurantTimingConfig?>(
@@ -119,12 +108,14 @@ class TimingAuthoritySection extends StatelessWidget {
 
         final periods = config.servicePeriodDefinitions;
         // U-7 MO-3a/MO-3b (debug.md:264) — mobile is view-only.
-        // Dropped: "Current timing" pill + "Restaurant-local timing
-        // controls..." subtitle. Consolidated: "Business day starts" and
-        // "Shift close rule" share a single bordered tile so the
-        // business-day boundary reads as one piece of authority. The
-        // tile groups the day-start time on top with the closeout rule
-        // directly below.
+        //
+        // Per-Daypart V1 Slice 1.5: the "Shift close rule" row was
+        // removed (operator decision 2026-05-15 — close-authority is
+        // auto-derived per shift from the per-vendor capability
+        // lookup + business-day-start fallback). The mobile mirror now
+        // shows "Business day starts" as a single row instead of the
+        // pre-1.5 consolidated tile that paired day-start with close
+        // rule.
         return SettingsCard(
           children: [
             Padding(
@@ -142,11 +133,9 @@ class TimingAuthoritySection extends StatelessWidget {
                     value: _formatWeekStart(config.weekStartDay),
                   ),
                   const SettingsRowDivider(),
-                  _BusinessDayBoundaryTile(
-                    dayStartLabel: _formatTime(
-                      config.businessDayStartLocalTime,
-                    ),
-                    shiftCloseLabel: _formatShiftCloseRule(config),
+                  _TimingValueRow(
+                    label: 'Business day starts',
+                    value: _formatTime(config.businessDayStartLocalTime),
                   ),
                   if (periods.isNotEmpty) ...[
                     const SizedBox(height: 12),
@@ -206,45 +195,3 @@ class _TimingValueRow extends StatelessWidget {
   }
 }
 
-/// U-7 MO-3b — consolidated "Business day boundary" tile that pairs the
-/// business-day-start time with the shift-close rule. Both pieces define
-/// when a business day finishes, so the mobile mirror renders them as one
-/// bordered block instead of two separate authority rows.
-class _BusinessDayBoundaryTile extends StatelessWidget {
-  final String dayStartLabel;
-  final String shiftCloseLabel;
-  const _BusinessDayBoundaryTile({
-    required this.dayStartLabel,
-    required this.shiftCloseLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Business day boundary',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 6),
-            _TimingValueRow(
-              label: 'Business day starts',
-              value: dayStartLabel,
-            ),
-            const SettingsRowDivider(),
-            _TimingValueRow(label: 'Shift close rule', value: shiftCloseLabel),
-          ],
-        ),
-      ),
-    );
-  }
-}

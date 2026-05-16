@@ -41,12 +41,10 @@ export 'operator_web_vendor_connections_resolver.dart'
 export 'operator_web_data_accuracy_gateway.dart'
     show OperatorWebDataAccuracyGateway, OperatorWebHttpDataAccuracyGateway;
 
-export 'operator_web_benchmarks_gateway.dart'
-    show
-        DemoOperatorWebBenchmarksGateway,
-        OperatorWebBenchmarksGateway,
-        OperatorWebBenchmarksGatewayProvider,
-        OperatorWebHttpBenchmarksGateway;
+// Per-Daypart Targets V1 / Slice 2 (Gap 35): the operator-web
+// Benchmarks override gateway surface was cut entirely. No
+// `operator_web_benchmarks_gateway.dart` export remains. Mobile
+// Baseline Manager star-shift selection is the only override path.
 
 /// Lane B B8.b — re-export the hierarchy-filtered audit-log gateway
 /// provider sentinel so router/auth-source wiring sees one canonical

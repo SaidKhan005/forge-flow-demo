@@ -4,8 +4,9 @@
 //   1. SERVICE PERIODS cards now render the per-period accumulator
 //      metrics (covers, sales, CPLH, SPLH, PPA, blended wage) in
 //      place of the 10.5.0 placeholder text.
-//   2. Empty buckets render the "No data yet for this period."
-//      placeholder so zero-data periods don't display silent zeros.
+//   2. Empty buckets still render the full 3-section card (Slice 4
+//      closed-state fix) with honest "—" actuals and a tri-state
+//      status line — never silent zeros, never a one-liner collapse.
 //   3. The time-into-service header ("Lunch · 1h 12m in") renders
 //      when the daypart lens is active and a service period is in
 //      progress; it stays hidden when no period is active.
@@ -165,18 +166,44 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
+        // True 1:1: the bespoke single 'SERVICE PERIOD' sliver is
+        // retired — the daypart lens emits the SAME three pinned-header
+        // section groups as Whole Day.
         expect(
           find.text('SERVICE PERIOD', skipOffstage: false),
-          findsOneWidget,
+          findsNothing,
+        );
+        expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
+        expect(find.text('INPUTS', skipOffstage: false), findsOneWidget);
+        expect(
+          find.text('FOH PRODUCTIVITY', skipOffstage: false),
+          findsWidgets,
         );
 
-        // Lunch card metrics rendered (per-period values from the notifier).
+        // Outputs: covers + blended wage. Sales renders via the shared
+        // SalesForecastCard (Fmt.dollars adds thousands separators).
         expect(find.text('100', skipOffstage: false), findsOneWidget);
-        expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
+        expect(find.text(r'$4,200', skipOffstage: false), findsOneWidget);
+
+        // Inputs: per-period actuals render via the SAME MetricPill
+        // widgets Whole Day uses (PPA $42.00, CPLH 12.50, SPLH $525) —
+        // no bespoke "Target —" sub-line (the retired bespoke cell);
+        // true 1:1 with the whole-day Inputs grid.
         expect(find.text(r'$42.00', skipOffstage: false), findsOneWidget);
         expect(find.text('12.50', skipOffstage: false), findsOneWidget);
         expect(find.text(r'$525', skipOffstage: false), findsOneWidget);
-        expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
+        expect(find.text('Target —', skipOffstage: false), findsNothing);
+
+        // FOH Productivity: no locked OPZ band → honest empty state,
+        // never a zero-anchored gauge.
+        expect(
+          find.text(
+            'No locked productivity zone for this period yet.',
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
 
         // Only the selected period card renders.
         expect(
@@ -185,7 +212,7 @@ void main() {
         );
 
         // Lunch is the active period — exactly one ACTIVE NOW chip.
-        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+        expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
       },
     );
 
@@ -230,10 +257,13 @@ void main() {
       expect(find.textContaining(' in', skipOffstage: false), findsNothing);
     });
 
-    testWidgets('future selected period renders projected/unavailable copy', (
+    testWidgets(
+        'future selected period renders the full 3-section card with an '
+        '"Opens at …" status line (Slice 4 closed-state fix)', (
       tester,
     ) async {
-      // Tuesday 2026-03-31 12:30: Lunch is active, Dinner is still future.
+      // Tuesday 2026-03-31 12:30: Lunch is active, Dinner is still
+      // future (starts 17:00).
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
 
       await tester.pumpWidget(
@@ -245,17 +275,33 @@ void main() {
       await tester.tap(find.text('Dinner', skipOffstage: false));
       await tester.pump();
 
-      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
+      // True 1:1: no bespoke 'SERVICE PERIOD' sliver — same three
+      // pinned-header section groups as Whole Day.
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
+
+      // Tri-state status line: a genuinely future period frames as
+      // "Opens at {start}" — never the old "until this period opens"
+      // catch-all (which also swallowed already-closed periods).
+      expect(
+        find.text('Opens at 17:00', skipOffstage: false),
+        findsOneWidget,
+      );
       expect(
         find.text(
           'Projected / unavailable until this period opens.',
           skipOffstage: false,
         ),
-        findsOneWidget,
-      );
-      expect(
-        find.text('PRIMARY DRIVER Â· NO PATTERN YET', skipOffstage: false),
         findsNothing,
+      );
+
+      // The card never collapses to a one-liner — all three sections
+      // render even with no actuals (operator decision: full card,
+      // dashes).
+      expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
+      expect(find.text('INPUTS', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('FOH PRODUCTIVITY', skipOffstage: false),
+        findsWidgets,
       );
     });
 
@@ -346,12 +392,18 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Confirm starting state — empty Lunch card.
+      // Confirm starting state — Lunch is active (12:30) but has no
+      // actuals yet. The full card still renders with an "Active now"
+      // status line (no more "No data yet" one-liner collapse).
       await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
       expect(
-        find.text('No data yet for this period.', skipOffstage: false),
+        find.text('Active now', skipOffstage: false),
         findsOneWidget,
+      );
+      expect(
+        find.text('No data yet for this period.', skipOffstage: false),
+        findsNothing,
       );
 
       // Mutate the captured notifier the way a Phase-8 vendor write
@@ -378,9 +430,11 @@ void main() {
       await tester.pump();
 
       // Lunch card should now show the new POS line's covers / sales
-      // because the notifier listened-to-by-the-widget fired.
+      // because the notifier listened-to-by-the-widget fired. Sales
+      // renders via the shared SalesForecastCard (Fmt.dollars adds the
+      // thousands separator) after the Slice 4 full-parity rebuild.
       expect(find.text('100', skipOffstage: false), findsOneWidget);
-      expect(find.text(r'$4200', skipOffstage: false), findsOneWidget);
+      expect(find.text(r'$4,200', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('whole-day view is unchanged when buckets are present — no '

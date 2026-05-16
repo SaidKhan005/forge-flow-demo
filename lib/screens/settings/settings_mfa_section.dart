@@ -263,7 +263,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           ),
         );
         _infoMessage =
-            'Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.';
+            'Authenticator app added. If you lose access, ask your restaurant admin to reset two-factor sign-in.';
       });
       await _refreshFactors(clearMessages: false);
     } on MfaOperationRejected catch (rejected) {
@@ -404,7 +404,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     final needsFreshSignIn = _errorCode == 'mfa_freshness_required';
     final statusLabel = needsFreshSignIn
         ? 'Security check required'
-        : 'Two-factor issue';
+        : 'Two-factor sign-in issue';
     final statusMessage = needsFreshSignIn
         ? 'Please sign in again before removing your authenticator app. This protects your account settings.'
         : _errorMessage;
@@ -466,7 +466,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           const SettingsRowDivider(),
           _MfaStatusRow(
             key: const Key('mfa_info_row'),
-            label: 'Two-factor authentication update',
+            label: 'Two-factor sign-in update',
             message: _infoMessage!,
             color: AppColors.positive,
           ),
@@ -606,7 +606,7 @@ class _MfaHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Two-factor authentication',
+            'Two-factor sign-in',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
           SizedBox(height: 4),

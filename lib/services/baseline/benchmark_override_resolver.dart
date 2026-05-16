@@ -1,3 +1,10 @@
+// Per-Daypart Targets V1 / Slice 2 (Gap 35, locked resolution): the
+// operator-web Benchmarks override *surface* (screen + gateway + nav +
+// auth-source wiring) was cut entirely. Mobile Baseline Manager
+// star-shift selection is the only override path. This resolver +
+// the Postgres `benchmark_overrides` repository remain server-side
+// only (proxy routes still consume them); they are no longer reachable
+// from any operator-web UI.
 class BenchmarkOverrideResolver {
   const BenchmarkOverrideResolver();
 

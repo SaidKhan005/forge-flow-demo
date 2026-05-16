@@ -47,6 +47,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../services/auth/actor_kind_label_catalog.dart';
 import 'admin_http_timeout.dart';
 
 /// Bearer source the gateway attaches to every proxy call.
@@ -107,16 +108,14 @@ extension AuditActorKindWire on AuditActorKind {
     }
   }
 
-  String get displayLabel {
-    switch (this) {
-      case AuditActorKind.teamMember:
-        return 'Operator member';
-      case AuditActorKind.forgeAdmin:
-        return 'F&F admin';
-      case AuditActorKind.servicePrincipal:
-        return 'Service account';
-    }
-  }
+  /// Wave 2 AC-1 follow-up (`AC-1-FU-admin-actor-kind-catalog-drift`,
+  /// resolved 2026-05-14): delegate to the canonical
+  /// [ActorKindLabelCatalog] so both the admin audit-log surface
+  /// (`audited_support_actions_admin_screen.dart`) and the operator-web
+  /// audit-log surface render labels from one source. Operator chose
+  /// "Team member" + "Service account" as the canonical pair on
+  /// 2026-05-14 evening.
+  String get displayLabel => ActorKindLabelCatalog.labelFor(wire);
 }
 
 AuditActorKind auditActorKindFromWire(String wire) {

@@ -73,8 +73,8 @@ class ActorKindLabelCatalog {
   static const Map<String, String> byKind = <String, String>{
     'user': 'Team member',
     'team_member': 'Team member',
-    'service': 'Automated service',
-    'service_principal': 'Automated service',
+    'service': 'Service account',
+    'service_principal': 'Service account',
     'forge_admin': 'F&F admin',
     'ff_support': 'F&F support',
     'system': 'F&F platform',

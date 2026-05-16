@@ -3613,13 +3613,16 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   static Map<String, Object?> _timingConfigJson(RestaurantTimingConfig config) {
+    // Per-Daypart V1 Slice 1.5: `shiftCloseAuthority` /
+    // `localCloseFallback` were dropped from RestaurantTimingConfig.
+    // Close-authority is auto-derived per shift from the per-vendor
+    // capability lookup (`close_authority_capability.dart`), so the
+    // proxy no longer emits the field on this resolved-config response.
     return <String, Object?>{
       'restaurant_id': config.restaurantId,
       'business_timezone': config.businessTimezone,
       'business_day_start_local_time': config.businessDayStartLocalTime,
       'week_start_day': config.weekStartDay,
-      'shift_close_authority': config.shiftCloseAuthority.value,
-      'local_close_fallback': config.localCloseFallback,
       'created_at': config.createdAt,
       'updated_at': config.updatedAt,
       'service_period_definitions': <Map<String, Object?>>[

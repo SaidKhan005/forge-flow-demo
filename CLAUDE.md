@@ -57,8 +57,8 @@ quota on one and switch to the other; the workflow stays the same.
 ### Routing
 
 - Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md`.
-- Per-wave slice ledger: `docs/_indices/<wave>_EXECUTION_LEDGER.md` (the
-  current wave's is `WAVE_EXECUTION_LEDGER.md`; CLOSED 2026-05-13).
+- **Active feature plan: `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`** (Phase 2.5 per NEXT_WAVE_PLAN; output of Phase 2 mobile walkthrough; 9 slices; 44 gaps consolidated; reusable surface-coverage audit method appended).
+- Per-wave slice ledger: `docs/_indices/<wave>_EXECUTION_LEDGER.md`. Wave 1's `WAVE_EXECUTION_LEDGER.md` CLOSED 2026-05-13 (archived to `docs/archive/_indices/wave_1_closed_2026_05_13/`). Wave 2's `WAVE_2_LEDGER.md` operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1 plan).
 - Paste-ready executor prompts: `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` and
   `docs/_indices/CODEX_HANDOFF_PROMPT.md`. Both encode the same workflow;
   use whichever matches your active executor.
@@ -182,6 +182,7 @@ Architecture:
 - The writer is `MockReplayDataSourceProvider` (a `DataSourceProvider<MockReplayOutput>` impl) feeding `_seedDemoDataFromReplay` in `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart`. Phase 8 vendor connectors (`*_pos_postgres_sink.dart`) implement the same `DataSourceProvider` interface, so flipping demo→live changes only the writer.
 - Per-(operator, location, category) demo state lives in the Postgres `demo_mode_state` table; `DemoModeFlipPolicy.evaluateFlip` flips `is_demo = false` after the first vendor connection backfills ≥1 record. Disconnect does NOT auto-revert.
 - Reader paths (services, repositories, widgets) do NOT branch on `kDemoMode`. They read whatever the active scope's tables hold.
+- The demo **auth session** is also writer-side: the mobile demo flavor (`lib/main_forgeflow.dart`, gated on `kDemoMode`/`FORGE_FLOW_DEMO_MODE` and NOT `FORGE_FLOW_USE_FIREBASE_AUTH`) mounts `ForgeFlowApp(requireAuth: true)` with `DemoAuthLoginService` (`lib/services/auth/demo_auth_login_service.dart`) instead of `FirebaseAuthLoginService`. The demo operator (`demo.operator@forgeflow.test`) is minted as a F&F admin (`ff_support`) so the full Settings surface (Account, Setup, Integrations, Data tab + Data-alignment panel) is testable in demo. This is a bootstrap SOURCE swap — the demo analogue of `MockReplayDataSourceProvider` — mirroring the contract-endorsed Operator Web/Admin `*_DEMO_AUTH` pattern; NOT a `kDemoMode` reader branch. Every reader (`SettingsScreen`, role/permission gates) consumes the resulting `AuthSession` identically in demo and prod. Production auth (`FORGE_FLOW_USE_FIREBASE_AUTH`) is byte-unchanged.
 
 Intentional reader-side carve-outs (do not remove without an explicit replacement plan):
 1. `lib/screens/auth/login_screen.dart` — `_demoOperatorSignInEnabled` adds an additive "Use demo operator" button below the regular sign-in. Strictly UX; the button drives the same `signInWithEmailPassword` path.

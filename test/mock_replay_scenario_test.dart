@@ -46,11 +46,12 @@ void main() {
       expect(output.scenario.openShiftDaypart, 'dinner');
     });
 
-    test('default date preserves 8 historical weeks + 14 current-week shifts',
-        () {
+    test('default date preserves [historicalWeekCount] historical weeks '
+        '+ 14 current-week shifts', () {
       final output = MockIntegrationReplaySeed.generateForDate('2026-03-27');
-      expect(output.weekRecords.length, 8);
-      expect(output.historicalClosedShifts.length, 112);
+      final weeks = MockIntegrationReplaySeed.historicalWeekCount;
+      expect(output.weekRecords.length, weeks);
+      expect(output.historicalClosedShifts.length, weeks * 14);
       expect(output.currentWeekShifts.length, 14);
     });
 
@@ -123,14 +124,23 @@ void main() {
       final fri = MockIntegrationReplaySeed.generateForDate('2026-03-27');
       final mon = MockIntegrationReplaySeed.generateForDate('2026-03-30');
 
-      // Friday's oldest historical is W05
-      expect(
-          fri.weekRecords.any((w) => w.weekId == '2026-W05'), isTrue);
-      // Monday's oldest should be W06 (W05 dropped)
-      expect(
-          mon.weekRecords.any((w) => w.weekId == '2026-W05'), isFalse);
-      expect(
-          mon.weekRecords.any((w) => w.weekId == '2026-W06'), isTrue);
+      // weekRecords are sorted newest-first, so the last entry is the
+      // oldest in the rolling [historicalWeekCount]-week window. Derived
+      // (not a hardcoded W05) so the assertion is week-count agnostic
+      // after Slice B raised the window 8 → 12.
+      final friWeeks = fri.weekRecords.map((w) => w.weekId).toList();
+      final friOldest = friWeeks.last;
+      final friSecondOldest = friWeeks[friWeeks.length - 2];
+
+      expect(friWeeks, contains(friOldest));
+      // Advancing one week slides the window: Friday's oldest week is
+      // no longer in range, and its second-oldest becomes the new
+      // oldest.
+      final monWeeks = mon.weekRecords.map((w) => w.weekId).toList();
+      expect(monWeeks, isNot(contains(friOldest)),
+          reason: 'oldest week must drop out of the rolling window');
+      expect(monWeeks, contains(friSecondOldest),
+          reason: 'second-oldest week must remain after the slide');
     });
 
     test('all shifts have coherent businessDate after week advance', () {

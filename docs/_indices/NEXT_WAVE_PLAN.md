@@ -253,6 +253,52 @@ on affected rows before tagging.
 
 ---
 
+## Phase 2.5 — Per-Daypart Targets V1 (surfaced by Phase 2 mobile walkthrough)
+
+**Goal:** ship per-service-period productivity targets end-to-end before
+tagging happy state. The Phase 2 mobile walkthrough surfaced that the
+recommendation engine already computes per-period targets cleanly but
+pools them into whole-day scalars before persistence — every downstream
+screen loses the daypart resolution, violating Promise 3 of
+`core_app_architecture.md` ("Whole Day rolls up from service-period
+buckets"). Tagging happy state on the current state would lock in a
+dishonest architecture.
+
+**Authority doc:** `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`
+(self-contained, cold-readable; 14 architectural decisions locked; 44
+gaps consolidated post-audit; reusable surface-coverage audit method
+appended).
+
+**Slice sequence:**
+
+| Slice | Scope | Gate |
+|---|---|---|
+| 0 | Cycle rollover gates to operator's configured `week_start_day`. Amends `phase_7_55_time_boundary_contract.md` Rules 5+6, `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E. No schema change. | operator-gated (contract amendment) |
+| 1 | Per-period child tables under TargetCycle + WeeklyPlanSnapshot. Demo reseed populates per-period stamps on closed shifts. SQLite + Postgres migrations with RLS-ready scoping. | operator-gated (schema + RLS) |
+| 1.5 | Closed-shift aggregator routes through canonical `DaypartBucketer` (replaces inline `_bucketsToDaypart` with boundary-inclusivity drift). Labor-punch interval split per Promise 3. Cross-(business-date) split. Retires `14 shifts/week` and `/3` divide hardcodes. Must land before Slice 6. | operator-gated (integration spine) |
+| 2 | Benchmark tab redesign: Daypart Breakdown gains target columns (CPLH/SPLH/PPA + OPZ Range) + Whole Day rollup row; "Targets Derived from Benchmark" card cut + rehomed as Operating Wage Mix + Theoretical Labor %: The Floor strip; hardcoded `lunch/dinner/late_night` enum + 4 UI sites replaced with timing-config resolver. | auto-merge (audit clean) |
+| 2.5 | Service period editor (operator-web) gains `applicableDays`, `shortLabel`, `sortOrder` fields. Allows day-restricted periods. | auto-merge |
+| 3 | Plan tab persistence wiring. Sub-rows render locked values from new WeeklyPlanSnapshot child rows instead of regenerated allocator output. No UX change. | auto-merge |
+| 4 | Shift daypart card full parity (Outputs + Inputs + FOH Productivity sections per period, mirroring whole-day card). | auto-merge |
+| 5 | Variance read-seam swap. Non-closed daypart rows pull per-period theoretical % instead of whole-day flat. Wages stay whole-day. | auto-merge |
+| 6 | Audit scorer extension. Per-period checks; pool-consistency check; wage-at-lock-time check. Audit denominator grows from 76 to ~155 at 4 periods. | auto-merge |
+
+**Operator decisions queued before any slice dispatch:**
+
+1. MeridianConfig insufficient-recommendation fallback shape (Gap 42)
+2. `shift_close_authority` operator-editability vs documented carve-out (Gap 31)
+3. Legacy `covers_source_*` vs keyed `data_accuracy_service_period_settings` precedence (Gap 36)
+4. Operator-web Benchmarks override write-seam decision (Gap 35)
+
+**Exit criteria:** all 9 slices merged; audit-pool-consistency check passes
+end-to-end on demo data; Phase 2 mobile walkthrough re-runs cleanly with
+per-period targets visible on Benchmark, Plan, Shift, Variance surfaces.
+
+**Operator gates:** every slice marked operator-gated above. After exit,
+proceed to Phase 2 walkthrough re-run, then to tagging happy state.
+
+---
+
 ## Phase 3 — Refactor (R-1 + R-2)
 
 **Goal:** structural extraction without behavior change. The refactor

@@ -2,7 +2,65 @@
 ///
 /// Canonical runtime profile projected from the active TargetCycle.
 /// One active profile exists per restaurant at any time.
+///
+/// Per-Daypart Targets V1 (Slice 1): in addition to whole-day scalar
+/// fields (kept as a cover-weighted rollup cache), the profile now
+/// carries a list of [ActiveTargetProfileDaypart] rows. Per-period
+/// consumers (Shift daypart card, Variance Full Week Projection
+/// non-closed rows, etc.) read through the [daypartFor] accessor.
+///
+/// Design Rules (per `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`):
+///   1. Per-period values use period-scoped naming (`daypartTargetCPLH`,
+///      etc.) so the type makes the scope obvious.
+///   2. `null` (or an absent map entry) means "unavailable"; never use
+///      `0` as a sentinel. Whole-day scalar fields preserve the existing
+///      `0.0` divide-by-zero fallback for backward compatibility with
+///      legacy consumers — flagged for follow-up. Per-period consumers
+///      must check `daypartFor(...)` for null before reading.
 library;
+
+/// Per-period locked target stamps for a single service period.
+///
+/// Field naming uses the `daypart` prefix (Design Rule 1) so consumers
+/// reading these values cannot accidentally substitute whole-day pool
+/// scalars without changing the call site.
+class ActiveTargetProfileDaypart {
+  final String servicePeriodId;
+  final double daypartTargetCPLH;
+  final double daypartTargetSPLH;
+  final double daypartTargetPPA;
+  final double daypartOpzFloorCPLH;
+  final double daypartOpzCeilingCPLH;
+
+  const ActiveTargetProfileDaypart({
+    required this.servicePeriodId,
+    required this.daypartTargetCPLH,
+    required this.daypartTargetSPLH,
+    required this.daypartTargetPPA,
+    required this.daypartOpzFloorCPLH,
+    required this.daypartOpzCeilingCPLH,
+  });
+
+  Map<String, dynamic> toMap() => {
+        'service_period_id': servicePeriodId,
+        'daypart_target_cplh': daypartTargetCPLH,
+        'daypart_target_splh': daypartTargetSPLH,
+        'daypart_target_ppa': daypartTargetPPA,
+        'daypart_opz_floor_cplh': daypartOpzFloorCPLH,
+        'daypart_opz_ceiling_cplh': daypartOpzCeilingCPLH,
+      };
+
+  factory ActiveTargetProfileDaypart.fromMap(Map<String, dynamic> m) =>
+      ActiveTargetProfileDaypart(
+        servicePeriodId: m['service_period_id'] as String,
+        daypartTargetCPLH: (m['daypart_target_cplh'] as num).toDouble(),
+        daypartTargetSPLH: (m['daypart_target_splh'] as num).toDouble(),
+        daypartTargetPPA: (m['daypart_target_ppa'] as num).toDouble(),
+        daypartOpzFloorCPLH: (m['daypart_opz_floor_cplh'] as num).toDouble(),
+        daypartOpzCeilingCPLH:
+            (m['daypart_opz_ceiling_cplh'] as num).toDouble(),
+      );
+}
 
 class ActiveTargetProfile {
   final String targetProfileId;
@@ -20,6 +78,12 @@ class ActiveTargetProfile {
   final double theoreticalLaborPct;
   final String builtAt;
 
+  /// Per-period locked target rows. Empty when the cycle wrote no
+  /// per-period child rows (e.g. Gap 42 insufficient-recommendation
+  /// fallback — consumers read [daypartFor] which returns `null` and
+  /// fall back to the whole-day pool fields above).
+  final List<ActiveTargetProfileDaypart> dayparts;
+
   const ActiveTargetProfile({
     required this.targetProfileId,
     required this.restaurantId,
@@ -35,7 +99,58 @@ class ActiveTargetProfile {
     required this.theoreticalBohLaborPct,
     required this.theoreticalLaborPct,
     required this.builtAt,
+    this.dayparts = const [],
   });
+
+  /// Returns the per-period row for [servicePeriodId], or `null` when
+  /// the cycle has no child row for that period (Gap 42 fallback path).
+  ///
+  /// Per Design Rule 2 the caller MUST handle null by falling back to
+  /// the whole-day pool fields on the profile — never substitute `0`.
+  ActiveTargetProfileDaypart? daypartFor(String servicePeriodId) {
+    for (final d in dayparts) {
+      if (d.servicePeriodId == servicePeriodId) return d;
+    }
+    return null;
+  }
+
+  /// Per-Daypart V1 (Slice 5): the per-period theoretical labor % for
+  /// [servicePeriodId].
+  ///
+  /// Returns `null` when the cycle wrote no per-period row for the
+  /// period (Gap 42 fallback path — Design Rule 2: missing means
+  /// `null`, never a `0` sentinel). The caller is responsible for
+  /// falling back to the whole-day [theoreticalLaborPct] pool field.
+  ///
+  /// Derived from the period row's rate targets and the profile's
+  /// whole-day wages using the same canonical formula as [build]:
+  ///   `fohPct = fohWage / (daypartTargetCPLH × daypartTargetPPA) × 100`
+  ///   `bohPct = bohWage / daypartTargetSPLH × 100`
+  /// Wages stay whole-day (Design Rule 5 / V1 deferral — there is no
+  /// per-period wage variant); only the per-period rate targets differ
+  /// from the pool. The `daypart`-prefixed name keeps Design Rule 1's
+  /// scope-obvious contract: a caller cannot accidentally substitute
+  /// the whole-day [theoreticalLaborPct] without changing the call
+  /// site.
+  ///
+  /// Preserves the legacy divide-by-zero boundary from [build]
+  /// (returns `0.0` for a degenerate period row whose `CPLH`/`PPA`/
+  /// `SPLH` are non-positive) so this accessor matches the whole-day
+  /// scalar's existing behaviour; the broader `0.0`-vs-`null` sentinel
+  /// follow-up is tracked against `ActiveTargetProfile.build` and is
+  /// out of scope here (read-only Slice 5, Design Rule 4).
+  double? daypartTheoreticalLaborPctFor(String servicePeriodId) {
+    final row = daypartFor(servicePeriodId);
+    if (row == null) return null;
+    final fohPct =
+        (row.daypartTargetCPLH > 0 && row.daypartTargetPPA > 0)
+            ? fohWage / (row.daypartTargetCPLH * row.daypartTargetPPA) * 100
+            : 0.0;
+    final bohPct = row.daypartTargetSPLH > 0
+        ? bohWage / row.daypartTargetSPLH * 100
+        : 0.0;
+    return fohPct + bohPct;
+  }
 
   /// Builds an [ActiveTargetProfile] from explicit source-of-truth inputs.
   ///
@@ -55,6 +170,7 @@ class ActiveTargetProfile {
     required double opzCeilingCPLH,
     String? targetProfileId,
     String? builtAt,
+    List<ActiveTargetProfileDaypart> dayparts = const [],
   }) {
     final fohPct = (targetCPLH > 0 && targetPPA > 0)
         ? fohWage / (targetCPLH * targetPPA) * 100
@@ -76,6 +192,7 @@ class ActiveTargetProfile {
       theoreticalBohLaborPct: bohPct,
       theoreticalLaborPct: fohPct + bohPct,
       builtAt: builtAt ?? DateTime.now().toUtc().toIso8601String(),
+      dayparts: dayparts,
     );
   }
 
@@ -94,6 +211,11 @@ class ActiveTargetProfile {
         'theoretical_boh_labor_pct': theoreticalBohLaborPct,
         'theoretical_labor_pct': theoreticalLaborPct,
         'built_at': builtAt,
+        // Per-period rows are not persisted on the parent profile row
+        // (they live in `active_target_profile_dayparts` once Slice 1
+        // wires the repository). [toMap] / [fromMap] remain on the
+        // parent row only for backward compatibility with the legacy
+        // SQLite shape.
       };
 
   factory ActiveTargetProfile.fromMap(Map<String, dynamic> m) =>
@@ -114,6 +236,28 @@ class ActiveTargetProfile {
             (m['theoretical_boh_labor_pct'] as num).toDouble(),
         theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
         builtAt: m['built_at'] as String,
+      );
+
+  /// Returns a copy of this profile with the provided per-period rows
+  /// replacing the existing list. Used by the cycle write path's
+  /// `_syncActiveTargetProfile` after the per-period rows are computed.
+  ActiveTargetProfile withDayparts(List<ActiveTargetProfileDaypart> rows) =>
+      ActiveTargetProfile(
+        targetProfileId: targetProfileId,
+        restaurantId: restaurantId,
+        sourceType: sourceType,
+        targetCPLH: targetCPLH,
+        targetSPLH: targetSPLH,
+        targetPPA: targetPPA,
+        fohWage: fohWage,
+        bohWage: bohWage,
+        opzFloorCPLH: opzFloorCPLH,
+        opzCeilingCPLH: opzCeilingCPLH,
+        theoreticalFohLaborPct: theoreticalFohLaborPct,
+        theoreticalBohLaborPct: theoreticalBohLaborPct,
+        theoreticalLaborPct: theoreticalLaborPct,
+        builtAt: builtAt,
+        dayparts: rows,
       );
 
   // ── 7.55q.3: shared benchmark-target blended-wage seam ─────────────────

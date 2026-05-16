@@ -175,11 +175,19 @@ Minimum intended contents:
 - The current target cycle remains stable for its 60-day window.
 - New closed shifts feed the next benchmark snapshot, not the current cycle.
 
-### Rule E - Weekly plan stays stable even if the target cycle refreshes
+### Rule E - Cycles refresh at the operator's configured week-start day
 
-- The current week's locked plan does not rewrite midweek.
-- If the 60-day target cycle refreshes during a week, the new target influences
-  the next generated week, not the already locked week in force.
+- Cycle refresh gates to the operator's configured `week_start_day`
+  (see Phase 7.55 Time Boundary Contract, Rules 4–6). Cycle length is
+  60–66 days per operator depending on where the 60-day boundary falls
+  relative to the week-start.
+- The mid-week cycle refresh scenario no longer happens because cycles
+  cannot refresh mid-week. Locked weekly plans inside a single week
+  always reference the active cycle.
+- The previous "if a 60-day target cycle refreshes during a week, the
+  new target influences the next generated week" wording is retired:
+  by construction the refresh lands at the start of a week, so the new
+  cycle is in force for the entire week it opens.
 
 ### Rule F - History must preserve cycle and week context
 

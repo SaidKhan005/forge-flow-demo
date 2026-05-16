@@ -6,6 +6,30 @@
 // `app.forgeflow.app/<path>`. C-5 replaces the default tap behavior
 // with the redemption-code handoff flow and keeps clipboard as the
 // explicit offline/proxy-5xx fallback.
+//
+// fix-settings-deeplink-buttons (Per-Daypart V1): the row renders ONLY
+// a polished primary button — the raw operator-web URL that used to be
+// dumped as visible `Text` below the button is gone. Operators never
+// see a bare `https://app.forgeflow.app/...` string in the UI; the
+// button label states the destination + action and the deep-link does
+// the navigation. The button is a `FilledButton.icon` in the app's
+// primary tone (sunset fill / surface foreground, radius 6) — the same
+// system as the canonical primary action in
+// `lib/screens/auth/login_screen.dart` — so it reads as an intentional,
+// sanctioned escape hatch rather than a default outline with a stray
+// link under it. The button still lives inside the same `SettingsCard`
+// shell so the Settings tab's visual cadence is unchanged.
+//
+// The coming-soon variant keeps a short plain-English helper line
+// explaining why the button is disabled. That line is contextual copy,
+// NOT a URL, so it does not violate the "no raw URL rendered" rule.
+//
+// Mobile Settings stays read-only; this button is the only sanctioned
+// path to the operator-web write surface. Behavior is otherwise
+// unchanged: opaque-code handoff via `HandoffCodeGateway` (the existing
+// C-5 / U-FU-mobile-deeplink seam — no parallel mechanism), clipboard
+// fallback on proxy-5xx, same snackbar copy. The `onLaunch` /
+// `launchExternalUrl` / `copyToClipboard` test seams are preserved.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -17,8 +41,8 @@ import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
 
 /// Pointer to an Operator Web surface for sections whose editor lives
-/// outside the mobile app. When [opWebPath] is empty, the row renders
-/// as "coming soon" copy and tapping is a no-op.
+/// outside the mobile app. When [opWebPath] is empty, the button
+/// renders disabled with "coming soon" helper copy.
 class SettingsPointerRow extends StatelessWidget {
   const SettingsPointerRow({
     super.key,
@@ -32,12 +56,12 @@ class SettingsPointerRow extends StatelessWidget {
   });
 
   /// Plain-English copy describing what the operator can do at the
-  /// Operator Web surface.
+  /// Operator Web surface. Rendered as the button label.
   final String label;
 
   /// Path under `app.forgeflow.app/` (no leading slash). Pass an empty
-  /// string when no route exists yet - the row renders the "coming
-  /// soon" affordance instead of a tappable link.
+  /// string when no route exists yet - the button renders disabled
+  /// with "coming soon" helper copy.
   final String opWebPath;
 
   /// Stable Operator Web nav id carried by `/handoff?nav=...`.
@@ -80,46 +104,59 @@ class SettingsPointerRow extends StatelessWidget {
       padding: const EdgeInsets.only(top: 10),
       child: SettingsCard(
         children: [
-          InkWell(
-            onTap: _isComingSoon ? null : () => _onTap(context),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    _isComingSoon
-                        ? Icons.hourglass_empty_rounded
-                        : Icons.open_in_new_rounded,
-                    size: 18,
-                    color: AppColors.sunsetDark,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _isComingSoon ? '$label (coming soon)' : label,
-                          style: AppTextStyles.mono12(
-                            color: AppColors.textPrimary,
-                            weight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _isComingSoon
-                              ? 'This section will move to Operator Web in an upcoming release.'
-                              : _resolvedUrl,
-                          style: AppTextStyles.body12(
-                            color: AppColors.textMuted,
-                          ),
-                        ),
-                      ],
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: 46,
+                  child: FilledButton.icon(
+                    onPressed: _isComingSoon ? null : () => _onTap(context),
+                    icon: Icon(
+                      _isComingSoon
+                          ? Icons.hourglass_empty_rounded
+                          : Icons.open_in_new_rounded,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _isComingSoon ? '$label (coming soon)' : label,
+                    ),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sunset,
+                      foregroundColor: AppColors.backgroundSurface,
+                      disabledBackgroundColor: AppColors.sunset.withValues(
+                        alpha: 0.30,
+                      ),
+                      disabledForegroundColor: AppColors.backgroundSurface
+                          .withValues(alpha: 0.85),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      textStyle: AppTextStyles.mono12(
+                        weight: FontWeight.w600,
+                      ),
                     ),
                   ),
+                ),
+                // Coming-soon variant keeps a short plain-English reason
+                // for the disabled state. This is contextual helper copy,
+                // NOT a URL — the raw operator-web URL is intentionally
+                // never rendered (fix-settings-deeplink-buttons).
+                if (_isComingSoon) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'This section will move to Operator Web in an '
+                    'upcoming release.',
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ],

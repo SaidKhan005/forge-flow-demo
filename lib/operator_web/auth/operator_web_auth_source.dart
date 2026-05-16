@@ -37,7 +37,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../services/operator_web_benchmarks_gateway.dart';
+// Per-Daypart Targets V1 / Slice 2 (Gap 35): operator-web Benchmarks
+// override gateway import removed; surface cut entirely.
 
 /// Identity payload for an authenticated operator-web user. Carries
 /// only what the shell + screens need; not a full Firebase user
@@ -488,8 +489,7 @@ class MfaEnrollmentArtifact {
 
 /// Demo source — drives the full onboarding click path with a single
 /// fixture operator. Walkthrough copy assumes this source.
-class DemoOperatorWebAuthSource
-    implements OperatorWebAuthSource, OperatorWebBenchmarksGatewayProvider {
+class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
   DemoOperatorWebAuthSource({
     OperatorWebAuthState? initial,
     bool emitNeedsSignInOnSignOut = false,
@@ -597,9 +597,10 @@ class DemoOperatorWebAuthSource
       StreamController<OperatorWebAuthState>.broadcast();
   OperatorWebAuthState _state;
 
-  @override
-  final OperatorWebBenchmarksGateway benchmarksGateway =
-      DemoOperatorWebBenchmarksGateway();
+  // Per-Daypart Targets V1 / Slice 2 (Gap 35): the `benchmarksGateway`
+  // field was removed along with the operator-web Benchmarks override
+  // surface. Mobile Baseline Manager star-shift selection is the only
+  // override path.
 
   @override
   Stream<OperatorWebAuthState> get stream => _controller.stream;

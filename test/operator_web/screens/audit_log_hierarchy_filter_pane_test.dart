@@ -325,7 +325,9 @@ void main() {
     expect(find.textContaining('Actor: Team member user-7'), findsOneWidget);
     expect(find.textContaining('Actor: F&F admin admin-9'), findsOneWidget);
     expect(
-      find.textContaining('Actor: Automated service sp-vendor-sync'),
+      // Wave 2 AC-1 follow-up 2026-05-14 (operator decision: canonical
+      // service actor label = "Service account").
+      find.textContaining('Actor: Service account sp-vendor-sync'),
       findsOneWidget,
     );
     // Defensive: the raw wire enum strings must never reach the

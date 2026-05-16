@@ -97,26 +97,47 @@ class ScheduleBuilder extends StatelessWidget {
 /// proxy provider during the brief window before
 /// [ActiveTargetProfileNotifier] finishes loading. The locked-plan
 /// load is unaffected — it reads the snapshot directly from SQLite.
-/// These config-default wages / PPA are replaced by [updateTargets]
-/// when the real profile arrives.
+/// These config-default values are replaced by [updateTargets] when
+/// the real profile arrives.
+///
+/// Per-Daypart V1 (Slice 3) — Gap 41 / Design Rule 2: the rate / OPZ /
+/// theoretical-% fields previously carried `0` as a "unused on locked
+/// path" sentinel. Design Rule 2 forbids `0`-as-null sentinels (they
+/// collide with degenerate cycles where the target genuinely IS zero).
+/// `ActiveTargetProfile`'s whole-day scalar fields are non-nullable
+/// `double` with a documented `0.0` divide-by-zero fallback for legacy
+/// consumers (see `active_target_profile.dart` Design Rule 2 note), so
+/// the honest fix here is to seed real config defaults from
+/// [MeridianConfig] — the same source this profile already uses for
+/// wages and the same defaults the production bootstrap path resolves —
+/// rather than fabricate zeros. The brief pre-load window now shows
+/// honest config defaults instead of fake zeros.
 ActiveTargetProfile _bootstrapFallbackProfile() {
   return ActiveTargetProfile(
     targetProfileId: 'schedule-bootstrap-fallback',
     restaurantId: '',
     sourceType: 'system_baseline',
-    targetCPLH: 0, // unused on locked path
-    targetSPLH: 0, // unused on locked path
+    targetCPLH: MeridianConfig.targetCPLH,
+    targetSPLH: MeridianConfig.targetSPLH,
     targetPPA: BaselineData.derivedTargetPPA,
     fohWage: MeridianConfig.fohWage,
     bohWage: MeridianConfig.bohWage,
-    opzFloorCPLH: 0,
-    opzCeilingCPLH: 0,
-    theoreticalFohLaborPct: 0,
-    theoreticalBohLaborPct: 0,
-    theoreticalLaborPct: 0,
+    opzFloorCPLH: MeridianConfig.opzFloorCPLH,
+    opzCeilingCPLH: MeridianConfig.opzCeilingCPLH,
+    theoreticalFohLaborPct: MeridianConfig.fohTheoreticalLaborPct,
+    theoreticalBohLaborPct: MeridianConfig.bohTheoreticalLaborPct,
+    theoreticalLaborPct: MeridianConfig.totalTheoreticalLaborPct,
     builtAt: '',
   );
 }
+
+/// Per-Daypart V1 (Slice 3) — test-only accessor for the bootstrap
+/// fallback profile. Lets the Gap 41 / Design Rule 2 sentinel-removal
+/// test assert (via the public [ActiveTargetProfile] surface) that the
+/// previously-sentinelled fields now carry honest config defaults.
+@visibleForTesting
+ActiveTargetProfile scheduleBootstrapFallbackProfileForTest() =>
+    _bootstrapFallbackProfile();
 
 class _ScheduleBuilderContent extends StatefulWidget {
   const _ScheduleBuilderContent();

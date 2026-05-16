@@ -98,7 +98,7 @@ class IdentityToolkitFirebaseMfaClient implements FirebaseMfaClient {
     if (updatedIdToken == null) {
       return const FirebaseMfaConfirmFailed(
         code: 'mfa_finalize_missing_id_token',
-        message: 'MFA enrollment could not be verified. Please try again.',
+        message: 'Two-factor sign-in could not be verified. Please try again.',
       );
     }
 
@@ -397,9 +397,9 @@ class IdentityToolkitFirebaseMfaClient implements FirebaseMfaClient {
         return 'Code did not match. Try again.';
       case 'mfa_lookup_missing_totp':
       case 'mfa_lookup_missing_user':
-        return 'MFA enrollment could not be verified. Please try again.';
+        return 'Two-factor sign-in could not be verified. Please try again.';
       default:
-        return 'MFA enrollment failed. Please try again.';
+        return 'Two-factor sign-in setup failed. Please try again.';
     }
   }
 }

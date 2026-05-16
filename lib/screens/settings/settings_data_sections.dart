@@ -430,12 +430,26 @@ class SettingsAccountSection extends StatefulWidget {
     super.key,
     this.accountInfoGateway,
     this.passwordChangeGateway,
+    this.allowDemoAccountInfoFallback = false,
     this.refreshGeneration = 0,
     this.viewOnly = false,
   });
 
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
+
+  /// Demo / preview shells wire no [accountInfoGateway]. When this is
+  /// true and the gateway is absent, the section renders the honest
+  /// session-derived account card ([_fallbackAccountInfoForSession])
+  /// instead of collapsing to nothing — so the demo Account tab shows
+  /// the real signed-in identity (Metric Honesty: honest values, never
+  /// phantom). Mirrors `SettingsActiveSessionsSection`'s
+  /// `allowDemoGatewayFallback` posture; threaded from
+  /// `forge_flow_app.dart` `_openSettings`
+  /// (`widget.accountInfoGateway == null`). Default false keeps
+  /// production (real gateway wired) and pre-existing test shells
+  /// byte-unchanged.
+  final bool allowDemoAccountInfoFallback;
   final int refreshGeneration;
 
   /// W3.A — when true, the password-change action and the bulk
@@ -471,7 +485,9 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
   @override
   void didUpdateWidget(SettingsAccountSection oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.accountInfoGateway != widget.accountInfoGateway) {
+    if (oldWidget.accountInfoGateway != widget.accountInfoGateway ||
+        oldWidget.allowDemoAccountInfoFallback !=
+            widget.allowDemoAccountInfoFallback) {
       _accountInfo = null;
       _accountInfoError = null;
       _usingAccountInfoFallback = false;
@@ -483,12 +499,29 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
 
   Future<void> _loadAccountInfoIfAvailable() async {
     final gateway = widget.accountInfoGateway;
-    if (gateway == null) return;
     AuthSession? session;
     try {
       session = context.read<AuthSessionNotifier>().session;
     } catch (_) {
       session = null;
+    }
+    if (gateway == null) {
+      // Demo / preview shell: no backend account gateway. Render the
+      // honest session-derived card so the demo Account tab is not
+      // blank. No network, no phantom data — values come straight off
+      // the signed-in `AuthSession`.
+      if (widget.allowDemoAccountInfoFallback && session != null) {
+        final demoFallback = _fallbackAccountInfoForSession(session);
+        if (demoFallback != null && mounted) {
+          setState(() {
+            _accountInfo = demoFallback;
+            _usingAccountInfoFallback = true;
+            _loadingAccountInfo = false;
+            _accountInfoError = null;
+          });
+        }
+      }
+      return;
     }
     if (session == null) return;
     final hadBackendInfo = _accountInfo != null && !_usingAccountInfoFallback;
@@ -643,7 +676,16 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
   @override
   Widget build(BuildContext context) {
     final accountInfoGateway = widget.accountInfoGateway;
+    // Demo Account tab: gateway absent but the honest session-derived
+    // fallback card is populated (see `_loadAccountInfoIfAvailable`).
+    final hasDemoAccountInfoCard =
+        accountInfoGateway == null &&
+        widget.allowDemoAccountInfoFallback &&
+        _accountInfo != null;
     if (widget.viewOnly) {
+      if (hasDemoAccountInfoCard) {
+        return _buildAccountInfoCard();
+      }
       // Read-only mirror: only show the account-info summary card,
       // no password-change form or sign-out-everywhere action. The
       // mobile entry-point in `lib/screens/settings_screen.dart`
@@ -655,7 +697,19 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
       return _buildAccountInfoCard();
     }
     final actions = _buildAccountActionsCard();
-    if (accountInfoGateway == null) return actions;
+    if (accountInfoGateway == null) {
+      if (hasDemoAccountInfoCard) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildAccountInfoCard(),
+            const SizedBox(height: 10),
+            actions,
+          ],
+        );
+      }
+      return actions;
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [_buildAccountInfoCard(), const SizedBox(height: 10), actions],
@@ -902,14 +956,16 @@ class _AccountInfoSummaryCard extends StatelessWidget {
             ? 'No role label available'
             : info.roleLabels.join(', '),
       ),
-      // Wave 2 MO-5b — canonical "Two-factor authentication" label.
+      // MO-5b-FU-mobile-recanonicalize — V1 canonical "Two-factor
+      // sign-in" label with Enabled / Off values (mirrors operator-web
+      // mfa_card_controller.dart badge labels from PR #747).
       // The 128-px label cell renders mono10 (12 px); this string wraps
       // to two lines, which matches the existing variable-height row
       // pattern (`_AccountInfoDetailRow` uses crossAxisAlignment.start
       // and `softWrap: true` for values).
       _AccountInfoDetail(
-        'Two-factor authentication',
-        info.mfaEnabled ? 'Enabled' : 'Not enabled',
+        'Two-factor sign-in',
+        info.mfaEnabled ? 'Enabled' : 'Off',
       ),
       if (lastLoginAt != null)
         _AccountInfoDetail('Last login', _formatAccountDate(lastLoginAt)),

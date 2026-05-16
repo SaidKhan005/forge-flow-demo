@@ -177,7 +177,16 @@ Future<void> _createAllTables(Database db) async {
       opz_ceiling_cplh           REAL,
       theoretical_foh_labor_pct  REAL,
       theoretical_boh_labor_pct  REAL,
-      snapshot_blended_wage      REAL
+      snapshot_blended_wage      REAL,
+      -- Per-Daypart V1 (Slice 1) — per-shift per-period locked target
+      -- stamps. Nullable; Promise 2: closed truth retains its stamp from
+      -- close time. Demo reseed populates them; production close-shift
+      -- path stamps via `ShiftService._shiftRecordFromFact`.
+      daypart_target_cplh        REAL,
+      daypart_target_splh        REAL,
+      daypart_target_ppa         REAL,
+      daypart_opz_floor_cplh     REAL,
+      daypart_opz_ceiling_cplh   REAL
     )
   ''');
 
@@ -372,8 +381,57 @@ Future<void> _createAllTables(Database db) async {
       lock_reason                    TEXT,
       locked_by_user_id              TEXT,
       metadata                       TEXT,
+      -- Per-Daypart V1 (Slice 1) — wages-at-lock-time stamp. JSON-encoded
+      -- {"foh_wage", "boh_wage", "blended_wage"}. Audit checks for locked
+      -- dollar values compare against this column (Design Rule 8), not
+      -- against current wages on the active profile.
+      wage_at_lock_time_json         TEXT,
       UNIQUE(restaurant_id, week_key)
     )
+  ''');
+
+  // ── Per-Daypart V1 (Slice 1) — per-(cycle, service_period) child rows.
+  await db.execute('''
+    CREATE TABLE target_cycle_dayparts (
+      cycle_id           TEXT NOT NULL,
+      service_period_id  TEXT NOT NULL,
+      target_cplh        REAL NOT NULL,
+      target_splh        REAL NOT NULL,
+      target_ppa         REAL NOT NULL,
+      opz_floor_cplh     REAL NOT NULL,
+      opz_ceiling_cplh   REAL NOT NULL,
+      cover_count        INTEGER NOT NULL,
+      created_at         TEXT NOT NULL,
+      PRIMARY KEY (cycle_id, service_period_id)
+    )
+  ''');
+  await db.execute('''
+    CREATE INDEX ix_target_cycle_dayparts_cycle
+    ON target_cycle_dayparts(cycle_id)
+  ''');
+
+  // ── Per-Daypart V1 (Slice 1) — per-(snapshot, business_date,
+  // service_period) demand-derived sub-rows. Wages stay whole-day on
+  // the parent snapshot per Design Rule 5; per-period theoretical
+  // dollars use whole-day wages × per-period required hours.
+  await db.execute('''
+    CREATE TABLE weekly_plan_snapshot_day_dayparts (
+      snapshot_id              TEXT NOT NULL,
+      business_date            TEXT NOT NULL,
+      service_period_id        TEXT NOT NULL,
+      forecast_covers          INTEGER NOT NULL,
+      forecast_sales           REAL NOT NULL,
+      required_foh_hours       REAL NOT NULL,
+      required_boh_hours       REAL NOT NULL,
+      theoretical_foh_dollars  REAL NOT NULL,
+      theoretical_boh_dollars  REAL NOT NULL,
+      created_at               TEXT NOT NULL,
+      PRIMARY KEY (snapshot_id, business_date, service_period_id)
+    )
+  ''');
+  await db.execute('''
+    CREATE INDEX ix_weekly_plan_snapshot_day_dayparts_snapshot
+    ON weekly_plan_snapshot_day_dayparts(snapshot_id)
   ''');
 
   // ── Benchmark selection summary layer (7.55l.8c) ─────────────────────
@@ -392,14 +450,18 @@ Future<void> _createAllTables(Database db) async {
   ''');
 
   // ── Restaurant timing config layer (7.55n.1) ─────────────────────────
+  //
+  // Per-Daypart V1 Slice 1.5: the legacy `shift_close_authority` +
+  // `local_close_fallback` columns were dropped (operator decision
+  // 2026-05-15). Close-authority is auto-derived per shift from the
+  // per-vendor `CloseAuthorityCapability` lookup plus the
+  // `business_day_start_local_time` fallback.
   await db.execute('''
     CREATE TABLE restaurant_timing_configs (
       restaurant_id                    TEXT PRIMARY KEY NOT NULL,
       business_day_start_local_time    TEXT NOT NULL,
       week_start_day                   INTEGER NOT NULL,
       service_period_definitions_json  TEXT NOT NULL,
-      shift_close_authority            TEXT NOT NULL,
-      local_close_fallback             TEXT,
       created_at                       TEXT NOT NULL,
       updated_at                       TEXT NOT NULL
     )

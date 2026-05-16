@@ -1,8 +1,9 @@
 // B1.A5 — Release-build demo-auth flag lint tests.
 //
 // Verifies that the lint runner correctly identifies workflow steps that
-// pass ADMIN_DEMO_AUTH=true or OPERATOR_WEB_DEMO_AUTH=true in release builds,
-// and that it does not flag debug or profile builds.
+// pass ADMIN_DEMO_AUTH=true, OPERATOR_WEB_DEMO_AUTH=true, kDemoMode=true, or
+// FORGE_FLOW_DEMO_MODE=true in release builds, and that it does not flag
+// debug or profile builds.
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -43,6 +44,49 @@ void main() {
       final result = runWith(yaml);
       expect(result.isClean, isFalse);
       expect(result.violations.first.flag, contains('OPERATOR_WEB_DEMO_AUTH'));
+    });
+
+    test('flags kDemoMode=true in a release build', () {
+      const yaml = '''
+      - name: Build mobile Forge&Flow demo
+        run: flutter build apk --dart-define=kDemoMode=true
+''';
+      final result = runWith(yaml);
+      expect(result.isClean, isFalse);
+      expect(result.violations, hasLength(1));
+      expect(result.violations.first.flag, contains('kDemoMode'));
+    });
+
+    test('flags FORGE_FLOW_DEMO_MODE=true in a release build', () {
+      const yaml = '''
+      - name: Build mobile Forge&Flow demo
+        run: flutter build apk --dart-define=FORGE_FLOW_DEMO_MODE=true
+''';
+      final result = runWith(yaml);
+      expect(result.isClean, isFalse);
+      expect(result.violations, hasLength(1));
+      expect(
+        result.violations.first.flag,
+        contains('FORGE_FLOW_DEMO_MODE'),
+      );
+    });
+
+    test('does NOT flag --debug builds with kDemoMode flag', () {
+      const yaml = '''
+      - name: Dev demo build
+        run: flutter build apk --debug --dart-define=kDemoMode=true
+''';
+      final result = runWith(yaml);
+      expect(result.isClean, isTrue);
+    });
+
+    test('does NOT flag --profile builds with FORGE_FLOW_DEMO_MODE flag', () {
+      const yaml = '''
+      - name: Profile demo build
+        run: flutter build apk --profile --dart-define=FORGE_FLOW_DEMO_MODE=true
+''';
+      final result = runWith(yaml);
+      expect(result.isClean, isTrue);
     });
 
     test('does NOT flag --debug builds with demo flag', () {

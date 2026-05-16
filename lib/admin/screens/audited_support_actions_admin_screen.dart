@@ -1644,6 +1644,13 @@ String humanizeAuditAction(String action) {
       return 'Moved org unit';
     case 'team.location.move':
       return 'Moved location';
+    case 'team.session.force_logout':
+      // Wave 2 AC-1 follow-up (`AC-1-FU-team-session-force-logout-label`,
+      // resolved 2026-05-14): operator-web's matching label at
+      // `web_team_audit_log_gateway.dart:214` is "Signed out a team
+      // member session"; mirror that wording so the chip set reads the
+      // same across both consoles.
+      return 'Signed out a team member session';
     case 'admin.session.force_logout':
       return 'Forced session logout';
     case 'admin.users.reset_mfa_factors':

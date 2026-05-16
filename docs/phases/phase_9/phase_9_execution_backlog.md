@@ -176,8 +176,28 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
-  `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`,
-  which is the Wave 2 RP-9 `team.roles.default_catalog.view` +
+  `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
+  (a `COMMENT ON COLUMN` only — additive, no DDL/data change — landed
+  by Per-Daypart V1 / Slice 7b option (b) to mark
+  `locations.business_day_rollover_hour` as deprecated by the canonical
+  `business_timing_profiles` chain). The prior cutoff
+  `202605160000_per_daypart_v1_per_period_target_persistence.sql` is the
+  Per-Daypart V1 Slice 1 per-period data layer foundation
+  (adds `target_cycle_dayparts` + `weekly_plan_snapshot_day_dayparts`
+  child tables with RLS-policy-protected operator scoping,
+  `weekly_plan_snapshots.wage_at_lock_time_json` JSONB column for
+  Design Rule 8 audit anchoring, and 5 per-shift per-period locked
+  target stamp columns on `shift_records` so closed truth retains its
+  per-period band per Promise 2). Prior cutoff
+  `202605150400_per_daypart_v1_drop_close_authority.sql` is
+  the Per-Daypart V1 Slice 1.5 deprecation step on
+  `public.business_timing_profiles` (drops the cross-column CHECK +
+  NOT NULL on `close_authority`; close-authority is auto-derived per
+  shift from the per-vendor `CloseAuthorityCapability` lookup +
+  `business_day_start_local_time` fallback; full column drop deferred
+  to a follow-up Postgres-only slice). Prior cutoff
+  `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql`
+  is the Wave 2 RP-9 `team.roles.default_catalog.view` +
   `team.roles.default_catalog.edit` permission keys + baseline grants
   (F&F super_admin write; super_admin + ff_support read). Promotes the
   role-tier gate on `default_role_catalog_admin_screen.dart` +

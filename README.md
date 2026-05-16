@@ -114,58 +114,88 @@ revisions. Detail: [runbooks/preview_environment_runbook.md](runbooks/preview_en
   `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1`. The dev
   launchers source this; no provider keys live in the repo.
 
-### Operator mobile app (ForgeFlow / Barrio)
+### Surfaces — 4-mode runner
 
-```powershell
-# Loads $HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1 and passes
-# the local dev-only ANTHROPIC_API_KEY as a --dart-define. Production
-# provider keys remain server-side only.
-scripts\run_flutter_dev.ps1 -App forgeflow
-scripts\run_flutter_dev.ps1 -App barrio      # paused; uses lib/main_barrio.dart
+All four runtime surfaces (operator mobile / Barrio mobile / Operator Web /
+F&F Operations Console) share the same `-Mode demo|preview|staging|production`
+contract via their PowerShell dev launchers. Demo bypasses the proxy entirely
+(HP #2 writer-side switch); preview and staging hit Cloud Run; production is
+fail-closed behind `-IUnderstand`.
 
-# Wire to a real Firebase Auth + deployed proxy instead of in-memory fixtures:
-scripts\run_flutter_dev.ps1 -App forgeflow -UseFirebaseAuth
-```
+| Mode | Auth source | Proxy target | Use case |
+|---|---|---|---|
+| `demo` | Fixture sign-in / `kDemoMode` writer | None (SQLite-only) | Local walkthroughs, recorded demos, the V1 plug-and-play onboarding storyboard. |
+| `preview` | Live Firebase Auth | `forge-flow-preview-<slug>-proxy` on `forge-flow-staging` (resolved via `gcloud run services describe` when `-PreviewName <slug>` is set) | Per-branch / per-PR end-to-end proof before shared staging. |
+| `staging` | Live Firebase Auth | Shared staging proxy (`forge-flow-staging-proxy-*-nn.a.run.app`) | Release-candidate validation; shared across the team. |
+| `production` | Live Firebase Auth | `https://proxy.forgeflow.app` | Local dev session pointing at production. **Fail-closed behind `-IUnderstand`** — the launcher exits 1 with `BLOCKED: -Mode production targets…` until the operator opts in. |
 
-Plain Flutter without the launcher:
+HP #2: demo and prod read from the same code path; only the writer changes.
+Adding a new `kDemoMode` reader branch or a parallel `demo_*` table is a
+contract violation (`docs/contracts/demo_mode_contract.md`).
+
+#### Surface × Mode matrix
+
+Copy-paste commands per surface × mode. Long Cloud Run URLs are abbreviated
+after the staging column; substitute the real `forge-flow-staging-proxy-*-nn.a.run.app`
+host returned by `scripts\deploy_staging_proxy.ps1`.
+
+| Surface | demo | preview | staging | production |
+|---|---|---|---|---|
+| [Operator Web Console](lib/main_operator_web.dart) | `scripts\run_operator_web_dev.ps1 -Mode demo` | `scripts\run_operator_web_dev.ps1 -Mode preview -PreviewName ux-nav` | `scripts\run_operator_web_dev.ps1 -Mode staging -ProxyBaseUri https://forge-flow-staging-proxy-XXXX-nn.a.run.app` | `scripts\run_operator_web_dev.ps1 -Mode production -IUnderstand` |
+| [F&F Operations Console (admin)](lib/main_admin.dart) | `scripts\run_admin_console_dev.ps1 -Mode demo` | `scripts\run_admin_console_dev.ps1 -Mode preview -PreviewName ux-nav` | `scripts\run_admin_console_dev.ps1 -Mode staging -AdminProxyBaseUri https://…XXXX-nn.a.run.app` | `scripts\run_admin_console_dev.ps1 -Mode production -IUnderstand` |
+| [Forge & Flow mobile](lib/main_forgeflow.dart) | `scripts\run_flutter_dev.ps1 -App forgeflow -Mode demo` | `scripts\run_flutter_dev.ps1 -App forgeflow -Mode preview -PreviewName ux-nav` | `scripts\run_flutter_dev.ps1 -App forgeflow -Mode staging -ProxyBaseUri https://…XXXX-nn.a.run.app` | `scripts\run_flutter_dev.ps1 -App forgeflow -Mode production -IUnderstand` |
+| [Barrio mobile (paused)](lib/main_barrio.dart) | `scripts\run_flutter_dev.ps1 -App barrio -Mode demo` | `scripts\run_flutter_dev.ps1 -App barrio -Mode preview -PreviewName ux-nav` | `scripts\run_flutter_dev.ps1 -App barrio -Mode staging -ProxyBaseUri https://…XXXX-nn.a.run.app` | `scripts\run_flutter_dev.ps1 -App barrio -Mode production -IUnderstand` |
+
+#### Per-surface notes
+
+**Operator Web Console** (`lib/main_operator_web.dart`)
+
+- Default web-server port `8181` (`-WebPort 8181`). Pair with the admin
+  console on `8182` to run both locally without conflict.
+- `scripts\run_operator_web_dev.ps1` performs the dev-CSP swap on
+  `web/index.html` automatically (production CSP backed up to
+  `web/index.prod.html.bak`, restored on exit). Reviewer-judgment detail:
+  `scripts/apply_operator_web_dev_csp.sh`.
+- Legacy `-LiveAuth` switch still works (maps to `-Mode staging`); same
+  back-compat pattern the mobile launcher uses for `-UseFirebaseAuth`.
+
+**F&F Operations Console** (`lib/main_admin.dart`)
+
+- Defaults to `-Device chrome`. Pass `-Device edge` or `-Device web-server`
+  (or `-WebServer -WebPort 8182`) for headless / port-scoped runs.
+- Default `-Mode demo` lands signed in as F&F support with **no login screen**
+  via `ADMIN_SHARE_PREVIEW=true` (read-only). Pass `-DemoFixtureLogin` to
+  instead render the Phase 11A.0 walkthrough picker (`super.admin@` /
+  `support@` / `operator@`) backed by `ADMIN_DEMO_AUTH=true` — useful for
+  exercising the admit / fail-closed paths.
+- `.claude/launch.json` integrates with the Claude_Preview MCP tool — invoke
+  the matching launch entry to attach the in-IDE preview panel.
+
+**Forge & Flow mobile** (`lib/main_forgeflow.dart`)
+
+- Pass `-Device chrome` for an in-browser smoke or `-d <device-id>` to target
+  a specific connected handset (`flutter devices` lists IDs). Verify with
+  `flutter doctor` if devices fail to enumerate.
+- Flavor must match the app (`--flavor forgeflow` for ForgeFlow,
+  `--flavor barrio` for Barrio); the launcher sets this automatically.
+- Demo mode on mobile emits both `--dart-define=kDemoMode=true` and
+  `--dart-define=FORGE_FLOW_DEMO_MODE=true` — the writer-side switch and the
+  flag name `lib/screens/auth/login_screen.dart` reads to surface the
+  additive "Use demo operator" button.
+
+**Barrio mobile** (`lib/main_barrio.dart`)
+
+- **Paused.** See `CLAUDE.md` → "Paused" and `memory/project_barrio_paused.md`.
+  The launcher prints a warning but still runs so dev can inspect the build.
+  Do not target Barrio for merges unless the tracker explicitly says otherwise.
+
+Plain Flutter without the launchers (mobile only):
 
 ```bash
 flutter pub get
 flutter run --flavor forgeflow -t lib/main_forgeflow.dart
 flutter run --flavor barrio    -t lib/main_barrio.dart
 flutter test
-```
-
-If multiple devices are connected, pass `-d <deviceId>` (or `-Device chrome`
-for the launcher).
-
-### Operator Web Console (`app.forgeflow.app`)
-
-```bash
-flutter build web `
-  --target=lib/main_operator_web.dart `
-  --output=build/operator_web `
-  --dart-define=OPERATOR_WEB_DEMO_AUTH=true
-
-# Or run directly in Chrome with demo auth:
-flutter run -t lib/main_operator_web.dart -d chrome `
-  --dart-define=OPERATOR_WEB_DEMO_AUTH=true
-```
-
-Live operator-web auth (magic link, password set, MFA, T&Cs) wires through the
-deployed proxy — pass `--dart-define=OPERATOR_WEB_PROXY_BASE_URI=...`.
-
-### F&F Operations Console (`admin.forgeflow.app`)
-
-```powershell
-# Default = LIVE Firebase admin auth against staging (mirrors Cloud Run prod).
-scripts\run_admin_console_dev.ps1
-
-# Demo mode for the 11A.0 walkthrough (super.admin@ / support@ / operator@):
-scripts\run_admin_console_dev.ps1 -DemoMode
-
-# Point at a non-default proxy:
-scripts\run_admin_console_dev.ps1 -AdminProxyBaseUri http://localhost:8080
 ```
 
 ### Local Postgres (full stack)

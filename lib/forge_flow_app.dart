@@ -819,7 +819,46 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _loadBusinessScopesIfNeeded(AuthSession? session, {bool force = false}) {
     if (session == null) return;
     final client = _resolveBusinessScopeClient();
-    if (client == null) return;
+    if (client == null) {
+      // Mobile-FU-business-scope-drawer-seed — when no networked
+      // [BusinessScopeClient] is wired (demo bootstrap, offline first
+      // boot, or the brief window before the proxy fetch resolves),
+      // seed the in-app business-scope drawer from the locally-seeded
+      // `restaurant_locations` rows so the operator sees their active
+      // location instead of the empty state. HP #2 compliant: the
+      // demo writer side already seeded these rows; this reader does
+      // not branch on `kDemoMode`.
+      final key = session.userId;
+      if (_businessScopesLoadingFor == key) {
+        if (force) _businessScopesPendingReloadFor = key;
+        return;
+      }
+      if (!force && _businessScopesLoadedFor == key) return;
+      if (force) _businessScopesLoadedFor = null;
+      _businessScopesLoadingFor = key;
+      final scope = context.read<RestaurantScopeNotifier>();
+      unawaited(
+        scope
+            .seedAvailableScopesFromLocal(
+              userId: session.userId,
+              operatorId: session.operatorId,
+            )
+            .then((_) {
+              if (!mounted) return;
+              _businessScopesLoadedFor = key;
+            })
+            .catchError((Object error, StackTrace stack) {
+              debugPrint('Local business scope seed failed: $error');
+              debugPrintStack(stackTrace: stack);
+            })
+            .whenComplete(() {
+              if (_businessScopesLoadingFor == key) {
+                _businessScopesLoadingFor = null;
+              }
+            }),
+      );
+      return;
+    }
     final key = session.userId;
     if (_businessScopesLoadingFor == key) {
       if (force) _businessScopesPendingReloadFor = key;
@@ -1009,44 +1048,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                       itemBuilder: (context, index) {
                         final scope = filteredScopes[index];
                         final selected = scope.stableKey == activeKey;
-                        return ListTile(
-                          enabled: true,
+                        return BusinessScopeDrawerTile(
+                          scope: scope,
                           selected: selected,
-                          selectedTileColor: AppColors.backgroundMid.withValues(
-                            alpha: 0.7,
-                          ),
-                          leading: Icon(
-                            _businessScopeIcon(scope),
-                            color: selected
-                                ? AppColors.sunsetDark
-                                : AppColors.textMuted,
-                          ),
-                          title: Text(
-                            scope.label,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: AppColors.textPrimary,
-                              fontWeight: selected
-                                  ? FontWeight.w700
-                                  : FontWeight.w500,
-                            ),
-                          ),
-                          subtitle: Text(
-                            _businessScopeSubtitle(scope),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: AppColors.textMuted,
-                              fontSize: 12,
-                            ),
-                          ),
-                          trailing: selected
-                              ? const Icon(
-                                  Icons.check_circle,
-                                  color: AppColors.sunsetDark,
-                                )
-                              : null,
                           onTap: () {
                             Navigator.of(context).maybePop();
                             unawaited(_selectBusinessScope(scope));
@@ -1059,25 +1063,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         ),
       ),
     );
-  }
-
-  IconData _businessScopeIcon(BusinessScope scope) => switch (scope.scopeType) {
-    'operator' => Icons.business_outlined,
-    'org_unit' => Icons.account_tree_outlined,
-    'location' => Icons.storefront_outlined,
-    _ => Icons.work_outline,
-  };
-
-  String _businessScopeSubtitle(BusinessScope scope) {
-    if (scope.isLocationScope) {
-      final sortPath = scope.sortPath;
-      if (sortPath != null && sortPath.isNotEmpty && sortPath != scope.label) {
-        return sortPath;
-      }
-      return 'Location';
-    }
-    if (scope.scopeType == 'operator') return 'All locations';
-    return 'Location views only';
   }
 
   /// Mirrors the active locations from [RestaurantScopeNotifier] into
@@ -1231,6 +1216,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           // walkthrough can show multiple devices without a backend.
           authOperationsGateway: widget.authOperationsGateway,
           allowDemoActiveSessionsFallback: widget.authOperationsGateway == null,
+          // Demo flavor wires no AccountInfoGateway (no proxy). Render
+          // the honest session-derived Account card instead of a blank
+          // section. Same posture as the Active Sessions fallback
+          // above. Production wires a real gateway so this is false.
+          allowDemoAccountInfoFallback: widget.accountInfoGateway == null,
         ),
         fullscreenDialog: true,
       ),
@@ -1613,6 +1603,100 @@ class _AppShellIconButton extends StatelessWidget {
           child: Icon(icon, size: 24, color: AppColors.textSecondary),
         ),
       ),
+    );
+  }
+}
+
+/// Mobile-FU-business-scope-drawer-seed — one row of the
+/// business-scope drawer. Extracted as a top-level widget so the
+/// active-scope highlight (selected tile + check icon) is independently
+/// testable.
+///
+/// Rendering rules (match the rest of the F&F mobile design system):
+/// - Background tinted via [ListTile.selectedTileColor] when [selected].
+/// - Leading icon flips to [AppColors.sunsetDark] when [selected].
+/// - Title weight bumps from w500 → w700 when [selected].
+/// - Trailing [Icons.check_circle] is shown only when [selected].
+class BusinessScopeDrawerTile extends StatelessWidget {
+  const BusinessScopeDrawerTile({
+    super.key,
+    required this.scope,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final BusinessScope scope;
+  final bool selected;
+  final VoidCallback onTap;
+
+  /// Test anchor for the leading icon of the active row.
+  static const Key activeLeadingIconKey = Key(
+    'business_scope_drawer_tile_active_leading_icon',
+  );
+
+  /// Test anchor for the trailing check icon shown only when [selected].
+  static const Key activeCheckIconKey = Key(
+    'business_scope_drawer_tile_active_check_icon',
+  );
+
+  @visibleForTesting
+  static IconData iconFor(BusinessScope scope) => switch (scope.scopeType) {
+    'operator' => Icons.business_outlined,
+    'org_unit' => Icons.account_tree_outlined,
+    'location' => Icons.storefront_outlined,
+    _ => Icons.work_outline,
+  };
+
+  @visibleForTesting
+  static String subtitleFor(BusinessScope scope) {
+    if (scope.isLocationScope) {
+      final sortPath = scope.sortPath;
+      if (sortPath != null && sortPath.isNotEmpty && sortPath != scope.label) {
+        return sortPath;
+      }
+      return 'Location';
+    }
+    if (scope.scopeType == 'operator') return 'All locations';
+    return 'Location views only';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      key: selected
+          ? const Key('business_scope_drawer_tile_active')
+          : Key('business_scope_drawer_tile_${scope.stableKey}'),
+      enabled: true,
+      selected: selected,
+      selectedTileColor: AppColors.backgroundMid.withValues(alpha: 0.7),
+      leading: Icon(
+        iconFor(scope),
+        key: selected ? activeLeadingIconKey : null,
+        color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+      ),
+      title: Text(
+        scope.label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: AppColors.textPrimary,
+          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+        ),
+      ),
+      subtitle: Text(
+        subtitleFor(scope),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+      ),
+      trailing: selected
+          ? const Icon(
+              Icons.check_circle,
+              key: activeCheckIconKey,
+              color: AppColors.sunsetDark,
+            )
+          : null,
+      onTap: onTap,
     );
   }
 }

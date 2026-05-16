@@ -166,7 +166,10 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                 if (_selectedServicePeriodId == null)
                   ..._wholeDaySlivers(rm)
                 else
-                  ..._servicePeriodSlivers(_selectedServicePeriodId!),
+                  ..._servicePeriodSlivers(
+                    context,
+                    _selectedServicePeriodId!,
+                  ),
                 const SliverToBoxAdapter(child: SizedBox(height: 48)),
               ],
             ),
@@ -176,90 +179,118 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     );
   }
 
-  /// Existing whole-day slivers — kept identical to pre-10.5 behavior.
-  /// Whole-day Shift is authoritative; daypart is additive.
-  List<Widget> _wholeDaySlivers(ShiftDashboardReadModel rm) {
+  /// Builds the three pinned-header section groups from a
+  /// [_ShiftSectionViewData]. This is the SINGLE structural grammar both
+  /// lenses emit — whole-day and daypart differ only in the header
+  /// labels and the projected data, never the widget tree. iOS
+  /// UITableView-style: each [SliverMainAxisGroup] bundles a header +
+  /// its content so the next group's header pushes the previous group
+  /// off (no stacking).
+  List<Widget> _sectionGroups({
+    required _ShiftSectionViewData data,
+    required String outputsLabel,
+    required String inputsLabel,
+    required String fohLabel,
+  }) {
     return [
-      // Each SliverMainAxisGroup bundles a header + its content
-      // so the next group's header pushes the entire previous
-      // group off — iOS UITableView-style, no stacking.
       SliverMainAxisGroup(
         slivers: [
           SliverPersistentHeader(
             pinned: true,
-            delegate: StickySectionDelegate('SHIFT OUTPUTS'),
+            delegate: StickySectionDelegate(outputsLabel),
           ),
-          SliverToBoxAdapter(child: _OutputsSection(readModel: rm)),
+          SliverToBoxAdapter(child: _OutputsSection(data: data)),
         ],
       ),
       SliverMainAxisGroup(
         slivers: [
           SliverPersistentHeader(
             pinned: true,
-            delegate: StickySectionDelegate('SHIFT INPUTS'),
+            delegate: StickySectionDelegate(inputsLabel),
           ),
-          SliverToBoxAdapter(child: _InputsSection(readModel: rm)),
+          SliverToBoxAdapter(child: _InputsSection(data: data)),
         ],
       ),
       SliverMainAxisGroup(
         slivers: [
           SliverPersistentHeader(
             pinned: true,
-            delegate: StickySectionDelegate('FOH PRODUCTIVITY'),
+            delegate: StickySectionDelegate(fohLabel),
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ZoneStatusCard(
-                currentCPLH: rm.actualCPLH,
-                opzFloorCPLH: rm.opzFloorCPLH,
-                opzCeilingCPLH: rm.opzCeilingCPLH,
-                targetCPLH: rm.targetCPLH,
-                opzStatus: rm.opzStatus,
-                opzLabel: rm.opzLabel,
-                opzSubLabel: rm.opzSubLabel,
-                // 7.58 depth wave (slice 10.5.6): SPLH band feeds the
-                // cross-axis matrix rendered inside the OPZ tile.
-                splhState: rm.splhState,
-              ),
-            ),
-          ),
+          SliverToBoxAdapter(child: _FohProductivitySection(data: data)),
         ],
       ),
     ];
   }
 
-  /// Daypart slivers — Phase 10.5.2 lights up the live per-period
-  /// accumulator. The scaffold reads from [ShiftServicePeriodNotifier]
-  /// (with a graceful fallback to `demoDefinitions` when the notifier
-  /// is missing) and renders one card per service-period definition
-  /// with covers / sales / CPLH / SPLH / PPA / blended-wage metrics
-  /// when the bucket has data. The time-into-service header
-  /// ("Lunch · 1h 12m in") sits above the SERVICE PERIODS sticky
-  /// header and only renders when an active period is in progress.
-  List<Widget> _servicePeriodSlivers(String selectedPeriodId) {
-    return [
+  /// Whole-day slivers — byte-untouched render (Promise 3 / Layer 9).
+  /// Whole-day Shift is authoritative; daypart is additive. The shared
+  /// section widgets consume the whole-day projection, which reproduces
+  /// the pre-refactor inline render exactly.
+  List<Widget> _wholeDaySlivers(ShiftDashboardReadModel rm) {
+    return _sectionGroups(
+      data: _ShiftSectionViewData.fromWholeDay(rm),
+      outputsLabel: 'SHIFT OUTPUTS',
+      inputsLabel: 'SHIFT INPUTS',
+      fohLabel: 'FOH PRODUCTIVITY',
+    );
+  }
+
+  /// Daypart slivers — a TRUE 1:1 of [_wholeDaySlivers]: the SAME three
+  /// pinned-header section groups, the SAME section widgets, scoped to
+  /// the selected period via [_ShiftSectionViewData.fromPeriod]. The
+  /// period's identity + closed/active/future status renders as a
+  /// compact header element above the sections (not a bordered card
+  /// wrapping everything). The time-into-service header
+  /// ("Lunch · 1h 12m in") sits above that and only renders when the
+  /// period is active.
+  List<Widget> _servicePeriodSlivers(
+    BuildContext context,
+    String selectedPeriodId,
+  ) {
+    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+    final definitions = periodNotifier?.definitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+    ServicePeriodDefinition? selectedDefinition;
+    for (final d in ServicePeriodDefinitionResolver.ordered(definitions)) {
+      if (d.id == selectedPeriodId) {
+        selectedDefinition = d;
+        break;
+      }
+    }
+
+    final slivers = <Widget>[
       SliverToBoxAdapter(
         child: _TimeIntoServiceHeader(
           selectedPeriodId: selectedPeriodId,
           ticker: _ticker,
         ),
       ),
-      SliverMainAxisGroup(
-        slivers: [
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: const StickySectionDelegate('SERVICE PERIOD'),
-          ),
-          SliverToBoxAdapter(
-            child: _DaypartScaffoldSection(
-              selectedPeriodId: selectedPeriodId,
-              ticker: _ticker,
-            ),
-          ),
-        ],
+      SliverToBoxAdapter(
+        child: _DaypartPeriodHeader(
+          selectedPeriodId: selectedPeriodId,
+          ticker: _ticker,
+        ),
       ),
     ];
+
+    if (selectedDefinition != null) {
+      final bucket = periodNotifier?.buckets?[selectedDefinition.id] ??
+          ServicePeriodAccumulator(servicePeriodId: selectedDefinition.id);
+      final targetContext =
+          periodNotifier?.daypartTargetFor(selectedDefinition.id) ??
+              DaypartTargetContext.none;
+      slivers.addAll(
+        _sectionGroups(
+          data: _ShiftSectionViewData.fromPeriod(bucket, targetContext),
+          outputsLabel: 'OUTPUTS',
+          inputsLabel: 'INPUTS',
+          fohLabel: 'FOH PRODUCTIVITY',
+        ),
+      );
+    }
+
+    return slivers;
   }
 }
 
@@ -606,17 +637,282 @@ MetricPillProvenance _toPillProvenance(
   );
 }
 
+// ─── Section view-data adapter (true 1:1 daypart ↔ whole-day) ───────────────
+//
+// The three Shift section widgets (`_OutputsSection`, `_InputsSection`,
+// `_FohProductivitySection`) are data-source-agnostic: they consume a
+// [_ShiftSectionViewData] value type that BOTH the whole-day
+// [ShiftDashboardReadModel] and a per-period
+// (`ServicePeriodAccumulator` + `DaypartTargetContext`) bucket project
+// into. This is what makes the daypart lens a byte-for-byte structural
+// mirror of the whole-day lens — the SAME widgets, not a lookalike.
+//
+// Whole-day projection reproduces the pre-refactor render exactly (all
+// fields non-null where the whole-day card always drew a number), so
+// Promise 3 / Layer 9 holds: whole-day is byte-untouched. The per-period
+// projection carries honest nulls so the shared widgets fall back to the
+// same "—" / "Connect a … vendor" empty states the whole-day card uses
+// (Design Rule 2 + Metric Honesty Doctrine).
+
+/// Labor % tile inputs. `actualPct` is null when labor is not connected
+/// (no in-period minutes, or no sales divisor) — the shared card then
+/// renders "—" instead of a phantom `0.0%`. `theoreticalPct` is null
+/// when the cycle wrote no per-period theoretical row (Gap 42); the
+/// sub-line + delta pill hide rather than draw `Theoretical 0.0%`.
+class _LaborVarianceData {
+  final double? actualPct;
+  final double? theoreticalPct;
+  final double? variancePts;
+  const _LaborVarianceData({
+    this.actualPct,
+    this.theoreticalPct,
+    this.variancePts,
+  });
+}
+
+/// FOH/BOH hours column inputs. [value] is the already-formatted current
+/// figure (an int string for whole-day scheduled hours, a 1-dp hours
+/// string or "—" for a period). [needed]/[excess] are null for a period
+/// (no scheduled-vs-needed target is tracked per period yet) — the
+/// shared column then renders the value alone, never a fabricated
+/// `Target 0 hrs` (Design Rule 2). Whole-day always supplies both.
+class _HoursColumnData {
+  final String value;
+  final int? needed;
+  final int? excess;
+  const _HoursColumnData({required this.value, this.needed, this.excess});
+}
+
+/// OPZ band inputs for the FOH PRODUCTIVITY section. Null on the parent
+/// [_ShiftSectionViewData] means "no locked productivity zone" — the
+/// shared section renders the honest no-zone line instead of a band
+/// drawn off a `0` anchor. Whole-day always has a band (profile floor/
+/// ceiling), so it never hits the null branch.
+class _OpzBandData {
+  final double currentCPLH;
+  final double opzFloorCPLH;
+  final double opzCeilingCPLH;
+  final double targetCPLH;
+  final String opzStatus;
+  final String opzLabel;
+  final String opzSubLabel;
+  final String? splhState;
+  const _OpzBandData({
+    required this.currentCPLH,
+    required this.opzFloorCPLH,
+    required this.opzCeilingCPLH,
+    required this.targetCPLH,
+    required this.opzStatus,
+    required this.opzLabel,
+    required this.opzSubLabel,
+    this.splhState,
+  });
+}
+
+/// The single render contract for the three Shift sections. Whole-day
+/// and per-period both project into this; the section widgets never
+/// branch on which source produced it.
+class _ShiftSectionViewData {
+  // OUTPUTS
+  final double currentSales;
+  final double forecastSales;
+  final _LaborVarianceData labor;
+  final MetricProvenance covers;
+  final MetricProvenance blendedWage;
+  // INPUTS
+  final MetricProvenance ppa;
+  final MetricProvenance cplh;
+  final MetricProvenance splh;
+  final _HoursColumnData fohHours;
+  final _HoursColumnData bohHours;
+  // FOH PRODUCTIVITY
+  final _OpzBandData? opz;
+
+  const _ShiftSectionViewData({
+    required this.currentSales,
+    required this.forecastSales,
+    required this.labor,
+    required this.covers,
+    required this.blendedWage,
+    required this.ppa,
+    required this.cplh,
+    required this.splh,
+    required this.fohHours,
+    required this.bohHours,
+    required this.opz,
+  });
+
+  /// Whole-day projection — reproduces the pre-refactor whole-day render
+  /// exactly. Every field that the whole-day card always drew is
+  /// non-null, so the shared widgets render byte-identically to the old
+  /// inline whole-day path.
+  factory _ShiftSectionViewData.fromWholeDay(ShiftDashboardReadModel rm) {
+    return _ShiftSectionViewData(
+      currentSales: rm.currentSales,
+      forecastSales: rm.forecastSales,
+      labor: _LaborVarianceData(
+        actualPct: rm.actualLaborPct,
+        theoreticalPct: rm.targetLaborPct,
+        variancePts: rm.laborVariancePts,
+      ),
+      covers: rm.coversProvenance,
+      blendedWage: rm.blendedWageProvenance,
+      ppa: rm.ppaProvenance,
+      cplh: rm.cplhProvenance,
+      splh: rm.splhProvenance,
+      fohHours: _HoursColumnData(
+        value: '${rm.scheduledFohHours}',
+        needed: rm.planFohHours,
+        excess: rm.scheduledFohHours - rm.planFohHours,
+      ),
+      bohHours: _HoursColumnData(
+        value: '${rm.scheduledBohHours}',
+        needed: rm.planBohHours,
+        excess: rm.scheduledBohHours - rm.planBohHours,
+      ),
+      opz: _OpzBandData(
+        currentCPLH: rm.actualCPLH,
+        opzFloorCPLH: rm.opzFloorCPLH,
+        opzCeilingCPLH: rm.opzCeilingCPLH,
+        targetCPLH: rm.targetCPLH,
+        opzStatus: rm.opzStatus,
+        opzLabel: rm.opzLabel,
+        opzSubLabel: rm.opzSubLabel,
+        splhState: rm.splhState,
+      ),
+    );
+  }
+
+  /// Per-period projection. Honest nulls everywhere a number cannot be
+  /// derived so the shared widgets degrade to "—" / the connect copy /
+  /// the no-zone line — never a phantom `0` (Design Rule 2 + Metric
+  /// Honesty Doctrine). Gap-42 fallback (empty per-period rows → no
+  /// locked target) is honored here: a null [DaypartTargetContext]
+  /// field flows straight through to a hidden sub-line / no band.
+  factory _ShiftSectionViewData.fromPeriod(
+    ServicePeriodAccumulator bucket,
+    DaypartTargetContext tc,
+  ) {
+    // Per-period forecast = covers × locked per-period PPA target. Null
+    // target → 0 forecast → SalesForecastCard's honest "No forecast
+    // available", never a 0-anchored progress bar.
+    final ppaTarget = tc.targetPPA;
+    final forecastSales =
+        ppaTarget != null ? bucket.covers * ppaTarget : 0.0;
+
+    // Labor % is honest only when BOTH labor punches and sales exist.
+    final actualLaborDollars = bucket.fohWageDollars + bucket.bohWageDollars;
+    final double? actualPct =
+        (bucket.totalMinutes > 0 && bucket.sales > 0)
+            ? actualLaborDollars / bucket.sales * 100
+            : null;
+    final double? theoreticalPct = tc.theoreticalLaborPct;
+    final double? variancePts = (actualPct != null && theoreticalPct != null)
+        ? actualPct - theoreticalPct
+        : null;
+
+    // Live per-period metrics reuse the demo whole-day provenance string
+    // so the small source label under the value reads identically to the
+    // whole-day pill (same synthesized canonical facts behind both).
+    MetricProvenance liveOr(bool ok, num value) => ok
+        ? MetricProvenance.live(value: value, provenance: 'vendor_unknown')
+        : const MetricProvenance.unavailable();
+
+    final hasLabor = bucket.totalMinutes > 0;
+    final hasCovers = bucket.covers > 0;
+
+    _OpzBandData? opz;
+    if (tc.hasOpzBand) {
+      final floor = tc.opzFloorCPLH!;
+      final ceiling = tc.opzCeilingCPLH!;
+      final target = tc.targetCPLH!;
+      if (!hasLabor) {
+        // Locked band exists but NO in-period labor punches yet. Do NOT
+        // score the period off a phantom `0.0` CPLH — that previously
+        // rendered an alarming "BELOW OPZ" verdict + a 0.0 needle for a
+        // period that simply has no actuals in yet (Metric Honesty
+        // Doctrine / Design Rule 2: missing actuals → honest pending
+        // state, never a verdict computed off a sentinel zero). The band
+        // is still shown (floor/ceiling/target) so the operator sees the
+        // locked standard; `'pending'` makes ZoneStatusCard suppress the
+        // needle, dash the CURRENT CPLH value, and neutralize the label.
+        opz = _OpzBandData(
+          currentCPLH: 0.0, // sentinel — not rendered in the pending state
+          opzFloorCPLH: floor,
+          opzCeilingCPLH: ceiling,
+          targetCPLH: target,
+          opzStatus: 'pending',
+          opzLabel: 'AWAITING ACTUALS',
+          opzSubLabel:
+              'Locked productivity zone is set. Waiting on labor punches '
+              'for this period before scoring.',
+        );
+      } else {
+        final currentCplh = bucket.cplh;
+        final status = currentCplh < floor
+            ? 'below'
+            : currentCplh > ceiling
+                ? 'above'
+                : 'in';
+        final label = status == 'below'
+            ? 'BELOW OPZ'
+            : status == 'above'
+                ? 'ABOVE OPZ'
+                : 'IN OPZ';
+        final sub = status == 'below'
+            ? 'Productivity is below the OPZ floor. Too many labor hours '
+                'for the volume.'
+            : status == 'above'
+                ? 'Productivity is above the OPZ ceiling. Service quality '
+                    'may suffer.'
+                : 'Team is producing. Watch covers.';
+        opz = _OpzBandData(
+          currentCPLH: currentCplh,
+          opzFloorCPLH: floor,
+          opzCeilingCPLH: ceiling,
+          targetCPLH: target,
+          opzStatus: status,
+          opzLabel: label,
+          opzSubLabel: sub,
+        );
+      }
+    }
+
+    String hrs(int minutes) => minutes > 0
+        ? (minutes / 60).toStringAsFixed(minutes % 60 == 0 ? 0 : 1)
+        : '—';
+
+    return _ShiftSectionViewData(
+      currentSales: bucket.sales,
+      forecastSales: forecastSales,
+      labor: _LaborVarianceData(
+        actualPct: actualPct,
+        theoreticalPct: theoreticalPct,
+        variancePts: variancePts,
+      ),
+      covers: liveOr(hasCovers, bucket.covers),
+      blendedWage: liveOr(hasLabor, bucket.blendedWage),
+      ppa: liveOr(hasCovers, bucket.ppa),
+      cplh: liveOr(hasLabor, bucket.cplh),
+      splh: liveOr(hasLabor, bucket.splh),
+      fohHours: _HoursColumnData(value: hrs(bucket.fohMinutes)),
+      bohHours: _HoursColumnData(value: hrs(bucket.bohMinutes)),
+      opz: opz,
+    );
+  }
+}
+
 class _OutputsSection extends StatelessWidget {
-  final ShiftDashboardReadModel readModel;
-  const _OutputsSection({required this.readModel});
+  final _ShiftSectionViewData data;
+  const _OutputsSection({required this.data});
 
   @override
   Widget build(BuildContext context) {
     // feat(11W.metric-pill): converted from InputMetricCard /
     // MetricCardNotYetAvailable conditional to MetricPill, which
     // enforces state + provenance at the widget boundary.
-    final coversProv = readModel.coversProvenance;
-    final wageProv = readModel.blendedWageProvenance;
+    final coversProv = data.covers;
+    final wageProv = data.blendedWage;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -629,12 +925,12 @@ class _OutputsSection extends StatelessWidget {
               children: [
                 Expanded(
                   child: SalesForecastCard(
-                    currentSales: readModel.currentSales,
-                    forecastSales: readModel.forecastSales,
+                    currentSales: data.currentSales,
+                    forecastSales: data.forecastSales,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Expanded(child: _LaborCard(readModel: readModel)),
+                Expanded(child: _LaborCard(labor: data.labor)),
               ],
             ),
           ),
@@ -683,28 +979,19 @@ class _OutputsSection extends StatelessWidget {
 // ─── Inputs section (PPA, CPLH, SPLH, FOH HRS, BOH HRS) ───────────────────
 
 class _InputsSection extends StatelessWidget {
-  final ShiftDashboardReadModel readModel;
-  const _InputsSection({required this.readModel});
+  final _ShiftSectionViewData data;
+  const _InputsSection({required this.data});
 
   @override
   Widget build(BuildContext context) {
     // feat(11W.metric-pill): converted from InputMetricCard /
     // MetricCardNotYetAvailable conditional to MetricPill for PPA,
-    // CPLH, and SPLH. Provenance state flows from the read model;
+    // CPLH, and SPLH. Provenance state flows from the section
+    // view-data (whole-day read model OR a per-period bucket);
     // no state is hardcoded as live.
-
-    // Provenance objects from read model (carry state + provenance string).
-    final ppaProv = readModel.ppaProvenance;
-    final cplhProv = readModel.cplhProvenance;
-    final splhProv = readModel.splhProvenance;
-
-    // Hours data — plan targets from SchedulePlan day row
-    final fohScheduled = readModel.scheduledFohHours;
-    final bohScheduled = readModel.scheduledBohHours;
-    final fohTarget = readModel.planFohHours;
-    final bohTarget = readModel.planBohHours;
-    final fohExcess = fohScheduled - fohTarget;
-    final bohExcess = bohScheduled - bohTarget;
+    final ppaProv = data.ppa;
+    final cplhProv = data.cplh;
+    final splhProv = data.splh;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -764,24 +1051,80 @@ class _InputsSection extends StatelessWidget {
                 Expanded(
                   child: _CompactHoursColumn(
                     label: 'FOH HRS',
-                    scheduled: fohScheduled,
-                    needed: fohTarget,
-                    excess: fohExcess,
+                    value: data.fohHours.value,
+                    needed: data.fohHours.needed,
+                    excess: data.fohHours.excess,
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: _CompactHoursColumn(
                     label: 'BOH HRS',
-                    scheduled: bohScheduled,
-                    needed: bohTarget,
-                    excess: bohExcess,
+                    value: data.bohHours.value,
+                    needed: data.bohHours.needed,
+                    excess: data.bohHours.excess,
                   ),
                 ),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── FOH Productivity section (OPZ band) ────────────────────────────────────
+
+/// Shared FOH PRODUCTIVITY section. Whole-day always supplies a locked
+/// band ([_OpzBandData]) so it renders the [ZoneStatusCard] exactly as
+/// the pre-refactor inline whole-day path did (byte-untouched — Promise
+/// 3 / Layer 9). A period with no locked OPZ band (no closed-shift
+/// stamp, no open-shift profile row — Gap 42 fallback) renders the
+/// honest no-zone line instead of a gauge drawn off a `0` anchor
+/// (Design Rule 2). The horizontal:16 padding lives here so both lenses
+/// share the identical inset.
+class _FohProductivitySection extends StatelessWidget {
+  final _ShiftSectionViewData data;
+  const _FohProductivitySection({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final opz = data.opz;
+    if (opz == null) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [AppColors.backgroundMid, AppColors.cardGlow],
+            ),
+            border: Border.all(
+              color: AppColors.borderSubtle.withValues(alpha: 0.7),
+              width: 1,
+            ),
+          ),
+          child: Text(
+            'No locked productivity zone for this period yet.',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
+          ),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: ZoneStatusCard(
+        currentCPLH: opz.currentCPLH,
+        opzFloorCPLH: opz.opzFloorCPLH,
+        opzCeilingCPLH: opz.opzCeilingCPLH,
+        targetCPLH: opz.targetCPLH,
+        opzStatus: opz.opzStatus,
+        opzLabel: opz.opzLabel,
+        opzSubLabel: opz.opzSubLabel,
+        splhState: opz.splhState,
       ),
     );
   }
@@ -920,47 +1263,44 @@ class _PeriodPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = selected ? AppColors.sunset : AppColors.backgroundMid;
+    // The active (current real-time) period is signalled by an orange
+    // (sunset) border only — no "ACTIVE NOW" text. Selected styling keeps
+    // its own border; an unselected-but-active chip gets the bold orange
+    // border as the sole live affordance, others stay subtle.
     final borderColor = selected
         ? AppColors.sunsetDark
-        : AppColors.borderSubtle.withValues(alpha: 0.7);
+        : activeNow
+            ? AppColors.sunset
+            : AppColors.borderSubtle.withValues(alpha: 0.7);
+    final borderWidth = activeNow && !selected ? 2.0 : 1.0;
     final textColor = selected
         ? AppColors.textPrimary
         : AppColors.textSecondary;
     return Semantics(
       button: true,
       selected: selected,
+      // Preserve the active state for screen readers now that the visible
+      // "ACTIVE NOW" text is gone (border-only affordance).
+      value: activeNow ? 'active now' : null,
       label: label,
       child: InkWell(
         onTap: onTap,
         child: Container(
+          key: activeNow ? const Key('shift_period_pill_active') : null,
           constraints: const BoxConstraints(minWidth: 88, minHeight: 38),
           padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
           decoration: BoxDecoration(
             color: bgColor,
-            border: Border.all(color: borderColor, width: 1),
+            border: Border.all(color: borderColor, width: borderWidth),
             borderRadius: BorderRadius.circular(2),
           ),
           alignment: Alignment.center,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: AppTextStyles.mono12(
-                  color: textColor,
-                  weight: FontWeight.w700,
-                ),
-              ),
-              if (activeNow) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'ACTIVE NOW',
-                  style: AppTextStyles.mono8(
-                    color: AppColors.sunsetDark,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ],
-            ],
+          child: Text(
+            label,
+            style: AppTextStyles.mono12(
+              color: textColor,
+              weight: FontWeight.w700,
+            ),
           ),
         ),
       ),
@@ -968,39 +1308,35 @@ class _PeriodPill extends StatelessWidget {
   }
 }
 
-// ─── Daypart scaffold (Phase 10.5.0 → 10.5.2) ───────────────────────────────
+// ─── Daypart period header (Per-Daypart V1 — true 1:1 layout) ───────────────
 
-/// Live daypart lens for the Shift surface.
-///
-/// Phase 10.5.0 opened the surface seam (cards + ACTIVE NOW chip).
-/// Phase 10.5.2 lights up the per-service-period accumulator: the
-/// scaffold now reads bucket totals from [ShiftServicePeriodNotifier]
-/// (covers, sales, CPLH, SPLH, PPA, blended-wage) and renders them
-/// on each card. Empty buckets show an explicit "no data yet" line so
-/// the operator never sees zeros that could be confused with real
-/// truth.
+/// Compact period-identity + status element rendered ABOVE the three
+/// shared section groups in the daypart lens — NOT a bordered card
+/// wrapping the sections (operator instruction: the daypart layout is
+/// the SAME grammar as Whole Day, not a lookalike). It carries only the
+/// things the whole-day lens has no equivalent for: which period is
+/// selected, its clock window, its tri-state status line, the missing-
+/// timezone banner, and the Phase 10.5.3 per-period primary-driver chip.
+/// The metric sections themselves are the SAME `_OutputsSection` /
+/// `_InputsSection` / `_FohProductivitySection` whole-day uses.
 ///
 /// **Time-source contract (mirrors `current_state_boundary_monitor.dart`):**
-/// the active-period chip is computed from `tz.TZDateTime.now(loc)` for
-/// the active restaurant's IANA `businessTimezone`, then bucketed by
-/// **business-date weekday** via [BusinessDateResolver] — never by raw
-/// `DateTime.now().weekday`. Tests inject a restaurant-local
-/// [DateTime] via [ShiftDashboard.clockOverride]. When the
-/// restaurant has no usable IANA timezone, no `ACTIVE NOW` chip
-/// surfaces — the scaffold refuses to fall back to the device clock,
-/// matching the boundary monitor's contract refusal.
+/// the active/closed/future phase is computed from `tz.TZDateTime.now`
+/// for the restaurant's IANA `businessTimezone`, bucketed by
+/// **business-date weekday** via [BusinessDateResolver] — never raw
+/// `DateTime.now().weekday`. Tests inject a restaurant-local [DateTime]
+/// via [ShiftDashboard.clockOverride]. No usable IANA timezone → the
+/// status line degrades honestly ("Opens at …" / the missing-tz copy),
+/// never a false "closed".
 ///
-/// A4.2 (R2): rebuilds are driven by the dashboard-wide
-/// [_ShiftDashboardTicker] (provided at the dashboard root) instead of
-/// a local `Timer.periodic`. The shared ticker fires once every 30s
-/// and fans out to every wall-clock-dependent widget so the chip stays
-/// accurate when the operator parks on the daypart view across a
-/// service-period boundary (e.g. Lunch → no-period → Dinner).
-class _DaypartScaffoldSection extends StatelessWidget {
+/// A4.2 (R2): rebuilds via the dashboard-wide [_ShiftDashboardTicker]
+/// (30s) so the status line follows the live clock across a
+/// service-period boundary without a local `Timer.periodic`.
+class _DaypartPeriodHeader extends StatelessWidget {
   final String selectedPeriodId;
   final ValueListenable<DateTime> ticker;
 
-  const _DaypartScaffoldSection({
+  const _DaypartPeriodHeader({
     required this.selectedPeriodId,
     required this.ticker,
   });
@@ -1014,20 +1350,11 @@ class _DaypartScaffoldSection extends StatelessWidget {
             context.watch<RestaurantScopeNotifier?>()?.restaurant;
         final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
 
-        final definitions =
-            periodNotifier?.definitions ??
+        final definitions = periodNotifier?.definitions ??
             ServicePeriodDefinitionResolver.demoDefinitions;
-        final cutoff =
-            periodNotifier?.businessDayStartLocalTime ??
+        final cutoff = periodNotifier?.businessDayStartLocalTime ??
             _defaultBusinessDayStartLocalTime;
         final localNow = _restaurantLocalNow(restaurant);
-        final activeId = localNow == null
-            ? null
-            : resolveActiveServicePeriodId(
-                localNow: localNow,
-                businessDayStartLocalTime: cutoff,
-                definitions: definitions,
-              );
         final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
         ServicePeriodDefinition? selectedDefinition;
         for (final definition in ordered) {
@@ -1036,11 +1363,13 @@ class _DaypartScaffoldSection extends StatelessWidget {
             break;
           }
         }
-        final buckets = periodNotifier?.buckets;
         final missingTimezone = periodNotifier?.missingTimezone ?? false;
+        final primaryLeverCard = selectedDefinition == null
+            ? null
+            : periodNotifier?.primaryLeverCardFor(selectedDefinition.id);
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1074,16 +1403,64 @@ class _DaypartScaffoldSection extends StatelessWidget {
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 )
               else ...[
-                _DaypartScaffoldCard(
-                  definition: selectedDefinition,
-                  isActive: selectedDefinition.id == activeId,
-                  bucket: buckets?[selectedDefinition.id],
-                  primaryLeverCard: periodNotifier?.primaryLeverCardFor(
-                    selectedDefinition.id,
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.sunset.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: Text(
+                        selectedDefinition.shortLabel,
+                        style: AppTextStyles.mono10(
+                          color: AppColors.sunsetDark,
+                        ).copyWith(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        selectedDefinition.label,
+                        style: AppTextStyles.mono14(
+                          color: AppColors.textPrimary,
+                          weight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${selectedDefinition.startLocalTime} – '
+                      '${selectedDefinition.endLocalTime}',
+                      style: AppTextStyles.mono10(color: AppColors.textMuted),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Tri-state status line — preserved verbatim from the
+                // retired bespoke card (Period closed / Active now /
+                // Opens at … / missing-tz). Never a false "closed".
+                _DaypartStatusLine(
                   missingTimezone: missingTimezone,
+                  phase: localNow == null
+                      ? null
+                      : resolveServicePeriodPhase(
+                          localNow: localNow,
+                          businessDayStartLocalTime: cutoff,
+                          definitions: definitions,
+                          periodId: selectedDefinition.id,
+                        ),
+                  startLocalTime: selectedDefinition.startLocalTime,
                 ),
                 const SizedBox(height: 8),
+                // Phase 10.5.3 — per-period primary driver chip. Resolves
+                // through `LeverCards.lookup`; null surfaces as the
+                // "No pattern yet" degraded state per 7.58 F-1 / F-6
+                // (no silent fall-through to a real lever).
+                _DaypartDriverChip(card: primaryLeverCard),
               ],
             ],
           ),
@@ -1093,96 +1470,71 @@ class _DaypartScaffoldSection extends StatelessWidget {
   }
 }
 
-class _DaypartScaffoldCard extends StatelessWidget {
-  final ServicePeriodDefinition definition;
-  final bool isActive;
-  final ServicePeriodAccumulator? bucket;
-  final LeverCardData? primaryLeverCard;
+/// Per-Daypart V1 (Slice 4 closed-state fix) — the tri-state status
+/// line rendered inside (never instead of) the full daypart card.
+///
+/// Copy is intentionally minimal and reads as training (UX Writing
+/// Standard):
+///   * missing timezone → "Timezone not configured — metrics
+///     unavailable." (kept verbatim from the prior implementation);
+///   * [ServicePeriodPhase.past] → "Period closed" (the bug: a
+///     past/closed period previously fell through to the future copy);
+///   * [ServicePeriodPhase.active] → "Active now";
+///   * [ServicePeriodPhase.future] (or null clock) → "Opens at
+///     {startLocalTime}" — only a genuinely not-yet-open period is
+///     framed as opening.
+class _DaypartStatusLine extends StatelessWidget {
   final bool missingTimezone;
+  final ServicePeriodPhase? phase;
+  final String startLocalTime;
 
-  const _DaypartScaffoldCard({
-    required this.definition,
-    required this.isActive,
-    required this.bucket,
-    this.primaryLeverCard,
-    this.missingTimezone = false,
+  const _DaypartStatusLine({
+    required this.missingTimezone,
+    required this.phase,
+    required this.startLocalTime,
   });
 
   @override
   Widget build(BuildContext context) {
-    final accent = isActive ? AppColors.sunset : AppColors.borderSubtle;
-    final hasData = bucket?.hasAnyData ?? false;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.backgroundMid, AppColors.cardGlow],
-        ),
-        border: Border.all(
-          color: accent.withValues(alpha: isActive ? 0.85 : 0.6),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.sunset.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-                child: Text(
-                  definition.shortLabel,
-                  style: AppTextStyles.mono10(
-                    color: AppColors.sunsetDark,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  definition.label,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              Text(
-                '${definition.startLocalTime} – ${definition.endLocalTime}',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          if (hasData) ...[
-            _DaypartMetricGrid(bucket: bucket!),
-            const SizedBox(height: 10),
-            // Phase 10.5.3 — per-period primary driver chip. Resolves
-            // through `LeverCards.lookup`; null surfaces as the
-            // "No pattern yet" degraded state per 7.58 F-1 / F-6
-            // (no silent fall-through to a real lever).
-            _DaypartDriverChip(card: primaryLeverCard),
-          ] else
-            Text(
-              missingTimezone
-                  ? 'Timezone not configured — metrics unavailable.'
-                  : isActive
-                  ? 'No data yet for this period.'
-                  : 'Projected / unavailable until this period opens.',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-        ],
-      ),
+    final String text;
+    if (missingTimezone) {
+      text = 'Timezone not configured — metrics unavailable.';
+    } else {
+      switch (phase) {
+        case ServicePeriodPhase.past:
+          text = 'Period closed';
+          break;
+        case ServicePeriodPhase.active:
+          text = 'Active now';
+          break;
+        case ServicePeriodPhase.future:
+        case null:
+          // Null clock degrades to the honest "opens at" framing — it
+          // must never claim a period is closed without proof.
+          text = 'Opens at $startLocalTime';
+          break;
+      }
+    }
+    return Text(
+      text,
+      style: AppTextStyles.mono10(color: AppColors.textMuted),
     );
   }
 }
+
+// Per-Daypart V1 — true 1:1 refactor: the bespoke daypart card family
+// (`_DaypartScaffoldSection`, `_DaypartScaffoldCard`,
+// `_DaypartSectionHeader`, `_dpFmt`, `_DaypartOutputsSection`,
+// `_DaypartLaborCard`, `_DaypartInputsSection`,
+// `_DaypartFohProductivitySection`, `_DaypartTargetedCell`,
+// `_MetricCell`) was retired. The daypart lens now emits the SAME
+// `_OutputsSection` / `_InputsSection` / `_FohProductivitySection`
+// sticky-section groups the whole-day lens does, fed by
+// `_ShiftSectionViewData.fromPeriod`. The honest per-period degrade
+// (Design Rule 2) is preserved inside those shared widgets +
+// `MetricPill`'s unavailable branch. `_DaypartStatusLine` (above) and
+// `_DaypartDriverChip` (below) are kept — they back the compact
+// `_DaypartPeriodHeader` element that sits above the sections.
 
 /// Phase 10.5.3 — per-period primary driver chip rendered alongside
 /// the daypart metric grid. Mirrors the Variance daypart lens chip so
@@ -1226,110 +1578,6 @@ class _DaypartDriverChip extends StatelessWidget {
           color: accent,
         ).copyWith(fontWeight: FontWeight.w700),
       ),
-    );
-  }
-}
-
-/// Compact 3-row metric grid for a single service-period bucket.
-///
-/// Layout (per-period, all values are actuals — no plan target on
-/// purpose, since per-period plan targets are not yet shipped):
-///   row 1: COVERS · SALES
-///   row 2: PPA · CPLH · SPLH
-///   row 3: HRS (FOH/BOH) · BLENDED WAGE
-class _DaypartMetricGrid extends StatelessWidget {
-  final ServicePeriodAccumulator bucket;
-  const _DaypartMetricGrid({required this.bucket});
-
-  @override
-  Widget build(BuildContext context) {
-    final fohHrs = (bucket.fohMinutes / 60).toStringAsFixed(
-      bucket.fohMinutes % 60 == 0 ? 0 : 1,
-    );
-    final bohHrs = (bucket.bohMinutes / 60).toStringAsFixed(
-      bucket.bohMinutes % 60 == 0 ? 0 : 1,
-    );
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(label: 'COVERS', value: '${bucket.covers}'),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'SALES',
-                value: '\$${bucket.sales.toStringAsFixed(0)}',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(
-                label: 'PPA',
-                value: '\$${bucket.ppa.toStringAsFixed(2)}',
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'CPLH',
-                value: bucket.cplh.toStringAsFixed(2),
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'SPLH',
-                value: '\$${bucket.splh.toStringAsFixed(0)}',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _MetricCell(
-                label: 'HRS',
-                value: '$fohHrs FOH / $bohHrs BOH',
-              ),
-            ),
-            Expanded(
-              child: _MetricCell(
-                label: 'BLENDED WAGE',
-                value: '\$${bucket.blendedWage.toStringAsFixed(2)}',
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _MetricCell extends StatelessWidget {
-  final String label;
-  final String value;
-  const _MetricCell({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
-        const SizedBox(height: 2),
-        Text(
-          value,
-          style: AppTextStyles.mono14(
-            color: AppColors.textPrimary,
-            weight: FontWeight.w700,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1478,9 +1726,18 @@ class _ShiftEmptyState extends StatelessWidget {
   }
 }
 
+/// Shared LABOR % card (Outputs section, right of Sales). Whole-day
+/// supplies a fully-populated [_LaborVarianceData] so the render is
+/// byte-identical to the pre-refactor whole-day card (Promise 3 / Layer
+/// 9). A period supplies honest nulls: a null `actualPct` renders "\u2014"
+/// (labor not connected), a null `theoreticalPct` hides the
+/// `Theoretical X.X%` sub-line, a null `variancePts` hides the \u00b1pts
+/// delta pill \u2014 never a phantom `0.0%` / `0.0 pts` (Design Rule 2 +
+/// Metric Honesty Doctrine). The LABOR Theoretical + delta-pill parity
+/// (#789) flows for free through this shared widget for both lenses.
 class _LaborCard extends StatelessWidget {
-  final ShiftDashboardReadModel readModel;
-  const _LaborCard({required this.readModel});
+  final _LaborVarianceData labor;
+  const _LaborCard({required this.labor});
 
   @override
   Widget build(BuildContext context) {
@@ -1498,24 +1755,33 @@ class _LaborCard extends StatelessWidget {
         ),
         borderRadius: BorderRadius.circular(3),
       ),
-      child: _LaborVarianceSection(readModel: readModel),
+      child: _LaborVarianceSection(labor: labor),
     );
   }
 }
 
 class _LaborVarianceSection extends StatelessWidget {
-  final ShiftDashboardReadModel readModel;
-  const _LaborVarianceSection({required this.readModel});
+  final _LaborVarianceData labor;
+  const _LaborVarianceSection({required this.labor});
 
   @override
   Widget build(BuildContext context) {
-    final actual = readModel.actualLaborPct;
-    final target = readModel.targetLaborPct;
-    final variancePts = readModel.laborVariancePts;
+    final actualPct = labor.actualPct;
+    final theoreticalPct = labor.theoreticalPct;
+    final variancePts = labor.variancePts;
 
-    final isOver = variancePts > 0;
+    final hasVariance = actualPct != null && theoreticalPct != null;
+    final isOver = (variancePts ?? 0) > 0;
     final accentColor = isOver ? AppColors.negative : AppColors.positive;
     final ptSign = isOver ? '+' : '\u2212';
+    // Value color matches the whole-day card (accent over/under) only
+    // when a variance can be computed; neutral when it cannot, muted
+    // when the actual itself is unknown.
+    final valueColor = actualPct == null
+        ? AppColors.textMuted
+        : hasVariance
+            ? accentColor
+            : AppColors.textPrimary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1526,65 +1792,79 @@ class _LaborVarianceSection extends StatelessWidget {
           style: AppTextStyles.mono10(color: AppColors.textMuted),
         ),
         const SizedBox(height: 6),
-        // Current value
+        // Current value (honest "\u2014" when labor unconnected).
         Text(
-          '${actual.toStringAsFixed(1)}%',
-          style: AppTextStyles.mono28(color: accentColor),
+          actualPct == null ? '\u2014' : '${actualPct.toStringAsFixed(1)}%',
+          style: AppTextStyles.mono28(color: valueColor),
         ),
-        const SizedBox(height: 3),
-        // Target reference
-        Text(
-          'Theoretical ${target.toStringAsFixed(1)}%',
-          style: AppTextStyles.mono10(color: AppColors.textMuted),
-        ),
-        const SizedBox(height: 8),
-        // Delta pill
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: accentColor.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(2),
+        // Theoretical reference \u2014 shown only when known (never
+        // `Theoretical 0.0%`). Same spacing + style as the whole-day
+        // card (which always has it).
+        if (theoreticalPct != null) ...[
+          const SizedBox(height: 3),
+          Text(
+            'Theoretical ${theoreticalPct.toStringAsFixed(1)}%',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isOver ? Icons.arrow_upward : Icons.arrow_downward,
-                size: 14,
-                color: accentColor,
-              ),
-              const SizedBox(width: 2),
-              Text(
-                '$ptSign${variancePts.abs().toStringAsFixed(1)} pts',
-                style: AppTextStyles.mono12(
+        ],
+        // Delta pill \u2014 byte-consistent with the whole-day pill. Hidden
+        // when the variance cannot be computed.
+        if (variancePts != null) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(2),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isOver ? Icons.arrow_upward : Icons.arrow_downward,
+                  size: 14,
                   color: accentColor,
-                  weight: FontWeight.w700,
                 ),
-              ),
-            ],
+                const SizedBox(width: 2),
+                Text(
+                  '$ptSign${variancePts.abs().toStringAsFixed(1)} pts',
+                  style: AppTextStyles.mono12(
+                    color: accentColor,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+        ],
       ],
     );
   }
 }
 
+/// Shared FOH/BOH hours column. Whole-day always supplies
+/// [needed]/[excess] (SchedulePlan day row) so the "Target N hrs"
+/// sub-line + delta pill render exactly as before. A period supplies
+/// neither (no scheduled-vs-needed target is tracked per period yet) \u2192
+/// the column shows the value alone, never a fabricated `Target 0 hrs`
+/// (Design Rule 2). [value] is pre-formatted by the projection.
 class _CompactHoursColumn extends StatelessWidget {
   final String label;
-  final int scheduled;
-  final int needed;
-  final int excess;
+  final String value;
+  final int? needed;
+  final int? excess;
 
   const _CompactHoursColumn({
     required this.label,
-    required this.scheduled,
-    required this.needed,
-    required this.excess,
+    required this.value,
+    this.needed,
+    this.excess,
   });
 
   @override
   Widget build(BuildContext context) {
-    final isOver = excess > 0;
+    final hasTarget = needed != null && excess != null;
+    final isOver = (excess ?? 0) > 0;
     final deltaColor = isOver ? AppColors.negative : AppColors.positive;
     final deltaIcon = isOver ? Icons.arrow_upward : Icons.arrow_downward;
 
@@ -1608,36 +1888,38 @@ class _CompactHoursColumn extends StatelessWidget {
           Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
           const SizedBox(height: 6),
           // Current value
-          Text('$scheduled', style: AppTextStyles.mono28()),
-          const SizedBox(height: 3),
-          // Target reference
-          Text(
-            'Target $needed hrs',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 8),
-          // Delta pill
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: deltaColor.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(2),
+          Text(value, style: AppTextStyles.mono28()),
+          if (hasTarget) ...[
+            const SizedBox(height: 3),
+            // Target reference
+            Text(
+              'Target $needed hrs',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(deltaIcon, size: 14, color: deltaColor),
-                const SizedBox(width: 2),
-                Text(
-                  '${isOver ? '+' : ''}$excess hrs',
-                  style: AppTextStyles.mono12(
-                    color: deltaColor,
-                    weight: FontWeight.w700,
+            const SizedBox(height: 8),
+            // Delta pill
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: deltaColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(deltaIcon, size: 14, color: deltaColor),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${isOver ? '+' : ''}$excess hrs',
+                    style: AppTextStyles.mono12(
+                      color: deltaColor,
+                      weight: FontWeight.w700,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

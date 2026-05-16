@@ -464,6 +464,217 @@ void main() {
     );
   });
 
+  group(
+      'TockReservationPostgresSink — I. Per-Daypart V1 Slice 7a '
+      '(Gap 45) business_date timezone projection',
+      () {
+    test(
+      'I.1 late-night before rollover in America/Toronto buckets to '
+      'PRIOR business_date (01:30 local Wed → Tue business_date)',
+      () async {
+        final db = _FakeDb()
+          ..seedLocation(_opA, _locA, 'America/Toronto', 4);
+        final sink = TockReservationPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(_FakePool(db)),
+          now: () => DateTime.utc(2026, 5, 13, 12),
+        );
+        // Wed 2026-05-13 01:30 EDT (UTC-4) = Wed 2026-05-13 05:30 UTC.
+        // local.hour 1 < 4 (rollover) → business_date = Tue 2026-05-12.
+        final canonicalFact = _tockCanonicalFact(
+          reservationId: 'tz-test-1',
+          reservationAtIso: '2026-05-13T05:30:00.000Z',
+          lastUpdatedIso: '2026-05-13T05:35:00.000Z',
+          createdIso: '2026-05-12T20:00:00.000Z',
+          partySize: 2,
+          canonicalStatus: 'seated',
+          vendorStatusRaw: 'SEATED',
+        );
+        final rawPayload = _tockRawReservation(
+          reservationId: 'tz-test-1',
+          reservationAtIso: '2026-05-13T05:30:00.000Z',
+          lastUpdatedIso: '2026-05-13T05:35:00.000Z',
+          createdIso: '2026-05-12T20:00:00.000Z',
+          partySize: 2,
+          vendorStatus: 'SEATED',
+        );
+
+        await sink.upsertReservationFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonicalFact,
+          rawPayload: rawPayload,
+          connectionId: _connA,
+        );
+
+        final readBack = await _readReservationFactsAsTenant(
+          db: db,
+          operatorId: _opA,
+          locationId: _locA,
+        );
+        expect(readBack, hasLength(1));
+        expect(readBack.single['business_date'], '2026-05-12',
+            reason: '01:30 Wed local with 04:00 rollover belongs to '
+                'PRIOR business_date (Tue), not the UTC calendar date.');
+      },
+    );
+
+    test(
+      'I.2 late-evening after rollover but before midnight in '
+      'America/Toronto stays on the SAME business_date '
+      '(23:30 local Tue → Tue business_date)',
+      () async {
+        final db = _FakeDb()
+          ..seedLocation(_opA, _locA, 'America/Toronto', 4);
+        final sink = TockReservationPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(_FakePool(db)),
+          now: () => DateTime.utc(2026, 5, 13, 12),
+        );
+        // Tue 2026-05-12 23:30 EDT = Wed 2026-05-13 03:30 UTC.
+        // local.hour 23 ≥ 4 → business_date = Tue 2026-05-12.
+        // The legacy `_utcDateString` would have wrongly returned
+        // 2026-05-13 (the UTC calendar date). Slice 7a fixes this.
+        final canonicalFact = _tockCanonicalFact(
+          reservationId: 'tz-test-2',
+          reservationAtIso: '2026-05-13T03:30:00.000Z',
+          lastUpdatedIso: '2026-05-13T03:35:00.000Z',
+          createdIso: '2026-05-12T15:00:00.000Z',
+          partySize: 4,
+          canonicalStatus: 'seated',
+          vendorStatusRaw: 'SEATED',
+        );
+        final rawPayload = _tockRawReservation(
+          reservationId: 'tz-test-2',
+          reservationAtIso: '2026-05-13T03:30:00.000Z',
+          lastUpdatedIso: '2026-05-13T03:35:00.000Z',
+          createdIso: '2026-05-12T15:00:00.000Z',
+          partySize: 4,
+          vendorStatus: 'SEATED',
+        );
+
+        await sink.upsertReservationFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonicalFact,
+          rawPayload: rawPayload,
+          connectionId: _connA,
+        );
+
+        final readBack = await _readReservationFactsAsTenant(
+          db: db,
+          operatorId: _opA,
+          locationId: _locA,
+        );
+        expect(readBack, hasLength(1));
+        expect(readBack.single['business_date'], '2026-05-12',
+            reason: '23:30 Tue local with 04:00 rollover stays on Tue, '
+                'NOT the UTC calendar date (which would be Wed).');
+      },
+    );
+
+    test(
+      'I.3 rollover instant exactly (04:00:00 local) belongs to the '
+      'NEW business_date — predicate `local.hour < rollover` is strict',
+      () async {
+        final db = _FakeDb()
+          ..seedLocation(_opA, _locA, 'America/Toronto', 4);
+        final sink = TockReservationPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(_FakePool(db)),
+          now: () => DateTime.utc(2026, 5, 13, 12),
+        );
+        // Wed 2026-05-13 04:00 EDT exactly = Wed 2026-05-13 08:00 UTC.
+        // local.hour 4, predicate `4 < 4` is false → Wed 2026-05-13.
+        final canonicalFact = _tockCanonicalFact(
+          reservationId: 'tz-test-3',
+          reservationAtIso: '2026-05-13T08:00:00.000Z',
+          lastUpdatedIso: '2026-05-13T08:05:00.000Z',
+          createdIso: '2026-05-13T00:00:00.000Z',
+          partySize: 6,
+          canonicalStatus: 'seated',
+          vendorStatusRaw: 'SEATED',
+        );
+        final rawPayload = _tockRawReservation(
+          reservationId: 'tz-test-3',
+          reservationAtIso: '2026-05-13T08:00:00.000Z',
+          lastUpdatedIso: '2026-05-13T08:05:00.000Z',
+          createdIso: '2026-05-13T00:00:00.000Z',
+          partySize: 6,
+          vendorStatus: 'SEATED',
+        );
+
+        await sink.upsertReservationFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonicalFact,
+          rawPayload: rawPayload,
+          connectionId: _connA,
+        );
+
+        final readBack = await _readReservationFactsAsTenant(
+          db: db,
+          operatorId: _opA,
+          locationId: _locA,
+        );
+        expect(readBack, hasLength(1));
+        expect(readBack.single['business_date'], '2026-05-13',
+            reason: '04:00 local exactly is NOT before the 04:00 '
+                'rollover (predicate is strict `local.hour < rollover`); '
+                'belongs to the new business_date.');
+      },
+    );
+
+    test(
+      'I.4 default fallback when location row is missing — sink uses '
+      "('UTC', 4) (Libro fallback) so 03:00 UTC projects to PRIOR day",
+      () async {
+        // No `seedLocation` — the SELECT returns empty rows and the
+        // sink falls back to `('UTC', 4)` per the Libro pattern.
+        final db = _FakeDb();
+        final sink = TockReservationPostgresSink(
+          tenantWrapper: TenantTransactionWrapper(_FakePool(db)),
+          now: () => DateTime.utc(2026, 6, 15, 12),
+        );
+        // Pick a non-DST UTC instant (2026-06-15 is mid-summer, but
+        // we are projecting under UTC so DST is irrelevant). 03:00 UTC
+        // < 04:00 rollover → business_date = prior calendar date.
+        final canonicalFact = _tockCanonicalFact(
+          reservationId: 'tz-test-4',
+          reservationAtIso: '2026-06-15T03:00:00.000Z',
+          lastUpdatedIso: '2026-06-15T03:05:00.000Z',
+          createdIso: '2026-06-14T18:00:00.000Z',
+          partySize: 2,
+          canonicalStatus: 'seated',
+          vendorStatusRaw: 'SEATED',
+        );
+        final rawPayload = _tockRawReservation(
+          reservationId: 'tz-test-4',
+          reservationAtIso: '2026-06-15T03:00:00.000Z',
+          lastUpdatedIso: '2026-06-15T03:05:00.000Z',
+          createdIso: '2026-06-14T18:00:00.000Z',
+          partySize: 2,
+          vendorStatus: 'SEATED',
+        );
+
+        await sink.upsertReservationFact(
+          operatorId: _opA,
+          locationId: _locA,
+          canonicalFact: canonicalFact,
+          rawPayload: rawPayload,
+          connectionId: _connA,
+        );
+
+        final readBack = await _readReservationFactsAsTenant(
+          db: db,
+          operatorId: _opA,
+          locationId: _locA,
+        );
+        expect(readBack, hasLength(1));
+        expect(readBack.single['business_date'], '2026-06-14',
+            reason: 'Default fallback is (UTC, 4) — Libro pattern. '
+                "03:00 UTC < 04:00 rollover → prior business_date.");
+      },
+    );
+  });
+
   group('TockReservationPostgresSink — H. Banned-items grep '
       '(lean cut 2)', () {
     test('sink executable code contains zero banned tokens '
@@ -513,6 +724,39 @@ void main() {
               '\'seated_at\' (e.g. as a parameter map key or read key).');
     });
   });
+
+  // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): static-source
+  // regression — Tock no longer reads `business_day_rollover_hour`.
+  // Slice 7a injected `IanaTimezoneConverter`; Slice 7b routes through
+  // the canonical `BusinessTimingProfilesRepository` chain via
+  // `SinkBusinessDateProjector`.
+  group(
+      'TockReservationPostgresSink — Slice 7b. Per-Daypart V1 Slice 7b '
+      'business_date projection via canonical timing chain (Gap 47 static)',
+      () {
+    test(
+      '7b.4 sink source contains zero references to '
+      'business_day_rollover_hour as live code',
+      () async {
+        final source = await File(
+          'lib/infrastructure/persistence/postgres/tock_reservation_postgres_sink.dart',
+        ).readAsString();
+        final executableLines = source
+            .split('\n')
+            .where((line) {
+              final trimmed = line.trimLeft();
+              return !trimmed.startsWith('//') && !trimmed.startsWith('*');
+            })
+            .join('\n');
+        expect(
+          executableLines.contains('business_day_rollover_hour'),
+          isFalse,
+          reason: 'business_day_rollover_hour must not appear as live '
+              'code in the Tock sink — Per-Daypart V1 Slice 7b option (b).',
+        );
+      },
+    );
+  });
 }
 
 /// Strip `//` line comments and `/* */` block comments so the banned-
@@ -540,6 +784,35 @@ class _FakeDb {
   final Map<String, _StoredWatermark> watermarks = <String, _StoredWatermark>{};
   final List<_StoredLog> syncLogs = <_StoredLog>[];
   final Map<String, _StoredDemo> demoState = <String, _StoredDemo>{};
+  final Map<String, _StoredLocation> locations = <String, _StoredLocation>{};
+
+  void seedLocation(
+    String operatorId,
+    String locationId,
+    String timezone,
+    int rolloverHour,
+  ) {
+    locations['$operatorId|$locationId'] = _StoredLocation(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantTimezone: timezone,
+      businessDayRolloverHour: rolloverHour,
+    );
+  }
+}
+
+class _StoredLocation {
+  _StoredLocation({
+    required this.operatorId,
+    required this.locationId,
+    required this.restaurantTimezone,
+    required this.businessDayRolloverHour,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String restaurantTimezone;
+  final int businessDayRolloverHour;
 }
 
 class _StoredReservation {
@@ -702,6 +975,30 @@ class _FakeTx implements PostgresTransaction {
               r.operatorId == _operatorId && r.locationId == _locationId)
           .map((r) => r.asRow())
           .toList(growable: false);
+    }
+
+    // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the projector's
+    // BusinessTimingProfilesRepository SELECT joins `from public.locations`
+    // inside a CTE, so the projector handler MUST run BEFORE the
+    // generic `from public.locations` handler. Returning empty triggers
+    // the projector's `'04:00'` fallback (matches the Tock Slice 7a
+    // legacy `(timezone, rollover_hour=4)` projection).
+    if (lower.contains('from public.business_timing_profiles p')) {
+      return const <PostgresRow>[];
+    }
+    if (lower.contains('from public.locations')) {
+      // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the sink no
+      // longer reads `business_day_rollover_hour`; it now SELECTs
+      // `timezone` only.
+      final operatorId = parameters['operator_id'] as String?;
+      final locationId = parameters['location_id'] as String?;
+      final loc = db.locations['$operatorId|$locationId'];
+      if (loc == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{
+          'timezone': loc.restaurantTimezone,
+        },
+      ];
     }
 
     if (lower.contains('select current_setting')) {

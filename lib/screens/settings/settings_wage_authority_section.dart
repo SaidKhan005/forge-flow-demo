@@ -25,10 +25,22 @@ class WageAuthoritySection extends StatefulWidget {
   /// and renders only the read-only summary. The Operator Web console
   /// owns wage-mix mutations.
   final bool viewOnly;
+
+  /// Test seam (mirrors `SettingsScreen.initialStatus`). When supplied,
+  /// the section renders this resolved context + rows immediately and
+  /// skips the SQLite `_load()` round-trip. Production passes nothing,
+  /// so the read path is unchanged. Lets widget tests exercise the
+  /// restyled read-only layout without the seeded-DB load that is not
+  /// reachable under `flutter test`.
+  final WageStandardContext? initialWageContextForTest;
+  final List<WageRoleRow>? initialRowsForTest;
+
   const WageAuthoritySection({
     super.key,
     required this.onChanged,
     this.viewOnly = false,
+    this.initialWageContextForTest,
+    this.initialRowsForTest,
   });
 
   @override
@@ -43,6 +55,15 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialRowsForTest != null) {
+      // Test seam — render the injected snapshot directly. No
+      // production caller passes these, so the live read path
+      // (`_load()`) is untouched.
+      _wageCtx = widget.initialWageContextForTest;
+      _rows = widget.initialRowsForTest!;
+      _isLoading = false;
+      return;
+    }
     _load();
   }
 
@@ -114,109 +135,68 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
 
     final w = _wageCtx;
     final summary = WageStandardContextService.summarizeMix(_rows);
+    // F (per-daypart V1 UX declutter): the mobile Wage Setup mirror is
+    // restyled to match the operator-web Wage Authority screen — flat
+    // cards, clean role rows with a single formula crumb, and the
+    // blended-mix summary up top. No read-logic change: the same
+    // `WageStandardContext` (HP #11 source/effective values) and
+    // `summarizeMix` rows drive the view.
     return Container(
+      key: const Key('settings_wage_setup_section'),
       color: AppColors.backgroundMid,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ── Resolved wages card — headline numbers at a glance ───────────
-          _WageMixSectionCard(
-            children: [
-              _WageMixStatRow(
-                label: 'Source',
-                value: w?.source.displayLabel ?? 'Not set',
-              ),
-              const _WageMixDivider(),
-              Row(
-                children: [
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'Front wage',
-                      value: w?.fohWage != null
-                          ? '\$${w!.fohWage!.toStringAsFixed(2)}'
-                          : 'Not set',
-                    ),
-                  ),
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'Back wage',
-                      value: w?.bohWage != null
-                          ? '\$${w!.bohWage!.toStringAsFixed(2)}'
-                          : 'Not set',
-                    ),
-                  ),
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'Average wage',
-                      value: w?.referenceBlendedWage != null
-                          ? '\$${w!.referenceBlendedWage!.toStringAsFixed(2)}'
-                          : 'Not set',
-                    ),
-                  ),
-                ],
-              ),
-            ],
+          // Blended-wage summary — mirrors operator-web's
+          // BlendedWageSummaryCard. HP #11: the "Source" line states
+          // provenance; the front/back/average lines are the effective
+          // values in force.
+          _WageInfoCard(
+            sourceLabel: w?.source.displayLabel ?? 'Not set',
+            fohWage: w?.fohWage,
+            bohWage: w?.bohWage,
+            blendedWage: w?.referenceBlendedWage,
+            totalWeightedHours: summary.totalWeightedHours,
+            totalHourlyCost: summary.totalHourlyCost,
+            hasRows: !summary.isEmpty,
           ),
-
-          const SizedBox(height: 12),
-
-          // ── Mix summary card — totals ────────────────────────────────
-          _WageMixSectionCard(
-            title: 'Mix summary',
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'Hours per week',
-                      value:
-                          '${summary.totalWeightedHours.toStringAsFixed(0)} h',
-                    ),
-                  ),
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'Weekly cost',
-                      value: '\$${summary.totalHourlyCost.toStringAsFixed(0)}',
-                    ),
-                  ),
-                ],
-              ),
-              if (!summary.hasCompleteFohBoh && !summary.isEmpty) ...[
-                const SizedBox(height: 8),
-                _WageMixWarningBand(
-                  text:
-                      'Add at least one front role and one back role to use the custom wage mix.',
-                ),
-              ],
-              if (summary.isEmpty) ...[
-                const SizedBox(height: 8),
-                _WageMixWarningBand(
-                  text:
-                      'No roles are configured. Default wages are being used.',
-                ),
-              ],
-            ],
+          if (!summary.hasCompleteFohBoh && !summary.isEmpty) ...[
+            const SizedBox(height: 10),
+            _WageMixWarningBand(
+              text:
+                  'Add at least one front role and one back role to use the custom wage mix.',
+            ),
+          ],
+          if (summary.isEmpty) ...[
+            const SizedBox(height: 10),
+            _WageMixWarningBand(
+              text: 'No roles are configured. Default wages are being used.',
+            ),
+          ],
+          const SizedBox(height: 14),
+          _WageBucketCard(
+            wire: 'foh',
+            header: 'Front of house',
+            helper: 'Service team',
+            rows: summary.fohRows,
           ),
-
-          const SizedBox(height: 12),
-
-          // ── Read-only grouped display of the current mix ──────────────
-          _WageMixBucketCard(header: 'Front of house', rows: summary.fohRows),
           const SizedBox(height: 10),
-          _WageMixBucketCard(header: 'Back of house', rows: summary.bohRows),
+          _WageBucketCard(
+            wire: 'boh',
+            header: 'Back of house',
+            helper: 'Kitchen team',
+            rows: summary.bohRows,
+          ),
           const SizedBox(height: 10),
-          _WageMixBucketCard(
+          _WageBucketCard(
+            wire: 'manager',
             header: 'Management',
+            helper: 'Salaried + management hours',
             rows: summary.managerRows,
-            helper:
-                'Management roles help estimate the average wage, but do not change front or back staffing.',
           ),
-
           if (!widget.viewOnly) ...[
             const SizedBox(height: 16),
-
-            // ── Single whole-mix edit action (primary button) ────────────
             _WageMixPrimaryButton(
               icon: Icons.edit_outlined,
               label: 'Edit wage mix',
@@ -795,39 +775,6 @@ class _WageMixStat extends StatelessWidget {
   }
 }
 
-class _WageMixStatRow extends StatelessWidget {
-  final String label;
-  final String value;
-  const _WageMixStatRow({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            label,
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
-          ),
-        ),
-        Text(value, style: AppTextStyles.mono12(color: AppColors.textPrimary)),
-      ],
-    );
-  }
-}
-
-class _WageMixDivider extends StatelessWidget {
-  const _WageMixDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
-      child: Container(height: 1, color: AppColors.borderSubtle),
-    );
-  }
-}
-
 class _WageMixWarningBand extends StatelessWidget {
   final String text;
   const _WageMixWarningBand({required this.text});
@@ -858,140 +805,229 @@ class _WageMixWarningBand extends StatelessWidget {
   }
 }
 
-class _WageMixBucketCard extends StatelessWidget {
-  final String header;
-  final List<WageRoleRow> rows;
-  final String? helper;
-  const _WageMixBucketCard({
-    required this.header,
-    required this.rows,
-    this.helper,
+/// Blended-wage summary card for the read-only mobile Wage Setup
+/// surface. Mirrors operator-web's `BlendedWageSummaryCard` (flat
+/// card, no gradient / no count pill): a "Blended wage mix" heading,
+/// the effective average hourly cost, the HP #11 provenance line
+/// ("Source: …"), the weekly totals line, and front/back effective
+/// wage badges. Pure presentation — every value is passed in by the
+/// section from the resolved [WageStandardContext] + summarized rows.
+class _WageInfoCard extends StatelessWidget {
+  const _WageInfoCard({
+    required this.sourceLabel,
+    required this.fohWage,
+    required this.bohWage,
+    required this.blendedWage,
+    required this.totalWeightedHours,
+    required this.totalHourlyCost,
+    required this.hasRows,
   });
+
+  final String sourceLabel;
+  final double? fohWage;
+  final double? bohWage;
+  final double? blendedWage;
+  final double totalWeightedHours;
+  final double totalHourlyCost;
+  final bool hasRows;
 
   @override
   Widget build(BuildContext context) {
     return Container(
+      key: const Key('settings_wage_setup_summary_card'),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.backgroundMid, AppColors.cardGlow],
-        ),
+        color: AppColors.cardGlow,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(8),
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header strip
-          Container(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            decoration: const BoxDecoration(
-              border: Border(
-                bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+          Row(
+            children: [
+              const Icon(
+                Icons.insights_outlined,
+                size: 18,
+                color: AppColors.sunsetDark,
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Blended wage mix',
+                  style: AppTextStyles.mono15(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            blendedWage != null
+                ? '\$${blendedWage!.toStringAsFixed(2)}/hr'
+                : 'Not set yet',
+            style: AppTextStyles.display20(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          // HP #11: provenance of the effective wage values.
+          Text(
+            'Source: $sourceLabel',
+            key: const Key('settings_wage_setup_source'),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+          if (hasRows) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Total weekly cost: \$${totalHourlyCost.toStringAsFixed(0)} · '
+              '${totalWeightedHours.toStringAsFixed(0)} '
+              '${totalWeightedHours == 1 ? 'hour' : 'hours'} per week',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            child: Row(
+          ],
+          if (fohWage != null || bohWage != null) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 6,
               children: [
-                Container(width: 3, height: 14, color: AppColors.sunset),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    header,
-                    style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                      weight: FontWeight.w700,
-                    ),
+                if (fohWage != null)
+                  _WageBadge(
+                    label:
+                        'Front of house · \$${fohWage!.toStringAsFixed(2)}/hr',
                   ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
+                if (bohWage != null)
+                  _WageBadge(
+                    label:
+                        'Back of house · \$${bohWage!.toStringAsFixed(2)}/hr',
                   ),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${rows.length}',
-                    style: AppTextStyles.mono10(color: AppColors.textMuted),
-                  ),
-                ),
               ],
             ),
-          ),
-          if (helper != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-              child: Text(
-                helper!,
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              ),
-            ),
-          if (rows.isEmpty)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Text(
-                'No roles yet.',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              ),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
-              child: Column(
-                children: [
-                  for (int i = 0; i < rows.length; i++) ...[
-                    if (i > 0)
-                      Container(
-                        height: 1,
-                        color: AppColors.borderSubtle.withValues(alpha: 0.5),
-                      ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            flex: 4,
-                            child: Text(
-                              rows[i].roleName,
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                            ),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              '\$${rows[i].hourlyRate.toStringAsFixed(2)}',
-                              style: AppTextStyles.mono12(
-                                color: AppColors.textPrimary,
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              '${rows[i].weightedHours.toStringAsFixed(0)} h',
-                              style: AppTextStyles.mono11(
-                                color: AppColors.textSecondary,
-                              ),
-                              textAlign: TextAlign.right,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+          ],
         ],
       ),
+    );
+  }
+}
+
+class _WageBadge extends StatelessWidget {
+  const _WageBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.body12(color: AppColors.textPrimary),
+      ),
+    );
+  }
+}
+
+/// One labor-bucket card for the read-only mobile Wage Setup surface.
+/// Mirrors operator-web's `_BucketSection`: a flat card, the bucket
+/// label + a short helper phrase, then one clean row per role with a
+/// single formula crumb. No gradient, no role-count pill, no per-row
+/// columns — the same visual grammar as the operator-web screen.
+class _WageBucketCard extends StatelessWidget {
+  const _WageBucketCard({
+    required this.wire,
+    required this.header,
+    required this.helper,
+    required this.rows,
+  });
+
+  final String wire;
+  final String header;
+  final String helper;
+  final List<WageRoleRow> rows;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: Key('settings_wage_setup_bucket_$wire'),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            header,
+            style: AppTextStyles.mono15(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            helper,
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+          const SizedBox(height: 12),
+          if (rows.isEmpty)
+            Text(
+              'No roles yet.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            )
+          else
+            for (var i = 0; i < rows.length; i++) ...[
+              _WageRoleLine(row: rows[i]),
+              if (i != rows.length - 1)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 10),
+                  child: Divider(
+                    height: 1,
+                    color: AppColors.borderSubtle,
+                  ),
+                ),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A single role row: name on top, then the operator-readable formula
+/// crumb (`@ $/hr · weighted hrs/wk = $`) — identical grammar to the
+/// operator-web `_WageRowDisplay` so the two surfaces read the same.
+class _WageRoleLine extends StatelessWidget {
+  const _WageRoleLine({required this.row});
+
+  final WageRoleRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          row.roleName,
+          style: AppTextStyles.mono14(
+            color: AppColors.textPrimary,
+            weight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          '@ \$${row.hourlyRate.toStringAsFixed(2)}/hr · '
+          '${row.weightedHours.toStringAsFixed(1)} weighted hrs/wk = '
+          '\$${(row.hourlyRate * row.weightedHours).toStringAsFixed(2)}',
+          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        ),
+      ],
     );
   }
 }

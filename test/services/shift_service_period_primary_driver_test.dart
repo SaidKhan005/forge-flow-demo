@@ -29,6 +29,7 @@ ActiveTargetProfile _profile({
   double targetPPA = 41.50,
   double fohWage = 16.50,
   double bohWage = 21.35,
+  List<ActiveTargetProfileDaypart> dayparts = const [],
 }) {
   return ActiveTargetProfile.build(
     restaurantId: 'demo_restaurant_001',
@@ -41,6 +42,23 @@ ActiveTargetProfile _profile({
     opzFloorCPLH: 4.0,
     opzCeilingCPLH: 5.0,
     builtAt: '2026-05-03T00:00:00Z',
+    dayparts: dayparts,
+  );
+}
+
+ActiveTargetProfileDaypart _daypart(
+  String id, {
+  required double cplh,
+  required double splh,
+  required double ppa,
+}) {
+  return ActiveTargetProfileDaypart(
+    servicePeriodId: id,
+    daypartTargetCPLH: cplh,
+    daypartTargetSPLH: splh,
+    daypartTargetPPA: ppa,
+    daypartOpzFloorCPLH: 4.0,
+    daypartOpzCeilingCPLH: 5.0,
   );
 }
 
@@ -325,6 +343,165 @@ void main() {
       final card = LeverCards.lookup(id);
       expect(card, isNotNull);
       expect(card!.id, equals(id));
+    });
+  });
+
+  group(
+      'computePrimaryLeverId — per-period targets w/ whole-day Gap-42 '
+      'fallback (Per-Daypart V1 Slice 1)', () {
+    // A lunch bucket that is exactly on the WHOLE-DAY pool standards:
+    // cplh = 100*60/480 = 12.5, ppa = 41.50, bohSplh = 4150*60/240 =
+    // 1037.5, blended wages match the _profile() defaults. Covers on
+    // forecast (100). Scored against whole-day standards this bucket
+    // has no axis above threshold → null (7.58 F-2, no covers_down).
+    ServicePeriodAccumulator onWholeDayBucket() => _bucket(
+          id: 'lunch',
+          covers: 100,
+          sales: 100 * 41.50,
+          fohMinutes: 240,
+          bohMinutes: 240,
+          fohWageDollars: 240 * 16.50 / 60,
+          bohWageDollars: 240 * 21.35 / 60,
+        );
+
+    test(
+        'whole-day on-target but per-period CPLH target differs → driver '
+        'flips: scores against THIS period\'s target, not whole-day', () {
+      final bucket = onWholeDayBucket();
+      // Whole-day pool is exactly on target → whole-day scoring = null.
+      final wholeDayOnly = _profile(
+        targetCPLH: bucket.cplh, // 12.5
+        targetSPLH: bucket.bohSplh, // 1037.5
+        targetPPA: bucket.ppa, // 41.50
+      );
+      expect(
+        _service.computePrimaryLeverId(
+            bucket: bucket, forecastCovers: 100, profile: wholeDayOnly),
+        isNull,
+        reason: 'control: whole-day standards leave every axis on target',
+      );
+
+      // Same whole-day pool, plus a per-period lunch row whose CPLH
+      // target is materially lower (10.0 vs actual 12.5 → +25%). Only
+      // the per-period CPLH axis now deviates; SPLH/PPA per-period
+      // targets stay on the bucket so they don't fire.
+      final withDaypart = _profile(
+        targetCPLH: bucket.cplh,
+        targetSPLH: bucket.bohSplh,
+        targetPPA: bucket.ppa,
+        dayparts: [
+          _daypart('lunch',
+              cplh: 10.0, splh: bucket.bohSplh, ppa: bucket.ppa),
+        ],
+      );
+      final id = _service.computePrimaryLeverId(
+          bucket: bucket, forecastCovers: 100, profile: withDaypart);
+      expect(id, equals('cplh_up'),
+          reason: 'avgCPLH 12.5 vs per-period target 10.0 = +25% must '
+              'mint cplh_up — proves per-period target is scored, not '
+              'the on-target whole-day pool');
+    });
+
+    test(
+        'per-period row exists for a DIFFERENT period → daypartFor(null) '
+        '→ whole-day Gap-42 fallback, byte-identical to pre-Slice-1', () {
+      final bucket = onWholeDayBucket(); // id == 'lunch'
+      // Whole-day pool: covers down 20% (80 vs 100) so a real signal
+      // fires; CPLH/SPLH/PPA on target.
+      final downBucket = _bucket(
+        id: 'lunch',
+        covers: 80,
+        sales: 80 * 41.50,
+        fohMinutes: 240,
+        bohMinutes: 240,
+        fohWageDollars: 240 * 16.50 / 60,
+        bohWageDollars: 240 * 21.35 / 60,
+      );
+      // Profile carries ONLY a 'dinner' per-period row, so
+      // daypartFor('lunch') is null → must fall back to whole-day.
+      final dinnerOnly = _profile(
+        targetCPLH: downBucket.cplh,
+        targetSPLH: downBucket.bohSplh,
+        targetPPA: downBucket.ppa,
+        dayparts: [
+          _daypart('dinner', cplh: 99.0, splh: 99.0, ppa: 99.0),
+        ],
+      );
+      final fallbackId = _service.computePrimaryLeverId(
+          bucket: downBucket, forecastCovers: 100, profile: dinnerOnly);
+
+      // Reference: identical whole-day profile with NO per-period rows
+      // at all (the pre-Slice-1 code path).
+      final noDayparts = _profile(
+        targetCPLH: downBucket.cplh,
+        targetSPLH: downBucket.bohSplh,
+        targetPPA: downBucket.ppa,
+      );
+      final referenceId = _service.computePrimaryLeverId(
+          bucket: downBucket, forecastCovers: 100, profile: noDayparts);
+
+      expect(fallbackId, equals('covers_down'));
+      expect(fallbackId, equals(referenceId),
+          reason: 'daypartFor null → result identical to pre-Slice-1 '
+              'whole-day scoring (no regression)');
+      // Bonus: the bogus dinner targets must not have leaked.
+      expect(bucket.servicePeriodId, equals('lunch'));
+    });
+
+    test(
+        'degenerate / zero per-period rates → whole-day fallback, never '
+        'scores against zero (Design Rule 2)', () {
+      final bucket = _bucket(
+        id: 'lunch',
+        covers: 80, // 20% below forecast → covers_down on whole-day
+        sales: 80 * 41.50,
+        fohMinutes: 240,
+        bohMinutes: 240,
+        fohWageDollars: 240 * 16.50 / 60,
+        bohWageDollars: 240 * 21.35 / 60,
+      );
+      // Per-period lunch row is fully degenerate (all rates 0). If the
+      // scorer used these, cplh/ppa/splh deltas would divide by zero
+      // (NaN/∞) and fire spuriously, or the targetCPLH<=0 guard would
+      // wrongly null the whole driver. Correct behaviour: fall back to
+      // the on-target whole-day pool per axis → only covers fires.
+      final profile = _profile(
+        targetCPLH: bucket.cplh, // whole-day on target
+        targetSPLH: bucket.bohSplh,
+        targetPPA: bucket.ppa,
+        dayparts: [
+          _daypart('lunch', cplh: 0.0, splh: 0.0, ppa: 0.0),
+        ],
+      );
+      final id = _service.computePrimaryLeverId(
+          bucket: bucket, forecastCovers: 100, profile: profile);
+      expect(id, equals('covers_down'),
+          reason: 'zero per-period rates must trigger the whole-day '
+              'fallback per axis — never score against zero');
+    });
+
+    test(
+        'mixed degeneracy: only per-period SPLH is 0 → SPLH falls back '
+        'to whole-day, CPLH/PPA still use the per-period row', () {
+      final bucket = onWholeDayBucket();
+      // Per-period CPLH target lower than actual (fires cplh_up);
+      // per-period SPLH degenerate (0) so it must fall back to the
+      // on-target whole-day bohSplh and NOT fire; PPA per-period on
+      // target.
+      final profile = _profile(
+        targetCPLH: bucket.cplh,
+        targetSPLH: bucket.bohSplh, // whole-day SPLH on target
+        targetPPA: bucket.ppa,
+        dayparts: [
+          _daypart('lunch', cplh: 10.0, splh: 0.0, ppa: bucket.ppa),
+        ],
+      );
+      final id = _service.computePrimaryLeverId(
+          bucket: bucket, forecastCovers: 100, profile: profile);
+      expect(id, equals('cplh_up'),
+          reason: 'per-period CPLH drives the driver; degenerate '
+              'per-period SPLH falls back to on-target whole-day and '
+              'does not spuriously fire');
     });
   });
 

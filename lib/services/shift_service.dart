@@ -63,6 +63,7 @@ import '../models/week_data.dart';
 import '../models/week_record.dart';
 import 'daypart_plan_allocator.dart';
 import 'history_pattern_builder.dart';
+import 'integration/close_authority_capability.dart';
 import 'labor_model.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../domain/constants/app_defaults.dart'; // MeridianConfig for blended-wage zero-hour fallback only
@@ -271,10 +272,18 @@ class ShiftService {
     );
     await _profileRepo.insertTargetProfileVersion(version);
 
-    // 3. Build locked target snapshot from the active profile + version
+    // 3. Build locked target snapshot from the active profile + version.
+    //
+    // Per-Daypart V1 (Slice 1): pass the shift's service period id so
+    // the snapshot's `daypart*` fields can be populated from the
+    // profile's per-period row when one exists. Prefer the explicit
+    // `servicePeriodKey` (V1 canonical) and fall back to `daypart`
+    // (legacy alias that still carries the same identifier in
+    // ClosedShiftInput).
     final targetSnapshot = TargetSnapshotBuilder.fromActiveTargetProfile(
       profile,
       targetProfileVersionId: versionId,
+      servicePeriodId: input.servicePeriodKey ?? input.daypart,
     );
 
     // 4. Build normalized shift fact
@@ -291,8 +300,20 @@ class ShiftService {
         await _shiftRepo.getShiftsForWeek(input.restaurantId, input.weekId);
     final closedShifts = allShifts.where((s) => s.isClosed).toList();
 
-    // 8. Upsert WeekRecord only when the week is fully closed (14 shifts)
-    if (closedShifts.length == 14) {
+    // 8. Upsert WeekRecord only when the week is fully closed.
+    //
+    // Per-Daypart V1 Slice 1.5 (Gap 24): the legacy gate hardcoded
+    // `closedShifts.length == 14` (2 dayparts × 7 days). That gate
+    // never fires for 3-period (21) / 4-period (28) configurations,
+    // nor for weekend-only periods that have fewer rows. The new gate
+    // reads the operator's configured `service_period_definitions`
+    // count from `restaurant_timing_configs` and gates on
+    // `period_count × 7`. When the operator hasn't persisted a timing
+    // config yet, falls back to the legacy 14-row gate (honest
+    // degradation — same behavior as pre-1.5 callers).
+    final expectedClosedShifts =
+        await _expectedClosedShiftsPerWeek(input.restaurantId);
+    if (closedShifts.length == expectedClosedShifts) {
       final weekRecord = await _buildWeekRecord(
         input.restaurantId, input.weekId, closedShifts,
       );
@@ -305,7 +326,68 @@ class ShiftService {
     return record;
   }
 
+  /// Per-Daypart V1 Slice 1.5 — translate a row's `sourceSystem` POS
+  /// vendor id into the [ShiftCloseAuthority] the shift boundary
+  /// resolver expects. Reliable vendor finalization classes (Toast,
+  /// Aloha, Oracle Simphony, Lightspeed K-Series, Revel, Square,
+  /// Clover) map to `vendorFinalization`; everything else (unknown,
+  /// null, demo seeder rows, labor-only inputs) maps to
+  /// `appLocalCutoffFallback` so the operator's business-day-start
+  /// rollover is the close moment.
+  static ShiftCloseAuthority _closeAuthorityForRow(String? sourceSystem) {
+    final capability = resolveCloseAuthorityCapability(sourceSystem);
+    switch (capability) {
+      case CloseAuthorityCapability.vendorReliableFinalization:
+        return ShiftCloseAuthority.vendorFinalization;
+      case CloseAuthorityCapability.unreliableFallbackToBusinessDayStart:
+        return ShiftCloseAuthority.appLocalCutoffFallback;
+    }
+  }
+
+  /// Per-Daypart V1 Slice 1.5 (Gap 24) — expected closed-shift count
+  /// per week. Reads the operator's configured service-period set
+  /// from `RestaurantTimingConfig` and sums each period's
+  /// `applicableDays.length` so weekend-only periods (e.g. Brunch
+  /// Sat/Sun, the demo's Fri/Sat late-night) don't inflate the gate.
+  /// When timing config is unavailable, falls back to the legacy
+  /// 14-shift gate (2 dayparts × 7 days) so pre-7.55n.1 demo DBs
+  /// continue to roll up week records the same way they did before.
+  ///
+  /// Legacy gate behavior: `closedShifts.length == 14` (hardcoded).
+  /// New gate: sum of applicable-days-per-period across the week.
+  Future<int> _expectedClosedShiftsPerWeek(String restaurantId) async {
+    final timingConfig = await RestaurantTimingConfigReadService.instance
+        .getTimingConfig(restaurantId);
+    if (timingConfig == null ||
+        timingConfig.servicePeriodDefinitions.isEmpty) {
+      return 14;
+    }
+    var total = 0;
+    for (final period in timingConfig.servicePeriodDefinitions) {
+      total += period.applicableDays.length;
+    }
+    return total;
+  }
+
   // ── Private: convert ShiftFact → ShiftRecord ─────────────────────────────────
+  //
+  // Per-Daypart V1 (Slice 1, Gap 23 fix): previously this conversion
+  // dropped `businessTimingProfileId` / `businessTimingProfileVersionId`
+  // / `servicePeriodKey` even though `ShiftFact` (and its underlying
+  // `ClosedShiftInput`) already carry them. The Postgres path
+  // (`PostgresShiftRecordWriter`) preserves them; the SQLite-direct
+  // mobile close-shift path silently stripped them. Now both paths
+  // carry timing fields uniformly.
+  //
+  // Per-Daypart V1 (Slice 1) addition: per-period locked target stamps
+  // (`daypartTarget*`) are also carried through to ShiftRecord. The
+  // TargetSnapshot now resolves these from the cycle's per-period rows
+  // (when present) so each closed shift gets its period's locked target
+  // band stamped at close time. Promise 2: closed truth retains its
+  // stamp. When the cycle has no per-period row for the shift's period
+  // (Gap 42 fallback), the targetSnapshot's daypart fields are null and
+  // the ShiftRecord retains null in those columns — consumers fall back
+  // to the whole-day `targetCPLH` etc. on the same row.
 
   ShiftRecord _shiftRecordFromFact(ShiftFact fact) {
     final ts = fact.targetSnapshot;
@@ -344,6 +426,21 @@ class ShiftService {
       opzCeilingCPLH: ts.opzCeilingCPLH,
       theoreticalFohLaborPct: ts.theoreticalFohLaborPct,
       theoreticalBohLaborPct: ts.theoreticalBohLaborPct,
+      // Per-Daypart V1 (Slice 1, Gap 23): carry timing-provenance fields
+      // from ShiftFact through to ShiftRecord. Mirrors the Postgres
+      // writer behavior at `postgres_shift_record_writer.dart:214-216`.
+      businessTimingProfileId: fact.businessTimingProfileId,
+      businessTimingProfileVersionId: fact.businessTimingProfileVersionId,
+      servicePeriodKey: fact.servicePeriodKey,
+      // Per-Daypart V1 (Slice 1): per-period locked target stamps from
+      // the TargetSnapshot. Nullable — when the cycle wrote no per-period
+      // row for the shift's period (Gap 42 fallback) these stay null
+      // and consumers fall back to the whole-day target* fields above.
+      daypartTargetCPLH: ts.daypartTargetCPLH,
+      daypartTargetSPLH: ts.daypartTargetSPLH,
+      daypartTargetPPA: ts.daypartTargetPPA,
+      daypartOpzFloorCPLH: ts.daypartOpzFloorCPLH,
+      daypartOpzCeilingCPLH: ts.daypartOpzCeilingCPLH,
       sourceSystem: fact.sourceSystem,
       sourceShiftId: fact.sourceShiftId,
     );
@@ -686,30 +783,37 @@ class ShiftService {
     if (allClosed.isEmpty) return null;
 
     // ── Finalization filter (7.55n.5) ────────────────────────────────
-    // Read timing config for shiftCloseAuthority and operational
-    // business date for the finalization gate.
-    // Compatibility fallback: when timing config or operational business
-    // date is unavailable, use all closed rows (pre-7.55n.5 behavior).
-    final timingConfig = await RestaurantTimingConfigReadService.instance
-        .getTimingConfig(restaurantId);
+    //
+    // Per-Daypart V1 Slice 1.5: the row-level close authority is now
+    // auto-derived per shift from the POS vendor's
+    // `CloseAuthorityCapability` (see
+    // `lib/services/integration/close_authority_capability.dart`).
+    // When the row's `sourceSystem` POS vendor exposes a reliable
+    // finalization signal, the row is finalized as soon as
+    // `status == 'closed'`. Otherwise the operator's business-day-start
+    // is the fallback close moment — the row is finalized only when
+    // the current operational business date is strictly later than
+    // the row's business date. When the operational business date is
+    // unknown, all closed rows pass through (honest legacy degradation
+    // matching pre-1.5 behavior).
     final operationalBusinessDate =
         await _openShiftRepo.getCurrentBusinessDate(restaurantId);
 
     final List<ShiftRecord> closed;
-    if (timingConfig != null && operationalBusinessDate != null) {
+    if (operationalBusinessDate != null) {
       closed = allClosed
           .where((s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
                 rowStatus: s.status,
-                shiftCloseAuthority: timingConfig.shiftCloseAuthority,
+                shiftCloseAuthority:
+                    _closeAuthorityForRow(s.sourceSystem),
                 rowBusinessDate: s.businessDate,
                 currentOperationalBusinessDate: operationalBusinessDate,
               ))
           .toList();
       if (closed.isEmpty) return null;
     } else {
-      // Compatibility fallback: no timing config or no operational
-      // business date — use all closed rows as before (7.55n.5 doc
-      // documents this honestly).
+      // Compatibility fallback: no operational business date — use all
+      // closed rows as before (7.55n.5 doc documents this honestly).
       closed = allClosed;
     }
 

@@ -50,15 +50,26 @@ class CrashReporter {
     if (kIsWeb) return; // Crashlytics is mobile-only.
 
     FlutterError.onError = (details) {
-      FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      try {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+      } catch (_) {
+        // Firebase not initialized (demo mode, widget tests) — never
+        // throw from inside FlutterError.onError, or the engine will
+        // re-route the thrown error through this same handler and
+        // freeze the rendering pipeline.
+      }
     };
 
     PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(
-        _scrubError(error),
-        stack,
-        fatal: true,
-      );
+      try {
+        FirebaseCrashlytics.instance.recordError(
+          _scrubError(error),
+          stack,
+          fatal: true,
+        );
+      } catch (_) {
+        // Same reasoning — see FlutterError.onError above.
+      }
       return true;
     };
   }

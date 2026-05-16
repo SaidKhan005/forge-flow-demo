@@ -79,31 +79,48 @@ String _engineLeverForDemoWeek(WeekRecord w) {
 
 String _engineLeverForReplayShift(ShiftRecord s) {
   // Single shape for both closed + projected branches. Reads `avg*`
-  // from the persisted record (`s.cplh`, `s.ppa`, `s.splh`) so the
-  // test pins what was actually stored, not what the seed constants
-  // claim. Targets and wages are seed constants because they are not
-  // carried on the row. A future seed change that drifts persisted
-  // values away from the inputs the seed fed `determineLever` will
-  // fail this test loudly — exactly what the round-trip is for.
-  final modelFoh = LaborModel.modelFohHours(s.covers, _seedTargetCPLH);
+  // from the persisted record so the test pins what was actually
+  // stored. A future seed change that drifts persisted values away
+  // from the inputs the seed fed `determineLever` fails this loudly —
+  // exactly what the round-trip is for.
+  //
+  // Demo-data Slice B: the seed now judges each shift against its
+  // PER-PERIOD target (mirrors production
+  // `ShiftFactBuilder.fromClosedShiftInput`, which feeds the per-period
+  // target snapshot — not a whole-day pooled rate) and carries explicit
+  // `scheduled*Hours`. The round-trip re-derives with the SAME inputs:
+  // the public per-period band keyed on `s.daypart`, the stored
+  // scheduled hours, and the blended wage reconstructed from the stored
+  // labor dollars (null/target when a row has none — projected rows).
+  final band = MockIntegrationReplaySeed.demoDaypartTargetBand(s.daypart);
+  final tCplh = band?.targetCPLH ?? _seedTargetCPLH;
+  final tSplh = band?.targetSPLH ?? _seedTargetSPLH;
+  final tPpa = band?.targetPPA ?? _seedTargetPPA;
+  final modelFoh = LaborModel.modelFohHours(s.covers, tCplh);
   final modelBoh =
-      LaborModel.modelBohHoursFromSales(s.actualSales, _seedTargetSPLH);
+      LaborModel.modelBohHoursFromSales(s.actualSales, tSplh);
+  final fohBlend = s.storedFohLaborDollar != null && s.fohHours > 0
+      ? s.storedFohLaborDollar! / s.fohHours
+      : _seedFohWage;
+  final bohBlend = s.storedBohLaborDollar != null && s.bohHours > 0
+      ? s.storedBohLaborDollar! / s.bohHours
+      : _seedBohWage;
   return LaborModel.determineLever(
     actualCovers: s.covers,
     forecastCovers: s.forecastCovers,
     avgCPLH: s.cplh,
     avgPPA: s.ppa,
-    targetCPLH: _seedTargetCPLH,
-    targetPPA: _seedTargetPPA,
+    targetCPLH: tCplh,
+    targetPPA: tPpa,
     avgSPLH: s.splh,
-    targetSPLH: _seedTargetSPLH,
-    avgFohBlendedWage: _seedFohWage,
+    targetSPLH: tSplh,
+    avgFohBlendedWage: fohBlend,
     targetFohWage: _seedFohWage,
-    avgBohBlendedWage: _seedBohWage,
+    avgBohBlendedWage: bohBlend,
     targetBohWage: _seedBohWage,
-    scheduledFohHours: s.fohHours,
+    scheduledFohHours: s.scheduledFohHours ?? s.fohHours,
     modelFohHours: modelFoh,
-    scheduledBohHours: s.bohHours,
+    scheduledBohHours: s.scheduledBohHours ?? s.bohHours,
     modelBohHours: modelBoh,
   );
 }

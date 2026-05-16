@@ -17,22 +17,115 @@ import '../../../domain/models/import_run.dart';
 import '../../../domain/models/open_shift_snapshot.dart';
 import '../../../domain/models/raw_import_record.dart';
 import '../../../domain/models/reservation_book_snapshot.dart';
+import '../../../domain/models/schedule_distribution_weights.dart';
+import '../../../domain/models/schedule_forecast_demand.dart';
+import '../../../domain/models/schedule_plan.dart';
 import '../../../domain/models/target_cycle.dart';
 import '../../../domain/models/target_cycle_source.dart';
+import '../../../domain/models/weekly_plan_snapshot.dart';
+import '../../../domain/services/distribution_weight_builder.dart';
+import '../../../domain/services/schedule_plan_resolver.dart';
 import '../../../domain/services/target_cycle_active_target_profile_projector.dart';
 import '../../../domain/services/utc_metadata_timestamp.dart';
+import '../../../domain/services/weekly_plan_snapshot_policy.dart';
 import '../../../models/baseline_candidate_shift.dart';
 import '../../../models/shift_record.dart';
+import 'dao/target_cycle_dao.dart';
 
 part 'sqlite_database_schema.dart';
 part 'sqlite_database_seed.dart';
 part 'sqlite_database_migrations.dart';
 
+/// One location in the demo §2c org hierarchy.
+///
+/// The mobile app has no SQLite `org_units` table — hierarchy is a
+/// Postgres-side production concept (`db/migrations/202604280002_*`).
+/// The demo expresses multi-location scope purely via multiple
+/// `restaurant_locations` rows (read back by
+/// `RestaurantScopeNotifier` into one `BusinessScope` per row). The
+/// org tree itself (corp → regions → district) lives in the
+/// operator-web fixture `lib/operator_web/services/demo_team_fixtures
+/// .dart`; the `region` / `district` labels here document the
+/// alignment so the two consoles tell the same story. HP #2: these
+/// are plain `restaurant_locations` rows — no `demo_*` table, no
+/// `kDemoMode` reader branch.
+class DemoLocation {
+  const DemoLocation({
+    required this.restaurantId,
+    required this.displayName,
+    required this.businessTimezone,
+    required this.region,
+    this.district,
+  });
+
+  final String restaurantId;
+  final String displayName;
+  final String businessTimezone;
+
+  /// The §2c region this location rolls up to (`East`/`West`).
+  final String region;
+
+  /// The §2c district this location sits in, when any. Only North
+  /// Loop sits under a district (`Metro District`); the other three
+  /// roll straight up to their region.
+  final String? district;
+}
+
 /// The demo restaurant scope defaults used across persistence.
 class DemoScope {
+  /// Downtown's id. Kept as `demo_restaurant_001` for backward
+  /// compatibility with every existing test/`DemoScope` assertion.
   static const String restaurantId = 'demo_restaurant_001';
+
+  /// Downtown's display name. Kept exactly `'Barrio Legado'` (not the
+  /// §2c label `'Barrio Legado — Downtown'`) because
+  /// `persistence_scope_alignment_test.dart` and
+  /// `getOrCreateActiveRestaurant` assert this id resolves to this
+  /// exact string. Authority order: this prompt's backward-compat
+  /// constraint (#1) outranks the spec's proposed label (#2).
   static const String displayName = 'Barrio Legado';
   static const String businessTimezone = 'America/St_Johns';
+
+  // ── §2c hierarchy location ids ────────────────────────────────────
+  // Downtown == [restaurantId] (backward compat). The other three are
+  // new restaurant_ids under the same demo operator/business.
+  static const String downtownRestaurantId = restaurantId;
+  static const String northLoopRestaurantId = 'demo_restaurant_north_loop';
+  static const String riversideRestaurantId = 'demo_restaurant_riverside';
+  static const String harbourRestaurantId = 'demo_restaurant_harbour';
+
+  /// The full §2c demo location set. Seeded into `restaurant_locations`
+  /// by `_seedDemoRestaurant`; surfaced by `RestaurantScopeNotifier`
+  /// so the scope drawer becomes a real switcher. Downtown is first so
+  /// it remains the row `getOrCreateActiveRestaurant` resolves by
+  /// default and the row insertion-ordered queries return first.
+  static const List<DemoLocation> locations = <DemoLocation>[
+    DemoLocation(
+      restaurantId: downtownRestaurantId,
+      displayName: displayName,
+      businessTimezone: businessTimezone,
+      region: 'East Region',
+    ),
+    DemoLocation(
+      restaurantId: northLoopRestaurantId,
+      displayName: 'Barrio Legado — North Loop',
+      businessTimezone: businessTimezone,
+      region: 'East Region',
+      district: 'Metro District',
+    ),
+    DemoLocation(
+      restaurantId: riversideRestaurantId,
+      displayName: 'Barrio Legado — Riverside',
+      businessTimezone: businessTimezone,
+      region: 'West Region',
+    ),
+    DemoLocation(
+      restaurantId: harbourRestaurantId,
+      displayName: 'Barrio Legado — Harbour',
+      businessTimezone: businessTimezone,
+      region: 'West Region',
+    ),
+  ];
 }
 
 class SqliteDatabase {
@@ -43,7 +136,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 34;
+  static const int schemaVersion = 36;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -118,6 +211,18 @@ class SqliteDatabase {
     );
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
+    // FU-mobile-cold-boot-shift-stale-state: seed the locked weekly plan
+    // snapshot synchronously during cold-boot so the Shift dashboard's
+    // first read finds it. Without this row, the runtime auto-generator
+    // is invoked indirectly via WeekDataNotifier on first use — that
+    // race meant the ShiftDashboardNotifier's first _load() ran ahead of
+    // the snapshot write and cached `lockedPlanUnavailable = true`. HP #2
+    // compliance: this is a writer-side bootstrap seed; reader paths
+    // remain unchanged and never branch on kDemoMode.
+    await _seedWeeklyPlanSnapshotFromReplay(
+      db,
+      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+    );
   }
 
   // ── Seed helpers ────────────────────────────────────────────────────────
@@ -271,6 +376,12 @@ class SqliteDatabase {
     if (oldV < 34) {
       await _migrateToV34(db);
     }
+    if (oldV < 35) {
+      await _migrateToV35(db);
+    }
+    if (oldV < 36) {
+      await _migrateToV36(db);
+    }
   }
 
   // Phase 7.55q.5: add preserved locked plan hour columns to week_records.
@@ -381,15 +492,20 @@ class SqliteDatabase {
     // See docs/phase_7_55m_2_mock_replay_drift_contract.md for the
     // full two-category classification.
 
-    // Ensure restaurant exists
-    final existing = await db.query(
-      'restaurant_locations',
-      where: 'restaurant_id = ?',
-      whereArgs: [DemoScope.restaurantId],
-    );
-    if (existing.isEmpty) {
-      await _seedDemoRestaurant(db);
-    }
+    // Ensure all demo locations exist. Called unconditionally: on an
+    // existing demo DB upgraded to the multi-location build, Downtown
+    // (`DemoScope.restaurantId`) is already present but North Loop /
+    // Riverside / Harbour are not. `_seedDemoRestaurant` is idempotent
+    // (ConflictAlgorithm.ignore), so a Downtown-only guard would
+    // permanently strand the 3 new locations for existing users.
+    await _seedDemoRestaurant(db);
+
+    // Demo-data Slice B (§2g / G7): seed `wage_role_rows` BEFORE any
+    // cycle build so `_ensureDemoSeedCycle` resolves the blended FOH/BOH
+    // wage through the production `_weightedAvgFromRows` waterfall over
+    // real role rows instead of the `MeridianConfig` empty-rows
+    // fallback. Idempotent — safe on reseed/advance.
+    await _seedDemoWageRoleRows(db);
 
     // Persist mock replay date
     await setMockReplayBusinessDate(DemoScope.restaurantId, isoDate);
@@ -418,6 +534,16 @@ class SqliteDatabase {
     await _backfillLockedTargets(db, businessDate: isoDate);
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
+    // FU-mobile-cold-boot-shift-stale-state: ensure a locked weekly plan
+    // snapshot exists for the current week after replay advance/reset.
+    // Same-week snapshots are preserved (see 7.55l.6b1 comment above);
+    // this seeder is a no-op when one already exists for the week-in-force,
+    // so cross-week advances and post-reseedDemo bootstraps both produce
+    // a snapshot without rewriting same-week locked truth.
+    await _seedWeeklyPlanSnapshotFromReplay(
+      db,
+      businessDate: isoDate,
+    );
   }
 
   /// Clears all operational data while preserving restaurant scope and

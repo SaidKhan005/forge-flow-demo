@@ -1,0 +1,36 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "operator-web-demo",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/run_operator_web_dev.ps1",
+        "-Mode",
+        "demo",
+        "-WebPort",
+        "8181"
+      ],
+      "port": 8181
+    },
+    {
+      "name": "admin-console-demo",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/run_admin_console_dev.ps1",
+        "-Mode",
+        "demo",
+        "-WebServer",
+        "-WebPort",
+        "8182"
+      ],
+      "port": 8182
+    }
+  ]
+}

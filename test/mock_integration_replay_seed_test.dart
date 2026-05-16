@@ -2,7 +2,8 @@
 //
 // Validates that the deterministic mock POS/labor replay generator produces
 // operationally coherent data suitable for SQLite bootstrap:
-// - 8 historical weeks with 14-shift operating pattern
+// - [historicalWeekCount] historical weeks with 14-shift operating
+//   pattern (Demo-data Slice B raised this 8 → 12 for §2d Variance)
 // - Day/daypart variation (Saturday dinner > Monday lunch)
 // - WeekRecords derived from shift-level sums
 // - Distribution weights availability
@@ -17,11 +18,13 @@ void main() {
   // ── A. Generator output structure ───────────────────────────────────────
 
   group('A — generator output structure', () {
-    test('produces 8 historical weeks with 14 shifts each', () {
+    test('produces [historicalWeekCount] historical weeks with 14 shifts '
+        'each', () {
       final output = MockIntegrationReplaySeed.output;
+      final weeks = MockIntegrationReplaySeed.historicalWeekCount;
 
-      expect(output.weekRecords.length, 8);
-      expect(output.historicalClosedShifts.length, 112); // 8 × 14
+      expect(output.weekRecords.length, weeks);
+      expect(output.historicalClosedShifts.length, weeks * 14);
 
       for (final weekId in MockIntegrationReplaySeed.historicalWeekIds) {
         final weekShifts = output.historicalClosedShifts
@@ -121,8 +124,10 @@ void main() {
           output.historicalClosedShifts);
 
       expect(weights.isAvailable, isTrue);
-      // 8 weeks × 7 days = 56 distinct business days (>= 14 threshold)
-      expect(weights.closedBusinessDayCount, 56);
+      // historicalWeekCount weeks × 7 days distinct business days
+      // (>= 14 threshold).
+      expect(weights.closedBusinessDayCount,
+          MockIntegrationReplaySeed.historicalWeekCount * 7);
       expect(weights.dayWeights, isNotEmpty);
       expect(weights.dayWeights.length, 7);
       expect(weights.daypartWeightsByDay, isNotEmpty);

@@ -1,4 +1,6 @@
 import '../../../../domain/models/target_cycle.dart';
+// TargetCycleDaypart is re-exported from target_cycle.dart but the
+// analyzer treats the explicit import as documentation-grade.
 import '../../../../domain/repositories/target_cycle_repository.dart';
 import '../dao/target_cycle_dao.dart';
 import '../sqlite_database.dart';
@@ -54,5 +56,13 @@ class SqliteTargetCycleRepository implements TargetCycleRepository {
   Future<void> wipeForOtherScopes(String keepRestaurantId) async {
     final dao = await _daoReady;
     return dao.wipeForOtherScopes(keepRestaurantId);
+  }
+
+  /// Per-Daypart V1 (Slice 1) — concrete-only accessor for per-period
+  /// child rows. Used by reads that already have a cycleId in hand and
+  /// want the child rows without rehydrating the parent.
+  Future<List<TargetCycleDaypart>> getDaypartsForCycle(String cycleId) async {
+    final dao = await _daoReady;
+    return dao.getDaypartsForCycle(cycleId);
   }
 }

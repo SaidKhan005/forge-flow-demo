@@ -5,6 +5,82 @@ import 'package:forge_and_flow/services/auth/handoff_code_client.dart';
 import 'package:forge_and_flow/services/auth/handoff_code_gateway.dart';
 
 void main() {
+  testWidgets(
+    'renders a polished primary button and NO raw operator-web URL',
+    (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          SettingsPointerRow(
+            label: 'Manage Account on Ops Web',
+            opWebPath: 'my-account',
+            navId: 'my_account',
+            handoffCodeGateway: _FakeHandoffGateway(
+              link: Uri.parse(
+                'https://app.forgeflow.app/handoff?code=abc&nav=my_account',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // fix-settings-deeplink-buttons: the row renders a polished
+      // `FilledButton.icon` in the app's primary tone. `FilledButton.icon`
+      // returns a private `_FilledButtonWithIcon` subtype, so we match by
+      // `is FilledButton` via predicate rather than `find.byType` (which
+      // is exact-type only).
+      final buttonFinder = find.byWidgetPredicate((w) => w is FilledButton);
+      expect(buttonFinder, findsOneWidget);
+      expect(find.text('Manage Account on Ops Web'), findsOneWidget);
+
+      // The raw operator-web URL must NEVER be rendered as visible text.
+      expect(find.text('https://app.forgeflow.app/my-account'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Text && (w.data ?? '').contains('app.forgeflow.app'),
+        ),
+        findsNothing,
+        reason: 'no bare operator-web URL string may be shown to operators',
+      );
+      // It must not have been demoted to an outline-style button either.
+      expect(find.byWidgetPredicate((w) => w is OutlinedButton), findsNothing);
+
+      final button = tester.widget<FilledButton>(buttonFinder);
+      expect(button.onPressed, isNotNull);
+    },
+  );
+
+  testWidgets('renders a disabled button + reason when opWebPath is empty', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _wrap(
+        const SettingsPointerRow(
+          label: 'Manage future thing',
+          opWebPath: '',
+        ),
+      ),
+    );
+
+    final buttonFinder = find.byWidgetPredicate((w) => w is FilledButton);
+    expect(buttonFinder, findsOneWidget);
+    final button = tester.widget<FilledButton>(buttonFinder);
+    expect(button.onPressed, isNull);
+    expect(find.text('Manage future thing (coming soon)'), findsOneWidget);
+    // Coming-soon helper copy is plain English, not a URL.
+    expect(
+      find.text(
+        'This section will move to Operator Web in an upcoming release.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is Text && (w.data ?? '').contains('forgeflow.app'),
+      ),
+      findsNothing,
+    );
+  });
+
   testWidgets('mints and launches Operator Web handoff URL', (tester) async {
     final gateway = _FakeHandoffGateway(
       link: Uri.parse(

@@ -369,16 +369,26 @@ class ShiftServicePeriodReadService {
   /// `LaborModel.determineLever` (the 7.58 single source of truth). The
   /// engine consumes the per-period actuals on [bucket], the per-period
   /// [forecastCovers] (summed from the day's open / closed snapshots
-  /// matching this period), and the whole-day [profile] standards
-  /// (CPLH, SPLH, PPA, FOH/BOH wage). Per-period plan targets are not
-  /// yet shipped — `ActiveTargetProfile` carries restaurant-level
-  /// standards only, and the same standards apply across periods today.
+  /// matching this period), and the per-period CPLH / SPLH / PPA
+  /// targets resolved from [profile] via
+  /// `profile.daypartFor(bucket.servicePeriodId)` (Per-Daypart Targets
+  /// V1, Slice 1). When the cycle wrote no per-period row for this
+  /// period — or a resolved per-period rate is degenerate / non-positive
+  /// — that axis falls back to the whole-day `profile.targetCPLH /
+  /// targetSPLH / targetPPA` pool scalars (Gap-42 fallback, Design
+  /// Rule 2 — a missing / `0` per-period target triggers the whole-day
+  /// fallback, never scores against zero). Wages stay whole-day
+  /// (Design Rule 5 — there is no per-period wage variant); only the
+  /// rate axes are per-period. When `daypartFor` returns null for every
+  /// period the behaviour is byte-identical to the pre-Slice-1 whole-day
+  /// scoring.
   ///
   /// Returns `null` when:
   ///   * [profile] is null or the bucket has no in-period evidence
   ///     (`!bucket.hasAnyData`),
-  ///   * required denominators are absent ([forecastCovers] ≤ 0,
-  ///     `targetCPLH` ≤ 0, or `targetPPA` ≤ 0),
+  ///   * required denominators are absent ([forecastCovers] ≤ 0, the
+  ///     effective per-period (or fallback whole-day) CPLH ≤ 0, or the
+  ///     effective PPA ≤ 0),
   ///   * OR the engine would fall through to the legacy
   ///     `'covers_down'` empty-candidate default (no axis exceeds its
   ///     threshold). Per Block 2 / 7.58 F-2, the daypart scope refuses
@@ -399,7 +409,27 @@ class ShiftServicePeriodReadService {
     if (profile == null) return null;
     if (!bucket.hasAnyData) return null;
     if (forecastCovers <= 0) return null;
-    if (profile.targetCPLH <= 0 || profile.targetPPA <= 0) return null;
+
+    // Per-period targets (Per-Daypart V1 Slice 1) with whole-day Gap-42
+    // fallback (Design Rule 2). Resolve each rate axis from the cycle's
+    // per-period row for THIS service period; when the row is absent
+    // (cycle wrote no per-period child — Gap-42) OR the per-period rate
+    // is degenerate / non-positive, that axis falls back to the
+    // whole-day pool scalar. A `0` / missing per-period target must
+    // trigger the fallback, never score against zero. Wages stay
+    // whole-day (Design Rule 5 — no per-period wage variant).
+    final daypart = profile.daypartFor(bucket.servicePeriodId);
+    final targetCPLH = (daypart != null && daypart.daypartTargetCPLH > 0)
+        ? daypart.daypartTargetCPLH
+        : profile.targetCPLH;
+    final targetSPLH = (daypart != null && daypart.daypartTargetSPLH > 0)
+        ? daypart.daypartTargetSPLH
+        : profile.targetSPLH;
+    final targetPPA = (daypart != null && daypart.daypartTargetPPA > 0)
+        ? daypart.daypartTargetPPA
+        : profile.targetPPA;
+
+    if (targetCPLH <= 0 || targetPPA <= 0) return null;
 
     // Mirror `LaborModel.determineLever`'s threshold checks to detect
     // the empty-candidate state up-front. We do NOT mint an id from
@@ -408,8 +438,8 @@ class ShiftServicePeriodReadService {
     // engine call so its legacy `'covers_down'` fallback (F-2) cannot
     // surface as a real driver at the daypart scope.
     final coversDelta = (bucket.covers - forecastCovers) / forecastCovers;
-    final cplhDelta = (bucket.cplh - profile.targetCPLH) / profile.targetCPLH;
-    final ppaDelta = (bucket.ppa - profile.targetPPA) / profile.targetPPA;
+    final cplhDelta = (bucket.cplh - targetCPLH) / targetCPLH;
+    final ppaDelta = (bucket.ppa - targetPPA) / targetPPA;
 
     var anyCandidate = coversDelta.abs() > 0.02 ||
         cplhDelta.abs() > 0.05 ||
@@ -421,10 +451,9 @@ class ShiftServicePeriodReadService {
     // splh_down off `bucket.splh` (sales / total minutes), which is
     // not the BOH productivity the engine documents. Mirrors the
     // whole-day path's `avgSPLH = totalSales / actBoh`.
-    final hasSplhInputs = profile.targetSPLH > 0 && bucket.bohMinutes > 0;
+    final hasSplhInputs = targetSPLH > 0 && bucket.bohMinutes > 0;
     if (hasSplhInputs) {
-      final splhDelta =
-          (bucket.bohSplh - profile.targetSPLH) / profile.targetSPLH;
+      final splhDelta = (bucket.bohSplh - targetSPLH) / targetSPLH;
       anyCandidate = anyCandidate || splhDelta.abs() > 0.05;
     }
 
@@ -449,10 +478,10 @@ class ShiftServicePeriodReadService {
       forecastCovers: forecastCovers,
       avgCPLH: bucket.cplh,
       avgPPA: bucket.ppa,
-      targetCPLH: profile.targetCPLH,
-      targetPPA: profile.targetPPA,
+      targetCPLH: targetCPLH,
+      targetPPA: targetPPA,
       avgSPLH: hasSplhInputs ? bucket.bohSplh : null,
-      targetSPLH: hasSplhInputs ? profile.targetSPLH : null,
+      targetSPLH: hasSplhInputs ? targetSPLH : null,
       avgFohBlendedWage: hasFohWageInputs ? bucket.fohBlendedWage : null,
       targetFohWage: hasFohWageInputs ? profile.fohWage : null,
       avgBohBlendedWage: hasBohWageInputs ? bucket.bohBlendedWage : null,

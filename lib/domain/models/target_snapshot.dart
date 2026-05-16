@@ -68,6 +68,19 @@ class TargetSnapshot {
   /// Total theoretical labor % = theoreticalFohLaborPct + theoreticalBohLaborPct.
   final double theoreticalLaborPct;
 
+  // ── Per-Daypart V1 (Slice 1) — per-period locked target stamps ─────────
+  //
+  // Populated by `TargetSnapshotBuilder` when the active cycle has a
+  // per-period row matching the shift's service period at close time.
+  // Nullable — when the cycle has no per-period row (Gap 42 fallback)
+  // these stay null and downstream consumers fall back to the whole-day
+  // scalar fields above.
+  final double? daypartTargetCPLH;
+  final double? daypartTargetSPLH;
+  final double? daypartTargetPPA;
+  final double? daypartOpzFloorCPLH;
+  final double? daypartOpzCeilingCPLH;
+
   const TargetSnapshot({
     this.restaurantId = 'demo_restaurant_001',
     this.targetProfileId,
@@ -83,5 +96,10 @@ class TargetSnapshot {
     required this.theoreticalFohLaborPct,
     required this.theoreticalBohLaborPct,
     required this.theoreticalLaborPct,
+    this.daypartTargetCPLH,
+    this.daypartTargetSPLH,
+    this.daypartTargetPPA,
+    this.daypartOpzFloorCPLH,
+    this.daypartOpzCeilingCPLH,
   });
 }

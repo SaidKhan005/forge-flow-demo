@@ -465,25 +465,25 @@ void main() {
   );
 
   testWidgets(
-    'Wave 2 MO-5b — Account tab uses canonical "Two-factor '
-    'authentication" labeling',
+    'MO-5b-FU-mobile-recanonicalize — Account tab uses V1 canonical '
+    '"Two-factor sign-in" labeling',
     (tester) async {
-      // MO-5b — normalize the five MFA label variants found across
-      // mobile surfaces ("Two-factor security", "Two-factor
-      // verification", "Two-factor update", "MFA", and the canonical
-      // "Two-factor authentication") to the operator-approved
-      // canonical: "Two-factor authentication".
+      // MO-5b-FU-mobile-recanonicalize — flip the mobile-side label
+      // from Wave 2 MO-5b's "Two-factor authentication" to the V1
+      // canonical phrase "Two-factor sign-in" picked by the operator
+      // on 2026-05-14 (PR #747 swept operator-web + admin; this
+      // mirrors the sweep on the mobile side).
       //
       // This test pins the Account tab surfaces:
-      //   1. Section header (`_settingsSection` title) — was
-      //      "Two-factor security" → now "Two-factor authentication".
-      //   2. Pointer row label — was "Manage two-factor security on
-      //      Ops Web" → now "Manage two-factor authentication on
-      //      Ops Web".
-      //   3. Account info card row label — was "MFA" → now
-      //      "Two-factor authentication" (wraps to 2 lines inside the
-      //      128-px label cell; constraint documented in
-      //      `settings_data_sections.dart`).
+      //   1. Section header (`_settingsSection` title) —
+      //      "Two-factor authentication" → "Two-factor sign-in".
+      //   2. Pointer row label —
+      //      "Manage two-factor authentication on Ops Web" →
+      //      "Manage two-factor sign-in on Ops Web".
+      //   3. Account info card row label —
+      //      "Two-factor authentication" → "Two-factor sign-in"
+      //      (wraps to 2 lines inside the 128-px label cell;
+      //      constraint documented in `settings_data_sections.dart`).
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -508,29 +508,42 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      // Canonical label appears (the section sticky header renders
-      // "Two-factor authentication"; the account info row label also
-      // renders "Two-factor authentication" — both mount under the
+      // V1 canonical label appears (the section sticky header renders
+      // "Two-factor sign-in"; the account info row label also
+      // renders "Two-factor sign-in" — both mount under the
       // CustomScrollView's wide cacheExtent, so use findsWidgets).
       expect(
-        find.text('Two-factor authentication', skipOffstage: false),
+        find.text('Two-factor sign-in', skipOffstage: false),
         findsWidgets,
       );
       expect(
         find.text(
-          'Manage two-factor authentication on Ops Web',
+          'Manage two-factor sign-in on Ops Web',
           skipOffstage: false,
         ),
         findsOneWidget,
       );
 
-      // Old labels removed.
+      // Old labels removed (including the previous Wave 2 canonical
+      // "Two-factor authentication", which is now divergent against
+      // the V1 phrase chosen 2026-05-14).
+      expect(
+        find.text('Two-factor authentication', skipOffstage: false),
+        findsNothing,
+      );
       expect(
         find.text('Two-factor security', skipOffstage: false),
         findsNothing,
       );
       expect(
         find.text('Two-factor verification', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text(
+          'Manage two-factor authentication on Ops Web',
+          skipOffstage: false,
+        ),
         findsNothing,
       );
       expect(

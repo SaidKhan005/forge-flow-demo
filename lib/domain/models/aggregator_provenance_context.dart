@@ -39,6 +39,7 @@ class AggregatorProvenanceContext {
     this.priorBusinessTimingProfileId,
     this.priorBusinessTimingProfileVersionId,
     this.priorServicePeriodKey,
+    this.closeAuthorityProvenance,
   });
 
   /// Provenance string for the covers value attached to the emitted
@@ -122,4 +123,24 @@ class AggregatorProvenanceContext {
   final String? priorBusinessTimingProfileId;
   final String? priorBusinessTimingProfileVersionId;
   final String? priorServicePeriodKey;
+
+  /// Per-Daypart V1 Slice 1.5 — close-authority provenance. Auto-derived
+  /// from the per-vendor capability lookup
+  /// (`close_authority_capability.dart`) keyed by the POS vendor that
+  /// stamped this shift's `sourceSystem`. One of:
+  ///
+  ///   * `vendor_<id>_reliable_finalization` — POS vendor exposes a
+  ///     reliable per-shift finalization signal (`closed_at` or
+  ///     equivalent). The aggregator treats the vendor's
+  ///     finalization timestamp as the close moment.
+  ///   * `vendor_<id>_unreliable_finalization_business_day_start_fallback`
+  ///     — POS vendor does not expose a reliable signal (or vendor id
+  ///     is unknown). The aggregator falls back to the operator's
+  ///     `RestaurantTimingConfig.businessDayStartLocalTime` rollover
+  ///     as the close moment for the row's business date.
+  ///   * `no_pos_vendor_business_day_start_fallback` — no POS vendor
+  ///     wrote `cover_facts` for this slot at all (covers came from
+  ///     manual entry or forecast substitution). Close moment is the
+  ///     operator's business-day-start.
+  final String? closeAuthorityProvenance;
 }

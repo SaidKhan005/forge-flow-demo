@@ -104,6 +104,11 @@ class _BusinessTimingEditorScreenState
                 endLocal: '22:00',
               ),
             ]
+          // Slice 2.5 / Gap 28: carry the three editor-side fields
+          // through from the existing profile. The gateway's
+          // ServicePeriod already defaults applicableDays /
+          // shortLabel / sortOrder to safe values when the server
+          // omits them, so old payloads land here as 7-day, '', 0.
           : existing.servicePeriods
                 .map(
                   (p) => ServicePeriodDraft(
@@ -111,6 +116,9 @@ class _BusinessTimingEditorScreenState
                     label: p.label,
                     startLocal: p.startLocal,
                     endLocal: p.endLocal,
+                    applicableDays: List<int>.from(p.applicableDays),
+                    shortLabel: p.shortLabel,
+                    sortOrder: p.sortOrder,
                   ),
                 )
                 .toList(),
@@ -245,6 +253,9 @@ class _BusinessTimingEditorScreenState
             ianaTimezone: _ianaTimezone.text.trim(),
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
+            // Slice 2.5 / Gap 28: carry applicableDays / shortLabel /
+            // sortOrder through to the wire so day-restricted periods
+            // (e.g. "Weekend Brunch" Sat/Sun) round-trip end-to-end.
             servicePeriods: _periods.periods
                 .map(
                   (p) => ServicePeriodCreate(
@@ -252,6 +263,9 @@ class _BusinessTimingEditorScreenState
                     label: p.label,
                     startLocal: p.startLocal,
                     endLocal: p.endLocal,
+                    applicableDays: List<int>.from(p.applicableDays),
+                    shortLabel: p.shortLabel,
+                    sortOrder: p.sortOrder,
                   ),
                 )
                 .toList(),
@@ -265,6 +279,9 @@ class _BusinessTimingEditorScreenState
             ianaTimezone: _ianaTimezone.text.trim(),
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
+            // Slice 2.5 / Gap 28: same as createProfile above — the
+            // patch's whole-set semantics REPLACE the server's period
+            // list, so we must supply the new fields each save.
             servicePeriods: _periods.periods
                 .map(
                   (p) => ServicePeriodCreate(
@@ -272,6 +289,9 @@ class _BusinessTimingEditorScreenState
                     label: p.label,
                     startLocal: p.startLocal,
                     endLocal: p.endLocal,
+                    applicableDays: List<int>.from(p.applicableDays),
+                    shortLabel: p.shortLabel,
+                    sortOrder: p.sortOrder,
                   ),
                 )
                 .toList(),

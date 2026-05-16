@@ -57,11 +57,19 @@ class ZoneStatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final opzColor = opzStatus == 'in'
-        ? AppColors.positive
-        : opzStatus == 'below'
-            ? AppColors.negative
-            : AppColors.warning;
+    // 'pending' = a locked band exists but no in-period actuals yet
+    // (per-period daypart lens). The band is still drawn so the operator
+    // sees the standard, but there is no verdict to color, no CPLH value
+    // to print, and no needle to place — anything else would be a
+    // phantom score off a sentinel `0` (Metric Honesty / Design Rule 2).
+    final isPending = opzStatus == 'pending';
+    final opzColor = isPending
+        ? AppColors.textMuted
+        : opzStatus == 'in'
+            ? AppColors.positive
+            : opzStatus == 'below'
+                ? AppColors.negative
+                : AppColors.warning;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -90,7 +98,7 @@ class ZoneStatusCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                currentCPLH.toStringAsFixed(2),
+                isPending ? '—' : currentCPLH.toStringAsFixed(2),
                 style: AppTextStyles.mono28(color: AppColors.textPrimary),
               ),
               const Spacer(),
@@ -110,6 +118,8 @@ class ZoneStatusCard extends StatelessWidget {
             opzCeiling: opzCeilingCPLH,
             target: targetCPLH,
             current: currentCPLH,
+            // No actuals in yet → draw the band but NOT the current dot.
+            showCurrent: !isPending,
           ),
           // 7.58 depth wave (slice 10.5.6): 3x3 cross-axis matrix grid +
           // joint cross-axis sub-label, lifted inside the OPZ tile so
@@ -139,11 +149,18 @@ class _CplhGauge extends StatelessWidget {
   final double target;
   final double current;
 
+  /// When false (no in-period actuals yet) the band, floor/ceiling/target
+  /// ticks and labels still render, but the "current" needle is omitted —
+  /// there is no real CPLH to place, and a dot at the `0` sentinel would
+  /// read as a false BELOW-floor position.
+  final bool showCurrent;
+
   const _CplhGauge({
     required this.opzFloor,
     required this.opzCeiling,
     required this.target,
     required this.current,
+    this.showCurrent = true,
   });
 
   // Threshold for treating two values as "same" (hides duplicate labels)
@@ -420,21 +437,23 @@ class _CplhGauge extends StatelessWidget {
                     ),
                   ),
 
-                  // Current position dot — clamped to stay visible
-                  Positioned(
-                    left: dotLeft,
-                    top: (barH - 18) / 2,
-                    child: Container(
-                      width: 18,
-                      height: 18,
-                      decoration: BoxDecoration(
-                        color: AppColors.textPrimary,
-                        shape: BoxShape.circle,
-                        border:
-                            Border.all(color: AppColors.sunset, width: 2),
+                  // Current position dot — clamped to stay visible.
+                  // Omitted entirely when there are no actuals yet.
+                  if (showCurrent)
+                    Positioned(
+                      left: dotLeft,
+                      top: (barH - 18) / 2,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: AppColors.textPrimary,
+                          shape: BoxShape.circle,
+                          border:
+                              Border.all(color: AppColors.sunset, width: 2),
+                        ),
                       ),
                     ),
-                  ),
 
                   // ── Anchored values below bar ──────────────────────────
 
@@ -551,19 +570,20 @@ class _CplhGauge extends StatelessWidget {
             child: Container(
                 width: 3, height: barH + 12, color: AppColors.sunset),
           ),
-          Positioned(
-            left: dotLeft,
-            top: (barH - 18) / 2,
-            child: Container(
-              width: 18,
-              height: 18,
-              decoration: BoxDecoration(
-                color: AppColors.textPrimary,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.sunset, width: 2),
+          if (showCurrent)
+            Positioned(
+              left: dotLeft,
+              top: (barH - 18) / 2,
+              child: Container(
+                width: 18,
+                height: 18,
+                decoration: BoxDecoration(
+                  color: AppColors.textPrimary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.sunset, width: 2),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

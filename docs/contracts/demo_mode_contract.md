@@ -194,6 +194,46 @@ demo embedding F&F), the same shell runs without an
 SQLite-via-the-same-repositories. There is no demo-only widget that
 would behave differently from a production widget.
 
+**Standalone mobile demo flavor auth (2026-05-15).** The standalone
+Forge & Flow demo flavor (`lib/main_forgeflow.dart`, gated on
+`kDemoMode` / `FORGE_FLOW_DEMO_MODE` and NOT
+`FORGE_FLOW_USE_FIREBASE_AUTH`) previously mounted `requireAuth:
+false` with the scaffold-failing login service, so `AuthSession`
+stayed null forever — the mobile Settings Account tab was dropped
+(`session == null`) and the F&F-only Data-alignment panel stayed
+hidden (null `teamActor`). The demo flavor now mounts
+`ForgeFlowApp(requireAuth: true)` with the writer-side
+`DemoAuthLoginService` (`lib/services/auth/demo_auth_login_service.dart`)
++ in-memory secure storage + in-memory ledger. The login screen's
+existing `_demoOperatorSignInEnabled` carve-out drives the SAME
+`AuthSessionNotifier.signInWithEmailPassword` path production uses;
+only the SOURCE swaps. The demo operator
+(`demo.operator@forgeflow.test` / `forge-flow-demo`) is minted as a
+F&F admin — roles `['ff_support', 'roles_version:1']`, scope
+`operator_id = demo-operator`, `location_id =
+DemoScope.restaurantId` — so Account + Setup + Integrations + Data
+tab + the F&F-only Data-alignment panel are all testable in demo.
+`ff_support` (not `super_admin`) is chosen: it satisfies
+`_isFFAccount` / `_shouldShowDataTab` (the
+`admin.debug_console.view` tier) and `kAdminConsoleRoles` without
+the destructive `super_admin` F&F-ops surface — see the
+`ff_support` row in `auth_permission_key_catalog.md`. This is a
+bootstrap source-swap (HP #2 writer-side, the demo analogue of
+`MockReplayDataSourceProvider`), mirroring the Operator
+Web/Admin `*_DEMO_AUTH` pattern below — NOT a `kDemoMode` reader
+branch and NOT a `demo_*` table. When the demo flavor wires no
+`AccountInfoGateway`, `SettingsAccountSection` (via the new
+`allowDemoAccountInfoFallback`, threaded from `forge_flow_app.dart`
+`_openSettings` exactly as `allowDemoActiveSessionsFallback` is)
+renders the honest session-derived account card
+(`_fallbackAccountInfoForSession`) instead of collapsing to a blank
+section — honest values off the signed-in `AuthSession`, never
+phantom data (Metric Honesty). Production auth
+(`FORGE_FLOW_USE_FIREBASE_AUTH`) is byte-unchanged: that branch
+never references `DemoAuthLoginService` and the new
+`allowDemo*Fallback` flags default false when a real gateway is
+wired.
+
 ### Demo writes (closing a shift in demo)
 
 When a manager closes a shift in demo:
