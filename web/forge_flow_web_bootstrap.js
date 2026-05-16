@@ -23,3 +23,22 @@ const flutterBootstrap = document.createElement('script');
 flutterBootstrap.src = 'flutter_bootstrap.js';
 flutterBootstrap.async = true;
 document.body.appendChild(flutterBootstrap);
+
+// Splash-removal fallback. `flutter_native_splash` injects a call to
+// `removeSplashFromWeb()` into the generated `flutter_bootstrap.js` during
+// `flutter build web` (release), but NOT during `flutter run` (debug). Without
+// this fallback, the `<picture id="splash">` block in `web/index.html` stays
+// on top of the Flutter canvas forever in dev mode and the operator sees a
+// splash that never clears. Watch for Flutter's first paint signal
+// (`flt-glass-pane` appearing in the DOM) and call the existing removal helper.
+// Idempotent: `removeSplashFromWeb()` itself uses `?.remove()` so a duplicate
+// call from the production-build injection is a safe no-op.
+const splashObserver = new MutationObserver(() => {
+  if (document.querySelector('flt-glass-pane')) {
+    splashObserver.disconnect();
+    if (typeof window.removeSplashFromWeb === 'function') {
+      window.removeSplashFromWeb();
+    }
+  }
+});
+splashObserver.observe(document.body, { childList: true, subtree: true });
