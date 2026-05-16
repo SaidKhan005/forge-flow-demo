@@ -2,8 +2,16 @@
 // Pins Sub-Slice Family `.4` from `phase_7_58_primary_driver_audit_plan.md`
 // and Finding F-3 (`7.58.0c`): every demo / replay fixture row must
 // reproduce its stored `primaryLever` / `primaryLeverId` when re-fed
-// through `LaborModel.determineLever` against the same row inputs. The
-// fixture and the engine cannot drift.
+// through the engine against the same row inputs. The fixture and the
+// engine cannot drift.
+//
+// 7.58.0a / Finding F-2: per-shift producers re-derive through
+// `LaborModel.determineLever` (7.61 catalog discipline — never
+// `on_model`). WEEK-LEVEL producers (WeekRecord / WeekData /
+// StaticShiftDataSource.getWeekToDate) now use
+// `LaborModel.determineLeverGated`, so their round-trip helpers must
+// too — an on-model week stores the `on_model` sentinel and the
+// helper must reproduce it, not the legacy `covers_down`.
 //
 // Two surfaces are pinned:
 //
@@ -61,7 +69,8 @@ String _engineLeverForDemoWeek(WeekRecord w) {
   final avgSPLH = w.totalBohHours > 0
       ? (w.avgPPA * w.totalCovers) / w.totalBohHours
       : 0.0;
-  return LaborModel.determineLever(
+  // 7.58.0a: week-level producer uses the gated entry point.
+  return LaborModel.determineLeverGated(
     actualCovers: w.totalCovers,
     forecastCovers: w.forecastCovers,
     avgCPLH: w.avgCPLH,
@@ -139,7 +148,8 @@ String _engineLeverForReplayWeek(WeekRecord w, List<ShiftRecord> shifts) {
       w.totalFohHours > 0 ? fohLaborDollar / w.totalFohHours : _seedFohWage;
   final blendedBoh =
       w.totalBohHours > 0 ? bohLaborDollar / w.totalBohHours : _seedBohWage;
-  return LaborModel.determineLever(
+  // 7.58.0a: week-level producer uses the gated entry point.
+  return LaborModel.determineLeverGated(
     actualCovers: w.totalCovers,
     forecastCovers: w.forecastCovers,
     avgCPLH: w.avgCPLH,
@@ -188,7 +198,9 @@ String _engineLeverForReplayWtd(List<ShiftRecord> closed) {
       LaborModel.modelFohHours(totalCovers, BaselineData.derivedTargetCPLH);
   final modelBoh = LaborModel.modelBohHoursFromSales(
       totalSales, BaselineData.derivedTargetSPLH);
-  return LaborModel.determineLever(
+  // 7.58.0a: StaticShiftDataSource.getWeekToDate is a week-level
+  // producer and now uses the gated entry point.
+  return LaborModel.determineLeverGated(
     actualCovers: totalCovers,
     forecastCovers: wtdForecast,
     avgCPLH: avgCPLH,

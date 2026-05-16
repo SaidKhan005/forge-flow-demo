@@ -128,7 +128,13 @@ class ShiftService {
     final wtdModelFoh = LaborModel.modelFohHours(totalCovers, profile.targetCPLH);
     final wtdModelBoh = LaborModel.modelBohHoursFromSales(totalSales, profile.targetSPLH);
 
-    final primaryLeverId = LaborModel.determineLever(
+    // 7.58.0a / Finding F-2: week-level aggregate producer. On-model
+    // weeks (no axis past threshold) yield the `on_model` sentinel
+    // instead of the legacy `covers_down` overclaim; WeekRecord/WeekData
+    // renderers already degrade a null `LeverCards.lookup` to "—" /
+    // LeverCardNotYetAvailable. Per-shift facts stay on the contract-
+    // pinned `determineLever` (7.61 catalog discipline).
+    final primaryLeverId = LaborModel.determineLeverGated(
       actualCovers:      totalCovers,
       forecastCovers:    wtdForecastCovers,
       avgCPLH:           avgCPLH,
@@ -543,7 +549,13 @@ class ShiftService {
     final wkModelFoh = LaborModel.modelFohHours(totalCovers, wkTargetCPLH);
     final wkModelBoh = LaborModel.modelBohHoursFromSales(totalSales, wkTargetSPLH);
 
-    final primaryLeverId = LaborModel.determineLever(
+    // 7.58.0a / Finding F-2: week-level aggregate producer. On-model
+    // weeks (no axis past threshold) yield the `on_model` sentinel
+    // instead of the legacy `covers_down` overclaim; WeekRecord/WeekData
+    // renderers already degrade a null `LeverCards.lookup` to "—" /
+    // LeverCardNotYetAvailable. Per-shift facts stay on the contract-
+    // pinned `determineLever` (7.61 catalog discipline).
+    final primaryLeverId = LaborModel.determineLeverGated(
       actualCovers:      totalCovers,
       forecastCovers:    forecastCovers,
       avgCPLH:           avgCPLH,
@@ -907,7 +919,13 @@ class ShiftService {
     final wtdModelBoh =
         LaborModel.modelBohHoursFromSales(totalSales, profile.targetSPLH);
 
-    final primaryLeverId = LaborModel.determineLever(
+    // 7.58.0a / Finding F-2: week-level aggregate producer. On-model
+    // weeks (no axis past threshold) yield the `on_model` sentinel
+    // instead of the legacy `covers_down` overclaim; WeekRecord/WeekData
+    // renderers already degrade a null `LeverCards.lookup` to "—" /
+    // LeverCardNotYetAvailable. Per-shift facts stay on the contract-
+    // pinned `determineLever` (7.61 catalog discipline).
+    final primaryLeverId = LaborModel.determineLeverGated(
       actualCovers: totalCovers,
       forecastCovers: wtdForecastCovers,
       avgCPLH: avgCPLH,
