@@ -255,6 +255,70 @@ deletable in isolation:
 (`export`, `diff`, `attemptCloudLoad`) is itself removed in a wider
 lane.
 
+## P3 — Cross-surface hierarchy/parity gaps (audit 2026-05-16)
+
+Surfaced by a deep cross-surface hierarchy audit (web console / admin
+console / mobile). Documented here as **known, accepted, not blocking
+V1**. Mobile single-location flatness from the same audit was promoted
+to a contract rule (`docs/contracts/mobile_core_business_scope_contract.md`
+Hard Rule 9) and is NOT a follow-up. Org-unit rename/delete absence and
+`unit_type` invisibility are tracked separately. The two below are
+orphans with no active slice:
+
+- **A5 — Org-unit mutation permission-gate asymmetry (accepted, document
+  only).** Operator-web gates org-unit create/move on the named RBAC key
+  `team.roles.assign` (`lib/operator_web/screens/hierarchy_screen.dart`
+  `kHierarchyAssignPermissionKey`). The admin console gates the same
+  mutations on an `actorIsForgeAdmin` boolean (Firebase super-admin /
+  ff_support claim) rather than a matching `admin.*` permission key;
+  `roles_hierarchy_sessions_admin_gateway.dart` `createOrgUnit` calls
+  `_requireEditable(actorIsForgeAdmin, ...)` + `_requireAdminReason(...)`
+  with no permission-key check. The parity contract
+  (`docs/contracts/team_roles_hierarchy_console_parity_contract.md`)
+  describes the admin side only as the `admin.users.create` "analog"
+  and names no concrete key. **Status:** accepted for V1 — the admin
+  surface is already behind the admin-app auth gate (super_admin /
+  ff_support only) + `admin_reason`, so this is a governance/consistency
+  gap, not an access-control hole. Revisit if non-super-admin F&F staff
+  ever need scoped hierarchy-edit rights, or when the parity contract is
+  next amended (give the admin analog a real `admin.*` key then).
+
+- **A7 — Operator-web exposes no data-freshness / sync-health signal
+  (accepted, document only).** Confirmed 2026-05-16: operator-web has no
+  "data current / stale / last synced / feed broken" indicator. Mobile's
+  `lib/services/app_data_status_service.dart` (DEMO/CURRENT/STALE/
+  BACKFILL-FAILED) is not consumed anywhere in `lib/operator_web/**`;
+  `web_app_shell.dart` has no status pill. The closest surfaces are not
+  freshness signals: the polling-tier status card
+  (`lib/operator_web/widgets/polling_tier_status_card.dart`) shows tier/
+  cadence/pricing, the backfill progress panel
+  (`vendor_connections_backfill_progress_panel.dart`) only covers the
+  one-time 60-day initial import then goes silent, and the Schedule
+  "Locked at" timestamp is plan-commitment metadata, not sync health.
+  **Status:** accepted for V1. If closed later, the cheapest path is to
+  have operator-web consume `AppDataStatusService` and render a header
+  badge mirroring the mobile pattern, or a "last synced at X" on the
+  dashboard. No contract requires this surface today.
+
+- **B2 — Wage Authority is location-scoped only; hierarchy/inherited
+  wages deliberately NOT done (accepted, document only).** Operator
+  decision 2026-05-16: do NOT pursue business/region-scoped wage rows
+  for now. There is no small-footprint version — `wage_role_rows` has
+  no scope columns, so any fix inherently requires a schema migration +
+  an RLS-policy rewrite (operator+location → operator-only, the
+  benchmark_overrides posture). Operator judged that "touches too
+  much." A complete, audited implementation was built and rejected at
+  the merge gate (closed PR #836, branch retained on
+  `claude/gap-b2-wage-role-rows-hierarchy-scope` if appetite returns).
+  Multi-location operators continue to set wages per location. This is
+  now a deliberate choice, not a gap — same posture as B4/B5. The
+  existing in-UI `HierarchyScopeNotice` "region/brand wage floors are
+  coming in a later wave" copy (PR #659,
+  `lib/operator_web/screens/wage_authority_screen.dart`) is the honest
+  operator-facing disclosure and is accurate. Do NOT re-flag in
+  hierarchy/parity audits. Reopening requires explicit operator
+  approval (schema + RLS-touching).
+
 ## Code Health Residuals (post-Wave 5, 2026-05-08)
 
 Consolidated from the 2026-05-06 audit's open residuals after five
