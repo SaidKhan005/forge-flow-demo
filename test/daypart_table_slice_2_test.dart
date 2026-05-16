@@ -183,6 +183,61 @@ void main() {
     });
   });
 
+  group('Benchmark UX cleanup — no overflow at any device width', () {
+    Future<void> pumpAt(WidgetTester tester, double width) async {
+      tester.view.physicalSize = Size(width, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: width,
+              child: SingleChildScrollView(
+                child: DaypartTable(
+                  dayparts: _ranges,
+                  profile: _perPeriodProfile,
+                  servicePeriodDefinitions:
+                      ServicePeriodDefinitionResolver.demoDefinitions,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('demo device width (1080) renders with no RenderFlex overflow',
+        (tester) async {
+      await pumpAt(tester, 1080);
+
+      // A RenderFlex overflow surfaces as a captured FlutterError.
+      expect(tester.takeException(), isNull);
+
+      // All six columns + a sample per-period value still render.
+      expect(find.text('DAYPART'), findsOneWidget);
+      expect(find.text('AVG COVERS'), findsOneWidget);
+      expect(find.text('OPZ RANGE'), findsOneWidget);
+      expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
+      expect(find.text('2.90 – 3.40'), findsOneWidget); // lunch OPZ range
+    });
+
+    testWidgets('narrow phone width (360) scrolls instead of overflowing',
+        (tester) async {
+      await pumpAt(tester, 360);
+
+      // No overflow exception even at a cramped phone width — the table
+      // scrolls horizontally rather than clipping or throwing.
+      expect(tester.takeException(), isNull);
+
+      // The label column stays on screen; off-stage numeric columns are
+      // reachable (the table is laid out, just horizontally scrollable).
+      expect(find.text('DAYPART'), findsOneWidget);
+      expect(find.text('3.11', skipOffstage: false), findsOneWidget);
+    });
+  });
+
   group('Slice 2 — empty dayparts fallback (Gap 42 / Design Rule 2)', () {
     testWidgets(
         'no child rows → every period row + rollup read the whole-day pool',

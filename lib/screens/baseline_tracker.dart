@@ -136,8 +136,15 @@ class _BaselineTrackerState extends State<BaselineTracker> {
                     servicePeriodDefinitions: view.servicePeriodDefinitions,
                   ),
                 ),
-                const SliverToBoxAdapter(
-                    child: _OperatingStrip()),
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
+                // Same section-header grammar as DAYPART BREAKDOWN above
+                // so the wage-mix + theoretical-floor strip reads as a
+                // deliberate sibling, not an afterthought.
+                const SliverPersistentHeader(
+                  pinned: true,
+                  delegate: StickySectionDelegate('OPERATING INPUTS'),
+                ),
+                const SliverToBoxAdapter(child: _OperatingStrip()),
                 const SliverToBoxAdapter(child: SizedBox(height: 24)),
               ],
             ),
@@ -523,11 +530,12 @@ class _OperatingStrip extends StatelessWidget {
 
     if (profile == null && !useBridgeFallbacks) {
       return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.all(16),
+        margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           color: AppColors.backgroundMid,
           border: Border.all(color: AppColors.borderSubtle, width: 1),
+          borderRadius: BorderRadius.circular(3),
         ),
         child: Text(
           'Benchmark target profile unavailable',
@@ -575,38 +583,53 @@ class _OperatingStrip extends StatelessWidget {
       ('Total %', '${totalTheoreticalPct.toStringAsFixed(1)}%'),
     ];
 
+    // Same card grammar as the DaypartTable above (gradient surface,
+    // hairline rule border, 3px radius) so this strip reads as its
+    // deliberate sibling, with each half laid out as an aligned
+    // label / value grid instead of the old ragged spaceBetween rows.
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.all(16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.surface, AppColors.cardGlow],
+        ),
+        border: Border.all(color: AppColors.rule, width: 1),
+        borderRadius: BorderRadius.circular(3),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: _StripHalf(
-              title: 'Operating Wage Mix',
-              rows: wageRows,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: _StripHalf(
+                title: 'Operating Wage Mix',
+                rows: wageRows,
+              ),
             ),
-          ),
-          const SizedBox(width: 16),
-          Container(width: 1, height: 96, color: AppColors.borderSubtle),
-          const SizedBox(width: 16),
-          Expanded(
-            child: _StripHalf(
-              // No em dash — Option B uses a colon (Decision 10).
-              title: 'Theoretical Labor %: The Floor',
-              rows: pctRows,
+            Container(width: 1, color: AppColors.rule),
+            Expanded(
+              child: _StripHalf(
+                // No em dash — Option B uses a colon (Decision 10).
+                title: 'Theoretical Labor %: The Floor',
+                rows: pctRows,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
+/// One half of the Operating Inputs strip, laid out as an aligned
+/// label / value grid that mirrors the DaypartTable's row grammar
+/// (mono7 header cell, hairline rule dividers, value right-aligned to
+/// a consistent column) so the two surfaces look like deliberate
+/// siblings. Number formatting is owned by the caller and is already
+/// consistent within each half (wages 2dp `$`, theoretical % 1dp `%`).
 class _StripHalf extends StatelessWidget {
   final String title;
   final List<(String, String)> rows;
@@ -616,34 +639,56 @@ class _StripHalf extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
       children: [
+        // Sub-group header — same weight/case as the DaypartTable
+        // header cells.
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           child: Text(
             title,
-            style: AppTextStyles.mono8(color: AppColors.textSecondary),
+            style: AppTextStyles.mono7(color: AppColors.textSecondary),
           ),
         ),
-        ...rows.map((t) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Flexible(
-                    child: Text(
-                      t.$1,
-                      style: AppTextStyles.mono10(color: AppColors.textMuted),
+        Container(height: 1, color: AppColors.rule),
+        ...rows.asMap().entries.map((entry) {
+          final isLast = entry.key == rows.length - 1;
+          final (label, value) = entry.value;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 18, vertical: 14),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 5,
+                      child: Text(
+                        label,
+                        style: AppTextStyles.body11(
+                          color: AppColors.primaryText,
+                          style: FontStyle.normal,
+                        ),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    t.$2,
-                    style: AppTextStyles.mono14(color: AppColors.textPrimary),
-                  ),
-                ],
+                    const SizedBox(width: 14),
+                    Expanded(
+                      flex: 4,
+                      child: Text(
+                        value,
+                        style:
+                            AppTextStyles.mono10(color: AppColors.primaryText),
+                        textAlign: TextAlign.right,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            )),
+              if (!isLast) Container(height: 1, color: AppColors.rule),
+            ],
+          );
+        }),
       ],
     );
   }

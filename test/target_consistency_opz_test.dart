@@ -252,6 +252,12 @@ void main() {
         find.text('Theoretical Labor %: The Floor', skipOffstage: false),
         findsOneWidget,
       );
+      // Benchmark UX cleanup: the strip now sits under its own
+      // section header in the same grammar as DAYPART BREAKDOWN.
+      expect(
+        find.text('OPERATING INPUTS', skipOffstage: false),
+        findsOneWidget,
+      );
       expect(
         find.text('Operating Wage Mix', skipOffstage: false),
         findsOneWidget,
