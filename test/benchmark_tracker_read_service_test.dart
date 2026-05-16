@@ -5,6 +5,7 @@ import 'package:forge_and_flow/services/business_date_authority_service.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/services/target_cycle_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import 'package:forge_and_flow/domain/models/target_cycle.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 void main() {
@@ -71,8 +72,18 @@ void main() {
     expect(view.rangeGraphModel.targetCPLH, isNot(closeTo(7.77, 0.001)));
   });
 
-  test('reseeded demo cycle projects the current recommendation geometry',
+  test('reseeded demo cycle projects the Design-Rule-4 per-period pool',
       () async {
+    // Demo-data Slice B: the seed now produces genuinely differentiated
+    // per-period productivity, so the demo cycle's whole-day scalars are
+    // the cover-weighted Σ of its per-period rows
+    // (`TargetCycleDaypartPool.fromDayparts` — Design Rule 4), NOT the
+    // deprecated recommendation union/pooled accessors. Those only
+    // coincided with the cycle pool under the old degenerate flat seed
+    // (every period ≈ 4.58); asserting that coincidence is exactly the
+    // defect this slice removes. Authority:
+    // docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md
+    // (Design Rule 4); per_daypart_v1_demo_seed_per_period_cycle_test.
     final restaurantId =
         await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
     final businessDate = await BusinessDateAuthorityService.instance
@@ -83,18 +94,26 @@ void main() {
         .getOrCreateActiveCycle(restaurantId, businessDate);
     final view = await BenchmarkTrackerReadService.instance.load();
 
+    // Cohort is rich → recommendation is sufficient and per-period
+    // differentiated (the whole point of the slice).
     expect(recommendation.isInsufficient, isFalse);
-    expect(cycle.opzFloorCPLH,
-        closeTo(recommendation.unionOpzFloorCPLH, 0.001));
-    expect(cycle.opzCeilingCPLH,
-        closeTo(recommendation.unionOpzCeilingCPLH, 0.001));
-    expect(cycle.targetCPLH,
-        closeTo(recommendation.pooledRecommendedTargetCPLH, 0.001));
+    final cplhByPeriod =
+        cycle.dayparts.map((d) => d.targetCPLH).toSet();
+    expect(cplhByPeriod.length, greaterThan(1),
+        reason: 'per-period CPLH must be genuinely differentiated');
+
+    // Whole-day scalars == cover-weighted pool of the per-period rows.
+    final pool = TargetCycleDaypartPool.fromDayparts(cycle.dayparts);
+    expect(cycle.targetCPLH, closeTo(pool.targetCPLH, 1e-6));
+    expect(cycle.opzFloorCPLH, closeTo(pool.opzFloorCPLH, 1e-6));
+    expect(cycle.opzCeilingCPLH, closeTo(pool.opzCeilingCPLH, 1e-6));
+
+    // The Benchmark range graph mirrors the persisted cycle 1:1.
     expect(view.rangeGraphModel.activeRangeStartCPLH,
-        closeTo(recommendation.unionOpzFloorCPLH, 0.001));
+        closeTo(cycle.opzFloorCPLH, 0.001));
     expect(view.rangeGraphModel.activeRangeEndCPLH,
-        closeTo(recommendation.unionOpzCeilingCPLH, 0.001));
+        closeTo(cycle.opzCeilingCPLH, 0.001));
     expect(view.rangeGraphModel.targetCPLH,
-        closeTo(recommendation.pooledRecommendedTargetCPLH, 0.001));
+        closeTo(cycle.targetCPLH, 0.001));
   });
 }

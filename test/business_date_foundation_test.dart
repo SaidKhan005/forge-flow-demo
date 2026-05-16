@@ -297,7 +297,9 @@ void main() {
       final db = await SqliteDatabase.instance.database;
       final dao = ShiftRecordDao(db);
 
-      // 8 historical weeks × 14 shifts + 9 current-week closed shifts = 121
+      // Demo-data Slice B raised history 8 → 12 weeks; this window
+      // (2026-01-01 .. 2026-03-27) still covers well over 8 weeks ×
+      // 14 shifts of closed history plus the current week's closed days.
       final results = await dao.getClosedShiftsInDateRange(
         'demo_restaurant_001', '2026-01-01', '2026-03-27',
       );

@@ -158,11 +158,35 @@ class MockIntegrationReplaySeed {
   /// Current week for the default scenario (backward compat).
   static const String currentWeekId = '2026-W13';
 
-  /// Historical weekIds for the default scenario, newest first (backward compat).
-  static const List<String> historicalWeekIds = [
-    '2026-W12', '2026-W11', '2026-W10', '2026-W09',
-    '2026-W08', '2026-W07', '2026-W06', '2026-W05',
-  ];
+  /// Number of closed historical weeks generated before the current
+  /// week. Demo-data Slice B (§2d): raised 8 → 12 so Variance/History
+  /// show ≥70 days of non-flat week-to-week deltas with a seasonal
+  /// trend and a soft week. The week-level variance is now derived
+  /// functionally from the week index (see [_weekAmp] / [_weekVolume])
+  /// instead of fixed 8-element bands, so any week count is safe.
+  static const int historicalWeekCount = 12;
+
+  /// Historical weekIds for the default scenario, newest first.
+  /// Computed from [defaultBusinessDate] through the same week-id math
+  /// the generator uses so it can never drift from [historicalWeekCount]
+  /// (was a hand-typed 8-element const; Slice B made it 12 + derived).
+  static final List<String> historicalWeekIds = _historicalWeekIdsFor(
+    defaultBusinessDate,
+  );
+
+  static List<String> _historicalWeekIdsFor(String isoBusinessDate) {
+    final parts = isoBusinessDate.split('-');
+    final dt = DateTime(
+        int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    final currentMonday =
+        DateTime(dt.year, dt.month, dt.day - (dt.weekday - 1));
+    // Newest first: i=1 is the week immediately before the current week.
+    return [
+      for (int i = 1; i <= historicalWeekCount; i++)
+        _weekIdFromDate(DateTime(currentMonday.year, currentMonday.month,
+            currentMonday.day - 7 * i)),
+    ];
+  }
 
   // ── Target standards (from MeridianConfig / BaselineData) ───────────────
   static const double _targetCPLH = 4.58;
@@ -203,26 +227,114 @@ class MockIntegrationReplaySeed {
     'Sun': {'dinner': 1.0},
   };
 
-  // ── Daypart PPA offsets from target PPA ─────────────────────────────────
-  // Dinner commands higher PPA, late_night lower.
-  static const Map<String, double> _daypartPPAOffset = {
-    'lunch': -1.00,
-    'dinner': 1.50,
-    'late_night': -3.00,
+  // ── Per-period base productivity (= the locked per-period targets) ──────
+  // Demo-data Slice B (§2a/§2b): the closed-shift generator builds
+  // actuals AROUND each period's own target and judges the per-shift
+  // primary lever against that SAME per-period target. This mirrors
+  // production `ShiftFactBuilder.fromClosedShiftInput`, which feeds the
+  // per-period target snapshot (not a whole-day pooled rate) into
+  // `LaborModel.determineLever`. Reusing `_daypartTargetCPLH/SPLH/PPA`
+  // as the base keeps the recommendation cohort, the locked per-period
+  // cycle, and the History grader mutually consistent — and makes
+  // `recommendation.perDaypartStats` come back materially differentiated
+  // (lunch 4.40 / dinner 4.80 / late_night 3.90 CPLH, etc.) instead of
+  // the old flat ≈4.58 every period.
+  static double _basePeriodCPLH(String daypart) =>
+      _daypartTargetCPLH[daypart] ?? _targetCPLH;
+  static double _basePeriodSPLH(String daypart) =>
+      _daypartTargetSPLH[daypart] ?? _targetSPLH;
+  static double _basePeriodPPA(String daypart) =>
+      _daypartTargetPPA[daypart] ?? _targetPPA;
+
+  // ── Per-(day,period) driver intent — the "all covers covers covers" fix ─
+  // Demo-data Slice B (§2a): each weekly slot deterministically owns ONE
+  // driver axis so the closed cohort spans 8 lever families (13 distinct
+  // lever ids) with `covers_down` on a single slot (Sun dinner) ≈ 7% of
+  // the cohort — never the >50% degenerate mass it was. The mapping is
+  // fixed per (day, period) so the leak/benchmark recurrence Learn needs
+  // (§2e, Slice D) is already engineered in: e.g. Fri dinner is always
+  // `ppa_down`, Tue lunch always `ppa_up`. Index aligns 1:1 with
+  // [weekSlots].
+  //
+  // Each entry is (axis, sign): axis ∈ {covers, ppa, cplh, splh,
+  // fohWage, bohWage, fohHours, bohHours}; sign +1 = the "up/over"
+  // lever, -1 = the "down/under" lever.
+  static const List<(String, int)> _slotDriverIntent = [
+    ('cplh', -1), //  0 Mon lunch       → cplh_down
+    ('bohHours', 1), //  1 Mon dinner    → boh_hours_over
+    ('ppa', 1), //  2 Tue lunch         → ppa_up      (Tue-lunch benchmark)
+    ('splh', 1), //  3 Tue dinner       → splh_up
+    ('fohWage', 1), //  4 Wed lunch     → foh_wage_up
+    ('cplh', 1), //  5 Wed dinner       → cplh_up
+    ('bohWage', 1), //  6 Thu lunch     → boh_wage_up
+    ('covers', 1), //  7 Thu dinner     → covers_up
+    ('splh', -1), //  8 Fri lunch       → splh_down
+    ('ppa', -1), //  9 Fri dinner       → ppa_down    (Fri-dinner leak)
+    ('covers', 1), // 10 Fri late_night → covers_up
+    ('fohHours', 1), // 11 Sat dinner   → foh_hours_over
+    ('splh', -1), // 12 Sat late_night  → splh_down   (late_night noisiest)
+    ('covers', -1), // 13 Sun dinner    → covers_down (only covers_down slot)
+  ];
+
+  // Base intent magnitude per axis — sized to clear each axis's
+  // `determineLever` threshold (covers 2%, ppa/wage 3%, cplh/splh 5%,
+  // hours-flex 10%) with margin even at the most negative week
+  // amplitude × period volatility (worst-case checked: every axis still
+  // clears its threshold). All other axes are held EXACTLY on the
+  // period target on a non-owning slot, so the owned axis is the only
+  // candidate and `determineLever` returns it deterministically.
+  static const Map<String, double> _intentBaseMag = {
+    'covers': 0.10, // thr 2%
+    'ppa': 0.085, // thr 3%
+    'cplh': 0.12, // thr 5%
+    'splh': 0.12, // thr 5%
+    'fohWage': 0.07, // thr 3%
+    'bohWage': 0.07, // thr 3%
+    'fohHours': 0.19, // thr 10%
+    'bohHours': 0.19, // thr 10%
   };
 
-  // ── Week-level deterministic variation ──────────────────────────────────
-  // Index 0 = oldest historical week, index 7 = newest.
-  // Produces realistic week-to-week variation in covers, PPA, and CPLH.
-  static const List<double> _weekCoverScales = [
-    1.00, 0.97, 1.03, 0.95, 1.02, 1.05, 0.98, 0.96,
-  ];
-  static const List<double> _weekPPAShifts = [
-    0.0, -0.50, 0.80, -1.20, 0.40, 1.00, -0.80, 0.60,
-  ];
-  static const List<double> _weekCPLHScales = [
-    1.00, 0.98, 1.02, 0.95, 1.01, 1.03, 0.97, 1.00,
-  ];
+  // Per-period volatility multiplier (§2d: "lunch flatter, dinner
+  // volatile, late_night noisiest"). Scales the week-amplitude breathing
+  // applied to a slot's owned axis so per-period History grades differ
+  // in spread, not just level.
+  static const Map<String, double> _periodVolatility = {
+    'lunch': 0.7,
+    'dinner': 1.0,
+    'late_night': 1.4,
+  };
+
+  // ── Week-level deterministic variation (§2d) ────────────────────────────
+  // Replaces the fixed 8-element bands. All variation is a pure function
+  // of the week index (0 = oldest .. historicalWeekCount-1 = newest;
+  // the current week uses index = historicalWeekCount) — no RNG, so two
+  // reseeds are byte-identical (file-header no-randomness invariant).
+
+  /// Lever-NEUTRAL volume scale applied to BOTH forecast and actual
+  /// covers, so the covers lever reflects only the per-cell covers
+  /// intent (not the week's volume swing) while Variance/History still
+  /// see real ±8–12% week-to-week volume deltas plus a gentle upward
+  /// seasonal trend and one mid-history soft week.
+  static double _weekVolume(int wi) {
+    // Gentle upward trend across history (older = quieter).
+    final trend = 0.94 + 0.010 * wi;
+    // Deterministic ±~9% saw ripple.
+    final ripple = 0.09 * ((((wi * 5 + 2) % 7) - 3) / 3.0);
+    // One soft week mid-history.
+    final soft = (wi == historicalWeekCount - 4) ? -0.07 : 0.0;
+    return trend + ripple + soft;
+  }
+
+  /// Week amplitude breathing added to a slot's owned-axis magnitude so
+  /// the weekly aggregate dollar gap and primary lever move week to week
+  /// (non-flat Variance) with a gentle operational-improvement trend
+  /// (older weeks run looser) and one soft week. Range ≈ [-0.043, +0.036].
+  static double _weekAmp(int wi) {
+    final trend = 0.030 - 0.0045 * wi;
+    final softWeek = (wi == historicalWeekCount - 4) ? -0.012 : 0.0;
+    final ripple = 0.006 * ((((wi * 7 + 3) % 5) - 2) / 2.0);
+    return trend + softWeek + ripple;
+  }
 
   // ── Open shift in-progress state ────────────────────────────────────────
   // Deterministic mid-service snapshot for the current open shift.
@@ -273,11 +385,12 @@ class MockIntegrationReplaySeed {
     final weekId = _weekIdFromDate(dt);
     final dayIndex = dt.weekday - 1; // 0=Mon .. 6=Sun
 
-    // 8 historical weeks before the current week (newest first)
+    // [historicalWeekCount] historical weeks before the current week
+    // (newest first). Slice B (§2d) raised this 8 → 12.
     final currentMonday =
         DateTime(dt.year, dt.month, dt.day - (dt.weekday - 1));
     final histWeekIds = <String>[];
-    for (int i = 1; i <= 8; i++) {
+    for (int i = 1; i <= historicalWeekCount; i++) {
       final prev = DateTime(
           currentMonday.year, currentMonday.month, currentMonday.day - 7 * i);
       histWeekIds.add(_weekIdFromDate(prev));
@@ -340,72 +453,86 @@ class MockIntegrationReplaySeed {
 
   // ── Generator ───────────────────────────────────────────────────────────
 
-  /// Generate all 14 closed shifts for one historical week.
+  /// Generate all closed shifts for one historical week. Each weekly
+  /// slot's index is passed through so the deterministic per-(day,
+  /// period) driver intent ([_slotDriverIntent]) is stable across weeks.
   static List<ShiftRecord> _generateClosedWeek(String weekId, int weekIndex) {
-    final coverScale = _weekCoverScales[weekIndex];
-    final ppaShift = _weekPPAShifts[weekIndex];
-    final cplhScale = _weekCPLHScales[weekIndex];
-
     final shifts = <ShiftRecord>[];
-    for (final slot in weekSlots) {
+    for (int slotIndex = 0; slotIndex < weekSlots.length; slotIndex++) {
+      final slot = weekSlots[slotIndex];
       shifts.add(_generateShift(
         weekId: weekId,
         day: slot.$1,
         daypart: slot.$2,
         status: 'closed',
-        coverScale: coverScale,
-        ppaShift: ppaShift,
-        cplhScale: cplhScale,
         weekIndex: weekIndex,
+        slotIndex: slotIndex,
       ));
     }
     return shifts;
   }
 
   /// Generate one shift with deterministic variation.
+  ///
+  /// Demo-data Slice B: closed shifts are built around their period's
+  /// own target ([_basePeriodCPLH]/SPLH/PPA) and the per-shift primary
+  /// lever is judged against that SAME per-period target — mirroring
+  /// production `ShiftFactBuilder.fromClosedShiftInput`. Each weekly
+  /// slot owns exactly one driver axis ([_slotDriverIntent]); that axis
+  /// is pushed past its `determineLever` threshold while every other
+  /// axis is held exactly on the period target, so the engine returns
+  /// the intended lever deterministically and the closed cohort spans
+  /// 8 lever families instead of collapsing to `covers_down`.
   static ShiftRecord _generateShift({
     required String weekId,
     required String day,
     required String daypart,
     required String status,
-    required double coverScale,
-    required double ppaShift,
-    required double cplhScale,
     required int weekIndex,
+    required int slotIndex,
   }) {
     final dayIndex =
         const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].indexOf(day);
     final dayCovers = _dayBaseCovers[day]!;
     final ratio = _daypartRatios[day]![daypart]!;
-    final forecastCovers = (dayCovers * ratio).round();
+
+    final baseCPLH = _basePeriodCPLH(daypart);
+    final baseSPLH = _basePeriodSPLH(daypart);
+    final basePPA = _basePeriodPPA(daypart);
 
     final businessDate = _businessDateFromWeekDay(weekId, day)!;
 
+    // Lever-NEUTRAL volume: the week volume scale + day jitter are
+    // applied to BOTH forecast and actual covers, so the covers lever
+    // reflects only the per-cell covers intent (not the week's volume
+    // swing). Variance/History still see the real ±8–12% week-to-week
+    // volume deltas + seasonal trend through the absolute cover counts.
+    final dayJitter = 0.97 + ((weekIndex * 3 + dayIndex * 5 + 1) % 7) * 0.01;
+    final baseCoversF = dayCovers * ratio * _weekVolume(weekIndex) * dayJitter;
+    final forecastCovers = baseCoversF.round().clamp(10, 9999);
+
     if (status != 'closed') {
-      // Projected: use forecast values at target rates.
-      final basePPA = _targetPPA + (_daypartPPAOffset[daypart] ?? 0);
-      final foh = LaborModel.modelFohHours(forecastCovers, _targetCPLH);
-      final boh = LaborModel.modelBohHoursFromSales(
-        forecastCovers * basePPA,
-        _targetSPLH,
-      );
-      // 7.58.4: round-trip the lever id through `determineLever` against
-      // the same row inputs so the projected record matches what the
-      // engine would say. Wages match target; the wage axis cannot fire.
-      // The empty-candidate fallback (`covers_down`) — and any axis that
-      // does fire on the daypart PPA offset — is engine truth, not a
+      // Projected: on-model at the PERIOD target (period-differentiated
+      // so projected period cards / Full Week Projection rows differ per
+      // period and roll up consistently). Wages match target; the
+      // empty-candidate fallback (`covers_down`) is engine truth, not a
       // hand-coded sentinel. The non-closed `on_model` sentinel remains
       // the property of `CurrentWeekState.shiftRecordFromSnapshot`
       // (open snapshots), per the phase 7.58 contract Output Cardinality.
+      final foh = LaborModel.modelFohHours(forecastCovers, baseCPLH);
+      final boh = LaborModel.modelBohHoursFromSales(
+        forecastCovers * basePPA,
+        baseSPLH,
+      );
       final projectedLever = LaborModel.determineLever(
         actualCovers: forecastCovers,
         forecastCovers: forecastCovers,
-        avgCPLH: _targetCPLH,
+        avgCPLH: baseCPLH,
         avgPPA: basePPA,
-        targetCPLH: _targetCPLH,
-        targetPPA: _targetPPA,
-        avgSPLH: _targetSPLH,
-        targetSPLH: _targetSPLH,
+        targetCPLH: baseCPLH,
+        targetPPA: basePPA,
+        avgSPLH: baseSPLH,
+        targetSPLH: baseSPLH,
         avgFohBlendedWage: _fohWage,
         targetFohWage: _fohWage,
         avgBohBlendedWage: _bohWage,
@@ -423,9 +550,9 @@ class MockIntegrationReplaySeed {
         businessDate: businessDate,
         covers: forecastCovers,
         forecastCovers: forecastCovers,
-        ppa: basePPA,
-        cplh: _targetCPLH,
-        splh: _targetSPLH,
+        ppa: double.parse(basePPA.toStringAsFixed(2)),
+        cplh: double.parse(baseCPLH.toStringAsFixed(2)),
+        splh: double.parse(baseSPLH.toStringAsFixed(2)),
         fohHours: foh,
         bohHours: boh,
         theoreticalLaborPct: _theoreticalLaborPct,
@@ -440,51 +567,81 @@ class MockIntegrationReplaySeed {
       );
     }
 
-    // ── Closed shift with deterministic variation ─────────────────────────
+    // ── Closed shift — one deterministic driver per (day, period) ─────────
 
-    // Per-day jitter: deterministic +/- 3% (different per week × day).
-    final dayJitter =
-        0.97 + ((weekIndex * 3 + dayIndex * 5 + 1) % 7) * 0.01;
+    final intent = _slotDriverIntent[slotIndex];
+    final axis = intent.$1;
+    final intentSign = intent.$2;
 
-    final rawCovers = dayCovers * ratio * coverScale * dayJitter;
-    final covers = rawCovers.round().clamp(10, 9999);
+    // Owned-axis magnitude: base (clears the axis threshold) + week
+    // amplitude breathing × per-period volatility (lunch flatter,
+    // late_night noisiest). Floored at the base magnitude as a belt-and-
+    // suspenders guard — by construction every axis already clears its
+    // threshold at the most-negative week amplitude.
+    final breathed = _intentBaseMag[axis]! +
+        _weekAmp(weekIndex) * (_periodVolatility[daypart] ?? 1.0);
+    final m = breathed > 0 ? breathed : _intentBaseMag[axis]!;
+    final dev = 1 + intentSign * m;
 
-    final basePPA = _targetPPA + (_daypartPPAOffset[daypart] ?? 0);
-    final ppa = double.parse((basePPA + ppaShift).toStringAsFixed(2));
-
+    // Every non-owned axis is held EXACTLY on the period target, so it
+    // contributes zero deviation and the owned axis is the sole — and
+    // therefore winning — `determineLever` candidate.
+    final covers = axis == 'covers'
+        ? (baseCoversF * dev).round().clamp(10, 9999)
+        : forecastCovers;
+    final effPPA = axis == 'ppa' ? basePPA * dev : basePPA;
+    final ppa = double.parse(effPPA.toStringAsFixed(2));
     final sales = covers * ppa;
-    final actualCPLH = _targetCPLH * cplhScale;
-    final fohHours = LaborModel.modelFohHours(covers, actualCPLH);
-    final bohHours = LaborModel.modelBohHoursFromSales(sales, _targetSPLH);
 
-    final cplh = fohHours > 0 ? covers / fohHours : _targetCPLH;
-    final splh = bohHours > 0 ? sales / bohHours : _targetSPLH;
+    // Reported cplh/splh are the constructed RATES (not covers ÷ rounded
+    // integer hours). Storing the rate keeps tiny late_night shifts from
+    // letting integer-hour rounding spuriously cross a lever threshold,
+    // while fohHours/bohHours remain the realistic integer model hours.
+    final effCPLH = axis == 'cplh' ? baseCPLH * dev : baseCPLH;
+    final effSPLH = axis == 'splh' ? baseSPLH * dev : baseSPLH;
+    final fohHours = LaborModel.modelFohHours(covers, effCPLH);
+    final bohHours = LaborModel.modelBohHoursFromSales(sales, effSPLH);
 
-    // 7.58.4 / F-3: pass the full axis set (covers + ppa + cplh + splh +
-    // wages + hours-flex) so the per-shift seed lever matches what
-    // `ShiftFactBuilder.fromClosedShiftInput` would emit for the same
-    // inputs. Seed wages match target by construction (sales-side actuals
-    // are scaled, not wages), so the wage axis stays quiet — but it is
-    // now passed so the round-trip test pins fixture parity with the
-    // live producer.
-    final modelFoh = LaborModel.modelFohHours(covers, _targetCPLH);
-    final modelBoh = LaborModel.modelBohHoursFromSales(sales, _targetSPLH);
+    final fohWage = axis == 'fohWage' ? _fohWage * dev : _fohWage;
+    final bohWage = axis == 'bohWage' ? _bohWage * dev : _bohWage;
+
+    // Model hours are vs the PERIOD target (what the hours-flex lever
+    // compares the schedule against); scheduled = model unless this
+    // slot owns an hours-flex axis.
+    final modelFoh = LaborModel.modelFohHours(covers, baseCPLH);
+    final modelBoh = LaborModel.modelBohHoursFromSales(sales, baseSPLH);
+    final scheduledFoh = axis == 'fohHours'
+        ? (modelFoh * dev).round().clamp(1, 999999)
+        : modelFoh;
+    final scheduledBoh = axis == 'bohHours'
+        ? (modelBoh * dev).round().clamp(1, 999999)
+        : modelBoh;
+
+    final cplh = effCPLH;
+    final splh = effSPLH;
+
+    // F-3: pass the full axis set, judged against the PERIOD target
+    // (mirrors production `ShiftFactBuilder.fromClosedShiftInput`, which
+    // feeds the per-period target snapshot — not a whole-day pooled
+    // rate). Exactly one axis deviates, so the engine returns the
+    // intended lever; the closed cohort therefore spans 8 lever
+    // families with `covers_down` on a single slot.
     final lever = LaborModel.determineLever(
       actualCovers: covers,
       forecastCovers: forecastCovers,
       avgCPLH: cplh,
       avgPPA: ppa,
-      targetCPLH: _targetCPLH,
-      targetPPA: _targetPPA,
+      targetCPLH: baseCPLH,
+      targetPPA: basePPA,
       avgSPLH: splh,
-      targetSPLH: _targetSPLH,
-      avgFohBlendedWage: _fohWage,
+      targetSPLH: baseSPLH,
+      avgFohBlendedWage: fohWage,
       targetFohWage: _fohWage,
-      avgBohBlendedWage: _bohWage,
+      avgBohBlendedWage: bohWage,
       targetBohWage: _bohWage,
-      scheduledFohHours: fohHours,
+      scheduledFohHours: scheduledFoh,
       modelFohHours: modelFoh,
-      scheduledBohHours: bohHours,
+      scheduledBohHours: scheduledBoh,
       modelBohHours: modelBoh,
     );
 
@@ -503,8 +660,10 @@ class MockIntegrationReplaySeed {
       bohHours: bohHours,
       theoreticalLaborPct: _theoreticalLaborPct,
       primaryLever: lever.toUpperCase(),
-      storedFohLaborDollar: fohHours * _fohWage,
-      storedBohLaborDollar: bohHours * _bohWage,
+      scheduledFohHours: scheduledFoh,
+      scheduledBohHours: scheduledBoh,
+      storedFohLaborDollar: fohHours * fohWage,
+      storedBohLaborDollar: bohHours * bohWage,
       sourceSystem: sourceSystem,
       // Per-Daypart V1 (Slice 1, Gap 22 fix): demo seeder writes
       // shift_records with the demo restaurant's timing-provenance
@@ -697,13 +856,13 @@ class MockIntegrationReplaySeed {
   /// projected (will be open in snapshots), late_night is projected.
   static List<ShiftRecord> _generateCurrentWeekForDate(
       String weekId, int dayIndex) {
-    const coverScale = 0.93;
-    const ppaShift = 0.30;
-    const cplhScale = 0.98;
-    const weekIndex = 8; // distinct from historical indices
+    // The current week's index sits one past the newest historical
+    // week so its volume/amplitude band is distinct and deterministic.
+    const weekIndex = historicalWeekCount;
 
     final shifts = <ShiftRecord>[];
-    for (final slot in weekSlots) {
+    for (int slotIndex = 0; slotIndex < weekSlots.length; slotIndex++) {
+      final slot = weekSlots[slotIndex];
       final slotDayIndex = _dayLabels.indexOf(slot.$1);
 
       String status;
@@ -723,10 +882,8 @@ class MockIntegrationReplaySeed {
         day: slot.$1,
         daypart: slot.$2,
         status: status,
-        coverScale: coverScale,
-        ppaShift: ppaShift,
-        cplhScale: cplhScale,
         weekIndex: weekIndex,
+        slotIndex: slotIndex,
       ));
     }
     return shifts;

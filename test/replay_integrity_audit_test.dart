@@ -14,6 +14,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
+import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/services/shift_data_source.dart';
 import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
@@ -61,7 +62,7 @@ void main() {
     test('getWeekHistory reads from SQLite week_records', () async {
       final weeks = await ShiftService.instance.getWeekHistory();
       expect(weeks, isNotEmpty);
-      expect(weeks.length, 8);
+      expect(weeks.length, MockIntegrationReplaySeed.historicalWeekCount);
     });
 
     test('getHistoryPatternRecords reads from SQLite shift_records', () async {
@@ -131,9 +132,10 @@ void main() {
       const staticSrc = StaticShiftDataSource();
       final history = await staticSrc.getWeekHistory();
       expect(history, isNotEmpty);
-      expect(history.length, 8,
+      expect(history.length, MockIntegrationReplaySeed.historicalWeekCount,
           reason: 'StaticShiftDataSource reads from MockIntegrationReplaySeed '
-              'output, which generates 8 historical weeks');
+              'output, which generates [historicalWeekCount] historical '
+              'weeks (Slice B raised this 8 → 12)');
     });
 
     test('StaticShiftDataSource.getHistoricalClosedShifts returns replay data',
@@ -141,8 +143,9 @@ void main() {
       const staticSrc = StaticShiftDataSource();
       final shifts = await staticSrc.getHistoricalClosedShifts();
       expect(shifts, isNotEmpty);
-      expect(shifts.length, 112,
-          reason: '8 weeks * 14 shifts = 112 historical closed shifts');
+      expect(shifts.length, MockIntegrationReplaySeed.historicalWeekCount * 14,
+          reason: '[historicalWeekCount] weeks * 14 shifts historical '
+              'closed shifts');
     });
   });
 
@@ -213,7 +216,7 @@ void main() {
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('week_records');
       expect(rows, isNotEmpty);
-      expect(rows.length, 8);
+      expect(rows.length, MockIntegrationReplaySeed.historicalWeekCount);
       expect(
         rows.every((r) =>
             r['target_calibration_window_start'] != null &&

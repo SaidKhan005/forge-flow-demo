@@ -943,6 +943,90 @@ double? _weightedAvgFromRows(
   return totalDollars / totalHours;
 }
 
+/// Demo-data Slice B (§2g / G7): seed `wage_role_rows` for the demo
+/// restaurant so the cycle's blended-wage waterfall is the production
+/// `_weightedAvgFromRows` path over real role rows — NOT the
+/// `MeridianConfig.fohWage/bohWage` empty-rows fallback in
+/// `_ensureDemoSeedCycle`. The seeded FOH/BOH cohorts are weighted to
+/// blend to exactly `MeridianConfig.fohWage` (16.50) / `bohWage`
+/// (21.35), so the cycle's whole-day scalars are unchanged (existing
+/// cycle/pool tests stay green) while the wage authority surface and
+/// waterfall now render real, role-level demo evidence. Wage-AXIS
+/// levers fire from the per-shift blended-wage deviation engineered in
+/// `MockIntegrationReplaySeed._generateShift`, not from these rows.
+///
+/// HP #2: standard production `wage_role_rows` table, scoped by
+/// `restaurant_id = DemoScope.restaurantId`. No `demo_*` table, no
+/// `kDemoMode` reader branch.
+///
+/// Operator-authority safe (HP #11): seeds ONLY when the demo
+/// restaurant has zero wage_role_rows (true first-boot / clean demo).
+/// If ANY wage row already exists — operator-entered authority, or a
+/// prior demo seed — this is a no-op and uses `ConflictAlgorithm.ignore`
+/// so it can never overwrite an operator's configured wage. `reseedDemo`
+/// never DELETEs `wage_role_rows`, so operator wage authority survives
+/// reseed unchanged, and the seed is deterministic/idempotent across
+/// reseeds (seed once when empty, skip thereafter).
+Future<void> _seedDemoWageRoleRows(Database db) async {
+  final existing = await db.query(
+    'wage_role_rows',
+    where: 'restaurant_id = ?',
+    whereArgs: [DemoScope.restaurantId],
+    limit: 1,
+  );
+  if (existing.isNotEmpty) {
+    // Operator authority or a prior demo seed already present — never
+    // clobber it (HP #11). The demo cohort is a cold-start convenience
+    // only.
+    return;
+  }
+  const rows = <Map<String, Object?>>[
+    // FOH cohort — weighted blend = (14.50 + 18.50) / 2 = 16.50.
+    {
+      'role_name': 'Server',
+      'labor_bucket': 'foh',
+      'hourly_rate': 14.50,
+      'weighted_hours': 500.0,
+    },
+    {
+      'role_name': 'Bartender',
+      'labor_bucket': 'foh',
+      'hourly_rate': 18.50,
+      'weighted_hours': 500.0,
+    },
+    // BOH cohort — weighted blend = (19.35 + 23.35) / 2 = 21.35.
+    {
+      'role_name': 'Prep Cook',
+      'labor_bucket': 'boh',
+      'hourly_rate': 19.35,
+      'weighted_hours': 500.0,
+    },
+    {
+      'role_name': 'Line Cook',
+      'labor_bucket': 'boh',
+      'hourly_rate': 23.35,
+      'weighted_hours': 500.0,
+    },
+  ];
+  final batch = db.batch();
+  for (final r in rows) {
+    batch.insert(
+      'wage_role_rows',
+      {
+        'restaurant_id': DemoScope.restaurantId,
+        'role_name': r['role_name'],
+        'labor_bucket': r['labor_bucket'],
+        'hourly_rate': r['hourly_rate'],
+        'weighted_hours': r['weighted_hours'],
+        'source': 'demo_seed',
+        'is_active': 1,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+  await batch.commit(noResult: true);
+}
+
 String _addIsoDays(String isoDate, int days) {
   final result = DateTime.parse(isoDate).add(Duration(days: days));
   return '${result.year}-${result.month.toString().padLeft(2, '0')}'
