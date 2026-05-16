@@ -110,7 +110,10 @@ if (-not $SkipOperatorWeb) {
   $launches += @{
     Label    = 'operator-web'
     Script   = (Join-Path $repoRoot 'scripts\run_operator_web_dev.ps1')
-    Args     = @('-Mode', 'demo', '-WebPort', "$OperatorWebPort")
+    # Force -Device web-server (the script's own default is -Device chrome
+    # for single-surface launches, which would spawn a fresh Chrome window
+    # per surface — wrong for the parallel multi-launch use case).
+    Args     = @('-Mode', 'demo', '-Device', 'web-server', '-WebPort', "$OperatorWebPort")
     Port     = $OperatorWebPort
     LogFile  = (Join-Path $logDir 'operator_web_demo.log')
   }

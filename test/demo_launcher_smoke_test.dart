@@ -280,6 +280,141 @@ void main() {
     );
   });
 
+  group('Web console launchers default to -Device chrome (auto-spawn)', () {
+    test(
+      'run_operator_web_dev.ps1 default -Device is chrome (auto-launches Chrome)',
+      () {
+        final script = _read('scripts/run_operator_web_dev.ps1');
+        // Guard the default flipped in the operator-web-chrome PR. Web-server
+        // is still selectable explicitly; the test fails if someone reverts
+        // the default back to `web-server` (would re-introduce the
+        // "script runs but no browser opens" UX regression).
+        expect(
+          script,
+          matches(
+            RegExp(
+              r"\[string\]\s+\$Device\s*=\s*'chrome'",
+              multiLine: true,
+            ),
+          ),
+          reason:
+              "scripts/run_operator_web_dev.ps1's `-Device` parameter no "
+              "longer defaults to 'chrome'. The README assumes Chrome "
+              "auto-opens when an operator runs the script. If you need "
+              "headless behavior, pass `-Device web-server` explicitly "
+              "(that's what scripts/run_all_demo.ps1 does).",
+        );
+      },
+    );
+
+    test(
+      'run_admin_console_dev.ps1 default -Device is chrome',
+      () {
+        final script = _read('scripts/run_admin_console_dev.ps1');
+        expect(
+          script,
+          matches(
+            RegExp(
+              r"\[string\]\s+\$Device\s*=\s*'chrome'",
+              multiLine: true,
+            ),
+          ),
+          reason:
+              "scripts/run_admin_console_dev.ps1's `-Device` parameter no "
+              "longer defaults to 'chrome'. Both web console launchers "
+              "should auto-spawn Chrome for the README single-surface "
+              "demo path.",
+        );
+      },
+    );
+
+    test(
+      'run_all_demo.ps1 forces operator-web to -Device web-server (parallel safe)',
+      () {
+        final script = _read('scripts/run_all_demo.ps1');
+        // Without the explicit override, the parallel launcher would
+        // spawn a fresh Chrome window per surface (because operator-web
+        // now defaults to chrome) — wrong for the multi-launch use case.
+        // Test passes if `-Device, 'web-server'` appears in the operator
+        // launch Args array.
+        expect(
+          script,
+          contains("'-Device', 'web-server'"),
+          reason:
+              'scripts/run_all_demo.ps1 no longer passes `-Device '
+              "web-server` to operator-web. With operator-web's default "
+              'now being `chrome`, the parallel launcher would spawn a '
+              'fresh Chrome window per surface instead of binding the '
+              'headless dev server on 8181. Re-add the explicit '
+              "`-Device web-server` flag to the operator-web launch "
+              'Args.',
+        );
+      },
+    );
+  });
+
+  group('Production-gate refusal without -IUnderstand', () {
+    test(
+      'all three launchers contain the BLOCKED: -Mode production '
+      'targets message',
+      () {
+        for (final script in <String>[
+          'scripts/run_flutter_dev.ps1',
+          'scripts/run_operator_web_dev.ps1',
+          'scripts/run_admin_console_dev.ps1',
+        ]) {
+          final body = _read(script);
+          expect(
+            body,
+            contains('BLOCKED: -Mode production targets'),
+            reason:
+                '$script no longer prints the production-gate refusal '
+                'message. -Mode production must fail closed without '
+                '-IUnderstand so a forgotten flag does not silently '
+                'point local dev at the live proxy.',
+          );
+          expect(
+            body,
+            contains(r'$IUnderstand'),
+            reason:
+                '$script no longer declares the -IUnderstand switch. '
+                'Production mode must require explicit confirmation.',
+          );
+        }
+      },
+    );
+  });
+
+  group('Splash-removal fallback (PR #809)', () {
+    test(
+      'forge_flow_web_bootstrap.js installs a MutationObserver that calls '
+      'removeSplashFromWeb on flt-glass-pane mount',
+      () {
+        final bootstrap = _read('web/forge_flow_web_bootstrap.js');
+        // PR #809 fix: dev-mode Flutter never auto-removes the splash
+        // because flutter_native_splash only injects the call into the
+        // production-built flutter_bootstrap.js. Without this observer,
+        // every dev launch hangs on splash.
+        expect(
+          bootstrap,
+          allOf(
+            contains('MutationObserver'),
+            contains('flt-glass-pane'),
+            contains('removeSplashFromWeb'),
+          ),
+          reason:
+              'web/forge_flow_web_bootstrap.js no longer installs the '
+              'splash-removal MutationObserver that watches for '
+              '`flt-glass-pane` and calls `window.removeSplashFromWeb()`. '
+              'Without it, `flutter run` web demos hang on the splash '
+              'forever (production builds are unaffected because the '
+              'flutter_native_splash plugin auto-injects the same call '
+              'into the built `flutter_bootstrap.js`).',
+        );
+      },
+    );
+  });
+
   group('README master matrix points at the live launcher scripts', () {
     test(
       'README contains the README master matrix demo commands',
