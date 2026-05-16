@@ -450,6 +450,15 @@ class MockIntegrationReplaySeed {
     currentDayClosedPeriods: ['lunch'],
   );
 
+  /// Public accessor for [_legacyDefaultResolution] — the deterministic
+  /// no-clock-injected fallback (Dinner open, Lunch closed). Consumed by
+  /// `SqliteDatabase`'s reseed/advance path when no clock anchor is
+  /// injected so the demo affordance + bare-`reseedDemo()` tests stay
+  /// deterministic. The cold-boot/device path injects a real
+  /// clock-derived resolution instead (the actual QA fix).
+  static OpenPeriodResolution get legacyDefaultResolution =>
+      _legacyDefaultResolution;
+
   /// Source shift ID for the default scenario's open shift (backward compat).
   static const String openShiftSourceShiftId = 'w13-fri-dinner-open';
 

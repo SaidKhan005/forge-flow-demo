@@ -440,7 +440,10 @@ class SqliteDatabase {
     // true Saturday 09:25 (before Lunch opens) yields no open shift.
     final replay = MockIntegrationReplaySeed.generateForDate(
       coldBootBusinessDate,
-      open: _openPeriodResolutionForSeed(coldBootBusinessDate),
+      open: _openPeriodResolutionForSeed(
+        coldBootBusinessDate,
+        coldBoot: true,
+      ),
     );
     await _seedDemoActiveTargetProfile(
       db,
@@ -804,7 +807,7 @@ class SqliteDatabase {
     // the restaurant-local clock; demo/device use the real clock).
     final replay = MockIntegrationReplaySeed.generateForDate(
       isoDate,
-      open: _openPeriodResolutionForSeed(isoDate),
+      open: _openPeriodResolutionForSeed(isoDate, coldBoot: false),
     );
 
     // When a preserved active cycle exists, its projected
