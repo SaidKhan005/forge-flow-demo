@@ -51,6 +51,7 @@ import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
+import '../services/admin_sessions_gateway.dart';
 
 /// V1 Admin "My Account" screen. The admin shell renders this at
 /// [kAdminMyAccountRouteId].
@@ -60,6 +61,7 @@ class MyAccountAdminScreen extends StatefulWidget {
     required this.session,
     required this.authSource,
     this.accountGateway,
+    this.sessionsGateway,
     this.now,
   });
 
@@ -75,6 +77,13 @@ class MyAccountAdminScreen extends StatefulWidget {
   /// older test fixtures), so the section stays read-only — mirrors
   /// the original W-4 posture.
   final AdminAccountGateway? accountGateway;
+
+  /// Audit fix-first #2 (G2) — when non-null, the Active Sessions
+  /// card renders the real list + per-row revoke + sign-out-everywhere
+  /// surface. Null (older test fixtures that predate this slice)
+  /// degrades to the legacy single-session + local sign-out posture
+  /// so existing widget tests keep passing.
+  final AdminSessionsGateway? sessionsGateway;
 
   /// Test seam for the freshness clock so widget tests can pin a
   /// deterministic "last signed in" relative label.
@@ -165,6 +174,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
           _AdminActiveSessionsCard(
             session: widget.session,
             onSignOut: () => widget.authSource.signOut(),
+            gateway: widget.sessionsGateway,
             now: widget.now,
           ),
         ],
@@ -591,30 +601,168 @@ class _AdminReadOnlyNote extends StatelessWidget {
 
 // ─── Active sessions ────────────────────────────────────────────────
 
-class _AdminActiveSessionsCard extends StatelessWidget {
+class _AdminActiveSessionsCard extends StatefulWidget {
   const _AdminActiveSessionsCard({
     required this.session,
     required this.onSignOut,
+    this.gateway,
     this.now,
   });
 
   final AdminAuthSession session;
   final VoidCallback onSignOut;
+
+  /// Audit fix-first #2 (G2). When non-null, the card loads the
+  /// admin's own session list and offers per-row revoke +
+  /// sign-out-everywhere. Null degrades to the legacy single-session
+  /// + local sign-out posture.
+  final AdminSessionsGateway? gateway;
   final DateTime Function()? now;
 
   @override
+  State<_AdminActiveSessionsCard> createState() =>
+      _AdminActiveSessionsCardState();
+}
+
+class _AdminActiveSessionsCardState extends State<_AdminActiveSessionsCard> {
+  bool _loading = false;
+  String? _loadError;
+  List<AdminSessionEntry>? _sessions;
+  final Set<String> _revoking = <String>{};
+  bool _signingOutEverywhere = false;
+  String? _toast;
+  Timer? _toastTimer;
+  static const Duration _kToastVisibleDuration = Duration(seconds: 4);
+  int _idempotencyCounter = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.gateway != null) {
+      unawaited(_loadSessions());
+    }
+  }
+
+  @override
+  void dispose() {
+    _toastTimer?.cancel();
+    super.dispose();
+  }
+
+  String _mintIdempotencyKey(String action) {
+    _idempotencyCounter += 1;
+    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
+    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    return 'admin-my-account-sessions-$action-$ts-$r-$_idempotencyCounter';
+  }
+
+  void _showToast(String message) {
+    _toastTimer?.cancel();
+    setState(() => _toast = message);
+    _toastTimer = Timer(_kToastVisibleDuration, () {
+      if (!mounted) return;
+      setState(() => _toast = null);
+    });
+  }
+
+  Future<void> _loadSessions() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final listed = await gateway.listOwnSessions();
+      if (!mounted) return;
+      setState(() {
+        _sessions =
+            listed.where((s) => s.isActive).toList(growable: false);
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = _friendly(error);
+      });
+    }
+  }
+
+  Future<void> _revokeSession(AdminSessionEntry entry) async {
+    final gateway = widget.gateway;
+    if (gateway == null || _revoking.contains(entry.sessionId)) return;
+    setState(() => _revoking.add(entry.sessionId));
+    try {
+      await gateway.revokeSession(
+        sessionId: entry.sessionId,
+        reason: 'admin_revoked_from_my_account',
+        idempotencyKey: _mintIdempotencyKey('revoke'),
+      );
+      if (!mounted) return;
+      _showToast('That session has been signed out.');
+      await _loadSessions();
+    } catch (error) {
+      if (!mounted) return;
+      _showToast(_friendly(error));
+    } finally {
+      if (mounted) {
+        setState(() => _revoking.remove(entry.sessionId));
+      }
+    }
+  }
+
+  Future<void> _signOutEverywhere() async {
+    final gateway = widget.gateway;
+    if (gateway == null || _signingOutEverywhere) return;
+    setState(() => _signingOutEverywhere = true);
+    try {
+      await gateway.signOutEverywhere(
+        reason: 'admin_signed_out_all_sessions',
+        idempotencyKey: _mintIdempotencyKey('sign-out-all'),
+      );
+      if (!mounted) return;
+      // Every session (including this one) + the Firebase refresh
+      // tokens are revoked server-side. Route through the local
+      // sign-out so the gate returns to the sign-in card immediately.
+      widget.onSignOut();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _signingOutEverywhere = false);
+      _showToast(_friendly(error));
+    }
+  }
+
+  String _friendly(Object error) {
+    if (error is AdminSessionsGatewayError) {
+      if (error.statusCode == 408) {
+        return 'The admin console timed out reaching the session service. '
+            'Try again in a moment.';
+      }
+      return 'We could not complete that session action. Try again in a '
+          'moment.';
+    }
+    return 'We could not complete that session action. Try again in a '
+        'moment.';
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final lastFresh = session.lastFreshAuthAt;
+    final lastFresh = widget.session.lastFreshAuthAt;
     final lastSignedInHelper = lastFresh == null
         ? 'Sign-in time is not available for this session.'
-        : 'Signed in ${_formatRelative(lastFresh, now)}.';
+        : 'Signed in ${_formatRelative(lastFresh, widget.now)}.';
+    final hasGateway = widget.gateway != null;
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_active_sessions_card'),
       icon: Icons.devices_outlined,
       title: 'Active sessions',
-      headerExplainer:
-          'This is where you are currently signed in to the admin console. '
-          'Use the sign-out button to end this session.',
+      headerExplainer: hasGateway
+          ? 'Every place you are currently signed in to the admin console. '
+                'Sign out a single session, or sign out everywhere if you '
+                'think your account is at risk.'
+          : 'This is where you are currently signed in to the admin '
+                'console. Use the sign-out button to end this session.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -663,6 +811,10 @@ class _AdminActiveSessionsCard extends StatelessWidget {
               ],
             ),
           ),
+          if (hasGateway) ...[
+            const SizedBox(height: 14),
+            _buildSessionsList(),
+          ],
           const SizedBox(height: 12),
           Align(
             alignment: Alignment.centerLeft,
@@ -670,7 +822,7 @@ class _AdminActiveSessionsCard extends StatelessWidget {
               height: 40,
               child: OutlinedButton.icon(
                 key: const Key('admin_my_account_sign_out_button'),
-                onPressed: onSignOut,
+                onPressed: widget.onSignOut,
                 icon: const Icon(Icons.logout_outlined, size: 16),
                 label: const Text('Sign out of this session'),
                 style: OutlinedButton.styleFrom(
@@ -688,14 +840,249 @@ class _AdminActiveSessionsCard extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 10),
-          _AdminReadOnlyNote(
-            key: const Key('admin_my_account_sessions_readonly_note'),
-            icon: Icons.info_outline,
-            message:
-                'A list of every signed-in admin session is not available '
-                'here yet. Reach out to a Forge & Flow ecosystem admin if '
-                'you suspect a session needs to be revoked.',
+          if (hasGateway) ...[
+            const SizedBox(height: 10),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                height: 40,
+                child: OutlinedButton.icon(
+                  key: const Key('admin_my_account_sign_out_everywhere_button'),
+                  onPressed:
+                      _signingOutEverywhere ? null : _signOutEverywhere,
+                  icon: _signingOutEverywhere
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.shield_moon_outlined, size: 16),
+                  label: Text(
+                    _signingOutEverywhere
+                        ? 'Signing out everywhere...'
+                        : 'Sign out everywhere',
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.negative,
+                    side: const BorderSide(color: AppColors.negative),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    textStyle: AppTextStyles.mono14(
+                      color: AppColors.negative,
+                      weight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            if (_toast != null) ...[
+              const SizedBox(height: 10),
+              Container(
+                key: const Key('admin_my_account_sessions_toast'),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.peacock.withValues(alpha: 0.10),
+                  border: Border.all(
+                    color: AppColors.peacock.withValues(alpha: 0.45),
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      size: 16,
+                      color: AppColors.peacockDark,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _toast!,
+                        style: AppTextStyles.body13(
+                          color: AppColors.peacockDark,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: 10),
+            _AdminReadOnlyNote(
+              key: const Key('admin_my_account_sessions_readonly_note'),
+              icon: Icons.info_outline,
+              message:
+                  'A list of every signed-in admin session is not available '
+                  'here yet. Reach out to a Forge & Flow ecosystem admin if '
+                  'you suspect a session needs to be revoked.',
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSessionsList() {
+    if (_loading && _sessions == null) {
+      return const Padding(
+        key: Key('admin_my_account_sessions_loading'),
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+    if (_loadError != null) {
+      return Container(
+        key: const Key('admin_my_account_sessions_load_error'),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.negative.withValues(alpha: 0.08),
+          border: Border.all(
+            color: AppColors.negative.withValues(alpha: 0.35),
+            width: 1,
+          ),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 16,
+              color: AppColors.negative,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _loadError!,
+                style: AppTextStyles.body13(color: AppColors.negative),
+              ),
+            ),
+            TextButton(
+              key: const Key('admin_my_account_sessions_retry'),
+              onPressed: _loading ? null : _loadSessions,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    final sessions = _sessions ?? const <AdminSessionEntry>[];
+    if (sessions.isEmpty) {
+      return Text(
+        key: const Key('admin_my_account_sessions_empty'),
+        'No other active admin sessions.',
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      );
+    }
+    return Column(
+      key: const Key('admin_my_account_sessions_list'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final entry in sessions) ...[
+          _AdminSessionRow(
+            entry: entry,
+            now: widget.now,
+            revoking: _revoking.contains(entry.sessionId),
+            onRevoke: () => _revokeSession(entry),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _AdminSessionRow extends StatelessWidget {
+  const _AdminSessionRow({
+    required this.entry,
+    required this.revoking,
+    required this.onRevoke,
+    this.now,
+  });
+
+  final AdminSessionEntry entry;
+  final bool revoking;
+  final VoidCallback onRevoke;
+  final DateTime Function()? now;
+
+  @override
+  Widget build(BuildContext context) {
+    final device = entry.deviceLabel ?? entry.userAgent ?? 'Unknown device';
+    final whereParts = <String>[
+      if (entry.geoCountry != null) entry.geoCountry!,
+    ];
+    final lastSeen = 'Last active ${_formatRelative(entry.lastSeenAt, now)}';
+    final subtitle =
+        whereParts.isEmpty ? lastSeen : '$lastSeen · ${whereParts.join(', ')}';
+    return Container(
+      key: Key('admin_my_account_session_row_${entry.sessionId}'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Icon(
+            Icons.devices_other_outlined,
+            size: 16,
+            color: AppColors.sunsetDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  device,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            height: 32,
+            child: OutlinedButton(
+              key: Key(
+                'admin_my_account_session_revoke_${entry.sessionId}',
+              ),
+              onPressed: revoking ? null : onRevoke,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.negative,
+                side: const BorderSide(color: AppColors.negative),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                textStyle: AppTextStyles.mono11(color: AppColors.negative),
+              ),
+              child: revoking
+                  ? const SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Sign out'),
+            ),
           ),
         ],
       ),

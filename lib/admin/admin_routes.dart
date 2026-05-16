@@ -47,6 +47,7 @@ import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
+import 'services/admin_sessions_gateway.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -2525,6 +2526,8 @@ Widget _buildMyAccount(BuildContext context) {
   }
   final accountGateway =
       AdminConsoleServicesScope.adminAccountGatewayOf(context);
+  final sessionsGateway =
+      AdminConsoleServicesScope.adminSessionsGatewayOf(context);
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
     initialData: source.current,
@@ -2535,6 +2538,7 @@ Widget _buildMyAccount(BuildContext context) {
           session: state.session,
           authSource: source,
           accountGateway: accountGateway,
+          sessionsGateway: sessionsGateway,
         );
       }
       return const _MyAccountUnauthenticatedFallback();
@@ -2616,6 +2620,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.rolesHierarchySessionsAdminGateway,
     this.auditedSupportActionsAdminGateway,
     this.adminAccountGateway,
+    this.adminSessionsGateway,
     this.adminAuthSource,
   });
 
@@ -2724,6 +2729,14 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// pass an `InMemoryAdminAccountGateway`. When null, the My Account
   /// Identity card renders in read-only mode (the W-4 posture).
   final AdminAccountGateway? adminAccountGateway;
+
+  /// Audit fix-first #2 (G1 + G2) — admin auth-session ledger +
+  /// Active Sessions gateway. Production binds the HTTP-backed
+  /// gateway here (the SAME instance the auth source uses as its
+  /// sign-in/out ledger writer); demo / share-preview leave it null
+  /// so the My Account Active Sessions card falls back to the seeded
+  /// in-memory gateway and the walkthrough renders without a backend.
+  final AdminSessionsGateway? adminSessionsGateway;
 
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -2857,6 +2870,17 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.adminAccountGateway;
   }
 
+  /// Audit fix-first #2 (G2) — admin Active Sessions gateway
+  /// accessor. Falls back to the seeded in-memory demo gateway so the
+  /// kDemoMode / share-preview walkthrough renders the list + revoke +
+  /// sign-out-everywhere surface without a backend (parity with the
+  /// other `*Of(context)` demo-fallback accessors).
+  static AdminSessionsGateway adminSessionsGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.adminSessionsGateway ?? _defaultAdminSessionsDemoGateway;
+  }
+
   @override
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
       operatorLocationGateway != oldWidget.operatorLocationGateway ||
@@ -2878,6 +2902,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       auditedSupportActionsAdminGateway !=
           oldWidget.auditedSupportActionsAdminGateway ||
       adminAccountGateway != oldWidget.adminAccountGateway ||
+      adminSessionsGateway != oldWidget.adminSessionsGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -3542,3 +3567,11 @@ _defaultAuditedSupportActionsAdminDemoGateway =
       auditLogByOperator: kDemoAuditLogByOperator(),
       membersByOperator: kDemoSupportActionsMembersByOperator(),
     );
+
+/// Audit fix-first #2 (G2) — seeded in-memory admin Active Sessions
+/// gateway shared by the kDemoMode / share-preview walkthrough when no
+/// live `AdminSessionsGateway` is wired. Lets the My Account Active
+/// Sessions card render its list + revoke + sign-out-everywhere click
+/// path without the Cloud Run admin proxy.
+final AdminSessionsGateway _defaultAdminSessionsDemoGateway =
+    InMemoryAdminSessionsGateway();
