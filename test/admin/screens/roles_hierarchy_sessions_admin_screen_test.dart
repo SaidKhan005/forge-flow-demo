@@ -22,6 +22,7 @@ import 'package:forge_and_flow/admin/screens/roles_hierarchy_sessions_admin_scre
 import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
+import 'package:forge_and_flow/domain/hierarchy/org_unit_depth_rule.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -807,6 +808,345 @@ void main() {
       // No emoji-only signal: the chip carries the literal "MFA"
       // text plus a Lock icon, not just an emoji.
       expect(find.text('MFA'), findsWidgets);
+    });
+  });
+
+  group('GAP A3 - org-unit type label (admin parity)', () {
+    testWidgets('renders the real unit_type as plain-English copy, not a '
+        'generic synthesized string', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      // Root is corp -> "Business"; East/West are regions -> "Region".
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const Key('admin_rhs_org_unit_type_$kDemoDinerOrgUnitRoot'),
+          ),
+          matching: find.text('Business'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const Key('admin_rhs_org_unit_type_$kDemoDinerOrgUnitEast'),
+          ),
+          matching: find.text('Region'),
+        ),
+        findsOneWidget,
+      );
+      // The old lossy synthesized 'org_unit' string must never surface.
+      expect(find.text('org_unit'), findsNothing);
+    });
+
+    test('HierarchyValidationCopy.unitTypeLabel maps schema -> friendly', () {
+      expect(HierarchyValidationCopy.unitTypeLabel('corp'), 'Business');
+      expect(HierarchyValidationCopy.unitTypeLabel('region'), 'Region');
+      expect(HierarchyValidationCopy.unitTypeLabel('district'), 'District');
+      expect(
+        HierarchyValidationCopy.unitTypeLabel('location_group'),
+        'Location group',
+      );
+      expect(HierarchyValidationCopy.unitTypeLabel(null), 'Group');
+    });
+  });
+
+  group('GAP A2 - admin delete affordance', () {
+    testWidgets('confirm dialog then admin_reason deletes an empty org unit '
+        'and writes a forge_admin audit row', (tester) async {
+      wideViewport(tester);
+      // An empty leaf region (no children, no locations) is deletable.
+      // Both demo regions hold a location, so we inject an extra empty
+      // one under the corp root.
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: <String, List<OrgUnitAdminNode>>{
+          kDemoDinerOperatorId: <OrgUnitAdminNode>[
+            const OrgUnitAdminNode(
+              orgUnitId: kDemoDinerOrgUnitRoot,
+              name: 'Demo Diner Co.',
+              operatorId: kDemoDinerOperatorId,
+              unitType: 'corp',
+            ),
+            const OrgUnitAdminNode(
+              orgUnitId: 'empty-region',
+              name: 'Empty Region',
+              operatorId: kDemoDinerOperatorId,
+              parentOrgUnitId: kDemoDinerOrgUnitRoot,
+              unitType: 'region',
+            ),
+          ],
+        },
+        locationsByOperator: const <String, List<HierarchyLocationLeaf>>{},
+        sessionsByOperator: const <String, List<SessionAdminRow>>{},
+      );
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_org_unit_delete_empty-region')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('admin_rhs_delete_org_unit_dialog')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_delete_org_unit_confirm')),
+      );
+      await tester.pumpAndSettle();
+
+      // Then the shared admin-reason dialog.
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_reason_field')),
+        'closing the west region',
+      );
+      await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
+      await tester.pumpAndSettle();
+
+      final deleteEvents = gateway.capturedAuditEvents
+          .where((e) => e.action == 'team.org_unit.delete')
+          .toList();
+      expect(deleteEvents, hasLength(1));
+      expect(deleteEvents.single.actorKind, equals('forge_admin'));
+      expect(deleteEvents.single.actorUserId, equals('demo-super-admin'));
+      expect(
+        deleteEvents.single.adminReason,
+        equals('closing the west region'),
+      );
+    });
+
+    testWidgets('deleting a non-empty org unit surfaces the friendly '
+        'move-things-out message (backend 409)', (tester) async {
+      wideViewport(tester);
+      // East region contains Toronto Yorkville in the demo set, so the
+      // backend refuses with org_unit_not_empty.
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(
+          const Key('admin_rhs_org_unit_delete_$kDemoDinerOrgUnitEast'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_delete_org_unit_confirm')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_reason_field')),
+        'try to delete east',
+      );
+      await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(HierarchyValidationCopy.deleteNotEmpty),
+        findsOneWidget,
+      );
+      expect(
+        gateway.capturedAuditEvents
+            .where((e) => e.action == 'team.org_unit.delete'),
+        isEmpty,
+      );
+    });
+
+    testWidgets('no delete affordance on the business root', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('admin_rhs_org_unit_delete_$kDemoDinerOrgUnitRoot'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_rhs_org_unit_delete_$kDemoDinerOrgUnitWest'),
+        ),
+        findsOneWidget,
+      );
+    });
+  });
+
+  group('GAP A4 - admin depth-cap two-layer guard', () {
+    // A 6-deep chain: root -> n2 -> n3 -> n4 -> n5 -> n6. n6 is at the
+    // cap; n5 is one below it.
+    Map<String, List<OrgUnitAdminNode>> deepChainOrgUnits() {
+      return <String, List<OrgUnitAdminNode>>{
+        kDemoDinerOperatorId: <OrgUnitAdminNode>[
+          const OrgUnitAdminNode(
+            orgUnitId: 'n1',
+            name: 'Level 1',
+            operatorId: kDemoDinerOperatorId,
+            unitType: 'corp',
+          ),
+          const OrgUnitAdminNode(
+            orgUnitId: 'n2',
+            name: 'Level 2',
+            operatorId: kDemoDinerOperatorId,
+            parentOrgUnitId: 'n1',
+            unitType: 'region',
+          ),
+          const OrgUnitAdminNode(
+            orgUnitId: 'n3',
+            name: 'Level 3',
+            operatorId: kDemoDinerOperatorId,
+            parentOrgUnitId: 'n2',
+            unitType: 'district',
+          ),
+          const OrgUnitAdminNode(
+            orgUnitId: 'n4',
+            name: 'Level 4',
+            operatorId: kDemoDinerOperatorId,
+            parentOrgUnitId: 'n3',
+            unitType: 'location_group',
+          ),
+          const OrgUnitAdminNode(
+            orgUnitId: 'n5',
+            name: 'Level 5',
+            operatorId: kDemoDinerOperatorId,
+            parentOrgUnitId: 'n4',
+            unitType: 'location_group',
+          ),
+          const OrgUnitAdminNode(
+            orgUnitId: 'n6',
+            name: 'Level 6',
+            operatorId: kDemoDinerOperatorId,
+            parentOrgUnitId: 'n5',
+            unitType: 'location_group',
+          ),
+        ],
+      };
+    }
+
+    testWidgets('parent at the max depth (6): add-child shows locked copy, '
+        'no dialog', (tester) async {
+      wideViewport(tester);
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: deepChainOrgUnits(),
+        locationsByOperator: const <String, List<HierarchyLocationLeaf>>{},
+        sessionsByOperator: const <String, List<SessionAdminRow>>{},
+      );
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_org_unit_add_child_n6')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(HierarchyValidationCopy.depthCapReached),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('parent one below the cap (5): add-child opens the dialog',
+        (tester) async {
+      wideViewport(tester);
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        rolesByOperator: kDemoRolesByOperator(),
+        orgUnitsByOperator: deepChainOrgUnits(),
+        locationsByOperator: const <String, List<HierarchyLocationLeaf>>{},
+        sessionsByOperator: const <String, List<SessionAdminRow>>{},
+      );
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_org_unit_add_child_n5')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.text(HierarchyValidationCopy.depthCapReached),
+        findsNothing,
+      );
+    });
+
+    test('admin depth-cap copy aliases the shared rule copy', () {
+      expect(
+        HierarchyValidationCopy.depthCapReached,
+        kOrgUnitDepthCapMessage,
+      );
     });
   });
 

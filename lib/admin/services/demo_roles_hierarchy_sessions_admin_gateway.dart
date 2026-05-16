@@ -14,6 +14,7 @@
 
 import 'package:flutter/foundation.dart';
 
+import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import 'demo_members_admin_gateway.dart';
 import 'roles_hierarchy_sessions_admin_gateway.dart';
 
@@ -403,6 +404,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       name: trimmedName,
       operatorId: operatorId,
       parentOrgUnitId: parentOrgUnitId,
+      unitType: unitType,
     );
     units.add(created);
     _record(
@@ -467,6 +469,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       name: prev.name,
       operatorId: prev.operatorId,
       parentOrgUnitId: newParentOrgUnitId,
+      unitType: prev.unitType,
       suspendedAt: prev.suspendedAt,
       deletedAt: prev.deletedAt,
     );
@@ -564,6 +567,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       name: prev.name,
       operatorId: prev.operatorId,
       parentOrgUnitId: prev.parentOrgUnitId,
+      unitType: prev.unitType,
       suspendedAt: suspended ? _clock().toUtc() : null,
       deletedAt: prev.deletedAt,
     );
@@ -628,6 +632,7 @@ class InMemoryRolesHierarchySessionsAdminGateway
       name: prev.name,
       operatorId: prev.operatorId,
       parentOrgUnitId: prev.parentOrgUnitId,
+      unitType: prev.unitType,
       suspendedAt: prev.suspendedAt,
       deletedAt: _clock().toUtc(),
     );
@@ -902,6 +907,37 @@ class HierarchyValidationCopy {
   static const String orgUnitNameDuplicate =
       'An org unit with this name already exists in this group.';
   static const String cycleDetected = 'Cannot move into a child of itself.';
+
+  /// GAP A4 — re-export of the shared depth-cap copy so the admin
+  /// dialog + widget tests pin the same string the operator-web
+  /// surface pins. Source of truth is
+  /// [OrgUnitDepthRule.depthCapMessage]; this is an alias.
+  static const String depthCapReached = kOrgUnitDepthCapMessage;
+
+  /// GAP A2 — friendly message when a delete is refused because the
+  /// org unit still has children or locations. Maps the backend 409
+  /// `org_unit_not_empty` to plain English.
+  static const String deleteNotEmpty =
+      'Move or delete the groups and locations inside this group '
+      'first, then delete it.';
+
+  /// GAP A3 — plain-English label for an org-unit `unit_type`. Keeps
+  /// the raw schema vocabulary out of the operator's sight. Unknown
+  /// values fall back to a generic "Group".
+  static String unitTypeLabel(String? unitType) {
+    switch (unitType) {
+      case 'corp':
+        return 'Business';
+      case 'region':
+        return 'Region';
+      case 'district':
+        return 'District';
+      case 'location_group':
+        return 'Location group';
+      default:
+        return 'Group';
+    }
+  }
 }
 
 /// Locked validation copy for the Sessions tab.
@@ -1017,18 +1053,21 @@ Map<String, List<OrgUnitAdminNode>> kDemoOrgUnitsByOperator() {
         orgUnitId: kDemoDinerOrgUnitRoot,
         name: 'Demo Diner Co.',
         operatorId: kDemoDinerOperatorId,
+        unitType: 'corp',
       ),
       const OrgUnitAdminNode(
         orgUnitId: kDemoDinerOrgUnitEast,
         name: 'East region',
         operatorId: kDemoDinerOperatorId,
         parentOrgUnitId: kDemoDinerOrgUnitRoot,
+        unitType: 'region',
       ),
       const OrgUnitAdminNode(
         orgUnitId: kDemoDinerOrgUnitWest,
         name: 'West region',
         operatorId: kDemoDinerOperatorId,
         parentOrgUnitId: kDemoDinerOrgUnitRoot,
+        unitType: 'region',
       ),
     ],
     kDemoSunsetOperatorId: <OrgUnitAdminNode>[
@@ -1036,6 +1075,7 @@ Map<String, List<OrgUnitAdminNode>> kDemoOrgUnitsByOperator() {
         orgUnitId: kDemoSunsetOrgUnitRoot,
         name: 'Sunset Cafe Group',
         operatorId: kDemoSunsetOperatorId,
+        unitType: 'corp',
       ),
     ],
   };

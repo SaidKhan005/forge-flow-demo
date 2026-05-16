@@ -35,6 +35,7 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import '../../domain/models/inheritance_tree_node.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../widgets/inheritance_tree.dart';
@@ -83,6 +84,31 @@ class HierarchyCopy {
   static const String duplicateOrgUnitName =
       'An org unit with this name already exists in this group.';
   static const String moveCycle = 'Cannot move into a child of itself.';
+
+  /// GAP A4 — re-export of the shared depth-cap copy so widget tests
+  /// can pin one string and assert web/admin parity against it. The
+  /// source of truth is [OrgUnitDepthRule.depthCapMessage]; this is an
+  /// alias, never a paraphrase.
+  static const String depthCapReached = kOrgUnitDepthCapMessage;
+
+  /// GAP A3 — friendly label for an org-unit `unit_type`. Keeps the
+  /// raw schema vocabulary (`region` / `district` / `location_group`
+  /// / `corp`) out of the operator's sight. Unknown values fall back
+  /// to a generic "Group" rather than leaking a code.
+  static String unitTypeLabel(String? unitType) {
+    switch (unitType) {
+      case 'corp':
+        return 'Business';
+      case 'region':
+        return 'Region';
+      case 'district':
+        return 'District';
+      case 'location_group':
+        return 'Location group';
+      default:
+        return 'Group';
+    }
+  }
 
   /// Friendly fallback when the proxy returns a non-`validation_failed`
   /// error code. Pinned here so the widget tests can assert the
@@ -201,11 +227,25 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
 
   Future<void> _onAddChildOrgUnit(TeamOrgUnitEntry parent) async {
     if (!widget._canMutate) return;
+    // GAP A4 — first guard layer: the parent's depth comes straight
+    // from its ltree path (TeamOrgUnitEntry.path is the materialized
+    // path string, e.g. "demo_bistro.east_region"). If the parent is
+    // already at the deepest allowed level we never open the dialog;
+    // we explain why with the locked copy instead. This mirrors the
+    // proxy guard at org_units_repository.dart:241.
+    final parentDepth = OrgUnitDepthRule.depthFromPath(parent.path);
+    if (!OrgUnitDepthRule.canAddChild(parentDepth)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(HierarchyCopy.depthCapReached)),
+      );
+      return;
+    }
     final draft = await showDialog<_AddOrgUnitDraft>(
       context: context,
       builder: (context) => _AddChildOrgUnitDialog(
         parent: parent,
         existingNames: _siblingNames(parent.orgUnitId),
+        parentDepth: parentDepth,
       ),
     );
     if (draft == null || !mounted) return;
@@ -628,6 +668,24 @@ class _OrgUnitNodeAnnotation extends StatelessWidget {
       key: Key('operator_web_org_unit_actions_${unit.orgUnitId}'),
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        // GAP A3 — plain-English type label so the operator can tell a
+        // region from a district at a glance. Reads the real
+        // `unit_type` carried in node metadata; never shows the raw
+        // schema vocabulary.
+        Container(
+          key: Key('operator_web_org_unit_type_${unit.orgUnitId}'),
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            HierarchyCopy.unitTypeLabel(unit.unitType),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ),
         IconButton(
           key: Key('operator_web_org_unit_toggle_${unit.orgUnitId}'),
           icon: Icon(
@@ -817,10 +875,18 @@ class _AddChildOrgUnitDialog extends StatefulWidget {
   const _AddChildOrgUnitDialog({
     required this.parent,
     required this.existingNames,
+    required this.parentDepth,
   });
 
   final TeamOrgUnitEntry parent;
   final Set<String> existingNames;
+
+  /// GAP A4 — depth of [parent] in the org-unit chain, computed by
+  /// the caller from the parent's ltree path. The in-dialog backstop
+  /// re-checks the cap here so a stale tree (parent that grew deeper
+  /// after the dialog opened) still gets a friendly inline error
+  /// rather than a raw server rejection.
+  final int parentDepth;
 
   @override
   State<_AddChildOrgUnitDialog> createState() => _AddChildOrgUnitDialogState();
@@ -853,6 +919,12 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
   }
 
   void _submit() {
+    // GAP A4 — second guard layer (backstop). Mirrors the proxy guard
+    // at org_units_repository.dart:241 exactly.
+    if (!OrgUnitDepthRule.canAddChild(widget.parentDepth)) {
+      setState(() => _errorText = HierarchyCopy.depthCapReached);
+      return;
+    }
     final name = _name.text.trim();
     if (name.isEmpty) {
       setState(() => _errorText = HierarchyCopy.emptyOrgUnitName);
