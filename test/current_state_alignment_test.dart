@@ -151,9 +151,10 @@ void main() {
       expect(projected, isNotEmpty, reason: 'must have open/projected shifts');
     });
 
-    test('full week has 14 slots total', () async {
+    test('full week has 16 slots total', () async {
+      // QA fix Change B: weekends now serve Lunch → 16-slot week.
       final shifts = await ShiftService.instance.getFullWeekShifts('2026-W13');
-      expect(shifts.length, 14);
+      expect(shifts.length, 16);
     });
 
     test('getCurrentWeekState returns valid state', () async {
@@ -164,7 +165,7 @@ void main() {
       );
       expect(state, isNotNull);
       expect(state!.weekData.totalCovers, greaterThan(0));
-      expect(state.fullWeekShifts.length, 14);
+      expect(state.fullWeekShifts.length, 16); // Change B: 16-slot week
     });
   });
 
@@ -618,9 +619,10 @@ void main() {
       },
     );
 
-    test('full week still has 14 slots after locked migration', () async {
+    test('full week still has 16 slots after locked migration', () async {
+      // QA fix Change B: weekends now serve Lunch → 16-slot week.
       final shifts = await ShiftService.instance.getFullWeekShifts('2026-W13');
-      expect(shifts.length, 14);
+      expect(shifts.length, 16);
     });
 
     test(
