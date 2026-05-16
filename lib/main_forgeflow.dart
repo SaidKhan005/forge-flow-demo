@@ -6,7 +6,10 @@ import 'package:flutter/material.dart';
 import 'forge_flow_app.dart';
 import 'forge_flow_bootstrap.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_realtime_subscription_watermark_store.dart';
+import 'services/auth/auth_session_ledger_writer.dart';
+import 'services/auth/demo_auth_login_service.dart';
 import 'services/auth/firebase_auth_runtime_bindings.dart';
+import 'services/secure_session_storage.dart';
 import 'services/mobile_push/firebase_mobile_push_runtime.dart';
 import 'services/mobile_push/mobile_push_notification_service.dart';
 import 'services/observability/crash_reporter.dart';
@@ -112,8 +115,43 @@ Future<void> main() async {
     );
     return;
   }
+  if (_demoAuthEnabled) {
+    // Demo Forge & Flow flavor (`--dart-define=kDemoMode=true` or
+    // `FORGE_FLOW_DEMO_MODE=true`), WITHOUT real Firebase auth. Mount
+    // the AuthGate (`requireAuth: true`) so the branded login screen +
+    // its `kDemoMode` "Use demo operator" one-tap carve-out drive the
+    // SAME `AuthSessionNotifier.signInWithEmailPassword` path
+    // production uses — only the SOURCE swaps to the writer-side
+    // [DemoAuthLoginService]. HP #2: this is a bootstrap source-swap,
+    // not a `kDemoMode` reader branch — every reader (SettingsScreen,
+    // role/permission gates) consumes the resulting `AuthSession`
+    // identically in demo and prod. Mirrors the demo contract's
+    // endorsed Operator Web / Admin `*_DEMO_AUTH` source-swap pattern.
+    //
+    // In-memory storage + ledger so demo sign-in does NOT fail closed
+    // against the scaffold-failing bootstrap defaults; neither touches
+    // a backend.
+    await bootstrapAndRunApp(
+      const ForgeFlowApp(requireAuth: true),
+      authLoginService: const DemoAuthLoginService(),
+      secureSessionStorage: InMemorySecureSessionStorage(),
+      authSessionLedgerWriter: InMemoryAuthSessionLedgerWriter(),
+    );
+    return;
+  }
   await bootstrapAndRunApp(const ForgeFlowApp());
 }
+
+/// Compile-time gate for the demo auth source-swap. Matches the
+/// `_demoOperatorSignInEnabled` carve-out in
+/// `lib/screens/auth/login_screen.dart` so the demo flavor that shows
+/// the "Use demo operator" button is the same flavor that wires the
+/// [DemoAuthLoginService] behind it. Unset in production builds, so
+/// the production no-Firebase path falls through byte-unchanged to the
+/// final `bootstrapAndRunApp(const ForgeFlowApp())`.
+const bool _demoAuthEnabled =
+    bool.fromEnvironment('kDemoMode') ||
+    bool.fromEnvironment('FORGE_FLOW_DEMO_MODE');
 
 /// Maps the HTTP/HTTPS proxy URI to its WebSocket counterpart so
 /// [RealtimeSubscription] can append `/v1/realtime` and connect.
