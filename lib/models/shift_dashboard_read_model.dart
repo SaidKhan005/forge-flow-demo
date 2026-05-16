@@ -226,6 +226,36 @@ class ShiftDashboardReadModel {
     );
   }
 
+  /// Whole-day LABOR % — `unavailable` when no labor vendor is
+  /// connected OR total actual hours are zero. Without a labor vendor
+  /// the whole-day labor % is `blendedWage × scheduledHours ÷ sales` —
+  /// a wage-against-the-schedule estimate, NOT a vendor-sourced figure.
+  /// Gating it here makes the whole-day LABOR % tile honest-degrade to
+  /// "—" alongside its CPLH / SPLH / blended-wage siblings (which
+  /// already gate on `laborSourceVendorId == null`) instead of printing
+  /// a phantom percent next to a "Labor: not yet connected" banner.
+  /// `fallback` when labor dollars came via wage*hours instead of
+  /// vendor data. (Metric Honesty Doctrine — every metric carries
+  /// state + provenance; whole-day LABOR % was the one labor output
+  /// flowing as a bare double with no gate.)
+  MetricProvenance get laborPctProvenance {
+    if (laborSourceVendorId == null) {
+      return const MetricProvenance.unavailable();
+    }
+    final totalHours = actualFohHours + actualBohHours;
+    if (totalHours <= 0) return const MetricProvenance.unavailable();
+    if (!laborDollarsFromVendor) {
+      return MetricProvenance.fallback(
+        value: actualLaborPct,
+        provenance: 'vendor_${_laborVendor}_with_fallback_labor_dollars',
+      );
+    }
+    return MetricProvenance.live(
+      value: actualLaborPct,
+      provenance: 'vendor_$_laborVendor',
+    );
+  }
+
   const ShiftDashboardReadModel({
     required this.daypart,
     required this.day,
