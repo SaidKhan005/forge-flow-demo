@@ -23,6 +23,7 @@ import 'dart:io' as io;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/hierarchy/org_unit_depth_rule.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/screens/hierarchy_screen.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
@@ -483,6 +484,144 @@ void main() {
     });
   });
 
+  group('GAP A3 - org-unit type label parity', () {
+    testWidgets('renders a plain-English type label for corp / region / '
+        'district fixtures', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      // Corp root -> "Business", region -> "Region", district ->
+      // "District". Labels come straight from the real unit_type
+      // carried in node metadata; no raw schema vocabulary.
+      expect(
+        find.byKey(const Key('operator_web_org_unit_type_demo-org-root')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const Key('operator_web_org_unit_type_demo-org-east'),
+          ),
+          matching: find.text('Region'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const Key('operator_web_org_unit_type_demo-org-metro'),
+          ),
+          matching: find.text('District'),
+        ),
+        findsOneWidget,
+      );
+      // Raw vocabulary must never reach the operator.
+      expect(find.text('location_group'), findsNothing);
+    });
+
+    test('unitTypeLabel maps each schema value to friendly copy', () {
+      expect(HierarchyCopy.unitTypeLabel('corp'), 'Business');
+      expect(HierarchyCopy.unitTypeLabel('region'), 'Region');
+      expect(HierarchyCopy.unitTypeLabel('district'), 'District');
+      expect(HierarchyCopy.unitTypeLabel('location_group'), 'Location group');
+      expect(HierarchyCopy.unitTypeLabel('mystery'), 'Group');
+      expect(HierarchyCopy.unitTypeLabel(null), 'Group');
+    });
+  });
+
+  group('GAP A4 - depth-cap two-layer guard', () {
+    test('HierarchyCopy.depthCapReached aliases the shared rule copy', () {
+      expect(HierarchyCopy.depthCapReached, kOrgUnitDepthCapMessage);
+    });
+
+    testWidgets('parent already at the max depth: tapping add-child shows '
+        'the locked copy and never opens the dialog', (tester) async {
+      await sizeViewport(tester, const Size(1280, 900));
+      // Single org-unit whose ltree path is 6 labels deep (== the cap).
+      final gateway = _StubHierarchyTreeGateway(<TeamOrgUnitEntry>[
+        const TeamOrgUnitEntry(
+          orgUnitId: 'root-1',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'l1',
+          label: 'Root',
+        ),
+        const TeamOrgUnitEntry(
+          orgUnitId: 'deep-6',
+          parentOrgUnitId: 'root-1',
+          unitType: 'location_group',
+          path: 'l1.l2.l3.l4.l5.l6',
+          label: 'Deep Six',
+        ),
+      ]);
+      await tester.pumpWidget(
+        wrap(
+          HierarchyScreen(
+            session: sessionWithRole('operator_owner'),
+            gateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_add_child_deep-6')),
+      );
+      await tester.pumpAndSettle();
+
+      // First guard layer: snackbar with the locked copy; no dialog.
+      expect(find.text(kOrgUnitDepthCapMessage), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_org_unit_add_dialog')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('parent one level below the cap still opens the dialog',
+        (tester) async {
+      await sizeViewport(tester, const Size(1280, 900));
+      // Path is 5 labels deep: a child lands at exactly the cap (6),
+      // so the dialog must open (mirrors org_units_repository.dart:241
+      // boundary: parentDepth 5 < maxDepth 6).
+      final gateway = _StubHierarchyTreeGateway(<TeamOrgUnitEntry>[
+        const TeamOrgUnitEntry(
+          orgUnitId: 'root-1',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'l1',
+          label: 'Root',
+        ),
+        const TeamOrgUnitEntry(
+          orgUnitId: 'deep-5',
+          parentOrgUnitId: 'root-1',
+          unitType: 'district',
+          path: 'l1.l2.l3.l4.l5',
+          label: 'Deep Five',
+        ),
+      ]);
+      await tester.pumpWidget(
+        wrap(
+          HierarchyScreen(
+            session: sessionWithRole('operator_owner'),
+            gateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_add_child_deep-5')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_org_unit_add_dialog')),
+        findsOneWidget,
+      );
+      expect(find.text(kOrgUnitDepthCapMessage), findsNothing);
+    });
+  });
+
   group('Em-dash regression', () {
     test('11W.3-owned files contain zero em dashes in operator copy',
         () async {
@@ -550,5 +689,41 @@ class _StubMoveErrorGateway implements WebTeamHierarchyGateway {
     required String idempotencyKey,
   }) {
     throw _moveError;
+  }
+}
+
+/// GAP A4 test double — returns a caller-supplied flat org-unit list
+/// (with controllable ltree `path` depth) and no locations, so the
+/// depth-cap boundary can be exercised at exactly level 5 and level 6
+/// without needing the shared demo fixtures to grow that deep.
+class _StubHierarchyTreeGateway implements WebTeamHierarchyGateway {
+  _StubHierarchyTreeGateway(this._orgUnits);
+
+  final List<TeamOrgUnitEntry> _orgUnits;
+
+  @override
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  ) async {
+    return TeamOrgHierarchyListed(
+      orgUnits: List<TeamOrgUnitEntry>.unmodifiable(_orgUnits),
+      locations: const <TeamOrgLocationEntry>[],
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitCreated> createOrgUnit(
+    TeamOrgUnitCreateCommand command, {
+    required String idempotencyKey,
+  }) async {
+    return const TeamOrgUnitCreated(orgUnitId: 'stub-created');
+  }
+
+  @override
+  Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
+    TeamLocationOrgUnitMoveCommand command, {
+    required String idempotencyKey,
+  }) async {
+    return const TeamLocationOrgUnitMoved(moved: true);
   }
 }

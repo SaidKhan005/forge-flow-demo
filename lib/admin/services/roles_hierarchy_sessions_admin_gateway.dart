@@ -111,6 +111,7 @@ class OrgUnitAdminNode {
     required this.name,
     required this.operatorId,
     this.parentOrgUnitId,
+    this.unitType,
     this.suspendedAt,
     this.deletedAt,
   });
@@ -119,6 +120,16 @@ class OrgUnitAdminNode {
   final String name;
   final String operatorId;
   final String? parentOrgUnitId;
+
+  /// GAP A3 — the real structural type from the `org_units.unit_type`
+  /// column (`corp` / `region` / `district` / `location_group`). Was
+  /// previously discarded and synthesized into a generic `'org_unit'`
+  /// string at render time, which made every intermediate node look
+  /// identical. Carried through verbatim now; the screen turns it into
+  /// plain-English copy. Nullable so legacy payloads without the field
+  /// still parse.
+  final String? unitType;
+
   final DateTime? suspendedAt;
   final DateTime? deletedAt;
 
@@ -615,6 +626,7 @@ class HttpRolesHierarchySessionsAdminGateway
       name: name,
       operatorId: operatorId,
       parentOrgUnitId: parentOrgUnitId,
+      unitType: unitType,
     );
   }
 
@@ -999,6 +1011,7 @@ OrgUnitAdminNode _orgUnitFromJson(Map<String, Object?> json) {
     ]),
     operatorId: _optionalString(json['operator_id']) ?? '',
     parentOrgUnitId: _optionalString(json['parent_org_unit_id']),
+    unitType: _optionalString(json['unit_type']),
     suspendedAt: _optionalDateTime(json['suspended_at']),
     deletedAt: _optionalDateTime(json['deleted_at']),
   );

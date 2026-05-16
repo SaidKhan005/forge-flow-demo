@@ -22,6 +22,7 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import '../../domain/models/inheritance_tree_node.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/inheritance_tree.dart';
@@ -343,15 +344,43 @@ class _RolesHierarchySessionsAdminScreenState
     );
   }
 
+  /// GAP A4 — depth of [orgUnitId] in the org-unit chain. The admin
+  /// node model carries no ltree `path`, only parent pointers, so we
+  /// walk the in-memory `_orgUnits` parent links. Cycle-guarded inside
+  /// [OrgUnitDepthRule.depthFromChain].
+  int _orgUnitDepth(String orgUnitId) {
+    final parentById = <String, String?>{
+      for (final unit in _orgUnits) unit.orgUnitId: unit.parentOrgUnitId,
+    };
+    return OrgUnitDepthRule.depthFromChain(
+      orgUnitId,
+      (id) => parentById[id],
+    );
+  }
+
   Future<void> _onAddChildOrgUnit(OrgUnitAdminNode parent) async {
+    // GAP A4 — first guard layer: never open the dialog if the parent
+    // is already at the deepest allowed level. Mirrors the proxy guard
+    // at org_units_repository.dart:241.
+    final parentDepth = _orgUnitDepth(parent.orgUnitId);
+    if (!OrgUnitDepthRule.canAddChild(parentDepth)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(HierarchyValidationCopy.depthCapReached)),
+      );
+      return;
+    }
     final existingNames = <String>{
       for (final unit in _orgUnits)
         if (unit.parentOrgUnitId == parent.orgUnitId) unit.name.toLowerCase(),
     };
     final result = await showDialog<_AddOrgUnitResult>(
       context: context,
-      builder: (_) =>
-          _AddChildOrgUnitDialog(parent: parent, existingNames: existingNames),
+      builder: (_) => _AddChildOrgUnitDialog(
+        parent: parent,
+        existingNames: existingNames,
+        parentDepth: parentDepth,
+      ),
     );
     if (result == null) return;
     await _runAndRefresh(
@@ -369,6 +398,50 @@ class _RolesHierarchySessionsAdminScreenState
       refresh: _refreshHierarchy,
       successHint: 'Added ${result.name}',
     );
+  }
+
+  Future<void> _onDeleteOrgUnit(OrgUnitAdminNode node) async {
+    // GAP A2 (admin path only) — wire the existing gateway
+    // deleteOrgUnit method to a confirmation affordance. Delete is
+    // intentionally NON-cascading: the backend refuses with a 409
+    // org_unit_not_empty when children/locations remain, and we show
+    // that as plain-English guidance rather than a raw code.
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DeleteOrgUnitConfirmDialog(node: node),
+    );
+    if (confirmed != true) return;
+    final reason = await _promptAdminReason('Delete ${node.name}');
+    if (reason == null) return;
+    setState(() => _actionError = null);
+    try {
+      await widget.gateway.deleteOrgUnit(
+        operatorId: widget.pickedOperator.operatorId,
+        orgUnitId: node.orgUnitId,
+        idempotencyKey: _nextIdempotencyKey('hierarchy-delete-org-unit'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      );
+      await _refreshHierarchy();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Deleted ${node.name}')));
+    } on RolesHierarchySessionsGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _actionError = error.errorCode == 'org_unit_not_empty'
+            ? HierarchyValidationCopy.deleteNotEmpty
+            : error.message;
+      });
+    } on RolesHierarchySessionsForbiddenException catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.toString());
+    }
   }
 
   // --- Build ------------------------------------------------------------
@@ -475,6 +548,7 @@ class _RolesHierarchySessionsAdminScreenState
             locations: _locations,
             editingEnabled: widget.editingEnabled,
             onAddChildOrgUnit: _onAddChildOrgUnit,
+            onDeleteOrgUnit: _onDeleteOrgUnit,
             onMoveLocation: _onMoveLocation,
           ),
         ),
@@ -1275,6 +1349,7 @@ class _HierarchyTab extends StatelessWidget {
     required this.locations,
     required this.editingEnabled,
     required this.onAddChildOrgUnit,
+    required this.onDeleteOrgUnit,
     required this.onMoveLocation,
   });
 
@@ -1282,6 +1357,7 @@ class _HierarchyTab extends StatelessWidget {
   final List<HierarchyLocationLeaf> locations;
   final bool editingEnabled;
   final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onDeleteOrgUnit;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
@@ -1372,6 +1448,7 @@ class _HierarchyTab extends StatelessWidget {
                         node: unit,
                         editingEnabled: editingEnabled,
                         onAddChildOrgUnit: onAddChildOrgUnit,
+                        onDeleteOrgUnit: onDeleteOrgUnit,
                       );
                     },
                     emptyMessage: 'No org units yet for this operator.',
@@ -1470,7 +1547,13 @@ class _HierarchyTab extends StatelessWidget {
       depth: depth,
       children: List<InheritanceTreeNode>.unmodifiable(childNodes),
       metadata: <String, Object?>{
-        'unit_type': unit.parentOrgUnitId == null ? 'corp' : 'org_unit',
+        // GAP A3 — carry the REAL unit_type through, not a synthesized
+        // generic 'org_unit' string. Fall back to 'corp' only for the
+        // root when the payload omitted the field (legacy rows), so
+        // intermediate nodes never collapse to one indistinguishable
+        // type.
+        'unit_type':
+            unit.unitType ?? (unit.parentOrgUnitId == null ? 'corp' : null),
         'suspended_at': unit.suspendedAt,
         'deleted_at': unit.deletedAt,
       },
@@ -1483,11 +1566,13 @@ class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
     required this.node,
     required this.editingEnabled,
     required this.onAddChildOrgUnit,
+    required this.onDeleteOrgUnit,
   });
 
   final OrgUnitAdminNode node;
   final bool editingEnabled;
   final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onDeleteOrgUnit;
 
   @override
   Widget build(BuildContext context) {
@@ -1496,6 +1581,22 @@ class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
       key: Key('admin_rhs_org_unit_${node.orgUnitId}'),
       mainAxisSize: MainAxisSize.min,
       children: <Widget>[
+        // GAP A3 — plain-English type label, from the REAL unit_type
+        // now carried on the node (was a generic synthesized string).
+        Container(
+          key: Key('admin_rhs_org_unit_type_${node.orgUnitId}'),
+          margin: const EdgeInsets.only(right: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            HierarchyValidationCopy.unitTypeLabel(node.unitType),
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        ),
         if (editingEnabled && !isRoot)
           Flexible(
             child: Text(
@@ -1514,6 +1615,20 @@ class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
             icon: const Icon(Icons.add, size: 14),
             label: const Text('Add child'),
           ),
+          // GAP A2 (admin path only) — delete affordance. Hidden on
+          // the business root (the backend refuses root deletion);
+          // same edit gate as Add child. Non-cascading: the confirm
+          // dialog warns, the backend 409 maps to friendly copy.
+          if (!isRoot) ...<Widget>[
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              key: Key('admin_rhs_org_unit_delete_${node.orgUnitId}'),
+              onPressed: () => onDeleteOrgUnit(node),
+              style: AdminButtonStyles.secondary(),
+              icon: const Icon(Icons.delete_outline, size: 14),
+              label: const Text('Delete'),
+            ),
+          ],
         ],
       ],
     );
@@ -2019,6 +2134,47 @@ class _ErrorBanner extends StatelessWidget {
         message,
         style: AppTextStyles.mono11(color: AppColors.negative),
       ),
+    );
+  }
+}
+
+/// GAP A2 (admin path only) — confirmation before an org-unit delete.
+/// Delete is non-cascading; this dialog says so up front so the F&F
+/// admin is not surprised by the backend's empty-group requirement.
+class _DeleteOrgUnitConfirmDialog extends StatelessWidget {
+  const _DeleteOrgUnitConfirmDialog({required this.node});
+
+  final OrgUnitAdminNode node;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('admin_rhs_delete_org_unit_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text('Delete ${node.name}?', style: AdminButtonStyles.dialogTitleStyle),
+      content: SizedBox(
+        width: 460,
+        child: Text(
+          'This removes the group from the hierarchy. It only works if '
+          'the group is empty. Move or delete the groups and locations '
+          'inside it first. You will add a reason on the next step, and '
+          'the operator will see it in their audit log.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_rhs_delete_org_unit_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_delete_org_unit_confirm'),
+          style: AdminButtonStyles.primary,
+          onPressed: () => Navigator.of(context).pop(true),
+          child: const Text('Delete'),
+        ),
+      ],
     );
   }
 }
@@ -2640,10 +2796,17 @@ class _AddChildOrgUnitDialog extends StatefulWidget {
   const _AddChildOrgUnitDialog({
     required this.parent,
     required this.existingNames,
+    required this.parentDepth,
   });
 
   final OrgUnitAdminNode parent;
   final Set<String> existingNames;
+
+  /// GAP A4 — depth of [parent] in the org-unit chain, computed by the
+  /// caller by walking in-memory parent links (the admin node model
+  /// carries no ltree path). The in-dialog backstop re-checks the cap
+  /// here so a stale tree still gets a friendly inline error.
+  final int parentDepth;
 
   @override
   State<_AddChildOrgUnitDialog> createState() => _AddChildOrgUnitDialogState();
@@ -2669,7 +2832,12 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
     final name = _nameController.text.trim();
     final reason = _reasonController.text.trim();
     setState(() {
-      _nameError = name.isEmpty
+      // GAP A4 — second guard layer (backstop). Mirrors the proxy
+      // guard at org_units_repository.dart:241 exactly. Surfaces on
+      // the name field since the dialog has no dedicated depth field.
+      _nameError = !OrgUnitDepthRule.canAddChild(widget.parentDepth)
+          ? HierarchyValidationCopy.depthCapReached
+          : name.isEmpty
           ? HierarchyValidationCopy.orgUnitNameEmpty
           : widget.existingNames.contains(name.toLowerCase())
           ? HierarchyValidationCopy.orgUnitNameDuplicate
