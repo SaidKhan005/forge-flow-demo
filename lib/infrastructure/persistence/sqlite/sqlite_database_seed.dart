@@ -1036,10 +1036,12 @@ String _deterministicHash(String payload) {
 }
 
 Future<void> _ensureDemoRestaurant(Database db) async {
-  final existing = await db.query('restaurant_locations',
-      where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
-  if (existing.isEmpty) {
-    await _seedDemoRestaurant(db);
-  }
+  // Unconditional + idempotent. A Downtown-only `existing.isEmpty` guard
+  // would skip backfilling North Loop / Riverside / Harbour on any demo
+  // DB that predates the multi-location build (Downtown already exists →
+  // guard true → 3 locations never seeded). `_seedDemoRestaurant` uses
+  // ConflictAlgorithm.ignore so re-running is a no-op for present rows
+  // and backfills only the missing ones.
+  await _seedDemoRestaurant(db);
 }
 
