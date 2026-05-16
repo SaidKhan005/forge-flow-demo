@@ -30,6 +30,7 @@ import 'state/app_runtime_invalidation_bus.dart';
 import 'state/auth_session_notifier.dart';
 import 'state/demand_forecast_context_notifier.dart';
 import 'state/demo_mode_state_notifier.dart';
+import 'dev/demo_vendor_integration_sync_proxy_client.dart';
 import 'state/last_synced_timestamps_notifier.dart';
 import 'state/permission_context.dart';
 import 'state/realtime_event_bus.dart';
@@ -675,13 +676,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   /// Resolves the bootstrap-provided [SyncProxyClient] from the
-  /// surrounding Provider tree. Null when no proxy is wired (demo /
-  /// widget tests / no-Firebase shells).
+  /// surrounding Provider tree. Null when no proxy is wired (widget
+  /// tests / no-Firebase shells).
+  ///
+  /// Demo-data Slice E pt2: when the bootstrap wired no real proxy
+  /// (the demo flavor) the demo `demo_mode_state` source armed by the
+  /// demo seed (`DemoVendorIntegrationDemoModeSource`) is used so the
+  /// Integrations fold + `DemoModeBanner` render pt1's per-(operator,
+  /// location, category) vendor demo state. This is an UNCONDITIONAL
+  /// `??` fallback, NOT a `kDemoMode` reader branch: in production the
+  /// Provider value is the real `HttpSyncProxyClient` (non-null) so the
+  /// `??` short-circuits and `maybeClient()` is never consulted; even
+  /// were it consulted, production never arms the source (the seed hook
+  /// is gated on the writer-side demo switch) so it returns null. The
+  /// only consumer is the demo `DemoModeStateNotifier` bind below;
+  /// `MobileOperationalSyncHost` keeps the raw bootstrap client.
   SyncProxyClient? _resolveSyncProxyClient() {
     try {
-      return Provider.of<SyncProxyClient?>(context, listen: false);
+      return Provider.of<SyncProxyClient?>(context, listen: false) ??
+          DemoVendorIntegrationDemoModeSource.maybeClient();
     } on ProviderNotFoundException {
-      return null;
+      return DemoVendorIntegrationDemoModeSource.maybeClient();
     }
   }
 

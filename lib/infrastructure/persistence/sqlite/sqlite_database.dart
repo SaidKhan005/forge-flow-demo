@@ -10,6 +10,7 @@ import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../../domain/constants/app_defaults.dart';
 import '../../../dev/demo_fixture_data.dart';
+import '../../../dev/demo_vendor_integration_sync_proxy_client.dart';
 import '../../../dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/recommended_benchmark_selection_service.dart';
 import '../../../domain/models/active_target_profile.dart';
