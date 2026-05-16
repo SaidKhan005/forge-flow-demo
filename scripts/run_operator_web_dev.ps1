@@ -68,16 +68,24 @@ param(
 
   [Parameter()][string] $WebPort = '8181',
 
-  [Parameter()][string] $WebHostname = '0.0.0.0',
+  [Parameter()][string] $WebHostname = '127.0.0.1',
 
-  # Flutter target device. `web-server` (default) serves the bundle so
-  # any browser / LAN device can attach on $WebHostname:$WebPort.
-  # `chrome` launches Chrome directly with the Dart debugger attached
-  # (hot reload, DevTools) — convenient for local dev. The dev-CSP swap
-  # applies identically either way.
+  # Flutter target device. `chrome` (default) launches Chrome directly
+  # with the Dart debugger attached (hot reload, DevTools) — matches the
+  # admin runner's default so the operator never has to find the URL
+  # manually. `web-server` serves the bundle on $WebHostname:$WebPort
+  # without spawning a browser — use that when scripting parallel
+  # launches (`scripts\run_all_demo.ps1`) or attaching from a different
+  # browser / LAN device. The dev-CSP swap applies identically either
+  # way.
+  #
+  # `$WebHostname` defaults to `127.0.0.1` rather than `0.0.0.0` so
+  # Flutter's "is being served at" log prints a URL the operator can
+  # actually paste into a browser. Pass `-WebHostname 0.0.0.0` to bind
+  # all interfaces for LAN reach.
   [Parameter()]
   [ValidateSet('web-server', 'chrome')]
-  [string] $Device = 'web-server',
+  [string] $Device = 'chrome',
 
   [Parameter()][string] $ProxyBaseUri = $env:FORGE_FLOW_OPERATOR_WEB_PROXY_BASE_URI,
 
