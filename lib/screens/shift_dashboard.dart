@@ -915,13 +915,34 @@ class _ShiftSectionViewData {
   /// non-null, so the shared widgets render byte-identically to the old
   /// inline whole-day path.
   factory _ShiftSectionViewData.fromWholeDay(ShiftDashboardReadModel rm) {
+    // Whole-day labor honest-degrade (Metric Honesty Doctrine). The
+    // whole-day LABOR % tile and the FOH-productivity OPZ band were the
+    // only labor surfaces in this projection still flowing as bare
+    // read-model numbers with no provenance gate, so a location whose
+    // Labor category is NOT connected (e.g. North Loop, Harbour)
+    // rendered a wage*scheduled-hours estimate as a connected metric —
+    // and an OPZ verdict scored off a phantom CPLH — right next to the
+    // "Labor: not yet connected" banner and the already-correctly-
+    // dashed CPLH / SPLH / BLENDED WAGE pills. Route both through the
+    // SAME `laborSourceVendorId`-based signal those siblings already
+    // honor, exactly as the per-period path (`fromPeriod`) does.
+    //
+    // `laborRenders == false` ⇒ no labor vendor OR zero actual hours;
+    // `laborVendorConnected == false` distinguishes genuinely-not-
+    // connected ("LABOR NOT CONNECTED") from connected-but-no-punches-
+    // yet ("AWAITING ACTUALS"), mirroring `fromPeriod`'s `!hasLabor`
+    // branch verbatim. A connected location with punches is unchanged
+    // (laborRenders == true ⇒ identical to the prior render — no
+    // production / connected-demo regression).
+    final laborRenders = rm.laborPctProvenance.rendersNumber;
+    final laborVendorConnected = rm.laborSourceVendorId != null;
     return _ShiftSectionViewData(
       currentSales: rm.currentSales,
       forecastSales: rm.forecastSales,
       labor: _LaborVarianceData(
-        actualPct: rm.actualLaborPct,
+        actualPct: laborRenders ? rm.actualLaborPct : null,
         theoreticalPct: rm.targetLaborPct,
-        variancePts: rm.laborVariancePts,
+        variancePts: laborRenders ? rm.laborVariancePts : null,
       ),
       covers: rm.coversProvenance,
       blendedWage: rm.blendedWageProvenance,
@@ -938,16 +959,40 @@ class _ShiftSectionViewData {
         needed: rm.planBohHours,
         excess: rm.scheduledBohHours - rm.planBohHours,
       ),
-      opz: _OpzBandData(
-        currentCPLH: rm.actualCPLH,
-        opzFloorCPLH: rm.opzFloorCPLH,
-        opzCeilingCPLH: rm.opzCeilingCPLH,
-        targetCPLH: rm.targetCPLH,
-        opzStatus: rm.opzStatus,
-        opzLabel: rm.opzLabel,
-        opzSubLabel: rm.opzSubLabel,
-        splhState: rm.splhState,
-      ),
+      opz: laborRenders
+          ? _OpzBandData(
+              currentCPLH: rm.actualCPLH,
+              opzFloorCPLH: rm.opzFloorCPLH,
+              opzCeilingCPLH: rm.opzCeilingCPLH,
+              targetCPLH: rm.targetCPLH,
+              opzStatus: rm.opzStatus,
+              opzLabel: rm.opzLabel,
+              opzSubLabel: rm.opzSubLabel,
+              splhState: rm.splhState,
+            )
+          : _OpzBandData(
+              // Sentinel — the 'pending' state suppresses the needle
+              // and dashes the CURRENT CPLH, so this is never drawn
+              // (same contract the per-period not-connected branch
+              // relies on). The locked band (floor/ceiling/target) is
+              // still shown so the operator sees the standard.
+              currentCPLH: 0.0,
+              opzFloorCPLH: rm.opzFloorCPLH,
+              opzCeilingCPLH: rm.opzCeilingCPLH,
+              targetCPLH: rm.targetCPLH,
+              opzStatus: 'pending',
+              opzLabel: laborVendorConnected
+                  ? 'AWAITING ACTUALS'
+                  : 'LABOR NOT CONNECTED',
+              opzSubLabel: laborVendorConnected
+                  ? 'Locked productivity zone is set. Waiting on labor '
+                        "punches before scoring today's productivity."
+                  : 'Locked productivity zone is set. Connect a labor '
+                        "vendor to score today's productivity.",
+              // splhState left null — the CPLH x SPLH cross-axis matrix
+              // stays honestly dim with no labor data, exactly as the
+              // per-period not-connected branch leaves it.
+            ),
       // Actual-vs-target reference lines — byte-identical format to
       // `ShiftDashboardReadModel._buildMetricCards` (the authoritative
       // target definitions). Read-model passthroughs, no new math.
@@ -1291,6 +1336,64 @@ ShiftPeriodProvenanceProbe debugShiftPeriodProvenance({
       isLabor: true,
       metricPhrase: 'blended wage',
     ),
+  );
+}
+
+/// Test-only probe over the private whole-day projection. Mirrors
+/// [ShiftPeriodProvenanceProbe] for the `fromWholeDay` path so the
+/// whole-day labor honest-degrade (LABOR % tile + OPZ band gating on
+/// the same `laborSourceVendorId` signal CPLH / SPLH / blended-wage
+/// already honor) can be pinned without standing up the provider
+/// widget tree. Same `@visibleForTesting` seam as
+/// [debugShiftPeriodProvenance].
+@visibleForTesting
+class ShiftWholeDayProvenanceProbe {
+  const ShiftWholeDayProvenanceProbe({
+    required this.coversState,
+    required this.ppaState,
+    required this.blendedWageState,
+    required this.cplhState,
+    required this.splhState,
+    required this.laborActualPctPresent,
+    required this.laborVariancePtsPresent,
+    required this.laborTheoreticalPctPresent,
+    required this.opzStatus,
+    required this.opzLabel,
+  });
+
+  final MetricState coversState;
+  final MetricState ppaState;
+  final MetricState blendedWageState;
+  final MetricState cplhState;
+  final MetricState splhState;
+  final bool laborActualPctPresent;
+  final bool laborVariancePtsPresent;
+
+  /// The locked theoretical % stays shown even when the actual is
+  /// dashed — same contract as the per-period path (a target is not a
+  /// vendor actual). Pinned so a regression that also blanks the
+  /// standard is caught.
+  final bool laborTheoreticalPctPresent;
+  final String opzStatus;
+  final String? opzLabel;
+}
+
+@visibleForTesting
+ShiftWholeDayProvenanceProbe debugShiftWholeDayProvenance(
+  ShiftDashboardReadModel rm,
+) {
+  final d = _ShiftSectionViewData.fromWholeDay(rm);
+  return ShiftWholeDayProvenanceProbe(
+    coversState: d.covers.state,
+    ppaState: d.ppa.state,
+    blendedWageState: d.blendedWage.state,
+    cplhState: d.cplh.state,
+    splhState: d.splh.state,
+    laborActualPctPresent: d.labor.actualPct != null,
+    laborVariancePtsPresent: d.labor.variancePts != null,
+    laborTheoreticalPctPresent: d.labor.theoreticalPct != null,
+    opzStatus: d.opz?.opzStatus ?? 'none',
+    opzLabel: d.opz?.opzLabel,
   );
 }
 
