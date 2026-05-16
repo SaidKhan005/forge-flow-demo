@@ -80,9 +80,73 @@ class DaypartTable extends StatelessWidget {
   static String _opzRange(double floor, double ceiling) =>
       '${floor.toStringAsFixed(2)} – ${ceiling.toStringAsFixed(2)}';
 
+  /// Minimum width that lets all six columns breathe without wrapping or
+  /// clipping any value. At the demo device width (1080px) and any wider
+  /// layout the table simply fills the space and the columns spread out;
+  /// only below this floor does it scroll horizontally instead — so there
+  /// is never a `RenderFlex overflowed` and text is never clipped.
+  static const double _minTableWidth = 720;
+
   @override
   Widget build(BuildContext context) {
     final p = profile;
+
+    final table = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Header row
+        const _TableRow(
+          cells: [
+            'DAYPART',
+            'AVG COVERS',
+            'TARGET CPLH',
+            'TARGET SPLH',
+            'TARGET PPA',
+            'OPZ RANGE',
+          ],
+          isHeader: true,
+        ),
+        Container(height: 1, color: AppColors.rule),
+        // Per-period data rows
+        ...dayparts.map((stat) {
+          final targets = _targetCellsFor(stat);
+          return Column(
+            children: [
+              _TableRow(
+                cells: [
+                  _labelFor(stat),
+                  stat.avgCovers.toString(),
+                  targets[0],
+                  targets[1],
+                  targets[2],
+                  targets[3],
+                ],
+                isHeader: false,
+              ),
+              Container(height: 1, color: AppColors.rule),
+            ],
+          );
+        }),
+        // Whole Day rollup row — cover-weighted pool. Same fields the
+        // CPLH Range & Target widget at the top of the tab reads, so
+        // the rollup row equals that widget's CPLH by construction.
+        _TableRow(
+          cells: [
+            'Whole Day',
+            dayparts.fold<int>(0, (s, r) => s + r.avgCovers).toString(),
+            p == null ? _missing : p.targetCPLH.toStringAsFixed(2),
+            p == null ? _missing : '\$${p.targetSPLH.toStringAsFixed(0)}',
+            p == null ? _missing : '\$${p.targetPPA.toStringAsFixed(2)}',
+            p == null
+                ? _missing
+                : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
+          ],
+          isHeader: false,
+          isRollup: true,
+        ),
+      ],
+    );
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       clipBehavior: Clip.antiAlias,
@@ -95,61 +159,19 @@ class DaypartTable extends StatelessWidget {
         border: Border.all(color: AppColors.rule, width: 1),
         borderRadius: BorderRadius.circular(3),
       ),
-      child: Column(
-        children: [
-          // Header row
-          const _TableRow(
-            cells: [
-              'DAYPART',
-              'AVG COVERS',
-              'TARGET CPLH',
-              'TARGET SPLH',
-              'TARGET PPA',
-              'OPZ RANGE',
-            ],
-            isHeader: true,
-          ),
-          Container(height: 1, color: AppColors.rule),
-          // Per-period data rows
-          ...dayparts.map((stat) {
-            final targets = _targetCellsFor(stat);
-            return Column(
-              children: [
-                _TableRow(
-                  cells: [
-                    _labelFor(stat),
-                    stat.avgCovers.toString(),
-                    targets[0],
-                    targets[1],
-                    targets[2],
-                    targets[3],
-                  ],
-                  isHeader: false,
-                ),
-                Container(height: 1, color: AppColors.rule),
-              ],
-            );
-          }),
-          // Whole Day rollup row — cover-weighted pool. Same fields the
-          // CPLH Range & Target widget at the top of the tab reads, so
-          // the rollup row equals that widget's CPLH by construction.
-          _TableRow(
-            cells: [
-              'Whole Day',
-              dayparts
-                  .fold<int>(0, (s, r) => s + r.avgCovers)
-                  .toString(),
-              p == null ? _missing : p.targetCPLH.toStringAsFixed(2),
-              p == null ? _missing : '\$${p.targetSPLH.toStringAsFixed(0)}',
-              p == null ? _missing : '\$${p.targetPPA.toStringAsFixed(2)}',
-              p == null
-                  ? _missing
-                  : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
-            ],
-            isHeader: false,
-            isRollup: true,
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Wide enough (the demo device is 1080px): let the columns
+          // spread across the full width.
+          if (constraints.maxWidth >= _minTableWidth) return table;
+          // Narrow (e.g. a 360px phone): scroll horizontally at the
+          // breathing-room width so the six columns stay readable and
+          // nothing overflows or gets clipped.
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(width: _minTableWidth, child: table),
+          );
+        },
       ),
     );
   }
@@ -170,28 +192,34 @@ class _TableRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: isRollup ? AppColors.cardGlow : null,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
       child: Row(
-        children: cells.asMap().entries.map((entry) {
-          final i = entry.key;
-          final cell = entry.value;
-          final isFirst = i == 0;
-          return Expanded(
-            flex: isFirst ? 3 : 2,
-            child: Text(
-              cell,
-              style: isHeader
-                  ? AppTextStyles.mono7()
-                  : (isFirst
-                      ? AppTextStyles.body11(
-                          color: AppColors.primaryText,
-                          style: FontStyle.normal,
-                        )
-                      : AppTextStyles.mono10(color: AppColors.primaryText)),
-              textAlign: isFirst ? TextAlign.left : TextAlign.right,
+        children: [
+          for (var i = 0; i < cells.length; i++) ...[
+            // Gap between columns so values do not crowd the next
+            // header/value (the operator's "cramped" finding).
+            if (i != 0) const SizedBox(width: 14),
+            Expanded(
+              // The label column gets extra room; the five numeric
+              // columns share the rest evenly so each value sits
+              // directly under its header.
+              flex: i == 0 ? 5 : 4,
+              child: Text(
+                cells[i],
+                style: isHeader
+                    ? AppTextStyles.mono7()
+                    : (i == 0
+                        ? AppTextStyles.body11(
+                            color: AppColors.primaryText,
+                            style: FontStyle.normal,
+                          )
+                        : AppTextStyles.mono10(
+                            color: AppColors.primaryText)),
+                textAlign: i == 0 ? TextAlign.left : TextAlign.right,
+              ),
             ),
-          );
-        }).toList(),
+          ],
+        ],
       ),
     );
   }
