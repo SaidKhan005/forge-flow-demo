@@ -507,6 +507,21 @@ class SqliteDatabase {
     // fallback. Idempotent — safe on reseed/advance.
     await _seedDemoWageRoleRows(db);
 
+    // Demo-data Slice F (§2c / Gap G10): one HP #11 override per scope
+    // level into the existing production tables — Region (East Region
+    // timing override on North Loop), Location (Riverside wage override;
+    // Harbour inherits), District (Metro District data-accuracy
+    // covers-source override + the business-default baseline). Each is
+    // additive, restaurant_id-scoped (HP #4), idempotent + deterministic
+    // (skip-if-present + ConflictAlgorithm.ignore + fixed literals).
+    // Placed here — alongside `_seedDemoWageRoleRows`, the canonical
+    // populated demo path — so the override DATA is present wherever the
+    // HP #11 resolver renders. Order is independent of the cycle build
+    // (different restaurant_ids / tables).
+    await _seedDemoScopeOverrideTimingConfig(db);
+    await _seedDemoScopeOverrideWageRows(db);
+    await _seedDemoScopeOverrideDataAccuracy(db);
+
     // Persist mock replay date
     await setMockReplayBusinessDate(DemoScope.restaurantId, isoDate);
 
@@ -531,6 +546,14 @@ class SqliteDatabase {
       );
     }
     await _seedDemoDataFromReplay(db, replay);
+    // Demo-data Slice F (§1.6 / Gap G9): emit ONE variance-breach
+    // notification from the worst real over-plan week in the freshly
+    // seeded `week_records` (Metric Honesty — no fabricated alert; no
+    // breach → no row). Must run AFTER `_seedDemoDataFromReplay` so
+    // `week_records` exist. `reseedDemo` clears `app_notifications`
+    // first, so this re-emits the identical deterministic row → two
+    // reseeds byte-identical.
+    await _seedDemoVarianceBreachNotification(db);
     await _backfillLockedTargets(db, businessDate: isoDate);
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);

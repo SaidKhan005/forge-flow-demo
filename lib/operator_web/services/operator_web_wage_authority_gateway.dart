@@ -277,16 +277,138 @@ class OperatorWebHttpWageAuthorityGateway
   }
 }
 
+/// Demo-data Slice F (§2c / Gap G10) — operator-web mirror of the
+/// mobile HP #11 wage scope story so both consoles tell the same
+/// inheritance tale. The mobile seed
+/// (`_seedDemoScopeOverrideWageRows`) realizes the §2c wage scope as
+/// per-`restaurant_id` `wage_role_rows`; this fixture is its
+/// operator-web analogue, keyed by the demo team location ids
+/// (`kDemoTeamLocationsFixture`) + operator `demo-operator`:
+///
+///   * Downtown (`demo-loc-downtown`) — business default
+///     FOH 14.50 / 18.50, BOH 19.35 / 23.35 (blend 16.50 / 21.35).
+///   * Riverside (`demo-loc-riverside`) — LOCATION override, location
+///     wins over the business default: FOH 15.50 / 19.50,
+///     BOH 20.35 / 24.35 (blend 17.50 / 22.35).
+///   * Harbour (`demo-loc-harbour`) + North Loop (`demo-loc-north-loop`)
+///     — NO override; their rows equal the business default, so the
+///     Wage authority screen, switched to either, renders the inherited
+///     business-default effective wage.
+///
+/// HP #11 note: the inherited-SOURCE pill on the Wage authority screen
+/// is Gap 32 (the screen's scope is hardcoded to
+/// `HierarchyScopeLevel.location` per spec §1.7) — that is
+/// gated/incomplete UI, not an affordance this slice removes. This
+/// fixture only shapes the DATA so the effective values are correct
+/// (Riverside differs; Harbour/North Loop equal the business default)
+/// the moment that pill lands. No `demo_*` construct, no reader branch
+/// (HP #2): it is fixture data into the existing in-memory demo
+/// gateway, contract §"Acceptable patterns". Deterministic: all values
+/// are literals; timestamps are a fixed instant (never
+/// `DateTime.now()`).
+final List<WageRoleRowRecord> kDemoWageRoleRowScopeFixture =
+    _buildDemoWageRoleRowScopeFixture();
+
+List<WageRoleRowRecord> _buildDemoWageRoleRowScopeFixture() {
+  final ts = DateTime.utc(2026, 5, 15);
+  WageRoleRowRecord row({
+    required String locationId,
+    required String restaurantId,
+    required String roleName,
+    required String laborBucket,
+    required double hourlyRate,
+  }) =>
+      WageRoleRowRecord(
+        wageRoleRowId: 'demo-wage-$locationId-'
+            '${roleName.toLowerCase().replaceAll(' ', '-')}',
+        operatorId: 'demo-operator',
+        locationId: locationId,
+        restaurantId: restaurantId,
+        roleName: roleName,
+        laborBucket: laborBucket,
+        hourlyRate: hourlyRate,
+        weightedHours: 500.0,
+        source: WageRoleRowSource.adminSeed,
+        isActive: true,
+        effectiveAt: ts,
+        metadata: const <String, Object?>{},
+        createdAt: ts,
+        updatedAt: ts,
+      );
+  // (locationId, restaurantId, fohA, fohB, bohA, bohB)
+  const cohorts = <List<Object>>[
+    // Business default — Downtown.
+    ['demo-loc-downtown', 'demo_restaurant_001', 14.50, 18.50, 19.35, 23.35],
+    // Location override — Riverside (location wins, blend 17.50 / 22.35).
+    [
+      'demo-loc-riverside',
+      'demo_restaurant_riverside',
+      15.50,
+      19.50,
+      20.35,
+      24.35,
+    ],
+    // Inherits the business default — Harbour.
+    ['demo-loc-harbour', 'demo_restaurant_harbour', 14.50, 18.50, 19.35, 23.35],
+    // Inherits the business default — North Loop (its HP #11 override
+    // is timing/data-accuracy, not wage).
+    [
+      'demo-loc-north-loop',
+      'demo_restaurant_north_loop',
+      14.50,
+      18.50,
+      19.35,
+      23.35,
+    ],
+  ];
+  final out = <WageRoleRowRecord>[];
+  for (final c in cohorts) {
+    final loc = c[0] as String;
+    final rid = c[1] as String;
+    out.add(row(
+        locationId: loc,
+        restaurantId: rid,
+        roleName: 'Server',
+        laborBucket: 'foh',
+        hourlyRate: c[2] as double));
+    out.add(row(
+        locationId: loc,
+        restaurantId: rid,
+        roleName: 'Bartender',
+        laborBucket: 'foh',
+        hourlyRate: c[3] as double));
+    out.add(row(
+        locationId: loc,
+        restaurantId: rid,
+        roleName: 'Prep Cook',
+        laborBucket: 'boh',
+        hourlyRate: c[4] as double));
+    out.add(row(
+        locationId: loc,
+        restaurantId: rid,
+        roleName: 'Line Cook',
+        laborBucket: 'boh',
+        hourlyRate: c[5] as double));
+  }
+  return out;
+}
+
 /// In-memory demo gateway. Mirrors the demo-pattern used by
 /// `DemoWebNotificationPreferencesGateway` so the walkthrough renders
 /// + edits end-to-end without a live proxy.
 class OperatorWebDemoWageAuthorityGateway
     implements OperatorWebWageAuthorityGateway {
+  /// [initial] defaults (when null / omitted) to
+  /// [kDemoWageRoleRowScopeFixture] so the router-owned
+  /// `OperatorWebDemoWageAuthorityGateway()` (operator_web_router.dart)
+  /// renders the §2c HP #11 wage scope story. Pass an explicit list
+  /// (including `const []`) to override the seed.
   OperatorWebDemoWageAuthorityGateway({
-    Iterable<WageRoleRowRecord> initial = const <WageRoleRowRecord>[],
+    Iterable<WageRoleRowRecord>? initial,
     DateTime Function()? now,
   })  : _store = <String, WageRoleRowRecord>{
-          for (final r in initial) r.wageRoleRowId: r,
+          for (final r in (initial ?? kDemoWageRoleRowScopeFixture))
+            r.wageRoleRowId: r,
         },
         _now = now ?? DateTime.now;
 
