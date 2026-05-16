@@ -16,21 +16,33 @@
 //   (f) Slice B's per-shift driver-mix is not preserved per location.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/domain/models/target_cycle.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 
 void main() {
-  final demoIds =
+  final allDemoIds =
       DemoScope.locations.map((l) => l.restaurantId).toList();
-  final newIds = demoIds.skip(1).toList(); // North Loop / Riverside / Harbour
+  // Fix A (operator decision 2026-05-16): a "none connected" demo
+  // location (today Harbour) is honest-EMPTY — no operational cohort.
+  // Per-location completeness/distinctness assertions apply only to the
+  // CONNECTED locations.
+  final demoIds = allDemoIds
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
+  final noneConnectedIds = allDemoIds
+      .where((id) => DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
+  // North Loop / Riverside (connected, non-Downtown).
+  final newIds = demoIds.skip(1).toList();
 
   group('Demo-data Slice C — per-location operational data', () {
     setUp(() async {
       await SqliteDatabase.instance.reseedDemo();
     });
 
-    test('all 4 demo locations are demo-complete '
+    test('all CONNECTED demo locations are demo-complete '
         '(≥60d closed shifts + active cycle + per-period dayparts)',
         () async {
       final db = await SqliteDatabase.instance.database;
@@ -62,6 +74,27 @@ void main() {
           {'lunch', 'dinner', 'late_night'},
           reason: '$rid cycle must carry differentiated per-period rows',
         );
+      }
+    });
+
+    test('Fix A — the "none connected" location is honest-EMPTY '
+        '(no closed shifts / week_records / cycle)', () async {
+      expect(noneConnectedIds, isNotEmpty,
+          reason: 'fixture defines a none-connected demo location');
+      final db = await SqliteDatabase.instance.database;
+      for (final rid in noneConnectedIds) {
+        final shifts = await db.query('shift_records',
+            where: 'restaurant_id = ?', whereArgs: [rid]);
+        expect(shifts, isEmpty,
+            reason: '$rid: no fabricated shift_records (honest-empty)');
+        final weeks = await db.query('week_records',
+            where: 'restaurant_id = ?', whereArgs: [rid]);
+        expect(weeks, isEmpty, reason: '$rid: no week_records');
+        final cycle = await SqliteTargetCycleRepository.instance
+            .getActiveCycle(rid);
+        expect(cycle, isNull,
+            reason: '$rid: no active target cycle (config-default '
+                'targets via the existing inherited fallback)');
       }
     });
 

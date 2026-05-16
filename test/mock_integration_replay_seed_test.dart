@@ -11,11 +11,19 @@
 // - SQLite seed integration
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/distribution_weight_builder.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 void main() {
+  // Fix A (operator decision 2026-05-16): the "none connected" demo
+  // location (today Harbour) is honest-EMPTY; per-location open-shift
+  // fan-out covers the CONNECTED demo locations only.
+  final connectedDemoScopeIds = DemoScope.locations
+      .map((l) => l.restaurantId)
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toSet();
   // ── A. Generator output structure ───────────────────────────────────────
 
   group('A — generator output structure', () {
@@ -213,8 +221,9 @@ void main() {
               "AND status = 'open'");
       expect(
           allFriOpen.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet(),
-          reason: 'every location has its own Fri-dinner live open row');
+          connectedDemoScopeIds,
+          reason: 'every CONNECTED location has its own Fri-dinner live '
+              'open row (the none-connected location is honest-empty)');
       final rows = await db.query('open_shift_snapshots',
           where: "day_label = 'Fri' AND daypart = 'dinner' "
               "AND status = 'open' AND restaurant_id = ?",

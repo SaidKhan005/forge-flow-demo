@@ -214,7 +214,16 @@ void main() {
 
     test('week_records populated after reseed', () async {
       final db = await SqliteDatabase.instance.database;
-      final rows = await db.query('week_records');
+      // Scope to Downtown (mirrors the sibling raw_import_records /
+      // active_target_profiles assertions in this group, lines ~210 /
+      // ~231). The demo is multi-location by design, so a table-wide
+      // count is `historicalWeekCount × <connected locations>`; this
+      // test pins Downtown's own deterministic week history. (The prior
+      // table-wide `== historicalWeekCount` assertion predated the
+      // multi-location demo and was already failing on master — see the
+      // PR's baseline snapshot — independent of Fix A.)
+      final rows = await db.query('week_records',
+          where: 'restaurant_id = ?', whereArgs: ['demo_restaurant_001']);
       expect(rows, isNotEmpty);
       expect(rows.length, MockIntegrationReplaySeed.historicalWeekCount);
       expect(

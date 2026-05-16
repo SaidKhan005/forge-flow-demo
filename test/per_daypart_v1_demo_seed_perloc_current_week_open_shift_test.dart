@@ -38,6 +38,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/open_shift_snapshot_dao.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
@@ -46,8 +47,16 @@ void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  final demoIds =
+  final allDemoIds =
       DemoScope.locations.map((l) => l.restaurantId).toList();
+  // Fix A: the "none connected" location (today Harbour) is honest-empty
+  // → no current-week open shift. Only CONNECTED locations get one.
+  final demoIds = allDemoIds
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
+  final noneConnectedIds = allDemoIds
+      .where((id) => DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
   const downtown = DemoScope.restaurantId;
 
   late Directory tmpDir;
@@ -170,6 +179,17 @@ void main() {
     }
   }
 
+  // Fix B (operator decision 2026-05-16): the demo Shift home must never
+  // be blank for a CONNECTED location, regardless of wall-clock — even at
+  // a between-services time when NO period is genuinely live.
+  Future<void> coldBootAtClock(String injectedNow) async {
+    SqliteDatabase.debugColdBootNowOverride = injectedNow;
+    await SqliteDatabase.instance.useDatabasePath(
+      p.join(tmpDir.path, 'cbn_${injectedNow.replaceAll(':', '-')}.db'),
+    );
+    await SqliteDatabase.instance.database;
+  }
+
   test(
       'cold boot (fixed today) — every demo location has its own '
       "today-anchored live open shift; zero orphans; not a clone",
@@ -183,6 +203,58 @@ void main() {
 
     await coldBoot(injectedToday);
     await assertEveryLocationHasLiveCurrentWeekShift(injectedToday);
+  });
+
+  test(
+      'Fix B — between services (Sat 16:00, no period live) → every '
+      'CONNECTED location STILL has exactly one open row for the current '
+      'business date; none-connected stays honest-empty', () async {
+    // 2026-05-16 is a Saturday; 16:00 is between Lunch (ends 15:00) and
+    // Dinner (starts 17:00) — `resolveDemoOpenPeriod` honestly returns
+    // openDaypart == null. Fix B must still seed an open shift for the
+    // connected locations so the Shift home is never blank.
+    await coldBootAtClock('2026-05-16T16:00:00');
+
+    // The honest resolver still reports "no period live" (unchanged).
+    final honest =
+        resolveDemoOpenPeriod(localNow: DateTime(2026, 5, 16, 16));
+    expect(honest.openDaypart, isNull,
+        reason: 'resolveDemoOpenPeriod stays honest — 16:00 Sat is '
+            'between services');
+
+    final db = await SqliteDatabase.instance.database;
+    const businessDate = '2026-05-16';
+
+    for (final rid in demoIds) {
+      final open = await db.query(
+        'open_shift_snapshots',
+        where: "restaurant_id = ? AND status = 'open'",
+        whereArgs: [rid],
+      );
+      expect(open.length, 1,
+          reason: '$rid: Fix B guarantees exactly one open row even '
+              'between services (Shift home never blank)');
+      expect(open.first['business_date'], businessDate,
+          reason: '$rid open row anchored to the current business date');
+    }
+
+    // None-connected location stays honest-empty (Fix A) — Fix B never
+    // fabricates a shift for a location with nothing connected.
+    for (final rid in noneConnectedIds) {
+      final open = await db.query(
+        'open_shift_snapshots',
+        where: 'restaurant_id = ?',
+        whereArgs: [rid],
+      );
+      expect(open, isEmpty,
+          reason: '$rid (none-connected) has NO open_shift_snapshots — '
+              'Fix B does not override Fix A honest-empty');
+    }
+
+    // Total open rows == one per CONNECTED location (no stray rows).
+    final allOpen =
+        await db.query('open_shift_snapshots', where: "status = 'open'");
+    expect(allOpen.length, demoIds.length);
   });
 
   test(

@@ -46,14 +46,26 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  final demoIds =
-      DemoScope.locations.map((l) => l.restaurantId).toList();
+  // Fix A (operator decision 2026-05-16): a "none connected" demo
+  // location (today Harbour) is honest-EMPTY — no operational parent
+  // rows. The partial-seed regression (parent tables non-empty) applies
+  // to the CONNECTED locations; Harbour's honest-empty state is asserted
+  // separately below.
+  final demoIds = DemoScope.locations
+      .map((l) => l.restaurantId)
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
+  final noneConnectedIds = DemoScope.locations
+      .map((l) => l.restaurantId)
+      .where((id) => DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
 
   late Directory tmpDir;
 
@@ -112,6 +124,34 @@ void main() {
       }
     }
 
+    // Fix A: the "none connected" location is honest-EMPTY — every
+    // operational parent table has ZERO rows for it (no phantom data),
+    // while its scope row (restaurant_locations) IS still seeded.
+    for (final rid in noneConnectedIds) {
+      for (final table in const [
+        'shift_records',
+        'week_records',
+        'target_cycles',
+        'weekly_plan_snapshots',
+        'open_shift_snapshots',
+      ]) {
+        final n = await count(
+          db,
+          "SELECT COUNT(*) FROM $table WHERE restaurant_id = '$rid'",
+        );
+        expect(n, 0,
+            reason: 'cold boot ($today): $rid ($table) must be '
+                'honest-EMPTY (none connected → no fabricated data)');
+      }
+      final loc = await count(
+        db,
+        "SELECT COUNT(*) FROM restaurant_locations "
+        "WHERE restaurant_id = '$rid'",
+      );
+      expect(loc, greaterThan(0),
+          reason: 'cold boot ($today): $rid still in the scope drawer');
+    }
+
     // Wage authority: Downtown business default + the Riverside HP #11
     // override OWN rows; North Loop + Harbour intentionally INHERIT
     // (W6 design — no own rows). Assert the owners are populated and the
@@ -163,7 +203,8 @@ void main() {
   }
 
   test('cold boot on the REAL current date fully seeds every parent '
-      'table for all 4 locations with zero orphans', () async {
+      'table for every CONNECTED location (none-connected honest-empty) '
+      'with zero orphans', () async {
     final today = realTodayUtc();
     await coldBoot(today);
     await assertFullySeededNoOrphans(today);
@@ -172,7 +213,8 @@ void main() {
   });
 
   test('cold boot on the operator-reproduced 2026-05-16 fully seeds '
-      'every parent table for all 4 locations with zero orphans',
+      'every parent table for every CONNECTED location '
+      '(none-connected honest-empty) with zero orphans',
       () async {
     await coldBoot('2026-05-16');
     await assertFullySeededNoOrphans('2026-05-16');

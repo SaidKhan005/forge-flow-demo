@@ -15,6 +15,33 @@
 
 part of 'sqlite_database.dart';
 
+/// True when a demo location's vendor fixture has ZERO connected
+/// categories ("none connected / awaiting first connection" — spec
+/// §D.2/§D.3; today exactly Harbour, `DemoScope.harbourRestaurantId`).
+///
+/// SEED-ONLY honest-EMPTY (Metric Honesty, operator decision
+/// 2026-05-16): a location with nothing connected must render the
+/// existing "awaiting first connection" empty states — NOT fabricated
+/// numbers. The lowest-risk fix is to NOT write that location's
+/// operational/historical cohort (shift/week/snapshot/plan/cycle/
+/// import/notification rows) so every reader honest-degrades to its
+/// existing empty UI with NO production reader/formula change. The
+/// location's `restaurant_locations` row (scope drawer) and its
+/// `demo_mode_state` / vendor-fixture rows (demo banners) are still
+/// seeded — only the operational/historical data is suppressed.
+///
+/// Generalized off [DemoVendorIntegrationStateFixture] connection state,
+/// NOT a hardcoded "if harbour": any demo location whose fixture has
+/// zero connected categories is honest-empty (Riverside is all-3
+/// connected→live, North Loop POS-only, Downtown all-3 mixed, so today
+/// only Harbour matches).
+///
+/// HP #2: writer/seed-side only. No `demo_*` table, no `kDemoMode`
+/// reader branch — the readers are byte-unchanged and resolve demo and
+/// prod identically; they simply find no rows for this scope.
+bool _isNoneConnectedDemoLocation(String restaurantId) =>
+    DemoVendorIntegrationStateFixture.isNoneConnected(restaurantId);
+
 /// Backfills locked-target columns on shift_records and week_records
 /// that lack them, using the current active target profile.
 /// Also ensures target-profile provenance and a compat version row.
@@ -1137,6 +1164,137 @@ OpenPeriodResolution resolveDemoOpenPeriod({required DateTime localNow}) {
   );
 }
 
+/// SEED-TIME wrapper that guarantees the demo's Shift home is NEVER
+/// blank for a CONNECTED demo location (operator decision 2026-05-16,
+/// Fix B). [resolveDemoOpenPeriod] stays the honest clock truth (it
+/// still returns `openDaypart == null` between services and all its
+/// mirror-the-canonical-resolver tests stay green); this wrapper only
+/// adjusts what the SEEDER persists.
+///
+/// Behaviour:
+///  * When a period is genuinely IN PROGRESS at [localNow], this returns
+///    the honest [resolveDemoOpenPeriod] result UNCHANGED (real clock,
+///    real progress).
+///  * When NO period is in progress (e.g. Sat 16:00, between Lunch and
+///    Dinner), it picks the MOST-RELEVANT applicable period for the
+///    business day and presents it as the live/open shift so the Shift
+///    home always shows a real whole-day card:
+///      - the UPCOMING period (earliest applicable period whose start is
+///        still ahead of [localNow]) — generated `projected`, cleanly
+///        upgradeable to `open`; else
+///      - the MOST-RECENTLY-ENDED applicable non-rolling period (after
+///        the day's last service). It is removed from
+///        `currentDayClosedPeriods` so the generator emits it
+///        `projected` (not `closed`) and the snapshot builder upgrades
+///        exactly one slot to `open` — no open/closed UNIQUE collision.
+///
+/// Determinism (Hard Constraint): the SELECTION is clock-relative (the
+/// existing injectable-anchor pattern), but every seeded VALUE is
+/// derived from the chosen period's fixed window — fraction is the fixed
+/// window MIDPOINT (0.5), labels are computed from the period's own
+/// start/end literals, NEVER from [localNow] or `DateTime.now()`. Two
+/// reseeds with the same anchor are byte-identical.
+///
+/// HP #2: seed/writer-side only. No `demo_*` table, no `kDemoMode`
+/// reader branch — every reader is byte-unchanged.
+OpenPeriodResolution seedTimeOpenPeriodResolution({
+  required DateTime localNow,
+}) {
+  final honest = resolveDemoOpenPeriod(localNow: localNow);
+  if (honest.openDaypart != null) {
+    // A real service is live — keep the honest clock-derived answer.
+    return honest;
+  }
+
+  final defs = _kDemoDowntownServicePeriods
+      .map(ServicePeriodDefinition.fromMap)
+      .toList()
+    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+  final businessDateIso = BusinessDateResolver.resolve(
+    localTimestamp: localNow,
+    businessDayStartLocalTime: _kDemoBusinessDayStartLocalTime,
+  );
+  final businessWeekday = DateTime.parse(businessDateIso).weekday;
+  final todMin = localNow.hour * 60 + localNow.minute;
+
+  // Applicable periods for this business day, in start-time order.
+  final applicable = <ServicePeriodDefinition>[];
+  for (final d in defs) {
+    if (!d.applicableDays.contains(businessWeekday)) continue;
+    if (_demoParseHm(d.startLocalTime) == null) continue;
+    if (_demoParseHm(d.endLocalTime) == null) continue;
+    applicable.add(d);
+  }
+  applicable.sort((a, b) => _demoParseHm(a.startLocalTime)!
+      .compareTo(_demoParseHm(b.startLocalTime)!));
+
+  if (applicable.isEmpty) {
+    // No applicable period at all (should never happen — Lunch/Dinner
+    // apply every day). Fall back to the deterministic legacy
+    // resolution so the demo still shows a card.
+    return MockIntegrationReplaySeed.legacyDefaultResolution;
+  }
+
+  // Prefer the UPCOMING period (earliest start still ahead of now).
+  ServicePeriodDefinition? chosen;
+  for (final d in applicable) {
+    if (_demoParseHm(d.startLocalTime)! > todMin) {
+      chosen = d;
+      break;
+    }
+  }
+  // Else (the day's last service already ended) → most-recently-ended
+  // applicable non-rolling period (latest end time).
+  chosen ??= applicable
+      .where((d) => !d.rollsPastMidnight)
+      .fold<ServicePeriodDefinition?>(null, (best, d) {
+    if (best == null) return d;
+    return _demoParseHm(d.endLocalTime)! > _demoParseHm(best.endLocalTime)!
+        ? d
+        : best;
+  });
+  // Absolute last resort: the first applicable period.
+  chosen ??= applicable.first;
+
+  // The chosen period must NOT also be seeded `closed` (else the
+  // generator emits it `closed` and the snapshot builder would create
+  // both an `open` and a `closed` row for the same slot → UNIQUE
+  // replace collision). Drop it from the honest closed set; the
+  // remaining genuinely-ended periods stay `closed` (closed truth).
+  final closed = honest.currentDayClosedPeriods
+      .where((id) => id != chosen!.id)
+      .toList();
+
+  // Deterministic presentation derived from the chosen period's FIXED
+  // window — never from `localNow` (Hard Constraint: determinism).
+  final startMin = _demoParseHm(chosen.startLocalTime)!;
+  final endMin = _demoParseHm(chosen.endLocalTime)!;
+  final windowMin = chosen.rollsPastMidnight
+      ? ((1440 - startMin) + endMin)
+      : (endMin - startMin);
+  // Present the demo "live" shift at the window MIDPOINT (fully
+  // deterministic) so the whole-day card shows a believable in-service
+  // figure regardless of wall-clock.
+  final midMin = startMin + (windowMin ~/ 2);
+  final mh = (midMin ~/ 60) % 24;
+  final mm = midMin % 60;
+  final hour12 = (mh % 12) == 0 ? 12 : mh % 12;
+  final ampm = mh < 12 ? 'AM' : 'PM';
+  final timeLabel = '$hour12:${mm.toString().padLeft(2, '0')} $ampm';
+  final elapsedWhole = (windowMin ~/ 2).clamp(0, 24 * 60);
+  final elapsedLabel =
+      '${elapsedWhole ~/ 60}h ${elapsedWhole % 60}m into service';
+
+  return OpenPeriodResolution(
+    openDaypart: chosen.id,
+    openProgressFraction: 0.5,
+    openTimeLabel: timeLabel,
+    openServiceElapsedLabel: elapsedLabel,
+    currentDayClosedPeriods: closed,
+  );
+}
+
 /// Seeds the demo active profile from the canonical cycle projection.
 ///
 /// The pure `buildActiveTargetProfileFromBaseline(...)` helper remains as a
@@ -1730,6 +1888,12 @@ Future<void> _seedAdditionalLocationsFromReplay(
   final locations = DemoScope.locations;
   for (var i = 1; i < locations.length; i++) {
     final restaurantId = locations[i].restaurantId;
+    // Honest-EMPTY: a "none connected" demo location (today Harbour) gets
+    // NO operational/historical cohort so the existing readers
+    // honest-degrade to "awaiting first connection" instead of phantom
+    // numbers. Its `restaurant_locations` row is still seeded by
+    // `_seedDemoRestaurant`, so it stays in the scope drawer.
+    if (_isNoneConnectedDemoLocation(restaurantId)) continue;
     final profile = _demoLocationProfiles[
         i < _demoLocationProfiles.length
             ? i
@@ -2558,6 +2722,11 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
 
   for (var i = 0; i < locations.length; i++) {
     final rid = locations[i].restaurantId;
+    // Honest-EMPTY: skip the "none connected" location (today Harbour) —
+    // no historical-closed and no current-week open/projected snapshots,
+    // so the Shift dashboard renders the existing "awaiting first
+    // connection" empty state instead of a fabricated live shift.
+    if (_isNoneConnectedDemoLocation(rid)) continue;
     final isDowntown = i == 0;
 
     final histShifts =
@@ -2665,6 +2834,9 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
 
   for (var i = 0; i < locations.length; i++) {
     final rid = locations[i].restaurantId;
+    // Honest-EMPTY: a "none connected" location has no reservation
+    // vendor — no forward reservation book (today Harbour).
+    if (_isNoneConnectedDemoLocation(rid)) continue;
     final volume = i == 0
         ? 1.0
         : _demoLocationProfiles[i < _demoLocationProfiles.length
@@ -2735,6 +2907,9 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
 
   for (var i = 0; i < locations.length; i++) {
     final rid = locations[i].restaurantId;
+    // Honest-EMPTY: no locked weekly plan for a "none connected"
+    // location (today Harbour) — the Plan surface honest-degrades.
+    if (_isNoneConnectedDemoLocation(rid)) continue;
 
     final parentCycle = await daoCycle.getActiveCycle(rid);
     if (parentCycle == null) continue; // degrade silently (no cycle yet)
@@ -3043,6 +3218,11 @@ Future<void> _seedDemoSampleNotifications(
   final batch = db.batch();
   for (final loc in locations) {
     final rid = loc.restaurantId;
+    // Honest-EMPTY: a "none connected" location (today Harbour) has no
+    // backfill / plan-locked / cycle-refreshed events to show — those
+    // sample notices would be phantom data for a location awaiting its
+    // first connection. The bell stays honestly empty for it.
+    if (_isNoneConnectedDemoLocation(rid)) continue;
     for (final t in templates) {
       final type = t.type;
       final title = t.title;
