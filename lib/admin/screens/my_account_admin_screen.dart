@@ -127,6 +127,21 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
       _displayNameOverride ?? widget.session.displayName;
   String get _effectiveEmail => _emailOverride ?? widget.session.email;
 
+  // G70: mint ONE caller-stable idempotency key for the logical
+  // "save identity" action, at dialog-construction time. Mirrors how
+  // the sibling password / recovery / MFA-confirm dialogs receive a
+  // stable `widget.idempotencyKey` from `_handleChangePassword` /
+  // `_handleRecovery` / `_handleEnroll`. Each distinct edit attempt
+  // (one dialog open) gets a distinct key; a retry of the same
+  // unchanged save reuses it so the proxy `proxy_requests` UNIQUE
+  // guard collapses the duplicate (email change forces sign-out — the
+  // same HIGH case G60 flagged for operator-web, fixed by #855).
+  static String _mintIdentityIdempotencyKey() {
+    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
+    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    return 'admin-self-profile-$ts-$r';
+  }
+
   Future<void> _handleEditIdentity() async {
     final gateway = widget.accountGateway;
     if (gateway == null) return;
@@ -136,6 +151,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
         gateway: gateway,
         currentDisplayName: _effectiveDisplayName,
         currentEmail: _effectiveEmail,
+        idempotencyKey: _mintIdentityIdempotencyKey(),
       ),
     );
     if (!mounted || result == null) return;
@@ -1490,11 +1506,20 @@ class _AdminEditIdentityDialog extends StatefulWidget {
     required this.gateway,
     required this.currentDisplayName,
     required this.currentEmail,
+    required this.idempotencyKey,
   });
 
   final AdminAccountGateway gateway;
   final String currentDisplayName;
   final String currentEmail;
+
+  /// G70: caller-stable idempotency key for the logical "save
+  /// identity" action. Minted once by `_handleEditIdentity` when the
+  /// dialog is created and reused across every retry of `_handleSave`
+  /// so a timeout/5xx-then-retap cannot apply the same identity PATCH
+  /// twice. Mirrors the stable `widget.idempotencyKey` threaded by the
+  /// sibling password / recovery / MFA-confirm dialogs in this file.
+  final String idempotencyKey;
 
   @override
   State<_AdminEditIdentityDialog> createState() =>
@@ -1573,7 +1598,11 @@ class _AdminEditIdentityDialogState
       final patched = await widget.gateway.patchSelfProfile(
         displayName: _displayNameChanged ? _trimmedDisplayName() : null,
         email: _emailChanged ? _trimmedEmail() : null,
-        idempotencyKey: _mintIdempotencyKey(),
+        // G70: reuse the caller-stable key. The failure path below
+        // keeps the dialog open so a re-tap re-runs `_handleSave`;
+        // reusing `widget.idempotencyKey` (not a fresh mint) lets the
+        // proxy `proxy_requests` UNIQUE guard collapse the retry.
+        idempotencyKey: widget.idempotencyKey,
       );
       if (!mounted) return;
       Navigator.of(context)
@@ -1603,12 +1632,6 @@ class _AdminEditIdentityDialogState
       default:
         return error.message;
     }
-  }
-
-  static String _mintIdempotencyKey() {
-    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
-    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
-    return 'admin-self-profile-$ts-$r';
   }
 
   @override
