@@ -444,6 +444,157 @@ void main() {
     );
 
     test(
+      'PATCH admin org-unit name renames and gates on team.roles.assign',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+            final response = await harness.patchJson(
+              '$adminAuthOrgUnitsPath/$targetOrgUnit/name',
+              const <String, Object?>{
+                'name': 'Pacific Region',
+                'admin_reason': 'operator requested label cleanup',
+              },
+              idempotencyKey: 'idem-org-unit-rename-admin-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            final command = gateway.orgUnitRenames.single;
+            expect(command.actorUserId, equals(_userId));
+            expect(command.operatorId, equals(_operatorId));
+            expect(command.locationId, equals(_locationId));
+            expect(command.orgUnitId, equals(targetOrgUnit));
+            expect(command.name, equals('Pacific Region'));
+            // Admin path carries the reason through.
+            expect(
+              command.adminReason,
+              equals('operator requested label cleanup'),
+            );
+            final orgUnit = Map<String, Object?>.from(
+              response.json['org_unit'] as Map,
+            );
+            expect(orgUnit['org_unit_id'], equals(targetOrgUnit));
+            expect(orgUnit['label'], equals('Pacific Region'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH self-service org-unit name renames with NO admin_reason',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+            final response = await harness.patchJson(
+              '$authTeamOrgUnitsPath/$targetOrgUnit/name',
+              const <String, Object?>{'name': 'My New Region'},
+              idempotencyKey: 'idem-org-unit-rename-self-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            final command = gateway.orgUnitRenames.single;
+            expect(command.orgUnitId, equals(targetOrgUnit));
+            expect(command.name, equals('My New Region'));
+            // Self-service path forces adminReason null even if absent.
+            expect(command.adminReason, isNull);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH admin org-unit name requires admin_reason',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+            final response = await harness.patchJson(
+              '$adminAuthOrgUnitsPath/$targetOrgUnit/name',
+              const <String, Object?>{'name': 'No Reason Region'},
+              idempotencyKey: 'idem-org-unit-rename-missing-reason',
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(
+              response.json['error'],
+              equals('missing_org_unit_rename_fields'),
+            );
+            expect(gateway.orgUnitRenames, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH org-unit name replays the original 2xx on idempotency reuse',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+            const key = 'idem-org-unit-rename-replay-1';
+            final first = await harness.patchJson(
+              '$adminAuthOrgUnitsPath/$targetOrgUnit/name',
+              const <String, Object?>{
+                'name': 'Replay Region',
+                'admin_reason': 'first call',
+              },
+              idempotencyKey: key,
+            );
+            final second = await harness.patchJson(
+              '$adminAuthOrgUnitsPath/$targetOrgUnit/name',
+              const <String, Object?>{
+                'name': 'Replay Region',
+                'admin_reason': 'first call',
+              },
+              idempotencyKey: key,
+            );
+
+            expect(first.statusCode, equals(200));
+            expect(second.statusCode, equals(200));
+            expect(second.json, equals(first.json));
+            // Replay collapses to a single backend mutation.
+            expect(gateway.orgUnitRenames.length, equals(1));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
       'PATCH location org-unit moves the location and gates on team.roles.assign',
       () async {
         await _withRealHttp(() async {
@@ -3180,6 +3331,7 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   final orgHierarchyLists = <TeamOrgHierarchyListCommand>[];
   final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
   final orgUnitMoves = <TeamOrgUnitMoveCommand>[];
+  final orgUnitRenames = <TeamOrgUnitRenameCommand>[];
   final orgUnitLifecycle = <TeamOrgUnitLifecycleCommand>[];
   final orgUnitDeletes = <TeamOrgUnitLifecycleCommand>[];
   final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
@@ -3232,6 +3384,22 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
         unitType: 'region',
         path: 'acme.east',
         label: 'East Region',
+      ),
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command,
+  ) async {
+    orgUnitRenames.add(command);
+    return TeamOrgUnitRenamed(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: '66666666-6666-4666-8666-666666666666',
+        unitType: 'region',
+        path: 'acme.east',
+        label: command.name,
       ),
     );
   }

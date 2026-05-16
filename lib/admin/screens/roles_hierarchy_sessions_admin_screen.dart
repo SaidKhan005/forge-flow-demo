@@ -444,6 +444,43 @@ class _RolesHierarchySessionsAdminScreenState
     }
   }
 
+  Future<void> _onRenameOrgUnit(OrgUnitAdminNode node) async {
+    // GAP A1 — rename an org unit's display name (F&F admin path).
+    // admin_reason is REQUIRED on this path. The corp root IS
+    // renameable (it is the operator-facing Business label), so there
+    // is no root carve-out here or in the annotation. Duplicate-name-
+    // within-parent is re-validated client-side with the locked copy.
+    final existingNames = <String>{
+      for (final unit in _orgUnits)
+        if (unit.orgUnitId != node.orgUnitId &&
+            unit.parentOrgUnitId == node.parentOrgUnitId)
+          unit.name.toLowerCase(),
+    };
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (_) => _RenameOrgUnitDialog(
+        node: node,
+        existingNames: existingNames,
+      ),
+    );
+    if (newName == null) return;
+    final reason = await _promptAdminReason('Rename ${node.name}');
+    if (reason == null) return;
+    await _runAndRefresh(
+      () => widget.gateway.renameOrgUnit(
+        operatorId: widget.pickedOperator.operatorId,
+        orgUnitId: node.orgUnitId,
+        name: newName,
+        idempotencyKey: _nextIdempotencyKey('hierarchy-rename-org-unit'),
+        actorUserId: widget.actorUserId,
+        actorIsForgeAdmin: widget.editingEnabled,
+        adminReason: reason,
+      ),
+      refresh: _refreshHierarchy,
+      successHint: 'Renamed to $newName',
+    );
+  }
+
   // --- Build ------------------------------------------------------------
 
   @override
@@ -549,6 +586,7 @@ class _RolesHierarchySessionsAdminScreenState
             editingEnabled: widget.editingEnabled,
             onAddChildOrgUnit: _onAddChildOrgUnit,
             onDeleteOrgUnit: _onDeleteOrgUnit,
+            onRenameOrgUnit: _onRenameOrgUnit,
             onMoveLocation: _onMoveLocation,
           ),
         ),
@@ -1350,6 +1388,7 @@ class _HierarchyTab extends StatelessWidget {
     required this.editingEnabled,
     required this.onAddChildOrgUnit,
     required this.onDeleteOrgUnit,
+    required this.onRenameOrgUnit,
     required this.onMoveLocation,
   });
 
@@ -1358,6 +1397,7 @@ class _HierarchyTab extends StatelessWidget {
   final bool editingEnabled;
   final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
   final ValueChanged<OrgUnitAdminNode> onDeleteOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onRenameOrgUnit;
   final ValueChanged<HierarchyLocationLeaf> onMoveLocation;
 
   @override
@@ -1449,6 +1489,7 @@ class _HierarchyTab extends StatelessWidget {
                         editingEnabled: editingEnabled,
                         onAddChildOrgUnit: onAddChildOrgUnit,
                         onDeleteOrgUnit: onDeleteOrgUnit,
+                        onRenameOrgUnit: onRenameOrgUnit,
                       );
                     },
                     emptyMessage: 'No org units yet for this operator.',
@@ -1567,12 +1608,14 @@ class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
     required this.editingEnabled,
     required this.onAddChildOrgUnit,
     required this.onDeleteOrgUnit,
+    required this.onRenameOrgUnit,
   });
 
   final OrgUnitAdminNode node;
   final bool editingEnabled;
   final ValueChanged<OrgUnitAdminNode> onAddChildOrgUnit;
   final ValueChanged<OrgUnitAdminNode> onDeleteOrgUnit;
+  final ValueChanged<OrgUnitAdminNode> onRenameOrgUnit;
 
   @override
   Widget build(BuildContext context) {
@@ -1598,16 +1641,41 @@ class _AdminHierarchyOrgUnitAnnotation extends StatelessWidget {
           ),
         ),
         if (editingEnabled && !isRoot)
-          Flexible(
+          // GAP A1 added a third org-unit action (Rename). The
+          // informational gated-move copy is capped + ellipsized so a
+          // deeply indented node keeps every affordance on one short
+          // line: no RenderFlex overflow, no taller rows that push deep
+          // nodes off-screen. The full sentence stays in `Text.data`
+          // (find.text + the screen-reader label are unaffected).
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 150),
             child: Text(
               _orgUnitMoveGatedCopy,
               key: Key('admin_rhs_org_unit_move_gated_${node.orgUnitId}'),
               textAlign: TextAlign.right,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: AppTextStyles.mono11(color: AppColors.textMuted),
             ),
           ),
         if (editingEnabled) ...<Widget>[
           if (!isRoot) const SizedBox(width: 8),
+          // GAP A1 — rename affordance. Shown on EVERY node including
+          // the business root: the corp root IS renameable (it is the
+          // operator-facing Business label) behind the same edit gate.
+          // Icon-only (tooltip) to keep the action cluster narrow at
+          // deep indentation, consistent with the operator-web parity.
+          IconButton(
+            key: Key('admin_rhs_org_unit_rename_${node.orgUnitId}'),
+            onPressed: () => onRenameOrgUnit(node),
+            tooltip: 'Rename',
+            icon: const Icon(Icons.drive_file_rename_outline, size: 16),
+            color: AppColors.textSecondary,
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            padding: EdgeInsets.zero,
+          ),
+          const SizedBox(width: 8),
           OutlinedButton.icon(
             key: Key('admin_rhs_org_unit_add_child_${node.orgUnitId}'),
             onPressed: () => onAddChildOrgUnit(node),
@@ -2953,6 +3021,109 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           style: AdminButtonStyles.primary,
           onPressed: _onSubmit,
           child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+/// GAP A1 — rename an org unit's display name (F&F admin path). The
+/// corp root IS renameable (it is the operator-facing Business label),
+/// so this dialog has no root carve-out. Duplicate-name-within-parent
+/// is re-validated client-side with the same locked copy the server
+/// returns. The admin_reason is collected by a separate
+/// `_promptAdminReason` step after this dialog returns (matching the
+/// delete affordance flow), so this dialog only captures the new name.
+class _RenameOrgUnitDialog extends StatefulWidget {
+  const _RenameOrgUnitDialog({
+    required this.node,
+    required this.existingNames,
+  });
+
+  final OrgUnitAdminNode node;
+
+  /// Sibling display names (lowercased) in the same parent, excluding
+  /// this node, so re-submitting its own current name is allowed.
+  final Set<String> existingNames;
+
+  @override
+  State<_RenameOrgUnitDialog> createState() => _RenameOrgUnitDialogState();
+}
+
+class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
+  late final TextEditingController _nameController = TextEditingController(
+    text: widget.node.name,
+  );
+  String? _nameError;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  void _onSubmit() {
+    final name = _nameController.text.trim();
+    setState(() {
+      _nameError = name.isEmpty
+          ? HierarchyValidationCopy.orgUnitNameEmpty
+          : widget.existingNames.contains(name.toLowerCase())
+          ? HierarchyValidationCopy.orgUnitNameDuplicate
+          : null;
+    });
+    if (_nameError != null) return;
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('admin_rhs_rename_org_unit_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Rename org unit',
+        style: AdminButtonStyles.dialogTitleStyle,
+      ),
+      content: SizedBox(
+        width: 500,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'This changes how the unit is named everywhere the team '
+              'sees it. It does not move anything. You will add a reason '
+              'on the next step.',
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('admin_rhs_rename_org_unit_name'),
+              controller: _nameController,
+              autofocus: true,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                labelText: 'Display name',
+                border: const OutlineInputBorder(),
+                isDense: true,
+                errorText: _nameError,
+              ),
+              onSubmitted: (_) => _onSubmit(),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('admin_rhs_rename_org_unit_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('admin_rhs_rename_org_unit_submit'),
+          style: AdminButtonStyles.primary,
+          onPressed: _onSubmit,
+          child: const Text('Continue'),
         ),
       ],
     );

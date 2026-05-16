@@ -357,6 +357,142 @@ void main() {
       expect(gateway.capturedAuditEvents, isEmpty);
     });
 
+    testWidgets('rename org unit affordance writes audited rename '
+        '(GAP A1, forge_admin + admin_reason)', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            idempotencyKeyFactory: () => 'idem-rename-org-unit',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      // The corp root IS renameable — rename affordance present on the
+      // business root (no root carve-out).
+      final renameRoot = find.byKey(
+        const Key('admin_rhs_org_unit_rename_$kDemoDinerOrgUnitRoot'),
+      );
+      expect(renameRoot, findsOneWidget);
+      await tester.tap(
+        find.byKey(
+          const Key('admin_rhs_org_unit_rename_$kDemoDinerOrgUnitEast'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('admin_rhs_rename_org_unit_dialog')),
+        findsOneWidget,
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_rename_org_unit_name')),
+        'Eastern Region',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_rename_org_unit_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      // Then the shared admin-reason dialog (admin path REQUIRES it).
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_reason_field')),
+        'operator requested label cleanup',
+      );
+      await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Eastern Region'), findsOneWidget);
+      final renameEvents = gateway.capturedAuditEvents
+          .where((e) => e.action == 'team.org_unit.rename')
+          .toList();
+      expect(renameEvents, hasLength(1));
+      expect(renameEvents.single.actorKind, equals('forge_admin'));
+      expect(renameEvents.single.actorUserId, equals('demo-super-admin'));
+      expect(
+        renameEvents.single.adminReason,
+        equals('operator requested label cleanup'),
+      );
+      expect(
+        (renameEvents.single.payload['after'] as Map)['name'],
+        equals('Eastern Region'),
+      );
+    });
+
+    testWidgets('rename dialog rejects a duplicate sibling name with the '
+        'locked copy (GAP A1)', (tester) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      // East + West regions are siblings under root in the demo set.
+      await tester.tap(
+        find.byKey(
+          const Key('admin_rhs_org_unit_rename_$kDemoDinerOrgUnitEast'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('admin_rhs_rename_org_unit_name')),
+        'West region',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_rhs_rename_org_unit_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      // Client-side re-validation blocks before the reason prompt.
+      expect(
+        find.text('An org unit with this name already exists in this group.'),
+        findsOneWidget,
+      );
+      expect(gateway.capturedAuditEvents, isEmpty);
+    });
+
+    testWidgets('rename affordance hidden when editing disabled', (
+      tester,
+    ) async {
+      wideViewport(tester);
+      final gateway = buildDemoGateway();
+      await tester.pumpWidget(
+        wrap(
+          RolesHierarchySessionsAdminScreen(
+            gateway: gateway,
+            actorUserId: 'demo-super-admin',
+            pickedOperator: demoPick(),
+            editingEnabled: false,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('admin_rhs_org_unit_rename_$kDemoDinerOrgUnitEast'),
+        ),
+        findsNothing,
+      );
+    });
+
     testWidgets('reusable sessions panel renders one row per session', (
       tester,
     ) async {
@@ -1090,9 +1226,16 @@ void main() {
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('admin_rhs_org_unit_add_child_n6')),
+      // The 6-deep synthetic chain is taller than the test viewport
+      // (GAP A1 added a third org-unit action). Scroll the deepest
+      // node into view before tapping — the depth-cap *behavior* is
+      // what this test pins, not pixel layout.
+      final addN6 = find.byKey(
+        const Key('admin_rhs_org_unit_add_child_n6'),
       );
+      await tester.ensureVisible(addN6);
+      await tester.pumpAndSettle();
+      await tester.tap(addN6);
       await tester.pumpAndSettle();
 
       expect(
@@ -1127,9 +1270,13 @@ void main() {
       await tester.tap(find.byKey(const Key('admin_rhs_tab_hierarchy')));
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('admin_rhs_org_unit_add_child_n5')),
+      // Scroll the depth-5 node into view first (tall synthetic chain).
+      final addN5 = find.byKey(
+        const Key('admin_rhs_org_unit_add_child_n5'),
       );
+      await tester.ensureVisible(addN5);
+      await tester.pumpAndSettle();
+      await tester.tap(addN5);
       await tester.pumpAndSettle();
 
       expect(

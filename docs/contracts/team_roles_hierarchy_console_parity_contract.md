@@ -115,13 +115,17 @@ Every fact-table write populates `created_by` (insert) or `updated_by` (update) 
 
 **Move semantics:** Moving a location updates `locations.org_unit_id`; moving an org-unit updates `org_units.parent_org_unit_id`. Both are gated on `team.roles.assign` (operator self-service) or `admin.users.create` analog (F&F admin) per the hierarchy-touches-grants posture in `phase_9_auth_plan.md`. Moves are audited.
 
+**Rename semantics (GAP A1):** Renaming an org-unit updates ONLY the display `org_units.name` column — the ltree `path`/label and the `unique(operator_id, path)` + single-root invariants are untouched, so there is no descendant rewrite and no DB migration. Rename is a supported operation across operator-web self-service (`PATCH /v1/auth/team/org-units/:id/name`) and the F&F admin path (`PATCH /v1/admin/auth/org-units/:id/name`), at full parity, same gating posture as create/move (`team.roles.assign` self-service; `admin.users.create` analog for F&F admin). The corp root IS renameable (it is the operator-facing Business label) behind the same write key. `audit_logs.action = 'team.org_unit.rename'`; `payload = {before:{name}, after:{name}}`; `target_kind = 'org_unit'`, `target_id = :id`. Self-service rename carries NO `admin_reason` (consistent with self-service create/move) and `actor_kind = 'team_member'`; the F&F admin rename path REQUIRES a non-blank `admin_reason` and writes `actor_kind = 'forge_admin'` (the admin route rejects a missing reason before any write). Duplicate-name-within-parent is re-validated server-side AND client-side with the locked copy below. Idempotency-Key is minted at the screen layer and forwarded; the proxy stores it in `proxy_requests` (UNIQUE) and a replay returns the original 2xx; gateways never mint keys.
+
+**Org-unit DELETE exposure (operator decision 2026-05-16):** Operator self-service surfaces (operator-web + mobile) MUST NOT expose org-unit DELETE. Org-unit delete is F&F-admin-only, by operator decision 2026-05-16. (Rename IS exposed to operator self-service.) This records a deliberate product decision, not a gap.
+
 **Display order:** Children sorted alphabetically by `name`. Locations sorted alphabetically by `name` within their org-unit.
 
 **Read-only audiences:** Floor managers (`location_manager`) and `operator_supervisor` see read-only hierarchy. Mutate buttons hidden; tree expand/collapse stays interactive.
 
 **Validation copy (locked):**
 - Empty org-unit name → "Org unit name is required."
-- Duplicate org-unit name within parent → "An org unit with this name already exists in this group."
+- Duplicate org-unit name within parent → "An org unit with this name already exists in this group." (applies to create AND rename)
 - Move would create cycle → "Cannot move into a child of itself."
 
 ### Sessions (`11W.4` + `11A.13` Sessions tab)

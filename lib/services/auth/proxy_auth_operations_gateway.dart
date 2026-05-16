@@ -652,6 +652,27 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command,
+  ) async {
+    final response = await _patch(
+      '$orgUnitsPath/${Uri.encodeComponent(command.orgUnitId)}/name',
+      <String, Object?>{
+        'name': command.name,
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
+    );
+    _expectStatus(response, 200);
+    final rawOrgUnit = response.body['org_unit'];
+    if (rawOrgUnit is! Map) {
+      throw _malformed(response, 'org unit rename response was incomplete');
+    }
+    return TeamOrgUnitRenamed(
+      orgUnit: _orgUnitFromJson(response, rawOrgUnit),
+    );
+  }
+
+  @override
   Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
     TeamOrgUnitLifecycleCommand command,
   ) {

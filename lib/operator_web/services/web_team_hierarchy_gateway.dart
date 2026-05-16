@@ -47,6 +47,14 @@ abstract class WebTeamHierarchyGateway {
     required String idempotencyKey,
   });
 
+  /// GAP A1 — rename an org unit's display name (operator
+  /// self-service). The corp root IS renameable. The key is minted at
+  /// the screen layer and forwarded; the gateway never mints.
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command, {
+    required String idempotencyKey,
+  });
+
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command, {
     required String idempotencyKey,
@@ -89,10 +97,15 @@ class WebTeamHierarchyPaths {
   const WebTeamHierarchyPaths._();
 
   static const String orgUnits = '/v1/auth/team/org-units';
+  static const String orgUnitsPrefix = '$orgUnits/';
   static const String locationsPrefix = '/v1/auth/team/locations/';
 
   static String locationOrgUnit(String locationId) =>
       '$locationsPrefix${Uri.encodeComponent(locationId)}/org-unit';
+
+  /// GAP A1 — operator self-service org-unit rename route.
+  static String orgUnitName(String orgUnitId) =>
+      '$orgUnitsPrefix${Uri.encodeComponent(orgUnitId)}/name';
 }
 
 /// Live `package:http` implementation. Reads the Firebase ID token
@@ -159,6 +172,30 @@ class WebTeamHierarchyGatewayLive implements WebTeamHierarchyGateway {
       throw _malformed(response, 'org unit create response was incomplete');
     }
     return TeamOrgUnitCreated(orgUnitId: orgUnitId);
+  }
+
+  @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command, {
+    required String idempotencyKey,
+  }) async {
+    final response = await _send(
+      method: 'PATCH',
+      path: WebTeamHierarchyPaths.orgUnitName(command.orgUnitId),
+      idempotencyKey: idempotencyKey,
+      // Self-service rename carries NO admin_reason (consistent with
+      // self-service create/move). The proxy clamps operator_id from
+      // the session JWT.
+      body: <String, Object?>{'name': command.name},
+    );
+    _expectStatus(response, 200);
+    final rawOrgUnit = response.body['org_unit'];
+    if (rawOrgUnit is! Map) {
+      throw _malformed(response, 'org unit rename response was incomplete');
+    }
+    return TeamOrgUnitRenamed(
+      orgUnit: _orgUnitFromJson(response, rawOrgUnit),
+    );
   }
 
   @override

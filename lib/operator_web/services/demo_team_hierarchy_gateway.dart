@@ -120,6 +120,57 @@ class DemoWebTeamHierarchyGateway implements WebTeamHierarchyGateway {
   }
 
   @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command, {
+    required String idempotencyKey,
+  }) async {
+    final cached = _idempotency[idempotencyKey];
+    if (cached is _CachedOrgUnitRenamed) return cached.renamed;
+    final existing = _orgUnits[command.orgUnitId];
+    if (existing == null) {
+      throw const WebTeamHierarchyError(
+        code: 'unknown_org_unit',
+        message: 'Org unit no longer exists. Refresh and try again.',
+      );
+    }
+    final trimmedName = command.name.trim();
+    if (trimmedName.isEmpty) {
+      throw const WebTeamHierarchyError(
+        code: 'validation_failed',
+        message: 'Org unit name is required.',
+      );
+    }
+    // Duplicate-name-within-parent rejection mirrors the live proxy.
+    // Root rename (parentOrgUnitId == null) IS allowed — the corp root
+    // is the operator-facing Business label.
+    final hasDuplicate = _orgUnits.values.any(
+      (entry) =>
+          entry.orgUnitId != command.orgUnitId &&
+          entry.parentOrgUnitId == existing.parentOrgUnitId &&
+          entry.label.toLowerCase() == trimmedName.toLowerCase(),
+    );
+    if (hasDuplicate) {
+      throw const WebTeamHierarchyError(
+        code: 'validation_failed',
+        message: 'An org unit with this name already exists in this group.',
+      );
+    }
+    final renamedEntry = TeamOrgUnitEntry(
+      orgUnitId: existing.orgUnitId,
+      parentOrgUnitId: existing.parentOrgUnitId,
+      unitType: existing.unitType,
+      path: existing.path,
+      label: trimmedName,
+      suspendedAt: existing.suspendedAt,
+      deletedAt: existing.deletedAt,
+    );
+    _orgUnits[command.orgUnitId] = renamedEntry;
+    final renamed = TeamOrgUnitRenamed(orgUnit: renamedEntry);
+    _idempotency[idempotencyKey] = _CachedOrgUnitRenamed(renamed);
+    return renamed;
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command, {
     required String idempotencyKey,
@@ -165,6 +216,11 @@ abstract class _CachedMutation {
 class _CachedOrgUnitCreated extends _CachedMutation {
   const _CachedOrgUnitCreated(this.created);
   final TeamOrgUnitCreated created;
+}
+
+class _CachedOrgUnitRenamed extends _CachedMutation {
+  const _CachedOrgUnitRenamed(this.renamed);
+  final TeamOrgUnitRenamed renamed;
 }
 
 class _CachedLocationMoved extends _CachedMutation {
