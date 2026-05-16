@@ -920,47 +920,44 @@ class _PeriodPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bgColor = selected ? AppColors.sunset : AppColors.backgroundMid;
+    // The active (current real-time) period is signalled by an orange
+    // (sunset) border only — no "ACTIVE NOW" text. Selected styling keeps
+    // its own border; an unselected-but-active chip gets the bold orange
+    // border as the sole live affordance, others stay subtle.
     final borderColor = selected
         ? AppColors.sunsetDark
-        : AppColors.borderSubtle.withValues(alpha: 0.7);
+        : activeNow
+            ? AppColors.sunset
+            : AppColors.borderSubtle.withValues(alpha: 0.7);
+    final borderWidth = activeNow && !selected ? 2.0 : 1.0;
     final textColor = selected
         ? AppColors.textPrimary
         : AppColors.textSecondary;
     return Semantics(
       button: true,
       selected: selected,
+      // Preserve the active state for screen readers now that the visible
+      // "ACTIVE NOW" text is gone (border-only affordance).
+      value: activeNow ? 'active now' : null,
       label: label,
       child: InkWell(
         onTap: onTap,
         child: Container(
+          key: activeNow ? const Key('shift_period_pill_active') : null,
           constraints: const BoxConstraints(minWidth: 88, minHeight: 38),
           padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
           decoration: BoxDecoration(
             color: bgColor,
-            border: Border.all(color: borderColor, width: 1),
+            border: Border.all(color: borderColor, width: borderWidth),
             borderRadius: BorderRadius.circular(2),
           ),
           alignment: Alignment.center,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: AppTextStyles.mono12(
-                  color: textColor,
-                  weight: FontWeight.w700,
-                ),
-              ),
-              if (activeNow) ...[
-                const SizedBox(height: 2),
-                Text(
-                  'ACTIVE NOW',
-                  style: AppTextStyles.mono8(
-                    color: AppColors.sunsetDark,
-                  ).copyWith(fontWeight: FontWeight.w700),
-                ),
-              ],
-            ],
+          child: Text(
+            label,
+            style: AppTextStyles.mono12(
+              color: textColor,
+              weight: FontWeight.w700,
+            ),
           ),
         ),
       ),
