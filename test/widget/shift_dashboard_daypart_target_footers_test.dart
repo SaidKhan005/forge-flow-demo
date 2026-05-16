@@ -10,14 +10,21 @@
 //
 // Pins:
 //   1. A selected daypart that HAS a locked per-daypart plan reference
-//      renders the SALES "Forecast $X" footer with the PER-DAYPART value
-//      (sourced from the in-force WeeklyPlanSnapshot via
-//      `DaypartTargetContext.forecastSales`) — NOT the whole-day number.
+//      renders the SALES "Forecast $X" + COVERS "Forecast N" footers with
+//      the PER-DAYPART values (sourced from the in-force WeeklyPlanSnapshot
+//      via `DaypartTargetContext.forecastSales` / `.forecastCovers`) — NOT
+//      the whole-day numbers. The COVERS pin guards the open/not-yet-started
+//      branch fix (`_resolveDaypartTargets` now passes `forecastCovers` on
+//      the `open_profile` / `none` branches, true 1:1 with `forecastSales`):
+//      previously every not-yet-started daypart fell back to the
+//      "service period hasn't started yet" tooltip instead of its locked
+//      plan covers.
 //   2. The same daypart renders the FOH/BOH HRS "Target N hrs" footer +
 //      delta pill from the locked per-daypart `required_*_hours`.
 //   3. A daypart with NO locked per-daypart plan reference degrades
-//      honestly: SALES shows "No forecast available", FOH/BOH show the
-//      value alone — never a fabricated "Forecast $0" / "Target 0 hrs".
+//      honestly: SALES shows "No forecast available", COVERS/FOH/BOH show
+//      the value alone — never a fabricated "Forecast $0" / "Forecast 0" /
+//      "Target 0 hrs".
 //   4. Whole-day SALES + FOH footers are byte-unchanged (Promise/Layer 9).
 
 import 'package:flutter/material.dart';
@@ -150,6 +157,7 @@ void main() {
           // Locked plan-side per-daypart references (WeeklyPlanSnapshot
           // child row). Distinct, non-round values so a collision with
           // the whole-day fixture is vanishingly unlikely.
+          forecastCovers: 4321,
           forecastSales: 4567.0,
           requiredFohHours: 23.0,
           requiredBohHours: 17.0,
@@ -170,6 +178,10 @@ void main() {
           findsNothing,
         );
         expect(
+          find.text('Forecast 4321', skipOffstage: false),
+          findsNothing,
+        );
+        expect(
           find.text('Target 23 hrs', skipOffstage: false),
           findsNothing,
         );
@@ -180,6 +192,13 @@ void main() {
         // 1. SALES "Forecast $X" footer = locked per-daypart forecast.
         expect(
           find.text(r'Forecast $4,567', skipOffstage: false),
+          findsOneWidget,
+        );
+        // 1b. COVERS "Forecast N" footer = locked per-daypart forecast
+        //     covers (open/not-yet-started branch parity — guards the
+        //     `_resolveDaypartTargets` open-branch `forecastCovers` fix).
+        expect(
+          find.text('Forecast 4321', skipOffstage: false),
           findsOneWidget,
         );
         // 2. FOH/BOH "Target N hrs" footer = locked per-daypart
@@ -237,6 +256,12 @@ void main() {
         );
         expect(
           find.textContaining(r'Forecast $', skipOffstage: false),
+          findsNothing,
+        );
+        // COVERS also degrades honestly — null `forecastCovers` must NOT
+        // fabricate a "Forecast N" footer (no per-daypart plan covers).
+        expect(
+          find.textContaining('Forecast ', skipOffstage: false),
           findsNothing,
         );
         // FOH/BOH show the value alone — no "Target N hrs" line and no
