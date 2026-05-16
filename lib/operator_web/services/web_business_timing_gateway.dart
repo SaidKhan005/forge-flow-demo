@@ -111,10 +111,17 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
   ) async {
     _assertOperatorPath(operatorProfilesPath);
     final token = await _requireToken();
+    final body = request.toJson();
     final response = await _client.postJson(
       operatorProfilesPath,
       idToken: token,
-      body: request.toJson(),
+      body: body,
+      // G60 — caller-STABLE key. The create payload uniquely
+      // identifies this logical profile, so a retried "Save" reuses
+      // the same key and the proxy `proxy_requests` UNIQUE guard
+      // collapses the duplicate instead of inserting a SECOND timing
+      // profile. A genuinely different profile gets a distinct key.
+      extraHeaders: _stableKeyHeader('timing-profile-create', <Object?>[body]),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
   }
@@ -127,10 +134,16 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
     final path = operatorProfilePath(profileId);
     _assertOperatorPath(path);
     final token = await _requireToken();
+    final body = patch.toJson();
     final response = await _client.patchJson(
       path,
       idToken: token,
-      body: patch.toJson(),
+      body: body,
+      // G60 — caller-stable key scoped to the profile id + payload.
+      extraHeaders: _stableKeyHeader(
+        'timing-profile-update',
+        <Object?>[profileId, body],
+      ),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
   }
@@ -143,10 +156,18 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
     final path = operatorServicePeriodsPath(profileId);
     _assertOperatorPath(path);
     final token = await _requireToken();
+    final body = period.toJson();
     final response = await _client.postJson(
       path,
       idToken: token,
-      body: period.toJson(),
+      body: body,
+      // G60 — caller-stable key scoped to the profile id + period
+      // payload, so a retried add does NOT append a duplicate
+      // service period.
+      extraHeaders: _stableKeyHeader(
+        'timing-service-period-add',
+        <Object?>[profileId, body],
+      ),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
   }
@@ -160,12 +181,37 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
     final path = operatorServicePeriodPath(profileId, key);
     _assertOperatorPath(path);
     final token = await _requireToken();
+    final body = patch.toJson();
     final response = await _client.patchJson(
       path,
       idToken: token,
-      body: patch.toJson(),
+      body: body,
+      // G60 — caller-stable key scoped to the profile id + period
+      // key + payload.
+      extraHeaders: _stableKeyHeader(
+        'timing-service-period-update',
+        <Object?>[profileId, key, body],
+      ),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
+  }
+
+  /// G60 — builds the `Idempotency-Key` header carrying a
+  /// caller-STABLE key derived from [action] + [parts]. Same logical
+  /// write (same payload) on retry => same key (proxy
+  /// `proxy_requests` UNIQUE guard collapses it); distinct actions /
+  /// payloads => distinct keys. Mirrors the exemplar idempotency
+  /// posture of `web_team_roles_gateway.dart`.
+  static Map<String, String> _stableKeyHeader(
+    String action,
+    List<Object?> parts,
+  ) {
+    return <String, String>{
+      'Idempotency-Key': OperatorWebProxyClient.stableIdempotencyKey(
+        action,
+        parts,
+      ),
+    };
   }
 
   Future<String> _requireToken() async {
