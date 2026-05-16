@@ -51,6 +51,7 @@ import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
+import '../services/admin_security_gateway.dart';
 import '../services/admin_sessions_gateway.dart';
 
 /// V1 Admin "My Account" screen. The admin shell renders this at
@@ -62,6 +63,7 @@ class MyAccountAdminScreen extends StatefulWidget {
     required this.authSource,
     this.accountGateway,
     this.sessionsGateway,
+    this.securityGateway,
     this.now,
   });
 
@@ -84,6 +86,14 @@ class MyAccountAdminScreen extends StatefulWidget {
   /// degrades to the legacy single-session + local sign-out posture
   /// so existing widget tests keep passing.
   final AdminSessionsGateway? sessionsGateway;
+
+  /// Audit fix-first #7 (cross-surface parity finding G4) — when
+  /// non-null, the Security card renders the working self-service
+  /// surface: MFA factor status + enroll/confirm, "lost your
+  /// authenticator?" recovery, and password change. Null (older test
+  /// fixtures that predate this slice) degrades to the legacy
+  /// read-only posture so existing widget tests keep passing.
+  final AdminSecurityGateway? securityGateway;
 
   /// Test seam for the freshness clock so widget tests can pin a
   /// deterministic "last signed in" relative label.
@@ -168,6 +178,7 @@ class _MyAccountAdminScreenState extends State<MyAccountAdminScreen> {
           const SizedBox(height: 14),
           _AdminSecurityCard(
             session: widget.session,
+            gateway: widget.securityGateway,
             now: widget.now,
           ),
           const SizedBox(height: 14),
@@ -480,24 +491,330 @@ class _AdminRoleChip extends StatelessWidget {
 
 // ─── Security ───────────────────────────────────────────────────────
 
-class _AdminSecurityCard extends StatelessWidget {
+class _AdminSecurityCard extends StatefulWidget {
   const _AdminSecurityCard({
     required this.session,
+    this.gateway,
     this.now,
   });
 
   final AdminAuthSession session;
+
+  /// Audit fix-first #7 (G4). When non-null, the card renders the
+  /// working self-service surface. Null degrades to the legacy
+  /// read-only posture (older fixtures / builds without the gateway).
+  final AdminSecurityGateway? gateway;
   final DateTime Function()? now;
 
   @override
+  State<_AdminSecurityCard> createState() => _AdminSecurityCardState();
+}
+
+class _AdminSecurityCardState extends State<_AdminSecurityCard> {
+  bool _loading = false;
+  String? _loadError;
+  AdminSecurityFactorsListed? _factors;
+
+  // Auto-clearing confirmation toast.
+  String? _toast;
+  Timer? _toastTimer;
+  static const Duration _kToastVisibleDuration = Duration(seconds: 4);
+
+  // Stable idempotency keys: one key per logical user action, minted
+  // when the user starts the action and reused on every retry of that
+  // SAME action so the proxy's `proxy_requests` UNIQUE replay returns
+  // the original 2xx (no fresh-key-per-call G60 bug).
+  int _idempotencyCounter = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.gateway != null) {
+      unawaited(_loadFactors());
+    }
+  }
+
+  @override
+  void dispose() {
+    _toastTimer?.cancel();
+    super.dispose();
+  }
+
+  String _mintIdempotencyKey(String action) {
+    _idempotencyCounter += 1;
+    final ts = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
+    final r = math.Random.secure().nextInt(1 << 32).toRadixString(36);
+    return 'admin-my-account-security-$action-$ts-$r-$_idempotencyCounter';
+  }
+
+  void _showToast(String message) {
+    _toastTimer?.cancel();
+    setState(() => _toast = message);
+    _toastTimer = Timer(_kToastVisibleDuration, () {
+      if (!mounted) return;
+      setState(() => _toast = null);
+    });
+  }
+
+  String _friendly(Object error) {
+    if (error is AdminSecurityGatewayError) {
+      if (error.statusCode == 408) {
+        return 'The admin console timed out reaching the security service. '
+            'Try again in a moment.';
+      }
+      if (error.message.trim().isNotEmpty) return error.message.trim();
+    }
+    return 'We could not complete that security action. Try again in a '
+        'moment.';
+  }
+
+  Future<void> _loadFactors() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final listed = await gateway.listFactors();
+      if (!mounted) return;
+      setState(() {
+        _factors = listed;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _loadError = _friendly(error);
+      });
+    }
+  }
+
+  Future<void> _handleEnroll() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final email = widget.session.email.trim();
+    if (email.isEmpty) {
+      _showToast(
+        'We need an account email on file before you can set up an '
+        'authenticator. Update your identity first.',
+      );
+      return;
+    }
+    // One stable key for the whole enroll → confirm action chain.
+    final actionKey = _mintIdempotencyKey('enroll');
+    AdminSecurityTotpEnrollment enrollment;
+    try {
+      enrollment = await gateway.beginTotpEnrollment(
+        userEmail: email,
+        idempotencyKey: actionKey,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showToast(_friendly(error));
+      return;
+    }
+    if (!mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AdminEnrollMfaDialog(
+        gateway: gateway,
+        enrollment: enrollment,
+        confirmIdempotencyKey: actionKey,
+      ),
+    );
+    if (!mounted) return;
+    if (confirmed == true) {
+      _showToast('Authenticator app added. Two-factor sign-in is now on.');
+      await _loadFactors();
+    }
+  }
+
+  Future<void> _handleChangePassword() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final changed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AdminChangePasswordDialog(
+        gateway: gateway,
+        idempotencyKey: _mintIdempotencyKey('password'),
+      ),
+    );
+    if (!mounted) return;
+    if (changed == true) {
+      _showToast('Password updated.');
+    }
+  }
+
+  Future<void> _handleRecovery() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final email = widget.session.email.trim();
+    final requested = await showDialog<bool>(
+      context: context,
+      builder: (_) => _AdminMfaRecoveryDialog(
+        gateway: gateway,
+        seededEmail: email,
+        idempotencyKey: _mintIdempotencyKey('recovery'),
+      ),
+    );
+    if (!mounted) return;
+    if (requested == true) {
+      _showToast(
+        'Recovery requested. Check the email on file for the next step.',
+      );
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final lastFresh = session.lastFreshAuthAt;
+    final lastFresh = widget.session.lastFreshAuthAt;
+    final hasGateway = widget.gateway != null;
+    if (!hasGateway) {
+      return _buildReadOnly(lastFresh);
+    }
+    final factors = _factors;
+    final enrolled = factors?.hasEnrolledFactor ?? false;
+    final mfaLabel = factors == null
+        ? (lastFresh == null ? 'Unknown' : 'Checking...')
+        : (enrolled ? 'On' : 'Not set up');
+    final mfaColor = factors == null
+        ? AppColors.textMuted
+        : (enrolled ? AppColors.positive : AppColors.sunsetDark);
+    return _AdminAccountCard(
+      cardKey: const Key('admin_my_account_security_card'),
+      icon: Icons.shield_outlined,
+      title: 'Security',
+      headerExplainer:
+          'Two-factor sign-in is required for every Forge & Flow admin. '
+          'Set up your authenticator app, change your password, or '
+          'recover access — all from here.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _AdminAccountField(
+            label: 'Two-factor sign-in',
+            value: mfaLabel,
+            valueWidget: Row(
+              key: const Key('admin_my_account_mfa_status'),
+              children: [
+                _AdminStatusBadge(label: mfaLabel, color: mfaColor),
+              ],
+            ),
+            helper: factors == null
+                ? 'Checking your authenticator app status...'
+                : enrolled
+                    ? 'An authenticator app is enrolled on your account.'
+                    : 'You have not set up an authenticator app yet. Some '
+                        'sensitive admin actions stay locked until you do.',
+          ),
+          if (_loadError != null) ...[
+            const SizedBox(height: 6),
+            _AdminInlineError(
+              key: const Key('admin_my_account_security_load_error'),
+              message: _loadError!,
+              onRetry: _loading ? null : _loadFactors,
+            ),
+          ],
+          const SizedBox(height: 10),
+          if (factors != null && !enrolled)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                height: 38,
+                child: FilledButton.icon(
+                  key: const Key('admin_my_account_mfa_enroll_button'),
+                  onPressed: _handleEnroll,
+                  icon: const Icon(Icons.add_moderator_outlined, size: 16),
+                  label: const Text('Set up authenticator app'),
+                ),
+              ),
+            ),
+          if (factors != null && enrolled)
+            _AdminReadOnlyNote(
+              key: const Key('admin_my_account_mfa_enrolled_note'),
+              icon: Icons.verified_user_outlined,
+              message:
+                  'Your authenticator app is active. To replace a lost '
+                  'authenticator, use "Lost your authenticator?" below.',
+            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              SizedBox(
+                height: 38,
+                child: OutlinedButton.icon(
+                  key: const Key('admin_my_account_change_password_button'),
+                  onPressed: _handleChangePassword,
+                  icon: const Icon(Icons.password_outlined, size: 16),
+                  label: const Text('Change password'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.sunsetDark,
+                    side: const BorderSide(color: AppColors.sunsetDark),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                  ),
+                ),
+              ),
+              SizedBox(
+                height: 38,
+                child: TextButton.icon(
+                  key: const Key('admin_my_account_mfa_recovery_button'),
+                  onPressed: _handleRecovery,
+                  icon: const Icon(Icons.lock_reset_outlined, size: 16),
+                  label: const Text('Lost your authenticator?'),
+                ),
+              ),
+            ],
+          ),
+          if (_toast != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('admin_my_account_security_toast'),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.positive.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.positive.withValues(alpha: 0.45),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.check_circle_outline,
+                    size: 16,
+                    color: AppColors.positive,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _toast!,
+                      style: AppTextStyles.body13(color: AppColors.positive),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnly(DateTime? lastFresh) {
     final mfaLabel = lastFresh == null ? 'Unknown' : 'On';
     final mfaHelper = lastFresh == null
         ? 'We could not confirm two-factor sign-in from this session. Sign '
               'in again from the admin sign-in page to refresh.'
         : 'Your last two-factor sign-in check happened '
-              '${_formatRelative(lastFresh, now)}.';
+              '${_formatRelative(lastFresh, widget.now)}.';
     return _AdminAccountCard(
       cardKey: const Key('admin_my_account_security_card'),
       icon: Icons.shield_outlined,
@@ -534,6 +851,51 @@ class _AdminSecurityCard extends StatelessWidget {
                 'the next time you sign in to the admin console. Use the '
                 'sign-in page to update them.',
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminInlineError extends StatelessWidget {
+  const _AdminInlineError({
+    super.key,
+    required this.message,
+    this.onRetry,
+  });
+
+  final String message;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.negative.withValues(alpha: 0.35),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ),
+          if (onRetry != null)
+            TextButton(
+              key: const Key('admin_my_account_security_retry'),
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
         ],
       ),
     );
@@ -1378,6 +1740,556 @@ class _AdminEditIdentityDialogState
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Security dialogs (G4) ──────────────────────────────────────────
+
+/// Enroll-an-authenticator dialog. The begin call already ran (so a
+/// retried confirm replays the SAME caller-stable key); this dialog
+/// only collects the 6-digit code and confirms.
+class _AdminEnrollMfaDialog extends StatefulWidget {
+  const _AdminEnrollMfaDialog({
+    required this.gateway,
+    required this.enrollment,
+    required this.confirmIdempotencyKey,
+  });
+
+  final AdminSecurityGateway gateway;
+  final AdminSecurityTotpEnrollment enrollment;
+  final String confirmIdempotencyKey;
+
+  @override
+  State<_AdminEnrollMfaDialog> createState() => _AdminEnrollMfaDialogState();
+}
+
+class _AdminEnrollMfaDialogState extends State<_AdminEnrollMfaDialog> {
+  final TextEditingController _codeController = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _codeController.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        if (_error != null) _error = null;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  String get _code => _codeController.text.trim();
+  bool get _canSubmit => !_submitting && _code.length == 6;
+
+  Future<void> _confirm() async {
+    if (!_canSubmit) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await widget.gateway.confirmTotpEnrollment(
+        factorId: widget.enrollment.factorId,
+        oneTimeCode: _code,
+        idempotencyKey: widget.confirmIdempotencyKey,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = error is AdminSecurityGatewayError &&
+                error.message.trim().isNotEmpty
+            ? error.message.trim()
+            : 'That code did not match. Try the next one your app shows.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      key: const Key('admin_enroll_mfa_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Set up your authenticator app',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Open your authenticator app, add a new account, and either '
+                'scan the setup link or paste the secret below. Then enter '
+                'the 6-digit code your app shows.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              Text('Setup link',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+              const SizedBox(height: 4),
+              SelectableText(
+                widget.enrollment.otpAuthUrl,
+                key: const Key('admin_enroll_mfa_otpauth'),
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 10),
+              Text('Secret',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+              const SizedBox(height: 4),
+              SelectableText(
+                widget.enrollment.secretBase32,
+                key: const Key('admin_enroll_mfa_secret'),
+                style: AppTextStyles.body14(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 16),
+              Text('6-digit code',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+              const SizedBox(height: 4),
+              TextField(
+                key: const Key('admin_enroll_mfa_code_field'),
+                controller: _codeController,
+                enabled: !_submitting,
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(6),
+                ],
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                _AdminDialogError(
+                  key: const Key('admin_enroll_mfa_error'),
+                  message: _error!,
+                ),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    key: const Key('admin_enroll_mfa_cancel'),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: const Key('admin_enroll_mfa_confirm'),
+                    onPressed: _canSubmit ? _confirm : null,
+                    child: Text(_submitting ? 'Confirming...' : 'Confirm'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Change-password dialog. One stable idempotency key per submit
+/// action, threaded through unchanged.
+class _AdminChangePasswordDialog extends StatefulWidget {
+  const _AdminChangePasswordDialog({
+    required this.gateway,
+    required this.idempotencyKey,
+  });
+
+  final AdminSecurityGateway gateway;
+  final String idempotencyKey;
+
+  @override
+  State<_AdminChangePasswordDialog> createState() =>
+      _AdminChangePasswordDialogState();
+}
+
+class _AdminChangePasswordDialogState
+    extends State<_AdminChangePasswordDialog> {
+  final TextEditingController _currentController = TextEditingController();
+  final TextEditingController _newController = TextEditingController();
+  final TextEditingController _confirmController = TextEditingController();
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    for (final c in [_currentController, _newController, _confirmController]) {
+      c.addListener(() {
+        if (!mounted) return;
+        setState(() {
+          if (_error != null) _error = null;
+        });
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _currentController.dispose();
+    _newController.dispose();
+    _confirmController.dispose();
+    super.dispose();
+  }
+
+  bool get _canSubmit =>
+      !_submitting &&
+      _currentController.text.isNotEmpty &&
+      _newController.text.length >= 12 &&
+      _newController.text == _confirmController.text;
+
+  static String _rejectionCopy(String code) {
+    switch (code) {
+      case 'too_short':
+        return 'Password must be at least 12 characters with one number '
+            'and one symbol.';
+      case 'reused':
+        return 'Choose a password you have not used before.';
+      case 'breached':
+      case 'hibp_match':
+        return 'That password has appeared in a known breach. Choose a '
+            'different one.';
+      default:
+        return 'That password does not meet the policy ($code).';
+    }
+  }
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await widget.gateway.changePassword(
+        currentPassword: _currentController.text,
+        newPassword: _newController.text,
+        idempotencyKey: widget.idempotencyKey,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        if (error is AdminSecurityGatewayError) {
+          if (error.rejections.isNotEmpty) {
+            _error = error.rejections.map(_rejectionCopy).join(' ');
+          } else if (error.message.trim().isNotEmpty) {
+            _error = error.message.trim();
+          } else {
+            _error = 'We could not change your password. Try again.';
+          }
+        } else {
+          _error = 'We could not change your password. Try again.';
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      key: const Key('admin_change_password_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Change your password',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Enter your current password, then choose a new one. Use at '
+                'least 12 characters with a number and a symbol.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              _PasswordField(
+                fieldKey: const Key('admin_change_password_current'),
+                label: 'Current password',
+                controller: _currentController,
+                enabled: !_submitting,
+              ),
+              const SizedBox(height: 12),
+              _PasswordField(
+                fieldKey: const Key('admin_change_password_new'),
+                label: 'New password',
+                controller: _newController,
+                enabled: !_submitting,
+              ),
+              const SizedBox(height: 12),
+              _PasswordField(
+                fieldKey: const Key('admin_change_password_confirm'),
+                label: 'Confirm new password',
+                controller: _confirmController,
+                enabled: !_submitting,
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                _AdminDialogError(
+                  key: const Key('admin_change_password_error'),
+                  message: _error!,
+                ),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    key: const Key('admin_change_password_cancel'),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: const Key('admin_change_password_save'),
+                    onPressed: _canSubmit ? _submit : null,
+                    child: Text(_submitting ? 'Saving...' : 'Change password'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Lost-authenticator recovery dialog. Runs unauthenticated server-
+/// side (the proxy route does not require a bearer); the gateway still
+/// threads a stable Idempotency-Key so a retried submit does not
+/// multiply the recovery queue.
+class _AdminMfaRecoveryDialog extends StatefulWidget {
+  const _AdminMfaRecoveryDialog({
+    required this.gateway,
+    required this.seededEmail,
+    required this.idempotencyKey,
+  });
+
+  final AdminSecurityGateway gateway;
+  final String seededEmail;
+  final String idempotencyKey;
+
+  @override
+  State<_AdminMfaRecoveryDialog> createState() =>
+      _AdminMfaRecoveryDialogState();
+}
+
+class _AdminMfaRecoveryDialogState extends State<_AdminMfaRecoveryDialog> {
+  late final TextEditingController _emailController;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController = TextEditingController(text: widget.seededEmail);
+    _emailController.addListener(() {
+      if (!mounted) return;
+      setState(() {
+        if (_error != null) _error = null;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  String get _email => _emailController.text.trim();
+  bool get _canSubmit => !_submitting && _email.contains('@');
+
+  Future<void> _submit() async {
+    if (!_canSubmit) return;
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await widget.gateway.requestMfaRecovery(
+        email: _email,
+        reason: 'admin_lost_authenticator',
+        idempotencyKey: widget.idempotencyKey,
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = error is AdminSecurityGatewayError &&
+                error.message.trim().isNotEmpty
+            ? error.message.trim()
+            : 'We could not start recovery. Try again in a moment.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      key: const Key('admin_mfa_recovery_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 480),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Lost your authenticator?',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'If you can no longer get codes from your authenticator app, '
+                'we will email the account on file with the next step. A '
+                'Forge & Flow ecosystem admin reviews every recovery '
+                'request.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              Text('Account email',
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+              const SizedBox(height: 4),
+              TextField(
+                key: const Key('admin_mfa_recovery_email_field'),
+                controller: _emailController,
+                enabled: !_submitting,
+                keyboardType: TextInputType.emailAddress,
+                inputFormatters: [
+                  FilteringTextInputFormatter.deny(RegExp(r'\s')),
+                ],
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 10),
+                _AdminDialogError(
+                  key: const Key('admin_mfa_recovery_error'),
+                  message: _error!,
+                ),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    key: const Key('admin_mfa_recovery_cancel'),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: const Key('admin_mfa_recovery_submit'),
+                    onPressed: _canSubmit ? _submit : null,
+                    child: Text(
+                      _submitting ? 'Requesting...' : 'Request recovery',
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PasswordField extends StatelessWidget {
+  const _PasswordField({
+    required this.fieldKey,
+    required this.label,
+    required this.controller,
+    required this.enabled,
+  });
+
+  final Key fieldKey;
+  final String label;
+  final TextEditingController controller;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
+        const SizedBox(height: 4),
+        TextField(
+          key: fieldKey,
+          controller: controller,
+          enabled: enabled,
+          obscureText: true,
+          decoration: const InputDecoration(
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AdminDialogError extends StatelessWidget {
+  const _AdminDialogError({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.08),
+        border: Border.all(color: AppColors.negative.withValues(alpha: 0.30)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.negative),
       ),
     );
   }
