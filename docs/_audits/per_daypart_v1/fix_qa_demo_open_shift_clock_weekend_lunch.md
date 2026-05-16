@@ -124,6 +124,115 @@ All other tests in scope pass: new suite 4/4, replay-seed 13/13,
 fixture-retirement 15/15, scenario 33/1 (the 1 = the pre-existing
 failure above).
 
+## Session-2 finalization addendum (authoritative verification ledger)
+
+This addendum supersedes the per-test counts above where they differ;
+it is the definitive verification done after reconciling the salvaged
+WIP with the canonical finalize commit.
+
+### Reconciliation note
+
+A prior loop tick auto-salvaged the worker output (`c07330b5`) and
+finalized it (`66699ac8`: + the audit doc above, the
+`legacyDefaultResolution` public accessor, and the `coldBoot:` arg
+split). This session independently re-derived the SAME refinements and
+additionally fixed Change-B count couplings the prior finalize left red.
+Final tree = `66699ac8` + the count-fix test deltas below. No lib
+behaviour change beyond `66699ac8`.
+
+### Additional in-scope test updates (Change-B count couplings)
+
+Change B raises the demo operating pattern from 14 → **16** slots/week
+(weekends now serve Lunch) and `lunch.applicable_days` from Mon–Fri →
+Mon–Sun. The production WeekRecord rollup gate derives the expected
+per-week count from `RestaurantTimingConfig` (not hardcoded), so it
+self-adjusts correctly — only tests that hardcoded the old 14-slot /
+168-historical / Mon–Fri-lunch demo shape needed updating. Mechanical,
+test-only, seed-contract-following:
+
+- `mock_integration_replay_seed_test.dart` — `weeks*14`→`*16`,
+  `length 14`→`16`, `9 closed + 5 projected`→`9 + 7`, group-E open
+  snapshot assertions rewritten to derive from `resolveDemoOpenPeriod`
+  (clock-derived) instead of the old fixed `0.63`/`7:45 PM`/`3h 15m`.
+- `mock_replay_scenario_test.dart` — A-group counts updated for the
+  16-slot week; setUp pins `debugColdBootNowOverride` so C/G stay
+  deterministic.
+- `runtime_fixture_retirement_test.dart` — `shiftsTotal 14`→`16`,
+  projected `5`→`7`; group-B setUp pins the now-override.
+- `replay_integrity_audit_test.dart` — `getFullWeekShifts` length
+  `14`→`16` (×2), `historicalWeekCount*14`→`*16`.
+- `current_state_alignment_test.dart` — "full week has N slots"
+  `14`→`16` (×2 tests) + `fullWeekShifts.length 14`→`16`.
+
+### Baseline diff vs fresh `origin/master` (regression discrimination)
+
+Ran the realistic blast-radius set (10 suites:
+current_state_alignment, shift_service_close_shift,
+distribution_weight_builder, baseline_range_logic,
+learn_benchmark_context_service, wtd_variance_logic,
+shift_whole_day_alignment, variance_history_widget,
+shift_dynamic_truth, shift_record_source_truth) on this branch AND on a
+clean `git worktree` at `origin/master`:
+
+- **Branch: 266 pass / 8 fail. Master: 263 pass / 11 fail.**
+- The 8 branch failures are a strict **subset** of the 11 master
+  failures — **every branch failure is reproduced identically on fresh
+  `origin/master` → 100% PRE-EXISTING, ZERO PR-introduced regressions.**
+- The change **net-FIXED 3** pre-existing master failures
+  (`current_state_alignment` "full week has 14 slots total",
+  "getCurrentWeekState returns valid state", "full week still has 14
+  slots after locked migration" — now pass at 16).
+- Pre-existing failures (proven on fresh `origin/master`, NOT
+  regressions; CLAUDE.md → treat as expected):
+  1. `mock_replay_scenario_test.dart :: benchmark_selection_summaries
+     survive replay advance` (Expected non-empty / Actual []).
+  2. `replay_integrity_audit_test.dart :: week_records populated after
+     reseed` (Expected <12> / Actual <48/…>).
+  3. `shift_service_close_shift_test.dart` — 6 tests
+     (`closing all 14 shifts creates a WeekRecord`, `projected Fri
+     dinner slot is replaced cleanly`, the two `7.55q.5` close-all
+     tests, the two `7.55q.10` frozen-dollar-impact tests). These
+     encode the OLD 14-slot close-flow (close 5 specific projected
+     slots; gate at 14). They fail identically on `origin/master`.
+     **Not fixed here** — correctly updating them needs new Sat/Sun
+     Lunch close helpers + a 16-slot close enumeration, which is a
+     close-flow test rewrite beyond SEED-ONLY scope. The production
+     gate is verified correct (derives from timing config; comment
+     `shift_service_close_shift_test.dart:438-444` confirms it sums
+     per-period applicable-days). **FOLLOW-UP NEEDED:** update
+     `shift_service_close_shift_test.dart` for the 16-slot demo
+     (test-only; production logic already self-adjusts).
+  4. `current_state_alignment_test.dart` — `B getShiftDashboard
+     returns null when no locked plan` and `J1b … Expected <64>
+     Actual <61>` (locked-Schedule canonical-weights allocation
+     shifted because Change B adds weekend-Lunch covers to the
+     distribution). Both fail identically on `origin/master`
+     (`B` is unrelated pre-existing; `J1b` is a stale distribution
+     magic-number). Test-only follow-up; production allocation is
+     correct (derives from weights).
+
+### Required suites — all green on the final tree
+
+new suite **4/4**; `per_daypart_v1_demo_seed_perloc_current_week_open_shift`
+(#827) **pass**; `sqlite_database_cold_boot_today_anchor` (W8)
+**pass**; `sqlite_database_cold_boot_partial_seed_regression` **pass**;
+`mobile_operational_sync_demo_scope_preserving_wipe` **pass**;
+`test/widget/` (per_daypart dashboard widgets) **all pass**;
+`mock_integration_replay_seed` / `runtime_fixture_retirement` /
+`provider_abstraction` / `reservation_book_snapshot_repository` /
+`week_start_wiring` **pass**. `dart analyze lib` → only pre-existing
+`info` lints in untouched files; **0 errors/warnings in touched files**.
+No `db/migrations/*.sql` changed (migration drift scanner N/A).
+
+### High-blast-radius gate
+
+Per the prompt: seed-touching, high blast radius — **orchestrator
+review + on-device clean-build verify on a Saturday business date
+required before merge.** The investigation report named as Authority #2
+(`INVESTIGATION_perdaypart_currentstate_dinner_wholeday.md`) does not
+exist in any branch/history; the prompt's inline root-cause (verified
+against code) was used as the binding analysis.
+
 ## Orchestrator audit
 
 (left blank for the orchestrator)

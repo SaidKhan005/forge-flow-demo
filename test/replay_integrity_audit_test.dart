@@ -52,7 +52,7 @@ void main() {
         () async {
       final shifts =
           await ShiftService.instance.getFullWeekShifts('2026-W13');
-      expect(shifts.length, 14);
+      expect(shifts.length, 16); // QA fix Change B: 16-slot week (weekend Lunch)
       final closed = shifts.where((s) => s.isClosed).toList();
       final nonClosed = shifts.where((s) => !s.isClosed).toList();
       expect(closed, isNotEmpty);
@@ -100,7 +100,7 @@ void main() {
         () async {
       const live = LiveShiftDataSource();
       final shifts = await live.getFullWeekShifts('2026-W13');
-      expect(shifts.length, 14);
+      expect(shifts.length, 16); // QA fix Change B: 16-slot week (weekend Lunch)
     });
 
     test('LiveShiftDataSource.getWeekHistory delegates to ShiftService',
@@ -143,9 +143,9 @@ void main() {
       const staticSrc = StaticShiftDataSource();
       final shifts = await staticSrc.getHistoricalClosedShifts();
       expect(shifts, isNotEmpty);
-      expect(shifts.length, MockIntegrationReplaySeed.historicalWeekCount * 14,
-          reason: '[historicalWeekCount] weeks * 14 shifts historical '
-              'closed shifts');
+      expect(shifts.length, MockIntegrationReplaySeed.historicalWeekCount * 16,
+          reason: '[historicalWeekCount] weeks * 16 shifts historical '
+              'closed shifts (QA fix Change B: weekends serve Lunch)');
     });
   });
 
