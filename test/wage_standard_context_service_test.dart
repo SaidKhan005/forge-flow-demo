@@ -501,6 +501,15 @@ void main() {
         final restaurantId = await SqliteRestaurantScopeRepository.instance
             .getActiveRestaurantId();
 
+        // Demo-data Slice B: the demo seed now populates a wage-role
+        // cohort when the table is EMPTY (so the cycle wage waterfall
+        // is real, not the MeridianConfig fallback — §2g/G7). Clear it
+        // first (the other 13 tests in this file already do this) so
+        // the operator rows below are the established authority; the
+        // seed's conditional skip then proves reseed neither deletes
+        // nor clobbers operator wage authority (HP #11).
+        await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
+
         // Add generator rows BEFORE reseed
         await SqliteWageRoleRowRepository.instance.upsertRow(
           WageRoleRow(

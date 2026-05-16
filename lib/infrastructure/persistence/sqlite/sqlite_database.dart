@@ -500,6 +500,13 @@ class SqliteDatabase {
     // permanently strand the 3 new locations for existing users.
     await _seedDemoRestaurant(db);
 
+    // Demo-data Slice B (§2g / G7): seed `wage_role_rows` BEFORE any
+    // cycle build so `_ensureDemoSeedCycle` resolves the blended FOH/BOH
+    // wage through the production `_weightedAvgFromRows` waterfall over
+    // real role rows instead of the `MeridianConfig` empty-rows
+    // fallback. Idempotent — safe on reseed/advance.
+    await _seedDemoWageRoleRows(db);
+
     // Persist mock replay date
     await setMockReplayBusinessDate(DemoScope.restaurantId, isoDate);
 

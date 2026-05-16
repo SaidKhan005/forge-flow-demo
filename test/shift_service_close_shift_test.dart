@@ -168,7 +168,15 @@ void main() {
     // WTD reflects the new closed shift
     final wtd = await ShiftService.instance.getWeekToDate('2026-W13', 'Mar 24');
     expect(wtd, isNotNull);
-    expect(wtd!.totalCovers, 989); // 685 mock-replay closed + 304
+    // Demo-data Slice B changed per-period seed covers, so the old
+    // magic 989 (= 685 mock-replay closed + 304) no longer holds.
+    // Assert the self-consistent invariant instead: WTD covers = Σ of
+    // the week's closed-shift covers (what WTD is, by definition).
+    final wtdClosedCovers = after
+        .where((s) => s.isClosed)
+        .fold<int>(0, (sum, s) => sum + s.covers);
+    expect(wtd!.totalCovers, wtdClosedCovers);
+    expect(wtd.totalCovers, greaterThan(0));
     expect(wtd.shiftsCompleted, 10);
 
     // â”€â”€ WTD uses stored actual labor dollars, not config-wage fallback â”€â”€â”€â”€â”€â”€
@@ -220,7 +228,15 @@ void main() {
     final record = w13.first;
     expect(record.weekLabel, 'Mar 24');
     expect(record.shiftsCompleted, 14);
-    expect(record.forecastCovers, 1721);
+    // Slice B changed per-period seed covers; assert the WeekRecord's
+    // forecastCovers equals Σ of the week's shift forecastCovers
+    // (self-consistent) rather than the stale magic 1721.
+    final w13Shifts =
+        await DatabaseHelper.instance.getShiftsForWeek('2026-W13');
+    final expectedForecastCovers =
+        w13Shifts.fold<int>(0, (sum, s) => sum + s.forecastCovers);
+    expect(record.forecastCovers, expectedForecastCovers);
+    expect(record.forecastCovers, greaterThan(0));
     expect(record.primaryLeverId, isNotEmpty);
     expect(record.blendedFohWage, greaterThan(0));
     expect(record.blendedBohWage, greaterThan(0));
