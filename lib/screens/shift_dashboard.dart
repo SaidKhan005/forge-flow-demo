@@ -168,10 +168,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                 if (_selectedServicePeriodId == null)
                   ..._wholeDaySlivers(rm)
                 else
-                  ..._servicePeriodSlivers(
-                    context,
-                    _selectedServicePeriodId!,
-                  ),
+                  ..._servicePeriodSlivers(context, _selectedServicePeriodId!),
                 const SliverToBoxAdapter(child: SizedBox(height: 48)),
               ],
             ),
@@ -274,7 +271,8 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     String selectedPeriodId,
   ) {
     final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
-    final definitions = periodNotifier?.definitions ??
+    final definitions =
+        periodNotifier?.definitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
     ServicePeriodDefinition? selectedDefinition;
     for (final d in ServicePeriodDefinitionResolver.ordered(definitions)) {
@@ -294,26 +292,28 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     ];
 
     if (selectedDefinition != null) {
-      final bucket = periodNotifier?.buckets?[selectedDefinition.id] ??
+      final bucket =
+          periodNotifier?.buckets?[selectedDefinition.id] ??
           ServicePeriodAccumulator(servicePeriodId: selectedDefinition.id);
       final targetContext =
           periodNotifier?.daypartTargetFor(selectedDefinition.id) ??
-              DaypartTargetContext.none;
+          DaypartTargetContext.none;
 
       // Per-location vendor provenance + period lifecycle (Defects 2 & 3).
       // Same fixture-derived resolver the whole-day path and the
       // demo-mode state surface use — no parallel signal, no kDemoMode
       // fork.
-      final restaurant =
-          context.watch<RestaurantScopeNotifier?>()?.restaurant;
+      final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
       final restaurantId = restaurant?.restaurantId;
       final vendorSource = restaurantId == null
           ? ShiftVendorSource.none
           : ShiftVendorSourceResolver.forLocation(restaurantId);
-      final cutoff = periodNotifier?.businessDayStartLocalTime ??
+      final cutoff =
+          periodNotifier?.businessDayStartLocalTime ??
           _defaultBusinessDayStartLocalTime;
       final localNow = _restaurantLocalNow(restaurant);
-      final periodNotStartedYet = localNow != null &&
+      final periodNotStartedYet =
+          localNow != null &&
           resolveServicePeriodPhase(
                 localNow: localNow,
                 businessDayStartLocalTime: cutoff,
@@ -434,36 +434,48 @@ class _ShiftHeaderMeta extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Left group: status dot, then day + date.
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.sunset,
-              shape: BoxShape.circle,
+          // Left group: status dot, day, date and live time, wrapped in
+          // a single Expanded so it claims every pixel the freshness
+          // chip doesn't need. Previously a sibling Spacer (flex 1)
+          // split the leftover width 50/50 with the Flexible date text,
+          // which truncated "May 16" -> "May ..." even when the row had
+          // room. The date can still ellipsize, but only if the whole
+          // "day - date - time" run genuinely overruns the width.
+          Expanded(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: const BoxDecoration(
+                    color: AppColors.sunset,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Text(
+                    '$day \u00b7 ${_formatMonthDay(businessDate)}',
+                    style: AppTextStyles.mono12(color: AppColors.sunsetDark),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                // Live time, pulled down from the old title-row trailing slot
+                // so the restaurant name gets the full title width (less
+                // mid-word truncation) and date + time read as one line.
+                const SizedBox(width: 8),
+                Text(
+                  '·',
+                  style: AppTextStyles.mono12(color: AppColors.textMuted),
+                ),
+                const SizedBox(width: 8),
+                _LiveClock(ticker: ticker),
+              ],
             ),
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              '$day \u00b7 ${_formatMonthDay(businessDate)}',
-              style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          // Live time, pulled down from the old title-row trailing slot
-          // so the restaurant name gets the full title width (less
-          // mid-word truncation) and date + time read as one line.
-          const SizedBox(width: 8),
-          Text(
-            '·',
-            style: AppTextStyles.mono12(color: AppColors.textMuted),
-          ),
-          const SizedBox(width: 8),
-          _LiveClock(ticker: ticker),
           if (freshness != null) ...[
-            const Spacer(),
             const SizedBox(width: 12),
             _FreshnessLabel(freshness: freshness!),
           ],
@@ -495,10 +507,9 @@ const Duration _kShiftDashboardTickInterval = Duration(seconds: 30);
 /// timers did, so existing test seams continue to work without
 /// modification.
 class _ShiftDashboardTicker extends ValueNotifier<DateTime> {
-  _ShiftDashboardTicker({
-    Duration interval = _kShiftDashboardTickInterval,
-  })  : _interval = interval,
-        super(_currentTime()) {
+  _ShiftDashboardTicker({Duration interval = _kShiftDashboardTickInterval})
+    : _interval = interval,
+      super(_currentTime()) {
     _timer = Timer.periodic(_interval, (_) {
       value = _currentTime();
     });
@@ -982,15 +993,16 @@ class _ShiftSectionViewData {
     // All sources absent → 0 → SalesForecastCard's honest "No forecast
     // available", never a 0-anchored progress bar (Design Rule 2).
     final ppaTarget = tc.targetPPA;
-    final forecastSales = tc.forecastSales ??
+    final forecastSales =
+        tc.forecastSales ??
         (ppaTarget != null ? bucket.covers * ppaTarget : 0.0);
 
     // Labor % is honest only when BOTH labor punches and sales exist.
     final actualLaborDollars = bucket.fohWageDollars + bucket.bohWageDollars;
     final double? actualPct =
         (laborConnected && bucket.totalMinutes > 0 && bucket.sales > 0)
-            ? actualLaborDollars / bucket.sales * 100
-            : null;
+        ? actualLaborDollars / bucket.sales * 100
+        : null;
     final double? theoreticalPct = tc.theoreticalLaborPct;
     final double? variancePts = (actualPct != null && theoreticalPct != null)
         ? actualPct - theoreticalPct
@@ -1032,33 +1044,32 @@ class _ShiftSectionViewData {
           opzCeilingCPLH: ceiling,
           targetCPLH: target,
           opzStatus: 'pending',
-          opzLabel:
-              laborConnected ? 'AWAITING ACTUALS' : 'LABOR NOT CONNECTED',
+          opzLabel: laborConnected ? 'AWAITING ACTUALS' : 'LABOR NOT CONNECTED',
           opzSubLabel: laborConnected
               ? 'Locked productivity zone is set. Waiting on labor punches '
-                  'for this period before scoring.'
+                    'for this period before scoring.'
               : 'Locked productivity zone is set. Connect a labor vendor '
-                  "to score this period's productivity.",
+                    "to score this period's productivity.",
         );
       } else {
         final currentCplh = bucket.cplh;
         final status = currentCplh < floor
             ? 'below'
             : currentCplh > ceiling
-                ? 'above'
-                : 'in';
+            ? 'above'
+            : 'in';
         final label = status == 'below'
             ? 'BELOW OPZ'
             : status == 'above'
-                ? 'ABOVE OPZ'
-                : 'IN OPZ';
+            ? 'ABOVE OPZ'
+            : 'IN OPZ';
         final sub = status == 'below'
             ? 'Productivity is below the OPZ floor. Too many labor hours '
-                'for the volume.'
+                  'for the volume.'
             : status == 'above'
-                ? 'Productivity is above the OPZ ceiling. Service quality '
-                    'may suffer.'
-                : 'Team is producing. Watch covers.';
+            ? 'Productivity is above the OPZ ceiling. Service quality '
+                  'may suffer.'
+            : 'Team is producing. Watch covers.';
         opz = _OpzBandData(
           currentCPLH: currentCplh,
           opzFloorCPLH: floor,
@@ -1109,11 +1120,20 @@ class _ShiftSectionViewData {
     // per-period target is genuinely absent (Gap-42 fallback / no locked
     // value) so the pill keeps its prior honest-empty / source-label
     // behavior rather than fabricating a `Target 0` (Metric Honesty
-    // Doctrine / Design Rule 2). COVERS has no per-period forecast-covers
-    // source on [DaypartTargetContext] — left `null` (no fabrication).
+    // Doctrine / Design Rule 2). COVERS reads its per-period
+    // forecast-covers from [DaypartTargetContext.forecastCovers] — left `null` (no fabrication).
     // Blended-wage target is period-invariant: the same shared benchmark
     // value (`profile.targetBlendedWage`) `_buildMetricCards` uses,
     // passed down by the caller; `null` when no profile is bound yet.
+    // COVERS now has a per-period plan-side source: the locked
+    // `WeeklyPlanSnapshotDayDaypart.forecast_covers` carried on
+    // [DaypartTargetContext.forecastCovers]. Byte-identical "Forecast N"
+    // format to the whole-day branch (`'Forecast ${rm.forecastCovers}'`);
+    // `null` when the in-force snapshot has no per-period row → the pill
+    // keeps its honest-empty / source-label behavior (no fabrication).
+    final String? coversTargetLabel = tc.forecastCovers == null
+        ? null
+        : 'Forecast ${tc.forecastCovers}';
     final ppaTargetForLabel = tc.targetPPA;
     final cplhTargetForLabel = tc.targetCPLH;
     final splhTargetForLabel = tc.targetSPLH;
@@ -1146,8 +1166,9 @@ class _ShiftSectionViewData {
       fohHours: hoursColumn(bucket.fohMinutes, tc.requiredFohHours),
       bohHours: hoursColumn(bucket.bohMinutes, tc.requiredBohHours),
       opz: opz,
-      // COVERS: no per-period forecast-covers source → null (honest).
-      coversTargetLabel: null,
+      // COVERS: per-period locked plan forecast (honest null when the
+      // in-force snapshot has no per-period row).
+      coversTargetLabel: coversTargetLabel,
       ppaTargetLabel: ppaTargetLabel,
       cplhTargetLabel: cplhTargetLabel,
       splhTargetLabel: splhTargetLabel,
@@ -1212,10 +1233,14 @@ ShiftPeriodProvenanceProbe debugShiftPeriodProvenance({
     splhState: d.splh.state,
     laborActualPctPresent: d.labor.actualPct != null,
     opzLabel: d.opz?.opzLabel,
-    posUnavailableCopy:
-        d.unavailableTooltip(isLabor: false, metricPhrase: 'covers'),
-    laborUnavailableCopy:
-        d.unavailableTooltip(isLabor: true, metricPhrase: 'blended wage'),
+    posUnavailableCopy: d.unavailableTooltip(
+      isLabor: false,
+      metricPhrase: 'covers',
+    ),
+    laborUnavailableCopy: d.unavailableTooltip(
+      isLabor: true,
+      metricPhrase: 'blended wage',
+    ),
   );
 }
 
@@ -1532,7 +1557,9 @@ class _ShiftPeriodSelector extends StatelessWidget {
     return ValueListenableBuilder<DateTime>(
       valueListenable: ticker,
       builder: (context, _, __) {
-        final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
+        final restaurant = context
+            .watch<RestaurantScopeNotifier?>()
+            ?.restaurant;
         final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
         final definitions = ServicePeriodDefinitionResolver.ordered(
           periodNotifier?.definitions ??
@@ -1602,8 +1629,8 @@ class _PeriodPill extends StatelessWidget {
     final borderColor = selected
         ? AppColors.sunsetDark
         : activeNow
-            ? AppColors.sunset
-            : AppColors.borderSubtle.withValues(alpha: 0.7);
+        ? AppColors.sunset
+        : AppColors.borderSubtle.withValues(alpha: 0.7);
     final borderWidth = activeNow && !selected ? 2.0 : 1.0;
     final textColor = selected
         ? AppColors.textPrimary
@@ -1675,7 +1702,8 @@ class _DaypartPeriodHeader extends StatelessWidget {
       builder: (context, _, __) {
         final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
 
-        final definitions = periodNotifier?.definitions ??
+        final definitions =
+            periodNotifier?.definitions ??
             ServicePeriodDefinitionResolver.demoDefinitions;
         final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
         ServicePeriodDefinition? selectedDefinition;
@@ -1714,8 +1742,9 @@ class _DaypartPeriodHeader extends StatelessWidget {
                     child: Text(
                       'Restaurant timezone is not configured. Per-period '
                       'metrics are unavailable until Settings is completed.',
-                      style:
-                          AppTextStyles.body13(color: AppColors.textSecondary),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                   ),
                 ),
@@ -1940,8 +1969,8 @@ class _LaborVarianceSection extends StatelessWidget {
     final valueColor = actualPct == null
         ? AppColors.textMuted
         : hasVariance
-            ? accentColor
-            : AppColors.textPrimary;
+        ? accentColor
+        : AppColors.textPrimary;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
