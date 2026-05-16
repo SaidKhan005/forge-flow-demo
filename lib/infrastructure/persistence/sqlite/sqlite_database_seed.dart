@@ -357,7 +357,26 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     limit: 1,
   );
   if (cycleRows.isEmpty) return;
-  final cycle = TargetCycle.fromMap(cycleRows.first);
+  // Per-Daypart V1 (Slice 3): `TargetCycle.fromMap` rehydrates the
+  // parent `target_cycles` row only — its `dayparts` list is empty.
+  // The runtime lock path (`WeeklyPlanSnapshotService
+  // ._generateAndPersistSnapshot`) gets a cycle hydrated with its
+  // per-period child rows via `TargetCycleService.getOrCreateActiveCycle`
+  // → `TargetCycleDao._hydrateWithDayparts`. Mirror that here by reading
+  // the same `target_cycle_dayparts` child rows the demo cycle write
+  // path (`_ensureDemoSeedCycle` → `TargetCycleDao.upsertCycle`) just
+  // persisted, so the snapshot's per-period sub-rows derive from the
+  // same per-period targets the rest of the demo reads. Without this the
+  // cycle's `dayparts` stay empty, `_buildSeedDayDaypartRows` returns the
+  // Gap-42 empty list, and the demo-locked snapshot stays a structurally
+  // pre-Slice-1 "legacy" snapshot (the Gap-12 1:1 allocator trap is
+  // never actually closed in demo).
+  final parentCycle = TargetCycle.fromMap(cycleRows.first);
+  final cycleDayparts =
+      await TargetCycleDao(db).getDaypartsForCycle(parentCycle.cycleId);
+  final cycle = cycleDayparts.isEmpty
+      ? parentCycle
+      : parentCycle.copyWith(dayparts: cycleDayparts);
 
   // Mirror DemandForecastContextService.getContextForAnchorDate exactly:
   // weekly forecast covers come from the just-seeded closed shifts in
@@ -432,6 +451,36 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     );
   });
 
+  // Per-Daypart V1 (Slice 3): build the locked per-(business_date,
+  // service_period) sub-rows + the wages-at-lock-time stamp exactly the
+  // way the runtime lock path does (`WeeklyPlanSnapshotService
+  // ._buildDayDaypartRowsForLock` + its wage stamp, ~lines 188-231).
+  // Without these the demo-seeded snapshot is structurally a
+  // pre-Slice-1 "legacy" snapshot: `schedule_forecast_notifier`
+  // (`adjustedDayViews`, ~lines 519-530) sees `dayDayparts.isEmpty` and
+  // silently falls back to the read-time `DaypartPlanAllocator`
+  // regeneration, so Slice 3's persistence read-swap is dead in demo
+  // (Gap-12 1:1 trap never actually closed for the shipped demo).
+  final dayDayparts = _buildSeedDayDaypartRows(
+    cycle: cycle,
+    dayRows: dayRows,
+  );
+  // Design Rule 8 — the locked-plan wage stamp. Pull wages from the
+  // cycle in force at lock time (not "current" wages); blended wage
+  // uses the canonical cover-independent formula on the shared
+  // `ActiveTargetProfile` seam so the stamp can't drift from runtime.
+  final wageStamp = WeeklyPlanSnapshotWagesAtLockTime(
+    fohWage: cycle.fohWage,
+    bohWage: cycle.bohWage,
+    blendedWage: ActiveTargetProfile.computeTargetBlendedWage(
+      targetCPLH: cycle.targetCPLH,
+      targetSPLH: cycle.targetSPLH,
+      targetPPA: cycle.targetPPA,
+      fohWage: cycle.fohWage,
+      bohWage: cycle.bohWage,
+    ),
+  );
+
   final now = nowIsoUtc();
   final snapshot = WeeklyPlanSnapshot(
     snapshotId:
@@ -451,6 +500,8 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     generatedAt: now,
     lockedAt: now,
     dayRows: dayRows,
+    dayDayparts: dayDayparts,
+    wageAtLockTime: wageStamp,
   );
 
   // Persist via the same map shape WeeklyPlanSnapshotDao.upsertSnapshot
@@ -461,13 +512,15 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   final encodedDayRows =
       jsonEncode(map.remove('day_rows') as List<dynamic>);
   final forecastContext = map.remove('forecast_context');
-  // Per-Daypart V1 (Slice 1): the seed's snapshot model now also
-  // carries `day_dayparts` and `wage_at_lock_time_json`. Strip
-  // `day_dayparts` from the parent insert (it's persisted into the
-  // child table by the DAO at runtime; the seed path doesn't yet
-  // need to persist them because the seed never sets them) and
+  // Per-Daypart V1 (Slice 1/3): the seed's snapshot model now also
+  // carries `day_dayparts` and `wage_at_lock_time_json`. `day_dayparts`
+  // is not a column on the parent `weekly_plan_snapshots` table — it is
+  // persisted into the `weekly_plan_snapshot_day_dayparts` child table
+  // below, mirroring `WeeklyPlanSnapshotDao.upsertSnapshot`'s
+  // replace-for-snapshot child write. Strip it from the parent map and
   // JSON-encode the wage stamp for its dedicated column.
-  map.remove('day_dayparts');
+  final dayDaypartsToPersist =
+      (map.remove('day_dayparts') as List<dynamic>? ?? const <dynamic>[]);
   final wageAtLockTimeJson = map.remove('wage_at_lock_time_json');
   map['wage_at_lock_time_json'] =
       wageAtLockTimeJson == null ? null : jsonEncode(wageAtLockTimeJson);
@@ -489,6 +542,116 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     map,
     conflictAlgorithm: ConflictAlgorithm.replace,
   );
+
+  // Per-Daypart V1 (Slice 3): persist the per-(business_date,
+  // service_period) child rows. `reseedDemo` clears
+  // `weekly_plan_snapshots` but NOT `weekly_plan_snapshot_day_dayparts`,
+  // and the demo snapshot_id is deterministic
+  // (`${restaurantId}_snapshot_${weekStartCompact}`), so a stale child
+  // row from a prior seed would collide on the
+  // `(snapshot_id, business_date, service_period_id)` primary key.
+  // Delete-then-insert by snapshot_id mirrors
+  // `WeeklyPlanSnapshotDao.upsertSnapshot`'s replace-for-snapshot
+  // semantics and keeps the seed idempotent/deterministic across
+  // reseeds (two reseeds yield byte-identical child rows). Closed-truth
+  // immutability is upheld upstream: this whole function no-ops when a
+  // snapshot already covers the in-force week (the `existing.isNotEmpty`
+  // guard above), so a same-week replay advance never reaches this
+  // delete and never rewrites already-locked child rows.
+  await db.delete(
+    'weekly_plan_snapshot_day_dayparts',
+    where: 'snapshot_id = ?',
+    whereArgs: [snapshot.snapshotId],
+  );
+  if (dayDaypartsToPersist.isNotEmpty) {
+    final childBatch = db.batch();
+    for (final raw in dayDaypartsToPersist) {
+      final dp = Map<String, dynamic>.from(raw as Map);
+      dp['snapshot_id'] = snapshot.snapshotId;
+      dp['created_at'] = now;
+      childBatch.insert('weekly_plan_snapshot_day_dayparts', dp);
+    }
+    await childBatch.commit(noResult: true);
+  }
+}
+
+/// Per-Daypart V1 (Slice 3): pure replica of
+/// `WeeklyPlanSnapshotService._buildDayDaypartRows` (the runtime lock
+/// path, ~lines 372-437), invoked here with no
+/// `applicablePeriodIdsByWeekday` map — exactly as the runtime
+/// `_buildDayDaypartRowsForLock` calls it — so the seeded per-period
+/// sub-rows are byte-equivalent to what the runtime auto-generator
+/// would have produced for the same cycle + day rows.
+///
+/// This is the same inlined-replica pattern the rest of this file uses
+/// for runtime parity (`_resolveSeedDemandWeeklyCovers`,
+/// `_buildSeedDistributionWeights`): the runtime helper is `static`
+/// private on `WeeklyPlanSnapshotService` and its public test hook is
+/// `@visibleForTesting` (illegal to call from production seed code), so
+/// the formula is mirrored here verbatim rather than re-invented.
+///
+/// Allocation (mirrors runtime exactly — do NOT add largest-remainder
+/// reconciliation the runtime path does not have, or the seeded shape
+/// diverges from the live auto-generator):
+///   - period covers  = round(day covers × period cover-weight ÷ Σweights)
+///   - period sales    = period covers × period target PPA
+///   - period FOH hrs  = period covers ÷ period target CPLH
+///   - period BOH hrs  = period sales  ÷ period target SPLH
+///   - period FOH $    = period FOH hrs × whole-day FOH wage (Design Rule 5)
+///   - period BOH $    = period BOH hrs × whole-day BOH wage
+///
+/// Returns `const []` when the cycle has no per-period rows (Gap 42
+/// fallback) — read consumers then fall back to whole-day day rows
+/// honestly, same as runtime.
+List<WeeklyPlanSnapshotDayDaypart> _buildSeedDayDaypartRows({
+  required TargetCycle cycle,
+  required List<WeeklyPlanSnapshotDay> dayRows,
+}) {
+  if (cycle.dayparts.isEmpty) {
+    return const <WeeklyPlanSnapshotDayDaypart>[];
+  }
+
+  final periodCoverWeights = <String, int>{
+    for (final dp in cycle.dayparts) dp.servicePeriodId: dp.coverCount,
+  };
+
+  final out = <WeeklyPlanSnapshotDayDaypart>[];
+  for (final dayRow in dayRows) {
+    // Runtime lock path passes no applicable-periods map → every
+    // per-period row is applicable on every weekday (the cycle was
+    // built from the operator's real calibration-window evidence;
+    // periods that never serve a given weekday contribute zero covers).
+    final periodIds = cycle.dayparts.map((d) => d.servicePeriodId).toList();
+    final totalWeight = periodIds
+        .map((id) => periodCoverWeights[id] ?? 0)
+        .fold<int>(0, (a, b) => a + b);
+    for (final periodId in periodIds) {
+      final cycleDp = cycle.daypartFor(periodId);
+      if (cycleDp == null) continue;
+      final w = periodCoverWeights[periodId] ?? 0;
+      final periodCovers = totalWeight > 0
+          ? ((dayRow.forecastCovers * w) / totalWeight).round()
+          : 0;
+      final periodSales = periodCovers * cycleDp.targetPPA;
+      final periodReqFohHours =
+          cycleDp.targetCPLH > 0 ? periodCovers / cycleDp.targetCPLH : 0.0;
+      final periodReqBohHours =
+          cycleDp.targetSPLH > 0 ? periodSales / cycleDp.targetSPLH : 0.0;
+      final periodFohDollars = periodReqFohHours * cycle.fohWage;
+      final periodBohDollars = periodReqBohHours * cycle.bohWage;
+      out.add(WeeklyPlanSnapshotDayDaypart(
+        businessDate: dayRow.businessDate,
+        servicePeriodId: periodId,
+        forecastCovers: periodCovers,
+        forecastSales: periodSales,
+        requiredFohHours: periodReqFohHours,
+        requiredBohHours: periodReqBohHours,
+        theoreticalFohDollars: periodFohDollars,
+        theoreticalBohDollars: periodBohDollars,
+      ));
+    }
+  }
+  return out;
 }
 
 /// Inlined replica of `DemandForecastContextService.getContextForAnchorDate`
