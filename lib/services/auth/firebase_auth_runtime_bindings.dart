@@ -73,7 +73,6 @@ class FirebaseAuthRuntimeBindings {
     this.mobilePushTokenGateway,
     this.handoffCodeGateway,
     this.idTokenProvider,
-    this.forceRefreshIdToken,
   });
 
   final AuthLoginService authLoginService;
@@ -95,22 +94,6 @@ class FirebaseAuthRuntimeBindings {
   final MobilePushTokenGateway? mobilePushTokenGateway;
   final HandoffCodeGateway? handoffCodeGateway;
   final Future<String?> Function()? idTokenProvider;
-
-  /// MOB-G70 — production force-refresh hook for the Firebase ID
-  /// token. [idTokenProvider] returns the SDK's *cached* token (cheap
-  /// hot path, auto-refreshed only when it nears expiry), which is the
-  /// wrong thing to re-pull on a 401: a clock-skewed device or a
-  /// mid-sweep token rotation surfaces as a 401 with a still-cached
-  /// stale token, so reading the cache again would loop on the same
-  /// stale value. This hook calls `FirebaseAuthClient.refreshIdToken`
-  /// (SDK `getIdTokenResult(forceRefresh: true)`), so the bootstrap
-  /// can hand the production [HttpSyncProxyClient] a real
-  /// force-refresh path. The existing 401-refresh-and-retry in
-  /// `http_sync_proxy_client.dart` was previously dead in the prod
-  /// flavor because this argument was never wired. Null on the demo /
-  /// no-Firebase path (there is no proxy there, so no refresher is
-  /// needed).
-  final Future<void> Function()? forceRefreshIdToken;
 
   /// 9.UX.7 — incoming-URI source forwarded to the unauthenticated
   /// shell so `forgeflow://reset-password?oobCode=...` reaches the
@@ -314,15 +297,5 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     mobilePushTokenGateway: mobilePushTokenGateway,
     handoffCodeGateway: handoffCodeGateway,
     idTokenProvider: authClient.currentIdToken,
-    // MOB-G70 — force a real Firebase ID-token refresh (SDK
-    // `getIdTokenResult(forceRefresh: true)` via
-    // `FirebaseAuthSdkClient.refreshIdToken`). The proxy 401 retry
-    // path only needs the side effect (cache now holds a fresh
-    // token); the returned credential is discarded here so the hook
-    // matches the `Future<void> Function()` the sync client expects.
-    // The token NEVER leaves the SDK/header path.
-    forceRefreshIdToken: () async {
-      await authClient.refreshIdToken();
-    },
   );
 }
