@@ -39,6 +39,12 @@ FROM ghcr.io/cirruslabs/flutter:stable AS build
 # the corresponding deploy-script `-DemoMode` warning path.
 ARG ADMIN_DEMO_AUTH=false
 ARG ADMIN_SHARE_PREVIEW=false
+# G5 (cross-surface parity audit): explicit, default-false opt-in that
+# lets the release-mode fixture-auth guard in lib/main_admin.dart admit
+# an intentional public fixture/share-preview/demo deploy. Without it a
+# non-debug build carrying ADMIN_DEMO_AUTH/ADMIN_SHARE_PREVIEW fails
+# closed. The deploy script sets it true only for -SharePreview/-DemoMode.
+ARG ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=false
 ARG ADMIN_PROXY_BASE_URI=
 ARG FIREBASE_WEB_API_KEY=
 ARG FIREBASE_WEB_APP_ID=
@@ -70,6 +76,7 @@ RUN flutter config --enable-web \
         --no-web-resources-cdn \
         --dart-define=ADMIN_DEMO_AUTH=${ADMIN_DEMO_AUTH} \
         --dart-define=ADMIN_SHARE_PREVIEW=${ADMIN_SHARE_PREVIEW} \
+        --dart-define=ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=${ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH} \
         --dart-define=ADMIN_PROXY_BASE_URI=${ADMIN_PROXY_BASE_URI} \
         --dart-define=FIREBASE_WEB_API_KEY=${FIREBASE_WEB_API_KEY} \
         --dart-define=FIREBASE_WEB_APP_ID=${FIREBASE_WEB_APP_ID} \

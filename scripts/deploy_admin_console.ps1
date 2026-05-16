@@ -136,6 +136,11 @@ if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
 # fixture-login admin shell on a public URL.
 $adminDemoAuth = 'false'
 $adminSharePreview = 'false'
+# G5 (cross-surface parity audit): the release-mode fixture-auth guard
+# in lib/main_admin.dart fails closed unless this explicit opt-in is
+# also compiled in. Set true ONLY for the intentional public fixture
+# deploys (-SharePreview / -DemoMode); stays false for live.
+$adminAllowPublicFixtureAuth = 'false'
 if ($SharePreview -and $DemoMode) {
   Write-Host 'BLOCKED: use either -SharePreview or -DemoMode, not both.'
   exit 1
@@ -143,6 +148,7 @@ if ($SharePreview -and $DemoMode) {
 if ($SharePreview) {
   $adminDemoAuth = 'true'
   $adminSharePreview = 'true'
+  $adminAllowPublicFixtureAuth = 'true'
   $AdminProxyBaseUri = ''
   Write-Host 'Deploying SHARE PREVIEW admin console.'
   Write-Host ' - no Firebase login'
@@ -171,6 +177,7 @@ if ($SharePreview) {
     exit 1
   }
   $adminDemoAuth = 'true'
+  $adminAllowPublicFixtureAuth = 'true'
 } else {
   if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
     Write-Host 'BLOCKED: live admin console deploy requires ADMIN_PROXY_BASE_URI.'
@@ -214,6 +221,8 @@ $cloudBuildConfig = @(
   "  - $(Quote-CloudBuildYamlValue "ADMIN_DEMO_AUTH=$adminDemoAuth")",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "ADMIN_SHARE_PREVIEW=$adminSharePreview")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=$adminAllowPublicFixtureAuth")",
   "  - '--build-arg'",
   "  - $(Quote-CloudBuildYamlValue "ADMIN_PROXY_BASE_URI=$AdminProxyBaseUri")",
   "  - '--build-arg'",
