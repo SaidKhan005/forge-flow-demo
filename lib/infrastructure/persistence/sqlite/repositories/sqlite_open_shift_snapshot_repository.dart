@@ -73,4 +73,15 @@ class SqliteOpenShiftSnapshotRepository
     final dao = await _daoReady;
     return dao.deleteForOtherRestaurants(keepRestaurantId);
   }
+
+  /// Set-preserving sibling of [wipeForOtherScopes]. Deletes every
+  /// mirrored `open_shift_snapshots` row whose `restaurant_id` is NOT
+  /// in [keepRestaurantIds]. Used only by the demo bootstrap
+  /// source-swap (`demoScopePreservingCrossTenantWipe`) so a demo
+  /// location switch keeps every demo location's snapshots; production
+  /// keeps the single-keep path byte-unchanged.
+  Future<int> wipeForScopesNotIn(Set<String> keepRestaurantIds) async {
+    final dao = await _daoReady;
+    return dao.deleteForRestaurantsNotIn(keepRestaurantIds);
+  }
 }

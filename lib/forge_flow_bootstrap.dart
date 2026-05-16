@@ -46,6 +46,13 @@ Future<void> bootstrapAndRunApp(
   SyncProxyClient? syncProxyClient,
   StarTargetSelectionWriteClient? starTargetSelectionWriteClient,
   MobilePushNotificationService? mobilePushNotifications,
+  // Demo-bootstrap source-swap hook (HP #2). Unset on every production
+  // path -> `MobileOperationalSyncHost` keeps `defaultCrossTenantWipe`
+  // BYTE-UNCHANGED, so the production multi-tenant isolation control is
+  // untouched. ONLY the demo branch in `lib/main_forgeflow.dart` passes
+  // `demoScopePreservingCrossTenantWipe` here, mirroring how it already
+  // passes `DemoAuthLoginService` / `InMemorySecureSessionStorage`.
+  CrossTenantWipe? crossTenantWipe,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
@@ -122,6 +129,10 @@ Future<void> bootstrapAndRunApp(
               child: RealtimeAuthBridge(
                 child: MobileOperationalSyncHost(
                   syncClient: syncProxyClient,
+                  // Unset (production) -> the constructor default
+                  // `defaultCrossTenantWipe` applies, byte-unchanged.
+                  crossTenantWipe:
+                      crossTenantWipe ?? defaultCrossTenantWipe,
                   child: app,
                 ),
               ),

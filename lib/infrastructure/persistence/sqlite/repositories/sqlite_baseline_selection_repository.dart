@@ -35,4 +35,15 @@ class SqliteBaselineSelectionRepository implements BaselineSelectionRepository {
     final dao = await _daoReady;
     return dao.wipeForOtherScopes(keepRestaurantId);
   }
+
+  /// Set-preserving sibling of [wipeForOtherScopes]. Deletes every
+  /// mirrored `baseline_selected_records` row whose `restaurant_id` is
+  /// NOT in [keepRestaurantIds]. Used only by the demo bootstrap
+  /// source-swap (`demoScopePreservingCrossTenantWipe`) so a demo
+  /// location switch keeps every demo location's selections; production
+  /// keeps the single-keep path byte-unchanged.
+  Future<int> wipeForScopesNotIn(Set<String> keepRestaurantIds) async {
+    final dao = await _daoReady;
+    return dao.deleteForRestaurantsNotIn(keepRestaurantIds);
+  }
 }

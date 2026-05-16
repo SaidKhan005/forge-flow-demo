@@ -58,6 +58,17 @@ class SqliteTargetCycleRepository implements TargetCycleRepository {
     return dao.wipeForOtherScopes(keepRestaurantId);
   }
 
+  /// Set-preserving sibling of [wipeForOtherScopes]. Deletes every
+  /// mirrored `target_cycles` row whose `restaurant_id` is NOT in
+  /// [keepRestaurantIds]. Used only by the demo bootstrap source-swap
+  /// (`demoScopePreservingCrossTenantWipe`) so a demo location switch
+  /// keeps every demo location's cycles; production keeps the
+  /// single-keep path byte-unchanged.
+  Future<int> wipeForScopesNotIn(Set<String> keepRestaurantIds) async {
+    final dao = await _daoReady;
+    return dao.deleteForRestaurantsNotIn(keepRestaurantIds);
+  }
+
   /// Per-Daypart V1 (Slice 1) — concrete-only accessor for per-period
   /// child rows. Used by reads that already have a cycleId in hand and
   /// want the child rows without rehydrating the parent.

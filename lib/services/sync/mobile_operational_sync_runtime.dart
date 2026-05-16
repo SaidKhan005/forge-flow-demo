@@ -214,6 +214,61 @@ Future<void> defaultCrossTenantWipe(String keepRestaurantId) async {
   );
 }
 
+/// Demo-bootstrap source-swap sibling of [defaultCrossTenantWipe].
+///
+/// HP #2 / HP #4: this is NOT a `kDemoMode` reader fork and adds no
+/// `demo_*` table. It is a bootstrap-injected strategy object — the
+/// operational-sync analogue of `DemoAuthLoginService` /
+/// `InMemorySecureSessionStorage` — wired ONLY by the demo branch in
+/// `lib/main_forgeflow.dart`. Production never references it, so the
+/// production cross-tenant isolation control ([defaultCrossTenantWipe])
+/// stays byte-identical.
+///
+/// Why it exists: the 4 [DemoScope.locations] are all the SAME demo
+/// operator's tenancy (multiple `restaurant_locations` rows under one
+/// operator/business — see `DemoScope`), and the demo build has NO
+/// operational proxy sync to re-materialize a wiped location (the demo
+/// `SyncProxyClient` only serves `demo_mode_state`). So the
+/// production-correct "purge the prior tenant on a shared-device
+/// operator/location flip" behaviour, applied to a demo location
+/// switch, permanently destroys the 3 non-active demo locations' cold-
+/// boot operational envelope (#824/#827) with nothing to restore it —
+/// the operator-reproduced "switching locations wipes the data ->
+/// HISTORICAL ONLY" defect.
+///
+/// Fix: preserve the demo operator's full location set. A
+/// `restaurant_id` is wiped only when it is BOTH `!= keepRestaurantId`
+/// AND NOT one of [DemoScope.locations]. Net: in demo NO `DemoScope`
+/// location is ever cross-tenant-wiped (every location's envelope
+/// survives a switch, exactly like a live multi-location integration
+/// that has every location backfilled), while a genuinely-foreign
+/// `restaurant_id` (not a DemoScope location) is STILL purged — the
+/// per-tenant isolation intent is preserved for any non-demo scope.
+///
+/// Composes the same per-repo wipe seam [defaultCrossTenantWipe] uses
+/// (same 8 repos / 9 tables), via each repo's set-preserving
+/// `wipeForScopesNotIn` sibling. It does NOT call, duplicate, or alter
+/// [defaultCrossTenantWipe] or the production single-keep
+/// `wipeForOtherScopes` / `deleteForOtherRestaurants` bodies.
+Future<void> demoScopePreservingCrossTenantWipe(
+  String keepRestaurantId,
+) async {
+  final keep = <String>{
+    keepRestaurantId,
+    for (final location in DemoScope.locations) location.restaurantId,
+  };
+  await SqliteShiftRecordRepository.instance.wipeForScopesNotIn(keep);
+  await SqliteOpenShiftSnapshotRepository.instance.wipeForScopesNotIn(keep);
+  await SqliteRestaurantTimingConfigRepository.instance.wipeForScopesNotIn(
+    keep,
+  );
+  await SqliteBaselineSelectionRepository.instance.wipeForScopesNotIn(keep);
+  await SqliteTargetCycleRepository.instance.wipeForScopesNotIn(keep);
+  await SqliteTargetProfileRepository.instance.wipeForScopesNotIn(keep);
+  await SqliteWeeklyPlanSnapshotRepository.instance.wipeForScopesNotIn(keep);
+  await SqliteWageRoleRowRepository.instance.wipeForScopesNotIn(keep);
+}
+
 bool isMobileOperationalSyncInvalidationEvent(RealtimeEvent event) {
   if (isBusinessScopeInvalidationEvent(event)) return true;
   final topic = event.topic.toLowerCase();
