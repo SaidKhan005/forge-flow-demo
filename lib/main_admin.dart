@@ -38,6 +38,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/admin_sessions_gateway.dart';
 import 'admin/services/admin_vendor_connections_gateway.dart';
 import 'admin/services/corpus_admin_gateway.dart';
 import 'admin/services/data_accuracy_admin_gateway.dart';
@@ -219,6 +220,7 @@ Future<void> main() async {
         membersAdminGateway: membersAdminGateway,
         rolesHierarchySessionsAdminGateway: rolesHierarchySessionsAdminGateway,
         auditedSupportActionsAdminGateway: auditedSupportActionsAdminGateway,
+        adminSessionsGateway: authBinding.sessionsGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -232,10 +234,22 @@ Future<void> main() async {
 }
 
 class _AdminAuthBinding {
-  const _AdminAuthBinding({required this.source, required this.authClient});
+  const _AdminAuthBinding({
+    required this.source,
+    required this.authClient,
+    this.sessionsGateway,
+  });
 
   final AdminAuthSource source;
   final FirebaseAuthClient? authClient;
+
+  /// G2 (audit fix-first #2) — live admin Active Sessions gateway.
+  /// Non-null only in the live branch; null in demo / share-preview so
+  /// `admin_routes.dart` falls back to the seeded in-memory gateway.
+  /// Built inside `_resolveAuthSource` so the SAME instance is wired
+  /// both into [FirebaseAdminAuthSource] (G1 ledger writer) and into
+  /// `AdminConsoleServicesScope` (G2 surface).
+  final AdminSessionsGateway? sessionsGateway;
 }
 
 Future<_AdminAuthBinding> _resolveAuthSource() async {
@@ -260,9 +274,47 @@ Future<_AdminAuthBinding> _resolveAuthSource() async {
   final authClient = TimeoutFirebaseAuthClient(
     delegate: FirebaseAuthSdkClient(),
   );
+  // G1 + G2 — build the live admin sessions gateway against the same
+  // admin proxy base URI + Firebase ID-token bearer the sibling admin
+  // gateways use, then wire the SAME instance into the auth source
+  // (ledger writer on sign-in/out) and the services scope (Active
+  // Sessions surface). Fail-closed: outside demo/share-preview the
+  // base URI is required, mirroring the other `_resolve*` resolvers.
+  final sessionsGateway = _buildAdminSessionsGateway(authClient);
   return _AdminAuthBinding(
-    source: FirebaseAdminAuthSource(client: authClient),
+    source: FirebaseAdminAuthSource(
+      client: authClient,
+      sessionLedger: sessionsGateway,
+    ),
     authClient: authClient,
+    sessionsGateway: sessionsGateway,
+  );
+}
+
+/// G1 + G2 — admin auth-session ledger + Active Sessions gateway.
+/// Lives on the same admin proxy base URI as the other admin surfaces
+/// with the Firebase ID-token bearer provider already used by the
+/// other `_resolve*` resolvers. Demo / share-preview return null so
+/// the auth source is a no-op writer and `admin_routes.dart` falls
+/// back to the seeded in-memory gateway.
+AdminSessionsGateway? _buildAdminSessionsGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) {
+    throw StateError(
+      'ADMIN_PROXY_BASE_URI is required when ADMIN_DEMO_AUTH is false',
+    );
+  }
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) {
+    throw StateError('ADMIN_PROXY_BASE_URI must be an absolute URI');
+  }
+  return HttpAdminSessionsGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
 }
 

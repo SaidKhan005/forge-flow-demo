@@ -31,7 +31,9 @@
 // separate.
 
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/mfa_freshness_redirect_listener.dart';
@@ -40,6 +42,7 @@ import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
 import '../theme/app_theme.dart';
 import 'admin_button_styles.dart';
+import 'services/admin_sessions_gateway.dart';
 
 /// Roles that are admitted to the admin console. Mirrors the
 /// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
@@ -372,14 +375,36 @@ class DemoAdminAuthSource implements AdminAuthSource {
 /// Live Firebase Authentication source. Reads custom claims from the
 /// shared Firebase auth adapter and emits the matching admin gate state.
 class FirebaseAdminAuthSource implements AdminAuthSource {
-  FirebaseAdminAuthSource({FirebaseAuthClient? client})
-    : _client = client ?? FirebaseAuthSdkClient(),
-      _state = const AdminAuthLoading() {
+  FirebaseAdminAuthSource({
+    FirebaseAuthClient? client,
+    AdminSessionsGateway? sessionLedger,
+  }) : _client = client ?? FirebaseAuthSdkClient(),
+       _sessionLedger = sessionLedger,
+       _state = const AdminAuthLoading() {
     _controller.add(_state);
     unawaited(_bootstrapCurrentUser());
   }
 
   final FirebaseAuthClient _client;
+
+  /// G1 (audit fix-first #2) — admin-side `auth_sessions` ledger
+  /// writer. Wired live in `lib/main_admin.dart`; null in demo /
+  /// share-preview (no-op, the walkthrough has no proxy). When live,
+  /// an admitted sign-in MUST record a ledger row before the admin
+  /// shell renders: a failed ledger write fails the sign-in CLOSED
+  /// (mirrors the mobile `ledger_unavailable` posture in
+  /// `lib/services/auth/auth_session_notifier.dart`). An unrecorded
+  /// admin session is never admitted in live mode.
+  final AdminSessionsGateway? _sessionLedger;
+
+  /// Session id returned by the ledger at sign-in. Kept so `signOut`
+  /// can close exactly that row (parity with operator-web's
+  /// `_currentSessionId`). Null in demo / share-preview or before the
+  /// first admitted sign-in.
+  String? _ledgerSessionId;
+
+  int _ledgerIdempotencyCounter = 0;
+
   final StreamController<AdminAuthState> _controller =
       StreamController<AdminAuthState>.broadcast();
   AdminAuthState _state;
@@ -400,7 +425,7 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
       email: email.trim(),
       password: password,
     );
-    _applyOutcome(outcome, emailForMfa: email.trim());
+    await _applyOutcome(outcome, emailForMfa: email.trim());
   }
 
   @override
@@ -417,7 +442,7 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
       factorId: factorId,
       oneTimeCode: oneTimeCode,
     );
-    _applyOutcome(
+    await _applyOutcome(
       outcome,
       emailForMfa: current.email,
       previousChallenge: current,
@@ -426,6 +451,26 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
 
   @override
   Future<void> signOut() async {
+    // G1 — close the ledger row this session opened at sign-in.
+    // Best-effort: a transient proxy blip must NOT trap the admin in a
+    // session they asked to end, so a failure here is logged-and-
+    // continued (mirrors the mobile revoke posture). The local Firebase
+    // sign-out + state emit always proceed.
+    final ledger = _sessionLedger;
+    final sessionId = _ledgerSessionId;
+    if (ledger != null && sessionId != null) {
+      try {
+        await ledger.revokeSession(
+          sessionId: sessionId,
+          reason: 'admin_signed_out_this_session',
+          idempotencyKey: _mintLedgerIdempotencyKey('revoke', sessionId),
+        );
+      } catch (_) {
+        // Swallow — see comment above. The row is reconciled by the
+        // proxy's session-expiry sweep if the revoke never lands.
+      }
+    }
+    _ledgerSessionId = null;
     await _client.signOut();
     _emit(const AdminAuthUnauthenticated());
   }
@@ -466,7 +511,7 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
         _emit(const AdminAuthUnauthenticated());
         return;
       }
-      _emit(_stateForCredential(credential));
+      await _emitForCredential(credential);
     } catch (error) {
       _emit(
         AdminAuthUnauthenticated(
@@ -476,14 +521,14 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
     }
   }
 
-  void _applyOutcome(
+  Future<void> _applyOutcome(
     FirebaseAuthSignInOutcome outcome, {
     required String emailForMfa,
     AdminAuthMfaChallenge? previousChallenge,
-  }) {
+  }) async {
     switch (outcome) {
       case FirebaseAuthSignInSucceeded(:final credential):
-        _emit(_stateForCredential(credential, emailFallback: emailForMfa));
+        await _emitForCredential(credential, emailFallback: emailForMfa);
       case FirebaseAuthSignInRequiresMfa(
         :final mfaSessionToken,
         :final factorIds,
@@ -504,13 +549,13 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
     }
   }
 
-  AdminAuthState _stateForCredential(
+  AdminAuthSession _sessionForCredential(
     FirebaseAuthCredential credential, {
     String? emailFallback,
   }) {
     final roles = _extractRoles(credential.customClaims);
     final email = credential.email ?? emailFallback ?? '';
-    final session = AdminAuthSession(
+    return AdminAuthSession(
       uid: credential.userId,
       email: email,
       displayName:
@@ -524,9 +569,82 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
       // pins.
       lastFreshAuthAt: credential.lastFreshAuthAt,
     );
-    return session.isAdmin
-        ? AdminAuthAuthenticated(session)
-        : AdminAuthForbidden(session);
+  }
+
+  /// G1 (audit fix-first #2) — resolve the admit decision AND, for an
+  /// admitted session in live mode, record the `auth_sessions` ledger
+  /// row BEFORE emitting [AdminAuthAuthenticated].
+  ///
+  /// Fail-closed: if the ledger writer is wired (live) and the write
+  /// fails, the sign-in does NOT proceed — the source emits
+  /// [AdminAuthUnauthenticated] with a calm message, mirroring the
+  /// mobile `AuthLoginFailure(code: 'ledger_unavailable')` posture in
+  /// `lib/services/auth/auth_session_notifier.dart`. An unrecorded
+  /// admin session is never admitted in live mode. Demo / share-
+  /// preview wire no ledger (`_sessionLedger == null`) → no-op, the
+  /// walkthrough is unaffected. The fail-closed gate does NOT touch
+  /// the admit logic itself (`session.isAdmin` /
+  /// [kAdminConsoleRoles]) — the forbidden branch is unchanged and
+  /// never reaches the ledger.
+  Future<void> _emitForCredential(
+    FirebaseAuthCredential credential, {
+    String? emailFallback,
+  }) async {
+    final session = _sessionForCredential(
+      credential,
+      emailFallback: emailFallback,
+    );
+    if (!session.isAdmin) {
+      // Fail-closed branch is byte-unchanged: a non-admin never gets a
+      // ledger row and never reaches the shell.
+      _emit(AdminAuthForbidden(session));
+      return;
+    }
+    final ledger = _sessionLedger;
+    if (ledger == null) {
+      // Demo / share-preview: no proxy, no ledger. Same admit decision
+      // and same emitted state as before this slice.
+      _emit(AdminAuthAuthenticated(session));
+      return;
+    }
+    try {
+      final tokenHash = sha256
+          .convert(utf8.encode(credential.idToken))
+          .toString();
+      final record = await ledger.recordSessionLogin(
+        tokenHash: tokenHash,
+        idempotencyKey: _mintLedgerIdempotencyKey('login', credential.userId),
+      );
+      _ledgerSessionId = record.sessionId;
+      _emit(AdminAuthAuthenticated(session));
+    } catch (_) {
+      // Fail-closed. Do NOT admit an unrecorded admin session. The
+      // calm copy mirrors the mobile ledger-unavailable banner: the
+      // admin's credentials were fine; the session ledger could not be
+      // written, so they are returned to the sign-in card to retry.
+      _ledgerSessionId = null;
+      try {
+        await _client.signOut();
+      } catch (_) {
+        // Best-effort local sign-out so a half-open Firebase session
+        // does not linger; the emit below still lands the admin on the
+        // sign-in card regardless.
+      }
+      _emit(
+        const AdminAuthUnauthenticated(
+          lastErrorMessage:
+              'Your sign-in worked, but we could not start a secure admin '
+              'session. Please sign in again in a moment.',
+        ),
+      );
+    }
+  }
+
+  String _mintLedgerIdempotencyKey(String action, String scopeHint) {
+    _ledgerIdempotencyCounter += 1;
+    final micros = DateTime.now().toUtc().microsecondsSinceEpoch;
+    return 'admin-auth-session-$action-$scopeHint-$micros-'
+        '$_ledgerIdempotencyCounter';
   }
 
   /// Projects Phase 9's locked admin claim shape onto the gate's
