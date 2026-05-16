@@ -1377,8 +1377,15 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   static const OperatorWebVendorConnectionsResolver _vendorConnectionsResolver =
       OperatorWebVendorConnectionsResolver();
 
+  /// Live HTTP gateway when the auth source surfaces one; otherwise
+  /// the seeded demo fallback (Slice E) so the demo / walkthrough
+  /// build renders mixed per-(operator, location, category) vendor
+  /// state instead of an empty catalog. Production live builds always
+  /// resolve the HTTP gateway, so the `?? demoFallback()` arm is
+  /// demo-only — no production behavior change.
   VendorConnectionsGateway? get _vendorConnectionsGateway =>
-      _vendorConnectionsResolver.resolve(widget.source);
+      _vendorConnectionsResolver.resolve(widget.source) ??
+      _vendorConnectionsResolver.demoFallback();
 
   WebTeamUsersGateway get _teamUsersGateway {
     final source = widget.source;

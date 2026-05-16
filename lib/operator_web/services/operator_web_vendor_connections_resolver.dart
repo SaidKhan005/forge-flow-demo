@@ -21,6 +21,7 @@
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
+import 'demo_vendor_connections_fixtures.dart';
 import 'operator_web_vendor_connections_gateway.dart';
 
 /// Resolves the [VendorConnectionsGateway] used by the operator-web
@@ -53,9 +54,19 @@ class OperatorWebVendorConnectionsResolver {
   /// redirect launcher (which has no meaning in demo mode).
   bool isLive(OperatorWebAuthSource source) => resolve(source) != null;
 
-  /// Demo fallback exposed for callers that want to instantiate an
-  /// in-memory catalog gateway up-front (for example, a host that
-  /// wants to inspect the demo gateway in tests). The shared widget
-  /// already wires this in by default when no gateway is passed.
-  VendorConnectionsGateway demoFallback() => InMemoryVendorConnectionsGateway();
+  /// Demo fallback the host shell mounts when [resolve] returns null
+  /// (no live HTTP gateway — i.e. the demo / walkthrough build). Demo
+  /// data Slice E: this now returns a SEEDED
+  /// [InMemoryVendorConnectionsGateway] carrying the canonical mixed
+  /// per-(operator, location, category) vendor state
+  /// (`OperatorWebDemoVendorConnectionsFixture`, sourced from the same
+  /// `DemoVendorIntegrationStateFixture` the mobile
+  /// `demo_mode_state` surface reads) so the Vendor Connections screen
+  /// renders meaningful state instead of an empty catalog (spec Gap
+  /// G6). Each call returns a fresh instance. Still an
+  /// [InMemoryVendorConnectionsGateway] — only the seed changed; no
+  /// `kDemoMode` reader branch, no production behavior change (live
+  /// builds resolve the HTTP gateway and never reach this path).
+  VendorConnectionsGateway demoFallback() =>
+      OperatorWebDemoVendorConnectionsFixture.gateway();
 }
