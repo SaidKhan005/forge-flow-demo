@@ -68,16 +68,24 @@ param(
 
   [Parameter()][string] $WebPort = '8181',
 
-  [Parameter()][string] $WebHostname = '0.0.0.0',
+  [Parameter()][string] $WebHostname = '127.0.0.1',
 
-  # Flutter target device. `web-server` (default) serves the bundle so
-  # any browser / LAN device can attach on $WebHostname:$WebPort.
-  # `chrome` launches Chrome directly with the Dart debugger attached
-  # (hot reload, DevTools) — convenient for local dev. The dev-CSP swap
-  # applies identically either way.
+  # Flutter target device. `chrome` (default) launches Chrome directly
+  # with the Dart debugger attached (hot reload, DevTools) — matches the
+  # admin runner's default so the operator never has to find the URL
+  # manually. `web-server` serves the bundle on $WebHostname:$WebPort
+  # without spawning a browser — use that when scripting parallel
+  # launches (`scripts\run_all_demo.ps1`) or attaching from a different
+  # browser / LAN device. The dev-CSP swap applies identically either
+  # way.
+  #
+  # `$WebHostname` defaults to `127.0.0.1` rather than `0.0.0.0` so
+  # Flutter's "is being served at" log prints a URL the operator can
+  # actually paste into a browser. Pass `-WebHostname 0.0.0.0` to bind
+  # all interfaces for LAN reach.
   [Parameter()]
   [ValidateSet('web-server', 'chrome')]
-  [string] $Device = 'web-server',
+  [string] $Device = 'chrome',
 
   [Parameter()][string] $ProxyBaseUri = $env:FORGE_FLOW_OPERATOR_WEB_PROXY_BASE_URI,
 
@@ -95,76 +103,14 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$indexPath = Join-Path $repoRoot 'web\index.html'
-$backupPath = Join-Path $repoRoot 'web\index.prod.html.bak'
 
-if (-not (Test-Path -LiteralPath $indexPath)) {
-  Write-Host "BLOCKED: web/index.html not found at $indexPath"
-  exit 1
-}
-
-# Idempotency: if a prior interrupted run left a backup behind, the
-# on-disk `web/index.html` may already carry the dev CSP. Restore
-# from backup first so we always start the dev-CSP swap from a known
-# production-CSP baseline.
-function Restore-FromBackup {
-  param([string] $Target, [string] $Backup)
-
-  if (Test-Path -LiteralPath $Backup) {
-    Copy-Item -LiteralPath $Backup -Destination $Target -Force
-    Remove-Item -LiteralPath $Backup -Force
-    Write-Host "B-FU-dev-csp: restored production CSP from $Backup"
-  }
-}
-
-Restore-FromBackup -Target $indexPath -Backup $backupPath
-
-# B-FU-dev-csp: the dev-relaxed CSP block. Kept in sync with
-# `scripts/apply_operator_web_dev_csp.sh` (Docker side) + the
-# canonical block in
-# `docs/_audits/wave_2/phase_2_walkthrough_master_plan.md` Patch 1.
-$devCspMeta = @'
-<meta http-equiv="Content-Security-Policy" content="
-    default-src 'self' 'unsafe-inline' 'unsafe-eval';
-    script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://www.gstatic.com https://*.firebaseapp.com;
-    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    img-src 'self' data: blob: https:;
-    font-src 'self' data: https://fonts.gstatic.com;
-    connect-src 'self' ws://localhost:* http://localhost:* https://www.gstatic.com https://fonts.gstatic.com https://*.googleapis.com https://*.firebaseio.com https://*.cloudfunctions.net wss://*.firebaseio.com https://admin-proxy.forgeflow.app https://proxy.forgeflow.app https://*.forgeflow.app https://*.run.app;
-    frame-src 'self' https://*.firebaseapp.com;
-    object-src 'none';
-    base-uri 'self';
-    form-action 'self';
-  ">
-'@
-
-function Apply-DevCsp {
-  param([string] $Target)
-
-  $html = Get-Content -LiteralPath $Target -Raw
-  # Single-line regex with DOTALL so the `.*?` spans the multi-line
-  # CSP block. Anchor on the opening `<meta http-equiv=...>` and the
-  # closing `">` to avoid greedy matching downstream tags.
-  $pattern = '(?s)<meta\s+http-equiv="Content-Security-Policy".*?">'
-  $matches = [regex]::Matches($html, $pattern)
-  if ($matches.Count -lt 1) {
-    Write-Host 'BLOCKED: could not locate CSP <meta> tag in web/index.html'
-    exit 1
-  }
-  $rewritten = [regex]::Replace(
-    $html,
-    $pattern,
-    [System.Text.RegularExpressions.MatchEvaluator] {
-      param($m)
-      $script:_devCspReplacementCount = ($script:_devCspReplacementCount + 1)
-      if ($script:_devCspReplacementCount -eq 1) { return $devCspMeta }
-      return $m.Value
-    },
-    [System.Text.RegularExpressions.RegexOptions]::Singleline
-  )
-  Set-Content -LiteralPath $Target -Value $rewritten -Encoding UTF8 -NoNewline
-  Write-Host "B-FU-dev-csp: applied dev CSP to $Target"
-}
+# Both web consoles serve from the same `web/index.html` (operator-web on
+# 8181, admin on 8182), whose production CSP refuses `'unsafe-inline'` /
+# `'unsafe-eval'`. Flutter Web's DDC dev compiler needs both — without the
+# swap, the bundle loads but every DDC-injected inline script is blocked
+# and Flutter never paints. The shared helper backs up `web/index.html`,
+# applies the dev-relaxed CSP, and restores on exit. Same logic admin uses.
+. (Join-Path $PSScriptRoot '_dev_csp_swap.ps1')
 
 # Resolve the proxy URL for non-demo modes. Returns $null for demo
 # (caller forces demo-auth + no proxy in that branch). Throws on any
@@ -263,32 +209,23 @@ function Build-FlutterArgs {
 $flutterArgsList = Build-FlutterArgs
 
 if ($PrintCommandOnly) {
-  Write-Host 'B-FU-dev-csp: dev CSP would be applied to web/index.html (backup at web/index.prod.html.bak) before:'
+  Write-DevCspSwapNotice -RepoRoot $repoRoot
   Write-Host "flutter $($flutterArgsList -join ' ')"
-  Write-Host 'B-FU-dev-csp: production CSP would be restored from backup on exit.'
   exit 0
 }
 
-# Take a backup of the production CSP file, then apply the dev CSP.
-# The `try / finally` block guarantees restoration on Ctrl-C, error,
-# or normal exit.
-Copy-Item -LiteralPath $indexPath -Destination $backupPath -Force
-Write-Host "B-FU-dev-csp: backed up production index.html to $backupPath"
-
-# Best-effort: also catch Ctrl-C signals (PowerShell's normal
-# behaviour fires the `finally` block, but `Stop-Process` from outside
-# would still leave the file dirty; the idempotent restore at script
-# entry above handles that case).
+# Apply the dev CSP swap, then run flutter. `try / finally` guarantees the
+# production CSP is restored on Ctrl-C, error, or normal exit. Best-effort:
+# PowerShell's `finally` fires on Ctrl-C but a `Stop-Process` from outside
+# can still leave the file dirty; the idempotent restore inside
+# `Begin-DevCspSwap` handles that case on the next run.
+Begin-DevCspSwap -RepoRoot $repoRoot
+Push-Location $repoRoot
 try {
-  Apply-DevCsp -Target $indexPath
-  Push-Location $repoRoot
-  try {
-    & flutter @flutterArgsList
-    $flutterExitCode = $LASTEXITCODE
-  } finally {
-    Pop-Location
-  }
-  exit $flutterExitCode
+  & flutter @flutterArgsList
+  $flutterExitCode = $LASTEXITCODE
 } finally {
-  Restore-FromBackup -Target $indexPath -Backup $backupPath
+  Pop-Location
+  End-DevCspSwap -RepoRoot $repoRoot
 }
+exit $flutterExitCode

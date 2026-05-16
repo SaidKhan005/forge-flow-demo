@@ -815,12 +815,19 @@ class _ShiftSectionViewData {
     ServicePeriodAccumulator bucket,
     DaypartTargetContext tc,
   ) {
-    // Per-period forecast = covers × locked per-period PPA target. Null
-    // target → 0 forecast → SalesForecastCard's honest "No forecast
-    // available", never a 0-anchored progress bar.
+    // Per-period SALES forecast footer — true 1:1 with whole-day, which
+    // uses the plan-side `rm.forecastSales`. Prefer the locked
+    // per-daypart `forecast_sales` from the in-force WeeklyPlanSnapshot
+    // (`tc.forecastSales`): that is the honest per-daypart benchmark and
+    // — like whole-day — is present pre-service (it does not depend on
+    // in-period actuals). Fall back to the prior derived
+    // `covers × locked per-period PPA target` only when the snapshot
+    // carries no per-period row, so no existing demo state regresses.
+    // All sources absent → 0 → SalesForecastCard's honest "No forecast
+    // available", never a 0-anchored progress bar (Design Rule 2).
     final ppaTarget = tc.targetPPA;
-    final forecastSales =
-        ppaTarget != null ? bucket.covers * ppaTarget : 0.0;
+    final forecastSales = tc.forecastSales ??
+        (ppaTarget != null ? bucket.covers * ppaTarget : 0.0);
 
     // Labor % is honest only when BOTH labor punches and sales exist.
     final actualLaborDollars = bucket.fohWageDollars + bucket.bohWageDollars;
@@ -904,6 +911,34 @@ class _ShiftSectionViewData {
         ? (minutes / 60).toStringAsFixed(minutes % 60 == 0 ? 0 : 1)
         : '—';
 
+    // FOH/BOH HRS "Target N hrs" footer — true 1:1 with the whole-day
+    // `_CompactHoursColumn`, fed by the locked per-daypart
+    // `required_*_hours` from the in-force WeeklyPlanSnapshot
+    // (`tc.requiredFohHours`/`requiredBohHours`). The shared widget
+    // renders the target sub-line + delta pill only when BOTH `needed`
+    // and `excess` are non-null; we populate them solely when (a) a
+    // locked per-daypart required-hours value exists AND (b) the period
+    // has in-period labor minutes. With no actuals in yet there is no
+    // honest current figure to diff, so — exactly like the OPZ
+    // "AWAITING ACTUALS" rule — we suppress the verdict rather than
+    // score it off a phantom `0` (Design Rule 2 / Metric Honesty). No
+    // locked value → value alone, never a fabricated `Target 0 hrs`
+    // (the existing honest-degrade is preserved). The `excess`
+    // subtraction is the same trivial display delta `fromWholeDay`
+    // computes inline (`scheduled − plan`), not a metric formula.
+    _HoursColumnData hoursColumn(int minutes, double? requiredHours) {
+      if (requiredHours == null || minutes <= 0) {
+        return _HoursColumnData(value: hrs(minutes));
+      }
+      final needed = requiredHours.round();
+      final actualHrs = (minutes / 60).round();
+      return _HoursColumnData(
+        value: hrs(minutes),
+        needed: needed,
+        excess: actualHrs - needed,
+      );
+    }
+
     return _ShiftSectionViewData(
       currentSales: bucket.sales,
       forecastSales: forecastSales,
@@ -917,8 +952,8 @@ class _ShiftSectionViewData {
       ppa: liveOr(hasCovers, bucket.ppa),
       cplh: liveOr(hasLabor, bucket.cplh),
       splh: liveOr(hasLabor, bucket.splh),
-      fohHours: _HoursColumnData(value: hrs(bucket.fohMinutes)),
-      bohHours: _HoursColumnData(value: hrs(bucket.bohMinutes)),
+      fohHours: hoursColumn(bucket.fohMinutes, tc.requiredFohHours),
+      bohHours: hoursColumn(bucket.bohMinutes, tc.requiredBohHours),
       opz: opz,
     );
   }

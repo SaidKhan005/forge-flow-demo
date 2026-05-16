@@ -238,6 +238,11 @@ class SettingsMockReplaySection extends StatelessWidget {
                   'Return the demo restaurant to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
               onTap: () async {
                 await ShiftService.instance.reseedDemo();
+                // If Settings unmounted during the awaited reseed, the
+                // post-write refresh + snackbar become a clean no-op
+                // instead of touching a defunct State. BuildContext
+                // .mounted is the non-throwing guard here.
+                if (!context.mounted) return;
                 await onAfterWrite();
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -262,6 +267,9 @@ class SettingsMockReplaySection extends StatelessWidget {
               description: 'Move the demo business date forward one day.',
               onTap: () async {
                 await ShiftService.instance.advanceMockReplayDay();
+                // No-op if Settings unmounted during the awaited
+                // date-advance (see reseed closure above).
+                if (!context.mounted) return;
                 await onAfterWrite();
                 if (context.mounted) {
                   final current = mockReplayDate();
@@ -340,6 +348,9 @@ class SettingsDataManagementSection extends StatelessWidget {
             );
             if (confirmed == true) {
               await ShiftService.instance.clearAllData();
+              // No-op if Settings unmounted during the awaited clear
+              // (see mock-replay closures).
+              if (!context.mounted) return;
               await onAfterWrite();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -403,6 +414,9 @@ class SettingsDataManagementSection extends StatelessWidget {
             );
             if (confirmed == true) {
               await BaselineManagerService.instance.resetForAdminTest();
+              // No-op if Settings unmounted during the awaited reset
+              // (see mock-replay closures).
+              if (!context.mounted) return;
               await onAfterWrite();
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(

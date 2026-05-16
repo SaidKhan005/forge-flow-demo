@@ -135,7 +135,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// Full refresh after actions that do NOT fire the runtime invalidation
   /// bus (e.g., wage changes). Target cascade handles current-state.
   Future<void> _refreshAppState() async {
-    if (!context.mounted) return;
+    // Use State.mounted, not context.mounted: reading `State.context`
+    // on a defunct State throws "defunct". The State `mounted` getter
+    // is the non-throwing guard when the caller awaited a long write
+    // and this widget unmounted/rebuilt in the interim.
+    if (!mounted) return;
     try {
       context.read<AppRefreshCoordinator>().refreshAll();
     } catch (_) {
@@ -162,7 +166,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// The bus already refreshed current-state surfaces (week, shift).
   /// This refreshes supporting surfaces and local labels only.
   Future<void> _refreshAfterWrite() async {
-    if (!context.mounted) return;
+    // Use State.mounted, not context.mounted: the data-action closures
+    // in settings_data_sections.dart `await` a long write (reseed /
+    // date-advance / clear) and then call back here. If this widget
+    // unmounted during that await, reading `State.context` would throw
+    // "defunct" (the captured crash at this line). `State.mounted` is
+    // the non-throwing guard; an unmounted callback becomes a clean
+    // no-op. `_loadStatus`/`_loadMockDate` re-check `mounted` before
+    // their own `setState`, so the post-await path stays safe too.
+    if (!mounted) return;
     try {
       context.read<AppRefreshCoordinator>().refreshAfterWrite();
     } catch (_) {
