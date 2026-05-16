@@ -1115,11 +1115,20 @@ class _ShiftSectionViewData {
     // per-period target is genuinely absent (Gap-42 fallback / no locked
     // value) so the pill keeps its prior honest-empty / source-label
     // behavior rather than fabricating a `Target 0` (Metric Honesty
-    // Doctrine / Design Rule 2). COVERS has no per-period forecast-covers
-    // source on [DaypartTargetContext] — left `null` (no fabrication).
+    // Doctrine / Design Rule 2). COVERS reads its per-period
+    // forecast-covers from [DaypartTargetContext.forecastCovers] — left `null` (no fabrication).
     // Blended-wage target is period-invariant: the same shared benchmark
     // value (`profile.targetBlendedWage`) `_buildMetricCards` uses,
     // passed down by the caller; `null` when no profile is bound yet.
+    // COVERS now has a per-period plan-side source: the locked
+    // `WeeklyPlanSnapshotDayDaypart.forecast_covers` carried on
+    // [DaypartTargetContext.forecastCovers]. Byte-identical "Forecast N"
+    // format to the whole-day branch (`'Forecast ${rm.forecastCovers}'`);
+    // `null` when the in-force snapshot has no per-period row → the pill
+    // keeps its honest-empty / source-label behavior (no fabrication).
+    final String? coversTargetLabel = tc.forecastCovers == null
+        ? null
+        : 'Forecast ${tc.forecastCovers}';
     final ppaTargetForLabel = tc.targetPPA;
     final cplhTargetForLabel = tc.targetCPLH;
     final splhTargetForLabel = tc.targetSPLH;
@@ -1152,8 +1161,9 @@ class _ShiftSectionViewData {
       fohHours: hoursColumn(bucket.fohMinutes, tc.requiredFohHours),
       bohHours: hoursColumn(bucket.bohMinutes, tc.requiredBohHours),
       opz: opz,
-      // COVERS: no per-period forecast-covers source → null (honest).
-      coversTargetLabel: null,
+      // COVERS: per-period locked plan forecast (honest null when the
+      // in-force snapshot has no per-period row).
+      coversTargetLabel: coversTargetLabel,
       ppaTargetLabel: ppaTargetLabel,
       cplhTargetLabel: cplhTargetLabel,
       splhTargetLabel: splhTargetLabel,
