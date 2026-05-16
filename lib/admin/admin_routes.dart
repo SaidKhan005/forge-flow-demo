@@ -47,6 +47,7 @@ import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
+import 'services/admin_security_gateway.dart';
 import 'services/admin_sessions_gateway.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
@@ -2528,6 +2529,8 @@ Widget _buildMyAccount(BuildContext context) {
       AdminConsoleServicesScope.adminAccountGatewayOf(context);
   final sessionsGateway =
       AdminConsoleServicesScope.adminSessionsGatewayOf(context);
+  final securityGateway =
+      AdminConsoleServicesScope.adminSecurityGatewayOf(context);
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
     initialData: source.current,
@@ -2539,6 +2542,7 @@ Widget _buildMyAccount(BuildContext context) {
           authSource: source,
           accountGateway: accountGateway,
           sessionsGateway: sessionsGateway,
+          securityGateway: securityGateway,
         );
       }
       return const _MyAccountUnauthenticatedFallback();
@@ -2621,6 +2625,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.auditedSupportActionsAdminGateway,
     this.adminAccountGateway,
     this.adminSessionsGateway,
+    this.adminSecurityGateway,
     this.adminAuthSource,
   });
 
@@ -2737,6 +2742,15 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// so the My Account Active Sessions card falls back to the seeded
   /// in-memory gateway and the walkthrough renders without a backend.
   final AdminSessionsGateway? adminSessionsGateway;
+
+  /// Audit fix-first #7 (cross-surface parity finding G4) — admin
+  /// self-service Security gateway (own MFA enroll/confirm/recover +
+  /// password change). Production binds the HTTP-backed gateway here;
+  /// demo / share-preview leave it null so the My Account Security
+  /// card falls back to the seeded in-memory gateway and the
+  /// walkthrough renders without a backend (parity with
+  /// [adminSessionsGateway]).
+  final AdminSecurityGateway? adminSecurityGateway;
 
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -2881,6 +2895,17 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.adminSessionsGateway ?? _defaultAdminSessionsDemoGateway;
   }
 
+  /// Audit fix-first #7 (G4) — admin self-service Security gateway
+  /// accessor. Falls back to the seeded in-memory demo gateway so the
+  /// kDemoMode / share-preview walkthrough renders the enroll +
+  /// recover + password-change surface without a backend (parity with
+  /// the other `*Of(context)` demo-fallback accessors).
+  static AdminSecurityGateway adminSecurityGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.adminSecurityGateway ?? _defaultAdminSecurityDemoGateway;
+  }
+
   @override
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
       operatorLocationGateway != oldWidget.operatorLocationGateway ||
@@ -2903,6 +2928,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
           oldWidget.auditedSupportActionsAdminGateway ||
       adminAccountGateway != oldWidget.adminAccountGateway ||
       adminSessionsGateway != oldWidget.adminSessionsGateway ||
+      adminSecurityGateway != oldWidget.adminSecurityGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -3575,3 +3601,12 @@ _defaultAuditedSupportActionsAdminDemoGateway =
 /// path without the Cloud Run admin proxy.
 final AdminSessionsGateway _defaultAdminSessionsDemoGateway =
     InMemoryAdminSessionsGateway();
+
+/// Audit fix-first #7 (cross-surface parity finding G4) — seeded
+/// in-memory admin Security gateway shared by the kDemoMode /
+/// share-preview walkthrough when no live `AdminSecurityGateway` is
+/// wired. Seeded with NO enrolled factor so the walkthrough exercises
+/// the enroll → confirm path (and the recovery + password-change
+/// paths) without the Cloud Run admin proxy.
+final AdminSecurityGateway _defaultAdminSecurityDemoGateway =
+    InMemoryAdminSecurityGateway();

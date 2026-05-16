@@ -46,6 +46,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/admin_security_gateway.dart';
 import 'admin/services/admin_sessions_gateway.dart';
 import 'admin/services/admin_vendor_connections_gateway.dart';
 import 'admin/services/corpus_admin_gateway.dart';
@@ -293,6 +294,14 @@ Future<void> main() async {
     final auditedSupportActionsAdminGateway = gateway == null
         ? null
         : _resolveAuditedSupportActionsAdminGateway(authBinding.authClient);
+    // G4 — admin self-service Security gateway (own MFA enroll/confirm
+    // /recover + password change). Same admin proxy base URI + Firebase
+    // ID-token bearer the sibling admin gateways use; demo / share-
+    // preview leave it null so `admin_routes.dart` falls back to the
+    // seeded in-memory gateway and the walkthrough renders backendless.
+    final adminSecurityGateway = gateway == null
+        ? null
+        : _resolveAdminSecurityGateway(authBinding.authClient);
     final adminApp = AdminConsoleApp(
       authSource: source,
       sharePreviewMode: _kAdminSharePreview,
@@ -321,6 +330,7 @@ Future<void> main() async {
         rolesHierarchySessionsAdminGateway: rolesHierarchySessionsAdminGateway,
         auditedSupportActionsAdminGateway: auditedSupportActionsAdminGateway,
         adminSessionsGateway: authBinding.sessionsGateway,
+        adminSecurityGateway: adminSecurityGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -705,6 +715,27 @@ AuditedSupportActionsAdminGateway? _resolveAuditedSupportActionsAdminGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpAuditedSupportActionsAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// G4 (cross-surface parity finding) — admin self-service Security
+/// gateway. Lives on the SAME admin proxy base URI as the other admin
+/// surfaces with the Firebase ID-token bearer the sibling `_resolve*`
+/// resolvers use; demo / share-preview return null so
+/// `admin_routes.dart` falls back to the seeded in-memory gateway.
+/// Mirrors `_resolveMembersAdminGateway` exactly.
+AdminSecurityGateway? _resolveAdminSecurityGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpAdminSecurityGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
