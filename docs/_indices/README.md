@@ -11,6 +11,7 @@ or both run the same underlying pattern.
 | `NEXT_WAVE_PLAN.md` | All | Forward 6-phase pipeline. **Phase 2.5 — Per-Daypart Targets V1 is the active feature work** (output of Phase 2 mobile walkthrough). |
 | `WAVE_2_LEDGER.md` | Reference | Wave 2's slice ledger. Operator-web + admin lanes CLOSED 2026-05-14. Mobile lane closed for walkthrough 2026-05-15; mobile work transitions to Per-Daypart Targets V1 implementation (separate plan doc). |
 | `DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth for every brain-dump ask from `debug.md` mapped to ✅ / 🚧 / ❌ / 🔍. Wave 2 ledger cites this. |
+| `INFRA_DEFERRALS_INVENTORY.md` | All | Discovery index (not authority) for the long tail of deliberate infra deferrals living only as code comments — GAP B6. |
 | `CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. Wave 2 specialization archived 2026-05-15. |
 | `CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex (currently dormant). |
 
