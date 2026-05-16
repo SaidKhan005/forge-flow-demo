@@ -191,10 +191,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 : "Showing ${widget.locationName}'s locked plan for the "
                     "week of ${_Header._formatWeekRange(_snapshot!.weekStartDate, _snapshot!.weekEndDate)}.",
             backendOnlyExplainer:
-                "Per-day forecast inheritance (region or brand overrides) "
-                "is coming in a later wave. For now every locked plan is "
-                "set at the Location scope and applies only to this "
-                "restaurant.",
+                "Forecasts and locked plans are set per location by "
+                "design. A forecast is built from this restaurant's "
+                "own history and traffic, so it does not inherit from "
+                "a region or brand. Each location's plan stands on its "
+                "own.",
           ),
           if (!_hasReadRole) ...<Widget>[
             const SizedBox(height: 14),

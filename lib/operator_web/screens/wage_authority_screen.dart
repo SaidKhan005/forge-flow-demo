@@ -488,10 +488,11 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
               "These wage rows apply only to ${widget.locationName}. "
               "Other locations carry their own wage rows.",
           backendOnlyExplainer:
-              "Region- and brand-level wage floors (e.g. a corporate "
-              "minimum that every location inherits unless overridden) "
-              "are coming in a later wave. For now every wage row is "
-              "set at the Location scope.",
+              "Wage rows are set per location by design. Each "
+              "restaurant keeps its own pay rates, so there is no "
+              "region or brand wage floor that locations inherit. If "
+              "you run several locations, set wages separately for "
+              "each one.",
         ),
         if (_loadError != null) ...<Widget>[
           const SizedBox(height: 12),
