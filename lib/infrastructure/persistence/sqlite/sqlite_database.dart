@@ -492,15 +492,13 @@ class SqliteDatabase {
     // See docs/phase_7_55m_2_mock_replay_drift_contract.md for the
     // full two-category classification.
 
-    // Ensure restaurant exists
-    final existing = await db.query(
-      'restaurant_locations',
-      where: 'restaurant_id = ?',
-      whereArgs: [DemoScope.restaurantId],
-    );
-    if (existing.isEmpty) {
-      await _seedDemoRestaurant(db);
-    }
+    // Ensure all demo locations exist. Called unconditionally: on an
+    // existing demo DB upgraded to the multi-location build, Downtown
+    // (`DemoScope.restaurantId`) is already present but North Loop /
+    // Riverside / Harbour are not. `_seedDemoRestaurant` is idempotent
+    // (ConflictAlgorithm.ignore), so a Downtown-only guard would
+    // permanently strand the 3 new locations for existing users.
+    await _seedDemoRestaurant(db);
 
     // Persist mock replay date
     await setMockReplayBusinessDate(DemoScope.restaurantId, isoDate);

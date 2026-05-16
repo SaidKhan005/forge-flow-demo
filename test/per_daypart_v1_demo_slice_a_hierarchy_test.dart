@@ -78,6 +78,47 @@ void main() {
       expect(rows.length, 4,
           reason: 'ConflictAlgorithm.ignore keeps the seed idempotent');
     });
+
+    // Regression (orchestrator audit fix): a demo DB that predates the
+    // multi-location build has ONLY Downtown in `restaurant_locations`.
+    // The old `if (existing.isEmpty)` guard (Downtown-keyed) was FALSE in
+    // that state, so North Loop / Riverside / Harbour were never
+    // backfilled and the scope drawer stayed a 1-item list forever.
+    // The guard is now removed; `_seedDemoRestaurant` is idempotent, so
+    // the ensure path must backfill the 3 missing rows on next reseed.
+    test('upgrade path: Downtown-only DB backfills all 4 locations',
+        () async {
+      final db = await SqliteDatabase.instance.database;
+      // Simulate the stale pre-multi-location state.
+      await db.delete(
+        'restaurant_locations',
+        where: 'restaurant_id != ?',
+        whereArgs: [DemoScope.downtownRestaurantId],
+      );
+      expect(
+        (await db.query('restaurant_locations')).length,
+        1,
+        reason: 'precondition: only Downtown present (upgrade state)',
+      );
+
+      // Routes through the now-unconditional `_seedDemoRestaurant`
+      // (the guard site that previously skipped backfill).
+      await SqliteDatabase.instance
+          .reseedMockReplayForBusinessDate('2026-05-15');
+
+      final rows = await db.query('restaurant_locations');
+      final ids = {for (final r in rows) r['restaurant_id'] as String};
+      expect(
+        ids,
+        {
+          DemoScope.downtownRestaurantId,
+          DemoScope.northLoopRestaurantId,
+          DemoScope.riversideRestaurantId,
+          DemoScope.harbourRestaurantId,
+        },
+        reason: 'all 4 §2c locations restored for an existing demo user',
+      );
+    });
   });
 
   group('Slice A — scope drawer becomes a real switcher', () {
