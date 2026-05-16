@@ -223,17 +223,39 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     ];
   }
 
-  /// Whole-day slivers — byte-untouched render (Promise 3 / Layer 9).
-  /// Whole-day Shift is authoritative; daypart is additive. The shared
-  /// section widgets consume the whole-day projection, which reproduces
-  /// the pre-refactor inline render exactly.
+  /// Whole-day slivers — byte-untouched metric render (Promise 3 /
+  /// Layer 9). Whole-day Shift is authoritative; daypart is additive.
+  /// The shared section widgets consume the whole-day projection, which
+  /// reproduces the pre-refactor inline render exactly.
+  ///
+  /// The leading primary-driver chip is additive chrome only — it
+  /// displays the already-computed `rm.primaryLeverCard` (the read
+  /// model resolves it through `LeverCards.lookup` in `buildWholeDay`;
+  /// no new metric math here). It is positioned to mirror the daypart
+  /// lens, where `_DaypartPeriodHeader`'s `_DaypartDriverChip` sits
+  /// directly above the section groups, so the two lenses read as a
+  /// true 1:1. The chip uses the SAME `_DaypartDriverChip` widget and
+  /// its existing null → "No pattern yet" degraded state (7.58 F-1 /
+  /// F-6); whole-day always determines a lever so it shows a real
+  /// driver, never a phantom.
   List<Widget> _wholeDaySlivers(ShiftDashboardReadModel rm) {
-    return _sectionGroups(
-      data: _ShiftSectionViewData.fromWholeDay(rm),
-      outputsLabel: 'SHIFT OUTPUTS',
-      inputsLabel: 'SHIFT INPUTS',
-      fohLabel: 'FOH PRODUCTIVITY',
-    );
+    return [
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: _DaypartDriverChip(card: rm.primaryLeverCard),
+          ),
+        ),
+      ),
+      ..._sectionGroups(
+        data: _ShiftSectionViewData.fromWholeDay(rm),
+        outputsLabel: 'SHIFT OUTPUTS',
+        inputsLabel: 'SHIFT INPUTS',
+        fohLabel: 'FOH PRODUCTIVITY',
+      ),
+    ];
   }
 
   /// Daypart slivers — a TRUE 1:1 of [_wholeDaySlivers]: the SAME three
@@ -1403,57 +1425,44 @@ class _DaypartPeriodHeader extends StatelessWidget {
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 )
               else ...[
+                // Item 1 de-dup (operator walkthrough 2026-05-16): the
+                // `_ShiftPeriodSelector` pills above already announce the
+                // selected period by `definition.label` (the selected
+                // pill is the canonical period switcher). The old
+                // identity Row here (shortLabel pill + duplicated full
+                // label) repeated that, so the period was announced
+                // twice. We keep ONLY what the selector does NOT convey:
+                // the clock window, the tri-state status line, and the
+                // primary-driver chip. Status line + time range share
+                // one row to stay visually clean and aligned with the
+                // true-1:1 grammar.
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 6,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.sunset.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                      child: Text(
-                        selectedDefinition.shortLabel,
-                        style: AppTextStyles.mono10(
-                          color: AppColors.sunsetDark,
-                        ).copyWith(fontWeight: FontWeight.w700),
+                    // Tri-state status line — preserved verbatim from the
+                    // retired bespoke card (Period closed / Active now /
+                    // Opens at … / missing-tz). Never a false "closed".
+                    Expanded(
+                      child: _DaypartStatusLine(
+                        missingTimezone: missingTimezone,
+                        phase: localNow == null
+                            ? null
+                            : resolveServicePeriodPhase(
+                                localNow: localNow,
+                                businessDayStartLocalTime: cutoff,
+                                definitions: definitions,
+                                periodId: selectedDefinition.id,
+                              ),
+                        startLocalTime: selectedDefinition.startLocalTime,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        selectedDefinition.label,
-                        style: AppTextStyles.mono14(
-                          color: AppColors.textPrimary,
-                          weight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
                     Text(
                       '${selectedDefinition.startLocalTime} – '
                       '${selectedDefinition.endLocalTime}',
                       style: AppTextStyles.mono10(color: AppColors.textMuted),
                     ),
                   ],
-                ),
-                const SizedBox(height: 6),
-                // Tri-state status line — preserved verbatim from the
-                // retired bespoke card (Period closed / Active now /
-                // Opens at … / missing-tz). Never a false "closed".
-                _DaypartStatusLine(
-                  missingTimezone: missingTimezone,
-                  phase: localNow == null
-                      ? null
-                      : resolveServicePeriodPhase(
-                          localNow: localNow,
-                          businessDayStartLocalTime: cutoff,
-                          definitions: definitions,
-                          periodId: selectedDefinition.id,
-                        ),
-                  startLocalTime: selectedDefinition.startLocalTime,
                 ),
                 const SizedBox(height: 8),
                 // Phase 10.5.3 — per-period primary driver chip. Resolves
