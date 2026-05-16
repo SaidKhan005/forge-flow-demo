@@ -124,6 +124,19 @@ Out of scope:
 
 Current known post-cutoff staging additions:
 
+- `db/migrations/202605161800_gap_b2_wage_role_rows_hierarchy_scope.sql`
+  (GAP B2 HP #11 wage slice) ADDITIVELY alters `public.wage_role_rows`:
+  adds `scope_type` (default `'location'`), `org_unit_id`,
+  `inherited_from_scope_id`, a scope-payload CHECK, an `org_units`
+  composite FK, and an operator_id-leading scope index — mirroring
+  `202605131550_benchmark_overrides_hierarchy.sql`. It relaxes the
+  `wage_role_rows_per_tenant` RLS policy from operator+location to the
+  benchmark_overrides operator-only posture (location authority stays
+  proxy-enforced). Backward compatible: legacy rows + proxy writes that
+  omit the columns stay Location-scoped via the column default. SCHEMA-
+  TOUCHING — gated on explicit operator approval before any production
+  apply; belongs to the next Production1 migration batch unless
+  superseded by later staging additions.
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
   restores read-only Debug Console request-log inspection for `forge_admin`.
   It is applied/verified on staging, was not part of the 27-file Production1

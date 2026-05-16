@@ -176,6 +176,14 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605161800_gap_b2_wage_role_rows_hierarchy_scope.sql`
+  (GAP B2 HP #11 wage slice — ADDITIVE `ALTER TABLE wage_role_rows`
+  adding `scope_type`/`org_unit_id`/`inherited_from_scope_id` +
+  scope-payload CHECK + org_units composite FK + operator_id-leading
+  scope index, mirroring `202605131550_benchmark_overrides_hierarchy.sql`;
+  relaxes the per-tenant RLS policy to the benchmark_overrides
+  operator-only posture; legacy rows stay Location-scoped via the
+  column default). The prior cutoff
   `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
   (a `COMMENT ON COLUMN` only — additive, no DDL/data change — landed
   by Per-Daypart V1 / Slice 7b option (b) to mark

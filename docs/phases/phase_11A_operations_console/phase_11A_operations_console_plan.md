@@ -168,6 +168,14 @@ Console may expose the same effective profile for support and may write
 overrides only through `/v1/admin/*` routes with a required audited admin
 reason; it must not become the operator's primary hierarchy editor.
 
+GAP B2 (2026-05-16) adds
+`202605161800_gap_b2_wage_role_rows_hierarchy_scope.sql`, an ADDITIVE
+`ALTER TABLE wage_role_rows` for HP #11 wage-scope inheritance (scope_type /
+org_unit_id / inherited_from_scope_id, mirroring
+`202605131550_benchmark_overrides_hierarchy.sql`). This is not an 11A UI
+surface, but it moves the shared migration cutoff watched by this plan. It
+remains staging/prod apply gated.
+
 Mobile push notification work on 2026-05-06 adds
 `202605060000_mobile_push_notifications.sql` for encrypted FCM/APNs token
 storage and a durable mobile push sidecar queue. This is not an 11A UI surface,
