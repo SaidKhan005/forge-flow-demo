@@ -1191,7 +1191,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                   : ListView.separated(
                       padding: const EdgeInsets.fromLTRB(8, 4, 8, 16),
                       itemCount: filteredScopes.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 2),
+                      separatorBuilder: (_, __) => const SizedBox.shrink(),
                       itemBuilder: (context, index) {
                         final scope = filteredScopes[index];
                         final selected = scope.stableKey == activeKey;
@@ -1802,6 +1802,13 @@ class BusinessScopeDrawerTile extends StatelessWidget {
     _ => Icons.work_outline,
   };
 
+  /// The secondary line under a row.
+  ///
+  /// A plain location with no distinguishing hierarchy path returns the
+  /// empty string — stamping the literal word "Location" under every row
+  /// is redundant noise. Only genuinely informative text survives: the
+  /// org-unit breadcrumb ([BusinessScope.sortPath]) for nested locations,
+  /// or the cross-scope descriptors for operator / org-unit rows.
   @visibleForTesting
   static String subtitleFor(BusinessScope scope) {
     if (scope.isLocationScope) {
@@ -1809,7 +1816,7 @@ class BusinessScopeDrawerTile extends StatelessWidget {
       if (sortPath != null && sortPath.isNotEmpty && sortPath != scope.label) {
         return sortPath;
       }
-      return 'Location';
+      return '';
     }
     if (scope.scopeType == 'operator') return 'All locations';
     return 'Location views only';
@@ -1817,41 +1824,98 @@ class BusinessScopeDrawerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      key: selected
-          ? const Key('business_scope_drawer_tile_active')
-          : Key('business_scope_drawer_tile_${scope.stableKey}'),
-      enabled: true,
-      selected: selected,
-      selectedTileColor: AppColors.backgroundMid.withValues(alpha: 0.7),
-      leading: Icon(
-        iconFor(scope),
-        key: selected ? activeLeadingIconKey : null,
-        color: selected ? AppColors.sunsetDark : AppColors.textMuted,
-      ),
-      title: Text(
-        scope.label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: AppColors.textPrimary,
-          fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+    final subtitleText = subtitleFor(scope);
+    final hasSubtitle = subtitleText.isNotEmpty;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      child: Material(
+        color: Colors.transparent,
+        child: Ink(
+          decoration: BoxDecoration(
+            color: selected
+                ? AppColors.backgroundMid.withValues(alpha: 0.7)
+                : AppColors.backgroundMid.withValues(alpha: 0.28),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected
+                  ? AppColors.sunsetDark.withValues(alpha: 0.55)
+                  : AppColors.borderSubtle.withValues(alpha: 0.35),
+              width: 1,
+            ),
+          ),
+          child: ListTile(
+            key: selected
+                ? const Key('business_scope_drawer_tile_active')
+                : Key('business_scope_drawer_tile_${scope.stableKey}'),
+            enabled: true,
+            selected: selected,
+            // The rounded fill/border is owned by the wrapping Ink so it
+            // can carry the selected accent border; keep ListTile's own
+            // highlight transparent and clip its splash to match.
+            selectedTileColor: Colors.transparent,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
+            isThreeLine: hasSubtitle,
+            leading: Container(
+              width: 40,
+              height: 40,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected
+                    ? AppColors.sunsetDark.withValues(alpha: 0.18)
+                    : AppColors.backgroundDeep.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                iconFor(scope),
+                key: selected ? activeLeadingIconKey : null,
+                size: 20,
+                color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+              ),
+            ),
+            // maxLines: 2 — long names like "Barrio Legado — North London"
+            // wrap instead of truncating to "North Lo…".
+            title: Text(
+              scope.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.textPrimary,
+                height: 1.25,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+            subtitle: hasSubtitle
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 3),
+                    child: Text(
+                      subtitleText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 12,
+                      ),
+                    ),
+                  )
+                : null,
+            trailing: selected
+                ? const Icon(
+                    Icons.check_circle,
+                    key: activeCheckIconKey,
+                    color: AppColors.sunsetDark,
+                    size: 20,
+                  )
+                : null,
+            onTap: onTap,
+          ),
         ),
       ),
-      subtitle: Text(
-        subtitleFor(scope),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-      ),
-      trailing: selected
-          ? const Icon(
-              Icons.check_circle,
-              key: activeCheckIconKey,
-              color: AppColors.sunsetDark,
-            )
-          : null,
-      onTap: onTap,
     );
   }
 }
