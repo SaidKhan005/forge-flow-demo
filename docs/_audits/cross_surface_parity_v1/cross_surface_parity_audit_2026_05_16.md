@@ -46,6 +46,56 @@ This doc is the canonical register. IDs are stable; reference them as G1, D1, U1
 
 ---
 
+## 0b. Round-2 framework audit — NEW findings 2026-05-16 (post-fix master 1380c70e..5962a74c)
+
+Method: 4 read-only agents applied `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` + the per-daypart surface-coverage method to CURRENT master, excluding all tracked G1–G66/D*/U1/C* and parked/won't-fix/in-flight items. **No regressions in the merged fix wave (#831/#838/#840/#851/#853/#855/#857/#859) — all hold for their covered scope.** Dominant theme: **incomplete coverage** — the same bug *classes* recur on surfaces/gateways the fixes did not touch.
+
+### Idempotency (G60-class data-corruption) — 3 NEW loci, fix not regressed but scoped too narrowly
+| ID | Surface | file:line | Note |
+|---|---|---|---|
+| G70 | Admin | `lib/admin/screens/my_account_admin_screen.dart:1576,1608-1612` | Identity-PATCH dialog re-mints a fresh key in the retryable submit handler; #855 (G60) fixed operator-web only. HIGH. |
+| OW-G72 | Operator-Web | `lib/operator_web/services/operator_web_data_accuracy_gateway.dart:86,155`; `operator_web_vendor_connections_gateway.dart:240-254` (callers :81,129,174,202) | DataAccuracy + VendorConnections write gateways still mint fresh keys per call; #855 census never covered them. Hits the active per-daypart SOURCE write + vendor-credential persist. HIGH. |
+| X-G72 | Mobile | `lib/services/auth/proxy_auth_operations_gateway.dart:1321,1385-1394`; not injected at `firebase_auth_runtime_bindings.dart:245-249` | `ProxyAuthOperationsGateway._send` stamps a fresh random key per HTTP send; ~14 mutating org/team writes (createRole/Invite/RoleGrant, create/move/rename/suspend/deleteOrgUnit, suspend/deleteLocation, revokeSession). Operator-web does the same op with a stable key. NEW (org-rename #841 post-register). HIGH. |
+
+### Fail-loud (G62-class) — incomplete
+| ID | Surface | file:line | Note |
+|---|---|---|---|
+| OW-G70 | Operator-Web | `lib/operator_web/router/operator_web_router.dart:1180-1291` (Vendor connections / Data accuracy / Wage authority / Schedule cases lack `_liveSurfaceMissingGateway`) | #857 guarded only 7 surfaces; the 4 highest-value (credential/SOURCE/schedule) routes still silently serve fixtures on a live wiring gap. HIGH. |
+
+### Auth-resilience (G61-class) + register-claim correction
+| ID | Surface | file:line | Note |
+|---|---|---|---|
+| MOB-G70 | Mobile | `lib/main_forgeflow.dart:71-74` (no `refreshIdToken` arg); guard `lib/services/sync/http_sync_proxy_client.dart:592,657` | Production `HttpSyncProxyClient` never wired with the refresher → mobile's 401-refresh-and-retry is DEAD in the prod flavor. **Corrects register G61's "mobile auto-recovers once" claim — false in prod.** HIGH. |
+| G71 | Admin | bearer `main_admin.dart:751-757`; no 401 branch in any admin gateway | No token-refresh-retry on any admin gateway (destructive admin actions hard-fail on token skew); admin parallel of G61. MED. |
+
+### Demo-honesty parity — fix wave created a new asymmetry
+| ID | Surfaces | file:line | Note |
+|---|---|---|---|
+| X-G70 | All 3 | web `operator_web_demo_banner.dart` (added #857); mobile banner DELETED by #858; admin never had one (`DemoAdminAuthSource.signedInAsSuperAdmin()`, no tell) | 3 different demo-tell postures now. G19 FIXED for its scope but the wave inverted parity + admin leg never covered. HIGH (operator-facing honesty). |
+| G72 | Admin | pill gated on `sharePreviewMode` only; `ADMIN_DEMO_AUTH` path `main_admin.dart:375-379` | `ADMIN_DEMO_AUTH` build serves all in-memory gateways with no demo tell (admin G19/G62 parallel). MED. |
+
+### v1→v2 role staleness (fold into parked G7)
+| ID | Surface | file:line | Note |
+|---|---|---|---|
+| MOB-G71 | Mobile | `lib/screens/settings_screen.dart:592-598` (`_isAdminTier` checks soft-deleted v1 `operator_manager`, never v2 `operator_general_manager`); empty-snapshot path `forge_flow_app.dart:1427-1428` | A v2 GM loses Setup+Integrations tabs (Account-only) when the permission snapshot is empty. Distinct file from the tracked G7d-mobile `team_scope_visibility_policy.dart:71`. **Fold into G7d-mobile scope.** MED. |
+| OW-G71 | Operator-Web | `operator_web_auth_source.dart:287-296` admit set v1-stale | v2 `team_admin`/`operator_general_manager` admitted only via suffix-accident; over-grants vs v2 intent. **Subsumed by parked G7 re-spec.** MED, flag-only. |
+
+### Capability-absence
+| ID | Surfaces | file:line | Note |
+|---|---|---|---|
+| X-G71 | Admin/Mobile vs Op-Web | op-web `settings_notifications_screen.dart` (full editor) vs mobile `notifications_screen.dart` (read-only inbox) vs admin (none) | Notification-preferences editor exists only on operator-web; mobile inbox-only, admin none. Not scope-chrome (not subsumed by HP#11 sweep) — a missing-surface gap. MED. |
+
+### Low / by-design-noted
+- G73 (admin demo Roles seeds v1 6-role catalog — BY-DESIGN-UNDOCUMENTED, doc line); OW-G73 (dead `kOperatorWebNavWageAuthority` route + false comment); OW-G74 (init-failed surface renders full stack trace, collapsed — minor info-exposure); MOB-G72 (`FcmTokenRevalidationObserver` dead code, resume-revalidation safety net never wired).
+
+### Disposition
+- **HIGH cluster (proxy/auth-critical, recommend extend-the-pattern):** the 3 idempotency loci (G70/OW-G72/X-G72), OW-G70 fail-loud completion, MOB-G70 wire the refresher. All well-understood (extend the #855/#857 patterns). Each is operator-approval-gated (proxy/auth-touching).
+- **Fold into in-flight G7:** MOB-G71 → G7d-mobile scope; OW-G71 → G7 re-spec (flag-only).
+- **MED/standalone:** X-G70 demo-tell harmonization, G71/G72 admin auth-resilience + demo-tell, X-G71 notification-prefs surface gap.
+- **Register correction:** the G61 row's "mobile auto-recovers once" is FALSE in prod (MOB-G70) — annotate when triaged.
+
+---
+
 ## 1. Fix-first ranking (priority order — original; see §0 for current status)
 
 1. **G24 / G3** — live operator-web onboarding is non-functional (launch-blocking).
