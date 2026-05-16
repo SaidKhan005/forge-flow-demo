@@ -21,6 +21,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
@@ -28,7 +29,12 @@ void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  final demoIds = DemoScope.locations.map((l) => l.restaurantId).toList();
+  // Fix A: the "none connected" location (today Harbour) is honest-empty;
+  // open-shift assertions apply only to CONNECTED demo locations.
+  final demoIds = DemoScope.locations
+      .map((l) => l.restaurantId)
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
 
   late Directory tmpDir;
 
@@ -59,31 +65,38 @@ void main() {
 
   group('A — open period is clock-derived (Change A)', () {
     test(
-        'Sat 09:25 (before Lunch opens) → NO open shift for any location; '
-        'Lunch/Dinner/LateNight all projected; whole-day ≠ a single '
-        'Dinner row', () async {
+        'Sat 09:25 (before Lunch) → resolver stays honest (null) but '
+        'Fix B seeds the UPCOMING period (Lunch) as the open shift; '
+        'whole-day ≠ a single period row', () async {
       // 2026-05-16 is a Saturday; 09:25 is before Lunch (11:00).
       await coldBoot('2026-05-16T09:25:00');
 
-      // The resolver itself: no period in progress at 09:25.
+      // The pure resolver is UNCHANGED — it still honestly reports no
+      // period in progress at 09:25 (Fix B never touched it).
       final res = resolveDemoOpenPeriod(
         localNow: DateTime(2026, 5, 16, 9, 25),
       );
       expect(res.openDaypart, isNull,
-          reason: '09:25 Sat is before Lunch — nothing is in progress');
+          reason: 'resolveDemoOpenPeriod stays honest — 09:25 Sat is '
+              'before Lunch, nothing is in progress');
 
       final db = await SqliteDatabase.instance.database;
 
-      // Zero status='open' rows anywhere — the core honest-state fix.
+      // Fix B (operator decision 2026-05-16): the Shift home must never
+      // be blank. With no period live, the seeder presents the UPCOMING
+      // period (Lunch — earliest start ahead of 09:25) as the open shift.
       final open = await db.query('open_shift_snapshots',
           where: "status = 'open'");
-      expect(open, isEmpty,
-          reason: 'no period in progress at 09:25 → no fabricated open '
-              'shift (Dinner is NOT live before it opens)');
+      expect(open.map((r) => r['restaurant_id']).toSet(), demoIds.toSet(),
+          reason: 'one live open row per CONNECTED demo location — the '
+              'demo Shift home is never blank');
+      for (final r in open) {
+        expect(r['day_label'], 'Sat');
+        expect(r['daypart'], 'lunch',
+            reason: 'the upcoming period (Lunch) is presented as the '
+                'demo live shift when nothing is genuinely in progress');
+      }
 
-      // Saturday (the current business day) Lunch/Dinner/LateNight are
-      // all present and all projected (honest forecast-only), for every
-      // demo location.
       for (final rid in demoIds) {
         final satRows = await db.query(
           'open_shift_snapshots',
@@ -94,24 +107,23 @@ void main() {
           for (final r in satRows)
             r['daypart'] as String: r['status'] as String,
         };
-        expect(byPart['lunch'], 'projected',
-            reason: '$rid Sat Lunch is forecast-only at 09:25');
+        expect(byPart['lunch'], 'open',
+            reason: '$rid Sat Lunch is the Fix B fallback open shift');
         expect(byPart['dinner'], 'projected',
-            reason: '$rid Sat Dinner has NOT occurred — projected, not '
-                'a live whole-day total');
+            reason: '$rid Sat Dinner has NOT occurred — projected');
         expect(byPart['late_night'], 'projected',
             reason: '$rid Sat LateNight is forecast-only at 09:25');
 
-        // Whole-day ≠ a single Dinner row: Dinner's covers are strictly
-        // less than the Σ of the Saturday periods (the arithmetic
-        // identity that produced the defect is gone).
+        // Whole-day ≠ a single period row: the open Lunch covers are
+        // strictly less than the Σ of the Saturday periods (the
+        // arithmetic identity that produced the original defect is gone).
         final dinner = satRows.firstWhere((r) => r['daypart'] == 'dinner');
         final dinnerCovers = dinner['forecast_covers'] as int;
         final satTotal = satRows.fold<int>(
             0, (s, r) => s + (r['forecast_covers'] as int));
         expect(dinnerCovers, lessThan(satTotal),
             reason: '$rid whole-day Saturday is the Σ of Lunch + Dinner '
-                '+ LateNight, never ≡ Dinner alone');
+                '+ LateNight, never ≡ a single period alone');
         expect(satRows.length, greaterThanOrEqualTo(3),
             reason: '$rid Saturday now serves ≥3 periods incl. Lunch');
       }

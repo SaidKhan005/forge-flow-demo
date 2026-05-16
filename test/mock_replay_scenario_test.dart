@@ -10,6 +10,7 @@
 // G. Replay-regenerated scenario data rebuilds coherently (7.55m.2a)
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
@@ -24,6 +25,16 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 void main() {
+  // Fix A (operator decision 2026-05-16): a "none connected" demo
+  // location (today Harbour) is honest-EMPTY — it carries NO
+  // operational rows. Coherence assertions about operational-table
+  // scopes therefore expect the CONNECTED demo locations, generalized
+  // off the vendor fixture (not a hardcoded id).
+  final connectedDemoScopeIds = DemoScope.locations
+      .map((l) => l.restaurantId)
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toSet();
+
   setUp(() async {
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
@@ -187,7 +198,7 @@ void main() {
           where: "status = 'open'");
       expect(
           allOpen.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          connectedDemoScopeIds,
           reason: 'one live open row per demo location');
       final open = await db.query('open_shift_snapshots',
           where: "status = 'open' AND restaurant_id = ?",
@@ -206,7 +217,7 @@ void main() {
           where: "status = 'open'");
       expect(
           allOpen.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          connectedDemoScopeIds,
           reason: 'every location follows the advanced scenario day');
       final open = await db.query('open_shift_snapshots',
           where: "status = 'open' AND restaurant_id = ?",
@@ -243,7 +254,7 @@ void main() {
           reason: 'forward book is multi-location, not a single row');
       final scopes =
           all.map((r) => r['restaurant_id'] as String).toSet();
-      expect(scopes, DemoScope.locations.map((l) => l.restaurantId).toSet(),
+      expect(scopes, connectedDemoScopeIds,
           reason: 'every demo location has a forward reservation book');
       // Honest-degrade: no row predates the scenario date (closed/past
       // services carry no live reservation book).
@@ -311,7 +322,7 @@ void main() {
           where: "status = 'open'");
       expect(
           allOpen.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          connectedDemoScopeIds,
           reason: 'every location advances to the new week');
       final open = await db.query('open_shift_snapshots',
           where: "status = 'open' AND restaurant_id = ?",
@@ -706,7 +717,7 @@ void main() {
           where: "status = 'open'");
       expect(
           allBefore.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet());
+          connectedDemoScopeIds);
       final openBefore = await db.query('open_shift_snapshots',
           where: "status = 'open' AND restaurant_id = ?",
           whereArgs: [DemoScope.restaurantId]);
@@ -722,7 +733,7 @@ void main() {
           where: "status = 'open'");
       expect(
           allAfter.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet());
+          connectedDemoScopeIds);
       final openAfter = await db.query('open_shift_snapshots',
           where: "status = 'open' AND restaurant_id = ?",
           whereArgs: [DemoScope.restaurantId]);

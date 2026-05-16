@@ -27,11 +27,23 @@
 // byte-identical.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 
 void main() {
-  final demoIds = DemoScope.locations.map((l) => l.restaurantId).toList();
+  final allDemoIds = DemoScope.locations.map((l) => l.restaurantId).toList();
+  // Fix A (operator decision 2026-05-16): a "none connected" demo
+  // location (today Harbour) is honest-EMPTY — it carries NO
+  // operational/historical rows so the existing readers honest-degrade
+  // to "awaiting first connection". Only the CONNECTED locations carry
+  // the full operational envelope.
+  final demoIds = allDemoIds
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
+  final noneConnectedIds = allDemoIds
+      .where((id) => DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toList();
   const downtown = DemoScope.restaurantId;
 
   group('Demo-data — per-location operational envelope', () {
@@ -275,6 +287,63 @@ void main() {
             reason: 'varied read/unread states');
         // Never collides with the variance_breach seeder.
         expect(notes.any((n) => n['type'] == 'variance_breach'), isFalse);
+      }
+    });
+
+    test('Fix A — a "none connected" demo location is honest-EMPTY: '
+        'ZERO operational/historical rows, but its scope + vendor demo '
+        'rows ARE seeded', () async {
+      expect(noneConnectedIds, isNotEmpty,
+          reason: 'the fixture defines a none-connected demo location '
+              '(today Harbour) — guards the generalization off the '
+              'vendor fixture, not a hardcoded id');
+      final db = await SqliteDatabase.instance.database;
+
+      for (final rid in noneConnectedIds) {
+        // No fabricated operational/historical numbers anywhere.
+        for (final table in const [
+          'shift_records',
+          'week_records',
+          'open_shift_snapshots',
+          'reservation_book_snapshots',
+          'weekly_plan_snapshots',
+          'target_cycles',
+          'active_target_profiles',
+          'import_runs',
+          'raw_import_records',
+        ]) {
+          final rows = await db.query(
+            table,
+            where: 'restaurant_id = ?',
+            whereArgs: [rid],
+          );
+          expect(rows, isEmpty,
+              reason: '$rid ($table) must be honest-EMPTY — no phantom '
+                  'data for a location with nothing connected');
+        }
+        // No sample inbox rows either (backfill-complete etc. would be
+        // phantom for an awaiting-first-connection location).
+        final notes = await db.query(
+          'app_notifications',
+          where: 'restaurant_id = ? AND event_key LIKE ?',
+          whereArgs: [rid, 'demo_seed_%'],
+        );
+        expect(notes, isEmpty,
+            reason: '$rid has no sample notifications (honest-empty)');
+
+        // BUT the scope row IS present (stays in the scope drawer)…
+        final loc = await db.query(
+          'restaurant_locations',
+          where: 'restaurant_id = ?',
+          whereArgs: [rid],
+        );
+        expect(loc, isNotEmpty,
+            reason: '$rid still appears in the scope drawer');
+        // …and its vendor fixture says all categories disconnected
+        // (so the demo banners still render).
+        expect(DemoVendorIntegrationStateFixture.connectedCategoryCount(rid),
+            0,
+            reason: '$rid is the none-connected location by fixture');
       }
     });
 

@@ -11,6 +11,7 @@ import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../../domain/constants/app_defaults.dart';
 import '../../../dev/demo_fixture_data.dart';
+import '../../../dev/demo_vendor_integration_state_fixture.dart';
 import '../../../dev/demo_vendor_integration_sync_proxy_client.dart';
 import '../../../dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/recommended_benchmark_selection_service.dart';
@@ -339,10 +340,16 @@ class SqliteDatabase {
     final mo = int.parse(p[1]);
     final d = int.parse(p[2]);
 
+    // Fix B (operator decision 2026-05-16): the demo Shift home must
+    // NEVER be blank for a connected location. `seedTimeOpenPeriodResolution`
+    // returns the honest clock-derived period when one is genuinely live,
+    // else the most-relevant period for the business day presented as the
+    // open shift (deterministic — derived from the period window, no
+    // `DateTime.now()` in any seeded value).
     final nowOverride = debugColdBootNowOverride;
     if (nowOverride != null) {
       final dt = DateTime.parse(nowOverride);
-      return resolveDemoOpenPeriod(
+      return seedTimeOpenPeriodResolution(
         localNow: DateTime(y, mo, d, dt.hour, dt.minute, dt.second),
       );
     }
@@ -350,15 +357,16 @@ class SqliteDatabase {
       // Deterministic legacy-compat: 19:45 → Dinner in progress (Dinner
       // applies every weekday) so pre-existing date-only override tests
       // stay green and deterministic regardless of the real wall clock.
-      return resolveDemoOpenPeriod(
+      return seedTimeOpenPeriodResolution(
         localNow: DateTime(y, mo, d, 19, 45),
       );
     }
     if (coldBoot) {
       // Production / demo device fresh launch — the real clock decides
-      // which period (if any) is in progress. This is the defect fix.
+      // which period is live; when none is, Fix B selects the
+      // most-relevant period so the Shift home is never blank.
       final now = DateTime.now();
-      return resolveDemoOpenPeriod(
+      return seedTimeOpenPeriodResolution(
         localNow: DateTime(y, mo, d, now.hour, now.minute, now.second),
       );
     }

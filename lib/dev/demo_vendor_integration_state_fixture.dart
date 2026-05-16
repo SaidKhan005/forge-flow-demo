@@ -287,6 +287,37 @@ class DemoVendorIntegrationStateFixture {
   }) =>
       _statesFor(locationId)[category]!;
 
+  /// How many of this location's three categories have a vendor
+  /// connection that renders a row — i.e. `connected` OR `error`
+  /// (`error`/needs-reauth still models an EXISTING connection that has
+  /// backfilled data; only `disconnected` means "nothing connected").
+  /// Mirrors `_connectionRow`'s render rule exactly (a `disconnected`
+  /// category returns no [VendorConnectionRow]).
+  static int connectedCategoryCount(String locationId) {
+    final states = _statesFor(locationId);
+    var count = 0;
+    for (final state in states.values) {
+      if (state.connectionStatus != ConnectionStatus.disconnected) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /// True when this location's demo vendor fixture has ZERO connected
+  /// categories (every category `disconnected`) — the "none connected /
+  /// awaiting first connection" state (spec §D.2 / §D.3: today exactly
+  /// Harbour). The demo seeder consults this to keep such a location
+  /// honest-EMPTY: no operational/historical rows are written for it, so
+  /// the existing honest-degrade UI renders "awaiting first connection"
+  /// instead of fabricated numbers (Metric Honesty). The
+  /// `restaurant_locations` row + the `demo_mode_state` / vendor-fixture
+  /// rows are still seeded, so the location stays in the scope drawer and
+  /// the demo banners still render. Generalized off the fixture's
+  /// connection state — NOT a hardcoded "if harbour".
+  static bool isNoneConnected(String locationId) =>
+      connectedCategoryCount(locationId) == 0;
+
   /// The three `demo_mode_state` rows for this (operator, location),
   /// in [IntegrationCategory.values] order. Fed to the mobile
   /// [DemoModeStateGateway] demo impl and, through the demo proxy

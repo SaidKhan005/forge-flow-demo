@@ -13,6 +13,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/services/mock_replay_data_source_provider.dart';
 import 'package:forge_and_flow/services/shift_data_source.dart';
@@ -20,6 +21,13 @@ import 'package:forge_and_flow/forge_flow_app.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 void main() {
+  // Fix A (operator decision 2026-05-16): the "none connected" demo
+  // location (today Harbour) is honest-EMPTY — no open_shift_snapshots.
+  final connectedDemoScopeIds = DemoScope.locations
+      .map((l) => l.restaurantId)
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
+      .toSet();
+
   // ── A. ForgeFlowScope provides LiveShiftDataSource ──────────────────────
 
   group('A — ForgeFlowScope runtime source', () {
@@ -135,8 +143,9 @@ void main() {
               "AND status = 'open'");
       expect(
           rows.map((r) => r['restaurant_id']).toSet(),
-          DemoScope.locations.map((l) => l.restaurantId).toSet(),
-          reason: 'one Fri-dinner live open row per demo location');
+          connectedDemoScopeIds,
+          reason: 'one Fri-dinner live open row per CONNECTED demo '
+              'location (the none-connected location is honest-empty)');
       for (final r in rows) {
         expect(r['source_shift_id'],
             MockIntegrationReplaySeed.openShiftSourceShiftId);

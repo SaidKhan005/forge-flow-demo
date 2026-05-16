@@ -43,6 +43,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/services/sync/mobile_operational_sync_runtime.dart';
 
@@ -65,8 +66,15 @@ void main() {
     'wage_role_rows',
   ];
 
+  // Fix A (operator decision 2026-05-16): the "none connected" demo
+  // location (today Harbour) is honest-EMPTY — it has NO operational
+  // rows. The scope-preserving-wipe invariant therefore applies to the
+  // CONNECTED demo locations (the scopes that actually carry data); the
+  // none-connected location is vacuously preserved (no rows to wipe) and
+  // its `restaurant_locations` row is not in `affectedTables`.
   final demoIds = DemoScope.locations
       .map((l) => l.restaurantId)
+      .where((id) => !DemoVendorIntegrationStateFixture.isNoneConnected(id))
       .toSet();
   const keep = DemoScope.riversideRestaurantId;
   const foreignId = 'foreign_tenant_zzz_not_a_demo_scope';
@@ -127,9 +135,9 @@ void main() {
   }
 
   test(
-      'demo-preserving wipe keeps all 4 DemoScope locations + purges '
-      'foreign; production default wipe still nukes non-keep demo '
-      'scopes (production byte-unchanged)', () async {
+      'demo-preserving wipe keeps every CONNECTED DemoScope location + '
+      'purges foreign; production default wipe still nukes non-keep '
+      'demo scopes (production byte-unchanged)', () async {
     // Deliberately far from the demo scenario anchor so the cold-boot
     // path is a true today-anchored seed (matches the sibling per-loc
     // regression test's choice).
@@ -141,9 +149,10 @@ void main() {
     // regression test proves open_shift_snapshots carries all 4.
     final openScopesBefore = await scopesIn('open_shift_snapshots');
     expect(openScopesBefore.containsAll(demoIds), isTrue,
-        reason: 'cold boot must seed all 4 demo locations into '
+        reason: 'cold boot must seed every CONNECTED demo location into '
             'open_shift_snapshots (the device-reproduced 684 -> 171 '
-            'defect surface)');
+            'defect surface); the none-connected location is honest-empty '
+            'by Fix A and not expected here');
 
     await insertForeignOpenShiftRow();
     expect(
@@ -175,11 +184,12 @@ void main() {
             'other demo locations)',
       );
     }
-    // All 4 demo locations specifically survive in the defect surface.
+    // Every CONNECTED demo location specifically survives in the defect
+    // surface.
     expect(
       (await scopesIn('open_shift_snapshots')).intersection(demoIds),
       equals(demoIds),
-      reason: 'all 4 DemoScope locations keep their open_shift '
+      reason: 'every connected DemoScope location keeps its open_shift '
           'snapshots after the demo location switch (no HISTORICAL '
           'ONLY regression)',
     );
