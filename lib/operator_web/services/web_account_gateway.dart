@@ -200,10 +200,17 @@ class HttpWebAccountGateway
     final token = await _requireToken(
       'Sign in again to update your business account.',
     );
+    final body = patch.toJson();
     final response = await _client.patchJson(
       operatorAccountPath,
       idToken: token,
-      body: patch.toJson(),
+      body: body,
+      // G60 — caller-STABLE idempotency key. The payload uniquely
+      // identifies this logical identity write, so a retry of the
+      // same edit reuses the same key (collapses against the proxy
+      // `proxy_requests` UNIQUE guard) while a different edit gets a
+      // distinct key.
+      extraHeaders: _stableKeyHeader('account-patch', <Object?>[body]),
     );
     return AccountIdentity.fromJson(response.body);
   }
@@ -218,10 +225,16 @@ class HttpWebAccountGateway
     final token = await _requireToken(
       'Sign in again to update your location timezone.',
     );
+    final body = patch.toJson();
     final response = await _client.patchJson(
       operatorLocationTimezonePath,
       idToken: token,
-      body: patch.toJson(),
+      body: body,
+      // G60 — caller-stable key per logical timezone write.
+      extraHeaders: _stableKeyHeader(
+        'location-timezone-patch',
+        <Object?>[body],
+      ),
     );
     return AccountLocationTimezone.fromJson(response.body);
   }
@@ -242,10 +255,13 @@ class HttpWebAccountGateway
     if ((patch.email ?? '').isNotEmpty) {
       _requireFreshMfaToken(token);
     }
+    final body = patch.toJson();
     final response = await _client.patchJson(
       selfProfilePath,
       idToken: token,
-      body: patch.toJson(),
+      body: body,
+      // G60 — caller-stable key per logical self-profile write.
+      extraHeaders: _stableKeyHeader('self-profile-patch', <Object?>[body]),
     );
     return SelfProfilePatchResult.fromJson(response.body);
   }
@@ -277,10 +293,18 @@ class HttpWebAccountGateway
     final token = await _requireToken(
       'Sign in again to update this location\'s account overrides.',
     );
+    final body = patch.toJson();
     final response = await _client.patchJson(
       path,
       idToken: token,
-      body: patch.toJson(),
+      body: body,
+      // G60 — caller-stable key scoped to the location + payload, so
+      // retrying the same override edit collapses but a different
+      // location / different edit does not.
+      extraHeaders: _stableKeyHeader(
+        'location-account-overrides-patch',
+        <Object?>[locationId, body],
+      ),
     );
     return LocationAccountOverridesEnvelope.fromJson(response.body);
   }
@@ -354,14 +378,19 @@ class HttpWebAccountGateway
           'session_id': sessionId,
           'reason': 'my_account.sign_out_other_sessions',
         },
-        extraHeaders: stepUpChallengeId == null
-            ? const <String, String>{}
-            : <String, String>{
-                // Addendum A1: the challenge id is a REQUEST HEADER
-                // value. Never appended to revokeSessionPath as a
-                // URL parameter.
-                kStepUpChallengeIdHeader: stepUpChallengeId,
-              },
+        extraHeaders: <String, String>{
+          // G60 — caller-stable key per revoked session id. Retrying
+          // the revoke of the SAME session reuses the same key; a
+          // step-up replay of that same revoke deliberately keeps the
+          // same key too (it is the same logical revoke, just
+          // re-authenticated) so the proxy collapses the duplicate.
+          ..._stableKeyHeader('session-revoke', <Object?>[sessionId]),
+          if (stepUpChallengeId != null)
+            // Addendum A1: the challenge id is a REQUEST HEADER
+            // value. Never appended to revokeSessionPath as a
+            // URL parameter.
+            kStepUpChallengeIdHeader: stepUpChallengeId,
+        },
       );
       return _readBool(response.body['revoked']) ??
           _readBool(response.body['ok']) ??
@@ -389,6 +418,24 @@ class HttpWebAccountGateway
         stepUpChallengeId: offer.challengeId,
       );
     }
+  }
+
+  /// G60 — builds the `Idempotency-Key` header carrying a
+  /// caller-STABLE key derived from [action] + [parts]. The same
+  /// logical write (same payload) on retry produces the SAME key,
+  /// collapsing against the proxy `proxy_requests` UNIQUE guard;
+  /// distinct actions / payloads produce distinct keys. Mirrors the
+  /// exemplar idempotency posture of `web_team_roles_gateway.dart`.
+  static Map<String, String> _stableKeyHeader(
+    String action,
+    List<Object?> parts,
+  ) {
+    return <String, String>{
+      'Idempotency-Key': OperatorWebProxyClient.stableIdempotencyKey(
+        action,
+        parts,
+      ),
+    };
   }
 
   Future<String> _requireToken(String message) async {

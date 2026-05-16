@@ -184,11 +184,27 @@ void main() {
         );
         for (final request in capturedRequests) {
           expect(request.method, 'POST');
-          expect(request.headers['idempotency-key'], 'idem-key-fixture');
+          // G60 — the key is now a CALLER-STABLE derived key (not the
+          // minted fixture key), so a retried revoke collapses against
+          // the proxy `proxy_requests` UNIQUE guard.
+          expect(
+            request.headers['idempotency-key'],
+            startsWith('op-web-session-revoke-'),
+          );
+          expect(
+            request.headers['idempotency-key'],
+            isNot('idem-key-fixture'),
+          );
           expect(request.headers['authorization'], 'Bearer $token');
           final json = jsonDecode(request.body) as Map<String, Object?>;
           expect(json['reason'], 'my_account.sign_out_other_sessions');
         }
+        // G60 — distinct session ids => distinct stable keys (the two
+        // revokes must NOT be coalesced by the proxy).
+        expect(
+          capturedRequests.first.headers['idempotency-key'],
+          isNot(capturedRequests.last.headers['idempotency-key']),
+        );
         final firstBody =
             jsonDecode(capturedRequests.first.body) as Map<String, Object?>;
         final secondBody =
@@ -254,7 +270,12 @@ void main() {
       final request = capturedRequests.single;
       expect(request.method, 'PATCH');
       expect(request.url.path, '/v1/operator/account');
-      expect(request.headers['idempotency-key'], 'idem-key-fixture');
+      // G60 — caller-STABLE derived key (not the minted fixture key).
+      expect(
+        request.headers['idempotency-key'],
+        startsWith('op-web-account-patch-'),
+      );
+      expect(request.headers['idempotency-key'], isNot('idem-key-fixture'));
       expect(request.headers['authorization'], 'Bearer demo-id-token');
       final json = jsonDecode(request.body) as Map<String, Object?>;
       expect(json['businessName'], 'Brio Restaurants');
@@ -417,7 +438,15 @@ void main() {
         expect(request.method, 'PATCH');
         expect(request.url.path, '/v1/operator/location-timezone');
         expect(request.headers['authorization'], 'Bearer demo-id-token');
-        expect(request.headers['idempotency-key'], 'idem-key-fixture');
+        // G60 — caller-STABLE derived key (not the minted fixture key).
+        expect(
+          request.headers['idempotency-key'],
+          startsWith('op-web-location-timezone-patch-'),
+        );
+        expect(
+          request.headers['idempotency-key'],
+          isNot('idem-key-fixture'),
+        );
         final json = jsonDecode(request.body) as Map<String, Object?>;
         expect(json['ianaTimezone'], 'America/Toronto');
         expect(result.operatorId, 'op-1');
@@ -620,10 +649,15 @@ void main() {
         // Clear flag triggers explicit null on the wire.
         expect(body.containsKey('contactPhone'), isTrue);
         expect(body['contactPhone'], isNull);
-        // Idempotency-Key must be present (every write).
+        // G60 — Idempotency-Key must be present (every write) AND be
+        // the caller-STABLE derived key, not the minted fixture key.
         expect(
-          capturedRequests.single.headers['Idempotency-Key'],
-          equals('idem-key-fixture'),
+          capturedRequests.single.headers['idempotency-key'],
+          startsWith('op-web-location-account-overrides-patch-'),
+        );
+        expect(
+          capturedRequests.single.headers['idempotency-key'],
+          isNot('idem-key-fixture'),
         );
       },
     );

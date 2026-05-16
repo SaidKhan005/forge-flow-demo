@@ -9,6 +9,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:http/http.dart' as http;
 
 import '../../auth/mfa_freshness_redirect_listener.dart';
@@ -226,12 +227,13 @@ class OperatorWebProxyClient {
     required String idToken,
     Map<String, Object?> body = const <String, Object?>{},
     Map<String, String>? queryParameters,
+    Map<String, String> extraHeaders = const <String, String>{},
   }) async {
     final request = http.Request(
       'PATCH',
       _resolve(path, queryParameters: queryParameters),
     );
-    _applyHeaders(request, idToken: idToken);
+    _applyHeaders(request, idToken: idToken, extraHeaders: extraHeaders);
     request.body = jsonEncode(body);
     final response = await _send(request);
     _throwIfUnsuccessful(response, path);
@@ -243,12 +245,13 @@ class OperatorWebProxyClient {
     required String idToken,
     Map<String, Object?> body = const <String, Object?>{},
     Map<String, String>? queryParameters,
+    Map<String, String> extraHeaders = const <String, String>{},
   }) async {
     final request = http.Request(
       'DELETE',
       _resolve(path, queryParameters: queryParameters),
     );
-    _applyHeaders(request, idToken: idToken);
+    _applyHeaders(request, idToken: idToken, extraHeaders: extraHeaders);
     request.body = jsonEncode(body);
     final response = await _send(request);
     _throwIfUnsuccessful(response, path);
@@ -271,11 +274,25 @@ class OperatorWebProxyClient {
     required String idToken,
     Map<String, String> extraHeaders = const <String, String>{},
   }) {
+    // G60 — honor a CALLER-STABLE `Idempotency-Key` when one is
+    // supplied in [extraHeaders]. A retried logical write (account
+    // identity PATCH, business-timing profile create, …) MUST carry
+    // the SAME key so the proxy's `proxy_requests` UNIQUE replay
+    // guard collapses the duplicate instead of double-applying the
+    // write. The auto-mint below stays ONLY as the fallback for
+    // callers that do not supply one (e.g. reads / GETs and any
+    // caller that has not yet been migrated to a stable key). The
+    // lookup is case-insensitive because HTTP header names are
+    // case-insensitive (RFC 9110 §5.1) but `http.Request.headers`
+    // is a plain case-sensitive `Map`, so a caller passing
+    // `idempotency-key` would otherwise NOT collide with the minted
+    // `Idempotency-Key` and both would be sent.
+    final callerSuppliedKey = _readCallerIdempotencyKey(extraHeaders);
     request.headers.addAll(<String, String>{
       'accept': 'application/json',
       'content-type': 'application/json',
       'authorization': 'Bearer ${idToken.trim()}',
-      'Idempotency-Key': _idempotencyKeyFactory(),
+      'Idempotency-Key': callerSuppliedKey ?? _idempotencyKeyFactory(),
       // B11.2.b — caller-supplied headers (e.g. `Step-Up-Challenge-Id`
       // on a step-up replay). Applied AFTER the defaults so callers
       // cannot accidentally drop Authorization / Content-Type by
@@ -285,6 +302,28 @@ class OperatorWebProxyClient {
       // the URI from `path` + `queryParameters` only.
       ...extraHeaders,
     });
+    // Drop any lower/mixed-case duplicate the spread above may have
+    // introduced so exactly one canonical `Idempotency-Key` is sent.
+    if (callerSuppliedKey != null) {
+      request.headers.removeWhere(
+        (name, _) =>
+            name != 'Idempotency-Key' &&
+            name.toLowerCase() == 'idempotency-key',
+      );
+    }
+  }
+
+  /// G60 — extracts a caller-supplied idempotency key from
+  /// [extraHeaders] regardless of header-name casing. Returns null
+  /// (auto-mint fallback) when no usable key is present.
+  static String? _readCallerIdempotencyKey(Map<String, String> extraHeaders) {
+    for (final entry in extraHeaders.entries) {
+      if (entry.key.toLowerCase() == 'idempotency-key') {
+        final trimmed = entry.value.trim();
+        if (trimmed.isNotEmpty) return trimmed;
+      }
+    }
+    return null;
   }
 
   Future<OperatorWebJsonResponse> _send(http.Request request) async {
@@ -349,6 +388,57 @@ class OperatorWebProxyClient {
   /// callers can embed the key in a POST body (A7: not as a header, to
   /// avoid accidental URL leakage via the Referer header).
   String generateIdempotencyKey() => _idempotencyKeyFactory();
+
+  /// G60 — derives a CALLER-STABLE idempotency key for a logical
+  /// write action.
+  ///
+  /// The same [action] + the same identifying [parts] always yields
+  /// the same key, so a retried write (the user taps "Save" again,
+  /// or a transport failure auto-retries) collapses against the
+  /// proxy's `proxy_requests` UNIQUE guard instead of double-applying
+  /// the mutation. A DIFFERENT action — or the same action with a
+  /// different payload — yields a different key, so distinct user
+  /// intents are never coalesced.
+  ///
+  /// This mirrors the exemplar idempotency posture of
+  /// `web_team_roles_gateway.dart` (one stable key per logical
+  /// action, reused on retry) while keeping the write gateways'
+  /// public interfaces unchanged — the key is derived inside the
+  /// gateway from the action + its identifying arguments, the same
+  /// shape `_accountMfaIdempotencyKey` already uses for the security
+  /// surface, but DETERMINISTIC rather than wall-clock-stamped so it
+  /// survives a retry.
+  ///
+  /// [parts] are canonicalised (null/blank entries dropped, order
+  /// preserved) and hashed with SHA-256 so an arbitrarily large
+  /// payload still produces a fixed-length, header-safe key.
+  static String stableIdempotencyKey(
+    String action,
+    List<Object?> parts,
+  ) {
+    final canonical = StringBuffer('op-web:$action');
+    for (final part in parts) {
+      canonical.write('|');
+      canonical.write(_canonicalisePart(part));
+    }
+    final digest = sha256.convert(utf8.encode(canonical.toString()));
+    return 'op-web-$action-$digest';
+  }
+
+  static String _canonicalisePart(Object? part) {
+    if (part == null) return ' ';
+    if (part is Map) {
+      final sortedKeys = part.keys
+          .map((key) => key.toString())
+          .toList(growable: false)
+        ..sort();
+      return '{${sortedKeys.map((k) => '$k=${_canonicalisePart(part[k])}').join(',')}}';
+    }
+    if (part is Iterable) {
+      return '[${part.map(_canonicalisePart).join(',')}]';
+    }
+    return part.toString();
+  }
 
   static String _defaultIdempotencyKey() {
     final random = math.Random.secure();
