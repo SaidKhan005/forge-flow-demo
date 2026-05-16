@@ -1,7 +1,7 @@
 // A4.2 (R2) per `docs/_audits/code_health/a4_performance_audit.md`:
 //
 // The four wall-clock-driven widgets on the shift dashboard
-// (`_LiveClock`, `_ShiftPeriodSelector`, `_DaypartScaffoldSection`,
+// (`_LiveClock`, `_ShiftPeriodSelector`, `_DaypartPeriodHeader`,
 // `_TimeIntoServiceHeader`) used to each own a `Timer.periodic(30s)`.
 // After R2 they share a single `_ShiftDashboardTicker` constructed by
 // `_ShiftDashboardState`. This test file is the regression guard:
@@ -223,7 +223,7 @@ void main() {
       'sole source of wall-clock rebuilds for all four consumer widgets',
       (tester) async {
         // Smoke check: open the daypart lens (which mounts
-        // _TimeIntoServiceHeader + _DaypartScaffoldSection alongside
+        // _TimeIntoServiceHeader + _DaypartPeriodHeader alongside
         // _LiveClock + _ShiftPeriodSelector). All four must render
         // without throwing — proves they all received the shared
         // ticker through their constructors and resolved it via
@@ -244,9 +244,12 @@ void main() {
           find.text('Lunch · 1h 12m in', skipOffstage: false),
           findsOneWidget,
         );
-        // _DaypartScaffoldSection rendered (SERVICE PERIOD header).
+        // _DaypartPeriodHeader + the shared section groups rendered.
+        // (The bespoke single 'SERVICE PERIOD' sliver was retired in the
+        // true-1:1 refactor; the daypart lens now emits the same
+        // 'OUTPUTS' pinned-header group Whole Day does.)
         expect(
-          find.text('SERVICE PERIOD', skipOffstage: false),
+          find.text('OUTPUTS', skipOffstage: false),
           findsOneWidget,
         );
         // _ShiftPeriodSelector rendered (Whole Day pill is always

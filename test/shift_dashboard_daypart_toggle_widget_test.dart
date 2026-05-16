@@ -148,8 +148,12 @@ void main() {
         findsOneWidget,
       );
 
-      // Daypart scaffold is visible.
-      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
+      // True 1:1: the bespoke single 'SERVICE PERIOD' sliver is retired.
+      // The daypart lens emits the SAME three pinned-header section
+      // groups as Whole Day (OUTPUTS / INPUTS / FOH PRODUCTIVITY).
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
+      expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
+      expect(find.text('INPUTS', skipOffstage: false), findsOneWidget);
 
       // All three demo definitions render with their clock windows.
       expect(find.text('Lunch', skipOffstage: false), findsWidgets);
@@ -179,10 +183,12 @@ void main() {
       await tester.pump();
       await tester.pump();
 
-      // Open daypart lens.
+      // Open daypart lens — true 1:1 section grammar (no 'SERVICE
+      // PERIOD' sliver; the shared OUTPUTS group renders instead).
       await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
-      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
+      expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
 
       // Tap Whole Day to restore the authoritative view.
       await tester.tap(find.text('Whole Day', skipOffstage: false));
@@ -211,7 +217,8 @@ void main() {
       await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
-      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
+      expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
       expect(find.text('Lunch', skipOffstage: false), findsWidgets);
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
       expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsNothing);

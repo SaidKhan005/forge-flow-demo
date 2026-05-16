@@ -166,13 +166,13 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
+        // True 1:1: the bespoke single 'SERVICE PERIOD' sliver is
+        // retired — the daypart lens emits the SAME three pinned-header
+        // section groups as Whole Day.
         expect(
           find.text('SERVICE PERIOD', skipOffstage: false),
-          findsOneWidget,
+          findsNothing,
         );
-
-        // Per-Daypart V1 Slice 4 — the card is now a full 1:1 mirror of
-        // the whole-day card's three-section grammar (Decision 7).
         expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
         expect(find.text('INPUTS', skipOffstage: false), findsOneWidget);
         expect(
@@ -186,13 +186,14 @@ void main() {
         expect(find.text(r'$22.50', skipOffstage: false), findsOneWidget);
         expect(find.text(r'$4,200', skipOffstage: false), findsOneWidget);
 
-        // Inputs: per-period actuals vs locked target. No target context
-        // was injected, so every target sub-line is the honest em dash
-        // (Design Rule 2 — never a 0 sentinel).
+        // Inputs: per-period actuals render via the SAME MetricPill
+        // widgets Whole Day uses (PPA $42.00, CPLH 12.50, SPLH $525) —
+        // no bespoke "Target —" sub-line (the retired bespoke cell);
+        // true 1:1 with the whole-day Inputs grid.
         expect(find.text(r'$42.00', skipOffstage: false), findsOneWidget);
         expect(find.text('12.50', skipOffstage: false), findsOneWidget);
         expect(find.text(r'$525', skipOffstage: false), findsOneWidget);
-        expect(find.text('Target —', skipOffstage: false), findsWidgets);
+        expect(find.text('Target —', skipOffstage: false), findsNothing);
 
         // FOH Productivity: no locked OPZ band → honest empty state,
         // never a zero-anchored gauge.
@@ -274,7 +275,9 @@ void main() {
       await tester.tap(find.text('Dinner', skipOffstage: false));
       await tester.pump();
 
-      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
+      // True 1:1: no bespoke 'SERVICE PERIOD' sliver — same three
+      // pinned-header section groups as Whole Day.
+      expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
 
       // Tri-state status line: a genuinely future period frames as
       // "Opens at {start}" — never the old "until this period opens"

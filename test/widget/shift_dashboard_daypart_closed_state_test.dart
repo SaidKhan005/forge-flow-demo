@@ -35,6 +35,7 @@ import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/models/shift_dashboard_read_model.dart';
 import 'package:forge_and_flow/screens/shift_dashboard.dart';
+import 'package:forge_and_flow/widgets/zone_status_card.dart';
 
 ShiftDashboardReadModel _fixtureReadModel() {
   final profile = ActiveTargetProfile(
@@ -175,22 +176,13 @@ void main() {
           findsWidgets,
         );
 
-        // Locked per-period targets render even with zero actuals — a
-        // closed-with-no-data period still shows what its standard was.
-        expect(
-          find.text('Target 13.00', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text(r'Target $540', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text(r'Target $41.50', skipOffstage: false),
-          findsOneWidget,
-        );
-        // Locked OPZ band present → the honest "no zone" line must NOT
-        // show (band hides only when the locked band is absent).
+        // True 1:1: the locked stamp drives the SHARED ZoneStatusCard
+        // band (Whole Day uses the same widget) even with zero actuals —
+        // a closed-with-no-data period still renders its standard's band,
+        // never the bespoke "Target 13.00" sub-lines (retired) and never
+        // the honest "no zone" line (the band IS present).
+        expect(find.byType(ZoneStatusCard, skipOffstage: false),
+            findsOneWidget);
         expect(
           find.text(
             'No locked productivity zone for this period yet.',
