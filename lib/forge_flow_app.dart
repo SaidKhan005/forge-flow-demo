@@ -1216,6 +1216,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           // walkthrough can show multiple devices without a backend.
           authOperationsGateway: widget.authOperationsGateway,
           allowDemoActiveSessionsFallback: widget.authOperationsGateway == null,
+          // Demo flavor wires no AccountInfoGateway (no proxy). Render
+          // the honest session-derived Account card instead of a blank
+          // section. Same posture as the Active Sessions fallback
+          // above. Production wires a real gateway so this is false.
+          allowDemoAccountInfoFallback: widget.accountInfoGateway == null,
         ),
         fullscreenDialog: true,
       ),

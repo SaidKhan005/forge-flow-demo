@@ -71,6 +71,14 @@ class SettingsScreen extends StatefulWidget {
   final ActiveSessionsActor? activeSessionsActor;
   final bool allowDemoActiveSessionsFallback;
 
+  /// Demo / preview shells wire no [accountInfoGateway]. When true,
+  /// the Account section renders the honest session-derived card
+  /// instead of collapsing to nothing, so the demo Account tab shows
+  /// the real signed-in identity. Mirrors
+  /// [allowDemoActiveSessionsFallback]; threaded from
+  /// `forge_flow_app.dart` `_openSettings`.
+  final bool allowDemoAccountInfoFallback;
+
   const SettingsScreen({
     super.key,
     this.initialStatus,
@@ -84,6 +92,7 @@ class SettingsScreen extends StatefulWidget {
     this.authOperationsGateway,
     this.activeSessionsActor,
     this.allowDemoActiveSessionsFallback = false,
+    this.allowDemoAccountInfoFallback = false,
   });
 
   @override
@@ -483,6 +492,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: SettingsAccountSection(
                       accountInfoGateway: widget.accountInfoGateway,
                       passwordChangeGateway: widget.passwordChangeGateway,
+                      allowDemoAccountInfoFallback:
+                          widget.allowDemoAccountInfoFallback,
                       refreshGeneration: _manualRefreshGeneration,
                       viewOnly: true,
                     ),
