@@ -137,12 +137,38 @@ class SqliteDatabase {
   Database? _db;
   String? _overrideDbPath;
 
+  /// Single-flight guard for [database].
+  ///
+  /// FU-coldboot-partial-seed: the demo flavor boots several subsystems
+  /// (demo auth, restaurant scope, the Shift/Week dashboard notifiers)
+  /// that each `await SqliteDatabase.instance.database` at roughly the
+  /// same time. The previous `_db ??= await _initDb()` was not
+  /// concurrency-safe: every first-caller that arrived before
+  /// `_initDb()` resolved saw `_db == null` and kicked off its own
+  /// `_initDb()`, opening the same fresh file more than once and racing
+  /// the cold-boot seed (a second connection's writes/locks interleaving
+  /// with the first connection's seed → a silently half-populated DB).
+  /// One in-flight init Future is now shared by all concurrent
+  /// first-callers so a clean cold boot opens + seeds exactly once.
+  Future<Database>? _initInFlight;
+
   /// Current schema version.
   static const int schemaVersion = 36;
 
-  Future<Database> get database async {
-    _db ??= await _initDb();
-    return _db!;
+  Future<Database> get database {
+    final existing = _db;
+    if (existing != null) return Future<Database>.value(existing);
+    return _initInFlight ??= _runInitOnce();
+  }
+
+  Future<Database> _runInitOnce() async {
+    try {
+      final db = await _initDb();
+      _db = db;
+      return db;
+    } finally {
+      _initInFlight = null;
+    }
   }
 
   Future<void> useDatabasePath(String path) async {
@@ -153,6 +179,7 @@ class SqliteDatabase {
   Future<void> close() async {
     final db = _db;
     _db = null;
+    _initInFlight = null;
     if (db != null) {
       await db.close();
     }
@@ -180,12 +207,40 @@ class SqliteDatabase {
 
     await Directory(p.dirname(dbPath)).create(recursive: true);
 
-    return openDatabase(
+    _needsColdBootSeed = false;
+    final db = await openDatabase(
       dbPath,
       version: schemaVersion,
-      onCreate: _onCreate,
+      onCreate: _createFreshSchema,
       onUpgrade: _onUpgrade,
     );
+
+    // FU-coldboot-partial-seed: run the heavy demo seed POST-open, NOT
+    // inside `onCreate`. sqflite executes `onCreate` inside an implicit
+    // exclusive transaction; the demo seed invokes DAOs
+    // (`TargetCycleDao.upsertCycle`, `WeeklyPlanSnapshotDao`,
+    // `OpenShiftSnapshotDao`, `ReservationBookSnapshotDao`, …) that each
+    // open their own `Database.transaction()`. A `Database.transaction()`
+    // opened while a transaction is already in force on the same
+    // connection does not compose on Android native sqflite the way it
+    // does on `sqflite_common_ffi`: the inner transactions commit/roll
+    // back independently of the outer `onCreate` transaction, so when any
+    // later seed step failed the parent-table writes made directly on the
+    // `onCreate` handle were rolled back while the independently-committed
+    // nested-DAO writes and the final in-memory envelope step survived —
+    // a silently half-seeded DB with orphaned child rows and no crash.
+    // The reseed/advance path (`reseedMockReplayForBusinessDate`) has
+    // always run the SAME seeders with the DB already open (no implicit
+    // `onCreate` transaction), so every DAO transaction is a real,
+    // atomic, top-level transaction — which is why advance/reset worked
+    // on the device while a clean cold boot did not. Seeding post-open
+    // unifies cold boot with that proven path. HP #2: writer-side only —
+    // same tables, no `demo_*` table, no `kDemoMode` reader branch.
+    if (_needsColdBootSeed) {
+      _needsColdBootSeed = false;
+      await _seedColdBootDemo(db);
+    }
+    return db;
   }
 
   // ── Schema creation ─────────────────────────────────────────────────────
@@ -222,8 +277,49 @@ class SqliteDatabase {
         '${now.day.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _onCreate(Database db, int version) async {
+  /// True between a fresh-DB schema create and its post-open demo seed.
+  /// Set by [_createFreshSchema] (run inside sqflite's implicit
+  /// `onCreate` transaction) and consumed by [_initDb] AFTER
+  /// `openDatabase` returns, so [_seedColdBootDemo] never runs inside the
+  /// `onCreate` transaction. See [_initDb] for the full rationale.
+  bool _needsColdBootSeed = false;
+
+  /// Test seam: counts how many times the post-open cold-boot seed body
+  /// has run for the lifetime of the process. The regression suite uses
+  /// it to prove (a) a clean cold boot seeds exactly once even under
+  /// concurrent first-callers (single-flight) and (b) the seed runs
+  /// post-open, never from `onCreate`.
+  @visibleForTesting
+  static int debugColdBootSeedRunCount = 0;
+
+  /// `onCreate` for a fresh DB: schema ONLY — it MUST NOT seed.
+  ///
+  /// sqflite runs `onCreate` inside an implicit exclusive transaction.
+  /// The demo seed invokes DAOs that open their own
+  /// `Database.transaction()`; nesting a transaction inside the
+  /// `onCreate` transaction does not compose on Android native sqflite
+  /// (it did silently half-seed the demo DB — parent tables rolled back,
+  /// orphaned child rows surviving, no crash). Keeping `onCreate`
+  /// schema-only and deferring the seed to [_initDb]'s post-open step is
+  /// the fix. The empty-after-create invariant is locked by the
+  /// regression suite.
+  Future<void> _createFreshSchema(Database db, int version) async {
     await _createAllTables(db);
+    _needsColdBootSeed = true;
+  }
+
+  /// Post-open cold-boot demo seed. Invoked by [_initDb] AFTER
+  /// `openDatabase` has returned, so [db] is fully open and NOT inside a
+  /// transaction — every seed-DAO `Database.transaction()` is therefore a
+  /// real, atomic, top-level transaction, exactly as on the
+  /// device-proven `reseedMockReplayForBusinessDate` path.
+  ///
+  /// Fail-fast: nothing here catches. Any fatal seed error propagates out
+  /// of [_initDb] and the `database` getter (visible E/flutter; catchable
+  /// in tests) instead of leaving a half-populated demo DB masquerading
+  /// as a successful cold boot.
+  Future<void> _seedColdBootDemo(Database db) async {
+    debugColdBootSeedRunCount++;
     await _seedDemoRestaurant(db);
     // Demo-data — cold-boot wage authority. The reseed/advance path
     // seeds `wage_role_rows` (+ the Riverside location override) BEFORE
@@ -256,8 +352,10 @@ class SqliteDatabase {
     );
 
     // Persist the cold-boot mock replay business date. Direct insert:
-    // `setMockReplayBusinessDate` awaits `database`, which is re-entrant
-    // during `_onCreate` (the Database is not yet assigned).
+    // `setMockReplayBusinessDate` awaits `database`, which is still
+    // re-entrant during this post-open seed (it runs inside `_initDb`,
+    // before `_db`/`_initInFlight` resolve, so awaiting the getter here
+    // would await the in-flight init that is running this very seed).
     await db.insert('mock_replay_state', {
       'restaurant_id': DemoScope.restaurantId,
       'current_business_date': coldBootBusinessDate,
@@ -295,6 +393,13 @@ class SqliteDatabase {
     // existing Downtown in-force snapshot.
     await _seedOperationalEnvelopeFromReplay(db, replay);
   }
+
+  /// Test seam: runs `onCreate`'s schema-only step against [db] so the
+  /// regression suite can prove a freshly-created DB is EMPTY of demo
+  /// rows (the seed must not run inside `onCreate`).
+  @visibleForTesting
+  Future<void> debugCreateFreshSchemaOnly(Database db) =>
+      _createFreshSchema(db, schemaVersion);
 
   // ── Seed helpers ────────────────────────────────────────────────────────
 
