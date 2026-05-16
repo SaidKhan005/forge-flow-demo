@@ -219,8 +219,9 @@ void main() {
         ),
       );
 
-      // Single header cell, no separate Floor/Ceiling headers.
-      expect(find.text('OPZ RANGE'), findsOneWidget);
+      // One "OPZ Range" row per card (3 periods + Whole Day rollup =
+      // 4), no separate Floor/Ceiling rows.
+      expect(find.text('OPZ Range'), findsNWidgets(4));
       expect(find.text('OPZ FLOOR'), findsNothing);
       expect(find.text('OPZ CEILING'), findsNothing);
 
@@ -278,38 +279,37 @@ void main() {
       // A RenderFlex overflow surfaces as a captured FlutterError.
       expect(tester.takeException(), isNull);
 
-      // No horizontal scroll — one static table.
+      // No horizontal scroll — cards stack vertically.
       expect(horizontalScroll, findsNothing);
 
-      // All six columns + a sample per-period value still render, on
-      // screen (not offstage behind a scroll).
-      expect(find.text('DAYPART'), findsOneWidget);
-      expect(find.text('AVG COVERS'), findsOneWidget);
-      expect(find.text('TARGET CPLH'), findsOneWidget);
-      expect(find.text('TARGET SPLH'), findsOneWidget);
-      expect(find.text('TARGET PPA'), findsOneWidget);
-      expect(find.text('OPZ RANGE'), findsOneWidget);
+      // Card-per-daypart structure: 3 period cards + the Whole Day
+      // rollup = 4 cards, each carrying the four metric rows + a
+      // "covers" header label, all on screen (not offstage).
+      expect(find.text('Target CPLH'), findsNWidgets(4));
+      expect(find.text('Target SPLH'), findsNWidgets(4));
+      expect(find.text('Target PPA'), findsNWidgets(4));
+      expect(find.text('OPZ Range'), findsNWidgets(4));
+      expect(find.text('covers'), findsNWidgets(4));
       expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
       expect(find.text('2.90 – 3.40'), findsOneWidget); // lunch OPZ range
     });
 
     testWidgets(
-        'narrow phone width (360) is a simple non-scrolling table — '
+        'narrow phone width (360) is a simple non-scrolling card stack — '
         'no overflow, no horizontal scroll, no clipped data', (tester) async {
       await pumpAt(tester, 360);
 
       // No overflow exception at the 360px phone floor.
       expect(tester.takeException(), isNull);
 
-      // No horizontal scroll anywhere in the table subtree.
+      // No horizontal scroll anywhere in the card subtree.
       expect(horizontalScroll, findsNothing);
 
-      // Every column header + a sample value from each column is on
-      // screen (skipOffstage stays default: nothing is parked off-stage
-      // behind a scroll). No data is dropped or ellipsized.
-      expect(find.text('DAYPART'), findsOneWidget);
-      expect(find.text('AVG COVERS'), findsOneWidget);
-      expect(find.text('OPZ RANGE'), findsOneWidget);
+      // Every card's metric rows + a sample value from each are on
+      // screen at full size (skipOffstage stays default: nothing is
+      // parked off-stage behind a scroll). No data is shrunk to fit.
+      expect(find.text('Target CPLH'), findsNWidgets(4));
+      expect(find.text('OPZ Range'), findsNWidgets(4));
       expect(find.text('150'), findsOneWidget); // lunch AVG COVERS
       expect(find.text('3.11'), findsOneWidget); // lunch CPLH target
       expect(find.text('\$161'), findsOneWidget); // lunch SPLH target
@@ -591,7 +591,9 @@ void main() {
         findsNothing,
       );
 
-      expect(find.text('DAYPART'), findsOneWidget);
+      // Cards rendered: 3 period cards + Whole Day rollup, each with
+      // its OPZ Range row at full size.
+      expect(find.text('OPZ Range'), findsNWidgets(4));
       // The honest Gap 42 "whole-day est." marker survives the re-spaced
       // narrow layout. With _dinnerOnlyProfile + mixed rows: lunch is
       // empty (dashed, no marker), dinner has its own child row (no

@@ -5,12 +5,19 @@ import '../domain/services/service_period_definition_resolver.dart';
 import '../theme/app_theme.dart';
 import '../services/baseline_authority_service.dart';
 
-/// Per-Daypart Targets V1 / Slice 2 — Daypart Breakdown table.
+/// Per-Daypart Targets V1 / Slice 2 — Daypart Breakdown.
 ///
-/// Columns: DAYPART · AVG COVERS · TARGET CPLH · TARGET SPLH ·
-/// TARGET PPA · OPZ RANGE. A Whole Day rollup row at the bottom shows
-/// the cover-weighted pool (the same fields the CPLH Range & Target
-/// widget at the top of the tab reads — 1:1 by construction).
+/// Operator finding 2026-05-16 (binding): the prior six-column row
+/// table was still too condensed/unreadable on a phone even after the
+/// no-horizontal-scroll cleanup — values were `FittedBox`-shrunk to
+/// fit. This is the operator-chosen redesign: **one card per daypart**,
+/// stacked vertically. Each card carries the period name + avg covers
+/// in its header, then the four targets (CPLH · SPLH · PPA · OPZ Range)
+/// as full-size label/value rows — nothing shrinks, no horizontal
+/// scroll, every value at its natural size. A tinted Whole Day card at
+/// the bottom shows the cover-weighted pool (the same fields the CPLH
+/// Range & Target widget at the top of the tab reads — 1:1 by
+/// construction).
 ///
 /// Reader contract (Design Rules, per
 /// `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`):
@@ -112,246 +119,210 @@ class DaypartTable extends StatelessWidget {
   static String _opzRange(double floor, double ceiling) =>
       '${floor.toStringAsFixed(2)} – ${ceiling.toStringAsFixed(2)}';
 
+  // Card-row metric labels. Mixed-case (card grammar, not the old
+  // uppercase column-header grammar) and read once per card.
+  static const String _labelCPLH = 'Target CPLH';
+  static const String _labelSPLH = 'Target SPLH';
+  static const String _labelPPA = 'Target PPA';
+  static const String _labelOPZ = 'OPZ Range';
+
   @override
   Widget build(BuildContext context) {
     final p = profile;
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.surface, AppColors.cardGlow],
+    final cards = <Widget>[];
+
+    // One card per daypart.
+    for (final stat in dayparts) {
+      final targets = _targetCellsFor(stat);
+      final hasData = _hasData(stat);
+      cards.add(
+        _DaypartCard(
+          title: _labelFor(stat),
+          // Empty period → honest dash, never a phantom `0`.
+          covers: hasData ? stat.avgCovers.toString() : _missing,
+          // Gap 42 pooled stand-in marker — unchanged string + style.
+          subLabel: _isPoolFallback(stat) ? _poolFallbackTag : null,
+          metrics: [
+            (_labelCPLH, targets[0]),
+            (_labelSPLH, targets[1]),
+            (_labelPPA, targets[2]),
+            (_labelOPZ, targets[3]),
+          ],
+          isRollup: false,
         ),
-        border: Border.all(color: AppColors.rule, width: 1),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // One static table that always fits the available width — never
-          // a horizontally-scrolling table (operator finding 2026-05-16:
-          // a phone must show a simple table that just fits, comfortably
-          // spaced). Spacing breathes out on wide layouts and tightens
-          // (but stays readable) toward the 360px phone floor. The
-          // numeric/header cells are fit with `BoxFit.scaleDown`, so at
-          // the very narrowest widths a value shrinks a hair rather than
-          // clipping or ellipsizing — and stays full, uniform size at any
-          // comfortable width. The OPZ range wraps to two lines instead of
-          // shrinking, so the widest value never forces the rest tiny.
-          final w = constraints.maxWidth;
-          final compact = w < 480;
-          final hPad = compact ? 12.0 : 24.0;
-          final vPad = compact ? 16.0 : 20.0;
-          final gap = (w / 45).clamp(10.0, 26.0);
+      );
+    }
 
-          Widget rule() => Container(height: 1, color: AppColors.rule);
-
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Header row
-              _TableRow(
-                cells: const [
-                  'DAYPART',
-                  'AVG COVERS',
-                  'TARGET CPLH',
-                  'TARGET SPLH',
-                  'TARGET PPA',
-                  'OPZ RANGE',
-                ],
-                isHeader: true,
-                hPad: hPad,
-                vPad: vPad,
-                gap: gap,
-              ),
-              rule(),
-              // Per-period data rows
-              ...dayparts.map((stat) {
-                final targets = _targetCellsFor(stat);
-                final hasData = _hasData(stat);
-                return Column(
-                  children: [
-                    _TableRow(
-                      cells: [
-                        _labelFor(stat),
-                        // Empty period → honest dash, never a phantom `0`.
-                        hasData ? stat.avgCovers.toString() : _missing,
-                        targets[0],
-                        targets[1],
-                        targets[2],
-                        targets[3],
-                      ],
-                      isHeader: false,
-                      subLabel:
-                          _isPoolFallback(stat) ? _poolFallbackTag : null,
-                      hPad: hPad,
-                      vPad: vPad,
-                      gap: gap,
-                    ),
-                    rule(),
-                  ],
-                );
-              }),
-              // Whole Day rollup row — cover-weighted pool. Same fields the
-              // CPLH Range & Target widget at the top of the tab reads, so
-              // the rollup row equals that widget's CPLH by construction.
-              _TableRow(
-                cells: [
-                  'Whole Day',
-                  dayparts
-                      .fold<int>(0, (s, r) => s + r.avgCovers)
-                      .toString(),
-                  p == null ? _missing : p.targetCPLH.toStringAsFixed(2),
-                  p == null
-                      ? _missing
-                      : '\$${p.targetSPLH.toStringAsFixed(0)}',
-                  p == null
-                      ? _missing
-                      : '\$${p.targetPPA.toStringAsFixed(2)}',
-                  p == null
-                      ? _missing
-                      : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH),
-                ],
-                isHeader: false,
-                isRollup: true,
-                hPad: hPad,
-                vPad: vPad,
-                gap: gap,
-              ),
-            ],
-          );
-        },
+    // Whole Day rollup card — cover-weighted pool. Same fields the CPLH
+    // Range & Target widget at the top of the tab reads, so this card's
+    // CPLH equals that widget's by construction.
+    cards.add(
+      _DaypartCard(
+        title: 'Whole Day',
+        covers: dayparts.fold<int>(0, (s, r) => s + r.avgCovers).toString(),
+        subLabel: null,
+        metrics: [
+          (_labelCPLH,
+              p == null ? _missing : p.targetCPLH.toStringAsFixed(2)),
+          (_labelSPLH,
+              p == null ? _missing : '\$${p.targetSPLH.toStringAsFixed(0)}'),
+          (_labelPPA,
+              p == null ? _missing : '\$${p.targetPPA.toStringAsFixed(2)}'),
+          (_labelOPZ,
+              p == null
+                  ? _missing
+                  : _opzRange(p.opzFloorCPLH, p.opzCeilingCPLH)),
+        ],
+        isRollup: true,
       ),
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: cards,
     );
   }
 }
 
-class _TableRow extends StatelessWidget {
-  final List<String> cells;
-  final bool isHeader;
-  final bool isRollup;
+/// One daypart's card: a header band (period name + avg covers, plus the
+/// optional Gap 42 "whole-day est." marker) over a hairline rule, then
+/// the four targets as full-size label/value rows. Nothing is shrunk to
+/// fit — the card is the full content width, so every value renders at
+/// its natural size with no horizontal scroll (operator finding
+/// 2026-05-16). The rollup card uses a flat tinted surface so it reads
+/// as the deliberate summary of the cards above it.
+class _DaypartCard extends StatelessWidget {
+  final String title;
+  final String covers;
 
-  /// Optional muted annotation rendered under the label (first) cell.
-  /// Used for the Gap 42 "whole-day est." pooled-stand-in marker so a
+  /// Gap 42 pooled-stand-in marker, rendered muted under the title so a
   /// pooled target is visually distinct from a true per-period one
-  /// (Design Rule 1). Null on every other row.
+  /// (Design Rule 1). Null on every card that is not a pooled stand-in.
   final String? subLabel;
 
-  /// Responsive spacing handed down from the [DaypartTable] LayoutBuilder
-  /// so the same row reads comfortably on a wide layout and still fits a
-  /// 360px phone without a horizontal scroll.
-  final double hPad;
-  final double vPad;
-  final double gap;
+  /// (label, value) pairs in display order: CPLH, SPLH, PPA, OPZ Range.
+  final List<(String, String)> metrics;
 
-  const _TableRow({
-    required this.cells,
-    required this.isHeader,
-    required this.hPad,
-    required this.vPad,
-    required this.gap,
-    this.isRollup = false,
-    this.subLabel,
+  final bool isRollup;
+
+  const _DaypartCard({
+    required this.title,
+    required this.covers,
+    required this.subLabel,
+    required this.metrics,
+    required this.isRollup,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: isRollup ? AppColors.cardGlow : null,
-      padding: EdgeInsets.symmetric(horizontal: hPad, vertical: vPad),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        // Period cards keep the surface→glow gradient; the rollup is a
+        // flat glow fill so it reads as the summary, not another period.
+        gradient: isRollup
+            ? null
+            : const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppColors.surface, AppColors.cardGlow],
+              ),
+        color: isRollup ? AppColors.cardGlow : null,
+        border: Border.all(color: AppColors.rule, width: 1),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var i = 0; i < cells.length; i++) ...[
-            // Gap between columns so values do not crowd the next
-            // header/value (the operator's "cramped" finding); it widens
-            // on roomier layouts and tightens on a phone.
-            if (i != 0) SizedBox(width: gap),
-            Expanded(
-              // The label column and the OPZ-range column (last) get
-              // extra room — the label so long period names + the
-              // subordinate marker stay legible, OPZ so its wider
-              // "floor – ceiling" string can wrap to two clean lines
-              // instead of squeezing every other column. The remaining
-              // numeric columns share the rest evenly so each value sits
-              // directly under its header.
-              flex: (i == 0 || i == cells.length - 1) ? 5 : 4,
-              child: _cell(i),
+          // Header band — period name (left) + avg covers (right).
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.body14(
+                        color: AppColors.primaryText,
+                        style: FontStyle.normal,
+                      ),
+                    ),
+                    if (subLabel != null) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        subLabel!,
+                        style:
+                            AppTextStyles.mono8(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              // Covers reads as one line ("91 covers") — the count at
+              // full mono size with a quiet trailing unit, baseline-
+              // aligned so the small unit sits on the number's baseline.
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    covers,
+                    style:
+                        AppTextStyles.mono14(color: AppColors.primaryText),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'covers',
+                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(height: 1, color: AppColors.rule),
+          const SizedBox(height: 12),
+          // Four target rows — label left (muted), value right, full
+          // size. The OPZ value is the widest token; it may wrap to two
+          // lines rather than shrink, so no value is ever clipped.
+          for (var i = 0; i < metrics.length; i++) ...[
+            if (i != 0) const SizedBox(height: 10),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    metrics[i].$1,
+                    style:
+                        AppTextStyles.mono10(color: AppColors.textMuted),
+                  ),
+                ),
+                const SizedBox(width: 28),
+                Flexible(
+                  child: Text(
+                    metrics[i].$2,
+                    style: AppTextStyles.mono14(
+                      color: AppColors.primaryText,
+                    ),
+                    textAlign: TextAlign.right,
+                    softWrap: true,
+                    maxLines: 2,
+                  ),
+                ),
+              ],
             ),
           ],
         ],
       ),
     );
   }
-
-  Widget _cell(int i) {
-    final isLabel = i == 0;
-    final isRange = i == cells.length - 1; // OPZ range / "OPZ RANGE"
-
-    // Label column on a data row: plain wrapping text so a long period
-    // name and the subordinate "whole-day est." marker stay fully
-    // legible — never shrunk, never clipped or ellipsized.
-    if (isLabel && !isHeader) {
-      final label = Text(
-        cells[i],
-        style: _styleFor(i),
-        textAlign: TextAlign.left,
-      );
-      if (subLabel == null) return label;
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          label,
-          const SizedBox(height: 3),
-          Text(
-            subLabel!,
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
-            textAlign: TextAlign.left,
-          ),
-        ],
-      );
-    }
-
-    // OPZ range cell (and its header): the widest token in the table.
-    // Let it wrap to two lines at full size rather than shrink, so it
-    // never forces every other column tiny. Still never clipped: a soft
-    // wrap, no ellipsis.
-    if (isRange) {
-      return Text(
-        cells[i],
-        style: _styleFor(i),
-        textAlign: TextAlign.right,
-        softWrap: true,
-        maxLines: 2,
-      );
-    }
-
-    // Every other cell (the DAYPART header + the single-token numeric
-    // values + their headers): a one-line atom fit with scaleDown, so at
-    // the 360px floor it shrinks a hair instead of clipping/ellipsizing,
-    // and stays full, uniform size at any comfortable width.
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: isLabel ? Alignment.centerLeft : Alignment.centerRight,
-      child: Text(
-        cells[i],
-        style: _styleFor(i),
-        maxLines: 1,
-        softWrap: false,
-        textAlign: isLabel ? TextAlign.left : TextAlign.right,
-      ),
-    );
-  }
-
-  TextStyle _styleFor(int i) => isHeader
-      ? AppTextStyles.mono7()
-      : (i == 0
-          ? AppTextStyles.body11(
-              color: AppColors.primaryText,
-              style: FontStyle.normal,
-            )
-          : AppTextStyles.mono10(color: AppColors.primaryText));
 }
