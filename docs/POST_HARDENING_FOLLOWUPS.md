@@ -312,12 +312,42 @@ orphans with no active slice:
   `claude/gap-b2-wage-role-rows-hierarchy-scope` if appetite returns).
   Multi-location operators continue to set wages per location. This is
   now a deliberate choice, not a gap — same posture as B4/B5. The
-  existing in-UI `HierarchyScopeNotice` "region/brand wage floors are
-  coming in a later wave" copy (PR #659,
-  `lib/operator_web/screens/wage_authority_screen.dart`) is the honest
-  operator-facing disclosure and is accurate. Do NOT re-flag in
+  in-UI `HierarchyScopeNotice` `backendOnlyExplainer` on
+  `lib/operator_web/screens/wage_authority_screen.dart` was corrected
+  2026-05-16 (this branch): the prior "region/brand wage floors are
+  coming in a later wave" wording (PR #659) promised future delivery,
+  which now misrepresents a decided won't-do. The corrected copy
+  states wage rows are set per location **by design** with no
+  region/brand floor to inherit — no future-delivery promise. That
+  corrected copy is the honest operator-facing disclosure. Do NOT
+  re-flag in hierarchy/parity audits. Reopening requires explicit
+  operator approval (schema + RLS-touching).
+
+- **B1 — Forecast / weekly-plan / data-accuracy settings are
+  location-scoped only; hierarchy/inherited values deliberately NOT
+  done (accepted, document only).** Operator decision 2026-05-16: the
+  four settings tables `weekly_plan_snapshots`, `forecast_contexts`,
+  `data_accuracy_settings`, and `data_accuracy_service_period_settings`
+  will NOT gain business/region/brand inheritance. Same posture as B2
+  (wage): there is no small-footprint version — these are
+  per-(operator, location) fact tables with no scope columns, so any
+  fix inherently requires a schema migration + an RLS-policy rewrite
+  (the same operator+location → operator-only shape B2 would need).
+  Multi-location operators configure forecasts, locked plans, and
+  data-accuracy settings per location by design — a forecast is built
+  from a single restaurant's own history and traffic, so it is
+  store-specific and there is nothing meaningful to inherit from a
+  region or brand. This is a deliberate choice, not a gap — same
+  posture as B2/B4/B5. The in-UI `HierarchyScopeNotice`
+  `backendOnlyExplainer` copy on
+  `lib/operator_web/screens/schedule_screen.dart` (and the embedded
+  wage section on `data_accuracy_screen.dart`, which reuses
+  `wage_authority_screen.dart`'s notice) was corrected 2026-05-16
+  (this branch) to state "set per location by design" with no
+  future-delivery promise — see the B2 bullet above for the wage
+  surface and the matching schedule-surface fix. Do NOT re-flag in
   hierarchy/parity audits. Reopening requires explicit operator
-  approval (schema + RLS-touching).
+  approval (schema + RLS-touching, same gate as B2).
 
 ## Code Health Residuals (post-Wave 5, 2026-05-08)
 
