@@ -1178,39 +1178,85 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             );
         break;
       case kOperatorWebNavVendorConnections:
-        body = locationScope == null
-            ? _RequiresLocationScopeSurface(
-                key: const Key(
-                  'operator_web_vendor_connections_requires_location',
-                ),
-                icon: Icons.cable_outlined,
-                title: 'Choose a location',
-                body:
-                    'Vendor integrations are set up per location. Use '
-                    'Managing to pick the location whose integrations you '
-                    'want to manage.',
-                selectedScopeLabel: managementScope.label,
-              )
-            : VendorConnectionsScreen(
-                session: session,
-                locationId: locationScope.id,
-                locationName: locationScope.label,
-                gateway: _vendorConnectionsGateway,
-              );
+        // OW-G70 — extend the #857 G62 fail-loud guard to Vendor
+        // connections. The production `FirebaseOperatorWebAuthSource`
+        // genuinely mixes `OperatorWebVendorConnectionsGatewayProvider`
+        // (firebase_operator_web_auth_source.dart:34), so a *live*
+        // source missing it is a wiring regression — fail loud rather
+        // than silently serving the seeded demo fallback
+        // (`_vendorConnectionsResolver.demoFallback()`, ~:1425-1427).
+        // We gate on the genuinely-live provider, NOT on the sanctioned
+        // demo fallback — this is the inverse of the #857 audit-log
+        // blocker (where the gate erroneously required a deferred
+        // in-memory-fallback provider). The demo source short-circuits
+        // via `_isDemoAuthSource` inside `_liveSurfaceMissingGateway`,
+        // so the seeded fixture path is byte-unchanged for demo.
+        final vendorConnectionsWiringError = _liveSurfaceMissingGateway(
+          hasLiveProvider:
+              widget.source is OperatorWebVendorConnectionsGatewayProvider,
+          surfaceTitle: 'Vendor connections',
+        );
+        if (vendorConnectionsWiringError != null) {
+          body = vendorConnectionsWiringError;
+        } else if (locationScope == null) {
+          body = _RequiresLocationScopeSurface(
+            key: const Key(
+              'operator_web_vendor_connections_requires_location',
+            ),
+            icon: Icons.cable_outlined,
+            title: 'Choose a location',
+            body:
+                'Vendor integrations are set up per location. Use '
+                'Managing to pick the location whose integrations you '
+                'want to manage.',
+            selectedScopeLabel: managementScope.label,
+          );
+        } else {
+          body = VendorConnectionsScreen(
+            session: session,
+            locationId: locationScope.id,
+            locationName: locationScope.label,
+            gateway: _vendorConnectionsGateway,
+          );
+        }
         break;
       case kOperatorWebNavDataAccuracy:
-        body = locationScope == null
-            ? _RequiresLocationScopeSurface(
-                key: const Key('operator_web_data_accuracy_requires_location'),
-                icon: Icons.tune_outlined,
-                title: 'Choose a location',
-                body:
-                    'Data accuracy rules are saved per location. Use '
-                    'Managing to pick the location whose numbers you want '
-                    'to configure.',
-                selectedScopeLabel: managementScope.label,
-              )
-            : DataAccuracyScreen(
+        // OW-G70 — extend the #857 G62 fail-loud guard to Data
+        // accuracy. The production `FirebaseOperatorWebAuthSource`
+        // genuinely mixes BOTH `OperatorWebDataAccuracyGatewayProvider`
+        // (firebase_operator_web_auth_source.dart:39) and
+        // `OperatorWebVendorApplicabilityGatewayProvider` (:40), and
+        // the screen reads both gateways, so a *live* source missing
+        // either is a wiring regression — fail loud instead of silently
+        // serving in-memory fixtures. The embedded Wage Authority
+        // section is deliberately EXCLUDED from this gate: it has a
+        // router-owned `OperatorWebDemoWageAuthorityGateway` sanctioned
+        // fallback (~:1567-1576), so gating on it would repeat the #857
+        // audit-log blocker (false-positive on a sanctioned fallback);
+        // the standalone Wage authority case below carries its own
+        // honest guard on the genuinely-live wage provider. Demo source
+        // short-circuits via `_isDemoAuthSource`.
+        final dataAccuracyWiringError = _liveSurfaceMissingGateway(
+          hasLiveProvider:
+              widget.source is OperatorWebDataAccuracyGatewayProvider &&
+              widget.source is OperatorWebVendorApplicabilityGatewayProvider,
+          surfaceTitle: 'Data accuracy',
+        );
+        if (dataAccuracyWiringError != null) {
+          body = dataAccuracyWiringError;
+        } else if (locationScope == null) {
+          body = _RequiresLocationScopeSurface(
+            key: const Key('operator_web_data_accuracy_requires_location'),
+            icon: Icons.tune_outlined,
+            title: 'Choose a location',
+            body:
+                'Data accuracy rules are saved per location. Use '
+                'Managing to pick the location whose numbers you want '
+                'to configure.',
+            selectedScopeLabel: managementScope.label,
+          );
+        } else {
+          body = DataAccuracyScreen(
                 session: session,
                 locationId: locationScope.id,
                 locationName: locationScope.label,
@@ -1227,27 +1273,49 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                     (_routerOwnedDemoWageAuthorityGateway ??=
                         OperatorWebDemoWageAuthorityGateway()),
               );
+        }
         break;
       case kOperatorWebNavWageAuthority:
-        body = locationScope == null
-            ? _RequiresLocationScopeSurface(
-                key: const Key('operator_web_wage_authority_requires_location'),
-                icon: Icons.payments_outlined,
-                title: 'Choose a location',
-                body:
-                    'Wage rows are saved per location. Use Managing to pick the '
-                    'location whose wage mix you want to manage.',
-                selectedScopeLabel: managementScope.label,
-              )
-            : WageAuthorityScreen(
-                session: session,
-                locationId: locationScope.id,
-                locationName: locationScope.label,
-                gateway:
-                    _wageAuthorityGateway ??
-                    (_routerOwnedDemoWageAuthorityGateway ??=
-                        OperatorWebDemoWageAuthorityGateway()),
-              );
+        // OW-G70 — extend the #857 G62 fail-loud guard to Wage
+        // authority. The production `FirebaseOperatorWebAuthSource`
+        // genuinely mixes `OperatorWebWageAuthorityGatewayProvider`
+        // (firebase_operator_web_auth_source.dart:50) — the
+        // `_wageAuthorityGateway` getter returns the live proxy
+        // gateway iff that mixin is present (~:1567-1574). A *live*
+        // source missing it would silently fall back to
+        // `OperatorWebDemoWageAuthorityGateway()` (in-memory fixtures);
+        // that is a wiring regression on the genuinely-live provider,
+        // so fail loud. Demo source short-circuits via
+        // `_isDemoAuthSource` (the fixture fallback stays intact for
+        // demo — byte-unchanged).
+        final wageAuthorityWiringError = _liveSurfaceMissingGateway(
+          hasLiveProvider:
+              widget.source is OperatorWebWageAuthorityGatewayProvider,
+          surfaceTitle: 'Wage authority',
+        );
+        if (wageAuthorityWiringError != null) {
+          body = wageAuthorityWiringError;
+        } else if (locationScope == null) {
+          body = _RequiresLocationScopeSurface(
+            key: const Key('operator_web_wage_authority_requires_location'),
+            icon: Icons.payments_outlined,
+            title: 'Choose a location',
+            body:
+                'Wage rows are saved per location. Use Managing to pick the '
+                'location whose wage mix you want to manage.',
+            selectedScopeLabel: managementScope.label,
+          );
+        } else {
+          body = WageAuthorityScreen(
+            session: session,
+            locationId: locationScope.id,
+            locationName: locationScope.label,
+            gateway:
+                _wageAuthorityGateway ??
+                (_routerOwnedDemoWageAuthorityGateway ??=
+                    OperatorWebDemoWageAuthorityGateway()),
+          );
+        }
         break;
       case kOperatorWebNavNotifications:
         body =
@@ -1262,32 +1330,52 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             );
         break;
       case kOperatorWebNavSchedule:
-        body = locationScope == null
-            ? _RequiresLocationScopeSurface(
-                key: const Key('operator_web_schedule_requires_location'),
-                icon: Icons.calendar_today_outlined,
-                title: 'Choose a location',
-                body:
-                    'Forge & Flow locks one weekly plan per location. Use '
-                    'Managing to pick the location whose schedule you want '
-                    'to see.',
-                selectedScopeLabel: managementScope.label,
-              )
-            : ScheduleScreen(
-                session: session,
-                locationId: locationScope.id,
-                locationName: locationScope.label,
-                gateway:
-                    _scheduleGateway ??
-                    (_routerOwnedDemoScheduleGateway ??=
-                        OperatorWebDemoScheduleGateway(
-                          seed: demoScheduleSnapshotFor(
-                            operatorId: session.operatorId,
-                            locationId: locationScope.id,
-                            restaurantId: locationScope.id,
-                          ),
-                        )),
-              );
+        // OW-G70 — extend the #857 G62 fail-loud guard to Schedule.
+        // The production `FirebaseOperatorWebAuthSource` genuinely
+        // mixes `OperatorWebScheduleGatewayProvider`
+        // (firebase_operator_web_auth_source.dart:51) — the
+        // `_scheduleGateway` getter returns the live proxy gateway iff
+        // that mixin is present (~:1582-1588). A *live* source missing
+        // it would silently fall back to the seeded
+        // `OperatorWebDemoScheduleGateway`; that is a wiring regression
+        // on the genuinely-live provider, so fail loud. Demo source
+        // short-circuits via `_isDemoAuthSource` (the seeded demo
+        // schedule fixtures stay intact for demo — byte-unchanged).
+        final scheduleWiringError = _liveSurfaceMissingGateway(
+          hasLiveProvider:
+              widget.source is OperatorWebScheduleGatewayProvider,
+          surfaceTitle: 'Schedule',
+        );
+        if (scheduleWiringError != null) {
+          body = scheduleWiringError;
+        } else if (locationScope == null) {
+          body = _RequiresLocationScopeSurface(
+            key: const Key('operator_web_schedule_requires_location'),
+            icon: Icons.calendar_today_outlined,
+            title: 'Choose a location',
+            body:
+                'Forge & Flow locks one weekly plan per location. Use '
+                'Managing to pick the location whose schedule you want '
+                'to see.',
+            selectedScopeLabel: managementScope.label,
+          );
+        } else {
+          body = ScheduleScreen(
+            session: session,
+            locationId: locationScope.id,
+            locationName: locationScope.label,
+            gateway:
+                _scheduleGateway ??
+                (_routerOwnedDemoScheduleGateway ??=
+                    OperatorWebDemoScheduleGateway(
+                      seed: demoScheduleSnapshotFor(
+                        operatorId: session.operatorId,
+                        locationId: locationScope.id,
+                        restaurantId: locationScope.id,
+                      ),
+                    )),
+          );
+        }
         break;
       default:
         body = AccountScreen(
