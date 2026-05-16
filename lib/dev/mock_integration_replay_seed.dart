@@ -361,6 +361,108 @@ class MockIntegrationReplaySeed {
     ('covers', -1), // 15 Sun dinner    → covers_down (only covers_down slot)
   ];
 
+  // ── Per-WEEK dominant driver layer (Variance/History honesty fix) ──────
+  // Demo-data follow-up (Variance → History): the per-(day,period)
+  // [_slotDriverIntent] above gives each *shift* a genuine one-axis
+  // driver, but summed across the 16 shifts in a week those per-slot
+  // tilts dilute to <~1% week-level deviation on every axis, so the
+  // week aggregate never crosses any `determineLever` threshold and
+  // every historical week falls to the empty-candidate `covers_down`
+  // fallback. The Variance → History tab therefore showed the SAME
+  // washed-out driver for all 12 weeks.
+  //
+  // Fix: add a small, uniform, week-wide tilt on ONE assigned axis per
+  // historical week, applied to EVERY closed shift of that week, so the
+  // WEEK AGGREGATE genuinely crosses that axis's threshold and that
+  // axis is the dominant week-level deviation — while the tilt stays
+  // strictly smaller than every per-shift owned-axis magnitude
+  // ([_intentBaseMag]) so each shift's own per-slot driver still wins
+  // per shift (per-shift pedagogy / `demo_slice_b_driver_variance_test`
+  // preserved unchanged).
+  //
+  // This layer is ADDITIVE to [_slotDriverIntent], NOT a replacement:
+  // per-shift levers remain engine-derived against the per-period
+  // target; the week tilt only nudges the WEEK AGGREGATE. Honesty is
+  // structural — the tilt is applied to the STORED shift inputs and the
+  // week `primaryLeverId` is re-derived by `_deriveWeekRecord` via
+  // `LaborModel.determineLever` on the real aggregate (no hardcoded
+  // lever; the round-trip test proves the engine reproduces it).
+  //
+  // [_weekDriverIntent] — length [historicalWeekCount] (12), indexed by
+  // historical week index (0 = OLDEST … 11 = NEWEST; the newest weeks
+  // render at the TOP of the History tab). Each entry `(axis, sign)`;
+  // sign +1 = the up/over lever, -1 = the down/under lever. The 12
+  // rate/volume lever families (covers±, ppa±, cplh±, splh±, fohWage±,
+  // bohWage±) are each used EXACTLY ONCE so the History tab demonstrates
+  // the full badge set. fohHours/bohHours are deliberately EXCLUDED: an
+  // hours-flex week tilt large enough to clear its 10% threshold would
+  // exceed the 0.07 per-shift wage magnitude and flip per-shift wage
+  // levers — hours-flex stays a shift-level-only driver (still visible
+  // on the Shift screen via [_slotDriverIntent] indices 1 & 12).
+  //
+  // Index → lever mapping (oldest → newest). The newest 6 (indices
+  // 6–11, shown top-of-History) are intentionally spread so no two
+  // adjacent top rows share a lever family:
+  //   0  2025-W53  (covers,-1)  covers_down
+  //   1  2026-W02  (cplh,  +1)  cplh_up
+  //   2  2026-W03  (ppa,   -1)  ppa_down
+  //   3  2026-W04  (splh,  +1)  splh_up
+  //   4  2026-W05  (bohWage,-1) boh_wage_down
+  //   5  2026-W06  (fohWage,+1) foh_wage_up
+  //   6  2026-W07  (ppa,   +1)  ppa_up
+  //   7  2026-W08  (covers,+1)  covers_up
+  //   8  2026-W09  (splh,  -1)  splh_down
+  //   9  2026-W10  (fohWage,-1) foh_wage_down
+  //   10 2026-W11  (cplh,  -1)  cplh_down
+  //   11 2026-W12  (bohWage,+1) boh_wage_up
+  static const List<(String, int)> _weekDriverIntent = [
+    ('covers', -1), //  0 oldest  → covers_down
+    ('cplh', 1), //  1            → cplh_up
+    ('ppa', -1), //  2            → ppa_down
+    ('splh', 1), //  3            → splh_up
+    ('bohWage', -1), //  4        → boh_wage_down
+    ('fohWage', 1), //  5         → foh_wage_up
+    ('ppa', 1), //  6             → ppa_up
+    ('covers', 1), //  7          → covers_up
+    ('splh', -1), //  8           → splh_down
+    ('fohWage', -1), //  9        → foh_wage_down
+    ('cplh', -1), // 10           → cplh_down
+    ('bohWage', 1), // 11 newest  → boh_wage_up
+  ];
+
+  // Absolute week-wide tilt fraction per axis. Each MUST (a) clear the
+  // axis's week threshold with a safe margin AFTER realistic week
+  // aggregation against the POOLED targets (_targetCPLH 4.58 / _targetSPLH
+  // 180 / _targetPPA 41.50 / _fohWage 16.50 / _bohWage 21.35 — note the
+  // per-period bases differ from these, so a slot tilt does not map 1:1
+  // to the week deviation; these were TUNED empirically against the
+  // aggregate so every week's `determineLever` returns the assigned
+  // lever), and (b) stay strictly LESS than the smallest per-shift owned
+  // magnitude that could be flipped — every value here is ≤ 0.055, well
+  // below the wage owned mag 0.07 (the smallest in [_intentBaseMag]),
+  // ppa 0.085, covers 0.10, cplh/splh 0.12 — so the per-slot owned axis
+  // still dominates per shift and per-shift levers are preserved.
+  //
+  // Tuning record: cplh/splh per-period bases (4.40/4.80/3.90 and
+  // 165/200/150) differ from the pooled targets (4.58 / 180) and
+  // integer-hour rounding in `modelFohHours`/`modelBohHoursFromSales`
+  // dilutes the rate tilt at the week aggregate (~0.89×), so cplh/splh
+  // need a slightly larger tilt than the rate-threshold suggests to
+  // clear 5% with safe margin at the aggregate. 0.058/0.062 were the
+  // smallest values that made every week's `determineLever` return the
+  // assigned lever while still leaving every per-shift owned axis
+  // (min 0.07) strictly dominant — `demo_slice_b_driver_variance_test`
+  // passes unchanged (8 families, covers_down share ≈ 0.083, Fri
+  // dinner ppa_down, Tue lunch ppa_up all preserved).
+  static const Map<String, double> _weekDriverMag = {
+    'covers': 0.040, // week thr 2%
+    'ppa': 0.045, // week thr 3%
+    'cplh': 0.058, // week thr 5%
+    'splh': 0.062, // week thr 5%
+    'fohWage': 0.045, // week thr 3%
+    'bohWage': 0.045, // week thr 3%
+  };
+
   // Base intent magnitude per axis — sized to clear each axis's
   // `determineLever` threshold (covers 2%, ppa/wage 3%, cplh/splh 5%,
   // hours-flex 10%) with margin even at the most negative week
@@ -737,13 +839,49 @@ class MockIntegrationReplaySeed {
     final m = breathed > 0 ? breathed : _intentBaseMag[axis]!;
     final dev = 1 + intentSign * m;
 
+    // ── Per-week dominant driver tilt (Variance → History honesty) ──────
+    // Resolve this week's assigned (axis, sign) and the uniform tilt
+    // factor applied to EVERY closed shift of the week. Only historical
+    // closed weeks (`weekIndex < historicalWeekCount`) get a tilt; the
+    // current week (`weekIndex == historicalWeekCount`) and any
+    // projected/open shifts get NONE — History is historical weeks only.
+    // The factor multiplies the SAME quantity the per-slot intent
+    // mutates for that axis (actual covers / ppa / cplh-rate /
+    // splh-rate / wage), so all downstream derived values stay
+    // internally consistent and the week aggregate genuinely crosses
+    // the assigned axis's `determineLever` threshold. By constraint the
+    // tilt magnitude is strictly below every per-shift owned magnitude,
+    // so a slot whose own axis equals the week axis with the opposite
+    // sign still keeps its per-shift lever (the per-shift owned tilt
+    // dominates); a same-axis/same-sign slot simply adds (still that
+    // lever, stronger). See [_weekDriverIntent] / [_weekDriverMag].
+    double weekFactor(String forAxis) {
+      if (weekIndex >= historicalWeekCount) return 1.0;
+      final wIntent = _weekDriverIntent[weekIndex];
+      if (wIntent.$1 != forAxis) return 1.0;
+      return 1 + wIntent.$2 * _weekDriverMag[forAxis]!;
+    }
+
     // Every non-owned axis is held EXACTLY on the period target, so it
-    // contributes zero deviation and the owned axis is the sole — and
-    // therefore winning — `determineLever` candidate.
+    // contributes zero per-shift deviation and the owned axis is the
+    // sole — and therefore winning — per-shift `determineLever`
+    // candidate. The per-WEEK tilt rides on top of the assigned axis
+    // uniformly across the week so only the WEEK AGGREGATE crosses the
+    // assigned axis's threshold (the round-trip + demo_slice_b tests
+    // pin both invariants).
+    //
+    // Covers note: the per-slot covers intent normally tilts BOTH
+    // forecast and actual (lever-NEUTRAL volume) so the covers lever
+    // reflects only the per-cell intent. The WEEK covers driver MUST
+    // break that neutrality for the assigned week, so the week factor
+    // is applied to ACTUAL covers only (not forecast), making the
+    // week's covers-vs-forecast deviation real.
+    final wCovers = weekFactor('covers');
     final covers = axis == 'covers'
-        ? (baseCoversF * dev).round().clamp(10, 9999)
-        : forecastCovers;
-    final effPPA = axis == 'ppa' ? basePPA * dev : basePPA;
+        ? (baseCoversF * dev * wCovers).round().clamp(10, 9999)
+        : (baseCoversF * wCovers).round().clamp(10, 9999);
+    final effPPA =
+        (axis == 'ppa' ? basePPA * dev : basePPA) * weekFactor('ppa');
     final ppa = double.parse(effPPA.toStringAsFixed(2));
     final sales = covers * ppa;
 
@@ -751,13 +889,19 @@ class MockIntegrationReplaySeed {
     // integer hours). Storing the rate keeps tiny late_night shifts from
     // letting integer-hour rounding spuriously cross a lever threshold,
     // while fohHours/bohHours remain the realistic integer model hours.
-    final effCPLH = axis == 'cplh' ? baseCPLH * dev : baseCPLH;
-    final effSPLH = axis == 'splh' ? baseSPLH * dev : baseSPLH;
+    // The week cplh/splh tilt rides on the rate; hours then follow from
+    // covers/sales ÷ rate exactly as the per-slot path does.
+    final effCPLH =
+        (axis == 'cplh' ? baseCPLH * dev : baseCPLH) * weekFactor('cplh');
+    final effSPLH =
+        (axis == 'splh' ? baseSPLH * dev : baseSPLH) * weekFactor('splh');
     final fohHours = LaborModel.modelFohHours(covers, effCPLH);
     final bohHours = LaborModel.modelBohHoursFromSales(sales, effSPLH);
 
-    final fohWage = axis == 'fohWage' ? _fohWage * dev : _fohWage;
-    final bohWage = axis == 'bohWage' ? _bohWage * dev : _bohWage;
+    final fohWage =
+        (axis == 'fohWage' ? _fohWage * dev : _fohWage) * weekFactor('fohWage');
+    final bohWage =
+        (axis == 'bohWage' ? _bohWage * dev : _bohWage) * weekFactor('bohWage');
 
     // Model hours are vs the PERIOD target (what the hours-flex lever
     // compares the schedule against); scheduled = model unless this
