@@ -363,11 +363,11 @@ class _ShiftHeader extends StatelessWidget {
         'Restaurant';
     return AppScreenHeader(
       title: restaurantName,
-      trailing: _LiveClock(ticker: ticker),
       bottom: _ShiftHeaderMeta(
         day: readModel.day,
         businessDate: readModel.businessDate,
         daypart: readModel.daypart,
+        ticker: ticker,
         freshness: freshness,
       ),
     );
@@ -399,19 +399,23 @@ String _formatMonthDay(String isoDate) {
   return '${months[month - 1]} $day';
 }
 
-/// Bottom-row meta for the Shift header: day · live business date · optional
-/// daypart on the left, live clock + optional freshness chip on the right.
-/// Lives in the same slot where Variance shows its TabBar so all four tabs
-/// match in height.
+/// Bottom-row meta for the Shift header: status dot + day, live business
+/// date and the live clock on a single line at the left, with the optional
+/// freshness chip pushed to the right. The clock previously sat in the
+/// title row's trailing slot; moving it here frees the full title width
+/// for the restaurant name (less mid-word truncation). Lives in the same
+/// slot where Variance shows its TabBar so all four tabs match in height.
 class _ShiftHeaderMeta extends StatelessWidget {
   final String day;
   final String businessDate;
   final String daypart;
+  final ValueListenable<DateTime> ticker;
   final CurrentStateFreshness? freshness;
   const _ShiftHeaderMeta({
     required this.day,
     required this.businessDate,
     required this.daypart,
+    required this.ticker,
     this.freshness,
   });
 
@@ -421,31 +425,38 @@ class _ShiftHeaderMeta extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left group — dot + day · date
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: AppColors.sunset,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '$day \u00b7 ${_formatMonthDay(businessDate)}',
-                style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-              ),
-            ],
+          // Left group: status dot, then day + date.
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.sunset,
+              shape: BoxShape.circle,
+            ),
           ),
-          // Clock moved to the title row trailing slot. Only the
-          // freshness chip remains here on the right.
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              '$day \u00b7 ${_formatMonthDay(businessDate)}',
+              style: AppTextStyles.mono12(color: AppColors.sunsetDark),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          // Live time, pulled down from the old title-row trailing slot
+          // so the restaurant name gets the full title width (less
+          // mid-word truncation) and date + time read as one line.
+          const SizedBox(width: 8),
+          Text(
+            '·',
+            style: AppTextStyles.mono12(color: AppColors.textMuted),
+          ),
+          const SizedBox(width: 8),
+          _LiveClock(ticker: ticker),
           if (freshness != null) ...[
             const Spacer(),
+            const SizedBox(width: 12),
             _FreshnessLabel(freshness: freshness!),
           ],
         ],
@@ -536,7 +547,7 @@ class _LiveClock extends StatelessWidget {
           children: [
             Text(
               '$hour:$minute',
-              style: AppTextStyles.mono16(color: AppColors.textPrimary),
+              style: AppTextStyles.mono12(color: AppColors.textPrimary),
             ),
             const SizedBox(width: 4),
             Text(amPm, style: AppTextStyles.mono10(color: AppColors.textMuted)),
