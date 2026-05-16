@@ -827,6 +827,32 @@ class TargetCycleService {
     await _summaryRepo.upsert(summary);
   }
 
+  // ── Active-cycle summary coherence guarantee (7.56b.1) ────────────────
+  //
+  // Ensures the active cycle (if any) has its companion
+  // `benchmark_selection_summaries` row WITHOUT running the
+  // cycle-create/auto-refresh logic in [getOrCreateActiveCycle].
+  //
+  // The seed path (`_ensureDemoSeedCycle`) inserts an active cycle row
+  // without a companion summary and relies on lazy repair via
+  // [getOrCreateActiveCycle]. That repair is only reached when
+  // `WeeklyPlanSnapshotService.getCurrentWeekSnapshot()` *generates* a
+  // snapshot — but once a locked weekly_plan_snapshot is pre-seeded
+  // (FU-mobile-cold-boot-shift-stale-state, #759), that call
+  // short-circuits and the repair never runs, leaving the Benchmark /
+  // Data-alignment surface without a summary. This narrow entry point
+  // restores cycle⇄summary coherence on the short-circuit path.
+  //
+  // Idempotent + side-effect-free: delegates to the same
+  // [_ensureSelectionSummaryExists] recovery path (never rewrites an
+  // existing summary, never duplicates, never touches `BaselineData`
+  // recommendation signals) and never writes a cycle.
+  Future<void> ensureActiveCycleSelectionSummary(String restaurantId) async {
+    final cycle = await _cycleRepo.getActiveCycle(restaurantId);
+    if (cycle == null) return;
+    await _ensureSelectionSummaryExists(cycle);
+  }
+
   // ── Bootstrap honesty hydration (7.55p.5h-review-fix) ─────────────────
   //
   // Recommendation-honesty signals on `BaselineData` are in-memory. Cycle
