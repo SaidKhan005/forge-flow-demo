@@ -977,22 +977,29 @@ path. Detail in `docs/integrations/sevenrooms/oauth_shape.md`
 
 P1 — preview-env Postgres pool exhaustion: **closed** by commit
 `7c85e5a4` (PF4 A4.2 hardening — `POSTGRES_POOL_MAX_CONNECTIONS=20`,
-documented in `runbooks/cloud_run_env_vars.md`).
+documented in `runbooks/cloud_run_env_vars.md`). Historical
+breadcrumb + future-tuning steps in
+`runbooks/preview_env_infra_findings_runbook.md` Finding 1.
 
 P2 — auth-mode doc mismatches (Oracle Simphony, ADP, OpenTable,
 SevenRooms, Agendrix): **closed** (PR #455 — `oauth_shape.md` sweep
 for all five vendors).
 
 P2 — preview-env vendor-capability registry gap (6 vendors return
-`unknownVendor`): **open** — needs Cloud Run config or bootstrap
-redeploy to reconcile preview's vendor registry with master.
-Operator-led.
+`unknownVendor`): **open** — needs the 6 vendor app-credential
+bundles provisioned into preview Secret Manager and a Cloud Run
+revision redeploy so the proxy binder picks them up. Operator-led.
+Full spec — required env var names, provisioning sequence,
+verification — in `runbooks/preview_env_infra_findings_runbook.md`
+Finding 2.
 
 P2 — preview-env schema gaps (`relation "public.vendor_credentials"
 does not exist`, `column op.rollover_hour does not exist`): **open**
 — part of the "P0 — Production1 Migration Apply Gap" queue above;
 applying those migrations to preview also closes this finding.
-Operator-led.
+Operator-led. Migration filenames, downstream consumers, and
+verification gates in
+`runbooks/preview_env_infra_findings_runbook.md` Finding 3.
 
 P3 — vendor partner-portal sourcing escalation list (~25 items):
 **open** by design — requires vendor partner-program access; tracked
