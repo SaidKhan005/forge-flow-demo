@@ -47,8 +47,16 @@ void main() {
   // ── B. SQLite seed provenance uses mock replay ──────────────────────────
 
   group('B — SQLite seed provenance', () {
+    // QA fix (Change A): the open period is clock-derived. Pin the
+    // restaurant-local time-of-day to 19:45 so the reseed deterministically
+    // yields a Fri-dinner open row (Dinner applies every weekday).
     setUp(() async {
+      SqliteDatabase.debugColdBootNowOverride = '2026-03-27T19:45:00';
       await SqliteDatabase.instance.reseedDemo();
+    });
+
+    tearDown(() {
+      SqliteDatabase.debugColdBootNowOverride = null;
     });
 
     test('shift_records carry mock_pos_labor_replay source', () async {
@@ -157,8 +165,10 @@ void main() {
 
       expect(shifts.length,
           MockIntegrationReplaySeed.output.currentWeekShifts.length);
+      // QA fix (Change B): 16-slot week, back-compat default (Fri,
+      // Dinner open) → 9 closed + 7 projected.
       expect(shifts.where((s) => s.isClosed).length, 9);
-      expect(shifts.where((s) => s.isProjected).length, 5);
+      expect(shifts.where((s) => s.isProjected).length, 7);
     });
 
     test('getWeekToDate derives from mock replay closed shifts', () async {
@@ -167,7 +177,7 @@ void main() {
       expect(wtd, isNotNull);
       expect(wtd!.weekId, MockIntegrationReplaySeed.currentWeekId);
       expect(wtd.shiftsCompleted, 9);
-      expect(wtd.shiftsTotal, 14);
+      expect(wtd.shiftsTotal, 16); // QA fix (Change B): 16-slot week
 
       // Covers should match mock replay closed sum
       final replayClosed = MockIntegrationReplaySeed.output.currentWeekShifts

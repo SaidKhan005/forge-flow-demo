@@ -17,18 +17,82 @@ import '../models/shift_record.dart';
 import '../models/week_record.dart';
 import '../services/labor_model.dart';
 
+/// The service period the demo "live" shift is in, derived from a
+/// restaurant-local clock at seed time (NOT hardcoded to dinner).
+///
+/// QA fix (device-reproduced 2026-05-16, Sat ~09:25): the seed used to
+/// hardcode `openShiftDaypart='dinner'` with a fabricated mid-service
+/// snapshot (`0.63` / `7:45 PM` / `3h 15m`) that never consulted the
+/// clock, so Dinner always showed "live" numbers even before it opened.
+/// This value type carries the *clock-derived* answer:
+///
+/// * [openDaypart] — the single period currently IN PROGRESS at the
+///   restaurant-local now, or `null` when no period is in progress
+///   (e.g. 09:25, before Lunch opens → no open shift at all).
+/// * [openProgressFraction] / [openTimeLabel] /
+///   [openServiceElapsedLabel] — the live progress of that period,
+///   computed from `now` vs the period window. `null` when there is no
+///   open period (honest — no fabricated mid-service state).
+/// * [currentDayClosedPeriods] — periods on the current business day
+///   that already ended (→ seeded `closed` with actuals; closed truth
+///   is not rewritten). Everything else on the current day that is not
+///   the open period is `projected` (forecast-only, honest).
+///
+/// Determinism (file-header no-randomness invariant): the *selection* is
+/// the only clock-relative input and it is supplied through an
+/// injectable anchor (see `SqliteDatabase.debugColdBootNowOverride`);
+/// no seeded VALUE depends on `DateTime.now()`.
+class OpenPeriodResolution {
+  final String? openDaypart;
+  final double? openProgressFraction;
+  final String? openTimeLabel;
+  final String? openServiceElapsedLabel;
+  final List<String> currentDayClosedPeriods;
+
+  const OpenPeriodResolution({
+    required this.openDaypart,
+    required this.openProgressFraction,
+    required this.openTimeLabel,
+    required this.openServiceElapsedLabel,
+    required this.currentDayClosedPeriods,
+  });
+
+  bool get hasOpenPeriod => openDaypart != null;
+}
+
 /// Describes the mock replay scenario for a given business date.
 class MockReplayScenario {
   final String currentBusinessDate; // ISO date, e.g. '2026-03-27'
   final String currentWeekId;       // e.g. '2026-W13'
-  final String openShiftDayLabel;   // e.g. 'Fri'
-  final String openShiftDaypart;    // e.g. 'dinner'
+  final String openShiftDayLabel;   // e.g. 'Fri' (the current business day)
+
+  /// The clock-derived open service period, or `null` when NO period is
+  /// in progress at seed time (honest — no open shift, upcoming periods
+  /// are `projected`). Was a non-null hardcoded `'dinner'`; QA fix.
+  final String? openShiftDaypart;
+
+  /// Live progress of the open period (fraction / wall-clock label /
+  /// elapsed-into-service label), all `null` when [openShiftDaypart] is
+  /// `null`. Replaces the fixed `0.63` / `7:45 PM` / `3h 15m` fabrication.
+  final double? openProgressFraction;
+  final String? openTimeLabel;
+  final String? openServiceElapsedLabel;
+
+  /// Periods on [openShiftDayLabel] that already ended at seed time and
+  /// are seeded `closed` (with actuals). Defaults to `['lunch']` for the
+  /// back-compat (no clock injected) path so the static generator output
+  /// and unit-test scenario stay byte-identical.
+  final List<String> currentDayClosedPeriods;
 
   const MockReplayScenario({
     required this.currentBusinessDate,
     required this.currentWeekId,
     required this.openShiftDayLabel,
     required this.openShiftDaypart,
+    this.openProgressFraction,
+    this.openTimeLabel,
+    this.openServiceElapsedLabel,
+    this.currentDayClosedPeriods = const ['lunch'],
   });
 }
 
@@ -196,17 +260,26 @@ class MockIntegrationReplaySeed {
   static const double _bohWage = 21.35;
   static const double _theoreticalLaborPct = 20.48;
 
-  // ── Operating pattern: 14 shifts per week ───────────────────────────────
+  // ── Operating pattern: 16 shifts per week ───────────────────────────────
   // Mon–Thu: lunch + dinner. Fri: lunch + dinner + late_night.
-  // Sat: dinner + late_night. Sun: dinner.
+  // Sat: lunch + dinner + late_night. Sun: lunch + dinner.
+  //
+  // QA fix (Change B, device-reproduced 2026-05-16): weekends now serve
+  // a Lunch (weekend lunch/brunch) like a real restaurant. Previously
+  // Sat/Sun had NO lunch slot, so a Saturday's only seeded actuals were
+  // the one open-Dinner row and Whole-Day collapsed to ≡ Dinner. The
+  // weekend lunch covers flow through the SAME deterministic
+  // per-location variance + cycle/locked-plan machinery as weekday
+  // lunch (the 'lunch' per-period band already exists), so two reseeds
+  // stay byte-identical and whole-day = cover-weighted Σ of periods.
   static const List<(String, String)> weekSlots = [
     ('Mon', 'lunch'), ('Mon', 'dinner'),
     ('Tue', 'lunch'), ('Tue', 'dinner'),
     ('Wed', 'lunch'), ('Wed', 'dinner'),
     ('Thu', 'lunch'), ('Thu', 'dinner'),
     ('Fri', 'lunch'), ('Fri', 'dinner'), ('Fri', 'late_night'),
-    ('Sat', 'dinner'), ('Sat', 'late_night'),
-    ('Sun', 'dinner'),
+    ('Sat', 'lunch'), ('Sat', 'dinner'), ('Sat', 'late_night'),
+    ('Sun', 'lunch'), ('Sun', 'dinner'),
   ];
 
   // ── Day-of-week base cover distribution (weekly sum = 1200) ─────────────
@@ -223,8 +296,12 @@ class MockIntegrationReplaySeed {
     'Wed': {'lunch': 0.45, 'dinner': 0.55},
     'Thu': {'lunch': 0.45, 'dinner': 0.55},
     'Fri': {'lunch': 0.45, 'dinner': 0.40, 'late_night': 0.15},
-    'Sat': {'dinner': 0.775, 'late_night': 0.225},
-    'Sun': {'dinner': 1.0},
+    // QA fix (Change B): Saturday gets a strong brunch alongside its
+    // peak dinner; Sunday mirrors the weekday lunch/dinner split (soft
+    // day, no late_night). Each map sums to 1.0 so the day's
+    // `_dayBaseCovers` total is fully partitioned (pool consistency).
+    'Sat': {'lunch': 0.30, 'dinner': 0.55, 'late_night': 0.15},
+    'Sun': {'lunch': 0.45, 'dinner': 0.55},
   };
 
   // ── Per-period base productivity (= the locked per-period targets) ──────
@@ -259,6 +336,12 @@ class MockIntegrationReplaySeed {
   // Each entry is (axis, sign): axis ∈ {covers, ppa, cplh, splh,
   // fohWage, bohWage, fohHours, bohHours}; sign +1 = the "up/over"
   // lever, -1 = the "down/under" lever.
+  //
+  // QA fix (Change B): two weekend-lunch slots added (indices 11, 14).
+  // Their axes are NOT `covers,-1` so Sun dinner (index 15) stays the
+  // SINGLE `covers_down` slot (≈1/16 of the cohort) — the §2a
+  // anti-degeneracy invariant is preserved. All other indices shift to
+  // stay 1:1 with [weekSlots].
   static const List<(String, int)> _slotDriverIntent = [
     ('cplh', -1), //  0 Mon lunch       → cplh_down
     ('bohHours', 1), //  1 Mon dinner    → boh_hours_over
@@ -271,9 +354,11 @@ class MockIntegrationReplaySeed {
     ('splh', -1), //  8 Fri lunch       → splh_down
     ('ppa', -1), //  9 Fri dinner       → ppa_down    (Fri-dinner leak)
     ('covers', 1), // 10 Fri late_night → covers_up
-    ('fohHours', 1), // 11 Sat dinner   → foh_hours_over
-    ('splh', -1), // 12 Sat late_night  → splh_down   (late_night noisiest)
-    ('covers', -1), // 13 Sun dinner    → covers_down (only covers_down slot)
+    ('ppa', 1), // 11 Sat lunch         → ppa_up      (weekend brunch)
+    ('fohHours', 1), // 12 Sat dinner   → foh_hours_over
+    ('splh', -1), // 13 Sat late_night  → splh_down   (late_night noisiest)
+    ('splh', 1), // 14 Sun lunch        → splh_up     (weekend brunch)
+    ('covers', -1), // 15 Sun dinner    → covers_down (only covers_down slot)
   ];
 
   // Base intent magnitude per axis — sized to clear each axis's
@@ -336,12 +421,43 @@ class MockIntegrationReplaySeed {
     return trend + softWeek + ripple;
   }
 
-  // ── Open shift in-progress state ────────────────────────────────────────
-  // Deterministic mid-service snapshot for the current open shift.
-  // ~63% through service: covers arriving but scheduled hours committed.
+  // ── Open shift in-progress state — BACK-COMPAT DEFAULT ONLY ─────────────
+  // These were the hardcoded mid-service fabrication the QA defect was
+  // about (Dinner always "live" regardless of the clock). They are now
+  // used ONLY by [_legacyDefaultResolution] — the deterministic
+  // no-clock-injected fallback that keeps `MockIntegrationReplaySeed
+  // .output` and the static unit-test scenario byte-identical. The
+  // demo/device cold-boot + reseed paths inject a clock-derived
+  // [OpenPeriodResolution] instead (see `SqliteDatabase` /
+  // `resolveDemoOpenPeriod`), so a real Saturday 09:25 no longer shows
+  // Dinner "live".
   static const double openProgressFraction = 0.63;
   static const String openShiftTimeLabel = '7:45 PM';
   static const String openShiftServiceElapsedLabel = '3h 15m into service';
+
+  /// The deterministic back-compat resolution used when no clock anchor
+  /// is injected: Dinner is the open period, Lunch on the current day is
+  /// already closed — exactly the pre-fix static behaviour, so unit
+  /// tests reading `generateForDate(date)` / `output` stay byte-stable.
+  /// The clock-relative behaviour only activates when the demo/device
+  /// path injects an [OpenPeriodResolution] (the actual defect fix).
+  static const OpenPeriodResolution _legacyDefaultResolution =
+      OpenPeriodResolution(
+    openDaypart: 'dinner',
+    openProgressFraction: openProgressFraction,
+    openTimeLabel: openShiftTimeLabel,
+    openServiceElapsedLabel: openShiftServiceElapsedLabel,
+    currentDayClosedPeriods: ['lunch'],
+  );
+
+  /// Public accessor for [_legacyDefaultResolution] — the deterministic
+  /// no-clock-injected fallback (Dinner open, Lunch closed). Consumed by
+  /// `SqliteDatabase`'s reseed/advance path when no clock anchor is
+  /// injected so the demo affordance + bare-`reseedDemo()` tests stay
+  /// deterministic. The cold-boot/device path injects a real
+  /// clock-derived resolution instead (the actual QA fix).
+  static OpenPeriodResolution get legacyDefaultResolution =>
+      _legacyDefaultResolution;
 
   /// Source shift ID for the default scenario's open shift (backward compat).
   static const String openShiftSourceShiftId = 'w13-fri-dinner-open';
@@ -361,11 +477,15 @@ class MockIntegrationReplaySeed {
     return 'w$weekNum-${dayLabel.toLowerCase()}-$daypart-$status';
   }
 
-  /// Source shift ID for the scenario's open shift.
-  static String openShiftSourceShiftIdFor(MockReplayScenario scenario) {
+  /// Source shift ID for the scenario's open shift, or `null` when the
+  /// scenario has no open period (clock-derived; QA fix). Callers seed
+  /// an open snapshot only when this is non-null.
+  static String? openShiftSourceShiftIdFor(MockReplayScenario scenario) {
+    final daypart = scenario.openShiftDaypart;
+    if (daypart == null) return null;
     final weekNum = scenario.currentWeekId.split('-W').last;
     return 'w$weekNum-${scenario.openShiftDayLabel.toLowerCase()}'
-        '-${scenario.openShiftDaypart}-open';
+        '-$daypart-open';
   }
 
   /// Default-scenario output — cached for backward compatibility.
@@ -377,7 +497,18 @@ class MockIntegrationReplaySeed {
   ///
   /// The default business date [defaultBusinessDate] produces output
   /// identical to the pre-7.55f.4 fixed generator.
-  static MockReplayOutput generateForDate(String isoBusinessDate) {
+  ///
+  /// [open] is the clock-derived open-period resolution. When omitted
+  /// the deterministic [_legacyDefaultResolution] is used so the static
+  /// generator output and all non-injecting unit tests stay
+  /// byte-identical (back-compat). The demo/device cold-boot + reseed
+  /// paths pass a real clock-derived resolution (see `SqliteDatabase`),
+  /// which is the actual QA fix.
+  static MockReplayOutput generateForDate(
+    String isoBusinessDate, {
+    OpenPeriodResolution? open,
+  }) {
+    final resolution = open ?? _legacyDefaultResolution;
     final parts = isoBusinessDate.split('-');
     final dt = DateTime(
         int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
@@ -412,15 +543,25 @@ class MockIntegrationReplaySeed {
     }
     weekRecords.sort((a, b) => b.weekId.compareTo(a.weekId));
 
-    final currentWeekShifts =
-        _generateCurrentWeekForDate(weekId, dayIndex);
+    final currentWeekShifts = _generateCurrentWeekForDate(
+      weekId,
+      dayIndex,
+      resolution.currentDayClosedPeriods,
+    );
 
-    // Open shift is always dinner (see prompt 7.55f.4 rules).
+    // QA fix: the open period is clock-derived (or the deterministic
+    // back-compat default), NOT hardcoded to dinner. `openShiftDaypart`
+    // is `null` when no period is in progress (honest — no open shift;
+    // upcoming periods are projected).
     final scenario = MockReplayScenario(
       currentBusinessDate: isoBusinessDate,
       currentWeekId: weekId,
       openShiftDayLabel: dayLabel,
-      openShiftDaypart: 'dinner',
+      openShiftDaypart: resolution.openDaypart,
+      openProgressFraction: resolution.openProgressFraction,
+      openTimeLabel: resolution.openTimeLabel,
+      openServiceElapsedLabel: resolution.openServiceElapsedLabel,
+      currentDayClosedPeriods: resolution.currentDayClosedPeriods,
     );
 
     return MockReplayOutput(
@@ -852,10 +993,15 @@ class MockIntegrationReplaySeed {
   ///
   /// [dayIndex] is 0=Mon .. 6=Sun within the current week.
   /// Shifts before the current day are closed. Shifts after are projected.
-  /// On the current day: lunch is closed (earlier service), dinner is
-  /// projected (will be open in snapshots), late_night is projected.
+  /// On the current day, [currentDayClosedPeriods] (clock-derived: the
+  /// periods that already ended) are `closed`; every other current-day
+  /// period is `projected` (the open one is upgraded to `open` by the
+  /// snapshot builder; when no period is in progress none is, so the
+  /// whole current day is honestly projected/closed — never a fabricated
+  /// "live" period). QA fix: replaces the hardcoded "lunch closed, rest
+  /// projected" that made Dinner always look open.
   static List<ShiftRecord> _generateCurrentWeekForDate(
-      String weekId, int dayIndex) {
+      String weekId, int dayIndex, List<String> currentDayClosedPeriods) {
     // The current week's index sits one past the newest historical
     // week so its volume/amplitude band is distinct and deterministic.
     const weekIndex = historicalWeekCount;
@@ -873,8 +1019,12 @@ class MockIntegrationReplaySeed {
         // Future day — projected
         status = 'projected';
       } else {
-        // Current day — lunch is closed (earlier service), rest projected
-        status = slot.$2 == 'lunch' ? 'closed' : 'projected';
+        // Current day — clock-derived: periods that already ended are
+        // closed; everything else is projected (the open period, if
+        // any, is upgraded to `open` by the snapshot builder).
+        status = currentDayClosedPeriods.contains(slot.$2)
+            ? 'closed'
+            : 'projected';
       }
 
       shifts.add(_generateShift(

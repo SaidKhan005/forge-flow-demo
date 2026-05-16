@@ -170,10 +170,17 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
 
   final snapshots = <OpenShiftSnapshot>[];
 
+  final openDaypart = scenario.openShiftDaypart;
+
   for (final s in projectedShifts) {
-    // Skip the open-shift slot — we'll insert the open snapshot for it
-    if (s.dayLabel == scenario.openShiftDayLabel &&
-        s.daypart == scenario.openShiftDaypart) {
+    // Skip the open-shift slot — we'll insert the open snapshot for it.
+    // QA fix: when the clock-derived scenario has NO open period
+    // (`openDaypart == null`), nothing is skipped — every upcoming
+    // current-day/future period is honestly `projected` (no fabricated
+    // "live" period).
+    if (openDaypart != null &&
+        s.dayLabel == scenario.openShiftDayLabel &&
+        s.daypart == openDaypart) {
       continue;
     }
 
@@ -203,48 +210,64 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
     ));
   }
 
-  // One current open shift from the scenario.
-  // In-progress values simulate ~63% through service.
-  final openShiftPlan = currentWeekShifts.firstWhere(
-    (s) =>
-        s.dayLabel == scenario.openShiftDayLabel &&
-        s.daypart == scenario.openShiftDaypart,
-  );
-  final openCovers = (openShiftPlan.forecastCovers *
-          MockIntegrationReplaySeed.openProgressFraction)
-      .round();
-  final openPPA = openShiftPlan.ppa;
-  final openSales = openCovers * openPPA;
-  final openCPLH = openShiftPlan.fohHours > 0
-      ? openCovers / openShiftPlan.fohHours
-      : 0.0;
-  final openSPLH = openShiftPlan.bohHours > 0
-      ? openSales / openShiftPlan.bohHours
-      : 0.0;
+  // One current open shift — ONLY when the clock-derived scenario has a
+  // period in progress. QA fix: when `openDaypart == null` (e.g. Sat
+  // 09:25, before Lunch opens) NO open snapshot is written, so the Shift
+  // card honestly shows forecast-only projected periods instead of a
+  // not-yet-occurred Dinner displaying live whole-day numbers. The
+  // in-progress covers + progress labels come from the clock-derived
+  // scenario (`openProgressFraction` / `openTimeLabel` /
+  // `openServiceElapsedLabel`), never the old fixed 0.63 / 7:45 PM /
+  // 3h 15m fabrication.
+  final openSourceShiftId =
+      MockIntegrationReplaySeed.openShiftSourceShiftIdFor(scenario);
 
-  snapshots.add(OpenShiftSnapshot(
-    restaurantId: restaurantId,
-    weekId: scenario.currentWeekId,
-    dayLabel: scenario.openShiftDayLabel,
-    daypart: scenario.openShiftDaypart,
-    status: 'open',
-    businessDate: scenario.currentBusinessDate,
-    forecastCovers: openShiftPlan.forecastCovers,
-    currentCovers: openCovers,
-    scheduledFohHours: openShiftPlan.fohHours,
-    scheduledBohHours: openShiftPlan.bohHours,
-    currentPPA: openPPA,
-    currentCPLH: double.parse(openCPLH.toStringAsFixed(2)),
-    currentSPLH: double.parse(openSPLH.toStringAsFixed(2)),
-    blendedWage: double.parse(openShiftPlan.blendedWage.toStringAsFixed(2)),
-    timeLabel: MockIntegrationReplaySeed.openShiftTimeLabel,
-    serviceElapsedLabel:
-        MockIntegrationReplaySeed.openShiftServiceElapsedLabel,
-    sourceSystem: MockIntegrationReplaySeed.sourceSystem,
-    sourceShiftId:
-        MockIntegrationReplaySeed.openShiftSourceShiftIdFor(scenario),
-    updatedAt: now,
-  ));
+  if (openDaypart != null && openSourceShiftId != null) {
+    final progress = scenario.openProgressFraction ??
+        MockIntegrationReplaySeed.openProgressFraction;
+    final matches = currentWeekShifts.where(
+      (s) =>
+          s.dayLabel == scenario.openShiftDayLabel &&
+          s.daypart == openDaypart,
+    );
+    if (matches.isNotEmpty) {
+      final openShiftPlan = matches.first;
+      final openCovers = (openShiftPlan.forecastCovers * progress).round();
+      final openPPA = openShiftPlan.ppa;
+      final openSales = openCovers * openPPA;
+      final openCPLH = openShiftPlan.fohHours > 0
+          ? openCovers / openShiftPlan.fohHours
+          : 0.0;
+      final openSPLH = openShiftPlan.bohHours > 0
+          ? openSales / openShiftPlan.bohHours
+          : 0.0;
+
+      snapshots.add(OpenShiftSnapshot(
+        restaurantId: restaurantId,
+        weekId: scenario.currentWeekId,
+        dayLabel: scenario.openShiftDayLabel,
+        daypart: openDaypart,
+        status: 'open',
+        businessDate: scenario.currentBusinessDate,
+        forecastCovers: openShiftPlan.forecastCovers,
+        currentCovers: openCovers,
+        scheduledFohHours: openShiftPlan.fohHours,
+        scheduledBohHours: openShiftPlan.bohHours,
+        currentPPA: openPPA,
+        currentCPLH: double.parse(openCPLH.toStringAsFixed(2)),
+        currentSPLH: double.parse(openSPLH.toStringAsFixed(2)),
+        blendedWage:
+            double.parse(openShiftPlan.blendedWage.toStringAsFixed(2)),
+        timeLabel: scenario.openTimeLabel ??
+            MockIntegrationReplaySeed.openShiftTimeLabel,
+        serviceElapsedLabel: scenario.openServiceElapsedLabel ??
+            MockIntegrationReplaySeed.openShiftServiceElapsedLabel,
+        sourceSystem: MockIntegrationReplaySeed.sourceSystem,
+        sourceShiftId: openSourceShiftId,
+        updatedAt: now,
+      ));
+    }
+  }
 
   // Seed closed dayparts for the open shift's day (whole-day aggregation).
   final currentDayClosed = currentWeekShifts
@@ -823,6 +846,16 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
   final now = nowIsoUtc();
   final scenario = replay.scenario;
 
+  // QA fix / honest-degrade: when the clock-derived scenario has NO
+  // period in progress (`openShiftDaypart == null`, e.g. Sat 09:25),
+  // there is no live unseated reservation book to seed for an
+  // open service. The forward reservation envelope
+  // (`_seedForwardReservationEnvelopeFromReplay`) still seeds every
+  // current-week projected/open cell across all locations, so forward
+  // coverage is unaffected.
+  final scenarioDaypart = scenario.openShiftDaypart;
+  if (scenarioDaypart == null) return;
+
   // Scale unseated covers from Friday baseline (72) by day-volume ratio.
   const fridayBaseCovers = 220;
   const fridayUnseatedCovers = 72;
@@ -839,12 +872,12 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
   final snapshot = ReservationBookSnapshot(
     restaurantId: DemoScope.restaurantId,
     businessDate: scenario.currentBusinessDate,
-    daypart: scenario.openShiftDaypart,
+    daypart: scenarioDaypart,
     unseatedCovers: unseatedCovers,
     unseatedPartyCount: unseatedParties,
     sourceSystem: 'demo_reservations',
     sourceServiceId:
-        'demo_res_${scenario.openShiftDayLabel.toLowerCase()}_${scenario.openShiftDaypart}',
+        'demo_res_${scenario.openShiftDayLabel.toLowerCase()}_$scenarioDaypart',
     updatedAt: now,
   );
   await db.insert('reservation_book_snapshots', snapshot.toMap(),
@@ -889,52 +922,218 @@ Future<void> _seedDemoRestaurant(Database db) async {
   }
 }
 
+/// The demo restaurant's business-day start (restaurant-local). Shared
+/// by [_seedDemoTimingConfig] and [resolveDemoOpenPeriod] so the seeded
+/// timing config and the clock-derived open-period selection use ONE
+/// business-date basis (Time Guardrails — business date is the anchor).
+const String _kDemoBusinessDayStartLocalTime = '04:00';
+
+/// The demo restaurant's three service periods (business default,
+/// applied to Downtown + every inheriting location).
+///
+/// QA fix (Change B): `lunch.applicable_days` now includes Sat (6) and
+/// Sun (7) — weekends serve a lunch/brunch like a real restaurant, so
+/// the per-daypart phase resolver treats weekend Lunch as a real,
+/// applicable period (no longer "not applicable → always Opens at").
+/// Kept byte-equal to [_kDemoBusinessDefaultServicePeriods] (the
+/// East-Region override input) so the HP #11 diff stays a single axis
+/// (week-start only). SINGLE source of truth for both the seeded
+/// `service_period_definitions_json` and [resolveDemoOpenPeriod].
+const List<Map<String, Object?>> _kDemoDowntownServicePeriods =
+    <Map<String, Object?>>[
+  {
+    'id': 'lunch',
+    'label': 'Lunch',
+    'short_label': 'L',
+    'sort_order': 1,
+    'start_local_time': '11:00',
+    'end_local_time': '15:00',
+    'rolls_past_midnight': false,
+    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+  },
+  {
+    'id': 'dinner',
+    'label': 'Dinner',
+    'short_label': 'D',
+    'sort_order': 2,
+    'start_local_time': '17:00',
+    'end_local_time': '23:00',
+    'rolls_past_midnight': false,
+    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+  },
+  {
+    'id': 'late_night',
+    'label': 'Late Night',
+    'short_label': 'LN',
+    'sort_order': 3,
+    'start_local_time': '23:00',
+    'end_local_time': '02:00',
+    'rolls_past_midnight': true,
+    'applicable_days': [5, 6],
+  },
+];
+
 Future<void> _seedDemoTimingConfig(Database db, String now) async {
-  final demoServicePeriods = [
-    {
-      'id': 'lunch',
-      'label': 'Lunch',
-      'short_label': 'L',
-      'sort_order': 1,
-      'start_local_time': '11:00',
-      'end_local_time': '15:00',
-      'rolls_past_midnight': false,
-      'applicable_days': [1, 2, 3, 4, 5],
-    },
-    {
-      'id': 'dinner',
-      'label': 'Dinner',
-      'short_label': 'D',
-      'sort_order': 2,
-      'start_local_time': '17:00',
-      'end_local_time': '23:00',
-      'rolls_past_midnight': false,
-      'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-    },
-    {
-      'id': 'late_night',
-      'label': 'Late Night',
-      'short_label': 'LN',
-      'sort_order': 3,
-      'start_local_time': '23:00',
-      'end_local_time': '02:00',
-      'rolls_past_midnight': true,
-      'applicable_days': [5, 6],
-    },
-  ];
   // Per-Daypart V1 Slice 1.5: `shift_close_authority` +
   // `local_close_fallback` dropped (operator decision 2026-05-15).
   await db.insert(
     'restaurant_timing_configs',
     {
       'restaurant_id': DemoScope.restaurantId,
-      'business_day_start_local_time': '04:00',
+      'business_day_start_local_time': _kDemoBusinessDayStartLocalTime,
       'week_start_day': DateTime.monday,
-      'service_period_definitions_json': jsonEncode(demoServicePeriods),
+      'service_period_definitions_json':
+          jsonEncode(_kDemoDowntownServicePeriods),
       'created_at': now,
       'updated_at': now,
     },
     conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+}
+
+/// Parses an `HH:mm` clock string to minutes-since-midnight.
+///
+/// MUST mirror `_parseHm` in
+/// `lib/state/shift_service_period_notifier.dart` (the canonical
+/// per-daypart phase resolver). Replicated here (not imported) so
+/// `lib/infrastructure` does not depend on `lib/state`; the parity
+/// guard is this comment + the shared [_kDemoDowntownServicePeriods].
+int? _demoParseHm(String hm) {
+  final parts = hm.split(':');
+  if (parts.length != 2) return null;
+  final h = int.tryParse(parts[0]);
+  final m = int.tryParse(parts[1]);
+  if (h == null || m == null) return null;
+  return h * 60 + m;
+}
+
+/// Derives the demo restaurant's open service period from a
+/// restaurant-local [localNow] at seed time — the QA fix for the
+/// device-reproduced defect (Sat ~09:25 showed Dinner "live" because
+/// the seed hardcoded `openShiftDaypart='dinner'`).
+///
+/// This MUST mirror `resolveActiveServicePeriodId` /
+/// `resolveServicePeriodPhase` in
+/// `lib/state/shift_service_period_notifier.dart:733-890` (the canonical
+/// phase resolver cited by the per-daypart contract): business-date
+/// weekday via [BusinessDateResolver] for applicability, inclusive-end
+/// time-of-day comparison, and the `rollsPastMidnight` rule that a
+/// non-active rolling period is always *future* (not closed). It is
+/// replicated rather than imported to keep `lib/infrastructure` off
+/// `lib/state`; both consume the SAME period defs
+/// ([_kDemoDowntownServicePeriods]) so they cannot drift. Do not
+/// diverge from the resolver without updating both.
+///
+/// Returns:
+///  * the single period IN PROGRESS at [localNow] as `openDaypart`
+///    with a real progress fraction + wall-clock / elapsed labels;
+///  * `openDaypart == null` when NO period is in progress (honest — no
+///    open shift; upcoming periods are projected, e.g. 09:25 < Lunch);
+///  * `currentDayClosedPeriods` = periods applicable on the business
+///    day that already ended (→ seeded `closed` with actuals — closed
+///    truth is not rewritten).
+OpenPeriodResolution resolveDemoOpenPeriod({required DateTime localNow}) {
+  final defs = _kDemoDowntownServicePeriods
+      .map(ServicePeriodDefinition.fromMap)
+      .toList()
+    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+
+  final businessDateIso = BusinessDateResolver.resolve(
+    localTimestamp: localNow,
+    businessDayStartLocalTime: _kDemoBusinessDayStartLocalTime,
+  );
+  final businessWeekday = DateTime.parse(businessDateIso).weekday;
+  final tod = Duration(
+    hours: localNow.hour,
+    minutes: localNow.minute,
+    seconds: localNow.second,
+    milliseconds: localNow.millisecond,
+    microseconds: localNow.microsecond,
+  );
+
+  ServicePeriodDefinition? active;
+  for (final d in defs) {
+    if (!d.applicableDays.contains(businessWeekday)) continue;
+    final s = _demoParseHm(d.startLocalTime);
+    final e = _demoParseHm(d.endLocalTime);
+    if (s == null || e == null) continue;
+    final start = Duration(minutes: s);
+    final end = Duration(minutes: e);
+    if (d.rollsPastMidnight) {
+      if (tod >= start || tod <= end) {
+        active = d;
+        break;
+      }
+    } else {
+      if (tod >= start && tod <= end) {
+        active = d;
+        break;
+      }
+    }
+  }
+
+  // Periods applicable today, not active, already ended → closed.
+  // Mirrors `resolveServicePeriodPhase`: a non-active `rollsPastMidnight`
+  // period is always *future* (its only non-active window is "not
+  // re-opened yet"), never closed.
+  final closed = <String>[];
+  for (final d in defs) {
+    if (active != null && d.id == active.id) continue;
+    if (!d.applicableDays.contains(businessWeekday)) continue;
+    if (d.rollsPastMidnight) continue;
+    final e = _demoParseHm(d.endLocalTime);
+    if (e == null) continue;
+    if (tod > Duration(minutes: e)) closed.add(d.id);
+  }
+
+  if (active == null) {
+    return OpenPeriodResolution(
+      openDaypart: null,
+      openProgressFraction: null,
+      openTimeLabel: null,
+      openServiceElapsedLabel: null,
+      currentDayClosedPeriods: closed,
+    );
+  }
+
+  final startMin = _demoParseHm(active.startLocalTime)!;
+  final endMin = _demoParseHm(active.endLocalTime)!;
+  // Minutes-of-day, full sub-minute precision (deterministic given the
+  // injected anchor — no DateTime.now() in any seeded VALUE).
+  final nowMin = localNow.hour * 60 +
+      localNow.minute +
+      localNow.second / 60.0 +
+      localNow.millisecond / 60000.0;
+  final double elapsedMin;
+  final double windowMin;
+  if (active.rollsPastMidnight) {
+    windowMin = ((1440 - startMin) + endMin).toDouble();
+    elapsedMin =
+        nowMin >= startMin ? nowMin - startMin : (1440 - startMin) + nowMin;
+  } else {
+    windowMin = (endMin - startMin).toDouble();
+    elapsedMin = nowMin - startMin;
+  }
+  final fraction =
+      windowMin <= 0 ? 0.0 : (elapsedMin / windowMin).clamp(0.0, 1.0);
+
+  final h = localNow.hour;
+  final hour12 = (h % 12) == 0 ? 12 : h % 12;
+  final ampm = h < 12 ? 'AM' : 'PM';
+  final timeLabel =
+      '$hour12:${localNow.minute.toString().padLeft(2, '0')} $ampm';
+
+  final elapsedWhole = elapsedMin.floor().clamp(0, 24 * 60);
+  final eh = elapsedWhole ~/ 60;
+  final em = elapsedWhole % 60;
+  final elapsedLabel = '${eh}h ${em}m into service';
+
+  return OpenPeriodResolution(
+    openDaypart: active.id,
+    openProgressFraction: double.parse(fraction.toStringAsFixed(4)),
+    openTimeLabel: timeLabel,
+    openServiceElapsedLabel: elapsedLabel,
+    currentDayClosedPeriods: closed,
   );
 }
 
@@ -1914,11 +2113,14 @@ Future<void> _ensureDemoRestaurant(Database db) async {
 const String _kDemoScopeOperatorId = 'n';
 
 /// The three demo service periods, identical to `_seedDemoTimingConfig`'s
-/// business default. Replicated (not shared) so the East-Region timing
-/// override is a clean SINGLE-axis change (week-start only) — the
-/// service-period set stays equal to the business default so the HP #11
-/// diff renders as exactly "week start: Sunday (set at East Region) vs
-/// Monday (inherited from Business)".
+/// business default ([_kDemoDowntownServicePeriods]). Replicated (not
+/// shared) so the East-Region timing override is a clean SINGLE-axis
+/// change (week-start only) — the service-period set stays byte-equal to
+/// the business default so the HP #11 diff renders as exactly "week
+/// start: Sunday (set at East Region) vs Monday (inherited from
+/// Business)". QA fix (Change B): `lunch.applicable_days` includes Sat
+/// (6) + Sun (7), kept byte-equal to [_kDemoDowntownServicePeriods] so
+/// the single-axis invariant holds.
 const List<Map<String, Object?>> _kDemoBusinessDefaultServicePeriods =
     <Map<String, Object?>>[
   {
@@ -1929,7 +2131,7 @@ const List<Map<String, Object?>> _kDemoBusinessDefaultServicePeriods =
     'start_local_time': '11:00',
     'end_local_time': '15:00',
     'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5],
+    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
   },
   {
     'id': 'dinner',
