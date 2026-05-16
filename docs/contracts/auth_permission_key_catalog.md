@@ -64,8 +64,10 @@ holds both.
 
 Forge & Flow surface views and actions. Splitting `view` from `edit`
 allows the Phase 9 RBAC plan to seat read-only operators
-(`operator_supervisor`) below editors (`operator_manager`,
-`operator_owner`).
+(`supervisor`) below editors (`location_manager`,
+`operator_general_manager`, `operator_owner`). (Pre-v2 wording named
+the retired `operator_supervisor` / `operator_manager` roles here;
+see "Baseline Roles (seeded)" for the v1→v2 mapping.)
 
 | Key | Description | MFA |
 |---|---|---|
@@ -204,22 +206,41 @@ Baseline grants seeded by 9.0a:
   W-3 self-service migration grants `team.users.self_update`.
 - `operator_owner` gets ALL `team.*` keys, including
   `team.users.reset_mfa`, `team.audit_log.export`, hierarchy lifecycle
-  keys, and `team.users.self_update`.
-- `operator_admin` (when seeded) gets `team.audit_log.export` so the
-  Operator Web Audit Log CSV export action carries an honest gate,
-  plus `team.users.self_update` for the self-service profile editor.
-- `operator_manager` gets the manager-tier subset:
-  `team.users.view`, `team.users.invite`, `team.users.reactivate`,
-  `team.users.reset_password`, `team.users.self_update`,
+  keys, and `team.users.self_update`. This subsumes the audit-log CSV
+  export gate and self-service profile editor that an `operator_admin`
+  tier was previously described as carrying — there is no separate
+  seeded `operator_admin` role; that capability is part of
+  `operator_owner` at launch.
+- `operator_general_manager` (v2; the role formerly described here as
+  `operator_manager`) gets the GM-tier subset:
+  `team.users.view`, `team.users.invite`, `team.users.deactivate`,
+  `team.users.reactivate`, `team.users.reset_password`,
+  `team.users.reset_mfa`, `team.users.self_update`,
   `team.roles.view`, `team.roles.assign`, `team.roles.revoke`,
-  `team.audit_log.view`, `team.session.force_logout`. Manager **cannot**
-  create custom roles, suspend/delete hierarchy levels, soft-delete
-  users, reset MFA, or export audit logs by default (locked); pulling
-  a full audit trail to CSV is a senior-role action.
-- `operator_supervisor` and `operator_staff` get `team.users.self_update`
+  `team.audit_log.view`. GM **cannot** create custom roles,
+  suspend/delete hierarchy levels, soft-delete users, or export audit
+  logs by default (locked); pulling a full audit trail to CSV is an
+  Owner / Auditor action.
+- `location_manager` (v2 location-scoped) gets `team.users.view`,
+  `team.users.invite`, `team.users.deactivate`, `team.users.self_update`,
+  `team.roles.view`, `team.roles.assign` — all location-scoped via
+  `user_roles.location_id`.
+- `supervisor` (v2; the role the retired `operator_supervisor` /
+  `operator_staff` were auto-migrated into) gets `team.users.self_update`
   only — every signed-in operator user can update their own profile
   from the My Account surface, regardless of other team-management
   authority.
+- `team_admin` (v2 roster/role-admin role) gets the team-administration
+  subset: `team.users.view`, `team.users.invite`,
+  `team.users.deactivate`, `team.users.reactivate`,
+  `team.users.reset_password`, `team.users.reset_mfa`,
+  `team.users.self_update`, `team.roles.view`, `team.roles.assign`,
+  `team.roles.revoke`, `team.audit_log.view`,
+  `team.session.force_logout`.
+- `finance_analyst` and `training_lead` get `team.users.self_update`
+  only. `auditor_compliance` adds `team.audit_log.view` /
+  `team.audit_log.export` on top of `team.users.self_update` for
+  read-only audit oversight.
 - `team.roles.default_catalog.view` is granted to `super_admin` and
   `ff_support` only — the F&F-internal Default Role Catalog admin
   surface (`default_role_catalog_admin_screen.dart`) is the only
@@ -238,8 +259,11 @@ Baseline grants seeded by 9.0a:
 Operator business-account settings. `account.configure` gates writes to
 the Operator Web Account screen for business identity, region, business
 week, rollover-hour, and logo settings. Grant intent is senior
-operator ownership: `operator_owner` and `operator_admin` (when seeded)
-can configure the account; manager-tier and below remain read-only.
+operator ownership: `operator_owner` configures the account (this
+includes the account-configuration capability a separate
+`operator_admin` tier was previously described as holding — no such
+seeded role exists; it is part of `operator_owner`); GM-tier and
+below remain read-only.
 `super_admin` is granted explicitly so the seeded super-admin role keeps
 the "every catalog key" invariant. No MFA is required at the catalog
 level; route-level freshness can be added later without changing the
@@ -254,8 +278,10 @@ grantable key.
 Operator business-timing settings. `business_timing.configure` gates
 writes to the Operator Web Business setup and Business timing editor
 screens. Grant intent mirrors the current operator write route and
-screen posture: `operator_owner` and `operator_admin` (when seeded) own
-timing configuration; manager-tier and below do not receive the default
+screen posture: `operator_owner` owns timing configuration (the
+timing-configuration capability a separate `operator_admin` tier was
+previously described as holding is part of `operator_owner` — no such
+seeded role exists); GM-tier and below do not receive the default
 grant. `super_admin` is granted explicitly for catalog completeness.
 No MFA is required at the catalog level; closed-day timing authority
 and write validation stay in the business-timing route/service layer.
@@ -299,11 +325,13 @@ catch-all rotate-secret action used by Phase 11A.4. Vendor-specific
 Phase 8.0 single-category gate for the Vendor Connections admin
 surface (POS / labor / reservation). Distinct from the per-vendor
 `integration.*` keys above which gate F&F-internal provider-key
-rotation in 11A.4. Granted to `forge_admin` and operator senior
-roles (`operator_owner` / `operator_admin`); read-only for
-`ff_support` (no mutate routes wired); denied to `location_manager`
-because misconfigured vendor credentials cascade into broken
-cost / labor data and senior roles own that risk.
+rotation in 11A.4. Granted to `forge_admin` and the senior
+operator role `operator_owner` (which subsumes the integrations
+configuration capability a separate `operator_admin` tier was
+previously described as holding — no such seeded role exists);
+read-only for `ff_support` (no mutate routes wired); denied to
+`location_manager` because misconfigured vendor credentials cascade
+into broken cost / labor data and senior roles own that risk.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -329,18 +357,54 @@ MFA-required gates outside the permission catalog.
 
 ## Baseline Roles (seeded)
 
-Six roles are seeded into `public.roles` at 9.0 apply time, all global
-(`operator_id IS NULL`) and `is_seeded = true`. Custom operator-scoped
+The seeded role catalog is the **v2 default role catalog** — **ten**
+roles seeded into `public.roles`, all global (`operator_id IS NULL`)
+and `is_seeded = true`. Source of truth:
+`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`
+(operator-approved 2026-05-14; locks role keys, scopes, descriptions,
+MFA gating, and the v1→v2 migration mapping). Custom operator-scoped
 roles are created at runtime via 9.6's POST `/v1/admin/auth/roles`.
 
-| Role key | `is_editable` | Intent |
+> **History — v1 6-role catalog superseded by v2 (2026-05-14).** This
+> section formerly listed a 6-role v1 catalog
+> (`super_admin`, `ff_support`, `operator_owner`, `operator_manager`,
+> `operator_supervisor`, `operator_staff`). The v1 roles
+> `operator_manager` / `operator_supervisor` / `operator_staff` are
+> **retired / superseded** (soft-deleted, `deleted_at` set, not
+> hard-deleted — the audit trail and FK references are preserved). v2
+> auto-migrates existing grants:
+> `operator_manager → operator_general_manager` (operator-wide);
+> `operator_supervisor → supervisor` (location-scoped, name
+> continuity); `operator_staff → supervisor` (location-scoped,
+> Barrio-only users folded into the shift-supervisor role). A separate
+> `operator_admin` role was **never seeded in v1 or v2** — references
+> to an `operator_admin` "(when seeded)" tier elsewhere in this doc
+> have been corrected; that capability is part of `operator_owner`.
+> Readers tracing old `operator_manager` / `operator_supervisor` /
+> `operator_staff` references should map them per the table below.
+
+| Role key | `is_editable` | Scope | Intent |
+|---|---|---|---|
+| `super_admin` | false | global | F&F company. Every key in the catalog. BYPASSRLS via `forge_admin` Postgres role. |
+| `ff_support` | false | global | F&F support. Read-only across products + admin views; scoped to assigned operators. |
+| `operator_owner` | true | Business | Owns the business. Full operational access plus billing, integrations, and team admin. (Display name `Owner`. Carry-over from v1; also subsumes the never-seeded `operator_admin` tier's capabilities.) |
+| `operator_general_manager` | true | Business | Runs all locations and staff. Operational edit access plus staff admin and audit view; no billing or subscription mutations. (Display name `General Manager`. v2 successor of the retired `operator_manager`.) |
+| `location_manager` | true | Location | Runs one location. Invites and removes staff, edits schedules, sees variance and benchmarks at that location. (Display name `Location Manager`. New v2 role; no v1 antecedent.) |
+| `supervisor` | true | Location | Supervises shifts at one location. Edits short-term schedule, marks shift covers, sees variance for shifts they ran. (Display name `Supervisor`. v2 successor of the retired `operator_supervisor` and `operator_staff`.) |
+| `finance_analyst` | true | Business | Reviews invoices and usage, adjusts usage caps. Cannot change the subscription plan or connect billing integrations. (Display name `Finance Analyst`. New v2 role; no v1 antecedent.) |
+| `auditor_compliance` | true | Business | Read-only audit trail and PII oversight. Sees who did what and when, exports the audit log, cannot mutate data. (Display name `Auditor / Compliance`. New v2 role; no v1 antecedent.) |
+| `training_lead` | true | Either | Manages employee training and onboarding content. Edits supervisor content and the interview playbook; does not edit the F&F handbook source. (Display name `Training Lead`. New v2 role; no v1 antecedent.) |
+| `team_admin` | true | Either | Manages the team roster, role assignments, MFA, and password resets. Does not see operational dashboards. (Display name `Team Admin`. New v2 role; no v1 antecedent.) |
+
+**Retired v1 roles (superseded — kept soft-deleted for the audit
+trail; do NOT silently drop references):**
+
+| Retired v1 role key | Superseded by (v2) | Migration |
 |---|---|---|
-| `super_admin` | false | F&F company. Every key in the catalog. BYPASSRLS via `forge_admin` Postgres role. |
-| `ff_support` | false | F&F support. Read-only across products + admin views; scoped to assigned operators. |
-| `operator_owner` | true | Operator owner / customer. Full operational + operator-scoped admin + integrations. |
-| `operator_manager` | true | Manager-level operator user. Broad operational; limited admin. |
-| `operator_supervisor` | true | Supervisor-level. Selected operational + supervisor learning. |
-| `operator_staff` | true | Line-level. Barrio learning surfaces only by default. |
+| `operator_manager` | `operator_general_manager` | Auto-migrated operator-wide; v1 row soft-deleted (`deleted_at` set), display name suffixed `(retired)`. |
+| `operator_supervisor` | `supervisor` | Auto-migrated location-scoped (location continuity preserved); v1 row soft-deleted. |
+| `operator_staff` | `supervisor` | Auto-migrated location-scoped (Barrio-only users folded into shift-supervisor); v1 row soft-deleted. |
+| `operator_admin` *(phantom — never seeded)* | `operator_owner` | Never a real seeded role in v1 or v2. Any prior "(when seeded)" prose was speculative; the described capabilities are part of `operator_owner`. |
 
 The `is_editable` flag protects `super_admin` and `ff_support` from
 runtime grant edits; only super_admin can edit `super_admin` /
