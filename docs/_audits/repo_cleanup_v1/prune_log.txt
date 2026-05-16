@@ -1,0 +1,354 @@
+KEEP  C:/Git Local Repos/forge_flow_demo  [refs/heads/master]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a01ed90e3eb47c637  [refs/heads/claude/wave-2-mo-2-fu-manual-covers-projection]
+  BRANCH-DELETED  claude/wave-2-mo-2-fu-manual-covers-projection
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a04e853627c6c0f25  [refs/heads/claude/c-11-pressure-test-inventory-under-preview]
+  BRANCH-DELETED  claude/c-11-pressure-test-inventory-under-preview
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a0529e994da870f79  [refs/heads/claude/b2-3-blast-radius-endpoint]
+  BRANCH-DELETED  claude/b2-3-blast-radius-endpoint
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a07b15fad5fecb4af  [refs/heads/claude/l-a1-inheritance-tree-primitive]
+  BRANCH-DELETED  claude/l-a1-inheritance-tree-primitive
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a09779b8410bbf168  [refs/heads/claude/b2-2-default-role-catalog-admin-editor]
+  BRANCH-DELETED  claude/b2-2-default-role-catalog-admin-editor
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a09fe3316afa15cfb  [refs/heads/claude/admin-cors-bootstrap-test-fix]
+  BRANCH-DELETED  claude/admin-cors-bootstrap-test-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a0c222f3a06cb3c0e  [refs/heads/claude/wave-2-claude2-audit-followups]
+  BRANCH-DELETED  claude/wave-2-claude2-audit-followups
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a0c27df099ca52e61  [refs/heads/claude/test-proxy-stale-snapshot-fix-2026-05-13]
+  BRANCH-DELETED  claude/test-proxy-stale-snapshot-fix-2026-05-13
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a0c4f99e7b3703bef  [refs/heads/claude/wave-2-phase-2-ow-4-location-tab-scope-visibility]
+  BRANCH-DELETED  claude/wave-2-phase-2-ow-4-location-tab-scope-visibility
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a0d154cd1b3eb5a23  [refs/heads/claude/auth-location-integrations-test-stateerror-fix]
+  BRANCH-DELETED  claude/auth-location-integrations-test-stateerror-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a0e8aab30fea4e13b  [refs/heads/claude/wave-2-w-4-admin-my-account-parity]
+  BRANCH-DELETED  claude/wave-2-w-4-admin-my-account-parity
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a102fa8f8389be888  [refs/heads/claude/wave-2-w-2-cancel-pending-invite]
+  BRANCH-DELETED  claude/wave-2-w-2-cancel-pending-invite
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a115c832343885261  [refs/heads/claude/pr-630-fix-decompose-sibling-file]
+  BRANCH-DELETED  claude/pr-630-fix-decompose-sibling-file
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a1269ea261d9b0f63  [refs/heads/claude/wave-2-phase-2-ac-1-actor-label-sweep]
+  BRANCH-DELETED  claude/wave-2-phase-2-ac-1-actor-label-sweep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a187af8430b0917d8  [refs/heads/claude/b-fu-dev-csp-deploy-script-swap]
+  BRANCH-DELETED  claude/b-fu-dev-csp-deploy-script-swap
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a1b8648296d7c8c19  [refs/heads/claude/per-daypart-slice-2-benchmark-tab]
+  BRANCH-DELETED  claude/per-daypart-slice-2-benchmark-tab
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a1e50a891f25d5337  [refs/heads/claude/b1b-admin-audit-actor-fix]
+  BRANCH-DELETED  claude/b1b-admin-audit-actor-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a21485220a1e9c74c  [refs/heads/claude/wave-2-phase-2-ow-2a-account-field-parity-audit]
+  BRANCH-DELETED  claude/wave-2-phase-2-ow-2a-account-field-parity-audit
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a21508349bd53434d  [refs/heads/claude/wave-2-phase-2-en-3-fu-fanout-production-binding]
+  BRANCH-DELETED  claude/wave-2-phase-2-en-3-fu-fanout-production-binding
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a2186d37fa43e1a72  [refs/heads/claude/wave-2-testing-prep]
+  BRANCH-DELETED  claude/wave-2-testing-prep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a221e24f5b94c5c1d  [refs/heads/claude/mobile-fu-business-scope-drawer-seed]
+  BRANCH-DELETED  claude/mobile-fu-business-scope-drawer-seed
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a261b63f2466d6287  [refs/heads/claude/wave-2-r-1l-r-2l-not-null-flip]
+  BRANCH-DELETED  claude/wave-2-r-1l-r-2l-not-null-flip
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a271c915a935ded42  [refs/heads/claude/wave-2-b-w1-phase-8-base-fact-tables]
+  BRANCH-DELETED  claude/wave-2-b-w1-phase-8-base-fact-tables
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a27dd6cc23901bd6c  [refs/heads/claude/a3-4-bare-catch-typing-chunk-3]
+  BRANCH-DELETED  claude/a3-4-bare-catch-typing-chunk-3
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a27fadd344130fe3a  [refs/heads/worktree-agent-a27fadd344130fe3a]
+  BRANCH-DELETED  worktree-agent-a27fadd344130fe3a
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a281c810c4c532713  [refs/heads/claude/fix-gap-b3-audit-tree-picker-redirect]
+  BRANCH-DELETED  claude/fix-gap-b3-audit-tree-picker-redirect
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a29c655315999c7b4  [refs/heads/claude/u-fu-hp11-account-demo-defaults]
+  BRANCH-DELETED  claude/u-fu-hp11-account-demo-defaults
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a2d1ac2134d3ce422  [refs/heads/claude/b11-2-b-step-up-wiring]
+  BRANCH-DELETED  claude/b11-2-b-step-up-wiring
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a2dbf1ad54d6e3aa3  [refs/heads/claude/b8-b-operator-web-audit-log-hierarchy-parity]
+  BRANCH-DELETED  claude/b8-b-operator-web-audit-log-hierarchy-parity
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a30ef09a55c1900ca  [refs/heads/claude/gap-b3-admin-audit-log-tree-picker]
+  BRANCH-DELETED  claude/gap-b3-admin-audit-log-tree-picker
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a3142cc22679ddbd1  [refs/heads/claude/wave-2-w-6-account-screen-timezone]
+  BRANCH-DELETED  claude/wave-2-w-6-account-screen-timezone
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a3157d758f8b7aa37  [refs/heads/claude/c-2-del-webhook-signature-tos]
+  BRANCH-DELETED  claude/c-2-del-webhook-signature-tos
+KEEP  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a346b8273ebf944a7  [refs/heads/claude/fix-operator-web-live-onboarding-g24]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a347f97736bfb340e  [refs/heads/claude/a7-1-frameworks-cross-ref-sweep]
+  BRANCH-DELETED  claude/a7-1-frameworks-cross-ref-sweep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a3ac29d4c77c9e480  [refs/heads/claude/r-2l-fu-demo-fixture]
+  BRANCH-DELETED  claude/r-2l-fu-demo-fixture
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a3cda9e51f393b7b5  [refs/heads/claude/c-2-wire-or-delete-template-emails]
+  BRANCH-DELETED  claude/c-2-wire-or-delete-template-emails
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a3d3d2344bf5586b8  [refs/heads/claude/a11-1-b-session-record-gauge-consumer]
+  BRANCH-DELETED  claude/a11-1-b-session-record-gauge-consumer
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a3d6b602dd41bd45e  [refs/heads/claude/phase-2-walkthrough-tracker-annotations]
+  BRANCH-DELETED  claude/phase-2-walkthrough-tracker-annotations
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a41c6b3b56c012ac0  [refs/heads/claude/contract-w3a-mobile-readonly-mirror]
+  BRANCH-DELETED  claude/contract-w3a-mobile-readonly-mirror
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a46b9443af437d56e  [refs/heads/claude/per-daypart-slice-0-cycle-gating]
+  BRANCH-DELETED  claude/per-daypart-slice-0-cycle-gating
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a48d9da56fd9b0b7d  [refs/heads/claude/wave-2-q-4-role-editor-orphan-lint]
+  BRANCH-DELETED  claude/wave-2-q-4-role-editor-orphan-lint
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a4a579e3d7401bf97  [refs/heads/claude/wave-2-w-5-business-logo-upload]
+  BRANCH-DELETED  claude/wave-2-w-5-business-logo-upload
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a4aa63d9dfdab7b0b  [refs/heads/claude/a10-1-test-consolidation-pass]
+  BRANCH-DELETED  claude/a10-1-test-consolidation-pass
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a4b24e7370649ecb7  [refs/heads/claude/fix-demo-open-shift-clock-weekend-lunch-finalize]
+  BRANCH-DELETED  claude/fix-demo-open-shift-clock-weekend-lunch-finalize
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a4bd5e56222a5bbe9  [refs/heads/claude/c-2-d-production-binding]
+  BRANCH-DELETED  claude/c-2-d-production-binding
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a4cd98330ce837021  [refs/heads/claude/wave-2-q-1-soak-harness-azure-blob]
+  BRANCH-DELETED  claude/wave-2-q-1-soak-harness-azure-blob
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a4fff37dc32f55208  [refs/heads/claude/admin-auth-session-ledger-parity]
+  BRANCH-DELETED  claude/admin-auth-session-ledger-parity
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5146f77508b122f8  [refs/heads/claude/wave-2-q-1-fu-multi-pod-live-capture]
+  BRANCH-DELETED  claude/wave-2-q-1-fu-multi-pod-live-capture
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a516bc14dfe821020  [refs/heads/claude/test-cleanup-stale-permission-explainer-group]
+  BRANCH-DELETED  claude/test-cleanup-stale-permission-explainer-group
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5190b379f1638a1b  [refs/heads/claude/wave-2-h-2-inheritance-tree-viz]
+  BRANCH-DELETED  claude/wave-2-h-2-inheritance-tree-viz
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a57da55633d58a687  [refs/heads/claude/g24-g3-s3prime-magic-link-removal]
+  BRANCH-DELETED  claude/g24-g3-s3prime-magic-link-removal
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5ac68bfa733efb18  [refs/heads/claude/gap-a6-shared-permission-explainer]
+  BRANCH-DELETED  claude/gap-a6-shared-permission-explainer
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5bf291531be6ec56  [refs/heads/claude/mo-5b-operator-web-2fa-sweep]
+  BRANCH-DELETED  claude/mo-5b-operator-web-2fa-sweep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5d065150e6c1df49  [refs/heads/claude/a4-2-performance-fixes]
+  BRANCH-DELETED  claude/a4-2-performance-fixes
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a5f73d6fdd651d2d1  [refs/heads/claude/a4-1-performance-audit-pass]
+  BRANCH-DELETED  claude/a4-1-performance-audit-pass
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a602c22d511a585fa  [refs/heads/claude/wave-2-q-2a-email-soak-harness]
+  BRANCH-DELETED  claude/wave-2-q-2a-email-soak-harness
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a623e563a77829dbf  [refs/heads/claude/post-hardening-doc-drift-2026-05-13]
+  BRANCH-DELETED  claude/post-hardening-doc-drift-2026-05-13
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6378050414344509  [refs/heads/claude/doc-hygiene-trim-2026-05-12]
+  BRANCH-DELETED  claude/doc-hygiene-trim-2026-05-12
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a674db4e44b8c875d  [refs/heads/claude/fu-settings-pointer-buttons]
+  BRANCH-DELETED  claude/fu-settings-pointer-buttons
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6b18cd36a5ce58f3  [refs/heads/claude/wave-2-u-fu-hp11-account-schema]
+  BRANCH-DELETED  claude/wave-2-u-fu-hp11-account-schema
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6c289fb76ec26c55  [refs/heads/claude/wave-2-s-1-wage-authority-blended-mix-formula-ui]
+  BRANCH-DELETED  claude/wave-2-s-1-wage-authority-blended-mix-formula-ui
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6cafc8c688471363  [refs/heads/claude/wave-2-mo-2-mobile-covers-manual-entry]
+  BRANCH-DELETED  claude/wave-2-mo-2-mobile-covers-manual-entry
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6d431220af1c1cc0  [refs/heads/claude/per-daypart-slice-1-per-period-data-foundation]
+  BRANCH-DELETED  claude/per-daypart-slice-1-per-period-data-foundation
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6eba2ebe7a96e36e  [refs/heads/claude/per-daypart-slice-4-shift-card]
+  BRANCH-DELETED  claude/per-daypart-slice-4-shift-card
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a6f37e1ef577341c5  [refs/heads/claude/b8-audit-log-hierarchy-filter]
+  BRANCH-DELETED  claude/b8-audit-log-hierarchy-filter
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7165ed9ae2b24388  [refs/heads/claude/wave-2-b-1b-proxy-support-check-session]
+  BRANCH-DELETED  claude/wave-2-b-1b-proxy-support-check-session
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a732990db5dca83d1  [refs/heads/claude/wave-2-w-1-members-edit-user-write-path]
+  BRANCH-DELETED  claude/wave-2-w-1-members-edit-user-write-path
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7743f951bc3d0cca  [refs/heads/claude/wave-2-phase-2-rp-15-benchmark-override-cap-and-undo]
+  BRANCH-DELETED  claude/wave-2-phase-2-rp-15-benchmark-override-cap-and-undo
+FAILED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a79d82a2cf75cdc09  [refs/heads/claude/mobile-fu-drawer-seed-followup-bundle]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7b98a0a831f38bb1  [refs/heads/claude/docs-infra-deferrals-inventory-b6]
+  BRANCH-DELETED  claude/docs-infra-deferrals-inventory-b6
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7c867aa45c774bc5  [refs/heads/claude/wave-2-phase-2-en-3-internal-template-wire]
+  BRANCH-DELETED  claude/wave-2-phase-2-en-3-internal-template-wire
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7c8ad5763dba2393  [refs/heads/claude/b11-1-handoff-codes-table-endpoints]
+  BRANCH-DELETED  claude/b11-1-handoff-codes-table-endpoints
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7d7a99dc8d7dcd03  [refs/heads/claude/wave-2-r-1l-fu-pre-fail-test-fix]
+  BRANCH-DELETED  claude/wave-2-r-1l-fu-pre-fail-test-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a7f931db967b0d05c  [refs/heads/claude/b1-deliberate-location-only-doc-and-ux]
+  BRANCH-DELETED  claude/b1-deliberate-location-only-doc-and-ux
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a80e1b11203ca9d95  [refs/heads/claude/per-daypart-slice-5-variance-read]
+  BRANCH-DELETED  claude/per-daypart-slice-5-variance-read
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8255bc01c8f236b8  [refs/heads/claude/demo-seed-completeness]
+  BRANCH-DELETED  claude/demo-seed-completeness
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8257594985b55190  [(detached)]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8618656fb0158041  [refs/heads/claude/c-2-d-vendor-sync-outage-detector-wire]
+  BRANCH-DELETED  claude/c-2-d-vendor-sync-outage-detector-wire
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a88d7ee58c5abf054  [refs/heads/claude/per-daypart-slice-6-audit-scorer]
+  BRANCH-DELETED  claude/per-daypart-slice-6-audit-scorer
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8bb450d97164aa96  [refs/heads/claude/wave-2-q-3-scaffold-audit-email]
+  BRANCH-DELETED  claude/wave-2-q-3-scaffold-audit-email
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8bb72ec3cb7a7fc7  [refs/heads/claude/wave-2-mo-1-mobile-data-tab-role-gate]
+  BRANCH-DELETED  claude/wave-2-mo-1-mobile-data-tab-role-gate
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8f556033e0d4654a  [refs/heads/claude/c-2-f-vendor-connection-auto-disabled-wire]
+  BRANCH-DELETED  claude/c-2-f-vendor-connection-auto-disabled-wire
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a8fc1c9da4e21a44a  [refs/heads/claude/per-daypart-slice-3-plan-persistence]
+  BRANCH-DELETED  claude/per-daypart-slice-3-plan-persistence
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a9173290af53cd8ae  [refs/heads/claude/l-a2-inheritance-descendant-cache]
+  BRANCH-DELETED  claude/l-a2-inheritance-descendant-cache
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a928f14752c0cce38  [refs/heads/claude/fu-mobile-shift-card-overflow-17px]
+  BRANCH-DELETED  claude/fu-mobile-shift-card-overflow-17px
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a98d1d831e522f7b2  [refs/heads/claude/a3-1-monolith-seam-map-bleed-stop-lint]
+  BRANCH-DELETED  claude/a3-1-monolith-seam-map-bleed-stop-lint
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a9b2ed624167444d9  [refs/heads/claude/c8-notification-prefs-catalog-completeness]
+  BRANCH-DELETED  claude/c8-notification-prefs-catalog-completeness
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a9c8481d13412cf87  [refs/heads/claude/operator-web-demo-scenario-bundle]
+  BRANCH-DELETED  claude/operator-web-demo-scenario-bundle
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a9ce3df943514576e  [refs/heads/claude/b1a-inheritance-notice-propagation]
+  BRANCH-DELETED  claude/b1a-inheritance-notice-propagation
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-a9e0a8f747a6bd0c5  [refs/heads/claude/b2-1-idempotency-replay-fix]
+  BRANCH-DELETED  claude/b2-1-idempotency-replay-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aa02edfca7cf459b1  [refs/heads/claude/ow-6d-inline-edit-button]
+  BRANCH-DELETED  claude/ow-6d-inline-edit-button
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aa279766b5ef7819f  [refs/heads/claude/c-2-c-mfa-factor-changed-wire]
+  BRANCH-DELETED  claude/c-2-c-mfa-factor-changed-wire
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aa28ecfc5f03e626d  [refs/heads/claude/c-1-sendgrid-events-webhook]
+  BRANCH-DELETED  claude/c-1-sendgrid-events-webhook
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aa664d70e22063b64  [refs/heads/claude/wave-2-phase-2-rp-9-default-catalog-edit-key]
+  BRANCH-DELETED  claude/wave-2-phase-2-rp-9-default-catalog-edit-key
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aa7c7946ed1fc8102  [refs/heads/claude/debug-md-implementation-status-tracker]
+  BRANCH-DELETED  claude/debug-md-implementation-status-tracker
+KEEP  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aa8f0545111eb6b7e  [refs/heads/claude/gap-b2-wage-role-rows-hierarchy-scope]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aaaca1be2316bca3f  [refs/heads/claude/wave-2-closeout-sweep]
+  BRANCH-DELETED  claude/wave-2-closeout-sweep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aac29d24f3bd95e54  [refs/heads/claude/b11-2-step-up-challenge]
+  BRANCH-DELETED  claude/b11-2-step-up-challenge
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aae1e31935c5d4749  [refs/heads/claude/wave-2-phase-2-final-closeout]
+  BRANCH-DELETED  claude/wave-2-phase-2-final-closeout
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aae435a76cabf1e0f  [refs/heads/claude/b-1-b2-1-idempotency-replay-fix]
+  BRANCH-DELETED  claude/b-1-b2-1-idempotency-replay-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aaed769f5cb98a15c  [refs/heads/claude/b1-c-admin-gateway-actorkind-sweep]
+  BRANCH-DELETED  claude/b1-c-admin-gateway-actorkind-sweep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab2e50d0d05cc179d  [refs/heads/claude/g66-invited-user-activation-wiring]
+  BRANCH-DELETED  claude/g66-invited-user-activation-wiring
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab34e17b216b1c2af  [refs/heads/claude/wave-2-h-3-top-bar-hierarchy-map-picker]
+  BRANCH-DELETED  claude/wave-2-h-3-top-bar-hierarchy-map-picker
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab385c5c2faefcf48  [refs/heads/claude/wave-2-phase-2-rp-10-hierarchy-picker-in-invite]
+  BRANCH-DELETED  claude/wave-2-phase-2-rp-10-hierarchy-picker-in-invite
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab6e1f0bf2cfdae24  [refs/heads/claude/wave-2-mo-1-fu-demo-live-switch-to-setup-tab]
+  BRANCH-DELETED  claude/wave-2-mo-1-fu-demo-live-switch-to-setup-tab
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab7b21d89fccb72a2  [refs/heads/claude/wave-2-q-1-fu-sink-wire]
+  BRANCH-DELETED  claude/wave-2-q-1-fu-sink-wire
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab7e17ddca54a44e4  [refs/heads/claude/wave-2-r-1l-roles-schema]
+  BRANCH-DELETED  claude/wave-2-r-1l-roles-schema
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab83abbb1ec76e437  [refs/heads/claude/fix-839-d2-fixturegoverned-local]
+  BRANCH-DELETED  claude/fix-839-d2-fixturegoverned-local
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab8f6713040b71857  [refs/heads/claude/org-unit-hierarchy-surface-slice]
+  BRANCH-DELETED  claude/org-unit-hierarchy-surface-slice
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ab97279d56a38a9e6  [refs/heads/claude/fu-mobile-cold-boot-shift-stale-state]
+  BRANCH-DELETED  claude/fu-mobile-cold-boot-shift-stale-state
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-abc3d950cf05c39db  [refs/heads/claude/b2-4-catalog-published-at-projection]
+  BRANCH-DELETED  claude/b2-4-catalog-published-at-projection
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-abd2b1f573c4cea8b  [refs/heads/claude/a3-3-bare-catch-typing-chunk-2]
+  BRANCH-DELETED  claude/a3-3-bare-catch-typing-chunk-2
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-abea3a32f49b97a00  [refs/heads/claude/fix-gap-b3-audit-tree-picker-redirect-rebase]
+  BRANCH-DELETED  claude/fix-gap-b3-audit-tree-picker-redirect-rebase
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-abec48f198b9f3d53  [refs/heads/claude/a11-1-session-record-gauge]
+  BRANCH-DELETED  claude/a11-1-session-record-gauge
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac0cf4ac9ec1e955f  [refs/heads/claude/wave-2-w-3-profile-self-service]
+  BRANCH-DELETED  claude/wave-2-w-3-profile-self-service
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac37c12716ad842ec  [refs/heads/claude/wave-2-ledger-batch-2-flips]
+  BRANCH-DELETED  claude/wave-2-ledger-batch-2-flips
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac3d07d3e71ab852a  [refs/heads/claude/wave-2-b-2b-proxy-crash-triage]
+  BRANCH-DELETED  claude/wave-2-b-2b-proxy-crash-triage
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac6f6be868eb4e959  [refs/heads/claude/wave-2-w-1-fu-role-hierarchy-rotation]
+  BRANCH-DELETED  claude/wave-2-w-1-fu-role-hierarchy-rotation
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac7c19ac419d0a660  [refs/heads/claude/cut-variance-daypart-toggle]
+  BRANCH-DELETED  claude/cut-variance-daypart-toggle
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac8ea0e1bc720240b  [refs/heads/claude/b2-1-default-role-catalog-schema]
+  BRANCH-DELETED  claude/b2-1-default-role-catalog-schema
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ac9a4117f00560d0d  [refs/heads/claude/gap-a1-org-unit-rename]
+  BRANCH-DELETED  claude/gap-a1-org-unit-rename
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aca1b25704127a721  [refs/heads/claude/mo-5b-fu-mobile-recanonicalize]
+  BRANCH-DELETED  claude/mo-5b-fu-mobile-recanonicalize
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-acc2ff827ecac1c00  [refs/heads/claude/mo-5b-fu-admin-my-account-cleanup]
+  BRANCH-DELETED  claude/mo-5b-fu-admin-my-account-cleanup
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-acf041e73e20252e1  [refs/heads/claude/wave-2-s-2-data-accuracy-unified-ia]
+  BRANCH-DELETED  claude/wave-2-s-2-data-accuracy-unified-ia
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ad20afdf456070cfc  [refs/heads/claude/b-2-permission-explainer-screen-fix]
+  BRANCH-DELETED  claude/b-2-permission-explainer-screen-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ad34a3bc1353aa69c  [refs/heads/claude/c-7a-recovery-codes-viewed-at]
+  BRANCH-DELETED  claude/c-7a-recovery-codes-viewed-at
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ad966e36086fdd830  [refs/heads/claude/a3-2-bare-catch-chunk-1]
+  BRANCH-DELETED  claude/a3-2-bare-catch-chunk-1
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-add0487f3b41adcef  [refs/heads/claude/wave-2-u-fu-tier-email-wire]
+  BRANCH-DELETED  claude/wave-2-u-fu-tier-email-wire
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aded6d58c5d7d898a  [refs/heads/claude/wave-2-s-3-roles-screen-redesign]
+  BRANCH-DELETED  claude/wave-2-s-3-roles-screen-redesign
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-ae81da8f82fc239ec  [refs/heads/claude/wave-2-phase-2-mo-5b-two-factor-label-normalize]
+  BRANCH-DELETED  claude/wave-2-phase-2-mo-5b-two-factor-label-normalize
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aed099970150610fd  [refs/heads/claude/a11-2-soak-harness-durable-extensions]
+  BRANCH-DELETED  claude/a11-2-soak-harness-durable-extensions
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aedc6b2ba5f8842f7  [refs/heads/claude/per-daypart-slice-1.5-aggregator-bucketer]
+  BRANCH-DELETED  claude/per-daypart-slice-1.5-aggregator-bucketer
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-aeed3e03a0ed5cb80  [refs/heads/claude/repo-hygiene-flutter-gitignore]
+  BRANCH-DELETED  claude/repo-hygiene-flutter-gitignore
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-af3a26b3c5d75481f  [refs/heads/claude/wave-2-h-1-hp-11-schedule-wage-authority]
+  BRANCH-DELETED  claude/wave-2-h-1-hp-11-schedule-wage-authority
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-af3a8224f57a19d84  [refs/heads/worktree-agent-af3a8224f57a19d84]
+  BRANCH-DELETED  worktree-agent-af3a8224f57a19d84
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-af3be804109b4b115  [refs/heads/claude/fix-g4-admin-self-mfa-password]
+  BRANCH-DELETED  claude/fix-g4-admin-self-mfa-password
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-af89b72b3d4805206  [refs/heads/claude/b11-2-b-test-fake-clock-fix]
+  BRANCH-DELETED  claude/b11-2-b-test-fake-clock-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-afdd2749ebcac0cc1  [refs/heads/claude/c-1a-email-event-provider-id]
+  BRANCH-DELETED  claude/c-1a-email-event-provider-id
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/agent-afde4519c9a4f6e38  [refs/heads/claude/wave-2-w-5-mobile-fu-2-account-info-logo]
+  BRANCH-DELETED  claude/wave-2-w-5-mobile-fu-2-account-info-logo
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/b-fu-proxy-analyze-infos  [refs/heads/claude/wave-2-b-fu-proxy-analyze-infos]
+  BRANCH-DELETED  claude/wave-2-b-fu-proxy-analyze-infos
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/demo-slice-a-hierarchy  [refs/heads/claude/demo-slice-a-hierarchy]
+  BRANCH-DELETED  claude/demo-slice-a-hierarchy
+FAILED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/eloquent-yonath-fec6f8  [refs/heads/claude/eloquent-yonath-fec6f8]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/fix-bm-summary-triage  [refs/heads/claude/fix-benchmark-summary-replay-triage]
+  BRANCH-DELETED  claude/fix-benchmark-summary-replay-triage
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/fix-daypart-labor-parity  [refs/heads/claude/fix-daypart-labor-parity]
+  BRANCH-DELETED  claude/fix-daypart-labor-parity
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/fix-qa-demo-open-shift-clock-and-weekend-lunch  [refs/heads/claude/fix-demo-open-shift-clock-weekend-lunch]
+  BRANCH-DELETED  claude/fix-demo-open-shift-clock-weekend-lunch
+FAILED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/fix-qa-shift-labor-prov-wt  [refs/heads/claude/fix-qa-shift-labor-provenance-vendorid-wiring]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/fix-settings-deeplink-buttons  [refs/heads/claude/fix-settings-deeplink-buttons]
+  BRANCH-DELETED  claude/fix-settings-deeplink-buttons
+KEEP  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/friendly-satoshi-541f5d  [refs/heads/claude/friendly-satoshi-541f5d]
+FAILED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/mobile-lane-pass-1  [refs/heads/claude/mobile-lane-pass-1]
+FAILED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/parity-followups  [refs/heads/claude/cross-surface-parity-audit-docs]
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/per-daypart-fix-demo-seed-per-period-cycle  [refs/heads/claude/per-daypart-fix-demo-seed-per-period-cycle]
+  BRANCH-DELETED  claude/per-daypart-fix-demo-seed-per-period-cycle
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/per-daypart-fix-shift-card-closed-state  [refs/heads/claude/per-daypart-fix-shift-card-closed-state]
+  BRANCH-DELETED  claude/per-daypart-fix-shift-card-closed-state
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/q-4-orphan-lint  [refs/heads/claude/wave-2-q-4-custom-role-orphan-lint]
+  BRANCH-DELETED  claude/wave-2-q-4-custom-role-orphan-lint
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/serene-euclid-a56e06  [refs/heads/claude/serene-euclid-a56e06]
+  BRANCH-DELETED  claude/serene-euclid-a56e06
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/u-fu-hp11-account  [refs/heads/claude/wave-2-u-fu-hp11-account]
+  BRANCH-DELETED  claude/wave-2-u-fu-hp11-account
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/ux-benchmark-cleanup  [refs/heads/claude/ux-benchmark-cleanup]
+  BRANCH-DELETED  claude/ux-benchmark-cleanup
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/ux-settings-declutter  [refs/heads/claude/ux-settings-declutter]
+  BRANCH-DELETED  claude/ux-settings-declutter
+REMOVED  C:/Git Local Repos/forge_flow_demo/.claude/worktrees/ux-shift-chip-foh  [refs/heads/claude/ux-shift-chip-foh]
+  BRANCH-DELETED  claude/ux-shift-chip-foh
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/a2-1-dead-placeholder-sweep  [refs/heads/codex/a2-1-dead-placeholder-sweep]
+  BRANCH-DELETED  codex/a2-1-dead-placeholder-sweep
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/a2-2-email-wire-delete  [refs/heads/codex/a2-2-email-wire-delete]
+  BRANCH-DELETED  codex/a2-2-email-wire-delete
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/a5-a8-schema-audit-lints  [refs/heads/codex/a5-a8-schema-audit-lints]
+  BRANCH-DELETED  codex/a5-a8-schema-audit-lints
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/a9-1-lib-data-rehome  [refs/heads/codex/a9-1-lib-data-rehome]
+  BRANCH-DELETED  codex/a9-1-lib-data-rehome
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b10-1-vendor-applicability  [refs/heads/codex/b10-1-vendor-applicability]
+  BRANCH-DELETED  codex/b10-1-vendor-applicability
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b10-2-vendor-applicability-admin  [refs/heads/codex/b10-2-vendor-applicability-admin]
+  BRANCH-DELETED  codex/b10-2-vendor-applicability-admin
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b3-role-key-hybrid  [refs/heads/codex/b3-role-key-hybrid]
+  BRANCH-DELETED  codex/b3-role-key-hybrid
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b4-two-product-role-editor  [refs/heads/codex/b4-two-product-role-editor]
+  BRANCH-DELETED  codex/b4-two-product-role-editor
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b5-admin-access-control  [refs/heads/codex/b5-admin-access-control]
+  BRANCH-DELETED  codex/b5-admin-access-control
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b5-b-catalog-tri-mirror  [refs/heads/codex/b5-b-catalog-tri-mirror]
+  BRANCH-DELETED  codex/b5-b-catalog-tri-mirror
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b7-a-invite-scope-fix  [refs/heads/codex/b7-a-invite-scope-fix]
+  BRANCH-DELETED  codex/b7-a-invite-scope-fix
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b9-1-sign-in-security-redirect  [refs/heads/codex/b9-1-sign-in-security-redirect]
+  BRANCH-DELETED  codex/b9-1-sign-in-security-redirect
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b9-2-my-account-active-sessions  [refs/heads/codex/b9-2-my-account-active-sessions]
+  BRANCH-DELETED  codex/b9-2-my-account-active-sessions
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/b9-3-adaptive-2fa-button  [refs/heads/codex/b9-3-adaptive-2fa-button]
+  BRANCH-DELETED  codex/b9-3-adaptive-2fa-button
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/c-10-admin-parity-copy  [refs/heads/codex/c-10-admin-parity-copy]
+  BRANCH-DELETED  codex/c-10-admin-parity-copy
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/c-5-mobile-handoff-deeplink  [refs/heads/codex/c-5-mobile-handoff-deeplink]
+  BRANCH-DELETED  codex/c-5-mobile-handoff-deeplink
+REMOVED  C:/Git Local Repos/forge_flow_demo/.codex/worktrees/c-6-inheritance-tree-consumers  [refs/heads/codex/c-6-inheritance-tree-consumers]
+  BRANCH-DELETED  codex/c-6-inheritance-tree-consumers
+REMOVED  C:/Git Local Repos/forge_flow_demo-c-7-adaptive-2fa-button  [refs/heads/codex/c-7-adaptive-2fa-button]
+  BRANCH-DELETED  codex/c-7-adaptive-2fa-button
+REMOVED  C:/Git Local Repos/forge_flow_demo_b6_benchmark_overrides  [refs/heads/codex/b6-benchmark-overrides]
+  BRANCH-DELETED  codex/b6-benchmark-overrides
+REMOVED  C:/Git Local Repos/forge_flow_demo_c3_sign_in_security_redirect  [refs/heads/codex/c-3-sign-in-security-redirect]
+  BRANCH-DELETED  codex/c-3-sign-in-security-redirect
+REMOVED  C:/Git Local Repos/forge_flow_demo_c4  [refs/heads/codex/c-4-demo-live-master-switch]
+  BRANCH-DELETED  codex/c-4-demo-live-master-switch
+REMOVED  C:/Git Local Repos/forge_flow_demo_c9_mobile_inbox_catalog  [refs/heads/codex/c-9-mobile-inbox-catalog]
+  BRANCH-DELETED  codex/c-9-mobile-inbox-catalog
+REMOVED  C:/Git Local Repos/forge_flow_demo_codex_a6_1  [refs/heads/codex/a6-1-proxy-health-ui]
+  BRANCH-DELETED  codex/a6-1-proxy-health-ui
