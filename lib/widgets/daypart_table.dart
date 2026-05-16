@@ -42,6 +42,31 @@ class DaypartTable extends StatelessWidget {
 
   static const String _missing = '—';
 
+  /// Sub-label appended under a period's name when its target cells are
+  /// the whole-day pool standing in for an absent per-period child row
+  /// (Gap 42 fallback). Lets the operator tell a pooled stand-in apart
+  /// from a true per-period target (Design Rule 1 — scope must be
+  /// obvious). Plain, lower-case, matches the table's quiet grammar.
+  static const String _poolFallbackTag = 'whole-day est.';
+
+  /// A period has no historical evidence in the current candidate
+  /// window when the read service emitted `sampleSize == 0` (empty
+  /// range branch of `benchmark_tracker_read_service.dart`). Such a row
+  /// renders an honest dash, never a sentinel `0` (Metric Honesty
+  /// Doctrine / Design Rule 2 — null, not a zero sentinel).
+  bool _hasData(DaypartRange range) => range.sampleSize > 0;
+
+  /// True when this period's targets are the whole-day pool standing in
+  /// for an absent per-period child row (Gap 42). Only meaningful for a
+  /// row that *has* data — an empty period dashes its targets outright,
+  /// so there is nothing to mark.
+  bool _isPoolFallback(DaypartRange range) {
+    final p = profile;
+    if (p == null) return false;
+    if (!_hasData(range)) return false;
+    return p.daypartFor(range.id) == null;
+  }
+
   String _labelFor(DaypartRange range) {
     if (servicePeriodDefinitions.isEmpty) return range.label;
     return ServicePeriodDefinitionResolver.labelForId(
@@ -55,6 +80,13 @@ class DaypartTable extends StatelessWidget {
   /// when the period has no child row (Rule 2 — Gap 42), and to an
   /// honest dash when no profile is in scope at all (never `0`).
   List<String> _targetCellsFor(DaypartRange range) {
+    // Empty period — no historical evidence this range. The targets
+    // here would be either profile pool stand-ins or sentinel zeros;
+    // neither is an honest per-period number, so dash them (Metric
+    // Honesty Doctrine: missing actuals → `—`, never `0`).
+    if (!_hasData(range)) {
+      return const [_missing, _missing, _missing, _missing];
+    }
     final p = profile;
     if (p == null) {
       return const [_missing, _missing, _missing, _missing];
@@ -110,18 +142,21 @@ class DaypartTable extends StatelessWidget {
         // Per-period data rows
         ...dayparts.map((stat) {
           final targets = _targetCellsFor(stat);
+          final hasData = _hasData(stat);
           return Column(
             children: [
               _TableRow(
                 cells: [
                   _labelFor(stat),
-                  stat.avgCovers.toString(),
+                  // Empty period → honest dash, never a phantom `0`.
+                  hasData ? stat.avgCovers.toString() : _missing,
                   targets[0],
                   targets[1],
                   targets[2],
                   targets[3],
                 ],
                 isHeader: false,
+                subLabel: _isPoolFallback(stat) ? _poolFallbackTag : null,
               ),
               Container(height: 1, color: AppColors.rule),
             ],
@@ -182,10 +217,17 @@ class _TableRow extends StatelessWidget {
   final bool isHeader;
   final bool isRollup;
 
+  /// Optional muted annotation rendered under the label (first) cell.
+  /// Used for the Gap 42 "whole-day est." pooled-stand-in marker so a
+  /// pooled target is visually distinct from a true per-period one
+  /// (Design Rule 1). Null on every other row.
+  final String? subLabel;
+
   const _TableRow({
     required this.cells,
     required this.isHeader,
     this.isRollup = false,
+    this.subLabel,
   });
 
   @override
@@ -204,23 +246,43 @@ class _TableRow extends StatelessWidget {
               // columns share the rest evenly so each value sits
               // directly under its header.
               flex: i == 0 ? 5 : 4,
-              child: Text(
-                cells[i],
-                style: isHeader
-                    ? AppTextStyles.mono7()
-                    : (i == 0
-                        ? AppTextStyles.body11(
-                            color: AppColors.primaryText,
-                            style: FontStyle.normal,
-                          )
-                        : AppTextStyles.mono10(
-                            color: AppColors.primaryText)),
-                textAlign: i == 0 ? TextAlign.left : TextAlign.right,
-              ),
+              child: (i == 0 && subLabel != null)
+                  ? Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          cells[i],
+                          style: _styleFor(i),
+                          textAlign: TextAlign.left,
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          subLabel!,
+                          style:
+                              AppTextStyles.mono8(color: AppColors.textMuted),
+                          textAlign: TextAlign.left,
+                        ),
+                      ],
+                    )
+                  : Text(
+                      cells[i],
+                      style: _styleFor(i),
+                      textAlign: i == 0 ? TextAlign.left : TextAlign.right,
+                    ),
             ),
           ],
         ],
       ),
     );
   }
+
+  TextStyle _styleFor(int i) => isHeader
+      ? AppTextStyles.mono7()
+      : (i == 0
+          ? AppTextStyles.body11(
+              color: AppColors.primaryText,
+              style: FontStyle.normal,
+            )
+          : AppTextStyles.mono10(color: AppColors.primaryText));
 }
