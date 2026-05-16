@@ -116,7 +116,7 @@ void main() {
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
       expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
       expect(find.text('Daypart', skipOffstage: false), findsNothing);
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
 
       // Daypart scaffold is NOT visible by default.
       expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
@@ -167,7 +167,7 @@ void main() {
       // yet (no more "No data yet for this period." one-liner).
 
       // Active period chip surfaces exactly once — Lunch is live.
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('tapping Whole Day restores the authoritative sections', (
@@ -214,7 +214,7 @@ void main() {
       expect(find.text('SERVICE PERIOD', skipOffstage: false), findsOneWidget);
       expect(find.text('Lunch', skipOffstage: false), findsWidgets);
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsNothing);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsNothing);
     });
 
     testWidgets(
@@ -234,7 +234,7 @@ void main() {
         await tester.pump();
 
         // Late Night is the only active period.
-        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+        expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
         // Sanity: the Late Night card is present.
         expect(find.text('Late Night', skipOffstage: false), findsWidgets);
       },
@@ -260,7 +260,7 @@ void main() {
         await tester.tap(find.text('Late Night', skipOffstage: false));
         await tester.pump();
 
-        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+        expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
         expect(find.text('Late Night', skipOffstage: false), findsWidgets);
       },
     );
@@ -284,7 +284,7 @@ void main() {
       await tester.pump();
 
       // 14:55 — Lunch is the active period.
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
 
       // Advance the simulated clock past the Lunch boundary; do NOT
       // toggle scope, refresh, or otherwise force an external rebuild.
@@ -293,12 +293,12 @@ void main() {
 
       // 15:01 — between Lunch and Dinner; the ticker must have fired
       // and re-evaluated the active period. No chip should remain.
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsNothing);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsNothing);
 
       // Advance into Dinner (17:00 start) on the same business day.
       simulatedNow = DateTime(2026, 3, 31, 17, 5);
       await tester.pump(const Duration(seconds: 31));
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('no ACTIVE chip when restaurant scope has no usable IANA '
@@ -341,7 +341,7 @@ void main() {
       expect(find.text('Lunch', skipOffstage: false), findsWidgets);
       expect(find.text('Dinner', skipOffstage: false), findsOneWidget);
       expect(find.text('Late Night', skipOffstage: false), findsOneWidget);
-      expect(find.text('ACTIVE NOW', skipOffstage: false), findsNothing);
+      expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsNothing);
     });
   });
 }

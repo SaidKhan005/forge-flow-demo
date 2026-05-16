@@ -211,7 +211,7 @@ void main() {
         );
 
         // Lunch is the active period — exactly one ACTIVE NOW chip.
-        expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);
+        expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);
       },
     );
 

@@ -58,6 +58,11 @@ class OpzMatrixGrid extends StatelessWidget {
   final OpzCplhBand cplh;
   final OpzSplhBand? splh;
 
+  /// Width of the row-label / header-spacer gutter. Sized for the longest
+  /// label ("CPLH UNDER") at [AppTextStyles.mono10] so it renders in full
+  /// on a phone instead of being ellipsized.
+  static const double _labelGutter = 76;
+
   static const List<OpzCplhBand> _rowOrder = <OpzCplhBand>[
     OpzCplhBand.aboveCeiling,
     OpzCplhBand.inOpz,
@@ -96,7 +101,10 @@ class OpzMatrixGrid extends StatelessWidget {
           const SizedBox(height: 6),
           Row(
             children: <Widget>[
-              const SizedBox(width: 56),
+              // Label gutter wide enough for the longest row label
+              // ("CPLH UNDER") so it reads in full at phone width; the
+              // header spacer matches it so columns stay aligned.
+              const SizedBox(width: _labelGutter),
               for (final OpzSplhBand col in _colOrder)
                 Expanded(
                   child: Center(
@@ -104,7 +112,12 @@ class OpzMatrixGrid extends StatelessWidget {
                       'SPLH ${_colLabel[col]}',
                       key: Key('opz_matrix_col_${col.name}'),
                       style: AppTextStyles.mono10(color: AppColors.textMuted),
-                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      // Full label, never clipped: fits on one line at the
+                      // gutter width above, wraps to a second line on
+                      // ultra-narrow widths instead of ellipsizing.
+                      softWrap: true,
+                      maxLines: 2,
                     ),
                   ),
                 ),
@@ -118,13 +131,17 @@ class OpzMatrixGrid extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: <Widget>[
                   SizedBox(
-                    width: 56,
+                    width: _labelGutter,
                     child: Text(
                       'CPLH ${_rowLabel[row]}',
                       key: Key('opz_matrix_row_${row.name}'),
                       style:
                           AppTextStyles.mono10(color: AppColors.textMuted),
-                      overflow: TextOverflow.ellipsis,
+                      // Full label, never clipped: fits on one line at the
+                      // gutter width, wraps rather than ellipsizes if a
+                      // narrower viewport ever forces it.
+                      softWrap: true,
+                      maxLines: 2,
                     ),
                   ),
                   for (final OpzSplhBand col in _colOrder)
