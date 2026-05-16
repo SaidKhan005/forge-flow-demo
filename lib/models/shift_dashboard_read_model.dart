@@ -572,12 +572,11 @@ class ShiftDashboardReadModel {
     required int actualBohHours,
     required double actualSplh,
     required double targetSplh,
-  }) =>
-      computeSplhState(
-        hasBohLabor: actualBohHours > 0,
-        actualSplh: actualSplh,
-        targetSplh: targetSplh,
-      );
+  }) => computeSplhState(
+    hasBohLabor: actualBohHours > 0,
+    actualSplh: actualSplh,
+    targetSplh: targetSplh,
+  );
 
   /// Canonical CPLH x SPLH cross-axis band classifier shared by the
   /// whole-day read model and the per-period (daypart) projection so

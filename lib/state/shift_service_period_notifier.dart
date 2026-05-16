@@ -95,6 +95,10 @@ class DaypartTargetContext {
   /// the in-force [WeeklyPlanSnapshot]'s `WeeklyPlanSnapshotDayDaypart`
   /// child row for `(businessDate, servicePeriodId)`. These mirror the
   /// whole-day lens's plan-side footers:
+  ///   * [forecastCovers] → the `COVERS` tile's "Forecast N" footer
+  ///     (whole-day uses `rm.forecastCovers`, a plan-side number; the
+  ///     per-period analogue is the locked per-daypart `forecast_covers`,
+  ///     not actuals).
   ///   * [forecastSales] → the `SALES` tile's "Forecast $X" footer
   ///     (whole-day uses `rm.forecastSales`, a plan-side number; the
   ///     per-period analogue is the locked per-daypart `forecast_sales`,
@@ -109,6 +113,7 @@ class DaypartTargetContext {
   /// plan number is absent (Design Rule 2 / Metric Honesty Doctrine).
   /// These are read-only locked values surfaced for display — no metric
   /// math is performed here.
+  final int? forecastCovers;
   final double? forecastSales;
   final double? requiredFohHours;
   final double? requiredBohHours;
@@ -121,6 +126,7 @@ class DaypartTargetContext {
     this.opzFloorCPLH,
     this.opzCeilingCPLH,
     this.theoreticalLaborPct,
+    this.forecastCovers,
     this.forecastSales,
     this.requiredFohHours,
     this.requiredBohHours,
@@ -441,6 +447,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
         businessDate: businessDate,
         servicePeriodId: def.id,
       );
+      final planForecastCovers = dd?.forecastCovers;
       final planForecastSales = dd?.forecastSales;
       final planFohHours = dd?.requiredFohHours;
       final planBohHours = dd?.requiredBohHours;
@@ -460,6 +467,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
           result[def.id] = DaypartTargetContext(
             source: 'none',
             theoreticalLaborPct: theo,
+            forecastCovers: planForecastCovers,
             forecastSales: planForecastSales,
             requiredFohHours: planFohHours,
             requiredBohHours: planBohHours,
@@ -473,6 +481,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
             opzFloorCPLH: closed.daypartOpzFloorCPLH,
             opzCeilingCPLH: closed.daypartOpzCeilingCPLH,
             theoreticalLaborPct: theo,
+            forecastCovers: planForecastCovers,
             forecastSales: planForecastSales,
             requiredFohHours: planFohHours,
             requiredBohHours: planBohHours,
