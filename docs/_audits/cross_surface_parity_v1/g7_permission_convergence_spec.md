@@ -1,62 +1,88 @@
 # Spec — Permission Enforcement Convergence (G7 / G30 / G8 / G9 / G31 / G32)
 
-> **STATUS 2026-05-16 — §0 HEADLINE IS INVALID (see register §0).** This spec reasoned off the **stale v1 seed (6 roles)**. The real current model is the **v2 default role catalog, 10 roles** (`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql` — incl. `location_manager`, `team_admin`, `operator_general_manager`; `operator_admin` is NOT a role key). The "web-console roles are phantom fallbacks / catalog is authoritative-as-is" conclusion in §0 is **wrong**. **G7 must be RE-SPEC'd against the v2 catalog** before any G7 work. The **§3 G30** slice (bare permission-string → `PermissionKeys` constant aliasing) is **still valid, behavior-preserving, and safe** — it is unaffected by the v1/v2 role distinction (keys, not roles). Everything else here is PARKED pending re-spec.
+> **STATUS 2026-05-16 — v2 RE-SPEC BELOW IS AUTHORITATIVE.** The original stale §0..§5 (built on the v1 6-role seed) is REPLACED. Real model = v2 default role catalog (10 roles, `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`). `location_manager` is a REAL v2 role (keep); `operator_admin` is the only phantom. G30 has SHIPPED (#859).
 
 ## operator_admin VERDICT — resolved 2026-05-16 (independent trace)
 
-`operator_admin` is a **phantom**: never seeded in v1 or v2; only the F&F-grant `operator_admins` *table* shares the name (unrelated — ignore). Sole producer is `_inferRoles` (`firebase_operator_web_auth_source.dart:732-735`) synthesizing it from free-text role labels; every consumer is a **fallback-only** admit/write set (read only when `session.permissions.isEmpty`). Live path always hydrates the permission snapshot ⇒ `PermissionKeys.*` per-screen gates win ⇒ synthesized `operator_admin` is **never read on a real decision**. No demo session produces it either.
+`operator_admin` is a **phantom**: never seeded in v1 or v2; only the F&F-grant `operator_admins` *table* shares the name (unrelated — ignore). Sole producer is `_inferRoles` synthesizing it from free-text role labels; every consumer is a **fallback-only** admit/write set (read only when `session.permissions.isEmpty`). Live path always hydrates the permission snapshot ⇒ `PermissionKeys.*` per-screen gates win ⇒ synthesized `operator_admin` is **never read on a real decision**. No demo session produces it either.
 
-**Decision:** fold into **`operator_owner`** (catalog intent always bundled them for the same surfaces — `auth_permission_key_catalog.md:208-210,242,258,304`, all hedged "(when seeded)"). Do **not** map to a v2 role; do **not** seed a 7th role. → G7c (doc-only, strike the "(when seeded)" clauses + fix stale `operator_web_auth_source.dart:356-359` comment) + G7d (delete `'operator_admin'` from `_inferRoles` synthesis + all ~16 fallback sets + the `web_app_shell.dart:536` pill).
+**Decision:** fold into **`operator_owner`**. Do **not** map to a v2 role; do **not** seed a 7th role. → G7c (doc-only) + G7d (delete `'operator_admin'` synthesis + all fallback sets + the shell pill).
 
-**Prerequisite for G7d (newly surfaced):** `lib/auth/permission_keys.dart:379-394` role constants are still **v1-shaped (6 roles)** — `roleTeamAdmin`/`roleOperatorGeneralManager`/etc. do NOT exist. Refreshing that constant block to the v2 catalog is a **co-requisite** of G7d (can't replace bare strings with constants that don't exist yet).
+## OPERATOR DECISIONS — 2026-05-16 (binding; resolves §6 open questions)
 
-**One operator confirm needed:** the only behavior change is demo/boot-window (empty snapshot): a `team_admin` user (whose display name "Team Admin" accidentally collides → currently synthesized to `operator_admin` ⇒ full owner-tier fallback) would, after removal, get **nothing until the real snapshot hydrates** (fail-closed tightening; zero live impact). Recommended: accept (fail-closed is safer; live path unaffected).
+- **GM Team-nav regression → FIX IN G7** (fold `team_scope_visibility_policy.dart` GM fix into G7d-mobile). It is a real post-v2 regression.
+- **No live source emits raw v1 role-key labels** (operator confirmed). `_inferRoles` re-bases on **v2 display names only**; NO v1→v2 label translation table required.
+- **Soft-deleted v1 role constants** (`roleOperatorManager/Supervisor/Staff`) → **KEEP as `@Deprecated` migration-history aliases** (do not hard-remove).
+- **G7c contract-doc edit APPROVED** (strike never-real `operator_admin "(when seeded)"`; rewrite v1→v2 role names in `auth_permission_key_catalog.md`). Doc-only.
+- **operator_admin removal demo/boot fail-closed → ACCEPTED** (zero live impact; fail-closed is safer).
+- Q5 (demo fixtures) / Q6 (mobile scope): fold read-path-affecting fixture cleanup + the GM-nav mobile fix into G7d; defer pure display-only fixture hygiene.
 
-**Date:** 2026-05-16 · Read-only investigation · Auth-critical; §G7c is CONTRACT-TOUCHING (operator-gated).
+---
 
-## 0. Headline — the operator steer is partially REFUTED by proxy ground truth
+## 0. Headline — corrected authoritative model (v2 catalog)
 
-Operator steer was: "web consoles are more recent/current; frozen catalog/mobile resolver may be stale; converge toward the web-console model, possibly updating the frozen catalog."
+Proxy server enforcement (`RepositoryProxyAdminPermissionGuard` + `RepositoryProxyPermissionSnapshotResolver`) runs `PermissionResolver` (`lib/auth/permission_resolution.dart:130-256`) over DB `user_roles ⋈ role_permissions`. **`PermissionResolver` is role-string-agnostic** — pure `roleId` UUIDs + `(permissionKey, effect)` tuples; no role-key enumeration. Therefore the proxy already correctly enforces the v2 catalog the moment `202605150000` is applied — **no resolver change needed; none ever was.** Mobile resolver = same file = v2-correct automatically.
 
-**Proxy ground truth disagrees.** The proxy server enforcement (`RepositoryProxyAdminPermissionGuard` + `RepositoryProxyPermissionSnapshotResolver`, `proxy_bootstrap.dart:9019,9052-9129`) runs `PermissionResolver` (`lib/auth/permission_resolution.dart:109-256`) over DB `user_roles ⋈ role_permissions`. The DB seeds **exactly 6 baseline roles** (`202604250008_auth_schema_foundation.sql:916-1075`): `super_admin, ff_support, operator_owner, operator_manager, operator_supervisor, operator_staff`. There is **no `operator_admin`, no `location_manager`** role row. `forge_admin` is a Postgres BYPASSRLS role, not an app role.
+What is NOT v2-correct (the real G7 surface):
+1. **`lib/auth/permission_keys.dart` role constants are still v1-shaped (6 roles)** — the 7 v2 roles have no constants; soft-deleted v1 strings still present. **Load-bearing prerequisite (G7-pre).**
+2. **Per-surface role-string divergence** (admin copy-paste; operator-web phantom + inflation).
+3. **`lib/services/team/team_scope_visibility_policy.dart:71`** gates Team nav on soft-deleted `'operator_manager'` ⇒ GMs lose Team nav post-v2. **Latent behavior regression — fix in G7d-mobile (operator-approved).**
 
-Therefore:
-- The **frozen `PermissionKeys` catalog + proxy resolver + mobile resolver are the genuinely-current authoritative model** (all three share `lib/auth/permission_resolution.dart`; byte-consistent with the DB seed).
-- The web-console `operator_admin`/`location_manager` strings are **phantom UI-side fallback heuristics**, only active when the server permission snapshot is empty (demo/boot). When the live snapshot is hydrated, the per-screen `PermissionKeys.*` gates (already catalog-aliased) are authoritative.
-- The mobile resolver is **not stale** — same file as the proxy.
+Net: G7 is predominantly behavior-preserving client cleanup, but the framing inverts: the **catalog constants are the stale thing to refresh to v2**, not the convergence target. Proxy resolver is ground truth and already v2-correct.
 
-**Net:** G7 is overwhelmingly **behavior-preserving client cleanup, NOT a model migration.** The catalog should NOT be changed to match the web consoles — that would be the wrong direction. Operator must confirm this reframing (§6 Q3).
+## operator_admin / location_manager (re-confirmed on master)
+- **`operator_admin`** — phantom. Fold into `operator_owner`; do NOT seed; do NOT map.
+- **`location_manager`** — **REAL seeded v2 role** (`202605150000...v2.sql:298-304`). Keep its live-path usages; treat as first-class v2 role. (Biggest correction vs the stale spec, which wrongly lumped it as a phantom.)
 
 ## 1. Authoritative model
-Proxy guard is ground truth for every mutating call on every surface (HP #7). Admin client `roles.contains('super_admin')` is a UI affordance only — proxy re-checks server-side ⇒ G8 is a maintainability smell, not a security hole. Catalog (`permission_keys.dart`) already defines every needed key + the 6 `role*` constants + `baselineRoleKeys:379-394`. **No model/`lib/auth/**` change required for convergence.**
+- Ground truth: proxy `PermissionResolver` over DB roles, post-`202605150000` = v2. Role-agnostic; no change.
+- Admin client `roles.contains('super_admin')` (17 sites) = UI affordance; proxy re-checks ⇒ G8 = maintainability smell, not a hole.
+- `permission_keys.dart` catalog is stale (v1 role constants) → G7-pre.
+- `roleLabels` live provenance: `users_repository.dart:366,458` selects `roles.display_name` (NOT `role_key`). Post-v2 live labels = v2 display names (`'Owner'`,`'General Manager'`,`'Location Manager'`,`'Supervisor'`,`'Finance Analyst'`,`'Auditor / Compliance'`,`'Training Lead'`,`'Team Admin'`). Operator confirms no raw v1 key labels arrive live ⇒ re-base `_inferRoles` on v2 display names only.
 
-## 2. G30 — do-now slice (behavior-preserving)
-File `lib/operator_web/auth/firebase_operator_web_auth_source.dart`. Replace bare strings with catalog constants (all textually equal today):
-| Bare string | Sites | Replace with |
-|---|---|---|
-| `'integrations.configure'` | :746,:755,:770 | `PermissionKeys.integrationsConfigure` |
-| `'team.users.view'` | :752,:767 | `PermissionKeys.teamUsersView` |
-| `'admin.users.view'` | :753,:768 | `PermissionKeys.adminUsersView` |
-| `'forgeflow.settings.view'` | :754,:769 | `PermissionKeys.forgeflowSettingsView` |
-OUT of G30 scope (defer to G7d): removing phantom `operator_admin`/`location_manager` and the `integrations.configure→operator_owner` inflation (`:747`) — those change fallback-set contents (behavioral in demo/boot window). Tests: constant-equality assertions + grep-guard for bare literals. Ships AFTER Fix #1 merges (same file; rebase, line numbers will drift).
+## 2. Per-surface divergence vs v2 (re-derive line numbers by pattern — drift expected)
 
-## 3. G7 phases
-- **G7a** — shared admin helper `_isAdminSuperAdmin(session) ⇒ session.roles.contains(PermissionKeys.roleSuperAdmin)`; replace the 15 copy-pasted sites in `admin_routes.dart` (lines 689,998,1055,1100,1182,1234-1235,1255,1300,1371,1445,1506,1632,1861,2169,2478 — re-derive by pattern post-Fix#2). Byte-identical decisions. Ships AFTER Fix #2 merges.
-- **G7b** — `kAdminConsoleRoles` & admin fixtures use `PermissionKeys.role*` constants. Do NOT thread `PermissionResolver` into the admin client (larger, deferred; proxy already enforces).
-- **G7c** — CONTRACT-TOUCHING, operator-gated, doc-only: strike `operator_admin` "(when seeded)" clauses in `docs/contracts/auth_permission_key_catalog.md:209,242,258,304` (recommended: fold into `operator_owner`, do NOT seed a 7th role); fix stale comment `operator_web_auth_source.dart:356-359` to include `operator_manager`.
-- **G7d** — operator-web fallback sets → `PermissionKeys.role*` constants, drop phantom `operator_admin`/`location_manager`, remove permission→role inflation/synthesis (`:747,:749-759`). Behavior-neutral in live path; fail-closed-tightening in fallback. After G30.
+### 2.A Admin (`lib/admin/`)
+- `admin_routes.dart` — **17** copy-pasted `session.roles.contains('super_admin')` sites (was 15; drifted): ~693, 807, 1002, 1059, 1104, 1186, 1259, 1304, 1375, 1449, 1510, 1636, 1865, 1956, 2191, 2319, 2529.
+- `admin_auth_gate.dart:53` `kAdminConsoleRoles = {'super_admin','ff_support'}`; consumed `:92,:1345`, `admin_shell.dart:458,462-463`; fixtures `:217,231,262,268,324`. Claims map `:663-664`. Admin only ever uses the 2 carry-over roles — v2 changes NO admin behavior; pure literal→constant hygiene.
 
-Merge order: **Fix #1 → G30 → Fix #2 → G7a → G7b → G7c (parallel, operator-gated) → G7d.**
+### 2.B Operator-web (`lib/operator_web/`)
+- **G30 SHIPPED (#859):** `firebase_operator_web_auth_source.dart` `_inferRoles`/`_hasConsoleAccess` use `PermissionKeys.integrationsConfigure/teamUsersView/adminUsersView/forgeflowSettingsView`. No bare permission-key literals remain.
+- `_inferRoles` still: synthesizes phantom `'operator_admin'` from `*_admin` labels; synthesizes `'location_manager'` (now a real role — keep, make a constant); `'operator_owner'`; soft-deleted `'operator_manager'`; **`integrations.configure → operator_owner` inflation** (remove in G7d, behavior-neutral live); empty-roles fallback ⇒ soft-deleted `'operator_manager'`.
+- ~16 admit/write role sets across `operator_web_auth_source.dart:291-296` (`kOperatorWebAdmittedRoles`) + screens (account/audit_log/business_setup/business_timing_editor/data_accuracy/hierarchy/members/my_account/roles/schedule/sessions/vendor_connections/wage_authority) + `web_app_shell.dart` pill — all bare literals; several still carry dead soft-deleted v1 `operator_supervisor/operator_staff/operator_manager` branches.
+- Demo: `kDemoOperatorWebLocationManagerSession` emits `['location_manager']` — correct v2, keep. `demo_team_fixtures.dart` mixes v2 + soft-deleted v1 keys (Q5).
 
-## 4. Risk
-Behavior-preserving: G30/G7a/G7b/G7d-live-path. CONTRACT-TOUCHING: G7c (operator approval, doc-only). `7.58`-adjacent: ONLY the NOT-recommended option of actually seeding `operator_admin` as a 7th role (rejected). Oracle: proxy `PermissionResolver` over the 6 seeded roles; constant-equality + cross-surface parity + fallback tests; extend the existing migration⊇`PermissionKeys.all` test harness with a no-bare-literal grep-guard.
+### 2.C Mobile / services
+- `permission_resolution.dart` — role-agnostic, v2-correct, no change.
+- **`team_scope_visibility_policy.dart:71`** — `canSeeTeamNav` requires `actorRoles.contains('operator_manager')` (soft-deleted, auto-migrated to `operator_general_manager`). Post-v2 no live actor carries it ⇒ GMs lose the Team-nav entrypoint. **Behavior regression; G7d-mobile FIX (operator-approved).** Also audit `notification_event_catalog.dart:36` local `roleOperatorManager` const consumers.
 
-## 5. Open questions for the operator
-1. `operator_admin` real? Recommend strike refs (doc-only G7c), fold into `operator_owner`; or seed 7th role (NOT recommended, schema/`7.58`-adjacent)?
-2. `location_manager` real? Recommend drop from fallback sets; confirm no live IdP/account source emits that label.
-3. **Confirm the §0 reframing**: frozen catalog + proxy resolver remain authoritative; web-console role strings are phantom fallbacks, not a newer model to migrate toward.
-4. Approve the contract-frozen doc edit (G7c)?
-5. Does any live account/IdP source emit free-text `roleLabels` ("admin"/"manager"/"owner") that `_inferRoles:722-744` must keep mapping? If no → G7d-i safe; if yes → need a label→catalog-role table.
-6. Mobile gaining web-console roles: none required (mobile already shares the authoritative resolver).
+## 3. v1→v2 mapping
+`operator_owner/super_admin/ff_support` = carry-over. `operator_manager → operator_general_manager`. `operator_supervisor → supervisor`. `operator_staff → supervisor`. `operator_admin (phantom) → operator_owner` (fold). `location_manager → location_manager` (REAL v2 role, keep). New v2 with no v1 antecedent: `finance_analyst, auditor_compliance, training_lead, team_admin` (add constants; add to admit sets per intent). Operator confirms live labels are v2 display names ⇒ re-base `_inferRoles` on display names; no v1-key translation table needed.
 
-Source agent (read-only, resumable): `a4cfc26781d37abad`.
+## 4. Phased plan (v2-rebased)
+Merge order: **G7-pre → G7a → G7b → G7c (parallel, operator-gated) → G7d (incl. G7d-mobile).** (G30 shipped — dropped from sequence.)
+
+- **G7-pre — catalog-constant v2 refresh (PREREQUISITE; auth-critical, operator-approval-gated).** `permission_keys.dart`: add `roleOperatorGeneralManager/roleLocationManager/roleSupervisor/roleFinanceAnalyst/roleAuditorCompliance/roleTrainingLead/roleTeamAdmin`; mark `roleOperatorManager/Supervisor/Staff` `@Deprecated('Soft-deleted R-2L v2; maps to <v2>; migration-history only')` (KEEP — operator decision); redefine `baselineRoleKeys` = the 10 v2 keys (soft-deleted excluded); audit `baselineRoleKeys` consumers first. Additive; inert until consumers adopt. Tests: each new constant == migration `role_key`; `baselineRoleKeys` == 10 v2; extend migration⊇`PermissionKeys` harness.
+- **G7a — shared admin super_admin helper (behavior-preserving).** `_isAdminSuperAdmin(session)` → replace the 17 copy-pasted `admin_routes.dart` sites + `kAdminConsoleRoles`/fixtures → `PermissionKeys.roleSuperAdmin/roleFfSupport`. Byte-identical. Grep-guard no bare `'super_admin'` in `lib/admin/`.
+- **G7b — admin consumes catalog constants.** `kAdminConsoleRoles`, `admin_shell` switch, claims map → `PermissionKeys.role*`. No `PermissionResolver` threading into admin client (deferred; proxy enforces). Behavior-preserving.
+- **G7c — CONTRACT-TOUCHING doc reconciliation (operator-APPROVED, doc-only).** `docs/contracts/auth_permission_key_catalog.md`: strike `operator_admin "(when seeded)"` (~:208,241,257,303-304 — re-derive), fold into `operator_owner` prose; rewrite v1→v2 role names (~:67,211-219,341-343) per the migration + `WAVE_2_R2L_DEFAULT_ROLE_CATALOG_V2_PROPOSAL.md`; mark v1 names retired. (Prior spec's `operator_web_auth_source.dart:356-359` stale-comment fix is VOID — drift; that range is now MFA-challenge code.) Parallel with G7a/G7b.
+- **G7d — operator-web fallback sets → v2 constants + drop phantom + remove inflation + mobile fix.**
+  - G7d-i (operator-web): delete `'operator_admin'` synthesis; remove `integrations.configure→operator_owner` inflation; re-base `_inferRoles` label normalization on v2 **display names** emitting `PermissionKeys.role*` v2 constants; keep `location_manager` (`roleLocationManager`); map dead soft-deleted v1 branches to v2 constants per §3 (map, don't drop, for migration-window robustness); shell pill v1→v2; demo location-manager session unchanged. Live-path neutral; demo/boot fail-closed tightening for the `operator_admin` collision (operator-accepted).
+  - **G7d-mobile (operator-approved FIX):** `team_scope_visibility_policy.dart:71` → use `PermissionKeys.roleOperatorGeneralManager` (+ keep `operator_owner`/`_isAdminTier`). Behavior FIX (restores GM Team nav post-v2) — flag in PR as behavior-changing. Audit `notification_event_catalog.dart:36` consumers same slice.
+
+## 5. Risk / oracle
+- Behavior-preserving: G7a, G7b, G7d-i live-path.
+- Behavior-changing (intended): G7-pre (additive constants + `baselineRoleKeys`), G7d-i demo/boot fail-closed (accepted), **G7d-mobile (GM Team-nav FIX)**.
+- Contract-touching: G7c (operator-approved, doc-only). Auth-critical/operator-gated: G7-pre (`lib/auth/`), G7c (`docs/contracts/`).
+- `7.58`-adjacent: none (seeding `operator_admin` rejected).
+- Oracle: proxy `PermissionResolver` over the 10 v2 roles. Tests: constant==migration role_key; `baselineRoleKeys`==10; cross-surface admit-set parity vs v2 matrix; operator_admin-removal fallback/demo tests; **regression test: a GM (`operator_general_manager`, holds `team.users.view`, ≥1 location) passes `TeamScopeVisibilityPolicy.canSeeTeamNav`** (currently fails — proves G7d-mobile); no-bare-role-literal grep-guard scoped to `lib/admin/`+`lib/operator_web/`.
+- Sequencing: G7-pre tiny/isolated (`permission_keys.dart` only) — low collision risk vs the Per-Daypart V1 wave. G7a/G7d touch large files — always re-derive sites by pattern.
+
+## 6. Open questions — RESOLVED 2026-05-16 (see Operator Decisions block above)
+All six prior open questions are resolved by the binding Operator Decisions block: (1) operator_admin fold + fail-closed accepted; (2) G7c approved; (3) no live v1-key labels; (4) keep deprecated v1 constants; (5) fold read-path fixture cleanup into G7d; (6) G7d-mobile in scope.
+
+**Files cited (relative):** `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`; `lib/auth/permission_keys.dart` (G7-pre); `lib/auth/permission_resolution.dart` (no change); `lib/operator_web/auth/firebase_operator_web_auth_source.dart` (G30 done; phantom/inflation = G7d); `lib/operator_web/auth/operator_web_auth_source.dart`; `lib/admin/admin_routes.dart` (G7a); `lib/admin/admin_auth_gate.dart`; `lib/services/team/team_scope_visibility_policy.dart` (G7d-mobile FIX); `docs/contracts/auth_permission_key_catalog.md` (G7c); `lib/operator_web/services/demo_team_fixtures.dart` (Q5); operator-web screen admit-set files per §2.B.
+
+**Key corrections vs the prior stale spec:** (1) authoritative model is the v2 catalog, not a frozen 6-role; (2) `permission_keys.dart` constants are the stale thing to refresh, not the convergence target; (3) `location_manager` is a REAL v2 role to keep, not a phantom; (4) G30 SHIPPED (#859); (5) NEW finding: `team_scope_visibility_policy.dart:71` GM Team-nav regression (fix approved); (6) 17 (not 15) admin super_admin sites; (7) the prior `:356-359` stale-comment fix is void (drift).
+
+Source: G7 v2 re-spec investigation 2026-05-16 (orchestrator-persisted; delegation not possible — text orchestrator-only).
