@@ -25,6 +25,8 @@ import '../../../domain/models/schedule_plan.dart';
 import '../../../domain/models/target_cycle.dart';
 import '../../../domain/models/target_cycle_source.dart';
 import '../../../domain/models/weekly_plan_snapshot.dart';
+import '../../../domain/models/service_period_definition.dart';
+import '../../../domain/services/business_date_resolver.dart';
 import '../../../domain/services/distribution_weight_builder.dart';
 import '../../../domain/services/schedule_plan_resolver.dart';
 import '../../../domain/services/target_cycle_active_target_profile_projector.dart';
@@ -268,13 +270,103 @@ class SqliteDatabase {
   @visibleForTesting
   static String? debugColdBootTodayOverride;
 
+  /// Test-only seam pinning the restaurant-local **now** (date AND
+  /// time-of-day) used ONLY to select which service period is "open" at
+  /// seed time (QA fix — Change A). Full local ISO-8601, e.g.
+  /// `'2026-05-16T09:25:00'`. `null` in production/demo, where the real
+  /// restaurant-local clock is used so a true Saturday 09:25 shows no
+  /// open Dinner.
+  ///
+  /// Precedence for the open-period selection's time-of-day:
+  ///   1. [debugColdBootNowOverride] → its time-of-day (date+time pin);
+  ///   2. else [debugColdBootTodayOverride] (legacy date-only) → a
+  ///      deterministic canonical `19:45` (Dinner in progress) so
+  ///      pre-existing date-only tests stay green AND deterministic
+  ///      (Dinner applies every weekday);
+  ///   3. else → real `DateTime.now()` (production/demo device — the
+  ///      actual fix).
+  /// In ALL cases the seeded business **date** is unchanged (the W8
+  /// today-anchor / reseed `isoDate` still wins); only the time-of-day
+  /// used to pick the open period is sourced here.
+  @visibleForTesting
+  static String? debugColdBootNowOverride;
+
   static String _coldBootAnchorIsoDate() {
+    final nowOverride = debugColdBootNowOverride;
+    if (nowOverride != null) {
+      // Keep the cold-boot business date consistent with the injected
+      // now (business-date-aware, demo 04:00 start).
+      return BusinessDateResolver.resolve(
+        localTimestamp: DateTime.parse(nowOverride),
+        businessDayStartLocalTime: _kDemoBusinessDayStartLocalTime,
+      );
+    }
     final override = debugColdBootTodayOverride;
     if (override != null) return override;
     final now = DateTime.now().toUtc();
     return '${now.year.toString().padLeft(4, '0')}-'
         '${now.month.toString().padLeft(2, '0')}-'
         '${now.day.toString().padLeft(2, '0')}';
+  }
+
+  /// The clock-derived [OpenPeriodResolution] for a seed pass anchored
+  /// to [isoBusinessDate]. The selection's DATE is always
+  /// [isoBusinessDate] (W8 / reseed anchor preserved — Time Guardrails);
+  /// only the TIME-OF-DAY is sourced here.
+  ///
+  /// [coldBoot] distinguishes the two seed paths when NO clock anchor is
+  /// injected:
+  ///  * cold boot (`true`) — a genuine fresh-launch demo seed. With no
+  ///    override this uses the REAL restaurant-local clock, so a true
+  ///    Saturday 09:25 (before Lunch) yields `openDaypart == null` (no
+  ///    open shift) instead of the old hardcoded Dinner. This is the
+  ///    actual QA fix for the device-reproduced defect.
+  ///  * reseed/advance (`false`) — an explicit demo operator action
+  ///    ("advance demo date" / "data reset"). With no override this
+  ///    falls back to the deterministic legacy resolution (Dinner open,
+  ///    Lunch closed) so the demo affordance is stable and the large
+  ///    body of `reseedDemo()`-based tests stays deterministic without
+  ///    every one having to pin the clock.
+  /// In BOTH paths an injected [debugColdBootNowOverride] (date+time) or
+  /// [debugColdBootTodayOverride] (legacy date-only → canonical 19:45,
+  /// Dinner) wins, so tests can pin BOTH date and time-of-day.
+  static OpenPeriodResolution _openPeriodResolutionForSeed(
+    String isoBusinessDate, {
+    required bool coldBoot,
+  }) {
+    final p = isoBusinessDate.split('-');
+    final y = int.parse(p[0]);
+    final mo = int.parse(p[1]);
+    final d = int.parse(p[2]);
+
+    final nowOverride = debugColdBootNowOverride;
+    if (nowOverride != null) {
+      final dt = DateTime.parse(nowOverride);
+      return resolveDemoOpenPeriod(
+        localNow: DateTime(y, mo, d, dt.hour, dt.minute, dt.second),
+      );
+    }
+    if (debugColdBootTodayOverride != null) {
+      // Deterministic legacy-compat: 19:45 → Dinner in progress (Dinner
+      // applies every weekday) so pre-existing date-only override tests
+      // stay green and deterministic regardless of the real wall clock.
+      return resolveDemoOpenPeriod(
+        localNow: DateTime(y, mo, d, 19, 45),
+      );
+    }
+    if (coldBoot) {
+      // Production / demo device fresh launch — the real clock decides
+      // which period (if any) is in progress. This is the defect fix.
+      final now = DateTime.now();
+      return resolveDemoOpenPeriod(
+        localNow: DateTime(y, mo, d, now.hour, now.minute, now.second),
+      );
+    }
+    // Reseed/advance with no anchor → deterministic legacy resolution
+    // (Dinner open, Lunch closed) — `generateForDate`'s back-compat
+    // default. Keeps the demo affordance + bare-`reseedDemo()` tests
+    // stable; explicit clock tests still pin the override above.
+    return MockIntegrationReplaySeed.legacyDefaultResolution;
   }
 
   /// True between a fresh-DB schema create and its post-open demo seed.
@@ -343,8 +435,13 @@ class SqliteDatabase {
     // `reseedMockReplayForBusinessDate` — same generator, same
     // `businessDate:`-keyed seeders, just sourced from today.
     final coldBootBusinessDate = _coldBootAnchorIsoDate();
-    final replay =
-        MockIntegrationReplaySeed.generateForDate(coldBootBusinessDate);
+    // QA fix (Change A): the open service period is derived from the
+    // restaurant-local clock at seed time, NOT hardcoded to Dinner. A
+    // true Saturday 09:25 (before Lunch opens) yields no open shift.
+    final replay = MockIntegrationReplaySeed.generateForDate(
+      coldBootBusinessDate,
+      open: _openPeriodResolutionForSeed(coldBootBusinessDate),
+    );
     await _seedDemoActiveTargetProfile(
       db,
       businessDate: coldBootBusinessDate,
@@ -701,8 +798,14 @@ class SqliteDatabase {
     // Persist mock replay date
     await setMockReplayBusinessDate(DemoScope.restaurantId, isoDate);
 
-    // Generate scenario-specific replay output
-    final replay = MockIntegrationReplaySeed.generateForDate(isoDate);
+    // Generate scenario-specific replay output. QA fix (Change A): the
+    // open service period is clock-derived for `isoDate` (the reseed
+    // business date is unchanged — only which period is "open" follows
+    // the restaurant-local clock; demo/device use the real clock).
+    final replay = MockIntegrationReplaySeed.generateForDate(
+      isoDate,
+      open: _openPeriodResolutionForSeed(isoDate),
+    );
 
     // When a preserved active cycle exists, its projected
     // ActiveTargetProfile is already correct and must not be overwritten

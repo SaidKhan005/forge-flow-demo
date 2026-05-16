@@ -2,8 +2,9 @@
 //
 // Validates that the deterministic mock POS/labor replay generator produces
 // operationally coherent data suitable for SQLite bootstrap:
-// - [historicalWeekCount] historical weeks with 14-shift operating
-//   pattern (Demo-data Slice B raised this 8 → 12 for §2d Variance)
+// - [historicalWeekCount] historical weeks with 16-shift operating
+//   pattern (Slice B raised weeks 8 → 12; QA fix Change B raised
+//   slots/week 14 → 16 — weekends now serve Lunch)
 // - Day/daypart variation (Saturday dinner > Monday lunch)
 // - WeekRecords derived from shift-level sums
 // - Distribution weights availability
@@ -18,31 +19,34 @@ void main() {
   // ── A. Generator output structure ───────────────────────────────────────
 
   group('A — generator output structure', () {
-    test('produces [historicalWeekCount] historical weeks with 14 shifts '
+    test('produces [historicalWeekCount] historical weeks with 16 shifts '
         'each', () {
+      // QA fix (Change B): weekends now serve Lunch → 16 slots/week.
       final output = MockIntegrationReplaySeed.output;
       final weeks = MockIntegrationReplaySeed.historicalWeekCount;
 
       expect(output.weekRecords.length, weeks);
-      expect(output.historicalClosedShifts.length, weeks * 14);
+      expect(output.historicalClosedShifts.length, weeks * 16);
 
       for (final weekId in MockIntegrationReplaySeed.historicalWeekIds) {
         final weekShifts = output.historicalClosedShifts
             .where((s) => s.weekId == weekId)
             .toList();
-        expect(weekShifts.length, 14, reason: '$weekId should have 14 shifts');
+        expect(weekShifts.length, 16, reason: '$weekId should have 16 shifts');
         expect(weekShifts.every((s) => s.isClosed), isTrue,
             reason: '$weekId historical shifts should all be closed');
       }
     });
 
-    test('current week has 9 closed + 5 projected shifts', () {
+    test('current week has 9 closed + 7 projected shifts', () {
+      // Static `output` = back-compat default (Fri, Dinner open). Change
+      // B added weekend Lunch → 16-slot week: 9 closed, 7 projected.
       final output = MockIntegrationReplaySeed.output;
       final current = output.currentWeekShifts;
 
-      expect(current.length, 14);
+      expect(current.length, 16);
       expect(current.where((s) => s.isClosed).length, 9);
-      expect(current.where((s) => s.isProjected).length, 5);
+      expect(current.where((s) => s.isProjected).length, 7);
       expect(current.every((s) => s.weekId == '2026-W13'), isTrue);
     });
   });
@@ -109,8 +113,9 @@ void main() {
             reason: '${week.weekId} FOH hours mismatch');
         expect(week.totalBohHours, shiftBoh,
             reason: '${week.weekId} BOH hours mismatch');
-        expect(week.shiftsCompleted, 14,
-            reason: '${week.weekId} should have 14 completed shifts');
+        expect(week.shiftsCompleted, 16,
+            reason: '${week.weekId} should have 16 completed shifts '
+                '(QA fix Change B: weekends serve Lunch)');
       }
     });
   });
@@ -142,8 +147,20 @@ void main() {
   // ── E. SQLite seed integration ──────────────────────────────────────────
 
   group('E — SQLite seed uses mock replay', () {
+    // QA fix (Change A): the open period is clock-derived. Pin the
+    // restaurant-local now to a fixed instant so the open snapshot is
+    // deterministic; assertions derive expected values from the SAME
+    // resolver (`resolveDemoOpenPeriod`) instead of the old fabricated
+    // 0.63 / 7:45 PM / 3h 15m constants.
+    const pinnedNow = '2026-03-27T19:45:00'; // Fri, Dinner in progress
+
     setUp(() async {
+      SqliteDatabase.debugColdBootNowOverride = pinnedNow;
       await SqliteDatabase.instance.reseedDemo();
+    });
+
+    tearDown(() {
+      SqliteDatabase.debugColdBootNowOverride = null;
     });
 
     test('seeded shifts carry mock replay source system', () async {
@@ -211,26 +228,39 @@ void main() {
       expect(snap['source_shift_id'],
           MockIntegrationReplaySeed.openShiftSourceShiftId);
 
-      // Values coherently derive from mock replay Friday dinner plan
-      final friDinnerPlan = MockIntegrationReplaySeed.output.currentWeekShifts
-          .firstWhere(
-              (s) => s.dayLabel == 'Fri' && s.daypart == 'dinner');
+      // QA fix (Change A): values derive from the clock-derived
+      // resolution for the pinned now, NOT the old fixed fabrication.
+      final resolution = resolveDemoOpenPeriod(
+        localNow: DateTime.parse(pinnedNow),
+      );
+      expect(resolution.openDaypart, 'dinner',
+          reason: 'Fri 19:45 → Dinner in progress');
+
+      // The seed regenerates with the same clock anchor; read the Fri
+      // dinner plan from a matching generate call.
+      final friDinnerPlan = MockIntegrationReplaySeed.generateForDate(
+        '2026-03-27',
+        open: resolution,
+      ).currentWeekShifts.firstWhere(
+            (s) => s.dayLabel == 'Fri' && s.daypart == 'dinner',
+          );
 
       // Forecast and scheduled hours match the replay projected row
       expect(snap['forecast_covers'], friDinnerPlan.forecastCovers);
       expect(snap['scheduled_foh_hours'], friDinnerPlan.fohHours);
       expect(snap['scheduled_boh_hours'], friDinnerPlan.bohHours);
 
-      // Current covers are a deterministic fraction of forecast
+      // Current covers are the clock-derived fraction of forecast
+      // (honest live progress, not a hardcoded 0.63).
       final expectedCovers = (friDinnerPlan.forecastCovers *
-              MockIntegrationReplaySeed.openProgressFraction)
+              resolution.openProgressFraction!)
           .round();
       expect(snap['current_covers'], expectedCovers);
 
-      // Time labels come from mock replay constants
-      expect(snap['time_label'], MockIntegrationReplaySeed.openShiftTimeLabel);
+      // Time labels are clock-derived from the pinned now
+      expect(snap['time_label'], resolution.openTimeLabel);
       expect(snap['service_elapsed_label'],
-          MockIntegrationReplaySeed.openShiftServiceElapsedLabel);
+          resolution.openServiceElapsedLabel);
 
       // Current metrics are positive and coherent
       expect((snap['current_ppa'] as num).toDouble(), greaterThan(0));

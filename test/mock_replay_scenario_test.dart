@@ -27,10 +27,18 @@ void main() {
   setUp(() async {
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
+    // QA fix (Change A): the open period is now clock-derived. Pin the
+    // restaurant-local time-of-day to 19:45 (Dinner is in progress every
+    // weekday) so the reseed/advance-based coherence assertions below
+    // stay deterministic and keep their pre-fix Dinner-open semantics.
+    // The seeded business DATE is still the reseed/advance date — only
+    // which period is "open" is anchored here.
+    SqliteDatabase.debugColdBootNowOverride = '2026-03-27T19:45:00';
     await SqliteDatabase.instance.reseedDemo();
   });
 
   tearDown(() {
+    SqliteDatabase.debugColdBootNowOverride = null;
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
   });
@@ -47,25 +55,33 @@ void main() {
     });
 
     test('default date preserves [historicalWeekCount] historical weeks '
-        '+ 14 current-week shifts', () {
+        '+ 16 current-week shifts', () {
+      // QA fix (Change B): weekends now serve Lunch, so the operating
+      // pattern is 16 slots/week (was 14). `generateForDate` with no
+      // injected clock uses the deterministic back-compat resolution
+      // (Dinner open, Lunch closed) so openShiftDaypart stays 'dinner'.
       final output = MockIntegrationReplaySeed.generateForDate('2026-03-27');
       final weeks = MockIntegrationReplaySeed.historicalWeekCount;
       expect(output.weekRecords.length, weeks);
-      expect(output.historicalClosedShifts.length, weeks * 14);
-      expect(output.currentWeekShifts.length, 14);
+      expect(output.historicalClosedShifts.length, weeks * 16);
+      expect(output.currentWeekShifts.length, 16);
     });
 
-    test('default date current week has 9 closed + 5 projected', () {
+    test('default date current week has 9 closed + 7 projected', () {
+      // Fri current day (back-compat default: Lunch closed, Dinner
+      // open→projected, LateNight projected). Mon–Thu closed (8) + Fri
+      // lunch (1) = 9 closed; Fri dinner + Fri late_night + Sat L/D/LN
+      // + Sun L/D = 7 projected (Change B added weekend Lunch).
       final output = MockIntegrationReplaySeed.generateForDate('2026-03-27');
       final closed =
           output.currentWeekShifts.where((s) => s.isClosed).length;
       final projected =
           output.currentWeekShifts.where((s) => s.isProjected).length;
       expect(closed, 9);
-      expect(projected, 5);
+      expect(projected, 7);
     });
 
-    test('Saturday produces Sat dinner open with 11 closed + 3 projected', () {
+    test('Saturday produces Sat dinner open with 12 closed + 4 projected', () {
       final output = MockIntegrationReplaySeed.generateForDate('2026-03-28');
       expect(output.scenario.currentWeekId, '2026-W13');
       expect(output.scenario.openShiftDayLabel, 'Sat');
@@ -75,22 +91,27 @@ void main() {
           output.currentWeekShifts.where((s) => s.isClosed).length;
       final projected =
           output.currentWeekShifts.where((s) => s.isProjected).length;
-      expect(closed, 11); // Mon-Fri all shifts + (Sat has no lunch)
-      expect(projected, 3); // Sat dinner, Sat late_night, Sun dinner
+      // QA fix (Change B): Saturday now HAS a Lunch. Mon–Fri (11) + Sat
+      // lunch closed (1) = 12 closed; Sat dinner + Sat late_night + Sun
+      // lunch + Sun dinner = 4 projected.
+      expect(closed, 12);
+      expect(projected, 4);
     });
 
-    test('Sunday produces Sun dinner open with 13 closed + 1 projected', () {
+    test('Sunday produces Sun dinner open with 15 closed + 1 projected', () {
       final output = MockIntegrationReplaySeed.generateForDate('2026-03-29');
       expect(output.scenario.openShiftDayLabel, 'Sun');
       expect(output.scenario.openShiftDaypart, 'dinner');
 
       final closed =
           output.currentWeekShifts.where((s) => s.isClosed).length;
-      expect(closed, 13);
+      // Mon–Sat all closed (14) + Sun lunch closed (1) = 15; Sun dinner
+      // is the only projected (open) cell.
+      expect(closed, 15);
       expect(output.currentWeekShifts.where((s) => s.isProjected).length, 1);
     });
 
-    test('Monday produces Mon dinner open with 1 closed + 13 projected', () {
+    test('Monday produces Mon dinner open with 1 closed + 15 projected', () {
       // Monday has lunch + dinner. Lunch is closed, dinner is open.
       final output = MockIntegrationReplaySeed.generateForDate('2026-03-23');
       expect(output.scenario.openShiftDayLabel, 'Mon');
@@ -99,7 +120,8 @@ void main() {
       final closed =
           output.currentWeekShifts.where((s) => s.isClosed).length;
       expect(closed, 1); // Only Mon lunch
-      expect(output.currentWeekShifts.where((s) => s.isProjected).length, 13);
+      // 16 slots − 1 closed = 15 projected (Change B: 16-slot week).
+      expect(output.currentWeekShifts.where((s) => s.isProjected).length, 15);
     });
   });
 
