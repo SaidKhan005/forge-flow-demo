@@ -26,6 +26,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 
 void main() {
   group('Wave 2 R-2L default role catalog v2 migration shape', () {
@@ -242,6 +243,154 @@ void main() {
             'expected at least 8 `on conflict do nothing` clauses '
             '(roles INSERT + 7 role_permissions INSERTs).',
       );
+    });
+  });
+
+  // G7-pre — `PermissionKeys` role-constant block refreshed to the v2
+  // catalog. These assertions pin the catalog constants to the SAME
+  // migration this test already loads, so a future drift on either
+  // side trips here.
+  group('G7-pre — PermissionKeys role constants ⟂ v2 migration', () {
+    late String migration;
+
+    setUpAll(() {
+      migration = File(
+        'db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+    });
+
+    test('each new v2 role constant is byte-equal to a migration '
+        'role_key literal', () {
+      // The seven v2 roles inserted by step 2 of the migration. The
+      // value on the right MUST match the constant value AND appear as
+      // a `'<key>',` INSERT literal in the migration source.
+      const v2Constants = <String, String>{
+        'roleOperatorGeneralManager':
+            PermissionKeys.roleOperatorGeneralManager,
+        'roleLocationManager': PermissionKeys.roleLocationManager,
+        'roleSupervisor': PermissionKeys.roleSupervisor,
+        'roleFinanceAnalyst': PermissionKeys.roleFinanceAnalyst,
+        'roleAuditorCompliance': PermissionKeys.roleAuditorCompliance,
+        'roleTrainingLead': PermissionKeys.roleTrainingLead,
+        'roleTeamAdmin': PermissionKeys.roleTeamAdmin,
+      };
+      const expectedValues = <String, String>{
+        'roleOperatorGeneralManager': 'operator_general_manager',
+        'roleLocationManager': 'location_manager',
+        'roleSupervisor': 'supervisor',
+        'roleFinanceAnalyst': 'finance_analyst',
+        'roleAuditorCompliance': 'auditor_compliance',
+        'roleTrainingLead': 'training_lead',
+        'roleTeamAdmin': 'team_admin',
+      };
+      for (final entry in v2Constants.entries) {
+        expect(
+          entry.value,
+          expectedValues[entry.key],
+          reason: '${entry.key} value drifted from the v2 catalog key',
+        );
+        expect(
+          migration,
+          contains("'${entry.value}',"),
+          reason:
+              '${entry.key} (= "${entry.value}") not found as a '
+              'role_key INSERT literal in the v2 migration',
+        );
+      }
+    });
+
+    test('carry-over role constants keep their v1 keys and appear in '
+        'the v2 migration', () {
+      expect(PermissionKeys.roleSuperAdmin, 'super_admin');
+      expect(PermissionKeys.roleFfSupport, 'ff_support');
+      expect(PermissionKeys.roleOperatorOwner, 'operator_owner');
+      // The v2 migration explicitly refreshes operator_owner.
+      expect(
+        migration,
+        contains("where role_key   = 'operator_owner'"),
+      );
+    });
+
+    test('soft-deleted v1 role constants are retained as '
+        'migration-history aliases', () {
+      // Operator decision 2026-05-16: KEEP (do not hard-remove). They
+      // are excluded from `baselineRoleKeys` but the constants still
+      // resolve so migration-window tests/fixtures/policy compile.
+      // ignore: deprecated_member_use_from_same_package
+      const managerKey = PermissionKeys.roleOperatorManager;
+      // ignore: deprecated_member_use_from_same_package
+      const supervisorKey = PermissionKeys.roleOperatorSupervisor;
+      // ignore: deprecated_member_use_from_same_package
+      const staffKey = PermissionKeys.roleOperatorStaff;
+      expect(managerKey, 'operator_manager');
+      expect(supervisorKey, 'operator_supervisor');
+      expect(staffKey, 'operator_staff');
+      // The migration soft-deletes (never hard-deletes) these v1 keys.
+      expect(
+        migration,
+        contains("'operator_manager',\n"
+            "         'operator_supervisor',\n"
+            "         'operator_staff'"),
+      );
+    });
+
+    test('baselineRoleKeys is exactly the 10 active v2 catalog keys', () {
+      const expected = <String>{
+        'super_admin',
+        'ff_support',
+        'operator_owner',
+        'operator_general_manager',
+        'location_manager',
+        'supervisor',
+        'finance_analyst',
+        'auditor_compliance',
+        'training_lead',
+        'team_admin',
+      };
+      expect(PermissionKeys.baselineRoleKeys, equals(expected));
+      expect(PermissionKeys.baselineRoleKeys, hasLength(10));
+      // The three soft-deleted v1 keys are excluded.
+      expect(
+        PermissionKeys.baselineRoleKeys,
+        isNot(contains('operator_manager')),
+      );
+      expect(
+        PermissionKeys.baselineRoleKeys,
+        isNot(contains('operator_supervisor')),
+      );
+      expect(
+        PermissionKeys.baselineRoleKeys,
+        isNot(contains('operator_staff')),
+      );
+    });
+
+    test('every baselineRoleKeys entry resolves to a seeded role_key '
+        'in the v2 (or carry-over) catalog', () {
+      // operator_owner is refreshed (not re-inserted) by the v2
+      // migration; super_admin/ff_support are foundation carry-overs
+      // not re-stated in this file. The seven v2 roles MUST appear as
+      // INSERT literals here.
+      const v2Inserted = <String>{
+        'operator_general_manager',
+        'location_manager',
+        'supervisor',
+        'finance_analyst',
+        'auditor_compliance',
+        'training_lead',
+        'team_admin',
+      };
+      for (final key in v2Inserted) {
+        expect(
+          PermissionKeys.baselineRoleKeys,
+          contains(key),
+          reason: 'v2 seeded role $key missing from baselineRoleKeys',
+        );
+        expect(
+          migration,
+          contains("'$key',"),
+          reason: '$key not an INSERT literal in the v2 migration',
+        );
+      }
     });
   });
 }
