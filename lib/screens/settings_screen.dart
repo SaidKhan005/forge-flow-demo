@@ -323,9 +323,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // (HP #2 — no kDemoMode reader branch).
                     _settingsSection(
                       title: 'Covers setup',
-                      description:
-                          "Type covers when your point-of-sale doesn't send them, "
-                          'or to override a count for a specific shift.',
                       child: SettingsCoversSetupSection(
                         restaurantId: restaurant.restaurantId,
                         scopeLabel: restaurant.displayName,
@@ -401,9 +398,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // read-only.
                   _settingsSection(
                     title: 'Integrations',
-                    description:
-                        'See which categories are still on demo data and '
-                        'jump to the operator console to connect vendors.',
                     child: SettingsIntegrationsSection(
                       handoffCodeGateway: widget.handoffCodeGateway,
                     ),
@@ -417,8 +411,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 slivers: [
                   _settingsSection(
                     title: 'Sync status',
-                    description:
-                        'See whether this device has the local data it needs.',
                     child: SettingsDataStatusSection(status: _status),
                   ),
                   // Phase 10a.UX.1 â€” per-table last-sync timestamps
@@ -428,15 +420,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // shared-state frame for the table.
                   _settingsSection(
                     title: 'Latest updates',
-                    description:
-                        'Shows when shared restaurant data last updated on this device.',
                     child: const SettingsDataFreshnessSection(),
                   ),
                   if (_kDemoMode)
                     _settingsSection(
                       title: 'Data reset',
-                      description:
-                          'Use carefully when clearing local demo or operational data.',
                       child: SettingsDataManagementSection(
                         onAfterWrite: _refreshAfterWrite,
                       ),
@@ -444,8 +432,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (_kDemoMode)
                     _settingsSection(
                       title: 'Demo date',
-                      description:
-                          'Move the demo restaurant through sample business days.',
                       child: SettingsMockReplaySection(
                         mockReplayDate: () => _mockReplayDate,
                         onAfterWrite: _refreshAfterWrite,
@@ -454,8 +440,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   if (showFFSupport)
                     _settingsSection(
                       title: 'Data alignment',
-                      description:
-                          'F&F support diagnostics for canonical fact alignment.',
                       child: const SettingsAuditSection(),
                     ),
                 ],
