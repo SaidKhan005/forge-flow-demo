@@ -22,13 +22,12 @@ class WeekHistoryTile extends StatelessWidget {
     final gapSign = isOver ? '−' : '+';
     final gapFormatted = Fmt.dollars(week.dollarGap.abs());
 
-    final varSign = isOver ? '−' : '+';
-    final varAbs = week.laborPctVariance.abs().toStringAsFixed(1);
-
     // 7.58.UX.5 (F-1): explicit lookup; null → degraded "—" badge.
     final leverCard = LeverCards.lookup(week.primaryLeverId);
     final lever = leverCard?.shortLabel ?? '—';
-    final leverColor = leverCard == null
+    // `balanced` sentinel is neutral — muted, never the green/red path
+    // (no phantom COVERS-red on weeks where every axis stayed in tolerance).
+    final leverColor = (leverCard == null || leverCard.isNeutral)
         ? AppColors.textMuted
         : (leverCard.isFavorable ? AppColors.positive : AppColors.negative);
 
@@ -63,21 +62,8 @@ class WeekHistoryTile extends StatelessWidget {
                         weight: FontWeight.w600)),
               ),
 
-              // ── Variance pts ─────────────────────────────────────────────
-              Expanded(
-                flex: 2,
-                child: Text(
-                  '$varSign$varAbs pts',
-                  style: AppTextStyles.mono12(color: gapColor),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-
-              const SizedBox(width: 10),
-
               // ── Dollar gap ────────────────────────────────────────────────
               Expanded(
-                flex: 3,
                 child: Text(
                   '$gapSign\$$gapFormatted',
                   style: AppTextStyles.mono14(

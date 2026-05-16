@@ -4,7 +4,9 @@
 // that the audit pass must keep true:
 //
 //   * Engine output discipline — `LaborModel.determineLever` never returns
-//     'on_model' (R6); the empty-candidate path returns 'covers_down' (R10);
+//     'on_model' (R6); the empty-candidate path returns the neutral
+//     'balanced' sentinel — NOT a phantom 'covers_down' (R10, revised
+//     per the Metric Honesty Doctrine: no phantom drivers);
 //     output is always lowercase snake_case (R15).
 //   * Lever id catalogue alignment — every priority-order id has a matching
 //     `LeverCardData` entry, and every `LeverCardData` entry corresponds to
@@ -133,11 +135,22 @@ void main() {
       }
     });
 
-    test('empty-candidate path returns covers_down (legacy fallback)', () {
+    test('empty-candidate path returns the neutral balanced sentinel', () {
       final lever = _engineLever();
-      expect(lever, equals('covers_down'),
+      expect(lever, equals(LaborModel.balancedLeverId),
           reason:
-              'R10 — empty-candidate fallback returns covers_down per Decision Logic step 3');
+              'R10 (revised) — empty-candidate path returns the neutral '
+              '`balanced` sentinel, NOT a phantom covers_down. The legacy '
+              'covers_down fallback violated the Metric Honesty Doctrine '
+              '(every washed-below-threshold period showed a phantom red '
+              'COVERS driver).');
+      expect(lever, isNot(equals('covers_down')),
+          reason: 'No phantom COVERS driver on the no-deviation path.');
+      // The sentinel must resolve to a non-null neutral card so renderers
+      // never fall through to a real driver card.
+      final card = LeverCards.lookup(lever);
+      expect(card, isNotNull);
+      expect(card!.isNeutral, isTrue);
     });
 
     test('output id is always lowercase snake_case', () {

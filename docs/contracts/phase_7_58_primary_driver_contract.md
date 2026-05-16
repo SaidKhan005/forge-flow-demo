@@ -73,10 +73,28 @@ been computed yet.
    inputs are all present and whose denominator is positive.
 2. For each axis, if `|delta|` exceeds the axis threshold, add the
    matched id (up vs down) to the candidate set with weight `|delta|`.
-3. If the candidate set is empty, return the literal string
-   `'covers_down'`. (This is a behaviour preserved from
-   pre-7.58 code; see Finding F-2 below — `7.58.0a` will replace
-   it with `'on_model'` once the on-model card exists.)
+3. If the candidate set is empty, return the neutral sentinel
+   `'balanced'` (`LaborModel.balancedLeverId`,
+   `lib/services/labor_model.dart`). This is the honest "every axis
+   landed within tolerance — there is no single lever to pull"
+   state. It resolves through `LeverCards.lookup('balanced')` to the
+   dedicated neutral `LeverCards.balanced` card
+   (`lib/domain/constants/app_defaults.dart`), which renderers color
+   muted via `LeverCardData.isNeutral` (never the favorable-green /
+   unfavorable-red path). `balanced` is intentionally NOT a member
+   of `LeverCards.all`, so the pattern / teaching / dollar-attribution
+   analyzers that gate on `LeverCards.all` skip it as evidence rather
+   than counting a phantom leak or benchmark. It is distinct from the
+   `'on_model'` sentinel (open / projected rows), which still resolves
+   to `null` ("Not yet available"); `balanced` means "computed, no
+   dominant driver", `on_model` means "not yet computed". (Revised
+   2026-05-16: the empty-candidate path previously returned the literal
+   `'covers_down'`, which painted a phantom red COVERS driver on every
+   period where deviations washed below threshold — a Metric Honesty
+   Doctrine violation. The old "`7.58.0a` will replace it with
+   `'on_model'`" plan is superseded: a dedicated neutral card is the
+   correct fix, since reusing `'on_model'` would conflate "no driver"
+   with "not yet computed".)
 4. Otherwise, pick the candidate with the maximum `|delta|`.
 5. If two or more candidates tie at the maximum, resolve by the
    `priorityOrder` list at `lib/services/labor_model.dart:131`:
@@ -101,13 +119,16 @@ been computed yet.
 ## Output Cardinality
 
 `determineLever` returns exactly one id per call. The id is one of
-the 16 cards or the legacy `'covers_down'` no-signal fallback. The
-id is always lowercase snake_case. Storage layers persist the
-upper-snake form (`'COVERS_DOWN'`) at `ShiftRecord.primaryLever`;
+the 16 cards or the neutral `'balanced'` no-signal sentinel (see
+Decision Logic step 3). The id is always lowercase snake_case.
+Storage layers persist the upper-snake form (`'COVERS_DOWN'`,
+`'BALANCED'`) at `ShiftRecord.primaryLever`;
 `ShiftRecord.normalizedLeverId` lowercases it for lookup. Renderers
 resolve the id through `LeverCards.lookup`, which is
-case-insensitive and returns `null` for the `on_model` sentinel and
-unknown ids — see Presentation Split Rules.
+case-insensitive: it returns the neutral `LeverCards.balanced` card
+for `'balanced'` (non-null, `isNeutral: true`), and returns `null`
+for the `on_model` sentinel and unknown ids — see Presentation
+Split Rules.
 
 ## Presentation Split (Short vs Deep)
 

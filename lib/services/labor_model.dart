@@ -81,6 +81,19 @@ class LaborModel {
     return actualLaborDollar - (theoFoh + theoBoh);
   }
 
+  /// Sentinel lever id returned by [determineLever] when no axis deviates
+  /// past its firing threshold (`candidates.isEmpty`). Honest "every axis
+  /// landed within tolerance — there is no single lever to pull" state.
+  /// Previously this path falsely returned `'covers_down'`, painting a
+  /// phantom red COVERS driver on every period where deviations washed
+  /// below threshold (Metric Honesty Doctrine violation). Renderers resolve
+  /// it through `LeverCards.lookup('balanced')` (never null) and color it
+  /// MUTED via `LeverCardData.isNeutral` — not the favorable/unfavorable
+  /// path. It is intentionally NOT a member of `LeverCards.all`, so the
+  /// pattern/teaching analyzers (which gate on `LeverCards.all`) naturally
+  /// skip it as evidence rather than counting a phantom leak.
+  static const String balancedLeverId = 'balanced';
+
   // ── Primary lever detection ───────────────────────────────────────────────
   // Identifies the strongest signal driver from WTD actuals.
   // Returns a LeverCardData.id string (see LeverCards in app_defaults.dart).
@@ -184,7 +197,9 @@ class LaborModel {
       if (bohFlexDelta < -0.10) candidates['boh_hours_under'] = bohFlexDelta.abs();
     }
 
-    if (candidates.isEmpty) return 'covers_down';
+    // No axis deviated past threshold — honest neutral state, not a
+    // phantom COVERS driver. See [balancedLeverId].
+    if (candidates.isEmpty) return balancedLeverId;
 
     // Find the maximum deviation; resolve ties by priority order
     final maxVal = candidates.values.reduce((a, b) => a > b ? a : b);

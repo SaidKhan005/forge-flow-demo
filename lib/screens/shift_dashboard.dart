@@ -1779,15 +1779,20 @@ class _DaypartDriverChip extends StatelessWidget {
     // (`_up` / `_over` → ↑; `_down` / `_under` → ↓). These are
     // independent: e.g. `foh_wage_down` is favorable (green) but
     // points down (the metric moved down).
-    final accent = hasDriver
-        ? (c.isFavorable ? AppColors.positive : AppColors.negative)
-        : AppColors.textMuted;
-    final arrow = hasDriver
+    // `balanced` sentinel renders muted (no green/red, no arrow) — no
+    // phantom driver when every axis stayed within tolerance.
+    final isNeutral = hasDriver && c.isNeutral;
+    final accent = (!hasDriver || isNeutral)
+        ? AppColors.textMuted
+        : (c.isFavorable ? AppColors.positive : AppColors.negative);
+    final arrow = (hasDriver && !isNeutral)
         ? (LeverCards.metricDirectionGlyph(c.id) ?? '')
         : '';
-    final label = hasDriver
-        ? 'PRIMARY DRIVER · ${c.shortLabel} $arrow'
-        : 'PRIMARY DRIVER · NO PATTERN YET';
+    final label = !hasDriver
+        ? 'PRIMARY DRIVER · NO PATTERN YET'
+        : (isNeutral
+            ? 'PRIMARY DRIVER · ${c.shortLabel}'
+            : 'PRIMARY DRIVER · ${c.shortLabel} $arrow');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(

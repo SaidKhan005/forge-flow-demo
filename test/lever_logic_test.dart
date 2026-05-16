@@ -88,17 +88,19 @@ void main() {
   });
 
   group('determineLever — threshold edge cases', () {
-    test('exact -2% covers does not fire; just below does; all-at-target returns default', () {
-      // Exact −2%
+    test('exact -2% covers does not fire; just below does; all-at-target returns balanced sentinel', () {
+      // Exact −2% — does NOT fire, so no axis deviates → balanced sentinel
+      // (NOT a phantom covers_down — Metric Honesty Doctrine).
       expect(
         _lever(
           actualCovers: (1200 * 0.98).round(),
           forecastCovers: 1200,
           avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage,
         ),
-        'covers_down', // default fallback, not fired
+        LaborModel.balancedLeverId,
       );
-      // Just below −2%
+      // Just past −2% (1174/1200 = −2.17%) — covers_down DOES fire; this
+      // is a real driver, not the empty-candidate path.
       expect(
         _lever(
           actualCovers: 1174, forecastCovers: 1200,
@@ -106,10 +108,10 @@ void main() {
         ),
         'covers_down',
       );
-      // All at target
+      // All at target → balanced.
       expect(
         _lever(avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'covers_down',
+        LaborModel.balancedLeverId,
       );
     });
 
@@ -119,7 +121,7 @@ void main() {
         avgCPLH: _tCPLH, avgPPA: _tPPA,
         targetCPLH: _tCPLH, targetPPA: _tPPA,
       );
-      expect(noSPLH, 'covers_down');
+      expect(noSPLH, LaborModel.balancedLeverId);
 
       final noWage = LaborModel.determineLever(
         actualCovers: 1200, forecastCovers: 1200,
@@ -127,7 +129,7 @@ void main() {
         targetCPLH: _tCPLH, targetPPA: _tPPA,
         avgSPLH: _tSPLH, targetSPLH: _tSPLH,
       );
-      expect(noWage, 'covers_down');
+      expect(noWage, LaborModel.balancedLeverId);
     });
 
     test('zero inputs: no divide-by-zero', () {
@@ -137,7 +139,7 @@ void main() {
           avgCPLH: _tCPLH, avgPPA: _tPPA,
           targetCPLH: _tCPLH, targetPPA: _tPPA,
         ),
-        'covers_down',
+        LaborModel.balancedLeverId,
       );
       expect(
         LaborModel.determineLever(
@@ -145,8 +147,39 @@ void main() {
           avgCPLH: 4.0, avgPPA: _tPPA,
           targetCPLH: 0.0, targetPPA: _tPPA,
         ),
-        'covers_down',
+        LaborModel.balancedLeverId,
       );
+    });
+  });
+
+  group('determineLever — balanced sentinel (no phantom driver)', () {
+    test('empty-candidate path returns balancedLeverId, never covers_down', () {
+      final lever = _lever(
+        avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage,
+      );
+      expect(lever, LaborModel.balancedLeverId);
+      expect(lever, isNot('covers_down'),
+          reason:
+              'Empty-candidate path must NOT report a phantom COVERS driver '
+              '(Metric Honesty Doctrine).');
+    });
+
+    test('LeverCards.lookup(balanced) is non-null and neutral', () {
+      final card = LeverCards.lookup(LaborModel.balancedLeverId);
+      expect(card, isNotNull,
+          reason: 'lookup(balanced) must never return null.');
+      expect(card!.isNeutral, isTrue,
+          reason:
+              'balanced must be neutral so renderers mute it instead of '
+              'the green/red favorability path.');
+      // Not a member of `all` → pattern/teaching analyzers skip it as
+      // evidence rather than counting a phantom leak/benchmark.
+      expect(LeverCards.all.any((l) => l.id == LaborModel.balancedLeverId),
+          isFalse,
+          reason:
+              'balanced must stay out of LeverCards.all so analyzers that '
+              'gate on `all` never count it as a phantom driver.');
+      expect(LaborModel.isFavorableLever(LaborModel.balancedLeverId), isFalse);
     });
   });
 

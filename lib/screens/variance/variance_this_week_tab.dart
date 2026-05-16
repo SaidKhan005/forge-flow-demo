@@ -1288,7 +1288,10 @@ class _LeverBadge extends StatelessWidget {
     // `LeverCardData.metric` so the badge matches every other deep-card
     // surface instead of leaking the upper-snake id.
     final card = LeverCards.lookup(lever);
-    final color = card == null ? AppColors.textMuted : AppColors.warning;
+    // `balanced` sentinel is neutral — muted, not the amber driver color.
+    final color = (card == null || card.isNeutral)
+        ? AppColors.textMuted
+        : AppColors.warning;
     final label = card == null
         ? 'PRIMARY LEVER: ${LeverCards.notYetOnModelLabel.toUpperCase()}'
         : 'PRIMARY LEVER: ${card.metric}';

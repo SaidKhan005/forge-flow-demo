@@ -71,6 +71,11 @@ class LeverCardData {
   // ── Interpretation fields — consumed by widgets, never re-derived ────────
   final String shortLabel;      // badge text: 'COVERS', 'CPLH', 'PPA', 'SPLH', 'WAGE'
   final bool isFavorable;       // true = positive (green); false = unfavorable (red)
+  // True ONLY for the `balanced` sentinel — no axis deviated past threshold,
+  // so there is no single driver. Renderers MUST check this BEFORE the
+  // isFavorable green/red branch and color the badge muted
+  // (AppColors.textMuted). isFavorable is meaningless when isNeutral is true.
+  final bool isNeutral;
   final String weekActionLine;  // kept for backwards compat; no longer rendered in UI
 
   const LeverCardData({
@@ -84,6 +89,7 @@ class LeverCardData {
     required this.teachingNote,
     required this.shortLabel,
     required this.isFavorable,
+    this.isNeutral = false,
     required this.weekActionLine,
   });
 
@@ -431,6 +437,37 @@ class LeverCards {
     weekActionLine: 'Document this BOH setup if ticket times and quality held.',
   );
 
+  /// Neutral sentinel card for the `balanced` lever id
+  /// (`LaborModel.balancedLeverId`) — returned by the engine when no axis
+  /// deviated past its firing threshold. Deliberately NOT a member of
+  /// [all]: the pattern/teaching analyzers gate evidence on [all], so
+  /// excluding it keeps `balanced` from ever being counted as a phantom
+  /// leak or benchmark. [lookup] resolves it explicitly so renderers
+  /// always get a non-null card to show the honest neutral state.
+  static const balanced = LeverCardData(
+    id: 'balanced',
+    metric: 'NO SINGLE DRIVER THIS WEEK',
+    causeCategory: 'ON TARGET',
+    side: LeverSide.both,
+    direction: LeverDirection.favorable,
+    whatHappened:
+        'Every part of this week landed within tolerance. Covers, PPA, '
+        'productivity, hours, and wages all came in close enough to plan '
+        'that no single one stands out as the story of the week.',
+    whatToDo:
+        'Nothing to chase here. There is no single lever to pull this '
+        'week — the week ran on plan. Keep doing what you did and watch '
+        'the next week for any axis that starts to drift.',
+    teachingNote:
+        'A week with no dominant driver is a good week, not a missing one. '
+        'Use it as your baseline: when a real driver does show up later, '
+        'you will know it is a real change and not normal week-to-week noise.',
+    shortLabel: 'ON TARGET',
+    isFavorable: false,
+    isNeutral: true,
+    weekActionLine: 'Every axis landed within tolerance — no lever to pull.',
+  );
+
   static const List<LeverCardData> all = [
     coversDown,
     coversUp,
@@ -472,6 +509,10 @@ class LeverCards {
     if (id == null || id.isEmpty) return null;
     final normalized = id.toLowerCase();
     if (normalized == 'on_model') return null;
+    // `balanced` sentinel — resolved explicitly so renderers always get a
+    // non-null neutral card. Kept out of `all` so pattern/teaching
+    // analyzers (which gate on `all`) never count it as evidence.
+    if (normalized == balanced.id) return balanced;
     for (final card in all) {
       if (card.id == normalized) return card;
     }

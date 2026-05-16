@@ -655,11 +655,15 @@ class MockIntegrationReplaySeed {
     if (status != 'closed') {
       // Projected: on-model at the PERIOD target (period-differentiated
       // so projected period cards / Full Week Projection rows differ per
-      // period and roll up consistently). Wages match target; the
-      // empty-candidate fallback (`covers_down`) is engine truth, not a
-      // hand-coded sentinel. The non-closed `on_model` sentinel remains
-      // the property of `CurrentWeekState.shiftRecordFromSnapshot`
-      // (open snapshots), per the phase 7.58 contract Output Cardinality.
+      // period and roll up consistently). Wages match target; every axis
+      // lands on target so `determineLever` returns the neutral
+      // `balanced` sentinel — engine truth, not a hand-coded sentinel
+      // (it replaced the old phantom-`covers_down` empty-candidate
+      // fallback). Projected rows still surface `'Not yet available'`
+      // (R30), so the stored `BALANCED` is never displayed as a driver.
+      // The non-closed `on_model` sentinel remains the property of
+      // `CurrentWeekState.shiftRecordFromSnapshot` (open snapshots),
+      // per the phase 7.58 contract Output Cardinality.
       final foh = LaborModel.modelFohHours(forecastCovers, baseCPLH);
       final boh = LaborModel.modelBohHoursFromSales(
         forecastCovers * basePPA,
