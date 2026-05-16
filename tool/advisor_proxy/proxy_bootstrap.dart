@@ -36,6 +36,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/handoff_codes_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/invited_user_activation_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/step_up_challenges_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/location_account_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
@@ -83,6 +84,7 @@ import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/auth/hibp_pwned_password_screener.dart';
+import 'package:forge_and_flow/services/auth/invited_user_activation_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_request_gateway.dart';
@@ -1292,8 +1294,22 @@ ProxyProductionBindings buildProxyProductionBindings(
     accountInfoGateway: RepositoryAccountInfoGateway(
       usersRepository: tenantUsers,
     ),
-    authSessionLedgerWriter: RepositoryAuthSessionLedgerWriter(
-      repository: AuthSessionsRepository(tenantWrapper),
+    // G66 / Q3: operator decision pending — see
+    // docs/_audits/cross_surface_parity_v1/onboarding_server_slice_spec.md.
+    // The bare RepositoryAuthSessionLedgerWriter only writes the
+    // auth_sessions row; it never flips users.status invited->active or
+    // stamps auth_invites.accepted_at. Without this decorator wrap every
+    // live invitee (mobile AND operator-web — both surfaces hit this same
+    // POST /v1/auth/session/login binding) signs in but stays stuck
+    // `status = 'invited'`. The decorator runs the invite-acceptance
+    // transition before delegating the session write, using the same
+    // tenant-scoped wrapper (`tenantWrapper`, a TenantTransactionWrapper)
+    // that AuthSessionsRepository and every sibling repository here use.
+    authSessionLedgerWriter: InvitedUserActivationLedgerWriter(
+      delegate: RepositoryAuthSessionLedgerWriter(
+        repository: AuthSessionsRepository(tenantWrapper),
+      ),
+      activationRepository: InvitedUserActivationRepository(tenantWrapper),
     ),
     permissionSnapshotResolver: permissionSnapshotResolver,
     adminPermissionGuard: RepositoryProxyAdminPermissionGuard(

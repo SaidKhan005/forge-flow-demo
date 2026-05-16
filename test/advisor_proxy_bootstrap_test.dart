@@ -23,6 +23,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/invited_user_activation_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_password_change_gateway.dart';
@@ -178,9 +179,16 @@ void main() {
       );
 
       expect(bindings.accountingStore, isA<PostgresProxyAccountingStore>());
+      // G66 / server-slice S1: the production binding wraps the bare
+      // RepositoryAuthSessionLedgerWriter with the invited-user
+      // activation decorator so every live invitee (mobile + operator-
+      // web) flips users.status invited->active on first login. The
+      // standalone `buildAuthSessionLedgerWriter` helper stays bare
+      // (asserted in its own group above) because it is not the
+      // production binding path.
       expect(
         bindings.authSessionLedgerWriter,
-        isA<RepositoryAuthSessionLedgerWriter>(),
+        isA<InvitedUserActivationLedgerWriter>(),
       );
       expect(
         bindings.permissionSnapshotResolver,
