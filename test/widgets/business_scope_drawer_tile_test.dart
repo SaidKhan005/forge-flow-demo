@@ -151,7 +151,9 @@ void main() {
         ),
         'Acme / East / Downtown',
       );
-      expect(BusinessScopeDrawerTile.subtitleFor(activeScope), 'Location');
+      // A plain location with no distinguishing path renders no subtitle —
+      // the literal word "Location" under every row was redundant noise.
+      expect(BusinessScopeDrawerTile.subtitleFor(activeScope), '');
     });
   });
 }
