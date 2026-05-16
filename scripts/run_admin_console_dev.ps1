@@ -31,12 +31,15 @@ param(
   # `forge-flow-preview-<name>-admin` via `gcloud run services describe`.
   [string] $PreviewName,
 
-  # In demo mode, default behavior is `ADMIN_SHARE_PREVIEW=true` which
-  # bypasses the fixture-login picker entirely (lands signed in as F&F
-  # support, no login screen at all). Passing `-DemoFixtureLogin` swaps
-  # in `ADMIN_DEMO_AUTH=true` so the picker (super-admin / support /
-  # operator) renders - useful for exercising the gate's admit /
-  # fail-closed paths.
+  # Demo defaults to `--dart-define=ADMIN_SHARE_PREVIEW=true`, which lands
+  # signed in as F&F support with NO login screen, NO Firebase, and NO
+  # proxy required. The gateway resolvers in `lib/main_admin.dart` bypass
+  # for `_kAdminDemoAuth || _kAdminSharePreview`.
+  #
+  # `-DemoFixtureLogin` swaps in `--dart-define=ADMIN_DEMO_AUTH=true` so
+  # the fixture-login picker (`super.admin@` / `support@` / `operator@`)
+  # renders instead - useful for exercising the gate's admit / fail-closed
+  # paths.
   [switch] $DemoFixtureLogin,
 
   # Production safety - script refuses -Mode production without this.
@@ -128,10 +131,23 @@ if ($WebServer) {
 }
 
 if ($Mode -eq 'demo') {
+  # Default demo auto-logs in as super-admin via
+  # ADMIN_SHARE_PREVIEW=true + ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true so
+  # there is NO login screen and the operator has full write access to
+  # every admin surface for the walkthrough. The bare ADMIN_SHARE_PREVIEW
+  # path (no SUPER_ADMIN flag) remains the historical "read-only support"
+  # share-preview used by `scripts/deploy_admin_console.ps1 -SharePreview`
+  # (emailed review links) - that deploy script is intentionally not
+  # touched here.
+  #
+  # `-DemoFixtureLogin` swaps in ADMIN_DEMO_AUTH=true so the picker
+  # (super.admin@ / support@ / operator@) renders instead - useful for
+  # exercising the gate's admit / fail-closed paths.
   if ($DemoFixtureLogin) {
     $argsList += '--dart-define=ADMIN_DEMO_AUTH=true'
   } else {
     $argsList += '--dart-define=ADMIN_SHARE_PREVIEW=true'
+    $argsList += '--dart-define=ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN=true'
   }
 } else {
   $resolved = Resolve-AdminProxyBaseUri `
@@ -146,15 +162,28 @@ if ($FlutterArgs.Count -gt 0) {
   $argsList += $FlutterArgs
 }
 
+# Both web consoles serve from the same `web/index.html`, whose production
+# CSP refuses `'unsafe-inline'` / `'unsafe-eval'`. Flutter Web's DDC dev
+# compiler needs both — without the swap, the bundle loads but every
+# DDC-injected inline script is blocked and Flutter never paints (operator
+# stays on splash forever). Shared helper applies the dev-relaxed CSP for
+# the duration of `flutter run`, then restores the production file on exit
+# (Ctrl-C, error, or normal completion). Same swap operator-web does.
+. (Join-Path $PSScriptRoot '_dev_csp_swap.ps1')
+
 if ($PrintCommandOnly) {
+  Write-DevCspSwapNotice -RepoRoot $repoRoot
   Write-Host "flutter $($argsList -join ' ')"
   exit 0
 }
 
+Begin-DevCspSwap -RepoRoot $repoRoot
 Push-Location $repoRoot
 try {
   & flutter @argsList
-  exit $LASTEXITCODE
+  $flutterExitCode = $LASTEXITCODE
 } finally {
   Pop-Location
+  End-DevCspSwap -RepoRoot $repoRoot
 }
+exit $flutterExitCode
