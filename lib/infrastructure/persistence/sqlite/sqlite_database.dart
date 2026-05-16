@@ -5,6 +5,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:meta/meta.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -189,26 +190,73 @@ class SqliteDatabase {
 
   // ── Schema creation ─────────────────────────────────────────────────────
 
+  /// Cold-boot demo anchor date (`yyyy-MM-dd`, UTC).
+  ///
+  /// The Shift dashboard evaluates "current-week open/projected state"
+  /// against the real wall clock — `shift_dashboard_notifier.dart:82,126`
+  /// use `DateTime.now().toUtc()`. The cold-boot demo seed must pin the
+  /// seeded "current week" to *today* on the same UTC basis, otherwise
+  /// the seeded current week (week of the fixed
+  /// `MockIntegrationReplaySeed.defaultBusinessDate` = 2026-03-27) never
+  /// contains "now" and a clean cold boot silently degrades to
+  /// "HISTORICAL ONLY".
+  ///
+  /// HP #2: this is a writer-side anchor only — no reader branches on
+  /// `kDemoMode` and no `demo_*` table; readers consume the same tables
+  /// either way. `defaultBusinessDate` stays the documented default for
+  /// unit tests and `MockIntegrationReplaySeed.output`; only this runtime
+  /// cold-boot DB seed is today-anchored.
+  ///
+  /// [debugColdBootTodayOverride] is a test-only seam so a cold-boot
+  /// seed can be exercised against a known "today" deterministically; it
+  /// is `null` in production and the real UTC clock is used.
+  @visibleForTesting
+  static String? debugColdBootTodayOverride;
+
+  static String _coldBootAnchorIsoDate() {
+    final override = debugColdBootTodayOverride;
+    if (override != null) return override;
+    final now = DateTime.now().toUtc();
+    return '${now.year.toString().padLeft(4, '0')}-'
+        '${now.month.toString().padLeft(2, '0')}-'
+        '${now.day.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _onCreate(Database db, int version) async {
     await _createAllTables(db);
     await _seedDemoRestaurant(db);
+
+    // Anchor the cold-boot demo seed to *today* (UTC ISO) instead of the
+    // fixed `MockIntegrationReplaySeed.defaultBusinessDate`. See
+    // [_coldBootAnchorIsoDate]. `generateForDate(today)` builds a
+    // coherent current week + 12 historical weeks ending at that week,
+    // so "now" always falls inside the seeded current week and Shift
+    // finds a current-week open shift on a clean cold boot. This mirrors
+    // the date threading already proven in
+    // `reseedMockReplayForBusinessDate` — same generator, same
+    // `businessDate:`-keyed seeders, just sourced from today.
+    final coldBootBusinessDate = _coldBootAnchorIsoDate();
+    final replay =
+        MockIntegrationReplaySeed.generateForDate(coldBootBusinessDate);
+
     await _seedDemoActiveTargetProfile(
       db,
-      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
-      replay: MockIntegrationReplaySeed.output,
+      businessDate: coldBootBusinessDate,
+      replay: replay,
     );
 
-    // Persist default mock replay business date
+    // Persist the cold-boot mock replay business date. Direct insert:
+    // `setMockReplayBusinessDate` awaits `database`, which is re-entrant
+    // during `_onCreate` (the Database is not yet assigned).
     await db.insert('mock_replay_state', {
       'restaurant_id': DemoScope.restaurantId,
-      'current_business_date': MockIntegrationReplaySeed.defaultBusinessDate,
+      'current_business_date': coldBootBusinessDate,
     });
 
-    final replay = MockIntegrationReplaySeed.output;
     await _seedDemoDataFromReplay(db, replay);
     await _backfillLockedTargets(
       db,
-      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+      businessDate: coldBootBusinessDate,
     );
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
@@ -222,7 +270,7 @@ class SqliteDatabase {
     // remain unchanged and never branch on kDemoMode.
     await _seedWeeklyPlanSnapshotFromReplay(
       db,
-      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+      businessDate: coldBootBusinessDate,
     );
   }
 
