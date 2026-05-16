@@ -94,7 +94,13 @@ android/app/upload-keystore.jks
 docs/internal/barrio/barrio_legado_business_plan.pdf
 
 # Claude Code
-.claude/
+.claude/*
+# Carve-out: the dev launcher template is shareable (referenced from README's
+# "Surfaces - 4-mode runner" section and used by mcp__Claude_Preview to spin up
+# operator-web on 8181 / admin on 8182). `.claude/worktrees/`, `.claude/tasks/`,
+# `.claude/agent-state/` etc. stay ignored because `.claude/*` matches direct
+# children only — subdirectory contents are excluded by the matching parent.
+!.claude/launch.json
 
 # Codex local tooling
 .codex_appdata/
