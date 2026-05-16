@@ -119,11 +119,20 @@ void main() {
 
     test('open Friday dinner snapshot retains openShiftSourceShiftId', () async {
       final db = await SqliteDatabase.instance.database;
+      // Per-location current-week open-shift slice: every demo location
+      // has its own Fri-dinner live open row; the scenario-derived
+      // source_shift_id is location-independent, so EVERY row retains it.
       final rows = await db.query('open_shift_snapshots',
-          where: "day_label = 'Fri' AND daypart = 'dinner' AND status = 'open'");
-      expect(rows.length, 1);
-      expect(rows.first['source_shift_id'],
-          MockIntegrationReplaySeed.openShiftSourceShiftId);
+          where: "day_label = 'Fri' AND daypart = 'dinner' "
+              "AND status = 'open'");
+      expect(
+          rows.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          reason: 'one Fri-dinner live open row per demo location');
+      for (final r in rows) {
+        expect(r['source_shift_id'],
+            MockIntegrationReplaySeed.openShiftSourceShiftId);
+      }
     });
   });
 

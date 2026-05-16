@@ -186,8 +186,22 @@ void main() {
     test('open Friday dinner snapshot derives from mock replay, not legacy ShiftSnapshot', () async {
       final db = await SqliteDatabase.instance.database;
 
+      // Per-location current-week open-shift slice: every demo location
+      // now has its own Fri-dinner live open row. This test pins
+      // Downtown's byte-for-byte derivation from the BASE replay plan, so
+      // scope to Downtown; the per-location fan-out is asserted in
+      // per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart.
+      final allFriOpen = await db.query('open_shift_snapshots',
+          where: "day_label = 'Fri' AND daypart = 'dinner' "
+              "AND status = 'open'");
+      expect(
+          allFriOpen.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          reason: 'every location has its own Fri-dinner live open row');
       final rows = await db.query('open_shift_snapshots',
-          where: "day_label = 'Fri' AND daypart = 'dinner' AND status = 'open'");
+          where: "day_label = 'Fri' AND daypart = 'dinner' "
+              "AND status = 'open' AND restaurant_id = ?",
+          whereArgs: [DemoScope.restaurantId]);
       expect(rows.length, 1);
 
       final snap = rows.first;
