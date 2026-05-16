@@ -96,6 +96,13 @@ class _HangingFirebaseAuthClient implements FirebaseAuthClient {
   }
 
   @override
+  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
+    required String customToken,
+  }) {
+    return Completer<FirebaseAuthSignInOutcome>().future;
+  }
+
+  @override
   Future<FirebaseAuthSignInOutcome> completeTotpChallenge({
     required String mfaSessionToken,
     required String factorId,
@@ -143,6 +150,13 @@ class _StaticFirebaseAuthClient implements FirebaseAuthClient {
   Future<FirebaseAuthSignInOutcome> signInWithEmailPassword({
     required String email,
     required String password,
+  }) async {
+    return FirebaseAuthSignInSucceeded(refreshCredential ?? _credential());
+  }
+
+  @override
+  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
+    required String customToken,
   }) async {
     return FirebaseAuthSignInSucceeded(refreshCredential ?? _credential());
   }

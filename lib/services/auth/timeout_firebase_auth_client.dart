@@ -33,6 +33,19 @@ class TimeoutFirebaseAuthClient implements FirebaseAuthClient {
   }
 
   @override
+  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
+    required String customToken,
+  }) async {
+    try {
+      return await _delegate
+          .signInWithCustomToken(customToken: customToken)
+          .timeout(_timeout);
+    } on TimeoutException {
+      return _timeoutSignInFailure();
+    }
+  }
+
+  @override
   Future<FirebaseAuthSignInOutcome> completeTotpChallenge({
     required String mfaSessionToken,
     required String factorId,

@@ -121,6 +121,26 @@ abstract class FirebaseAuthClient {
     required String password,
   });
 
+  /// Exchanges a Firebase **custom token** (minted server-side by the
+  /// proxy's magic-link redeem gateway) for an authenticated session.
+  ///
+  /// Additive seam (G24/G3 fix): the operator-web onboarding flow
+  /// redeems an invite token at the proxy, which returns a
+  /// `firebase_custom_token`. The web auth source exchanges it here so
+  /// a brand-new invitee — who has no email/password yet — can land in
+  /// an authenticated session and continue onboarding.
+  ///
+  /// Mobile and admin builds never call this method (they use
+  /// [signInWithEmailPassword] / action-link reset), so adding it is a
+  /// pure capability extension: existing call sites are byte-unchanged.
+  ///
+  /// Custom-token sign-in does NOT support a second-factor challenge
+  /// (the custom token is already minted for a specific UID), so the
+  /// only non-failure outcome is [FirebaseAuthSignInSucceeded].
+  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
+    required String customToken,
+  });
+
   /// Completes a TOTP MFA challenge initiated by a previous
   /// [FirebaseAuthSignInRequiresMfa] outcome.
   Future<FirebaseAuthSignInOutcome> completeTotpChallenge({
@@ -176,6 +196,13 @@ class ScaffoldFailingFirebaseAuthClient implements FirebaseAuthClient {
   Future<FirebaseAuthSignInOutcome> signInWithEmailPassword({
     required String email,
     required String password,
+  }) async {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
+    required String customToken,
   }) async {
     throw StateError(_message);
   }
