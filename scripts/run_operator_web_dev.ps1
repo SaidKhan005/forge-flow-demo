@@ -38,12 +38,42 @@ param(
   # `ValueFromRemainingArguments`, so a caller can pass
   # `scripts/run_operator_web_dev.ps1 --dart-define=FOO=bar` and the
   # extra arg is forwarded to `flutter run` cleanly.
+
+  # 4-mode runner contract. demo | preview | staging | production.
+  # Defaults to `demo` so a forgotten flag does not silently point at
+  # production. `-LiveAuth` (below) is retained as a legacy alias that
+  # maps to whichever -Mode the caller picked; if both -LiveAuth and
+  # -Mode demo are supplied the legacy alias wins (matches old
+  # invocations).
+  [Parameter()]
+  [ValidateSet('demo', 'preview', 'staging', 'production')]
+  [string] $Mode = 'demo',
+
+  # Per-branch / per-PR preview slug. Required for -Mode preview unless
+  # -ProxyBaseUri is supplied explicitly. The script resolves
+  # `forge-flow-preview-<name>-proxy` via `gcloud run services describe`.
+  [Parameter()][string] $PreviewName,
+
+  # Operator-web demo scenario - drives initial auth state + fixture
+  # seeding. Default `owner-location-completed` lands signed in and
+  # post-onboarding so demo is genuinely no-login + no-onboarding.
+  # Other valid tokens: owner-business, manager-once, mfa-enrolled,
+  # mfa-pending-removal, signed-out-live, owner-location (welcome /
+  # token-entry screen).
+  [Parameter()][string] $DemoScenario = 'owner-location-completed',
+
+  # Production safety - script refuses -Mode production without this.
+  [Parameter()][switch] $IUnderstand,
+
   [Parameter()][string] $WebPort = '8181',
 
   [Parameter()][string] $WebHostname = '0.0.0.0',
 
   [Parameter()][string] $ProxyBaseUri = $env:FORGE_FLOW_OPERATOR_WEB_PROXY_BASE_URI,
 
+  # Legacy alias. Setting -LiveAuth forces -Mode staging when -Mode
+  # would otherwise be `demo` (back-compat with pre-`-Mode` invocations
+  # that did `-LiveAuth -ProxyBaseUri ...`).
   [Parameter()][switch] $LiveAuth,
 
   [Parameter()][switch] $PrintCommandOnly,
@@ -126,7 +156,64 @@ function Apply-DevCsp {
   Write-Host "B-FU-dev-csp: applied dev CSP to $Target"
 }
 
+# Resolve the proxy URL for non-demo modes. Returns $null for demo
+# (caller forces demo-auth + no proxy in that branch). Throws on any
+# misconfiguration so the caller never silently lands on the wrong
+# backend.
+function Resolve-OperatorWebProxyBaseUri {
+  param([string] $ResolveMode, [string] $ExplicitBaseUri, [string] $PreviewSlug)
+
+  if (-not [string]::IsNullOrWhiteSpace($ExplicitBaseUri)) {
+    return $ExplicitBaseUri
+  }
+  switch ($ResolveMode) {
+    'preview' {
+      if ([string]::IsNullOrWhiteSpace($PreviewSlug)) {
+        throw '-Mode preview requires either -PreviewName <slug> or -ProxyBaseUri https://...'
+      }
+      $service = "forge-flow-preview-$PreviewSlug-proxy"
+      $gcloud = Join-Path $HOME 'AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd'
+      if (-not (Test-Path -LiteralPath $gcloud)) { $gcloud = 'gcloud' }
+      Write-Host "Resolving preview proxy URL for $service..."
+      $url = & $gcloud run services describe $service `
+        --project forge-flow-staging `
+        --region northamerica-northeast2 `
+        --format='value(status.url)' 2>$null
+      if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($url)) {
+        throw "gcloud could not resolve $service. Pass -ProxyBaseUri explicitly or deploy the preview stack first."
+      }
+      return $url.Trim()
+    }
+    'staging' {
+      if (-not [string]::IsNullOrWhiteSpace($env:FORGE_FLOW_STAGING_PROXY_BASE_URI)) {
+        return $env:FORGE_FLOW_STAGING_PROXY_BASE_URI
+      }
+      throw '-Mode staging requires -ProxyBaseUri or FORGE_FLOW_STAGING_PROXY_BASE_URI (staging *.run.app URLs are not stable across deploys).'
+    }
+    'production' {
+      return 'https://proxy.forgeflow.app'
+    }
+    default {
+      throw "Unsupported mode: $ResolveMode"
+    }
+  }
+}
+
 function Build-FlutterArgs {
+  # Legacy alias: pre-`-Mode` callers used `-LiveAuth -ProxyBaseUri ...`
+  # to mean "point at staging". Honor that when -Mode wasn't bumped off
+  # its default.
+  if ($LiveAuth -and $Mode -eq 'demo') {
+    $script:Mode = 'staging'
+  }
+
+  # Production guardrail: never run pointed at the live proxy without
+  # explicit acknowledgement. Mirrors the deploy-script doctrine.
+  if ($Mode -eq 'production' -and -not $IUnderstand) {
+    Write-Host 'BLOCKED: -Mode production targets the live operator-web proxy (proxy.forgeflow.app). Pass -IUnderstand to confirm.'
+    exit 1
+  }
+
   $argsList = @(
     'run',
     '-d', 'web-server',
@@ -135,19 +222,18 @@ function Build-FlutterArgs {
     '-t', 'lib/main_operator_web.dart'
   )
 
-  if ($LiveAuth) {
-    if ([string]::IsNullOrWhiteSpace($ProxyBaseUri)) {
-      if (-not [string]::IsNullOrWhiteSpace($env:FORGE_FLOW_PROXY_BASE_URI)) {
-        $script:ProxyBaseUri = $env:FORGE_FLOW_PROXY_BASE_URI
-      }
-    }
-    if ([string]::IsNullOrWhiteSpace($script:ProxyBaseUri)) {
-      Write-Host 'BLOCKED: -LiveAuth requires -ProxyBaseUri or FORGE_FLOW_OPERATOR_WEB_PROXY_BASE_URI / FORGE_FLOW_PROXY_BASE_URI.'
-      exit 1
-    }
-    $argsList += "--dart-define=OPERATOR_WEB_PROXY_BASE_URI=$script:ProxyBaseUri"
-  } else {
+  if ($Mode -eq 'demo') {
     $argsList += '--dart-define=OPERATOR_WEB_DEMO_AUTH=true'
+    if (-not [string]::IsNullOrWhiteSpace($DemoScenario)) {
+      $argsList += "--dart-define=OPERATOR_WEB_DEMO_SCENARIO=$DemoScenario"
+    }
+  } else {
+    $resolved = Resolve-OperatorWebProxyBaseUri `
+      -ResolveMode $Mode `
+      -ExplicitBaseUri $ProxyBaseUri `
+      -PreviewSlug $PreviewName
+    Write-Host "operator-web -> $Mode -> $resolved"
+    $argsList += "--dart-define=OPERATOR_WEB_PROXY_BASE_URI=$resolved"
   }
 
   if ($FlutterArgs.Count -gt 0) {
