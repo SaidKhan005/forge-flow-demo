@@ -881,6 +881,44 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     );
   }
 
+  /// G62 — true only for the fixture-driven demo walkthrough source
+  /// ([DemoOperatorWebAuthSource] and its test subclasses). The demo
+  /// source legitimately serves in-memory fixture gateways; a *live*
+  /// source ([FirebaseOperatorWebAuthSource], or any future live
+  /// source) that lacks a gateway provider mixin is a wiring
+  /// regression, not a fixture scenario. Only the demo source may fall
+  /// back to a router-owned `Demo*Gateway()`; for a live source the
+  /// missing mixin is a hard, visible failure (see
+  /// [_liveSurfaceMissingGateway]).
+  bool get _isDemoAuthSource => widget.source is DemoOperatorWebAuthSource;
+
+  /// G62 — when [hasLiveProvider] is false (the auth source does NOT
+  /// mix in the required `OperatorWeb*GatewayProvider`) and the source
+  /// is a live source (NOT [DemoOperatorWebAuthSource]), returns the
+  /// honest "surface unavailable — wiring error" body so a live wiring
+  /// regression fails loud instead of silently serving/accepting edits
+  /// against in-memory fixtures. Returns `null` when the surface is
+  /// fine to render normally — i.e. the live provider IS present, or
+  /// this is the demo source (fixtures are expected).
+  ///
+  /// Mirrors the existing handoff-redeem "unavailable in this Operator
+  /// Web build" honest-failure pattern (`_maybeStartHandoffRedeem`).
+  Widget? _liveSurfaceMissingGateway({
+    required bool hasLiveProvider,
+    required String surfaceTitle,
+  }) {
+    if (hasLiveProvider || _isDemoAuthSource) {
+      return null;
+    }
+    return _SurfaceWiringError(
+      key: Key(
+        'operator_web_surface_wiring_error_'
+        '${surfaceTitle.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), '_')}',
+      ),
+      surfaceTitle: surfaceTitle,
+    );
+  }
+
   Widget _buildPostOnboardingShell(OperatorWebSession session) {
     final managementScope = _selectedManagementScope(session);
     final locationScope =
@@ -986,15 +1024,29 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     final Widget body;
     switch (_selectedNavId) {
       case kOperatorWebNavMyAccount:
-        body = MyAccountScreen(
-          session: session,
-          actions: _accountActions,
-          securityGateway: _securityGateway,
-          scrollToSecurityOnFirstBuild: _scrollMyAccountSecurityOnFirstBuild,
-        );
+        body =
+            _liveSurfaceMissingGateway(
+              hasLiveProvider:
+                  widget.source is OperatorWebSecurityGatewayProvider,
+              surfaceTitle: 'My account',
+            ) ??
+            MyAccountScreen(
+              session: session,
+              actions: _accountActions,
+              securityGateway: _securityGateway,
+              scrollToSecurityOnFirstBuild:
+                  _scrollMyAccountSecurityOnFirstBuild,
+            );
         break;
       case kOperatorWebNavBusinessSetup:
-        if (locationScope == null) {
+        final businessSetupWiringError = _liveSurfaceMissingGateway(
+          hasLiveProvider:
+              widget.source is OperatorWebBusinessTimingGatewayProvider,
+          surfaceTitle: 'Business setup',
+        );
+        if (businessSetupWiringError != null) {
+          body = businessSetupWiringError;
+        } else if (locationScope == null) {
           body = _RequiresLocationScopeSurface(
             key: const Key('operator_web_business_setup_requires_location'),
             icon: Icons.storefront_outlined,
@@ -1028,14 +1080,26 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       // Per-Daypart Targets V1 / Slice 2 (Gap 35): no Benchmarks
       // override route — surface cut entirely.
       case kOperatorWebNavMembers:
-        body = MembersScreen(
-          session: session,
-          gateway: _teamUsersGateway,
-          locationOptions: _locationFixturesForMembers(session),
-        );
+        body =
+            _liveSurfaceMissingGateway(
+              hasLiveProvider:
+                  widget.source is OperatorWebTeamUsersGatewayProvider,
+              surfaceTitle: 'Team members',
+            ) ??
+            MembersScreen(
+              session: session,
+              gateway: _teamUsersGateway,
+              locationOptions: _locationFixturesForMembers(session),
+            );
         break;
       case kOperatorWebNavRoles:
-        body = _buildRolesBody(session);
+        body =
+            _liveSurfaceMissingGateway(
+              hasLiveProvider:
+                  widget.source is OperatorWebTeamRolesGatewayProvider,
+              surfaceTitle: 'Roles & permissions',
+            ) ??
+            _buildRolesBody(session);
         break;
       case kOperatorWebNavLocations:
         // Wave 2 OW-4 — the Locations nav row is hidden at location
@@ -1044,37 +1108,65 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         // points the operator at the scope picker so the route never
         // ends up rendering a CRUD-of-locations body inside a single
         // leaf scope.
-        body = isLocationScope
-            ? _RequiresBusinessScopeSurface(
-                key: const Key('operator_web_locations_requires_business'),
-                icon: Icons.account_tree_outlined,
-                title: 'Switch to business scope',
-                body:
-                    'The Locations page edits your business-wide '
-                    'hierarchy. Use Managing to pick All locations or a '
-                    'region to add, rename, or move locations.',
-                selectedScopeLabel: managementScope.label,
-              )
-            : HierarchyScreen(
-                session: session,
-                gateway: _teamHierarchyGateway,
-              );
+        final locationsWiringError = _liveSurfaceMissingGateway(
+          hasLiveProvider:
+              widget.source is OperatorWebTeamHierarchyGatewayProvider,
+          surfaceTitle: 'Locations',
+        );
+        if (locationsWiringError != null) {
+          body = locationsWiringError;
+        } else {
+          body = isLocationScope
+              ? _RequiresBusinessScopeSurface(
+                  key: const Key('operator_web_locations_requires_business'),
+                  icon: Icons.account_tree_outlined,
+                  title: 'Switch to business scope',
+                  body:
+                      'The Locations page edits your business-wide '
+                      'hierarchy. Use Managing to pick All locations or a '
+                      'region to add, rename, or move locations.',
+                  selectedScopeLabel: managementScope.label,
+                )
+              : HierarchyScreen(
+                  session: session,
+                  gateway: _teamHierarchyGateway,
+                );
+        }
         break;
       case kOperatorWebNavSessions:
-        body = SessionsScreen(
-          session: session,
-          gateway: _teamSessionsGateway,
-          currentSessionId: _currentSessionId,
-          onSignOut: widget.source.signOut,
-        );
+        body =
+            _liveSurfaceMissingGateway(
+              hasLiveProvider:
+                  widget.source is OperatorWebTeamSessionsGatewayProvider,
+              surfaceTitle: 'Active sessions',
+            ) ??
+            SessionsScreen(
+              session: session,
+              gateway: _teamSessionsGateway,
+              currentSessionId: _currentSessionId,
+              onSignOut: widget.source.signOut,
+            );
         break;
       case kOperatorWebNavAuditLog:
-        body = AuditLogScreen(
-          session: session,
-          gateway: _teamAuditLogGateway,
-          hierarchyGateway: _auditLogHierarchyGateway,
-          teamHierarchyGateway: _teamHierarchyGateway,
-        );
+        // AuditLogScreen reads three fixture-substituting gateways
+        // (audit-log, audit-log hierarchy, team hierarchy). A live
+        // source missing ANY of them is a wiring regression — fail
+        // loud rather than render a fixtures-backed audit trail.
+        body =
+            _liveSurfaceMissingGateway(
+              hasLiveProvider:
+                  widget.source is OperatorWebTeamAuditLogGatewayProvider &&
+                  widget.source
+                      is OperatorWebAuditLogHierarchyGatewayProvider &&
+                  widget.source is OperatorWebTeamHierarchyGatewayProvider,
+              surfaceTitle: 'Audit log',
+            ) ??
+            AuditLogScreen(
+              session: session,
+              gateway: _teamAuditLogGateway,
+              hierarchyGateway: _auditLogHierarchyGateway,
+              teamHierarchyGateway: _teamHierarchyGateway,
+            );
         break;
       case kOperatorWebNavVendorConnections:
         body = locationScope == null
@@ -1149,10 +1241,16 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               );
         break;
       case kOperatorWebNavNotifications:
-        body = SettingsNotificationsScreen(
-          session: session,
-          gateway: _notificationPreferencesGateway,
-        );
+        body =
+            _liveSurfaceMissingGateway(
+              hasLiveProvider: widget.source
+                  is OperatorWebNotificationPreferencesGatewayProvider,
+              surfaceTitle: 'Notifications',
+            ) ??
+            SettingsNotificationsScreen(
+              session: session,
+              gateway: _notificationPreferencesGateway,
+            );
         break;
       case kOperatorWebNavSchedule:
         body = locationScope == null
@@ -1200,6 +1298,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       navItems: navItems,
       selectedNavId: _selectedNavId,
       onSelectNav: _selectNav,
+      // G19 — show the persistent demo indicator only for the
+      // fixture-driven demo auth source. Live sources leave this
+      // false so production operators never see it.
+      isDemoSource: _isDemoAuthSource,
       body: body,
       managementScopeOptions: _managementScopeOptions,
       selectedManagementScopeKey: _selectedManagementScopeKey,
@@ -1643,6 +1745,69 @@ class _RequiresBusinessScopeSurface extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// G62 — honest fail-loud surface shown when a *live* auth source is
+/// missing the gateway provider mixin a surface needs. Without this,
+/// the router would silently substitute a router-owned in-memory
+/// `Demo*Gateway()` and the operator would see/edit fixture data with
+/// no error and no signal — a live wiring regression masquerading as a
+/// working screen. This makes the regression unmistakable instead.
+///
+/// Mirrors the handoff-redeem "unavailable in this Operator Web build"
+/// honest-failure copy (`_maybeStartHandoffRedeem`) and the visual
+/// shape of [_RequiresBusinessScopeSurface], but uses an error tone
+/// because this is a defect, not a scope-picker nudge.
+class _SurfaceWiringError extends StatelessWidget {
+  const _SurfaceWiringError({super.key, required this.surfaceTitle});
+
+  final String surfaceTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 22,
+                    color: AppColors.sunsetDark,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      '$surfaceTitle is unavailable',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'This Operator Web build could not connect $surfaceTitle to '
+                'the live service (wiring error). To protect your data we '
+                'are not showing or saving anything here — what you would '
+                'see would not be real. Sign out and back in; if this keeps '
+                'happening, contact Forge & Flow support so we can fix the '
+                'connection.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
             ],
           ),
