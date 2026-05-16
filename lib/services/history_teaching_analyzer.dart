@@ -17,6 +17,27 @@ class HistoryTeachingSummary {
   final int mostCommonBenchmarkCount;
   final String mostCommonBenchmarkSideLabel;
 
+  /// Per-Daypart V1 (Slice D, Gap 39): the single service period the
+  /// dominant leak repeats in most often (a `fullLabel` such as
+  /// `Fri Dinner`), and how many times it repeated there. These let the
+  /// Learn narration resolve to the period the pattern actually lives in
+  /// instead of the whole day. Empty string / `0` when there is no
+  /// recurring leak — the narration falls back to the existing general
+  /// copy (Metric Honesty: no period is named that the data does not
+  /// support). Derived from the same `leakDpFreq` the existing
+  /// [topLeakDayparts] is built from; not a new source of truth.
+  final String topLeakDaypartLabel;
+  final int topLeakDaypartCount;
+
+  /// Per-Daypart V1 (Slice D, Gap 39): a benchmark `fullLabel` on the
+  /// SAME day of week as [topLeakDaypartLabel] but a different service
+  /// period (e.g. `Fri Lunch` when the leak lives in `Fri Dinner`), so
+  /// the narration can draw the period contrast Decision 13 describes
+  /// ("Friday dinners run over while Friday lunches are dead on").
+  /// `null` when no prominent same-day benchmark exists — the contrast
+  /// clause is then omitted rather than invented.
+  final String? contrastBenchmarkDaypartLabel;
+
   /// 7.58.cross-axis.0 — recurring CPLH x SPLH pair patterns observed
   /// across the closed-shift history window. Records are sorted by
   /// `count` descending. Empty when no (week, daypart) bucket has both
@@ -41,6 +62,9 @@ class HistoryTeachingSummary {
     required this.mostCommonBenchmarkCount,
     required this.mostCommonBenchmarkSideLabel,
     this.crossAxisPairs = const [],
+    this.topLeakDaypartLabel = '',
+    this.topLeakDaypartCount = 0,
+    this.contrastBenchmarkDaypartLabel,
   });
 }
 
@@ -202,6 +226,36 @@ class HistoryTeachingAnalyzer {
 
     final crossAxisPairs = _detectCrossAxisPairs(records);
 
+    // Per-Daypart V1 (Slice D, Gap 39) — resolve the dominant leak to
+    // the single service period it repeats in most. `topLeakDayparts` is
+    // already the top-2 `fullLabel`s by frequency for `mostCommonLeakId`;
+    // its first entry is the period the pattern lives in, and
+    // `leakDpFreq` holds the real repeat count for that period. Both stay
+    // empty when there is no recurring leak (empty-set / unknown-id reset
+    // above), so the Learn copy honestly falls back to general guidance.
+    final topLeakDaypartLabel =
+        topLeakDayparts.isNotEmpty ? topLeakDayparts.first : '';
+    final topLeakDaypartCount = topLeakDaypartLabel.isEmpty
+        ? 0
+        : (leakDpFreq[topLeakDaypartLabel] ?? 0);
+
+    // Same-day, different-period benchmark for the Decision 13 contrast
+    // clause. Only a prominent benchmark (already in `benchmarkDayparts`,
+    // i.e. the top-2 favorable periods) qualifies, so the "while X holds
+    // on plan" half of the sentence is never fabricated. `fullLabel` is
+    // `'<Day> <Period>'`; the first token is the day of week.
+    String? contrastBenchmarkDaypartLabel;
+    if (topLeakDaypartLabel.isNotEmpty) {
+      final leakDayToken = topLeakDaypartLabel.split(' ').first;
+      for (final b in benchmarkDayparts) {
+        if (b != topLeakDaypartLabel &&
+            b.split(' ').first == leakDayToken) {
+          contrastBenchmarkDaypartLabel = b;
+          break;
+        }
+      }
+    }
+
     return HistoryTeachingSummary(
       mostCommonLeakId: mostCommonLeakId,
       mostCommonLeakCount: maxCount,
@@ -212,6 +266,9 @@ class HistoryTeachingAnalyzer {
       mostCommonBenchmarkCount: benchMaxCount,
       mostCommonBenchmarkSideLabel: mostCommonBenchmarkSideLabel,
       crossAxisPairs: crossAxisPairs,
+      topLeakDaypartLabel: topLeakDaypartLabel,
+      topLeakDaypartCount: topLeakDaypartCount,
+      contrastBenchmarkDaypartLabel: contrastBenchmarkDaypartLabel,
     );
   }
 
