@@ -157,8 +157,19 @@ void main() {
   group('C — SQLite reseed coherence', () {
     test('default reseed produces Fri dinner open snapshot', () async {
       final db = await SqliteDatabase.instance.database;
-      final open = await db.query('open_shift_snapshots',
+      // Per-location current-week open-shift slice: EVERY demo location
+      // now has its own live open row (one per restaurant_id). The
+      // scenario day/daypart is shared, so scope the coherence assertion
+      // to Downtown and separately pin the per-location count.
+      final allOpen = await db.query('open_shift_snapshots',
           where: "status = 'open'");
+      expect(
+          allOpen.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          reason: 'one live open row per demo location');
+      final open = await db.query('open_shift_snapshots',
+          where: "status = 'open' AND restaurant_id = ?",
+          whereArgs: [DemoScope.restaurantId]);
       expect(open.length, 1);
       expect(open.first['day_label'], 'Fri');
       expect(open.first['daypart'], 'dinner');
@@ -169,8 +180,15 @@ void main() {
           .reseedMockReplayForBusinessDate('2026-03-28');
       final db = await SqliteDatabase.instance.database;
 
-      final open = await db.query('open_shift_snapshots',
+      final allOpen = await db.query('open_shift_snapshots',
           where: "status = 'open'");
+      expect(
+          allOpen.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          reason: 'every location follows the advanced scenario day');
+      final open = await db.query('open_shift_snapshots',
+          where: "status = 'open' AND restaurant_id = ?",
+          whereArgs: [DemoScope.restaurantId]);
       expect(open.length, 1);
       expect(open.first['day_label'], 'Sat');
       expect(open.first['daypart'], 'dinner');
@@ -265,9 +283,17 @@ void main() {
           .reseedMockReplayForBusinessDate('2026-03-30');
       final db = await SqliteDatabase.instance.database;
 
-      // Current open shift should be Mon dinner of W14
-      final open = await db.query('open_shift_snapshots',
+      // Current open shift should be Mon dinner of W14 — for EVERY
+      // location (per-location current-week open-shift slice).
+      final allOpen = await db.query('open_shift_snapshots',
           where: "status = 'open'");
+      expect(
+          allOpen.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          reason: 'every location advances to the new week');
+      final open = await db.query('open_shift_snapshots',
+          where: "status = 'open' AND restaurant_id = ?",
+          whereArgs: [DemoScope.restaurantId]);
       expect(open.length, 1);
       expect(open.first['day_label'], 'Mon');
       expect(open.first['week_id'], '2026-W14');
@@ -651,9 +677,17 @@ void main() {
     test('open_shift_snapshots regenerate to new scenario day', () async {
       final db = await SqliteDatabase.instance.database;
 
-      // Before: open shift is Fri dinner.
-      final openBefore = await db.query('open_shift_snapshots',
+      // Before: open shift is Fri dinner. Per-location slice: scope the
+      // scenario-coherence assertion to Downtown; the per-location set
+      // is pinned separately.
+      final allBefore = await db.query('open_shift_snapshots',
           where: "status = 'open'");
+      expect(
+          allBefore.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet());
+      final openBefore = await db.query('open_shift_snapshots',
+          where: "status = 'open' AND restaurant_id = ?",
+          whereArgs: [DemoScope.restaurantId]);
       expect(openBefore.length, 1);
       expect(openBefore.first['day_label'], 'Fri');
 
@@ -661,9 +695,15 @@ void main() {
       await SqliteDatabase.instance
           .reseedMockReplayForBusinessDate('2026-03-28');
 
-      // After: open shift is Sat dinner.
-      final openAfter = await db.query('open_shift_snapshots',
+      // After: open shift is Sat dinner — for every location.
+      final allAfter = await db.query('open_shift_snapshots',
           where: "status = 'open'");
+      expect(
+          allAfter.map((r) => r['restaurant_id']).toSet(),
+          DemoScope.locations.map((l) => l.restaurantId).toSet());
+      final openAfter = await db.query('open_shift_snapshots',
+          where: "status = 'open' AND restaurant_id = ?",
+          whereArgs: [DemoScope.restaurantId]);
       expect(openAfter.length, 1);
       expect(openAfter.first['day_label'], 'Sat');
     });

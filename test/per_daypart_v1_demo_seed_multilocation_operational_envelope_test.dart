@@ -9,8 +9,10 @@
 // across {12 historical weeks + current}. This slice extends the SAME
 // envelope to the non-sales operational tables:
 //   • open_shift_snapshots — per-location historical closed snapshots
-//     (Promise 2 — closed truth matches the closed shift stamp); exactly
-//     one global status='open' row (Downtown's live shift).
+//     (Promise 2 — closed truth matches the closed shift stamp); EVERY
+//     location has its OWN live current-week status='open' row (one per
+//     restaurant_id, per-location-distinct figures — fixes the
+//     non-Downtown HISTORICAL-ONLY / empty-Shift defect).
 //   • reservation_book_snapshots — the FORWARD book per location;
 //     closed/past cells get NO row (Metric Honesty honest-degrade).
 //   • weekly_plan_snapshots + weekly_plan_snapshot_day_dayparts — a
@@ -38,7 +40,7 @@ void main() {
     });
 
     test('open_shift_snapshots — per-location historical closed coverage; '
-        'exactly one global open row (Downtown)', () async {
+        'every location has its own live open row', () async {
       final db = await SqliteDatabase.instance.database;
 
       // Every location has a deep historical closed snapshot history.
@@ -58,12 +60,35 @@ void main() {
                 'open_shift_snapshots');
       }
 
-      // Pinned invariant: exactly ONE status='open' row in the whole
-      // table, and it is Downtown's.
+      // Per-location invariant (the fix): EVERY demo location has exactly
+      // ONE status='open' row, scoped by restaurant_id (HP #4). No more
+      // single global Downtown-only open row — that was the
+      // non-Downtown HISTORICAL-ONLY / empty-Shift defect.
       final open = await db.query('open_shift_snapshots',
           where: "status = 'open'");
-      expect(open.length, 1);
-      expect(open.first['restaurant_id'], downtown);
+      expect(open.length, demoIds.length,
+          reason: 'one live open row per demo location');
+      expect(
+          open.map((r) => r['restaurant_id'] as String).toSet(),
+          demoIds.toSet(),
+          reason: 'every location (not just Downtown) has a live shift');
+      for (final rid in demoIds) {
+        final perLoc =
+            open.where((r) => r['restaurant_id'] == rid).toList();
+        expect(perLoc.length, 1,
+            reason: '$rid has exactly one status=open row');
+      }
+
+      // Per-location-distinct: a non-Downtown location's live open shift
+      // is NOT a clone of Downtown's (its scaled covers/hours feed the
+      // shared in-progress math, so the figures differ).
+      final dtOpen =
+          open.firstWhere((r) => r['restaurant_id'] == downtown);
+      final nlOpen = open.firstWhere(
+          (r) => r['restaurant_id'] == DemoScope.northLoopRestaurantId);
+      expect(nlOpen['current_covers'],
+          isNot(equals(dtOpen['current_covers'])),
+          reason: 'North Loop live open covers ≠ Downtown (not a clone)');
 
       // Promise 2 — a closed snapshot's covers match the closed shift
       // stamp it derives from (closed truth never re-derived).
@@ -259,10 +284,12 @@ void main() {
       //  • `id` — AUTOINCREMENT surrogate, not semantic data, not stable
       //    across delete+reinsert reseeds (Slice C's determinism test
       //    excludes surrogate keys for the same reason).
-      //  • open_shift_snapshots current-week rows — written by the
-      //    pre-existing `_seedOpenShiftSnapshotsFromReplay` with
-      //    `nowIsoUtc()`; this slice's deterministic rows are the
-      //    HISTORICAL weeks, so the fingerprint scopes to those.
+      //  • open_shift_snapshots current-week rows — written with
+      //    `nowIsoUtc()` by `_seedOpenShiftSnapshotsFromReplay`
+      //    (Downtown) and the shared `_buildCurrentWeekOpenShiftSnapshots`
+      //    per non-Downtown location; all share `scenario.currentWeekId`,
+      //    so excluding the in-force week scopes the fingerprint to the
+      //    deterministic HISTORICAL weeks for every location.
       //  • weekly_plan_snapshots `generated_at`/`locked_at` and
       //    weekly_plan_snapshot_day_dayparts `created_at` — the
       //    pre-existing in-force Downtown snapshot

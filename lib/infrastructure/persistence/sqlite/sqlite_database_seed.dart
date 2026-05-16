@@ -136,17 +136,37 @@ Future<void> _backfillLockedTargets(
   ]);
 }
 
-/// Seeds open/projected shift snapshots for the current week from replay output.
+/// Builds the current-week open/projected/closed `open_shift_snapshots`
+/// for ONE location from its already-seeded current-week shift set.
 ///
-/// The open shift is determined by [replay.scenario], not hardcoded to
-/// Friday dinner. Closed same-day dayparts and projected future dayparts
-/// are derived from the scenario.
-Future<void> _seedOpenShiftSnapshotsFromReplay(
-    Database db, MockReplayOutput replay) async {
-  final now = nowIsoUtc();
-  final scenario = replay.scenario;
+/// This is the single source of truth for "what Downtown's live week
+/// looks like" — `_seedOpenShiftSnapshotsFromReplay` calls it for
+/// Downtown with the base replay, and the per-location operational
+/// envelope (`_seedHistoricalOpenShiftSnapshotsFromReplay`) calls it for
+/// each non-Downtown location with that location's volume/wage/timing
+/// scaled current-week shifts (`_envelopeShiftsForLocation`). Because the
+/// open shift's in-progress covers/CPLH/SPLH are recomputed from the
+/// passed-in (scaled) covers/hours, every location's live shift carries
+/// its OWN per-location figures — not a clone of Downtown's — while the
+/// row SHAPE is byte-identical to how Downtown's was always built.
+///
+/// `scenario` (week id / business date / open day+daypart) is
+/// location-independent: the today-anchored calendar is shared, only the
+/// metrics differ. [currentWeekShifts] must be the location's own scaled
+/// rows so the open/projected/closed values are this location's.
+///
+/// Honest-degrade (Metric Honesty / Design Rule 2): a (day, daypart) the
+/// scenario does not serve has no shift in [currentWeekShifts] and so no
+/// fabricated row; the firstWhere below only resolves the open slot the
+/// scenario explicitly designates.
+List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
+  required String restaurantId,
+  required List<ShiftRecord> currentWeekShifts,
+  required MockReplayScenario scenario,
+  required String now,
+}) {
   final projectedShifts =
-      replay.currentWeekShifts.where((s) => s.isProjected).toList();
+      currentWeekShifts.where((s) => s.isProjected).toList();
 
   final snapshots = <OpenShiftSnapshot>[];
 
@@ -158,7 +178,7 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
     }
 
     snapshots.add(OpenShiftSnapshot(
-      restaurantId: DemoScope.restaurantId,
+      restaurantId: restaurantId,
       weekId: s.weekId,
       dayLabel: s.dayLabel,
       daypart: s.daypart,
@@ -185,7 +205,7 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
 
   // One current open shift from the scenario.
   // In-progress values simulate ~63% through service.
-  final openShiftPlan = replay.currentWeekShifts.firstWhere(
+  final openShiftPlan = currentWeekShifts.firstWhere(
     (s) =>
         s.dayLabel == scenario.openShiftDayLabel &&
         s.daypart == scenario.openShiftDaypart,
@@ -203,7 +223,7 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
       : 0.0;
 
   snapshots.add(OpenShiftSnapshot(
-    restaurantId: DemoScope.restaurantId,
+    restaurantId: restaurantId,
     weekId: scenario.currentWeekId,
     dayLabel: scenario.openShiftDayLabel,
     daypart: scenario.openShiftDaypart,
@@ -227,13 +247,13 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
   ));
 
   // Seed closed dayparts for the open shift's day (whole-day aggregation).
-  final currentDayClosed = replay.currentWeekShifts
+  final currentDayClosed = currentWeekShifts
       .where((s) =>
           s.dayLabel == scenario.openShiftDayLabel && s.status == 'closed')
       .toList();
   for (final s in currentDayClosed) {
     snapshots.add(OpenShiftSnapshot(
-      restaurantId: DemoScope.restaurantId,
+      restaurantId: restaurantId,
       weekId: s.weekId,
       dayLabel: s.dayLabel,
       daypart: s.daypart,
@@ -257,6 +277,28 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
       updatedAt: now,
     ));
   }
+
+  return snapshots;
+}
+
+/// Seeds Downtown's open/projected shift snapshots for the current week
+/// from replay output.
+///
+/// The open shift is determined by [replay.scenario], not hardcoded to
+/// Friday dinner. Closed same-day dayparts and projected future dayparts
+/// are derived from the scenario. Non-Downtown locations get the SAME
+/// shape via `_seedHistoricalOpenShiftSnapshotsFromReplay` (it calls the
+/// shared `_buildCurrentWeekOpenShiftSnapshots` with each location's
+/// scaled current-week shifts) so every demo location has its own live
+/// current-week shift — no longer Downtown-only.
+Future<void> _seedOpenShiftSnapshotsFromReplay(
+    Database db, MockReplayOutput replay) async {
+  final snapshots = _buildCurrentWeekOpenShiftSnapshots(
+    restaurantId: DemoScope.restaurantId,
+    currentWeekShifts: replay.currentWeekShifts,
+    scenario: replay.scenario,
+    now: nowIsoUtc(),
+  );
 
   final batch = db.batch();
   for (final snap in snapshots) {
@@ -2268,23 +2310,43 @@ Future<void> _seedOperationalEnvelopeFromReplay(
   await _seedDemoSampleNotifications(db, replay);
 }
 
-/// Gap 2 — per-location historical `open_shift_snapshots`.
+/// Gap 2 — per-location historical `open_shift_snapshots` + every
+/// location's OWN live current-week shift.
 ///
 /// For every location: each generated historical CLOSED shift becomes a
 /// `status='closed'` snapshot whose covers/PPA/CPLH/SPLH/hours/wage are
 /// the closed shift's own stamp (Promise 2 — closed truth is never
-/// re-derived). For the 3 non-Downtown locations the current week's
-/// past/future cells are added as `closed`/`projected` so their
-/// dashboards are operational when the scope drawer switches; NO second
-/// `status='open'` row is emitted — the singular live open shift stays
-/// Downtown's (its existing current-week cohort, written by
-/// `_seedOpenShiftSnapshotsFromReplay`, is left untouched).
+/// re-derived). For the 3 non-Downtown locations the current week is
+/// seeded through the SHARED `_buildCurrentWeekOpenShiftSnapshots` —
+/// byte-identically to how Downtown's current week is built — using each
+/// location's volume/wage/timing scaled current-week shifts. Each
+/// non-Downtown location therefore gets its OWN `status='open'`
+/// in-progress shift + projected siblings + open-day closed dayparts,
+/// with per-location-distinct figures (NOT a clone of Downtown's, NOT a
+/// fabricated phantom).
 ///
-/// `updated_at` is derived from each row's business date (a past,
-/// deterministic instant) so it is always older than the current-week
-/// rows the existing seeder stamps with `nowIsoUtc()` — keeping
-/// `OpenShiftSnapshotDao.getLatestOpenWeekId`'s `updated_at DESC,
-/// week_id DESC` ordering resolving the live week first.
+/// This fixes the operator-reproduced defect where switching to a
+/// non-Downtown location showed HISTORICAL ONLY / empty Shift:
+/// `ShiftDashboardNotifier._load()` resolves the live business date via
+/// `OpenShiftSnapshotDao.getCurrentBusinessDate` (`WHERE status='open'`),
+/// so a location with no `status='open'` row rendered the empty "No open
+/// or projected shift" state. Every location now has exactly one
+/// `status='open'` row scoped by `restaurant_id` (HP #4) — no longer a
+/// single global Downtown-only open row.
+///
+/// Historical-closed `updated_at` is derived from each row's business
+/// date (a past, deterministic instant) so it is always older than the
+/// current-week open/projected rows the shared builder stamps with
+/// `nowIsoUtc()` — keeping `OpenShiftSnapshotDao.getLatestOpenWeekId`'s
+/// `updated_at DESC, week_id DESC` ordering resolving the live week
+/// first, per location.
+///
+/// Idempotent: `ConflictAlgorithm.replace` keyed on the
+/// `(restaurant_id, week_id, day_label, daypart)` UNIQUE constraint, so a
+/// cold boot followed by a reseed/advance produces no duplicate rows and
+/// no PK collision (Downtown's current week is still owned by
+/// `_seedOpenShiftSnapshotsFromReplay`; the `isDowntown` guard below
+/// leaves it untouched here).
 Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
   Database db,
   MockReplayOutput replay,
@@ -2345,13 +2407,22 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
 
     // Current-week coverage for the 3 non-Downtown locations only.
     // Downtown's current week is owned byte-for-byte by
-    // `_seedOpenShiftSnapshotsFromReplay`.
+    // `_seedOpenShiftSnapshotsFromReplay` (it ran earlier in both the
+    // cold-boot and reseed/advance paths); the guard leaves it untouched.
     if (isDowntown) continue;
-    for (final s in currentShifts) {
-      // The scenario's open daypart is emitted as `projected` (not
-      // `open`) so the pinned single-`open`-row invariant holds.
-      final status = s.status == 'closed' ? 'closed' : 'projected';
-      batch.insert('open_shift_snapshots', snapFor(s, status).toMap(),
+    // Mirror Downtown's current-week shape EXACTLY for this location
+    // (its own scaled shifts → its own open/projected/closed figures).
+    // `nowIsoUtc()` matches the Downtown seeder so this location's
+    // `status='open'` row out-sorts its historical closed rows in
+    // `getLatestOpenWeekId`.
+    final currentWeekSnapshots = _buildCurrentWeekOpenShiftSnapshots(
+      restaurantId: rid,
+      currentWeekShifts: currentShifts,
+      scenario: replay.scenario,
+      now: nowIsoUtc(),
+    );
+    for (final snap in currentWeekSnapshots) {
+      batch.insert('open_shift_snapshots', snap.toMap(),
           conflictAlgorithm: ConflictAlgorithm.replace);
     }
   }
