@@ -77,6 +77,19 @@ been computed yet.
    `'covers_down'`. (This is a behaviour preserved from
    pre-7.58 code; see Finding F-2 below — `7.58.0a` will replace
    it with `'on_model'` once the on-model card exists.)
+
+   **7.58.0a (week scope, applied):** `LaborModel.determineLever`
+   keeps this legacy fallback verbatim for single-source / R10
+   callers. A sibling `LaborModel.determineLeverGated` returns
+   `LaborModel.onModelSentinel` (`'on_model'`) on the empty-candidate
+   state and is the required entry point for WEEK-LEVEL aggregate
+   producers (WeekRecord / WeekData: `ShiftService.getWeekToDate`/
+   `_buildWeekRecord`/snapshot-WTD, `StaticShiftDataSource.getWeekToDate`,
+   and the demo week-rollup seeds). Per-shift `ShiftFact`/`ShiftRecord`
+   producers and the contract-sanctioned whole-day `LeverCards.lookup(id)!`
+   site remain on `determineLever` (7.61 catalog discipline). Renderers
+   already degrade the `on_model`/null lookup to `LeverCardNotYetAvailable`
+   (This Week, per 7.58.UX.5) and `'—'` (`week_history_tile.dart`).
 4. Otherwise, pick the candidate with the maximum `|delta|`.
 5. If two or more candidates tie at the maximum, resolve by the
    `priorityOrder` list at `lib/services/labor_model.dart:131`:

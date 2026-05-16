@@ -106,7 +106,11 @@ class StaticShiftDataSource implements ShiftDataSource {
     final wtdModelBoh = LaborModel.modelBohHoursFromSales(
         totalSales, BaselineData.derivedTargetSPLH);
 
-    final primaryLeverId = LaborModel.determineLever(
+    // 7.58.0a / Finding F-2: replay-backed WeekData is a week-level
+    // aggregate producer — on-model weeks surface the `on_model`
+    // sentinel, not a false `covers_down`. Mirrors the live
+    // `ShiftService.getWeekToDate` gating.
+    final primaryLeverId = LaborModel.determineLeverGated(
       actualCovers: totalCovers,
       forecastCovers: wtdForecastCovers,
       avgCPLH: avgCPLH,

@@ -64,7 +64,12 @@ class DemoData {
     // the candidate set. The contract has no rule requiring producers
     // to feed every axis; it requires that whatever subset they feed
     // round-trips the same way for fixture and engine.
-    return LaborModel.determineLever(
+    // 7.58.0a / Finding F-2: week-level seed producer. An on-model
+    // demo week yields the `on_model` sentinel (History tile renders
+    // "—") instead of a false `covers_down`. Per-shift seed levers
+    // (`_engineLeverForShift`, fill shifts) stay on `determineLever`
+    // for 7.61 catalog discipline.
+    return LaborModel.determineLeverGated(
       actualCovers: w.totalCovers,
       forecastCovers: w.forecastCovers,
       avgCPLH: w.avgCPLH,

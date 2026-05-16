@@ -885,9 +885,17 @@ class MockIntegrationReplaySeed {
     final avgSPLH = totalBoh > 0 ? totalSales / totalBoh : _targetSPLH;
     // 7.58.4 / F-3: include wages + hours-flex so the seed-derived
     // weekly lever mirrors `ShiftService._buildWeekRecord` (which feeds
-    // the same axis set into `determineLever` at close time). Demo
-    // wages match target — wage axis stays quiet — but the call shape
-    // now matches the live producer for round-trip parity.
+    // the same axis set into the week-level producer at close time).
+    // Demo wages match target — wage axis stays quiet — but the call
+    // shape now matches the live producer for round-trip parity.
+    // 7.58.0a / Finding F-2: this is a week-level aggregate producer,
+    // so it uses `determineLeverGated` — an on-model demo week (axis
+    // deltas wash out across the week) surfaces the `on_model`
+    // sentinel and the History tile renders "—" instead of a false
+    // red COVERS. Per-shift / projected seed levers above stay on
+    // `determineLever` (7.61 catalog discipline; projected rows are
+    // overridden to "Not yet available" by the projection read
+    // service regardless of the stored id).
     final wkFohLaborDollar =
         shifts.fold<double>(0, (s, r) => s + r.fohLaborDollar);
     final wkBohLaborDollar =
@@ -899,7 +907,7 @@ class MockIntegrationReplaySeed {
     final wkModelFoh = LaborModel.modelFohHours(totalCovers, _targetCPLH);
     final wkModelBoh =
         LaborModel.modelBohHoursFromSales(totalSales, _targetSPLH);
-    final lever = LaborModel.determineLever(
+    final lever = LaborModel.determineLeverGated(
       actualCovers: totalCovers,
       forecastCovers: forecastCovers,
       avgCPLH: avgCPLH,
