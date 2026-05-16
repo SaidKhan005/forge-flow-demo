@@ -38,6 +38,7 @@ import 'screens/my_account_admin_screen.dart';
 import 'screens/observability_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
+import 'screens/audit_log_admin_screen.dart';
 import 'screens/audited_support_actions_admin_screen.dart';
 import 'screens/per_location_data_accuracy_screen.dart';
 import 'screens/polling_and_pricing_admin_screen.dart';
@@ -47,6 +48,8 @@ import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
+import 'services/audit_log_admin_gateway.dart';
+import 'services/audit_log_admin_rootnode_builder.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -67,6 +70,7 @@ import 'services/vendor_applicability_admin_gateway.dart';
 import 'widgets/admin_setup_workspace.dart';
 import '../domain/models/data_accuracy_settings.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
+import '../domain/models/inheritance_tree_node.dart';
 
 /// CODE_OPS_DEBT Theme A item 1 — overridable MFA-freshness resolver
 /// for the four MFA-pinned admin actions. Tests inject a
@@ -255,6 +259,17 @@ const String kAdminRolesHierarchySessionsRouteId = 'roles-hierarchy-sessions';
 /// erasure). Mounted after the operator picker; same shell pattern
 /// as `kAdminMembersRouteId` and `kAdminRolesHierarchySessionsRouteId`.
 const String kAdminAuditedSupportActionsRouteId = 'audited-support-actions';
+
+/// GAP B3 — dedicated hash-chained audit-log review surface with a
+/// Business → Org Unit → Location scope picker. Mounted after the
+/// operator picker (same shell pattern as
+/// `kAdminAuditedSupportActionsRouteId`). The route handler builds the
+/// scope tree from the org-units + locations the existing
+/// Roles/Hierarchy admin gateway already exposes and hands it to
+/// [AuditLogAdminScreen] as `rootNode`, so the screen renders the
+/// shared [InheritanceTree] picker instead of the manual text-field
+/// fallback.
+const String kAdminAuditLogRouteId = 'audit-log';
 
 /// Canonical operator-picker route ID (11A.3a follow-up; reused by
 /// 11A.12). The picker is reached via Navigator.push from any host
@@ -481,6 +496,19 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     subtitle:
         'Review audit history and gated support actions for one operator.',
     builder: _buildAuditedSupportActions,
+    visibleInNav: false,
+    navAnchorRouteId: kAdminOperatorsRouteId,
+  ),
+  AdminRoute(
+    id: kAdminAuditLogRouteId,
+    title: 'Audit log',
+    path: '/admin/audit-log',
+    icon: Icons.fact_check_outlined,
+    section: AdminRouteSection.operations,
+    subtitle:
+        'Browse the hash-chained audit log for the selected business, '
+        'region, district, or location.',
+    builder: _buildAuditLog,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
   ),
@@ -2198,6 +2226,110 @@ Widget _buildAuditedSupportActions(BuildContext context) {
     functionBuilder: buildFunction,
   );
 }
+
+// GAP B3 — dedicated hash-chained audit-log review route. Builds the
+// Business → Org Unit → Location scope tree from the org-units +
+// locations the EXISTING [RolesHierarchySessionsAdminGateway] already
+// exposes (the same gateway the Access / Roles + Hierarchy tab uses —
+// no new proxy route, no new gateway method) and hands it to
+// [AuditLogAdminScreen] as `rootNode` so the screen renders the shared
+// [InheritanceTree] picker. When the gateway returns no org units the
+// screen mounts without a `rootNode`, preserving its honest
+// text-field scope fallback. Route wiring + screen prop only — NOT
+// proxy/schema/auth-touching.
+Widget _buildAuditLog(BuildContext context) {
+  final hierarchyGateway =
+      AdminConsoleServicesScope.rolesHierarchySessionsAdminGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  final initialScope = handoff?.effectiveHierarchyScope;
+  final onBackToBusinessAccounts = _backToBusinessAccounts(context);
+
+  // Read seam: the audit-log read gateway has no AdminConsoleServices
+  // accessor yet (the live HTTP wiring is a separate follow-up, same
+  // posture as the operator-web B8.b pane). The in-memory gateway
+  // keeps the click path deterministic for the demo / walkthrough; it
+  // is route-owned so it survives rebuilds without re-allocating.
+  final readGateway = _routerOwnedDemoAuditLogGateway ??=
+      InMemoryAuditLogAdminGateway();
+
+  Widget buildFunction(
+    BuildContext context,
+    AdminHierarchyScopeIntent selectedScope,
+    AdminSetupWorkspaceSelection selection,
+  ) {
+    final operatorId = selectedScope.operatorId;
+    return FutureBuilder<InheritanceTreeNode?>(
+      key: ValueKey<String>('audit-log-tree-$operatorId'),
+      future: _loadAuditLogScopeTree(hierarchyGateway, operatorId),
+      builder: (context, snapshot) {
+        // While the hierarchy loads (or if it fails) the screen still
+        // mounts — without a rootNode it falls back to the text-field
+        // scope inputs, which is the documented graceful degradation.
+        final rootNode = snapshot.data;
+        return AuditLogAdminScreen(
+          key: ValueKey<String>(
+            'audit-log-${selectedScope.scopeType.name}-$operatorId',
+          ),
+          gateway: readGateway,
+          rootNode: rootNode,
+          initialOperatorId: operatorId,
+          initialLocationId: selectedScope.locationId,
+        );
+      },
+    );
+  }
+
+  return AdminSetupWorkspace(
+    functionTitle: 'Audit log',
+    description:
+        'Browse the hash-chained audit log for the selected scope. '
+        'Pick a business, region, district, or location in the tree.',
+    operatorGateway: operatorGateway,
+    hierarchyGateway: hierarchyGateway,
+    initialScope: initialScope,
+    onBackToBusinessAccounts: onBackToBusinessAccounts,
+    onScopeChanged: handoff == null
+        ? null
+        : (scope) => handoff.onSelectRoute(
+            AdminRouteIntent(
+              routeId: kAdminAuditLogRouteId,
+              hierarchyScope: scope,
+            ),
+          ),
+    functionBuilder: buildFunction,
+  );
+}
+
+/// Loads the org-units + locations the [RolesHierarchySessionsAdminGateway]
+/// already exposes and folds them into the scope-picker tree. Returns
+/// `null` (text-field fallback) on any gateway error or when the
+/// operator has no org units.
+Future<InheritanceTreeNode?> _loadAuditLogScopeTree(
+  RolesHierarchySessionsAdminGateway gateway,
+  String operatorId,
+) async {
+  try {
+    final results = await Future.wait(<Future<Object>>[
+      gateway.listOrgUnits(operatorId: operatorId),
+      gateway.listHierarchyLocations(operatorId: operatorId),
+    ]);
+    final orgUnits = results[0] as List<OrgUnitAdminNode>;
+    final locations = results[1] as List<HierarchyLocationLeaf>;
+    return buildAuditLogAdminRootNode(
+      orgUnits: orgUnits,
+      locations: locations,
+    );
+  } on Object {
+    // Hierarchy load failed — degrade gracefully to the text-field
+    // scope inputs rather than blocking the audit-log surface.
+    return null;
+  }
+}
+
+InMemoryAuditLogAdminGateway? _routerOwnedDemoAuditLogGateway;
 
 // ignore: unused_element
 Widget _buildAuditedSupportActionsLegacy(BuildContext context) {
