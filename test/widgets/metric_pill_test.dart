@@ -110,8 +110,9 @@ void main() {
     });
 
     testWidgets(
-        'targetLabel does NOT leak into the unavailable honesty branch',
-        (tester) async {
+        'unavailable + targetLabel → renders the locked reference line '
+        'under the em dash (not-yet-started daypart parity with '
+        'SALES / LABOR %)', (tester) async {
       await tester.pumpWidget(_wrap(
         const MetricPill(
           state: MetricState.unavailable,
@@ -125,13 +126,42 @@ void main() {
       ));
       await tester.pump();
 
-      // Honesty branch unchanged: em dash + tooltip, no target line,
-      // no provenance label key.
+      // Em dash for the (honest) missing actual, plus the locked
+      // plan/benchmark reference line in the same key/position as the
+      // live pill's reference line — so a pre-service daypart reads
+      // identically to Whole Day / the active dayparts.
+      expect(find.byKey(const Key('metric_pill_unavailable_COVERS')),
+          findsOneWidget);
+      final prov = tester.widget<Text>(
+        find.byKey(const Key('metric_pill_provenance_COVERS')),
+      );
+      expect(prov.data, 'Target \$3.25');
+      // The "why empty" tooltip is REPLACED by the reference line when a
+      // locked target exists (no longer says "hasn't started yet").
+      expect(find.text('Connect a POS vendor to see covers.'),
+          findsNothing);
+    });
+
+    testWidgets(
+        'unavailable + NO targetLabel → honest empty tooltip unchanged '
+        '(genuinely-not-connected / Gap-42 path never regresses)',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const MetricPill(
+          state: MetricState.unavailable,
+          provenance: MetricPillProvenance(
+            label: 'Toast',
+            tooltip: 'Connect a POS vendor to see covers.',
+          ),
+          label: 'COVERS',
+        ),
+      ));
+      await tester.pump();
+
       expect(find.byKey(const Key('metric_pill_unavailable_COVERS')),
           findsOneWidget);
       expect(find.text('Connect a POS vendor to see covers.'),
           findsOneWidget);
-      expect(find.text('Target \$3.25'), findsNothing);
       expect(find.byKey(const Key('metric_pill_provenance_COVERS')),
           findsNothing);
     });

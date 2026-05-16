@@ -708,10 +708,12 @@ String _provenanceLabelFor(String provenanceId) {
 /// [MetricPillProvenance] descriptor used by [MetricPill].
 /// [targetLabel], when non-null, REPLACES the vendor source label in the
 /// live / stale / demo / partial / fallback branches with the metric's
-/// actual-vs-target reference line (parity with SALES / LABOR %). When
-/// null the prior source-label behavior is unchanged. The empty /
-/// unavailable tooltip is independent of [targetLabel] (honesty branch
-/// stays as-is).
+/// actual-vs-target reference line (parity with SALES / LABOR %), and in
+/// the unavailable branch is rendered beneath the em dash so a
+/// not-yet-started daypart shows its locked plan/benchmark target instead
+/// of the "hasn't started yet" copy (same treatment SALES / LABOR % give
+/// a pre-service daypart). When null the prior source-label / honest
+/// empty-state tooltip behavior is unchanged.
 MetricPillProvenance _toPillProvenance(
   MetricProvenance prov, {
   String? unavailableTooltip,
@@ -822,10 +824,15 @@ class _ShiftSectionViewData {
   // Format strings are byte-identical to `ShiftDashboardReadModel.
   // _buildMetricCards` (the authoritative target definitions); these are
   // display passthroughs of existing read-model / target-context values,
-  // NOT new math. `null` when the target is genuinely unavailable for
-  // this scope (e.g. a per-period metric with no locked target) — the
-  // pill then falls back to its prior source-label / honest-empty
-  // behavior, never a fabricated `Target 0` (Metric Honesty Doctrine).
+  // NOT new math. When the metric has no in-period actual yet (a
+  // not-yet-started daypart) the pill renders this reference line under
+  // the em dash — the same way SALES / LABOR % surface a pre-service
+  // daypart's locked target — so every sub-daypart reads consistently
+  // with Whole Day and the active dayparts. `null` when the target is
+  // genuinely unavailable for this scope (e.g. a per-period metric with
+  // no locked target / Gap-42 fallback) — the pill then falls back to
+  // its prior source-label / honest-empty tooltip behavior, never a
+  // fabricated `Target 0` (Metric Honesty Doctrine).
   final String? coversTargetLabel;
   final String? ppaTargetLabel;
   final String? cplhTargetLabel;
