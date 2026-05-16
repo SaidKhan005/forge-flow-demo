@@ -648,15 +648,35 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
 
 Future<void> _seedDemoRestaurant(Database db) async {
   final now = nowIsoUtc();
-  await db.insert('restaurant_locations', {
-    'restaurant_id': DemoScope.restaurantId,
-    'display_name': DemoScope.displayName,
-    'business_timezone': DemoScope.businessTimezone,
-    'created_at': now,
-    'updated_at': now,
-  });
 
-  // Seed demo timing config (7.55n.1).
+  // §2c hierarchy: seed all four demo locations (Downtown / North Loop
+  // / Riverside / Harbour) so the scope drawer is a real switcher and
+  // both consoles tell the same story. The org tree (corp → regions →
+  // district) lives in the operator-web fixture; the mobile side has
+  // no SQLite `org_units` table, so multi-location scope is expressed
+  // purely as multiple `restaurant_locations` rows. HP #2: same table,
+  // no `demo_*` table, no `kDemoMode` reader branch. `ignore` keeps
+  // the seed idempotent/deterministic (reseed yields the same rows).
+  // Slice A seeds the location rows only — per-location operational
+  // data (shifts/weeks/cycle/plan) is Slice C.
+  for (final location in DemoScope.locations) {
+    await db.insert(
+      'restaurant_locations',
+      {
+        'restaurant_id': location.restaurantId,
+        'display_name': location.displayName,
+        'business_timezone': location.businessTimezone,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  // Seed demo timing config (7.55n.1) for Downtown only —
+  // `_seedDemoTimingConfig` is keyed to `DemoScope.restaurantId`, and
+  // per-location timing is operational config owned by Slice C / the
+  // HP #11 scope-override slice (F), not this foundation slice.
   // Defaults preserve the current fixture-era shape from WeekDayOrder.
   // Guard: table may not exist yet during older upgrade paths.
   if (await _tableExists(db, 'restaurant_timing_configs')) {

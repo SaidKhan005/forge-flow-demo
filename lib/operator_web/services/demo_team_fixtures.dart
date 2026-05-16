@@ -1,7 +1,10 @@
 // Phase 11W parity block - shared demo fixture data set.
 //
-// One demo operator (`Demo Bistro`), three locations, two org units,
-// six users covering each non-admin seeded role plus one custom role
+// One demo operator (`Demo Bistro`), four locations, four org units
+// (corp root + 2 regions + 1 district per §2c — aligns with the
+// mobile `DemoScope.locations` seed so both consoles tell the same
+// story), six users covering each non-admin seeded role plus one
+// custom role
 // holder, four active sessions, and roughly 50 audit-log entries
 // across the last 30 days. The fixture lives in this file so every
 // 11W self-service parity slice (Members, Roles, Hierarchy, Sessions,
@@ -49,8 +52,9 @@ class DemoTeamLocationFixture {
 }
 
 /// Region grouping (11W.3 walks the tree as the corp root `Demo Bistro`
-/// containing East Region (Downtown + North Loop) and West Region
-/// (Riverside)). `unitType` matches the catalog the mobile reference
+/// containing East Region (Downtown + Metro District → North Loop)
+/// and West Region (Riverside + Harbour)). `unitType` matches the
+/// catalog the mobile reference
 /// renders (`corp`, `region`, `district`, `location_group`); `path`
 /// mirrors the Postgres `ltree` shape Phase 9 ships so the gateway
 /// projection produces the same `TeamOrgUnitEntry.path` shape the
@@ -78,22 +82,37 @@ const List<DemoTeamLocationFixture> kDemoTeamLocationsFixture =
     name: 'Downtown',
     orgUnitId: 'demo-org-east',
   ),
+  // §2c: North Loop sits under Metro District (a district inside
+  // East Region), not directly under the region — this is the
+  // ≥3-deep path (corp → region → district → location) that makes
+  // inheritance demonstrable per §1.7.
   DemoTeamLocationFixture(
     locationId: 'demo-loc-north-loop',
     name: 'North Loop',
-    orgUnitId: 'demo-org-east',
+    orgUnitId: 'demo-org-metro',
   ),
   DemoTeamLocationFixture(
     locationId: 'demo-loc-riverside',
     name: 'Riverside',
     orgUnitId: 'demo-org-west',
   ),
+  // §2c: fourth location so the corp → 2 regions → 1 district → 4
+  // locations tree matches the mobile `DemoScope.locations` seed.
+  // Harbour inherits straight from West Region (no district) so the
+  // "inherited from Region" pill is exercisable alongside North
+  // Loop's deeper district path.
+  DemoTeamLocationFixture(
+    locationId: 'demo-loc-harbour',
+    name: 'Harbour',
+    orgUnitId: 'demo-org-west',
+  ),
 ];
 
-/// Org-unit tree fixture. 11W.3 renders the corp root + two regions;
-/// 11W.1 surfaces the regions only (corp root is the implicit owner
-/// label). New entries should keep `path` consistent with the
-/// `parentOrgUnitId` chain so the gateway projection lines up.
+/// Org-unit tree fixture. 11W.3 renders the corp root + two regions +
+/// Metro District (§2c depth-3 path); 11W.1 surfaces the regions only
+/// (corp root is the implicit owner label). New entries should keep
+/// `path` consistent with the `parentOrgUnitId` chain so the gateway
+/// projection lines up.
 const List<DemoTeamOrgUnitFixture> kDemoTeamOrgUnitsFixture =
     <DemoTeamOrgUnitFixture>[
   DemoTeamOrgUnitFixture(
@@ -108,6 +127,18 @@ const List<DemoTeamOrgUnitFixture> kDemoTeamOrgUnitsFixture =
     unitType: 'region',
     path: 'demo_bistro.east_region',
     parentOrgUnitId: 'demo-org-root',
+  ),
+  // §2c: Metro District nests under East Region; North Loop sits in
+  // it. This is the depth-3 district node (corp → region → district →
+  // location) §1.7 requires so inheritance is demonstrable. `path`
+  // stays consistent with the `parentOrgUnitId` chain so the gateway
+  // projection lines up with the mobile reference renderer.
+  DemoTeamOrgUnitFixture(
+    orgUnitId: 'demo-org-metro',
+    name: 'Metro District',
+    unitType: 'district',
+    path: 'demo_bistro.east_region.metro_district',
+    parentOrgUnitId: 'demo-org-east',
   ),
   DemoTeamOrgUnitFixture(
     orgUnitId: 'demo-org-west',
