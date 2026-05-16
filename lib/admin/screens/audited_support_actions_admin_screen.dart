@@ -41,7 +41,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../domain/models/inheritance_tree_node.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/inheritance_tree.dart';
 import '../admin_route_handoff.dart';
 import '../admin_button_styles.dart';
 import '../services/audited_support_actions_admin_gateway.dart';
@@ -63,6 +65,7 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
     this.canExportAuditLog = false,
     this.sessionsGateway,
     this.hierarchyScope,
+    this.auditScopeRootNode,
     this.idempotencyKeyFactory,
     this.onChangeOperator,
     this.onBackToBusinessAccounts,
@@ -103,6 +106,18 @@ class AuditedSupportActionsAdminScreen extends StatefulWidget {
   /// Scope selected from the business hierarchy workspace before the
   /// Security/audit/sessions tile was opened.
   final AdminHierarchyScopeIntent? hierarchyScope;
+
+  /// GAP B3 — Business → Org Unit → Location scope tree for the
+  /// in-screen audit-log scope picker. Built (route-side) from the
+  /// org-units + locations the EXISTING
+  /// [RolesHierarchySessionsAdminGateway] already exposes via the pure
+  /// [buildAuditLogAdminRootNode] helper — no new proxy route, no new
+  /// gateway method. When non-null the audit-log region renders the
+  /// shared [InheritanceTree] as the default scope selector; when null
+  /// the screen falls back to the read-only scope banner the upstream
+  /// hierarchy workspace already supplies (no regression to that
+  /// path).
+  final InheritanceTreeNode? auditScopeRootNode;
 
   final String Function()? idempotencyKeyFactory;
 
@@ -146,6 +161,47 @@ class _AuditedSupportActionsAdminScreenState
   AuditLogFilters _filters = AuditLogFilters.empty;
   int _refreshGeneration = 0;
 
+  /// GAP B3 — the scope the admin selected in the in-screen
+  /// [InheritanceTree] picker (when [AuditedSupportActionsAdminScreen.
+  /// auditScopeRootNode] is supplied). Seeded from the upstream
+  /// workspace scope so the banner stays consistent before the admin
+  /// touches the tree. The audit-log read stays operator-wide — the
+  /// gateway exposes no scoped aggregate route yet — so this only
+  /// drives the scope banner copy, identical to the prior read-only
+  /// banner behaviour.
+  AdminHierarchyScopeIntent? _activeScope;
+
+  void _onAuditScopeNodeTap(InheritanceTreeNode node) {
+    final operatorId = widget.pickedOperator.operatorId;
+    final operatorName = widget.pickedOperator.operatorBusinessName;
+    final AdminHierarchyScopeIntent next;
+    switch (node.scopeKind) {
+      case InheritanceTreeScopeKind.business:
+        next = AdminHierarchyScopeIntent.business(
+          operatorId: operatorId,
+          operatorName: operatorName,
+        );
+        break;
+      case InheritanceTreeScopeKind.orgUnit:
+        next = AdminHierarchyScopeIntent.orgUnit(
+          operatorId: operatorId,
+          orgUnitId: node.scopeId,
+          operatorName: operatorName,
+          orgUnitName: node.displayName,
+        );
+        break;
+      case InheritanceTreeScopeKind.location:
+        next = AdminHierarchyScopeIntent.location(
+          operatorId: operatorId,
+          locationId: node.scopeId,
+          operatorName: operatorName,
+          locationName: node.displayName,
+        );
+        break;
+    }
+    setState(() => _activeScope = next);
+  }
+
   int _idempotencyCounter = 0;
 
   // CODE_OPS_DEBT Theme B#1 — last in-flight single-admin PII erasure
@@ -174,7 +230,18 @@ class _AuditedSupportActionsAdminScreenState
   @override
   void initState() {
     super.initState();
+    _activeScope = widget.hierarchyScope;
     _refresh();
+  }
+
+  @override
+  void didUpdateWidget(AuditedSupportActionsAdminScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // GAP B3 — when the upstream workspace pushes a new scope, re-seed
+    // the in-screen picker selection so the banner stays consistent.
+    if (oldWidget.hierarchyScope != widget.hierarchyScope) {
+      _activeScope = widget.hierarchyScope;
+    }
   }
 
   @override
@@ -579,8 +646,23 @@ class _AuditedSupportActionsAdminScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          if (widget.hierarchyScope != null) ...<Widget>[
-            _SecurityHierarchyScopeBanner(scope: widget.hierarchyScope!),
+          // GAP B3 — when a scope tree is available, the shared
+          // InheritanceTree is the DEFAULT scope selector for the
+          // audit-log view (operator decision: close the gap where
+          // admins actually are). The selected node updates the scope
+          // banner below. When no tree is available the screen keeps
+          // the read-only scope banner the upstream hierarchy
+          // workspace already supplies — graceful fallback, no
+          // regression.
+          if (widget.auditScopeRootNode != null) ...<Widget>[
+            _AuditScopePickerCard(
+              rootNode: widget.auditScopeRootNode!,
+              onNodeTap: _onAuditScopeNodeTap,
+            ),
+            const SizedBox(height: 16),
+          ],
+          if (_activeScope != null) ...<Widget>[
+            _SecurityHierarchyScopeBanner(scope: _activeScope!),
             const SizedBox(height: 16),
           ],
           _SupportAuditSummaryStrip(
@@ -619,6 +701,51 @@ class _AuditedSupportActionsAdminScreenState
             onResetMfa: _onResetMfa,
             onPasswordReset: _onPasswordReset,
             onIssueErasure: _onIssueErasure,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// GAP B3 — the in-screen audit-log scope picker. Renders the shared
+/// [InheritanceTree] (the same widget the orphan AuditLogAdminScreen
+/// and the operator-web B8.b pane use) so F&F admins pick a business,
+/// region, district, or location by tapping the tree instead of
+/// hand-typing operator_id / org_unit_id / location_id. Pure UI over a
+/// route-built [InheritanceTreeNode]; no proxy / gateway change.
+class _AuditScopePickerCard extends StatelessWidget {
+  const _AuditScopePickerCard({
+    required this.rootNode,
+    required this.onNodeTap,
+  });
+
+  final InheritanceTreeNode rootNode;
+  final ValueChanged<InheritanceTreeNode> onNodeTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return AdminCard(
+      child: Column(
+        key: const Key('admin_asa_audit_scope_picker'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Text(
+            'Audit log scope',
+            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Pick a business, region, district, or location in the tree '
+            'to set the audit log scope. The scope you pick is shown '
+            'below.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 10),
+          InheritanceTree(
+            rootNode: rootNode,
+            onNodeTap: onNodeTap,
+            annotationBuilder: (context, node) => const SizedBox.shrink(),
           ),
         ],
       ),

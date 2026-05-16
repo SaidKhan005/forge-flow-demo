@@ -48,6 +48,7 @@ import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
 import 'services/admin_sessions_gateway.dart';
+import 'services/audit_log_admin_rootnode_builder.dart';
 import 'services/audited_support_actions_admin_gateway.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/data_accuracy_admin_gateway.dart';
@@ -68,6 +69,7 @@ import 'services/vendor_applicability_admin_gateway.dart';
 import 'widgets/admin_setup_workspace.dart';
 import '../domain/models/data_accuracy_settings.dart';
 import '../domain/models/forge_flow_polling_tier_assignment.dart';
+import '../domain/models/inheritance_tree_node.dart';
 
 /// CODE_OPS_DEBT Theme A item 1 — overridable MFA-freshness resolver
 /// for the four MFA-pinned admin actions. Tests inject a
@@ -2137,17 +2139,35 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       required bool canIssuePairedErasure,
       required bool canExportAuditLog,
     }) {
-      return AuditedSupportActionsAdminScreen(
-        key: ValueKey<String>('asa-${selectedScope.cacheKey}'),
-        gateway: gateway,
-        sessionsGateway: sessionsGateway,
-        actorUserId: actorUserId,
-        pickedOperator: picked,
-        editingEnabled: canEdit,
-        canResetMfaFactors: canResetMfaFactors,
-        canIssuePairedErasure: canIssuePairedErasure,
-        canExportAuditLog: canExportAuditLog,
-        hierarchyScope: selectedScope,
+      // GAP B3 — fold the org-units + locations the EXISTING
+      // RolesHierarchySessionsAdminGateway already exposes (the same
+      // gateway the Roles/Hierarchy admin tab uses) into the shared
+      // InheritanceTree scope picker. No new proxy route, no new
+      // gateway method. While the tree loads (or if it fails / is
+      // empty) the screen mounts with a null rootNode and keeps the
+      // existing read-only scope banner — graceful degradation, no
+      // regression to that path.
+      return FutureBuilder<InheritanceTreeNode?>(
+        key: ValueKey<String>('asa-scope-tree-${picked.operatorId}'),
+        future: _loadAuditedSupportActionsScopeTree(
+          sessionsGateway,
+          picked.operatorId,
+        ),
+        builder: (context, scopeSnapshot) {
+          return AuditedSupportActionsAdminScreen(
+            key: ValueKey<String>('asa-${selectedScope.cacheKey}'),
+            gateway: gateway,
+            sessionsGateway: sessionsGateway,
+            actorUserId: actorUserId,
+            pickedOperator: picked,
+            editingEnabled: canEdit,
+            canResetMfaFactors: canResetMfaFactors,
+            canIssuePairedErasure: canIssuePairedErasure,
+            canExportAuditLog: canExportAuditLog,
+            hierarchyScope: selectedScope,
+            auditScopeRootNode: scopeSnapshot.data,
+          );
+        },
       );
     }
 
@@ -2198,6 +2218,34 @@ Widget _buildAuditedSupportActions(BuildContext context) {
           ),
     functionBuilder: buildFunction,
   );
+}
+
+/// GAP B3 — loads the org-units + locations the
+/// [RolesHierarchySessionsAdminGateway] already exposes and folds them
+/// into the shared audit-log scope-picker tree via the pure
+/// [buildAuditLogAdminRootNode] helper. Returns `null` (read-only
+/// scope-banner fallback) on any gateway error or when the operator
+/// has no org units. No new proxy route, no new gateway method.
+Future<InheritanceTreeNode?> _loadAuditedSupportActionsScopeTree(
+  RolesHierarchySessionsAdminGateway gateway,
+  String operatorId,
+) async {
+  try {
+    final results = await Future.wait<Object>(<Future<Object>>[
+      gateway.listOrgUnits(operatorId: operatorId),
+      gateway.listHierarchyLocations(operatorId: operatorId),
+    ]);
+    final orgUnits = results[0] as List<OrgUnitAdminNode>;
+    final locations = results[1] as List<HierarchyLocationLeaf>;
+    return buildAuditLogAdminRootNode(
+      orgUnits: orgUnits,
+      locations: locations,
+    );
+  } on Object {
+    // Hierarchy load failed — degrade gracefully to the existing
+    // read-only scope banner rather than blocking the audit surface.
+    return null;
+  }
 }
 
 // ignore: unused_element
