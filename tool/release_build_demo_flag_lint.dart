@@ -1,19 +1,27 @@
 // B1.A5 — Release-build demo-flag lint.
 //
 // Scans GitHub Actions workflow files for `flutter build` commands that
-// pass either `ADMIN_DEMO_AUTH=true` or `OPERATOR_WEB_DEMO_AUTH=true`
-// as dart-define arguments without also passing `--debug` or `--profile`.
+// pass any of the demo-auth elevation flags —
+//   `ADMIN_DEMO_AUTH=true`, `OPERATOR_WEB_DEMO_AUTH=true`,
+//   `kDemoMode=true`, or `FORGE_FLOW_DEMO_MODE=true`
+// — as dart-define arguments without also passing `--debug` or `--profile`.
 //
-// A release artifact shipping with demo-auth true bypasses Firebase and
+// A release artifact shipping with any of these true bypasses Firebase and
 // exposes a privilege escalation surface on any publicly-routed Cloud Run
-// service. This lint is a belt-and-suspenders check on top of the
-// `assert()` guards in `lib/main_admin.dart` and `lib/main_operator_web.dart`
-// (which catch the condition at startup in debug mode) and the deploy
-// scripts (which require an explicit `-DemoMode` switch with a warning).
+// service. The web/admin flags (`ADMIN_DEMO_AUTH`, `OPERATOR_WEB_DEMO_AUTH`)
+// elevate the demo user in `lib/main_admin.dart` /
+// `lib/main_operator_web.dart`; the mobile Forge&Flow flavor
+// (`lib/main_forgeflow.dart`) elevates `demo.operator@forgeflow.test` to an
+// F&F admin gated by `kDemoMode=true` / `FORGE_FLOW_DEMO_MODE=true`, so the
+// parity flags are forbidden on release artifacts too. This lint is a
+// belt-and-suspenders check on top of the `assert()` startup guards and the
+// deploy scripts (which require an explicit `-DemoMode` switch with a
+// warning).
 //
 // Rule: a `flutter build` command is a violation when:
 //   (a) it is not a debug or profile build, AND
-//   (b) it contains `ADMIN_DEMO_AUTH=true` or `OPERATOR_WEB_DEMO_AUTH=true`.
+//   (b) it contains `ADMIN_DEMO_AUTH=true`, `OPERATOR_WEB_DEMO_AUTH=true`,
+//       `kDemoMode=true`, or `FORGE_FLOW_DEMO_MODE=true`.
 //
 // Exposed surface:
 //   * `ReleaseBuildDemoFlagLintRunner` — testable facade.
@@ -24,6 +32,8 @@ import 'dart:io';
 const List<String> _forbiddenFlags = <String>[
   'ADMIN_DEMO_AUTH=true',
   'OPERATOR_WEB_DEMO_AUTH=true',
+  'kDemoMode=true',
+  'FORGE_FLOW_DEMO_MODE=true',
 ];
 
 class ReleaseBuildDemoFlagViolation {
@@ -178,7 +188,8 @@ Future<void> main(List<String> args) async {
   if (result.isClean) {
     stdout.writeln(
       'release_build_demo_flag_lint: clean — no release build ships '
-      'ADMIN_DEMO_AUTH=true or OPERATOR_WEB_DEMO_AUTH=true.',
+      'ADMIN_DEMO_AUTH=true, OPERATOR_WEB_DEMO_AUTH=true, '
+      'kDemoMode=true, or FORGE_FLOW_DEMO_MODE=true.',
     );
     return;
   }
@@ -192,7 +203,9 @@ Future<void> main(List<String> args) async {
   }
   stderr.writeln(
     'Fix: remove --dart-define=ADMIN_DEMO_AUTH=true / '
-    '--dart-define=OPERATOR_WEB_DEMO_AUTH=true from release build steps. '
+    '--dart-define=OPERATOR_WEB_DEMO_AUTH=true / '
+    '--dart-define=kDemoMode=true / '
+    '--dart-define=FORGE_FLOW_DEMO_MODE=true from release build steps. '
     'Demo auth must only be passed in debug/profile builds or behind an '
     'explicit deploy-script -DemoMode switch with a visible warning.',
   );
