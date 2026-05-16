@@ -102,7 +102,20 @@ class WeeklyPlanSnapshotService {
     // Check for an existing snapshot for this week.
     final existing =
         await _snapshotRepo.getSnapshotForWeekKey(restaurantId, weekKey);
-    if (existing != null) return existing;
+    if (existing != null) {
+      // 7.56b.1: when a locked weekly_plan_snapshot is pre-seeded
+      // (FU-mobile-cold-boot-shift-stale-state, #759) this path
+      // short-circuits BEFORE _generateAndPersistSnapshot's
+      // getOrCreateActiveCycle call — the only trigger for the
+      // seed-cycle's missing-summary repair. Guarantee cycle⇄summary
+      // coherence here too so the Benchmark / Data-alignment surface
+      // always sees the companion summary, independent of snapshot
+      // presence. Narrow + idempotent — does NOT run
+      // getOrCreateActiveCycle, so no cycle rollover side-effect.
+      await TargetCycleService.instance
+          .ensureActiveCycleSelectionSummary(restaurantId);
+      return existing;
+    }
 
     // No snapshot exists — generate and persist one.
     return _generateAndPersistSnapshot(
