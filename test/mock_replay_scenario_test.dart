@@ -178,14 +178,40 @@ void main() {
     });
 
     test('reservation snapshot follows scenario date/daypart', () async {
+      // Updated for the per-location operational-envelope slice: the
+      // reservation book is now the FORWARD book (current-week
+      // projected/open cells) across all 4 demo locations, no longer a
+      // single global row. The scenario's open-shift row is still
+      // present with the same scoped value.
       await SqliteDatabase.instance
           .reseedMockReplayForBusinessDate('2026-03-28');
       final db = await SqliteDatabase.instance.database;
 
-      final res = await db.query('reservation_book_snapshots');
-      expect(res.length, 1);
-      expect(res.first['business_date'], '2026-03-28');
-      expect(res.first['daypart'], 'dinner');
+      // The scenario open-shift reservation row still resolves exactly.
+      final openRow = await db.query(
+        'reservation_book_snapshots',
+        where: 'restaurant_id = ? AND business_date = ? AND daypart = ?',
+        whereArgs: ['demo_restaurant_001', '2026-03-28', 'dinner'],
+      );
+      expect(openRow.length, 1,
+          reason: 'Downtown Sat-dinner forward reservation row exists');
+
+      // The book now spans the forward week × all 4 locations, never a
+      // single global row, and every row is restaurant-scoped (HP #4).
+      final all = await db.query('reservation_book_snapshots');
+      expect(all.length, greaterThan(1),
+          reason: 'forward book is multi-location, not a single row');
+      final scopes =
+          all.map((r) => r['restaurant_id'] as String).toSet();
+      expect(scopes, DemoScope.locations.map((l) => l.restaurantId).toSet(),
+          reason: 'every demo location has a forward reservation book');
+      // Honest-degrade: no row predates the scenario date (closed/past
+      // services carry no live reservation book).
+      for (final r in all) {
+        expect((r['business_date'] as String).compareTo('2026-03-28'),
+            greaterThanOrEqualTo(0),
+            reason: 'forward book only — no closed/past cell rows');
+      }
     });
 
     test('mock_replay_state updated after reseed', () async {

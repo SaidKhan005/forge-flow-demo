@@ -21,6 +21,7 @@
 // reader path is unchanged and does not branch on kDemoMode.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/state/shift_dashboard_notifier.dart';
 
@@ -86,38 +87,66 @@ void main() {
     test(
         'cold-boot snapshot survives the same-week replay-advance contract',
         () async {
-      // Cold-boot seed established Friday's snapshot. Advance one day
-      // (same week — Sat) and confirm the locked snapshot is NOT
-      // re-generated for the in-force week. The seeder's same-week
-      // no-op preserves the locked truth contract (7.55l.6b1).
+      // Cold-boot seed established Friday's IN-FORCE snapshot. Advance
+      // one day (same week — Sat) and confirm the locked in-force
+      // snapshot is NOT re-generated. The seeder's same-week no-op
+      // preserves the locked truth contract (7.55l.6b1).
+      //
+      // Updated for the per-location operational-envelope slice: the
+      // demo now also seeds a locked plan for every HISTORICAL week
+      // (gap 3), so Downtown has a deep snapshot history rather than a
+      // single row. This test's real contract is the IN-FORCE
+      // snapshot's same-week immutability, so it now asserts that
+      // specifically (by week_key) instead of a global row count.
       final db = await SqliteDatabase.instance.database;
+      final inForceWeekKey =
+          WeeklyPlanSnapshotPolicy.weekKeyForDate('2026-03-27');
 
-      final beforeRows = await db.query(
+      final beforeInForce = await db.query(
+        'weekly_plan_snapshots',
+        where: 'restaurant_id = ? AND week_key = ?',
+        whereArgs: [DemoScope.restaurantId, inForceWeekKey],
+      );
+      expect(beforeInForce.length, 1,
+          reason: 'exactly one in-force snapshot for the week-in-force.');
+      final beforeGeneratedAt =
+          beforeInForce.first['generated_at'] as String;
+      final beforeTotal = (await db.query(
         'weekly_plan_snapshots',
         where: 'restaurant_id = ?',
         whereArgs: [DemoScope.restaurantId],
-      );
-      expect(beforeRows.length, 1,
-          reason: 'cold-boot seed must produce exactly one snapshot row.');
-      final beforeGeneratedAt = beforeRows.first['generated_at'] as String;
+      ))
+          .length;
+      expect(beforeTotal, greaterThan(1),
+          reason: 'historical weekly plans are seeded (gap 3).');
 
       // Advance one day within the same week (Fri -> Sat).
       await SqliteDatabase.instance
           .reseedMockReplayForBusinessDate('2026-03-28');
 
-      final afterRows = await db.query(
+      final afterInForce = await db.query(
+        'weekly_plan_snapshots',
+        where: 'restaurant_id = ? AND week_key = ?',
+        whereArgs: [DemoScope.restaurantId, inForceWeekKey],
+      );
+      expect(afterInForce.length, 1,
+          reason: 'same-week advance must not insert a duplicate '
+              'in-force snapshot.');
+      expect(
+        afterInForce.first['generated_at'] as String,
+        beforeGeneratedAt,
+        reason: 'locked in-force snapshot survives same-week advance '
+            'unchanged.',
+      );
+      final afterTotal = (await db.query(
         'weekly_plan_snapshots',
         where: 'restaurant_id = ?',
         whereArgs: [DemoScope.restaurantId],
-      );
-      expect(afterRows.length, 1,
-          reason: 'same-week advance must not insert a duplicate snapshot.');
-      final afterGeneratedAt = afterRows.first['generated_at'] as String;
-      expect(
-        afterGeneratedAt,
-        beforeGeneratedAt,
-        reason: 'locked snapshot survives same-week advance unchanged.',
-      );
+      ))
+          .length;
+      expect(afterTotal, beforeTotal,
+          reason: 'same-week advance rewrites no locked snapshot '
+              '(historical truth preserved, Promise 2).');
     });
   });
 }

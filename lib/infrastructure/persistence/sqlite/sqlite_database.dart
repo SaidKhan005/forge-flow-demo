@@ -192,6 +192,17 @@ class SqliteDatabase {
   Future<void> _onCreate(Database db, int version) async {
     await _createAllTables(db);
     await _seedDemoRestaurant(db);
+    // Demo-data — cold-boot wage authority. The reseed/advance path
+    // seeds `wage_role_rows` (+ the Riverside location override) BEFORE
+    // the cycle build so the blended-wage waterfall resolves through
+    // real role rows; cold-boot must mirror that so Settings ▸ Wage
+    // Authority is populated on the very first launch (per location:
+    // Downtown business default, Riverside override, North Loop +
+    // Harbour inherit). Idempotent (skip-if-present) — the seeded
+    // cohorts blend to exactly MeridianConfig, so the Downtown cycle is
+    // byte-identical whether the rows exist or not.
+    await _seedDemoWageRoleRows(db);
+    await _seedDemoScopeOverrideWageRows(db);
     await _seedDemoActiveTargetProfile(
       db,
       businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
@@ -206,6 +217,12 @@ class SqliteDatabase {
 
     final replay = MockIntegrationReplaySeed.output;
     await _seedDemoDataFromReplay(db, replay);
+    // Demo-data — cold-boot variance-breach alert. Mirrors the
+    // reseed/advance path: emits ONE honest over-plan alert from the
+    // freshly seeded `week_records` (no breach → no row). Cold-boot
+    // previously had zero notifications; this + the sample inbox below
+    // give a populated bell on first launch.
+    await _seedDemoVarianceBreachNotification(db);
     await _backfillLockedTargets(
       db,
       businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
@@ -224,6 +241,12 @@ class SqliteDatabase {
       db,
       businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
     );
+    // Demo-data — per-location operational envelope (historical
+    // open_shift_snapshots, forward reservation book, historical locked
+    // weekly plans + per-daypart child rows, sample notifications).
+    // Runs LAST so it reads the fully-seeded cycles + shift set + the
+    // existing Downtown in-force snapshot.
+    await _seedOperationalEnvelopeFromReplay(db, replay);
   }
 
   // ── Seed helpers ────────────────────────────────────────────────────────
@@ -568,6 +591,15 @@ class SqliteDatabase {
       db,
       businessDate: isoDate,
     );
+    // Demo-data — per-location operational envelope. Same single seam
+    // the cold-boot path uses; runs LAST so it reads the fully-seeded
+    // cycles + shift set + the existing Downtown in-force snapshot.
+    // Idempotent across reseed/advance: open/reservation snapshots are
+    // cleared above and rebuilt; weekly-plan snapshots use a
+    // (restaurant_id, week_key) existence guard so locked truth is never
+    // rewritten; notifications dedupe on UNIQUE(restaurant_id,
+    // event_key).
+    await _seedOperationalEnvelopeFromReplay(db, replay);
   }
 
   /// Clears all operational data while preserving restaurant scope and
