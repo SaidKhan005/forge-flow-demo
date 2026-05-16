@@ -60,6 +60,51 @@ enum DataAlignmentAuditGroup {
   /// against `ActiveTargetProfile` current wages (which drift after
   /// the week locks).
   wageAtLockTime,
+
+  /// Per-Daypart V1 (Slice 6, full scope) — per-period benchmark
+  /// authority. Each `TargetCycle.daypartFor(p)` per-period standard
+  /// projects 1:1 into `ActiveTargetProfile.daypartFor(p)`, and the
+  /// profile's whole-day scalars equal the cover-weighted Σ of the
+  /// per-period rows (Design Rule 4 — the per-period rows are the
+  /// authority; the pool is their honest rollup).
+  perPeriodBenchmarkAuthority,
+
+  /// Per-Daypart V1 (Slice 6, full scope) — per-period Shift runtime.
+  /// The Shift period card resolves its per-period target as
+  /// `ActiveTargetProfile.daypartFor(p)` with a whole-day pool
+  /// Gap-42 fallback. This group audits that the resolved per-period
+  /// target reconciles to the locked `TargetCycle` per-period (or, on
+  /// the honest Gap-42 fallback path, that the whole-day pool the card
+  /// falls back to is itself consistent). The fallback is reported as
+  /// an honest informational state, never a false PASS or hard FAIL.
+  perPeriodShiftRuntime,
+
+  /// Per-Daypart V1 (Slice 6, full scope) — per-period Variance
+  /// runtime. Variance non-closed rows read
+  /// `ActiveTargetProfile.daypartTheoreticalLaborPctFor(p)` with a
+  /// whole-day theoretical-% Gap-42 fallback. This group audits that
+  /// the per-period theoretical % the Variance read seam consumes
+  /// reconciles to the per-period rates recomputed from the locked
+  /// `TargetCycle` (Gap-42 whole-day fallback honored honestly).
+  perPeriodVarianceRuntime,
+
+  /// Per-Daypart V1 (Slice 6, full scope) — per-period locked-plan
+  /// day-row reconciliation. Each `WeeklyPlanSnapshot.dayDayparts`
+  /// row reconciles to the LOCK-TIME `TargetCycle` per-period standard
+  /// (the cycle the snapshot was locked under, linked by
+  /// `snapshot.targetCycleId`) — a closed/locked snapshot row is
+  /// immutable and is NOT re-graded under the now-active cycle
+  /// (closed-truth doctrine / Time Guardrails).
+  perPeriodLockedPlanReconciliation,
+
+  /// Per-Daypart V1 (Slice 6, full scope) — per-period sum-to-day
+  /// reconciliation + per-period actual presence. Σ(per-period locked
+  /// plan rows for a day) == that day's whole-day locked plan figure
+  /// (pool-consistency at the plan layer); per-period ACTUAL presence
+  /// is reported honestly — absent per-period actuals render
+  /// "not present" / `—`, never a fabricated `0` PASS (Design Rule 2
+  /// / Metric Honesty).
+  perPeriodSumAndActuals,
 }
 
 extension DataAlignmentAuditGroupTitle on DataAlignmentAuditGroup {
@@ -80,6 +125,16 @@ extension DataAlignmentAuditGroupTitle on DataAlignmentAuditGroup {
         return 'POOL CONSISTENCY';
       case DataAlignmentAuditGroup.wageAtLockTime:
         return 'WAGE-AT-LOCK-TIME PROVENANCE';
+      case DataAlignmentAuditGroup.perPeriodBenchmarkAuthority:
+        return 'PER-PERIOD BENCHMARK AUTHORITY';
+      case DataAlignmentAuditGroup.perPeriodShiftRuntime:
+        return 'PER-PERIOD SHIFT RUNTIME';
+      case DataAlignmentAuditGroup.perPeriodVarianceRuntime:
+        return 'PER-PERIOD VARIANCE RUNTIME';
+      case DataAlignmentAuditGroup.perPeriodLockedPlanReconciliation:
+        return 'PER-PERIOD LOCKED PLAN RECONCILIATION';
+      case DataAlignmentAuditGroup.perPeriodSumAndActuals:
+        return 'PER-PERIOD SUM + ACTUAL PRESENCE';
     }
   }
 }
