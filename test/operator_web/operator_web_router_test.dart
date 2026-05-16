@@ -11,13 +11,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_handoff_redeem_gateway.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/router/operator_web_router.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/demo_vendor_connections_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
+import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_hierarchy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_users_gateway.dart';
@@ -806,6 +810,102 @@ void main() {
           find.byKey(const Key('operator_web_demo_banner')),
           findsOneWidget,
         );
+
+        // OW-G70 — the 4 newly-guarded commerce-critical routes must
+        // STILL serve their demo fixtures for the demo source (the
+        // `_isDemoAuthSource` short-circuit inside
+        // `_liveSurfaceMissingGateway` keeps the demo path
+        // byte-unchanged: no false fail-loud for demo). The demo
+        // session pins `demo-location`, so each route lands directly
+        // in location scope and renders its screen body.
+        await tester.tap(
+          find.byKey(const Key('operator_web_nav_item_vendor_connections')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('operator_web_vendor_connections_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_surface_wiring_error_vendor_connections',
+            ),
+          ),
+          findsNothing,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('operator_web_nav_item_data_accuracy')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('operator_web_data_accuracy_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_data_accuracy'),
+          ),
+          findsNothing,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('operator_web_nav_item_schedule')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('schedule_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_schedule'),
+          ),
+          findsNothing,
+        );
+
+        // Wage authority has no nav row (folded under Data accuracy,
+        // Wave 2 S-2); drive it via the deep-link nav id.
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — demo source: Wage authority deep-link still serves '
+      'fixtures (no false fail-loud), demo banner shown',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = DemoOperatorWebAuthSource.completed();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavWageAuthority,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('wage_authority_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_wage_authority'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsOneWidget,
+        );
       },
     );
 
@@ -940,6 +1040,347 @@ void main() {
           findsNothing,
         );
         // Still no demo banner — this is a live source.
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    // OW-G70 — extend the #857 G62 fail-loud guard to the 4
+    // commerce-critical routes that #857 left uncovered (Vendor
+    // connections, Data accuracy, Wage authority, Schedule). For each:
+    //   (a) live source missing the genuinely-live provider ⇒ honest
+    //       wiring-error surface, NOT silent fixtures, NO demo banner;
+    //   (b) fully-wired live source ⇒ real screen, no wiring error,
+    //       no demo banner.
+    // The demo-source "fixtures still served" assertions live in the
+    // demo-banner tests above.
+
+    testWidgets(
+      'OW-G70 — live source missing the vendor-connections mixin: '
+      'honest wiring-error surface, NOT fixtures, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveUnwiredOperatorWebSource();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavVendorConnections,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_surface_wiring_error_vendor_connections',
+            ),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_vendor_connections_screen')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — fully-wired live source: real Vendor connections '
+      'screen renders, NO wiring error, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveVendorConnectionsWiredOperatorWebSource(
+          OperatorWebDemoVendorConnectionsFixture.gateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavVendorConnections,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_vendor_connections_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'operator_web_surface_wiring_error_vendor_connections',
+            ),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — live source missing the data-accuracy mixin: honest '
+      'wiring-error surface, NOT fixtures, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveUnwiredOperatorWebSource();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavDataAccuracy,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_data_accuracy'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_data_accuracy_screen')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — live source with data-accuracy gateway but MISSING the '
+      'vendor-applicability mixin: still fails loud (both genuinely-'
+      'live providers required)',
+      (tester) async {
+        await sizeViewport(tester);
+        // Only the data-accuracy provider is mixed in; the production
+        // source genuinely mixes BOTH, so a half-wired live source is
+        // still a wiring regression.
+        final source = _LiveDataAccuracyOnlyOperatorWebSource(
+          _StubDataAccuracyGateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavDataAccuracy,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_data_accuracy'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('operator_web_data_accuracy_screen')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — fully-wired live source (data-accuracy + vendor-'
+      'applicability): real Data accuracy screen, NO wiring error, '
+      'NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveDataAccuracyWiredOperatorWebSource(
+          dataAccuracyGateway: _StubDataAccuracyGateway(),
+          vendorApplicabilityGateway: _StubVendorApplicabilityGateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavDataAccuracy,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_data_accuracy_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_data_accuracy'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — live source missing the wage-authority mixin: honest '
+      'wiring-error surface, NOT fixtures, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveUnwiredOperatorWebSource();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavWageAuthority,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_wage_authority'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('wage_authority_screen')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — fully-wired live source: real Wage authority screen, '
+      'NO wiring error, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveWageAuthorityWiredOperatorWebSource(
+          OperatorWebDemoWageAuthorityGateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavWageAuthority,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('wage_authority_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_wage_authority'),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — live source missing the schedule mixin: honest '
+      'wiring-error surface, NOT fixtures, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveUnwiredOperatorWebSource();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavSchedule,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_schedule'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_screen')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'OW-G70 — fully-wired live source: real Schedule screen, NO '
+      'wiring error, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveScheduleWiredOperatorWebSource(
+          OperatorWebDemoScheduleGateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavSchedule,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('schedule_screen')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_schedule'),
+          ),
+          findsNothing,
+        );
         expect(
           find.byKey(const Key('operator_web_demo_banner')),
           findsNothing,
@@ -1083,4 +1524,242 @@ class _FakeOperatorWebHandoffGateway
     codes.add(code);
     return result;
   }
+}
+
+// ---------------------------------------------------------------------------
+// OW-G70 test doubles — *live* auth sources (do NOT extend
+// `DemoOperatorWebAuthSource`) shaped like production
+// `FirebaseOperatorWebAuthSource` for the 4 commerce-critical routes.
+// `_LiveUnwiredOperatorWebSource` (defined above) models the wiring
+// regression (no provider mixin) → the router must fail loud. The
+// `*Wired*` doubles below mix the genuinely-live provider(s) the
+// production source carries → the router must render the real screen.
+// ---------------------------------------------------------------------------
+
+/// Fully-wired live source for the Vendor connections route — mixes
+/// `OperatorWebVendorConnectionsGatewayProvider`, exactly as the
+/// production `FirebaseOperatorWebAuthSource` does.
+class _LiveVendorConnectionsWiredOperatorWebSource
+    extends OperatorWebAuthSource
+    implements OperatorWebVendorConnectionsGatewayProvider {
+  _LiveVendorConnectionsWiredOperatorWebSource(this.vendorConnectionsGateway) {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final VendorConnectionsGateway? vendorConnectionsGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// Live source for the Data accuracy route that mixes ONLY
+/// `OperatorWebDataAccuracyGatewayProvider` — NOT
+/// `OperatorWebVendorApplicabilityGatewayProvider`. The production
+/// source genuinely mixes BOTH, so this half-wired shape is still a
+/// wiring regression and must fail loud.
+class _LiveDataAccuracyOnlyOperatorWebSource extends OperatorWebAuthSource
+    implements OperatorWebDataAccuracyGatewayProvider {
+  _LiveDataAccuracyOnlyOperatorWebSource(this.dataAccuracyGateway) {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final OperatorWebDataAccuracyGateway dataAccuracyGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// Fully-wired live source for the Data accuracy route — mixes BOTH
+/// `OperatorWebDataAccuracyGatewayProvider` and
+/// `OperatorWebVendorApplicabilityGatewayProvider`, exactly the two
+/// genuinely-live providers the production source carries for this
+/// surface. The embedded Wage Authority section is deliberately NOT
+/// gated here (it has a sanctioned demo fallback), so this fully-wired
+/// shape renders the real screen.
+class _LiveDataAccuracyWiredOperatorWebSource extends OperatorWebAuthSource
+    implements
+        OperatorWebDataAccuracyGatewayProvider,
+        OperatorWebVendorApplicabilityGatewayProvider {
+  _LiveDataAccuracyWiredOperatorWebSource({
+    required this.dataAccuracyGateway,
+    required this.vendorApplicabilityGateway,
+  }) {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final OperatorWebDataAccuracyGateway dataAccuracyGateway;
+
+  @override
+  final WebVendorApplicabilityGateway vendorApplicabilityGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// Fully-wired live source for the Wage authority route — mixes
+/// `OperatorWebWageAuthorityGatewayProvider`, exactly as the
+/// production `FirebaseOperatorWebAuthSource` does.
+class _LiveWageAuthorityWiredOperatorWebSource extends OperatorWebAuthSource
+    implements OperatorWebWageAuthorityGatewayProvider {
+  _LiveWageAuthorityWiredOperatorWebSource(this.wageAuthorityGateway) {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final OperatorWebWageAuthorityGateway wageAuthorityGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// Fully-wired live source for the Schedule route — mixes
+/// `OperatorWebScheduleGatewayProvider`, exactly as the production
+/// `FirebaseOperatorWebAuthSource` does.
+class _LiveScheduleWiredOperatorWebSource extends OperatorWebAuthSource
+    implements OperatorWebScheduleGatewayProvider {
+  _LiveScheduleWiredOperatorWebSource(this.scheduleGateway) {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final OperatorWebScheduleGateway? scheduleGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// Minimal stub for the data-accuracy gateway: unconfigured location
+/// (null settings, empty keyed rows). The screen renders honest
+/// "not configured yet" state — enough for the router to mount the
+/// real `operator_web_data_accuracy_screen`.
+class _StubDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
+  @override
+  Future<DataAccuracySettings?> loadSettings({
+    required String operatorId,
+    required String locationId,
+  }) async => null;
+
+  @override
+  Future<DataAccuracySettings> saveSettings(
+    DataAccuracySettings settings,
+  ) async => settings;
+
+  @override
+  Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  }) async => const <DataAccuracyServicePeriodSetting>[];
+
+  @override
+  Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required ServicePeriodCoversSource coversSource,
+    required ServicePeriodWageSource wageSource,
+    required String effectiveAtBusinessDateIso,
+  }) async => DataAccuracyServicePeriodSetting(
+    id: 'stub-period',
+    operatorId: operatorId,
+    locationId: locationId,
+    servicePeriodKey: servicePeriodKey,
+    coversSource: coversSource,
+    wageSource: wageSource,
+    effectiveAtBusinessDate: effectiveAtBusinessDateIso,
+    createdAt: DateTime.utc(2026, 5, 16),
+    updatedAt: DateTime.utc(2026, 5, 16),
+  );
+}
+
+/// Minimal stub for the vendor-applicability gateway — empty rows.
+class _StubVendorApplicabilityGateway
+    implements WebVendorApplicabilityGateway {
+  @override
+  Future<List<WebVendorApplicabilityRow>> list({
+    required String settingKind,
+    String? settingKey,
+  }) async => const <WebVendorApplicabilityRow>[];
 }
