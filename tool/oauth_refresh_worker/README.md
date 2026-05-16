@@ -96,17 +96,10 @@ For each near-expiry row claimed via `FOR UPDATE SKIP LOCKED`:
 
 1. The worker looks up the vendor's refresh closure in the registry
    the bootstrap composed at boot. Vendors WITHOUT a closure
-   (`sevenrooms`, `tock`, `push_operations`, `agendrix`, `humanity`
-   per `kVendorsWithoutRefreshClosureReason`) are SKIPPED with a
-   single structured trace log line carrying the documented
-   delegation reason (no failure-count increment):
-   * `sevenrooms` — `sevenrooms_client_secret_not_persisted`
-     (architectural gap: the bridge's `persistIssuedBearerToken` only
-     writes `client_id` to metadata; the `client_secret` is dropped
-     after connect-time, so the broker cannot call `POST /2_2/auth`
-     to mint a fresh bearer. Re-wiring requires a bridge change +
-     connect-flow update — see follow-up spec in
-     `docs/integrations/sevenrooms/oauth_shape.md`).
+   (`tock`, `push_operations`, `agendrix`, `humanity` per
+   `kVendorsWithoutRefreshClosureReason`) are SKIPPED with a single
+   structured trace log line carrying the documented delegation
+   reason (no failure-count increment):
    * `humanity` — `humanity_keypaste_password_grant_no_broker_refresh`
      (adapter declares `keyPaste`; v1 connect-time bearer is
      refreshed by reconnect, not by the broker).
@@ -116,14 +109,24 @@ For each near-expiry row claimed via `FOR UPDATE SKIP LOCKED`:
      but the closure factory is not yet wired in
      `lib/integrations/_common/production_oauth_refresh_closures.dart`.
 
-   **2026-05-09 wiring**: ADP and OpenTable were on this no-closure
-   list under PR #455 with reasons `adp_partner_ops_mtls_out_of_band`
-   and `opentable_transport_internal_refresh`. Re-investigation found
-   both expose a programmatic OAuth `grant_type=refresh_token` surface
-   using per-tenant `client_id` / `client_secret` from `metadata`;
-   both now wire via `makeAdpOauthRefreshClosure` and
-   `makeOpenTableOauthRefreshClosure` (registry has 12 wired closures,
-   up from 10).
+   **2026-05-09 wiring history**: ADP and OpenTable were on this
+   no-closure list under PR #455 with reasons
+   `adp_partner_ops_mtls_out_of_band` and
+   `opentable_transport_internal_refresh`. Re-investigation (PR #465)
+   found both expose a programmatic OAuth `grant_type=refresh_token`
+   surface using per-tenant `client_id` / `client_secret` from
+   `metadata`; both wired via `makeAdpOauthRefreshClosure` /
+   `makeOpenTableOauthRefreshClosure`. SevenRooms was also on the
+   no-closure list under `sevenrooms_client_secret_not_persisted`
+   (the bridge dropped `client_secret` after connect-time). The
+   2026-05-09 P1 closeout updated
+   `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken` to
+   write `client_secret` + `venue_id` on metadata alongside
+   `client_id`, and added `makeSevenRoomsOauthRefreshClosure` (POSTs
+   `client_credentials` to `/2_2/auth`). Registry now has 13 wired
+   closures (up from 10 pre-PR-465, 12 post-PR-465). Legacy SevenRooms
+   rows that connected before the persistence change surface a
+   reconnect prompt via the standard `missing_credential` path.
 2. The closure is invoked through
    `VendorCredentialBroker.refreshAccessToken(...)`. The broker:
    * acquires a per-`(operator, location, vendor)` Future lock so

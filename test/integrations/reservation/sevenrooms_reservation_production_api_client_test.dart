@@ -70,6 +70,13 @@ void main() {
       expect(result.venueId, _venueId);
       expect(store.persistedTokens.single.accessToken, 'bearer-token-xyz');
       expect(store.persistedTokens.single.lifetime, const Duration(seconds: 3600));
+      // 2026-05-09 P1 closeout: clientSecret must be threaded through
+      // to the credential store so the cross-tenant refresh worker can
+      // call POST /2_2/auth without prompting the operator to reconnect.
+      // See `makeSevenRoomsOauthRefreshClosure`.
+      expect(store.persistedTokens.single.clientId, 'partner-client-abc');
+      expect(store.persistedTokens.single.clientSecret, 'partner-secret-xyz');
+      expect(store.persistedTokens.single.venueId, _venueId);
     });
 
     test('401 → SevenRoomsAuthException', () async {
@@ -504,11 +511,13 @@ void main() {
 class _PersistedToken {
   const _PersistedToken({
     required this.clientId,
+    required this.clientSecret,
     required this.venueId,
     required this.accessToken,
     required this.lifetime,
   });
   final String clientId;
+  final String clientSecret;
   final String venueId;
   final String accessToken;
   final Duration? lifetime;
@@ -535,12 +544,14 @@ class _RecordingCredentialStore implements SevenRoomsCredentialStore {
   @override
   Future<String> persistIssuedBearerToken({
     required String clientId,
+    required String clientSecret,
     required String venueId,
     required String accessToken,
     required Duration? lifetime,
   }) async {
     persistedTokens.add(_PersistedToken(
       clientId: clientId,
+      clientSecret: clientSecret,
       venueId: venueId,
       accessToken: accessToken,
       lifetime: lifetime,

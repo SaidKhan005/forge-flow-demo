@@ -917,3 +917,59 @@ existing test with Phase 3B contracts), `provider_credentials_repository.dart`
 
 Full findings: `docs/archive/_execution/2026-05-08_pressure_preview_findings.md`.
 
+### Closeout status (2026-05-09 end-of-day)
+
+P0 — webhook signature ordering + leak: **closed** (PR #456 — signing-
+secret cache + 9 leak sites sanitized).
+
+P1 — Square + LSK silent timestamp coercion: **closed** (PR #464 —
+strict-Z parser refuses missing-offset inputs).
+
+P1 — Humanity time-off-as-shift: **closed** (PR #464 —
+`HumanityShiftDto.tryFromMap` returns null on `type=time_off`).
+
+P1 — ADP / OpenTable refresh closures: **closed** (PR #465 — both
+wired via `grant_type=refresh_token` against the per-tenant
+`client_id` / `client_secret` already on metadata).
+
+P1 — Humanity inverse closure mismatch: **closed** (PR #455 — closure
+removed; adapter `keyPaste` declaration agrees with the worker's no-
+closure registry entry).
+
+P1 — SevenRooms refresh wiring: **closed by THIS PR** — bridge now
+persists `client_secret` + `venue_id` on metadata,
+`makeSevenRoomsOauthRefreshClosure` wires the `client_credentials`
+grant to `POST /2_2/auth`; registry moves from 12-wired/5-unsupported
+to 13-wired/4-unsupported. Legacy rows (pre-2026-05-09 persistence)
+surface a reconnect prompt via the standard `missing_credential`
+path. Detail in `docs/integrations/sevenrooms/oauth_shape.md`
+"Refresh handling" section.
+
+P1 — preview-env Postgres pool exhaustion: **closed** by commit
+`7c85e5a4` (PF4 A4.2 hardening — `POSTGRES_POOL_MAX_CONNECTIONS=20`,
+documented in `runbooks/cloud_run_env_vars.md`).
+
+P2 — auth-mode doc mismatches (Oracle Simphony, ADP, OpenTable,
+SevenRooms, Agendrix): **closed** (PR #455 — `oauth_shape.md` sweep
+for all five vendors).
+
+P2 — preview-env vendor-capability registry gap (6 vendors return
+`unknownVendor`): **open** — needs Cloud Run config or bootstrap
+redeploy to reconcile preview's vendor registry with master.
+Operator-led.
+
+P2 — preview-env schema gaps (`relation "public.vendor_credentials"
+does not exist`, `column op.rollover_hour does not exist`): **open**
+— part of the "P0 — Production1 Migration Apply Gap" queue above;
+applying those migrations to preview also closes this finding.
+Operator-led.
+
+P3 — vendor partner-portal sourcing escalation list (~25 items):
+**open** by design — requires vendor partner-program access; tracked
+per-vendor in the partner-portal escalation rows of the archived
+findings doc.
+
+Engineering side of the sprint is closed. Remaining open items are
+all operator-led (preview Cloud Run config + pending migration apply
++ partner-portal escalations).
+

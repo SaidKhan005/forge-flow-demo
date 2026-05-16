@@ -30,36 +30,33 @@
 // either use static API keys or have a structural gap that prevents
 // broker-driven refresh):
 //
-//   * SevenRooms        — `client_credentials` re-exchange would require
-//                          `client_id + client_secret + venue_id`, but
-//                          the bridge persists only `client_id`; the
-//                          `client_secret` is dropped after the connect-
-//                          time `authenticate(...)` call. Wiring requires
-//                          an architectural change (persist
-//                          `client_secret` ciphertext on the credential
-//                          row + connect-flow update). See the no-closure
-//                          reason `sevenrooms_client_secret_not_persisted`
-//                          and the 2026-05-09 re-investigation note in
-//                          `docs/integrations/sevenrooms/oauth_shape.md`.
 //   * Tock              — static API key on `metadata.api_key`.
 //   * Push Operations   — partner-issued bearer; no refresh path.
 //   * Agendrix          — OAuth sliding-refresh per adapter declaration;
 //                          closure factory not yet wired (re-investigated
-//                          2026-05-09 — out of scope for this PR).
+//                          2026-05-09 — out of scope for the PR-465 wave).
+//   * Humanity          — keyPaste `password` grant at connect time; no
+//                          broker refresh.
 //
-// 2026-05-09 RE-INVESTIGATION (this file's `makeAdpOauthRefreshClosure`
-// + `makeOpenTableOauthRefreshClosure`): PR #455 chose option 2b for ADP
-// / OpenTable / SevenRooms (deliberate "no closure" entries with
-// structured reasons). On re-verification ADP and OpenTable both expose
-// a programmatic OAuth `grant_type=refresh_token` surface using
-// per-tenant `client_id` / `client_secret` from `metadata` — these are
-// genuinely wireable using the same direct-HTTP closure pattern as
-// Toast / Square / Clover / etc. SevenRooms remains unwired because the
-// re-exchange shape (`client_credentials` with `client_id +
-// client_secret + venue_id`) requires `client_secret` to be persisted on
-// the credential row, which the existing
-// `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken` path drops
-// after the connect-time `authenticate(...)` call.
+// 2026-05-09 WIRING HISTORY: PR #455 placed ADP, OpenTable, and
+// SevenRooms on the no-closure list with structured reasons
+// (`adp_partner_ops_mtls_out_of_band`,
+// `opentable_transport_internal_refresh`,
+// `sevenrooms_transport_cron_hour05`). PR #465 re-investigated and
+// wired ADP + OpenTable (both expose a programmatic OAuth
+// `grant_type=refresh_token` surface using per-tenant `client_id` /
+// `client_secret` from `metadata`); SevenRooms stayed unwired under
+// `sevenrooms_client_secret_not_persisted` because the bridge dropped
+// `client_secret` after `authenticate(...)`. The 2026-05-09 P1
+// closeout (this commit) updated
+// `SevenRoomsBrokerCredentialStore.persistIssuedBearerToken` to
+// persist `client_secret` + `venue_id` on metadata alongside
+// `client_id`, and added `makeSevenRoomsOauthRefreshClosure`
+// (`client_credentials` against `/2_2/auth`). Legacy SevenRooms rows
+// connected before the persistence change surface
+// `missing_credential` via the standard `_requireMetadataString`
+// helper, which the broker reports as a reconnect prompt to the
+// operator.
 //
 // ADP-specific notes:
 //   * The transport's `_tokenRequest` adds an `x-adp-module` header
@@ -1198,6 +1195,94 @@ Future<TokenRefreshResult> Function(VendorCredentialBundle)
       accessToken: accessToken,
       refreshToken:
           newRefresh is String && newRefresh.isNotEmpty ? newRefresh : null,
+      expiresAt: expiresAt,
+    );
+  };
+}
+
+// ─── SevenRooms — POST /2_2/auth (client_credentials) ────────────────
+
+const String kSevenRoomsVendorIdForRefresh = 'sevenrooms';
+final Uri kSevenRoomsDefaultAuthBaseUriForRefresh =
+    Uri.parse('https://api.sevenrooms.com');
+const String kSevenRoomsAuthPathForRefresh = '/2_2/auth';
+const String _kSevenRoomsMetadataClientIdKey = 'client_id';
+const String _kSevenRoomsMetadataClientSecretKey = 'client_secret';
+const String _kSevenRoomsMetadataVenueIdKey = 'venue_id';
+
+/// Production refresh closure for [SevenRoomsBrokerCredentialStore]
+/// (PR #465 + 2026-05-09 closeout).
+///
+/// SevenRooms uses the `client_credentials` grant rather than a
+/// `refresh_token` grant — re-exchange requires the full
+/// `(client_id, client_secret, venue_id)` triple persisted on
+/// `metadata` (see `sevenrooms_credential_bridge.dart`). The closure
+/// POSTs the same `application/json` body the transport's
+/// `authenticate()` does and returns the freshly-minted bearer.
+///
+/// Legacy rows (connected before the 2026-05-09 persistence change)
+/// have `client_id` on metadata but no `client_secret` /
+/// `venue_id`. `_requireMetadataString` throws
+/// `missing_credential: ... operator must reconnect`, which the
+/// broker's failure-handling path surfaces to the operator as a
+/// reconnect prompt — same UX as every other missing-credential
+/// case. No new path is wired for legacy-row handling because the
+/// existing missing-credential path already does the right thing.
+Future<TokenRefreshResult> Function(VendorCredentialBundle)
+    makeSevenRoomsOauthRefreshClosure({
+  required http.Client httpClient,
+  Uri? authBaseUri,
+  DateTime Function()? clock,
+}) {
+  final base = authBaseUri ?? kSevenRoomsDefaultAuthBaseUriForRefresh;
+  return (VendorCredentialBundle current) async {
+    final clientId = _requireMetadataString(
+      current,
+      current.clientId,
+      _kSevenRoomsMetadataClientIdKey,
+      kSevenRoomsVendorIdForRefresh,
+    );
+    final clientSecret = _requireMetadataString(
+      current,
+      current.clientSecret,
+      _kSevenRoomsMetadataClientSecretKey,
+      kSevenRoomsVendorIdForRefresh,
+    );
+    final venueId = _requireMetadataString(
+      current,
+      null,
+      _kSevenRoomsMetadataVenueIdKey,
+      kSevenRoomsVendorIdForRefresh,
+    );
+    final response = await _postJson(
+      httpClient: httpClient,
+      uri: base.resolve(kSevenRoomsAuthPathForRefresh),
+      body: <String, Object?>{
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'venue_id': venueId,
+        'grant_type': 'client_credentials',
+      },
+      vendorId: kSevenRoomsVendorIdForRefresh,
+    );
+    _ensureSuccess(response, kSevenRoomsVendorIdForRefresh);
+    final json = _parseJsonObject(response, kSevenRoomsVendorIdForRefresh);
+    final accessToken = _readNonEmptyString(
+      json,
+      'access_token',
+      kSevenRoomsVendorIdForRefresh,
+      statusCode: response.statusCode,
+      body: response.body,
+    );
+    // SevenRooms returns `expires_in` (seconds). The transport's
+    // `_readLifetime` accepts num or numeric String; mirror that.
+    final expiresAt = _readExpiresInToInstant(json, clock: clock);
+    return TokenRefreshResult(
+      accessToken: accessToken,
+      // client_credentials does not rotate a refresh_token; leave null
+      // so the broker does NOT re-encrypt / overwrite the row's
+      // refresh_token_ciphertext column (which is null for SevenRooms
+      // anyway since the grant has no refresh token).
       expiresAt: expiresAt,
     );
   };
