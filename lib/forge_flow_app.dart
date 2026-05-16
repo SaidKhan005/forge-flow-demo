@@ -714,7 +714,32 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// Compute the live (operator, location) scope and push it into the
   /// demo notifier. Called on auth changes, on restaurant-scope
   /// changes, and from `_bindDemoModeNotifier`.
+  ///
+  /// The notifier mutation (`setScope` / `clear`, which both call
+  /// `notifyListeners()` synchronously) is deferred to a post-frame
+  /// callback. `_bindDemoModeNotifier` runs from `didChangeDependencies`
+  /// — i.e. inside the build phase — so a synchronous `notifyListeners()`
+  /// here would `markNeedsBuild` on provider dependents mid-build and
+  /// throw "setState() or markNeedsBuild() called during build", which
+  /// also flashed scope-dependent screens (Shift) to their empty state
+  /// because `setScope` clears `records` before its `await refresh()`.
+  /// Deferral is uniform — the auth/scope listener path is post-frame
+  /// too — so call ordering is preserved and the `_demoModeBoundScopeKey`
+  /// dedupe in [_applyDemoModeScope] still keeps a same-scope rebind
+  /// from double-firing or thrashing. Scope resolution, the
+  /// empty-string→clear contract, and the refresh are unchanged.
   void _syncDemoModeScope() {
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _applyDemoModeScope();
+    });
+  }
+
+  /// Resolve the live (operator, location) scope and push it into the
+  /// demo notifier. Always invoked post-frame via [_syncDemoModeScope]
+  /// so it never mutates the notifier during build.
+  void _applyDemoModeScope() {
     if (!mounted) return;
     final notifier = _resolveDemoModeNotifier();
     if (notifier == null) return;
