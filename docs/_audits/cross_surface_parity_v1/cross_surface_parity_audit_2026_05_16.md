@@ -17,7 +17,29 @@ This doc is the canonical register. IDs are stable; reference them as G1, D1, U1
 
 ---
 
-## 1. Fix-first ranking (priority order)
+## 0. Post-merge status ledger — updated 2026-05-16 (AUTHORITATIVE; supersedes per-row Lifecycle cells below)
+
+**Merged & live on master:**
+- **G1, G2** → PR #831 (squash `e9e686f4`). FIXED — admin sign-in/out written to `auth_sessions`; Active Sessions list + per-row revoke + sign-out-everywhere. Independent audit: `pr_831_admin_session_ledger.md` (APPROVE-FOR-MERGE).
+- **G5** → PR #831 + deploy follow-up `19eed29d` (`Dockerfile.admin_console` ARG + `--dart-define`; `deploy_admin_console.ps1` sets `ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH` only for `-SharePreview`/`-DemoMode`). FIXED — real release-mode fail-closed guard.
+- **G66** → PR #838. FIXED — `InvitedUserActivationLedgerWriter` wired in `proxy_bootstrap.dart`; live invitees (mobile + operator-web) now flip `invited→active`. Operator-signed-off Q3 policy: data-integrity `StateError` → warning log + login succeeds; genuine infra exception → fail closed. Audit: `pr_838_g66_invite_activation.md`.
+- **G4** → PR #840. FIXED — admin self-service MFA enroll/confirm/recover + password change against existing `/v1/auth/mfa/*` + `/v1/auth/password/*` (Step-1 verdict A: no new backend routes). Audit: `pr_840_admin_self_mfa.md`.
+
+**Open / reworked:**
+- **G24 / G3** — OPEN (reduced scope). PR #832 is **do-not-merge** (built on a magic-link/custom-token model production cannot honor; `pr_832_operator_web_onboarding.md` SUPERSEDED). Operator decisions 2026-05-16: adopt the existing **Firebase reset-email** invite model, **delete the magic-link** route/gateway/client path, **ToS DROPPED** ("overkill for now" — defers `operator_self_served_tos_contract.md` / Phase 9.8). Remaining work = **S3′** (magic-link removal + #832 client reworked onto reset-email, ToS step removed; keep #832's MFA wiring). The S1 root cause (G66) is already FIXED via #838. S3′ PARKED pending operator resume. Detail: `onboarding_server_slice_spec.md`.
+
+**Reclassified by operator decision (2026-05-16):**
+- **G10 / G40 (data-accuracy covers/wage SOURCE scoping)** → operator ruled this is **INTENDED, not a gap** → that aspect is **BY-DESIGN** (no work). The residual HP#11 *timing* faking (**G41, G42, G13**) remains TRUE-GAP but **PARKED** (Fix #4 build deferred; spec `fix4_hp11_effective_value_spec.md`).
+- **G7** → spec **SUPERSEDED**: built on the stale v1 seed (6 roles). Real current model = the **v2 default role catalog, 10 roles** (`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql` — incl. `location_manager`, `team_admin`, `operator_general_manager`, etc.; `operator_admin` is NOT a role key). G7 needs **re-spec vs v2** before any G7 work. **G30** (bare permission-string → `PermissionKeys` constant aliasing) is still valid, behavior-preserving, and safe — PARKED. `g7_permission_convergence_spec.md` headline §0 is invalid; the §3 G30 slice still stands.
+- Already recorded below: G12 → BY-DESIGN-documented; G15 → REFUTED/FIXED (Slice 7b); G8 → downgraded to maintainability smell; G11 → enlarged (mobile Timing **and** Wage both non-compliant).
+
+**Audit trail:** this register + all PR audits + specs committed via **PR #845** (`claude/cross-surface-parity-audit-docs`), which also fixes the dead doc-pointer left in merged #838.
+
+**Parked (no work until operator resumes):** G24/G3 S3′ · G7 re-spec vs v2 · Fix #4 residual (G41/G42/G13) · Fix #6 (G62+G19). **G60 (Fix #3) — SKIPPED by operator** (remains OPEN, no work planned).
+
+---
+
+## 1. Fix-first ranking (priority order — original; see §0 for current status)
 
 1. **G24 / G3** — live operator-web onboarding is non-functional (launch-blocking).
 2. **G1 + G2** — admin sign-in not audited and admin sessions not revocable (security/audit).

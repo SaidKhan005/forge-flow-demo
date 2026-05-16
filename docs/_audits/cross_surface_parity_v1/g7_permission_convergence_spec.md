@@ -1,5 +1,7 @@
 # Spec — Permission Enforcement Convergence (G7 / G30 / G8 / G9 / G31 / G32)
 
+> **STATUS 2026-05-16 — §0 HEADLINE IS INVALID (see register §0).** This spec reasoned off the **stale v1 seed (6 roles)**. The real current model is the **v2 default role catalog, 10 roles** (`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql` — incl. `location_manager`, `team_admin`, `operator_general_manager`; `operator_admin` is NOT a role key). The "web-console roles are phantom fallbacks / catalog is authoritative-as-is" conclusion in §0 is **wrong**. **G7 must be RE-SPEC'd against the v2 catalog** before any G7 work. The **§3 G30** slice (bare permission-string → `PermissionKeys` constant aliasing) is **still valid, behavior-preserving, and safe** — it is unaffected by the v1/v2 role distinction (keys, not roles). Everything else here is PARKED pending re-spec.
+
 **Date:** 2026-05-16 · Read-only investigation · Auth-critical; §G7c is CONTRACT-TOUCHING (operator-gated).
 
 ## 0. Headline — the operator steer is partially REFUTED by proxy ground truth

@@ -1,5 +1,7 @@
 # Fix #4 Spec — Real HP#11 Effective-Value Resolution (G13 / G40 / G41 / G42)
 
+> **STATUS UPDATE 2026-05-16 (operator decision — see register §0):** **G10/G40 data-accuracy covers/wage SOURCE scoping is ruled INTENDED, not a gap — DROPPED from this spec.** Only the timing-faking residual (**G41, G42, G13**) remains in scope, and it is **PARKED** (build deferred until operator resumes). Treat the G40/data-accuracy portions below as out-of-scope; the G41/G42/G13 design still stands.
+
 **Date:** 2026-05-16 · **Status:** spec approved by operator (spec-first; build deferred until Fix #1 & #2 merge).
 **Closes:** audit findings G13, G40, G41, G42 (`cross_surface_parity_audit_2026_05_16.md`).
 **Cross-ref:** per-daypart plan Gaps 27/28/29/30/31/32/36/46/47; CLAUDE.md HP#11; `docs/contracts/core_app_architecture.md` settings layer.
