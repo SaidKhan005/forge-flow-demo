@@ -14,6 +14,42 @@
 ///                      recommendation
 library;
 
+/// Per-period verdict vocabulary.
+///
+/// Per-Daypart Targets V1 (S0): a later slice replaces the benchmark
+/// selection algorithm so each service period (lunch / dinner /
+/// late_night) gets its own quality verdict, and the Benchmark card /
+/// DAYPART BREAKDOWN renders a per-period badge. These constants are
+/// the single shared source of the verdict string vocabulary so the
+/// algorithm, persistence, and (later) widget all agree.
+///
+/// Semantics (informational — S0 does not branch on these):
+///   - `teachable`         — robust cohort, defensible per-period target
+///   - `building_early`    — cohort still accumulating early evidence
+///   - `building_flat`     — evidence present but range degenerate / flat
+///   - `building_few_strong` — only a few strong records so far
+///   - `running_hot`       — cohort skewed hot relative to expectation
+class BenchmarkVerdict {
+  const BenchmarkVerdict._();
+
+  static const String teachable = 'teachable';
+  static const String buildingEarly = 'building_early';
+  static const String buildingFlat = 'building_flat';
+  static const String buildingFewStrong = 'building_few_strong';
+  static const String runningHot = 'running_hot';
+
+  /// All recognized verdict strings. Persistence stays tolerant of
+  /// values outside this set (forward-compatibility); this list is for
+  /// validation/tests, not a write-side gate.
+  static const List<String> all = <String>[
+    teachable,
+    buildingEarly,
+    buildingFlat,
+    buildingFewStrong,
+    runningHot,
+  ];
+}
+
 /// Stats for a single daypart's recommended cohort.
 ///
 /// All CPLH/SPLH/PPA numbers come from the same selection pass:
@@ -52,6 +88,15 @@ class DaypartCohortStats {
   /// Human-readable one-line explanation of what drove the tier.
   final String cohortExplanation;
 
+  /// Per-Daypart Targets V1 (S0): per-period verdict for this daypart's
+  /// cohort. One of [BenchmarkVerdict.all], or `null` when the
+  /// (future) selection algorithm has not assigned one. Additive and
+  /// nullable — existing consumers/tests ignore it.
+  final String? verdict;
+
+  /// Human-readable reason backing [verdict]. `null` when unset.
+  final String? verdictReason;
+
   const DaypartCohortStats({
     required this.daypart,
     required this.eligibleCount,
@@ -69,6 +114,8 @@ class DaypartCohortStats {
     required this.recommendedTargetPPA,
     required this.cohortQuality,
     required this.cohortExplanation,
+    this.verdict,
+    this.verdictReason,
   });
 }
 
@@ -131,6 +178,13 @@ class RecommendedBenchmarkSelection {
   final String overallQuality;
   final String explanationMetadata;
 
+  /// Per-Daypart Targets V1 (S0): operation-level verdict rolled up
+  /// across periods by the (future) selection algorithm. One of
+  /// [BenchmarkVerdict.all], or `null` when unassigned. Additive and
+  /// nullable — does not replace [overallQuality]; existing consumers
+  /// keep reading [overallQuality] unchanged.
+  final String? operationVerdict;
+
   // ignore_for_file: deprecated_member_use_from_same_package
   const RecommendedBenchmarkSelection({
     required this.selectedRecordIds,
@@ -144,6 +198,7 @@ class RecommendedBenchmarkSelection {
     required this.pooledRecommendedTargetPPA,
     required this.overallQuality,
     required this.explanationMetadata,
+    this.operationVerdict,
   });
 
   bool get isInsufficient => overallQuality == 'insufficient';

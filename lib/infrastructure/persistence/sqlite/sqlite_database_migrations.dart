@@ -412,6 +412,29 @@ Future<void> _migrateToV36(Database db) async {
   }
 }
 
+/// Per-Daypart V1 S0 — per-period verdict + reason persistence.
+///
+/// Mirror of `db/migrations/202605161501_per_daypart_v1_s0_verdict_persistence.sql`.
+///
+/// Adds `verdict` and `verdict_reason` TEXT columns to the per-period
+/// `target_cycle_dayparts` child table (the only per-period child table
+/// with a dedicated SQLite table — `ActiveTargetProfileDaypart` is
+/// projected at runtime from this table by the service layer and has no
+/// own SQLite table). Both columns are additive + nullable with no
+/// default: rows that pre-date S0 (and rows the future selection
+/// algorithm leaves unscored) read back as `null`. Reads stay tolerant
+/// of NULL — never substitute `0`/empty (Design Rule 2).
+Future<void> _migrateToV37(Database db) async {
+  const verdictColumns = <String>['verdict', 'verdict_reason'];
+  for (final col in verdictColumns) {
+    if (!await _columnExists(db, 'target_cycle_dayparts', col)) {
+      await db.execute(
+        'ALTER TABLE target_cycle_dayparts ADD COLUMN $col TEXT',
+      );
+    }
+  }
+}
+
 /// Per-Daypart V1 Slice 1.5 — drop the `shift_close_authority` +
 /// `local_close_fallback` columns from `restaurant_timing_configs`.
 ///

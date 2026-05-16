@@ -33,6 +33,15 @@ class TargetCycleDaypart {
   final double opzCeilingCPLH;
   final int coverCount;
 
+  /// Per-Daypart Targets V1 (S0): per-period verdict persisted at cycle
+  /// lock time. One of `BenchmarkVerdict.all`, or `null` when the
+  /// (future) selection algorithm assigned none / on rows that pre-date
+  /// V1 S0. Additive + nullable; missing map key → null.
+  final String? verdict;
+
+  /// Human-readable reason backing [verdict]. `null` when unset.
+  final String? verdictReason;
+
   const TargetCycleDaypart({
     required this.servicePeriodId,
     required this.targetCPLH,
@@ -41,6 +50,8 @@ class TargetCycleDaypart {
     required this.opzFloorCPLH,
     required this.opzCeilingCPLH,
     required this.coverCount,
+    this.verdict,
+    this.verdictReason,
   });
 
   Map<String, dynamic> toMap() => {
@@ -51,6 +62,8 @@ class TargetCycleDaypart {
         'opz_floor_cplh': opzFloorCPLH,
         'opz_ceiling_cplh': opzCeilingCPLH,
         'cover_count': coverCount,
+        'verdict': verdict,
+        'verdict_reason': verdictReason,
       };
 
   factory TargetCycleDaypart.fromMap(Map<String, dynamic> m) =>
@@ -62,6 +75,31 @@ class TargetCycleDaypart {
         opzFloorCPLH: (m['opz_floor_cplh'] as num).toDouble(),
         opzCeilingCPLH: (m['opz_ceiling_cplh'] as num).toDouble(),
         coverCount: (m['cover_count'] as num).toInt(),
+        verdict: m['verdict'] as String?,
+        verdictReason: m['verdict_reason'] as String?,
+      );
+
+  TargetCycleDaypart copyWith({
+    String? servicePeriodId,
+    double? targetCPLH,
+    double? targetSPLH,
+    double? targetPPA,
+    double? opzFloorCPLH,
+    double? opzCeilingCPLH,
+    int? coverCount,
+    String? verdict,
+    String? verdictReason,
+  }) =>
+      TargetCycleDaypart(
+        servicePeriodId: servicePeriodId ?? this.servicePeriodId,
+        targetCPLH: targetCPLH ?? this.targetCPLH,
+        targetSPLH: targetSPLH ?? this.targetSPLH,
+        targetPPA: targetPPA ?? this.targetPPA,
+        opzFloorCPLH: opzFloorCPLH ?? this.opzFloorCPLH,
+        opzCeilingCPLH: opzCeilingCPLH ?? this.opzCeilingCPLH,
+        coverCount: coverCount ?? this.coverCount,
+        verdict: verdict ?? this.verdict,
+        verdictReason: verdictReason ?? this.verdictReason,
       );
 }
 

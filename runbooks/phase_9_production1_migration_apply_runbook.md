@@ -7,9 +7,10 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
-(a `COMMENT ON COLUMN` only — additive, no DDL/data change — landed by
-Per-Daypart V1 / Slice 7b option (b)). This
+`202605161501_per_daypart_v1_s0_verdict_persistence.sql`
+(two additive, nullable, no-default TEXT columns — `verdict`,
+`verdict_reason` — on `target_cycle_dayparts`; landed by
+Per-Daypart V1 / Slice S0). This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -108,6 +109,7 @@ Pending follow-up scope (49 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605150400_per_daypart_v1_drop_close_authority.sql`
 - `db/migrations/202605160000_per_daypart_v1_per_period_target_persistence.sql`
 - `db/migrations/202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
+- `db/migrations/202605161501_per_daypart_v1_s0_verdict_persistence.sql`
 
 Out of scope:
 
@@ -118,7 +120,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
+  `202605161501_per_daypart_v1_s0_verdict_persistence.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

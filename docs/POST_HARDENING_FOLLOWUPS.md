@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**55 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`;
+**56 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605161501_per_daypart_v1_s0_verdict_persistence.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -93,6 +93,7 @@ Production1 apply.
 | `202605150400_per_daypart_v1_drop_close_authority.sql` | Per-Daypart V1 Slice 1.5 deprecation step on `public.business_timing_profiles`: drops the `business_timing_profiles_local_close_required_check` cross-column CHECK and drops the NOT NULL constraint on `close_authority`. Operator decision 2026-05-15: close-authority is now auto-derived per shift from the per-vendor `CloseAuthorityCapability` lookup (`lib/services/integration/close_authority_capability.dart`) + `business_day_start_local_time` fallback. Full column drop deferred to a follow-up Postgres-only slice that also refactors `BusinessTimingProfilesRepository`'s `closeAuthority` / `localCloseFallbackTime` write surface. | code-ready |
 | `202605160000_per_daypart_v1_per_period_target_persistence.sql` | Per-Daypart V1 Slice 1 per-period data layer foundation. Adds `target_cycle_dayparts` (per-(cycle, service_period) locked CPLH/SPLH/PPA + OPZ + cover_count for cover-weighted whole-day pool rollup) and `weekly_plan_snapshot_day_dayparts` (per-(snapshot, business_date, service_period) demand-derived values + theoretical FOH/BOH dollars at lock time). Adds `weekly_plan_snapshots.wage_at_lock_time_json` (JSONB stamp — Design Rule 8: audit checks compare locked dollars against this column, not current wages). Adds 5 per-shift per-period target stamp columns on `shift_records` so closed truth retains its period band stamp per Promise 2. Both new tables are operator-scoped + RLS-policy-protected with the four sanctioned wrapper functions; B-tree indexes lead with `(operator_id, location_id)` per `hardening_rls_and_repository_pattern_contract.md`. | code-ready |
 | `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql` | Per-Daypart V1 Slice 7b option (b) deprecation note on `public.locations.business_day_rollover_hour`. `COMMENT ON COLUMN` only — no DDL or data change, fully backward compatible. Documents that vendor sinks now resolve the business-day cutoff via the canonical `business_timing_profiles.business_day_start_local_time` chain (operator → org_unit → location inheritance per HP #11, sub-hour aware). The SQL trigger `phase_8_set_business_date()` still reads the column as a defense-in-depth backup (sub-decision b1). The drop migration is deferred to a follow-up after a deprecation cycle. | code-ready |
+| `202605161501_per_daypart_v1_s0_verdict_persistence.sql` | Per-Daypart V1 Slice S0 per-period verdict persistence foundation. Adds two additive, nullable, no-default TEXT columns (`verdict`, `verdict_reason`) to the existing per-period child table `public.target_cycle_dayparts`. Back-compat: pre-S0 rows (and rows the future selection algorithm leaves unscored) read back NULL; Design Rule 2 — callers never substitute 0/empty. No algorithm, seeder, widget, or copy change. RLS posture unchanged (inherits the table's existing `(operator_id, location_id)` per-tenant-location policy). | code-ready |
 
 **Action:** apply all 55 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
