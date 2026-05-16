@@ -70,20 +70,28 @@ if ([string]::IsNullOrWhiteSpace($secretsFile)) {
   $secretsFile = $defaultSecretsFile
 }
 
-if (-not (Test-Path -LiteralPath $secretsFile)) {
-  Write-Warning "Forge Flow secrets file missing: $secretsFile"
-  Write-Host 'Create or restore the unified local secrets file, then retry.'
-  exit 1
-}
-
-. $secretsFile
-
 # Legacy back-compat: pre-Mode callers do `-App forgeflow -UseFirebaseAuth`
 # expecting it to hit the deployed proxy. Map that to staging when -Mode is
 # still on its default. Mirror of run_operator_web_dev.ps1's -LiveAuth trick.
+# Must run BEFORE the secrets-file gate so demo mode does not require a
+# secrets file (HP #2: writer-side switch, no proxy needed).
 $modeExplicit = $PSBoundParameters.ContainsKey('Mode')
 if (-not $modeExplicit -and $UseFirebaseAuth) {
   $Mode = 'staging'
+}
+
+# Source the secrets file when present. Required for preview / staging /
+# production (they need FORGE_FLOW_PROXY_BASE_URI and ANTHROPIC_API_KEY).
+# Optional for demo mode: HP #2 writer-side switch needs no proxy + no
+# provider keys to run a local walkthrough.
+if (Test-Path -LiteralPath $secretsFile) {
+  . $secretsFile
+} elseif ($Mode -eq 'demo') {
+  Write-Host "Note: secrets file missing at $secretsFile. -Mode demo does not require it; continuing."
+} else {
+  Write-Warning "Forge Flow secrets file missing: $secretsFile"
+  Write-Host 'Create or restore the unified local secrets file, then retry, or pass -Mode demo for a no-secrets walkthrough.'
+  exit 1
 }
 
 if ($App -eq 'barrio') {
@@ -166,13 +174,20 @@ if (-not [string]::IsNullOrWhiteSpace($Device)) {
 
 if (-not $NoProviderKeys) {
   if ([string]::IsNullOrWhiteSpace($env:ANTHROPIC_API_KEY)) {
-    Write-Warning 'ANTHROPIC_API_KEY is missing from the unified local secrets file.'
-    Write-Host "Expected it in: $secretsFile"
-    Write-Host 'Use -NoProviderKeys to run without the local Anthropic Settings check.'
-    exit 1
+    if ($Mode -eq 'demo') {
+      # Demo runs swap in MockReplayDataSourceProvider + mocked LLM providers
+      # via kDemoMode; the live ANTHROPIC_API_KEY is not exercised. Silently
+      # skip the dart-define so a no-secrets demo run is friction-free.
+      Write-Host 'Note: ANTHROPIC_API_KEY is empty. -Mode demo does not require it; continuing without the dart-define.'
+    } else {
+      Write-Warning 'ANTHROPIC_API_KEY is missing from the unified local secrets file.'
+      Write-Host "Expected it in: $secretsFile"
+      Write-Host 'Use -NoProviderKeys to run without the local Anthropic Settings check, or -Mode demo for a no-secrets walkthrough.'
+      exit 1
+    }
+  } else {
+    $argsList += "--dart-define=ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
   }
-
-  $argsList += "--dart-define=ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
 }
 
 if ($Mode -eq 'demo') {
