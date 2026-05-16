@@ -59,6 +59,7 @@
 import 'dart:math' as math;
 
 import '../models/baseline_candidate_shift.dart';
+import '../models/baseline_selection_analytics.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/benchmark_selection_summary.dart';
 import '../domain/models/recommended_benchmark_selection.dart';
@@ -662,6 +663,65 @@ class TargetCycleService {
     await _profileRepo.upsertActiveTargetProfile(profileWithDayparts);
   }
 
+  // ── Per-daypart-aware spread quality (Per-Daypart Targets V1) ─────────
+  //
+  // `RecommendedBenchmarkSelectionService` already decides spread quality
+  // per service period: a cross-daypart union that only looks wide
+  // because lunch/dinner/late-night run at structurally different CPLH is
+  // reported as `adequate` (teachable), never `weak`. A genuinely sloppy
+  // or thin per-period cohort is what drives `weak`.
+  //
+  // The legacy summary path discarded that verdict and re-derived a label
+  // by feeding the union floor/ceiling back through `computeAnalytics`,
+  // which re-applied the single-cohort >1.25 CPLH width test to the
+  // union. For any operation with normal daypart variation (the demo
+  // included) that produced a false "OPZ RANGE TOO WIDE" → the
+  // "RANGE TOO WIDE TO TEACH / your service periods are behaving
+  // differently" badge, even when every period's own cohort was tight.
+  //
+  // This maps the engine's already-correct `overallQuality` straight onto
+  // the persisted label vocabulary. Schema-stable bleed-stop; superseded
+  // when the V1 plan's Slice 6 makes the summary itself per-period.
+  static BaselineSelectionAnalytics _recommendationAnalytics(
+    RecommendedBenchmarkSelection recommendation,
+  ) {
+    final selectedCount = recommendation.selectedRecordIds.length;
+    switch (recommendation.overallQuality) {
+      case 'strong':
+      case 'adequate':
+        return BaselineSelectionAnalytics(
+          selectedShiftCount: selectedCount,
+          rangeQualityLabel: 'GOOD OPZ RANGE',
+          rangeQualityMessage:
+              'Team looks busy without getting stretched. Service should hold here.',
+        );
+      case 'insufficient':
+        // `sourceLabel` routing also marks this `..._insufficient`; the
+        // read layer short-circuits on that before the label switch. The
+        // warning-toned label keeps the Learn chip honest regardless.
+        return BaselineSelectionAnalytics(
+          selectedShiftCount: selectedCount,
+          rangeQualityLabel: 'OPZ RANGE TOO NARROW',
+          rangeQualityMessage:
+              'Not enough recent shifts yet to set a reliable benchmark range.',
+        );
+      case 'weak':
+      default:
+        // Genuine "not teachable yet" — a service period's own cohort is
+        // thin or sloppy (or fewer than 5 shifts selected overall).
+        // Period-agnostic honest copy; deliberately NOT the cross-period
+        // "too wide" framing, which the union recompute produced even
+        // when no period was actually wide.
+        return BaselineSelectionAnalytics(
+          selectedShiftCount: selectedCount,
+          rangeQualityLabel: 'OPZ RANGE TOO NARROW',
+          rangeQualityMessage:
+              'We do not have a clean operating range yet. '
+              'Let more shifts close before coaching to this.',
+        );
+    }
+  }
+
   // ── Benchmark selection summary persistence (7.55l.8c + 7.55p.5g) ─────
 
   /// Captures the benchmark-selection summary alongside the cycle.
@@ -675,34 +735,23 @@ class TargetCycleService {
     String sourceLabel, {
     RecommendedBenchmarkSelection? fromRecommendation,
   }) async {
-    int selectedCount;
-    List<double> cplhValues;
+    final BaselineSelectionAnalytics analytics;
     if (fromRecommendation != null) {
-      selectedCount = fromRecommendation.selectedRecordIds.length;
-      // Use the union band's floor/ceiling to compute the spread-quality
-      // label. This matches how the union band is actually surfaced by
-      // legacy consumers today. Per-period OPZ bands replace these
-      // pooled fields in V1 — this summary path still reads the union
-      // for spread-quality continuity until Slice 6's audit overhaul
-      // lands and the summary itself becomes per-period.
-      // ignore: deprecated_member_use_from_same_package
-      final unionFloor = fromRecommendation.unionOpzFloorCPLH;
-      // ignore: deprecated_member_use_from_same_package
-      final unionCeiling = fromRecommendation.unionOpzCeilingCPLH;
-      cplhValues = fromRecommendation.selectedRecordIds.isEmpty
-          ? <double>[]
-          : <double>[unionFloor, unionCeiling];
+      // Per-Daypart Targets V1 bleed-stop: the recommendation engine has
+      // already decided spread quality per service period. Honor that
+      // verdict instead of recomputing a label from the cross-daypart
+      // union floor/ceiling (which falsely reads "TOO WIDE" for any
+      // operation with normal lunch/dinner/late-night variation). See
+      // `_recommendationAnalytics`.
+      analytics = _recommendationAnalytics(fromRecommendation);
     } else {
       final selected =
           BaselineData.records.where((r) => r.isSelected).toList();
-      selectedCount = selected.length;
-      cplhValues = selected.map((r) => r.cplh).toList();
+      analytics = BaselineSelectionAnalyticsService.computeAnalytics(
+        selected.length,
+        selected.map((r) => r.cplh).toList(),
+      );
     }
-
-    final analytics = BaselineSelectionAnalyticsService.computeAnalytics(
-      selectedCount,
-      cplhValues,
-    );
     final summary = BenchmarkSelectionSummary(
       summaryId: '${cycle.cycleId}_summary',
       restaurantId: cycle.restaurantId,
@@ -727,7 +776,7 @@ class TargetCycleService {
           sourceType: sourceLabel,
           overallQuality: fromRecommendation.overallQuality,
           unionBandWidth: fromRecommendation.unionBandWidth,
-          selectedShiftCount: selectedCount,
+          selectedShiftCount: analytics.selectedShiftCount,
           rangeFloorCPLH: cycle.opzFloorCPLH,
           rangeCeilingCPLH: cycle.opzCeilingCPLH,
           targetCPLH: cycle.targetCPLH,
@@ -764,8 +813,7 @@ class TargetCycleService {
     //     present, recommendation pipeline otherwise.
     //   - recommended cycles always use the recommendation pipeline.
     String sourceLabel;
-    int selectedCount;
-    List<double> cplhValues;
+    final BaselineSelectionAnalytics analytics;
 
     final useOverrideEvidence =
         cycle.source == TargetCycleSource.managerOverride ||
@@ -781,13 +829,17 @@ class TargetCycleService {
         cycle.restaurantId,
         cycle.calibrationWindowEnd,
       );
-      selectedCount = selected.length;
-      cplhValues = selected.map((c) => c.cplh).toList();
+      // Manager-override is a single pooled cohort — the >1.25 CPLH
+      // single-cohort width test is valid here.
+      analytics = BaselineSelectionAnalyticsService.computeAnalytics(
+        selected.length,
+        selected.map((c) => c.cplh).toList(),
+      );
     } else {
       // Recommended + admin-replacement-without-override both derive from
       // the recommendation pipeline. Re-run it against the cycle's
-      // calibration-window end so the repaired selected_shift_count
-      // reflects the evidence the cycle was built against.
+      // calibration-window end so the repaired summary reflects the
+      // evidence the cycle was built against.
       final recommendation = await BaselineManagerService.instance
           .resolveRecommendedSelection(
               cycle.restaurantId, cycle.calibrationWindowEnd);
@@ -800,20 +852,10 @@ class TargetCycleService {
             : 'cycle_recommended';
       }
 
-      selectedCount = recommendation.selectedRecordIds.length;
-      // ignore: deprecated_member_use_from_same_package
-      final unionFloor = recommendation.unionOpzFloorCPLH;
-      // ignore: deprecated_member_use_from_same_package
-      final unionCeiling = recommendation.unionOpzCeilingCPLH;
-      cplhValues = recommendation.selectedRecordIds.isEmpty
-          ? <double>[]
-          : <double>[unionFloor, unionCeiling];
+      // Per-Daypart Targets V1 bleed-stop: honor the engine's per-period
+      // verdict instead of recomputing from the cross-daypart union.
+      analytics = _recommendationAnalytics(recommendation);
     }
-
-    final analytics = BaselineSelectionAnalyticsService.computeAnalytics(
-      selectedCount,
-      cplhValues,
-    );
     final summary = BenchmarkSelectionSummary(
       summaryId: '${cycle.cycleId}_summary',
       restaurantId: cycle.restaurantId,
