@@ -72,6 +72,22 @@ class DaypartTargetContext {
   final double? opzFloorCPLH;
   final double? opzCeilingCPLH;
 
+  /// Per-Daypart V1 (daypart LABOR % 1:1 parity fix) — the period's
+  /// theoretical labor % the daypart LABOR card renders as its
+  /// `Theoretical X.X%` sub-line + delta pill, mirroring the whole-day
+  /// `_LaborVarianceSection`. Sourced from
+  /// `ActiveTargetProfile.daypartTheoreticalLaborPctFor(periodId)`, the
+  /// same live-profile origin the whole-day card uses for
+  /// `profile.theoreticalLaborPct` (the whole-day labor card's
+  /// theoretical reference is NOT closed-stamped — it always reads the
+  /// live profile — so the per-period mirror reads it the same way; the
+  /// Promise-2 closed-stamp freeze applies to the locked *rate* target
+  /// sub-lines, not this derived reference). `null` when the cycle wrote
+  /// no per-period row (Gap 42 fallback) → the card hides the sub-line
+  /// and pill rather than drawing a `0.0%` phantom (Design Rule 2 /
+  /// Metric Honesty Doctrine).
+  final double? theoreticalLaborPct;
+
   const DaypartTargetContext({
     required this.source,
     this.targetCPLH,
@@ -79,6 +95,7 @@ class DaypartTargetContext {
     this.targetPPA,
     this.opzFloorCPLH,
     this.opzCeilingCPLH,
+    this.theoreticalLaborPct,
   });
 
   /// Honest empty context — no per-period target available for the
@@ -360,16 +377,32 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
 
     final result = <String, DaypartTargetContext>{};
     for (final def in _definitions) {
+      // The daypart LABOR card's `Theoretical X.X%` reference mirrors
+      // the whole-day labor card, which reads `profile.theoreticalLaborPct`
+      // off the *live* profile regardless of closed state (it is not a
+      // closed-stamped value). The per-period mirror reads the live
+      // profile's per-period theoretical the same way. `null` when the
+      // cycle wrote no per-period row → honest empty (Design Rule 2);
+      // the Promise-2 closed-stamp freeze still governs the locked rate
+      // target sub-lines below, which keep reading the closed stamp.
+      final theo = profile?.daypartTheoreticalLaborPctFor(def.id);
+
       final closed = closedByPeriod[def.id];
       if (closed != null) {
-        // Promise 2: closed period reads its own stamp only. All-null
-        // stamps stay `none` — never re-grade with the live profile.
+        // Promise 2: closed period reads its own stamp only for the
+        // locked *rate* targets. All-null stamps stay `none` — never
+        // re-grade those with the live profile. The theoretical labor %
+        // reference is the lone exception (it parallels the whole-day
+        // card's live-profile theoretical, not a stamp).
         if (closed.daypartTargetCPLH == null &&
             closed.daypartTargetSPLH == null &&
             closed.daypartTargetPPA == null &&
             closed.daypartOpzFloorCPLH == null &&
             closed.daypartOpzCeilingCPLH == null) {
-          result[def.id] = DaypartTargetContext.none;
+          result[def.id] = DaypartTargetContext(
+            source: 'none',
+            theoreticalLaborPct: theo,
+          );
         } else {
           result[def.id] = DaypartTargetContext(
             source: 'closed_stamp',
@@ -378,6 +411,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
             targetPPA: closed.daypartTargetPPA,
             opzFloorCPLH: closed.daypartOpzFloorCPLH,
             opzCeilingCPLH: closed.daypartOpzCeilingCPLH,
+            theoreticalLaborPct: theo,
           );
         }
         continue;
@@ -387,7 +421,9 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       // per-period row.
       final row = profile?.daypartFor(def.id);
       if (row == null) {
-        result[def.id] = DaypartTargetContext.none;
+        result[def.id] = theo == null
+            ? DaypartTargetContext.none
+            : DaypartTargetContext(source: 'none', theoreticalLaborPct: theo);
       } else {
         result[def.id] = DaypartTargetContext(
           source: 'open_profile',
@@ -396,6 +432,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
           targetPPA: row.daypartTargetPPA,
           opzFloorCPLH: row.daypartOpzFloorCPLH,
           opzCeilingCPLH: row.daypartOpzCeilingCPLH,
+          theoreticalLaborPct: theo,
         );
       }
     }
