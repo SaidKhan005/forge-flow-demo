@@ -28,6 +28,7 @@ import '../domain/models/active_target_profile.dart';
 import '../domain/models/open_shift_snapshot.dart';
 import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/service_period_definition.dart';
+import '../domain/models/weekly_plan_snapshot.dart';
 import '../models/shift_record.dart';
 import '../domain/services/business_date_resolver.dart';
 import '../domain/services/daypart_bucketer.dart';
@@ -35,6 +36,7 @@ import '../domain/services/service_period_definition_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import '../services/restaurant_timing_config_read_service.dart';
 import '../services/shift_service_period_read_service.dart';
 import '../services/wage_standard_context_service.dart';
@@ -88,6 +90,29 @@ class DaypartTargetContext {
   /// Metric Honesty Doctrine).
   final double? theoreticalLaborPct;
 
+  /// Per-Daypart V1 (Shift daypart target/benchmark 1:1 parity) — the
+  /// plan-side locked per-period reference values, read straight from
+  /// the in-force [WeeklyPlanSnapshot]'s `WeeklyPlanSnapshotDayDaypart`
+  /// child row for `(businessDate, servicePeriodId)`. These mirror the
+  /// whole-day lens's plan-side footers:
+  ///   * [forecastSales] → the `SALES` tile's "Forecast $X" footer
+  ///     (whole-day uses `rm.forecastSales`, a plan-side number; the
+  ///     per-period analogue is the locked per-daypart `forecast_sales`,
+  ///     not actuals × a rate).
+  ///   * [requiredFohHours] / [requiredBohHours] → the FOH/BOH HRS
+  ///     tiles' "Target N hrs" footer (whole-day uses
+  ///     `rm.planFohHours`/`planBohHours`).
+  ///
+  /// `null` when the in-force snapshot has no per-period row for this
+  /// period (legacy snapshot or Gap 42 fallback) → the shared widgets
+  /// degrade to the same honest empty state whole-day uses when its own
+  /// plan number is absent (Design Rule 2 / Metric Honesty Doctrine).
+  /// These are read-only locked values surfaced for display — no metric
+  /// math is performed here.
+  final double? forecastSales;
+  final double? requiredFohHours;
+  final double? requiredBohHours;
+
   const DaypartTargetContext({
     required this.source,
     this.targetCPLH,
@@ -96,6 +121,9 @@ class DaypartTargetContext {
     this.opzFloorCPLH,
     this.opzCeilingCPLH,
     this.theoreticalLaborPct,
+    this.forecastSales,
+    this.requiredFohHours,
+    this.requiredBohHours,
   });
 
   /// Honest empty context — no per-period target available for the
@@ -375,6 +403,22 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       // path below rather than throwing the whole notifier load.
     }
 
+    // Plan-side per-period reference: the in-force locked
+    // WeeklyPlanSnapshot's per-(day, period) child row. This is the
+    // per-daypart analogue of the whole-day lens's plan-side footers
+    // (`rm.forecastSales`, `rm.planFohHours`/`planBohHours`). Read-only
+    // locked values — no math here. A read failure or a legacy/Gap-42
+    // snapshot with no child row degrades to null → the shared widgets
+    // hide the footer exactly as whole-day does when its plan number is
+    // absent (Design Rule 2 / Metric Honesty Doctrine).
+    WeeklyPlanSnapshot? snapshot;
+    try {
+      snapshot = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForBusinessDate(restaurantId, businessDate);
+    } catch (_) {
+      snapshot = null;
+    }
+
     final result = <String, DaypartTargetContext>{};
     for (final def in _definitions) {
       // The daypart LABOR card's `Theoretical X.X%` reference mirrors
@@ -386,6 +430,20 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       // the Promise-2 closed-stamp freeze still governs the locked rate
       // target sub-lines below, which keep reading the closed stamp.
       final theo = profile?.daypartTheoreticalLaborPctFor(def.id);
+
+      // Plan-side locked per-period reference for this period (forecast
+      // sales + required FOH/BOH hours). Independent of the rate-target
+      // axis above — it is sourced from the locked WeeklyPlanSnapshot,
+      // not the cycle/closed-stamp — so it is surfaced on every branch
+      // below (including the `none` rate-target branch). `null` when the
+      // snapshot has no child row → honest hidden footer.
+      final dd = snapshot?.dayDaypartFor(
+        businessDate: businessDate,
+        servicePeriodId: def.id,
+      );
+      final planForecastSales = dd?.forecastSales;
+      final planFohHours = dd?.requiredFohHours;
+      final planBohHours = dd?.requiredBohHours;
 
       final closed = closedByPeriod[def.id];
       if (closed != null) {
@@ -402,6 +460,9 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
           result[def.id] = DaypartTargetContext(
             source: 'none',
             theoreticalLaborPct: theo,
+            forecastSales: planForecastSales,
+            requiredFohHours: planFohHours,
+            requiredBohHours: planBohHours,
           );
         } else {
           result[def.id] = DaypartTargetContext(
@@ -412,6 +473,9 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
             opzFloorCPLH: closed.daypartOpzFloorCPLH,
             opzCeilingCPLH: closed.daypartOpzCeilingCPLH,
             theoreticalLaborPct: theo,
+            forecastSales: planForecastSales,
+            requiredFohHours: planFohHours,
+            requiredBohHours: planBohHours,
           );
         }
         continue;
@@ -421,9 +485,17 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       // per-period row.
       final row = profile?.daypartFor(def.id);
       if (row == null) {
-        result[def.id] = theo == null
-            ? DaypartTargetContext.none
-            : DaypartTargetContext(source: 'none', theoreticalLaborPct: theo);
+        // No rate-target row, but the plan-side locked references may
+        // still exist independently — surface them so the SALES /
+        // FOH·BOH HRS footers populate even on a Gap-42 rate fallback.
+        // All fields null → equivalent to [DaypartTargetContext.none].
+        result[def.id] = DaypartTargetContext(
+          source: 'none',
+          theoreticalLaborPct: theo,
+          forecastSales: planForecastSales,
+          requiredFohHours: planFohHours,
+          requiredBohHours: planBohHours,
+        );
       } else {
         result[def.id] = DaypartTargetContext(
           source: 'open_profile',
@@ -433,6 +505,9 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
           opzFloorCPLH: row.daypartOpzFloorCPLH,
           opzCeilingCPLH: row.daypartOpzCeilingCPLH,
           theoreticalLaborPct: theo,
+          forecastSales: planForecastSales,
+          requiredFohHours: planFohHours,
+          requiredBohHours: planBohHours,
         );
       }
     }
