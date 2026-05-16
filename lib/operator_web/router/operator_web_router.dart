@@ -1149,15 +1149,24 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         break;
       case kOperatorWebNavAuditLog:
         // AuditLogScreen reads three fixture-substituting gateways
-        // (audit-log, audit-log hierarchy, team hierarchy). A live
-        // source missing ANY of them is a wiring regression — fail
-        // loud rather than render a fixtures-backed audit trail.
+        // (audit-log, audit-log hierarchy, team hierarchy). Two of
+        // them — the team audit-log gateway and the team hierarchy
+        // gateway — are genuinely live-wired on the production source
+        // (`FirebaseOperatorWebAuthSource` mixes both), so a live
+        // source missing EITHER is a wiring regression — fail loud.
+        // The third, the audit-log HIERARCHY-FILTER gateway
+        // (`OperatorWebAuditLogHierarchyGatewayProvider`), is a
+        // sanctioned deferred follow-up: `_auditLogHierarchyGateway`
+        // (see ~:1386-1401) and `operator_web_team_gateway_providers
+        // .dart:52-54` document that demo / unmixed / live sources
+        // fall back to `InMemoryWebAuditLogHierarchyGateway` until the
+        // small live-wiring follow-up lands. It is therefore EXCLUDED
+        // from the fail-loud guard so live operators see the real
+        // Audit Log screen instead of a false-positive wiring error.
         body =
             _liveSurfaceMissingGateway(
               hasLiveProvider:
                   widget.source is OperatorWebTeamAuditLogGatewayProvider &&
-                  widget.source
-                      is OperatorWebAuditLogHierarchyGatewayProvider &&
                   widget.source is OperatorWebTeamHierarchyGatewayProvider,
               surfaceTitle: 'Audit log',
             ) ??

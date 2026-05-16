@@ -14,8 +14,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_handoff_redeem_gateway.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
 import 'package:forge_and_flow/operator_web/router/operator_web_router.dart';
+import 'package:forge_and_flow/operator_web/services/demo_team_audit_log_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
+import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/web_team_hierarchy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_users_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -884,6 +888,64 @@ void main() {
         );
       },
     );
+
+    // BLOCKER fix (PR #857 re-audit) — the Audit-Log fail-loud guard
+    // must NOT require `OperatorWebAuditLogHierarchyGatewayProvider`.
+    // That provider is a sanctioned deferred follow-up: the production
+    // `FirebaseOperatorWebAuthSource` mixes the team audit-log + team
+    // hierarchy gateways but intentionally does NOT yet mix the
+    // hierarchy-FILTER gateway provider (router :1386-1401 +
+    // `operator_web_team_gateway_providers.dart:52-54` document the
+    // in-memory fallback). A live source shaped like production must
+    // therefore render the real Audit Log screen — not a false
+    // positive wiring error and not the demo banner.
+    testWidgets(
+      'live source with team audit-log + team hierarchy mixins but NOT '
+      'the hierarchy-filter provider: real Audit Log screen renders, '
+      'NOT the wiring-error surface, NO demo banner',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveAuditLogWiredOperatorWebSource(
+          teamAuditLogGateway: DemoWebTeamAuditLogGateway(),
+          teamHierarchyGateway: DemoWebTeamHierarchyGateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpAndSettle();
+
+        // G19 — no demo banner for a live source.
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('operator_web_nav_item_audit_log')),
+        );
+        await tester.pumpAndSettle();
+
+        // The real Audit Log screen renders (hierarchy-filter gateway
+        // falls back to InMemoryWebAuditLogHierarchyGateway — sanctioned
+        // deferred follow-up, NOT a wiring regression).
+        expect(
+          find.byKey(const Key('operator_web_audit_log_screen')),
+          findsOneWidget,
+        );
+        // NOT the fail-loud wiring-error surface.
+        expect(
+          find.byKey(
+            const Key('operator_web_surface_wiring_error_audit_log'),
+          ),
+          findsNothing,
+        );
+        // Still no demo banner — this is a live source.
+        expect(
+          find.byKey(const Key('operator_web_demo_banner')),
+          findsNothing,
+        );
+      },
+    );
   });
 }
 
@@ -936,6 +998,52 @@ class _LiveWiredOperatorWebSource extends OperatorWebAuthSource
 
   @override
   final WebTeamUsersGateway teamUsersGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// BLOCKER-fix test double (PR #857) — a *live* auth source shaped
+/// like the production `FirebaseOperatorWebAuthSource`: it mixes the
+/// two genuinely-live-wired Audit-Log providers (team audit-log + team
+/// hierarchy) but intentionally does NOT mix
+/// `OperatorWebAuditLogHierarchyGatewayProvider` (the hierarchy-FILTER
+/// gateway is a sanctioned deferred follow-up that falls back to the
+/// in-memory gateway). The router must render the real Audit Log
+/// screen here — fail-loud must NOT trigger on the deferred provider.
+class _LiveAuditLogWiredOperatorWebSource extends OperatorWebAuthSource
+    implements
+        OperatorWebTeamAuditLogGatewayProvider,
+        OperatorWebTeamHierarchyGatewayProvider {
+  _LiveAuditLogWiredOperatorWebSource({
+    required this.teamAuditLogGateway,
+    required this.teamHierarchyGateway,
+  }) {
+    _controller.add(_state);
+  }
+
+  final _controller =
+      StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final WebTeamAuditLogGateway teamAuditLogGateway;
+
+  @override
+  final WebTeamHierarchyGateway teamHierarchyGateway;
 
   @override
   Stream<OperatorWebAuthState> get stream => _controller.stream;
