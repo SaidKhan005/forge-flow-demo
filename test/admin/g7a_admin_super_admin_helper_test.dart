@@ -1,0 +1,196 @@
+// G7a — shared admin super_admin editing-gate helper (behavior-preserving).
+//
+// Authoritative spec:
+//   docs/_audits/cross_surface_parity_v1/g7_permission_convergence_spec.md §4
+//   "G7a — shared admin super_admin helper (behavior-preserving)."
+//
+// `lib/admin/admin_routes.dart` previously copy-pasted the editing-gate
+// expression `session != null && session.roles.contains('super_admin')`
+// at 14 active route-builder sites (plus 3 sites inside legacy
+// `// ignore: unused_element` dead builders, which are intentionally
+// left untouched). G7a introduces one shared predicate
+// `_isAdminSuperAdmin(session)` and aliases the bare `'super_admin'`
+// literal to the frozen catalog constant `PermissionKeys.roleSuperAdmin`.
+//
+// `_isAdminSuperAdmin` is a private top-level function, so it cannot be
+// called directly from a test. Instead this test pins the two
+// invariants that make the refactor byte-identical / behavior-preserving:
+//
+//   1. `PermissionKeys.roleSuperAdmin == 'super_admin'` (byte-equal) —
+//      so `.contains('super_admin')` ≡ `.contains(roleSuperAdmin)`.
+//   2. The equivalence of the OLD inline expression and the NEW
+//      helper-shaped expression over the decision matrix
+//      (`super_admin`, `ff_support`, `operator_owner`, null, empty).
+//   3. A grep-guard over the active builders of `admin_routes.dart`:
+//      zero bare `roles.contains('super_admin')` remain in live code,
+//      exactly 14 `_isAdminSuperAdmin(session)` call sites exist, and
+//      the shared helper + `permission_keys.dart` import are present.
+
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
+
+/// Mirrors the production private helper body exactly:
+///   `s != null && s.roles.contains(PermissionKeys.roleSuperAdmin)`.
+/// Kept in lock-step with `_isAdminSuperAdmin` in admin_routes.dart.
+bool helperShaped(AdminAuthSession? s) =>
+    s != null && s.roles.contains(PermissionKeys.roleSuperAdmin);
+
+/// The OLD copy-pasted inline expression that G7a replaced (bare
+/// literal). The oracle: this must produce byte-identical decisions
+/// to [helperShaped] for every input.
+bool oldInline(AdminAuthSession? s) =>
+    s != null && s.roles.contains('super_admin');
+
+AdminAuthSession sessionWithRoles(List<String> roles) => AdminAuthSession(
+  uid: 'u1',
+  email: 'admin@example.test',
+  displayName: 'Admin',
+  roles: roles,
+);
+
+void main() {
+  group('G7a byte-equality of catalog constants vs literals', () {
+    test('PermissionKeys.roleSuperAdmin == "super_admin"', () {
+      expect(PermissionKeys.roleSuperAdmin, equals('super_admin'));
+    });
+
+    test('PermissionKeys.roleFfSupport == "ff_support"', () {
+      expect(PermissionKeys.roleFfSupport, equals('ff_support'));
+    });
+  });
+
+  group('G7a behavior-preserving: helper ≡ old inline expression', () {
+    // Decision matrix from the spec's §4 verify block.
+    final cases = <String, AdminAuthSession?>{
+      'super_admin': sessionWithRoles(const <String>['super_admin']),
+      'ff_support': sessionWithRoles(const <String>['ff_support']),
+      'operator_owner': sessionWithRoles(const <String>['operator_owner']),
+      'super_admin + ff_support': sessionWithRoles(
+        const <String>['ff_support', 'super_admin'],
+      ),
+      'empty roles': sessionWithRoles(const <String>[]),
+      'null session': null,
+    };
+
+    cases.forEach((label, session) {
+      test('$label → helper result == old inline result', () {
+        expect(
+          helperShaped(session),
+          equals(oldInline(session)),
+          reason:
+              'G7a must be byte-identical: '
+              '.contains("super_admin") ≡ .contains(roleSuperAdmin)',
+        );
+      });
+    });
+
+    test('decision outcomes are the expected booleans', () {
+      expect(helperShaped(cases['super_admin']), isTrue);
+      expect(helperShaped(cases['super_admin + ff_support']), isTrue);
+      expect(helperShaped(cases['ff_support']), isFalse);
+      expect(helperShaped(cases['operator_owner']), isFalse);
+      expect(helperShaped(cases['empty roles']), isFalse);
+      expect(helperShaped(cases['null session']), isFalse);
+    });
+  });
+
+  group('G7a grep-guard over admin_routes.dart active builders', () {
+    late final String source;
+    late final String activeSource;
+
+    setUpAll(() {
+      source = File('lib/admin/admin_routes.dart').readAsStringSync();
+
+      // Strip every `// ignore: unused_element` legacy builder/class
+      // body so the guard only inspects LIVE code. We walk from each
+      // marker, find the first `{`, then track brace depth to its
+      // matching close (same algorithm the G7a transform used).
+      final lines = source.split('\n');
+      final keep = <String>[];
+      var i = 0;
+      while (i < lines.length) {
+        final line = lines[i];
+        if (RegExp(r'^\s*//\s*ignore:\s*unused_element\s*$').hasMatch(line)) {
+          // Skip the marker + the entire following declaration.
+          var depth = 0;
+          var opened = false;
+          var j = i + 1;
+          while (j < lines.length) {
+            final open = '{'.allMatches(lines[j]).length;
+            final close = '}'.allMatches(lines[j]).length;
+            depth += open - close;
+            if (open > 0) opened = true;
+            if (opened && depth <= 0) break;
+            j++;
+          }
+          i = j + 1; // resume after the dead declaration's close brace
+          continue;
+        }
+        keep.add(line);
+        i++;
+      }
+      activeSource = keep.join('\n');
+    });
+
+    test('zero bare roles.contains(\'super_admin\') in active builders', () {
+      final bare = RegExp(
+        r"\.roles\.contains\('super_admin'\)",
+      ).allMatches(activeSource).length;
+      expect(
+        bare,
+        0,
+        reason:
+            'Every active editing-gate site must call '
+            '_isAdminSuperAdmin(session); only the 3 legacy '
+            '// ignore: unused_element dead builders may still carry '
+            'the bare literal (they are stripped before this check).',
+      );
+    });
+
+    test('the 3 dead-builder bare literals are still present in raw source',
+        () {
+      // Sanity: the dead builders were intentionally NOT changed, so
+      // the raw (un-stripped) file still has exactly 3 bare sites.
+      final bareRaw = RegExp(
+        r"\.roles\.contains\('super_admin'\)",
+      ).allMatches(source).length;
+      expect(
+        bareRaw,
+        3,
+        reason:
+            '3 legacy // ignore: unused_element builders keep the bare '
+            'literal (dead code, out of G7a scope).',
+      );
+    });
+
+    test('exactly 14 _isAdminSuperAdmin(session) call sites', () {
+      final calls = RegExp(
+        r'_isAdminSuperAdmin\(session\)',
+      ).allMatches(activeSource).length;
+      expect(calls, 14);
+    });
+
+    test('shared helper is defined and aliases the catalog constant', () {
+      expect(
+        source,
+        contains(
+          'bool _isAdminSuperAdmin(AdminAuthSession? session) =>',
+        ),
+      );
+      expect(
+        source,
+        contains(
+          'session.roles.contains(PermissionKeys.roleSuperAdmin)',
+        ),
+      );
+    });
+
+    test('permission_keys.dart import is present', () {
+      expect(source, contains("import '../auth/permission_keys.dart';"));
+    });
+  });
+}

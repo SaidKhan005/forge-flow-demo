@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 
 import '../auth/auth_session.dart';
 import '../auth/fresh_mfa_resolver.dart';
+import '../auth/permission_keys.dart';
 import '../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
@@ -116,6 +117,17 @@ bool _isAdminMfaFresh(AdminAuthSession? session) {
   );
   return _freshMfaResolver.isFresh(wrapped);
 }
+
+/// Shared admin super-admin editing-gate predicate. Returns true iff
+/// [session] is non-null AND carries the `super_admin` role. DRYs the
+/// copy-pasted `session != null && session.roles.contains(...)`
+/// editing-decision sites and aliases the catalog constant
+/// ([PermissionKeys.roleSuperAdmin] is byte-equal to the literal
+/// `'super_admin'`), so this is behaviour-preserving. The UI
+/// affordance is advisory only - the proxy `PermissionResolver`
+/// re-checks every write server-side.
+bool _isAdminSuperAdmin(AdminAuthSession? session) =>
+    session != null && session.roles.contains(PermissionKeys.roleSuperAdmin);
 
 /// One entry in the admin route catalog.
 @immutable
@@ -690,7 +702,7 @@ Widget _buildOperators(BuildContext context) {
     builder: (context, snapshot) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+      final canEdit = _isAdminSuperAdmin(session);
       return buildScreen(
         editingEnabled: canEdit,
         actorUserId: session?.uid ?? 'admin-console',
@@ -998,8 +1010,7 @@ Widget _buildPricing(BuildContext context) {
           final session = state is AdminAuthAuthenticated
               ? state.session
               : null;
-          final canEdit =
-              session != null && session.roles.contains('super_admin');
+          final canEdit = _isAdminSuperAdmin(session);
           return PricingTierAdminScreen(
             gateway: gateway,
             editingEnabled: canEdit,
@@ -1055,8 +1066,7 @@ Widget _buildCorpus(BuildContext context) {
           final session = state is AdminAuthAuthenticated
               ? state.session
               : null;
-          final canEdit =
-              session != null && session.roles.contains('super_admin');
+          final canEdit = _isAdminSuperAdmin(session);
           return CorpusAdminScreen(
             gateway: gateway,
             editingEnabled: canEdit,
@@ -1100,8 +1110,7 @@ Widget _buildIntegrations(BuildContext context) {
           final session = state is AdminAuthAuthenticated
               ? state.session
               : null;
-          final canEdit =
-              session != null && session.roles.contains('super_admin');
+          final canEdit = _isAdminSuperAdmin(session);
           return buildScreen(canEdit: canEdit);
         },
       );
@@ -1182,8 +1191,7 @@ Widget _buildFeatureFlags(BuildContext context) {
           final session = state is AdminAuthAuthenticated
               ? state.session
               : null;
-          final canEdit =
-              session != null && session.roles.contains('super_admin');
+          final canEdit = _isAdminSuperAdmin(session);
           return buildScreen(canEdit: canEdit);
         },
       );
@@ -1256,7 +1264,7 @@ Widget _buildVendorApplicability(BuildContext context) {
     builder: (context, snapshot) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
-      final canEdit = session != null && session.roles.contains('super_admin');
+      final canEdit = _isAdminSuperAdmin(session);
       return VendorApplicabilityAdminScreen(
         gateway: gateway,
         editingEnabled: canEdit,
@@ -1300,8 +1308,7 @@ Widget _buildDataAccuracy(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return PerLocationDataAccuracyScreen(
           gateway: gateway,
           actorUserId: session?.uid ?? 'unknown',
@@ -1371,8 +1378,7 @@ Widget _buildPollingPricing(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return PollingAndPricingAdminScreen(
           gateway: gateway,
           actorUserId: session?.uid ?? 'unknown',
@@ -1445,8 +1451,7 @@ Widget _buildVendorIntegrations(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return buildMount(canMutate: canEdit);
       },
     );
@@ -1506,8 +1511,7 @@ Widget _buildTimingSetup(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return buildScreen(canEdit: canEdit);
       },
     );
@@ -1632,8 +1636,7 @@ Widget _buildMembers(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
@@ -1861,8 +1864,7 @@ Widget _buildRolesHierarchySessions(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
           canEdit: canEdit,
@@ -2187,8 +2189,7 @@ Widget _buildAuditedSupportActions(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         final fresh = _isAdminMfaFresh(session);
         return buildScreen(
           actorUserId: session?.uid ?? 'unknown',
@@ -2525,8 +2526,7 @@ Widget _buildDebugConsole(BuildContext context) {
       builder: (context, snapshot) {
         final state = snapshot.data;
         final session = state is AdminAuthAuthenticated ? state.session : null;
-        final canEdit =
-            session != null && session.roles.contains('super_admin');
+        final canEdit = _isAdminSuperAdmin(session);
         return DebugConsoleAdminScreen(
           gateway: gateway,
           hierarchyGateway: hierarchyGateway,
