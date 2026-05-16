@@ -65,6 +65,77 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets(
+        'targetLabel replaces the source label under the value '
+        '(actual-vs-target parity with SALES / LABOR %)', (tester) async {
+      await tester.pumpWidget(_wrap(
+        const MetricPill(
+          state: MetricState.live,
+          provenance: MetricPillProvenance(
+            label: 'Toast',
+            targetLabel: 'Target \$3.25',
+          ),
+          label: 'PPA',
+          value: 4.10,
+        ),
+      ));
+      await tester.pump();
+
+      // Same key + position; content is now the TARGET, not the vendor.
+      final prov = tester.widget<Text>(
+        find.byKey(const Key('metric_pill_provenance_PPA')),
+      );
+      expect(prov.data, 'Target \$3.25');
+      // The vendor source label is no longer shown on the pill.
+      expect(find.text('Toast'), findsNothing);
+    });
+
+    testWidgets(
+        'targetLabel null → falls back to source label (back-compat)',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const MetricPill(
+          state: MetricState.live,
+          provenance: _toastProv, // no targetLabel
+          label: 'PPA',
+          value: 4.10,
+        ),
+      ));
+      await tester.pump();
+
+      final prov = tester.widget<Text>(
+        find.byKey(const Key('metric_pill_provenance_PPA')),
+      );
+      expect(prov.data, 'Toast');
+    });
+
+    testWidgets(
+        'targetLabel does NOT leak into the unavailable honesty branch',
+        (tester) async {
+      await tester.pumpWidget(_wrap(
+        const MetricPill(
+          state: MetricState.unavailable,
+          provenance: MetricPillProvenance(
+            label: 'Toast',
+            targetLabel: 'Target \$3.25',
+            tooltip: 'Connect a POS vendor to see covers.',
+          ),
+          label: 'COVERS',
+        ),
+      ));
+      await tester.pump();
+
+      // Honesty branch unchanged: em dash + tooltip, no target line,
+      // no provenance label key.
+      expect(find.byKey(const Key('metric_pill_unavailable_COVERS')),
+          findsOneWidget);
+      expect(find.text('Connect a POS vendor to see covers.'),
+          findsOneWidget);
+      expect(find.text('Target \$3.25'), findsNothing);
+      expect(find.byKey(const Key('metric_pill_provenance_COVERS')),
+          findsNothing);
+    });
+
     testWidgets('does not render "No data yet"', (tester) async {
       await tester.pumpWidget(_wrap(
         const MetricPill(

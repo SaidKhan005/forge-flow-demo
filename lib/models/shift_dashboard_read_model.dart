@@ -48,6 +48,12 @@ class ShiftDashboardReadModel {
   final double targetCPLH;
   final double targetSPLH;
   final double targetPPA;
+  // Benchmark-seam target blended wage — the same value `_buildMetricCards`
+  // formats for the BLENDED WAGE tile (`profile.targetBlendedWage`). Exposed
+  // as a passthrough so the Shift tile can render an actual-vs-target line
+  // without re-deriving it. No math change: this is the existing value, not
+  // a new formula.
+  final double targetBlendedWage;
   final double fohWage;
   final double bohWage;
   final double opzFloorCPLH;
@@ -243,6 +249,7 @@ class ShiftDashboardReadModel {
     required this.targetCPLH,
     required this.targetSPLH,
     required this.targetPPA,
+    required this.targetBlendedWage,
     required this.fohWage,
     required this.bohWage,
     required this.opzFloorCPLH,
@@ -490,6 +497,7 @@ class ShiftDashboardReadModel {
       targetCPLH: profile.targetCPLH,
       targetSPLH: profile.targetSPLH,
       targetPPA: profile.targetPPA,
+      targetBlendedWage: profile.targetBlendedWage,
       fohWage: profile.fohWage,
       bohWage: profile.bohWage,
       opzFloorCPLH: profile.opzFloorCPLH,

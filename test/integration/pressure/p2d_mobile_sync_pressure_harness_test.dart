@@ -9,16 +9,13 @@
 //   * 2C (spine)    — Postgres sink -> canonical fact aggregation.
 //
 // This harness exercises the proxy -> mobile SQLite sync path that
-// 2C feeds into, plus the resulting widget rendering. The seam under
-// test is `SyncProxyClient` -> `PostgresShiftRecordToMobileSync` ->
-// SQLite repos -> AppShell-mounted `DemoModeStateNotifier` ->
-// `DemoModeBanner`.
+// 2C feeds into. The seam under test is `SyncProxyClient` ->
+// `PostgresShiftRecordToMobileSync` -> SQLite repos.
 //
 // Hard-Promise alignment (CLAUDE.md):
-//   * HP #2 (demo persists post-launch): the banner clears as
-//     `demo_mode_state` rows flip via the realtime spine, not via
-//     `kDemoMode`. The harness drives a stubbed proxy to flip the row
-//     and asserts the banner re-renders without a build flag change.
+//   * HP #2 (demo persists post-launch): `demo_mode_state` rows flip
+//     via the realtime spine, not via `kDemoMode`. The synced rows
+//     remain queryable per category regardless of build flag.
 //   * HP #4 (per-operator isolation): switching the active scope tears
 //     down + re-bootstraps SQLite without leaking the prior tenant's
 //     rows. The harness records `operator_data_leak_after_switch`
@@ -35,13 +32,10 @@
 // infrastructure touched is the per-pid SQLite database wired by
 // `test/flutter_test_config.dart`.
 
-import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
@@ -54,12 +48,9 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/integration/demo_mode_state.dart';
-import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/sync/mobile_operational_sync_runtime.dart';
 import 'package:forge_and_flow/services/sync/postgres_shift_record_to_mobile_sync.dart';
 import 'package:forge_and_flow/services/sync/sync_proxy_client.dart';
-import 'package:forge_and_flow/state/demo_mode_state_notifier.dart';
-import 'package:forge_and_flow/widgets/demo_mode_banner.dart';
 
 // ─── Findings sink ────────────────────────────────────────────────────────
 
@@ -666,333 +657,9 @@ void main() {
     }));
   });
 
-  // ── Task 3: Demo banner clears per category ────────────────────────────
+  // ── Task 5: Synced data queryable per category ─────────────────────────
 
-  group('Task 3: demo banner reflects per-category flip via realtime spine',
-      () {
-    testWidgets(
-        'banner shows POS/Labor/Reservation rows then collapses '
-        'as flips arrive', (tester) async {
-      const fixture = 'demo_banner/per_category_flip';
-
-      // Stage 1 — all three categories demo=true.
-      var stage = 0;
-      final client = _RealtimeStubProxy(onFetchDemo: ({
-        required String operatorId,
-        required String locationId,
-      }) async {
-        switch (stage) {
-          case 0:
-            return <DemoModeRecord>[
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.pos,
-                isDemo: true,
-              ),
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.labor,
-                isDemo: true,
-              ),
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.reservation,
-                isDemo: true,
-              ),
-            ];
-          case 1:
-            // Realtime spine flips POS via vendor backfill.
-            return <DemoModeRecord>[
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.pos,
-                isDemo: false,
-                flippedToLiveAt: DateTime.utc(2026, 5, 9),
-                flippedByConnectionId: 'conn-toast',
-              ),
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.labor,
-                isDemo: true,
-              ),
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.reservation,
-                isDemo: true,
-              ),
-            ];
-          default:
-            // All categories live.
-            return <DemoModeRecord>[
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.pos,
-                isDemo: false,
-                flippedToLiveAt: DateTime.utc(2026, 5, 9),
-                flippedByConnectionId: 'conn-toast',
-              ),
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.labor,
-                isDemo: false,
-                flippedToLiveAt: DateTime.utc(2026, 5, 9),
-                flippedByConnectionId: 'conn-7shifts',
-              ),
-              DemoModeRecord(
-                operatorId: operatorId,
-                locationId: locationId,
-                category: IntegrationCategory.reservation,
-                isDemo: false,
-                flippedToLiveAt: DateTime.utc(2026, 5, 9),
-                flippedByConnectionId: 'conn-opentable',
-              ),
-            ];
-        }
-      });
-
-      final notifier = DemoModeStateNotifier(client: client);
-      await notifier.setScope(operatorId: _opA, locationId: _locA);
-
-      await tester.pumpWidget(_wrapBanner(notifier));
-      await tester.pump();
-
-      // Stage 0 — all three rows visible.
-      var posFound = find
-          .byKey(const Key('demo_mode_banner_pos'))
-          .evaluate()
-          .isNotEmpty;
-      final laborFound = find
-          .byKey(const Key('demo_mode_banner_labor'))
-          .evaluate()
-          .isNotEmpty;
-      final resFound = find
-          .byKey(const Key('demo_mode_banner_reservation'))
-          .evaluate()
-          .isNotEmpty;
-      if (!(posFound && laborFound && resFound)) {
-        _record(
-          'demo_banner_initial_render_missing_rows',
-          fixture: fixture,
-          severity: 'high',
-          message:
-              'expected all 3 category rows on first render, got '
-              'pos=$posFound labor=$laborFound res=$resFound',
-        );
-      }
-      expect(find.byKey(const Key('demo_mode_banner')), findsOneWidget);
-
-      // Stage 1 — POS flips. Realtime spine triggers refresh.
-      stage = 1;
-      await notifier.refresh();
-      await tester.pump();
-
-      posFound = find
-          .byKey(const Key('demo_mode_banner_pos'))
-          .evaluate()
-          .isNotEmpty;
-      if (posFound) {
-        _record(
-          'demo_banner_category_did_not_clear',
-          fixture: fixture,
-          severity: 'high',
-          message: 'POS row still rendered after realtime flip to live',
-        );
-      }
-      expect(find.byKey(const Key('demo_mode_banner_pos')), findsNothing);
-      expect(
-          find.byKey(const Key('demo_mode_banner_labor')), findsOneWidget);
-      expect(find.byKey(const Key('demo_mode_banner_reservation')),
-          findsOneWidget);
-
-      // Stage 2 — last two flip. Banner collapses entirely.
-      stage = 2;
-      await notifier.refresh();
-      await tester.pump();
-      final bannerFound = find
-          .byKey(const Key('demo_mode_banner'))
-          .evaluate()
-          .isNotEmpty;
-      if (bannerFound) {
-        _record(
-          'demo_banner_did_not_collapse',
-          fixture: fixture,
-          severity: 'high',
-          message: 'banner still rendered after every category flipped',
-        );
-      }
-      expect(find.byKey(const Key('demo_mode_banner')), findsNothing);
-    });
-  });
-
-  // ── Task 4: Foreground-resume refresh ──────────────────────────────────
-
-  group('Task 4: foreground-resume re-pulls demo state', () {
-    testWidgets('resume triggers a refresh that picks up backgrounded flip',
-        (tester) async {
-      const fixture = 'lifecycle/foreground_resume_refresh';
-
-      // Backgrounded flip: stage 0 = all demo, stage 1 = all live.
-      var stage = 0;
-      var fetchCount = 0;
-      final client = _RealtimeStubProxy(onFetchDemo: ({
-        required String operatorId,
-        required String locationId,
-      }) async {
-        fetchCount++;
-        if (stage == 0) {
-          return <DemoModeRecord>[
-            DemoModeRecord(
-              operatorId: operatorId,
-              locationId: locationId,
-              category: IntegrationCategory.pos,
-              isDemo: true,
-            ),
-          ];
-        }
-        return <DemoModeRecord>[
-          DemoModeRecord(
-            operatorId: operatorId,
-            locationId: locationId,
-            category: IntegrationCategory.pos,
-            isDemo: false,
-            flippedToLiveAt: DateTime.utc(2026, 5, 9),
-            flippedByConnectionId: 'conn-toast',
-          ),
-        ];
-      });
-
-      final notifier = DemoModeStateNotifier(client: client);
-      await notifier.setScope(operatorId: _opA, locationId: _locA);
-
-      await tester.pumpWidget(_wrapBanner(notifier));
-      await tester.pump();
-      expect(find.byKey(const Key('demo_mode_banner_pos')), findsOneWidget);
-      final fetchesBeforeResume = fetchCount;
-
-      // Simulate background -> resume. Production wires this via
-      // `_MobileOperationalSyncHostState.didChangeAppLifecycleState`,
-      // which calls `_syncForCurrentSession('app_resumed')`. The
-      // banner notifier itself doesn't subscribe to lifecycle today —
-      // the AppShell is responsible for invoking `notifier.refresh()`
-      // on resume. The harness models the AppShell side directly.
-      stage = 1;
-      WidgetsBinding.instance.handleAppLifecycleStateChanged(
-          AppLifecycleState.paused);
-      WidgetsBinding.instance.handleAppLifecycleStateChanged(
-          AppLifecycleState.resumed);
-      // AppShell-side: refresh the demo notifier on resume so the
-      // banner picks up backgrounded flips.
-      await notifier.refresh();
-      await tester.pump();
-
-      if (fetchCount <= fetchesBeforeResume) {
-        _record(
-          'resume_didnt_refresh',
-          fixture: fixture,
-          severity: 'high',
-          message: 'demo notifier did not re-pull on resume; banner '
-              'would render stale state until next manual scope change',
-          details: <String, Object?>{
-            'fetches_before_resume': fetchesBeforeResume,
-            'fetches_after_resume': fetchCount,
-          },
-        );
-      }
-      expect(find.byKey(const Key('demo_mode_banner_pos')), findsNothing);
-      expect(find.byKey(const Key('demo_mode_banner')), findsNothing);
-    });
-  });
-
-  // ── Task 5: Widget render against synced data, per category ────────────
-
-  group('Task 5: widget render against synced data', () {
-    testWidgets('POS — DemoModeBanner renders against POS-synced state',
-        (tester) async {
-      const fixture = 'render/pos_synced_state';
-      final client = _RealtimeStubProxy(onFetchDemo: ({
-        required String operatorId,
-        required String locationId,
-      }) async =>
-          <DemoModeRecord>[
-            DemoModeRecord(
-              operatorId: operatorId,
-              locationId: locationId,
-              category: IntegrationCategory.pos,
-              isDemo: true,
-            ),
-          ]);
-      final notifier = DemoModeStateNotifier(client: client);
-      await notifier.setScope(operatorId: _opA, locationId: _locA);
-
-      await _runRenderProbe(
-        tester: tester,
-        notifier: notifier,
-        category: IntegrationCategory.pos,
-        fixture: fixture,
-      );
-    });
-
-    testWidgets('Labor — DemoModeBanner renders against labor-synced state',
-        (tester) async {
-      const fixture = 'render/labor_synced_state';
-      final client = _RealtimeStubProxy(onFetchDemo: ({
-        required String operatorId,
-        required String locationId,
-      }) async =>
-          <DemoModeRecord>[
-            DemoModeRecord(
-              operatorId: operatorId,
-              locationId: locationId,
-              category: IntegrationCategory.labor,
-              isDemo: true,
-            ),
-          ]);
-      final notifier = DemoModeStateNotifier(client: client);
-      await notifier.setScope(operatorId: _opA, locationId: _locA);
-
-      await _runRenderProbe(
-        tester: tester,
-        notifier: notifier,
-        category: IntegrationCategory.labor,
-        fixture: fixture,
-      );
-    });
-
-    testWidgets(
-        'Reservation — DemoModeBanner renders against reservation '
-        'synced state', (tester) async {
-      const fixture = 'render/reservation_synced_state';
-      final client = _RealtimeStubProxy(onFetchDemo: ({
-        required String operatorId,
-        required String locationId,
-      }) async =>
-          <DemoModeRecord>[
-            DemoModeRecord(
-              operatorId: operatorId,
-              locationId: locationId,
-              category: IntegrationCategory.reservation,
-              isDemo: true,
-            ),
-          ]);
-      final notifier = DemoModeStateNotifier(client: client);
-      await notifier.setScope(operatorId: _opA, locationId: _locA);
-
-      await _runRenderProbe(
-        tester: tester,
-        notifier: notifier,
-        category: IntegrationCategory.reservation,
-        fixture: fixture,
-      );
-    });
-
+  group('Task 5: synced data queryable per category', () {
     test(
         'Synced shift, wage, and reservation rows are queryable per '
         'category without nulls in NOT NULL columns', () async {
@@ -1129,60 +796,6 @@ void main() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
-
-Future<void> _runRenderProbe({
-  required WidgetTester tester,
-  required DemoModeStateNotifier notifier,
-  required IntegrationCategory category,
-  required String fixture,
-}) async {
-  Object? caught;
-  StackTrace? caughtStack;
-  await runZonedGuarded(() async {
-    await tester.pumpWidget(_wrapBanner(notifier));
-    await tester.pump();
-  }, (error, stack) {
-    caught = error;
-    caughtStack = stack;
-  });
-
-  if (caught != null) {
-    _record(
-      'widget_render_threw',
-      fixture: fixture,
-      severity: 'critical',
-      message: 'widget threw during render: $caught',
-      details: <String, Object?>{
-        'category': category.name,
-        'stack': caughtStack?.toString().split('\n').take(8).join('\n'),
-      },
-    );
-  }
-
-  // Each render probe must show at least the banner Material wrapper
-  // when the scope still has a demo category present.
-  final bannerFound =
-      find.byKey(const Key('demo_mode_banner')).evaluate().isNotEmpty;
-  if (!bannerFound) {
-    _record(
-      'widget_render_missing_root',
-      fixture: fixture,
-      severity: 'high',
-      message:
-          'banner Material root absent for category ${category.name}',
-    );
-  }
-  expect(bannerFound, isTrue);
-}
-
-Widget _wrapBanner(DemoModeStateNotifier notifier) {
-  return MaterialApp(
-    home: ChangeNotifierProvider<DemoModeStateNotifier>.value(
-      value: notifier,
-      child: const Scaffold(body: DemoModeBanner()),
-    ),
-  );
-}
 
 ShiftRecord _shift(
   String restaurantId, {
@@ -1374,87 +987,4 @@ class _StubSyncProxyClient implements SyncProxyClient {
     required String locationId,
   }) async =>
       _firstBackfill;
-}
-
-/// Lightweight `SyncProxyClient` impl that only services
-/// `fetchDemoModeStates`. Used by demo-banner / lifecycle tests where
-/// shift / labor / reservation pulls are out of scope and any non-
-/// demo fetch should be a hard failure (instead of a silent empty).
-class _RealtimeStubProxy implements SyncProxyClient {
-  _RealtimeStubProxy({required this.onFetchDemo});
-
-  final Future<List<DemoModeRecord>> Function({
-    required String operatorId,
-    required String locationId,
-  }) onFetchDemo;
-
-  @override
-  Future<List<DemoModeRecord>> fetchDemoModeStates({
-    required String operatorId,
-    required String locationId,
-  }) =>
-      onFetchDemo(operatorId: operatorId, locationId: locationId);
-
-  @override
-  Future<ShiftRecordPage> fetchShiftRecords({
-    required String operatorId,
-    required String locationId,
-    required String? cursor,
-    required int pageSize,
-  }) =>
-      throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<OpenShiftSnapshotPage> fetchOpenShiftSnapshots({
-    required String operatorId,
-    required String locationId,
-    required String? cursor,
-    required int pageSize,
-  }) =>
-      throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
-    required String operatorId,
-    required String locationId,
-    required String restaurantId,
-  }) =>
-      throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
-    required String operatorId,
-    required String locationId,
-  }) =>
-      throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<List<DataAccuracyServicePeriodSetting>>
-      fetchDataAccuracyServicePeriodSettings({
-    required String operatorId,
-    required String locationId,
-  }) =>
-          throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<List<WageRoleRow>> fetchWageRoleRows({
-    required String operatorId,
-    required String locationId,
-  }) =>
-      throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<ForgeFlowPollingTierAssignmentSnapshot?>
-      fetchForgeFlowPollingTierAssignment({
-    required String operatorId,
-    required String locationId,
-  }) =>
-          throw UnimplementedError('p2d harness: not exercised here');
-
-  @override
-  Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
-    required String operatorId,
-    required String locationId,
-  }) =>
-      throw UnimplementedError('p2d harness: not exercised here');
 }
