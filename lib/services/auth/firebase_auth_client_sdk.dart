@@ -66,28 +66,6 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
   }
 
   @override
-  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
-    required String customToken,
-  }) async {
-    try {
-      final credential = await _auth.signInWithCustomToken(customToken);
-      return FirebaseAuthSignInSucceeded(
-        await _credentialFromUserCredential(credential),
-      );
-    } on firebase_auth.FirebaseAuthException catch (error) {
-      return FirebaseAuthSignInFailed(
-        code: error.code,
-        message: _messageForCode(error.code),
-      );
-    } catch (_) {
-      return const FirebaseAuthSignInFailed(
-        code: 'firebase_unavailable',
-        message: 'Sign-in is unavailable. Please try again in a moment.',
-      );
-    }
-  }
-
-  @override
   Future<FirebaseAuthSignInOutcome> completeTotpChallenge({
     required String mfaSessionToken,
     required String factorId,

@@ -562,13 +562,6 @@ class _FakeFirebaseAuthClient implements FirebaseAuthClient {
   }
 
   @override
-  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
-    required String customToken,
-  }) async {
-    return signInOutcome;
-  }
-
-  @override
   Future<FirebaseAuthSignInOutcome> completeTotpChallenge({
     required String mfaSessionToken,
     required String factorId,

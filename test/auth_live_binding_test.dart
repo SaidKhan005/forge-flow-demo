@@ -1341,20 +1341,6 @@ class _FakeFirebaseAuthClient implements FirebaseAuthClient {
         );
   }
 
-  int signInWithCustomTokenCalls = 0;
-
-  @override
-  Future<FirebaseAuthSignInOutcome> signInWithCustomToken({
-    required String customToken,
-  }) async {
-    signInWithCustomTokenCalls += 1;
-    return nextSignInOutcome ??
-        const FirebaseAuthSignInFailed(
-          code: 'unconfigured',
-          message: 'fake client did not specify a result',
-        );
-  }
-
   @override
   Future<FirebaseAuthSignInOutcome> completeTotpChallenge({
     required String mfaSessionToken,

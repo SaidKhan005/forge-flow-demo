@@ -367,22 +367,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
     }
   }
 
-  /// [onboarding] — when true (magic-link redeem / onboarding MFA
-  /// confirm), a session that has not yet enrolled MFA is routed to
-  /// the [OperatorWebEnrollingMfa] stage instead of straight to
-  /// Completed, so a brand-new invitee completes the onboarding click
-  /// path. The production email/password path leaves this false so its
-  /// behavior is byte-unchanged (a returning operator with no MFA still
-  /// lands on Completed exactly as before).
-  ///
-  /// [mfaJustEnrolled] — set right after a successful onboarding TOTP
-  /// confirm so the resulting session reflects `mfaEnrolled: true` even
-  /// if the freshly-refreshed token/account snapshot still lags.
-  Future<void> _completeCredential(
-    FirebaseAuthCredential credential, {
-    bool onboarding = false,
-    bool mfaJustEnrolled = false,
-  }) async {
+  Future<void> _completeCredential(FirebaseAuthCredential credential) async {
     try {
       final tokenHash = sha256
           .convert(utf8.encode(credential.idToken))
@@ -426,23 +411,14 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         roles: List<String>.unmodifiable(roles),
         permissions: snapshot.allowedPermissions,
         mfaEnrolled:
-            mfaJustEnrolled ||
             account.mfaEnabled ||
             credential.customClaims['mfa_enrolled'] == true,
       );
-      if (!_hasConsoleAccess(session)) {
+      if (_hasConsoleAccess(session)) {
+        _emit(OperatorWebCompleted(session: session));
+      } else {
         _emit(OperatorWebForbidden(session: session));
-        return;
       }
-      // Onboarding click path: a brand-new invitee who has not yet
-      // enrolled MFA must complete the enroll step before landing on
-      // the console. The production email/password path keeps
-      // [onboarding] false so its behavior is byte-unchanged.
-      if (onboarding && !session.mfaEnrolled) {
-        _emit(OperatorWebEnrollingMfa(session: session));
-        return;
-      }
-      _emit(OperatorWebCompleted(session: session));
     } on OperatorWebProxyException catch (error) {
       await _authClient.signOut();
       _emit(
@@ -554,11 +530,8 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
   @override
   Future<void> verifyMagicLinkToken(String token) async {
     // A7 — POST the token in the request body, never as a URL query
-    // param. G60 — the idempotency_key is derived from the invite
-    // token so a network retry (or a double-tap) for the SAME logical
-    // redemption replays the proxy's cached result instead of being
-    // treated as a fresh redeem. A freshly-minted random key per call
-    // would defeat the proxy's `proxy_requests` dedupe (G60 bug).
+    // param. The idempotency_key is generated client-side so a network
+    // retry with the same token does not double-redeem.
     final trimmed = token.trim();
     if (trimmed.isEmpty) {
       _emit(
@@ -569,7 +542,7 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
       );
       return;
     }
-    final idempotencyKey = _stableIdempotencyKey('magic-link-redeem', trimmed);
+    final idempotencyKey = _proxyClient.generateIdempotencyKey();
     try {
       final response = await _proxyClient.postJsonUnauthenticated(
         OperatorWebProxyClient.authMagicLinkRedeemPath,
@@ -599,51 +572,18 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
         );
         return;
       }
-      // Redemption succeeded. The proxy returns a Firebase custom
-      // token; consume it here so a brand-new invitee — who has no
-      // email/password yet — lands in an authenticated session and
-      // continues onboarding. (G24/G3 fix: previously this emitted a
-      // dead-end NeedsSignIn telling the invitee to "sign in with
-      // email/password", credentials they do not have.)
-      final customToken = _readNonBlank(response.body['firebase_custom_token']);
-      if (customToken == null) {
-        // Fail-closed: a 2xx with no token means the server contract
-        // is not satisfied. Do not fall through to a signed-in state.
-        _emit(
-          const OperatorWebNeedsToken(
-            lastErrorMessage:
-                'Something went wrong. Try again or ask Forge & '
-                'Flow support to resend your invite.',
-          ),
-        );
-        return;
-      }
-      final outcome = await _authClient.signInWithCustomToken(
-        customToken: customToken,
+      // Redemption succeeded — direct to sign-in. The proxy returns a
+      // Firebase custom token in response.body['firebase_custom_token']
+      // which the operator uses to sign in via signInWithCustomToken.
+      // For now the live path redirects to sign-in with an info message;
+      // the signInWithCustomToken wiring lands in a follow-up slice.
+      _emit(
+        const OperatorWebNeedsSignIn(
+          lastInfoMessage:
+              'Invite accepted. Sign in with the email and password '
+              'from your invite to continue.',
+        ),
       );
-      switch (outcome) {
-        case FirebaseAuthSignInSucceeded(:final credential):
-          await _completeCredential(credential, onboarding: true);
-        case FirebaseAuthSignInRequiresMfa():
-          // Custom-token sign-in never returns an MFA challenge (the
-          // token is minted for a specific UID). Treat as fail-closed.
-          await _authClient.signOut();
-          _emit(
-            const OperatorWebNeedsToken(
-              lastErrorMessage:
-                  'Something went wrong. Try again or ask Forge & '
-                  'Flow support to resend your invite.',
-            ),
-          );
-        case FirebaseAuthSignInFailed():
-          _emit(
-            const OperatorWebNeedsToken(
-              lastErrorMessage:
-                  'This link has expired or been used. Ask your '
-                  'invite-sender for a new one.',
-            ),
-          );
-      }
     } on OperatorWebProxyException catch (error) {
       if ((error.statusCode ?? 0) >= 400 && (error.statusCode ?? 0) < 500) {
         _emit(
@@ -677,54 +617,9 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
   Future<void> submitPassword({
     required String password,
     required String confirmation,
-  }) async {
-    // G24/G3 — onboarding password-set.
-    //
-    // Production invite design (see
-    // `lib/infrastructure/persistence/postgres/repositories/
-    // invited_user_activation_repository.dart` header) delivers the
-    // invite as a Firebase password-reset/action email: the operator
-    // sets their password on the Firebase-hosted action page (HIBP
-    // screened by Phase 9), then signs in with email/password. By the
-    // time the magic-link `firebase_custom_token` is redeemed the
-    // account already HAS a password — there is no in-app
-    // password-SET step in the live contract.
-    //
-    // The only proxy password route is `/v1/auth/password/change`
-    // (`authPasswordChangePath`), which the server REQUIRES a valid
-    // `current_password` for: it calls `firebaseAdmin.verifyPassword`
-    // and rejects with `current_password_invalid` / HTTP 403 when the
-    // verification fails (see
-    // `lib/services/auth/repository_password_change_gateway.dart`
-    // lines ~62-73, and the proxy handler at
-    // `tool/advisor_proxy/advisor_proxy.dart` ~line 10406). A
-    // first-time invitee has no current password to supply, so wiring
-    // `submitPassword` to that route would always 403. There is NO
-    // dedicated onboarding password-SET route on the proxy.
-    //
-    // Fail-closed: rather than guessing at a non-existent route, route
-    // the operator to the working email/password path (the live
-    // contract) with a calm message. We never advance to a signed-in
-    // or completed state from here.
-    final current = _state;
-    final session = current.session;
-    if (session != null && current is OperatorWebSettingPassword) {
-      _emit(
-        OperatorWebSettingPassword(
-          session: session,
-          lastErrorMessage:
-              'Set your password from the link in your invite email, '
-              'then sign in below with that email and password.',
-        ),
-      );
-      return;
-    }
-    _emit(
-      const OperatorWebNeedsSignIn(
-        lastInfoMessage:
-            'Set your password from the link in your invite email, '
-            'then sign in with that email and password.',
-      ),
+  }) {
+    throw UnsupportedError(
+      'live password setup is handled by Firebase action links',
     );
   }
 
@@ -732,152 +627,23 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
   Future<MfaEnrollmentArtifact> beginMfaEnrollment({
     required MfaFactorType factorType,
     String? phoneNumber,
-  }) async {
-    // G24/G3 — onboarding TOTP enrollment against the real proxy
-    // route. SMS enrollment is demo-only (no proxy SMS route exists);
-    // keep it unsupported here.
-    if (factorType != MfaFactorType.totp) {
-      throw UnsupportedError(
-        'SMS MFA is demo-only; use an authenticator app (TOTP).',
-      );
-    }
-    final current = _state;
-    final session = current.session;
-    if (session == null) {
-      throw StateError(
-        'beginMfaEnrollment requires an authenticated onboarding session',
-      );
-    }
-    final token = await _requireCurrentToken();
-    final setup = await _proxyClient.beginTotpEnrollment(
-      idToken: token,
-      email: session.email,
-    );
-    return MfaEnrollmentArtifact(
-      enrollmentId: setup.factorId,
-      factorType: MfaFactorType.totp,
-      totpSharedSecret: setup.secretBase32,
-      totpQrUri: setup.otpAuthUrl,
-    );
+  }) {
+    throw UnsupportedError('live onboarding MFA is handled after sign-in');
   }
 
   @override
   Future<void> confirmMfaEnrollment({
     required String enrollmentId,
     required String oneTimeCode,
-  }) async {
-    // G24/G3 — confirm onboarding TOTP enrollment against the real
-    // proxy route, then advance the onboarding state machine.
-    final current = _state;
-    final session = current.session;
-    if (session == null) {
-      throw StateError(
-        'confirmMfaEnrollment requires an authenticated onboarding session',
-      );
-    }
-    final token = await _requireCurrentToken();
-    try {
-      await _proxyClient.confirmTotpEnrollment(
-        idToken: token,
-        factorId: enrollmentId,
-        oneTimeCode: oneTimeCode,
-      );
-    } on OperatorWebProxyException catch (error) {
-      // Fail-closed: stay on the enroll step with a calm message; do
-      // NOT advance. 4xx => bad/expired code; otherwise generic.
-      final status = error.statusCode ?? 0;
-      _emit(
-        OperatorWebEnrollingMfa(
-          session: session,
-          lastErrorMessage: status >= 400 && status < 500
-              ? 'That code did not match. Codes refresh every 30 '
-                    'seconds — type the current one and try again.'
-              : 'Two-factor setup is unavailable right now. Try '
-                    'again in a moment.',
-        ),
-      );
-      return;
-    }
-    // MFA enrolled. Re-load the profile so the session reflects
-    // `mfaEnrolled: true`. With MFA now enrolled the onboarding-aware
-    // path lands on Completed (the ToS step has no proxy route — see
-    // the BLOCKER note on [acceptTos]).
-    await _completeCredential(
-      await _refreshedCredentialOrThrow(),
-      onboarding: true,
-      mfaJustEnrolled: true,
-    );
+  }) {
+    throw UnsupportedError('live onboarding MFA is handled after sign-in');
   }
 
   @override
-  Future<void> acceptTos({
-    required String versionId,
-    required String scope,
-  }) async {
-    // G24/G3 — BLOCKER: there is NO `/v1/auth/tos/*` route on the
-    // proxy (verified: no `tos` route anywhere in
-    // `tool/advisor_proxy/`, and `MagicLinkRedeemGateway` has no
-    // production binding either). The `operator_self_served_tos_contract`
-    // says the clickwrap infra (tables, screen, state) exists but the
-    // server route was never built. Wiring this to a guessed route
-    // would violate the slice's "verify the contract or STOP" rule.
-    //
-    // Fail-closed: surface a calm state instead of throwing an
-    // UnsupportedError that would crash the onboarding screen. We do
-    // NOT advance to Completed — the operator stays gated until the
-    // server route lands (tracked as a BLOCKER in the PR body).
-    final current = _state;
-    if (current is OperatorWebAcceptingTos) {
-      _emit(
-        OperatorWebAcceptingTos(
-          session: current.session,
-          tosVersion: current.tosVersion,
-          tosBodyMarkdown: current.tosBodyMarkdown,
-          lastErrorMessage:
-              'We could not record your acceptance right now. Please '
-              'try again shortly, or contact Forge & Flow support.',
-        ),
-      );
-      return;
-    }
-    _emit(
-      const OperatorWebNeedsSignIn(
-        lastErrorMessage:
-            'We could not record your acceptance right now. Please '
-            'try again shortly, or contact Forge & Flow support.',
-      ),
+  Future<void> acceptTos({required String versionId, required String scope}) {
+    throw UnsupportedError(
+      'live TOS acceptance is not exposed by the proxy yet',
     );
-  }
-
-  /// Derives a caller-stable idempotency key for an onboarding write so
-  /// a network retry (or double-tap) for the SAME logical action
-  /// replays the proxy's cached result instead of being treated as a
-  /// fresh write (G60). Mirrors the stable-key pattern in
-  /// `web_team_roles_gateway.dart` — hash a stable action label plus a
-  /// stable per-action seed (here, the invite token / user id) rather
-  /// than minting a fresh random key per attempt.
-  static String _stableIdempotencyKey(String action, String seed) {
-    final digest = sha256.convert(utf8.encode('$action:$seed'));
-    return digest.toString();
-  }
-
-  Future<FirebaseAuthCredential> _refreshedCredentialOrThrow() async {
-    final credential = await _authClient.refreshIdToken();
-    if (credential == null) {
-      await signOut();
-      throw const OperatorWebProxyException(
-        code: 'missing_id_token',
-        message: 'Your sign-in expired.',
-        statusCode: 401,
-      );
-    }
-    return credential;
-  }
-
-  static String? _readNonBlank(Object? value) {
-    if (value is! String) return null;
-    final trimmed = value.trim();
-    return trimmed.isEmpty ? null : trimmed;
   }
 
   @override
