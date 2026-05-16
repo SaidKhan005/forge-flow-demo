@@ -593,6 +593,37 @@ class TeamOrgUnitMoved {
   final TeamOrgUnitEntry orgUnit;
 }
 
+/// GAP A1 — rename an existing org unit's display `name`. The rename
+/// changes ONLY the `org_units.name` column; the ltree `path`/label and
+/// every `(operator_id, path)` invariant stay untouched, so there is no
+/// descendant rewrite. [adminReason] is null on the operator
+/// self-service path and required (non-blank) on the F&F admin path —
+/// the proxy enforces the latter and the gateway carries whatever the
+/// route resolved.
+class TeamOrgUnitRenameCommand {
+  const TeamOrgUnitRenameCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.orgUnitId,
+    required this.name,
+    this.adminReason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String orgUnitId;
+  final String name;
+  final String? adminReason;
+}
+
+class TeamOrgUnitRenamed {
+  const TeamOrgUnitRenamed({required this.orgUnit});
+
+  final TeamOrgUnitEntry orgUnit;
+}
+
 class TeamOrgUnitLifecycleCommand {
   const TeamOrgUnitLifecycleCommand({
     required this.actorUserId,
@@ -1451,6 +1482,11 @@ abstract class AuthOperationsGateway {
 
   Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command);
 
+  /// GAP A1 — rename an org unit's display name. Same gate as
+  /// create/move (`team.roles.assign`). The corp root IS renameable
+  /// (it is the operator-facing Business label).
+  Future<TeamOrgUnitRenamed> renameOrgUnit(TeamOrgUnitRenameCommand command);
+
   Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
     TeamOrgUnitLifecycleCommand command,
   );
@@ -1621,6 +1657,11 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
 
   @override
   Future<TeamOrgUnitMoved> moveOrgUnit(TeamOrgUnitMoveCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(TeamOrgUnitRenameCommand command) {
     throw StateError(_message);
   }
 

@@ -1181,6 +1181,64 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command,
+  ) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.roles.assign',
+    );
+    final OrgUnitRow before;
+    try {
+      final current = await repo.getById(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        id: command.orgUnitId,
+        userId: command.actorUserId,
+      );
+      if (current == null) {
+        throw const AuthOperationRejected(
+          code: 'unknown_org_unit',
+          message: 'org unit not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      before = current;
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+    final OrgUnitRow renamed;
+    try {
+      renamed = await repo.renameOrgUnit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        orgUnitId: command.orgUnitId,
+        name: command.name,
+        userId: command.actorUserId,
+      );
+    } on OrgUnitMoveRejected catch (error) {
+      throw _rejectedFromOrgUnit(error);
+    }
+    await _audit(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      eventType: 'team.org_unit.rename',
+      targetKind: 'org_unit',
+      targetId: command.orgUnitId,
+      payload: <String, Object?>{
+        'before': <String, Object?>{'name': before.name},
+        'after': <String, Object?>{'name': renamed.name},
+        if (command.adminReason != null) 'admin_reason': command.adminReason,
+      },
+    );
+    return TeamOrgUnitRenamed(orgUnit: _teamOrgUnitFromRow(renamed));
+  }
+
+  @override
   Future<TeamOrgUnitLifecycleUpdated> suspendOrgUnit(
     TeamOrgUnitLifecycleCommand command,
   ) {

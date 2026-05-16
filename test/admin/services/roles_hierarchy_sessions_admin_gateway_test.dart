@@ -451,6 +451,148 @@ void main() {
       expect(event.payload['unit_type'], equals('district'));
       expect(event.payload['label'], equals('north'));
     });
+
+    test('rename org unit writes team.org_unit.rename with before/after',
+        () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      final before = (await gateway.listOrgUnits(
+        operatorId: kDemoDinerOperatorId,
+      )).firstWhere((u) => u.orgUnitId == kDemoDinerOrgUnitRoot);
+      final renamed = await gateway.renameOrgUnit(
+        operatorId: kDemoDinerOperatorId,
+        orgUnitId: kDemoDinerOrgUnitRoot,
+        name: 'Renamed Business',
+        idempotencyKey: 'k-rename-org-unit',
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'operator requested business label change',
+      );
+
+      // Corp root IS renameable (operator-facing Business label).
+      expect(renamed.orgUnitId, equals(kDemoDinerOrgUnitRoot));
+      expect(renamed.name, equals('Renamed Business'));
+      expect(renamed.parentOrgUnitId, isNull);
+      final event = gateway.capturedAuditEvents.single;
+      expect(event.action, equals('team.org_unit.rename'));
+      expect(event.targetKind, equals('org_unit'));
+      expect(event.targetId, equals(kDemoDinerOrgUnitRoot));
+      expect(
+        event.adminReason,
+        equals('operator requested business label change'),
+      );
+      expect(event.actorKind, equals('forge_admin'));
+      expect(
+        (event.payload['before'] as Map)['name'],
+        equals(before.name),
+      );
+      expect(
+        (event.payload['after'] as Map)['name'],
+        equals('Renamed Business'),
+      );
+    });
+
+    test('rename org unit rejects a non-forge-admin actor', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      await expectLater(
+        gateway.renameOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitRoot,
+          name: 'Nope',
+          idempotencyKey: 'k-rename-not-admin',
+          actorUserId: 'demo-operator',
+          actorIsForgeAdmin: false,
+          adminReason: 'r',
+        ),
+        throwsA(isA<RolesHierarchySessionsForbiddenException>()),
+      );
+      expect(gateway.capturedAuditEvents, isEmpty);
+    });
+
+    test('rename org unit rejects a missing admin_reason', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      await expectLater(
+        gateway.renameOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitRoot,
+          name: 'Nope',
+          idempotencyKey: 'k-rename-no-reason',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: '   ',
+        ),
+        throwsA(
+          isA<RolesHierarchySessionsGatewayError>().having(
+            (e) => e.errorCode,
+            'errorCode',
+            'admin_reason_required',
+          ),
+        ),
+      );
+      expect(gateway.capturedAuditEvents, isEmpty);
+    });
+
+    test('rename org unit rejects a duplicate sibling name (locked copy)',
+        () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      // Fixture already has 'East region' and 'West region' as siblings
+      // under the root. Renaming East onto West's name must be rejected
+      // with the locked duplicate copy.
+      await expectLater(
+        gateway.renameOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitEast,
+          name: 'West region',
+          idempotencyKey: 'k-dup-rename',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'r',
+        ),
+        throwsA(
+          isA<RolesHierarchySessionsGatewayError>().having(
+            (e) => e.message,
+            'message',
+            HierarchyValidationCopy.orgUnitNameDuplicate,
+          ),
+        ),
+      );
+      expect(gateway.capturedAuditEvents, isEmpty);
+    });
+
+    test('idempotent retry on renameOrgUnit returns the same row', () async {
+      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+      );
+      const key = 'idem-rename-org-unit';
+      final first = await gateway.renameOrgUnit(
+        operatorId: kDemoDinerOperatorId,
+        orgUnitId: kDemoDinerOrgUnitRoot,
+        name: 'First Name',
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+      final second = await gateway.renameOrgUnit(
+        operatorId: kDemoDinerOperatorId,
+        orgUnitId: kDemoDinerOrgUnitRoot,
+        name: 'Second Name',
+        idempotencyKey: key,
+        actorUserId: 'demo-super-admin',
+        actorIsForgeAdmin: true,
+        adminReason: 'r',
+      );
+
+      expect(identical(first, second), isTrue);
+      expect(gateway.capturedAuditEvents, hasLength(1));
+    });
   });
 
   group('idempotency', () {
@@ -1112,6 +1254,101 @@ void main() {
         );
         expect(moved.orgUnitId, equals('unit-1'));
         expect(moved.parentOrgUnitId, equals('unit-2'));
+      },
+    );
+
+    test(
+      'renameOrgUnit PATCH pins /v1/admin/auth/org-units/<id>/name + name',
+      () async {
+        late http.Request captured;
+        final mock = http_testing.MockClient((http.Request request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode(<String, Object?>{
+              'org_unit': <String, Object?>{
+                'org_unit_id': 'unit-1',
+                'operator_id': 'op-1',
+                'parent_org_unit_id': 'unit-2',
+                'name': 'Pacific',
+              },
+            }),
+            200,
+            headers: <String, String>{'content-type': 'application/json'},
+          );
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        final renamed = await gateway.renameOrgUnit(
+          operatorId: 'op-1',
+          orgUnitId: 'unit-1',
+          name: 'Pacific',
+          idempotencyKey: 'idem-rename-org-unit-1',
+          actorUserId: 'admin-1',
+          actorIsForgeAdmin: true,
+          adminReason: 'operator requested rename',
+        );
+
+        expect(captured.method, equals('PATCH'));
+        expect(
+          captured.url.path,
+          equals('/v1/admin/auth/org-units/unit-1/name'),
+        );
+        expect(
+          captured.headers['Idempotency-Key'],
+          equals('idem-rename-org-unit-1'),
+        );
+        expect(captured.headers['authorization'], equals('Bearer tok'));
+        final body = jsonDecode(captured.body) as Map<String, Object?>;
+        expect(
+          body,
+          equals(<String, Object?>{
+            'operator_id': 'op-1',
+            'name': 'Pacific',
+            'admin_reason': 'operator requested rename',
+          }),
+        );
+        expect(renamed.orgUnitId, equals('unit-1'));
+        expect(renamed.name, equals('Pacific'));
+      },
+    );
+
+    test(
+      'renameOrgUnit rejects a missing admin_reason before any HTTP call',
+      () async {
+        var called = false;
+        final mock = http_testing.MockClient((http.Request request) async {
+          called = true;
+          return http.Response('{}', 200);
+        });
+        final gateway = HttpRolesHierarchySessionsAdminGateway(
+          baseUri: Uri.parse('https://admin.example/'),
+          bearerTokenProvider: () async => 'tok',
+          httpClient: mock,
+        );
+
+        await expectLater(
+          gateway.renameOrgUnit(
+            operatorId: 'op-1',
+            orgUnitId: 'unit-1',
+            name: 'Pacific',
+            idempotencyKey: 'idem-rename-no-reason',
+            actorUserId: 'admin-1',
+            actorIsForgeAdmin: true,
+            adminReason: '   ',
+          ),
+          throwsA(
+            isA<RolesHierarchySessionsGatewayError>().having(
+              (e) => e.errorCode,
+              'errorCode',
+              'admin_reason_required',
+            ),
+          ),
+        );
+        expect(called, isFalse);
       },
     );
 

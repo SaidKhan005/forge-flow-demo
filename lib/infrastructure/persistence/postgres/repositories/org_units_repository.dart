@@ -523,6 +523,110 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     });
   }
 
+  /// GAP A1 — rename an org unit's display `name`. Only the `name`
+  /// column changes: the ltree `path`/label and every
+  /// `(operator_id, path)` invariant are untouched, so there is NO
+  /// descendant rewrite and the single-root invariant is preserved.
+  /// The corp root IS renameable (it is the operator-facing Business
+  /// label) — there is no root guard here, unlike move/suspend.
+  ///
+  /// Duplicate-name-within-parent is rejected server-side: a sibling
+  /// (same `parent_id`, same `operator_id`, not deleted) already using
+  /// the trimmed name (case-insensitive) raises a 409 with the locked
+  /// copy. Same-name no-op (renaming to the current name) is allowed so
+  /// an idempotent replay through a fresh key still succeeds.
+  Future<OrgUnitRow> renameOrgUnit({
+    required String operatorId,
+    required String locationId,
+    required String orgUnitId,
+    required String name,
+    String? userId,
+  }) {
+    final trimmed = name.trim();
+    if (trimmed.isEmpty) {
+      throw const OrgUnitMoveRejected(
+        code: 'validation_failed',
+        message: 'Org unit name is required.',
+        statusCode: 400,
+      );
+    }
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<OrgUnitRow>(ctx, (exec) async {
+      final existingRows = await exec.query(
+        'select id::text as id, parent_id::text as parent_id, name '
+        'from org_units '
+        'where id = @org_unit_id::uuid '
+        'and deleted_at is null',
+        parameters: <String, Object?>{'org_unit_id': orgUnitId},
+      );
+      if (existingRows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'unknown_org_unit',
+          message: 'org unit not found in tenant scope',
+          statusCode: 404,
+        );
+      }
+      final parentId = existingRows.single['parent_id'];
+      // Sibling-name collision check runs inside the same SET LOCAL
+      // transaction so RLS scopes the candidate set to this operator.
+      // Root rows (parent_id IS NULL) compare against the other roots
+      // of the same operator; in practice there is exactly one root,
+      // so this only ever rejects a no-op-shaped clash, never blocks
+      // the legitimate corp-root rename.
+      final duplicateRows = await exec.query(
+        'select 1 from org_units '
+        'where id <> @org_unit_id::uuid '
+        'and deleted_at is null '
+        'and parent_id is not distinct from '
+        '  (select parent_id from org_units '
+        '   where id = @org_unit_id::uuid) '
+        'and lower(name) = lower(@name) '
+        'limit 1',
+        parameters: <String, Object?>{
+          'org_unit_id': orgUnitId,
+          'name': trimmed,
+        },
+      );
+      if (duplicateRows.isNotEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_name_taken',
+          message: 'An org unit with this name already exists in this group.',
+          statusCode: 409,
+        );
+      }
+      final rows = await exec.query(
+        'update org_units '
+        'set name = @name, updated_at = now() '
+        'where id = @org_unit_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and deleted_at is null '
+        'returning id::text as id, operator_id::text as operator_id, '
+        'parent_id::text as parent_id, unit_type, path::text as path, '
+        'name, suspended_at, deleted_at, created_at, updated_at',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'org_unit_id': orgUnitId,
+          'name': trimmed,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const OrgUnitMoveRejected(
+          code: 'org_unit_rename_failed',
+          message: 'org unit rename did not update any rows',
+          statusCode: 409,
+        );
+      }
+      // parentId referenced for clarity that root rename is supported;
+      // no branching on it (corp root IS renameable behind the gate).
+      assert(parentId == null || parentId is String);
+      return _rowFromMap(rows.single);
+    });
+  }
+
   Future<OrgUnitRow> setOrgUnitSuspended({
     required String operatorId,
     required String locationId,

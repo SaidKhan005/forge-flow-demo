@@ -280,6 +280,65 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
     }
   }
 
+  Future<void> _onRenameOrgUnit(TeamOrgUnitEntry unit) async {
+    if (!widget._canMutate) return;
+    // The corp root IS renameable (it is the operator-facing Business
+    // label). Same write key as create/move; no root carve-out here or
+    // in the annotation.
+    final draft = await showDialog<String>(
+      context: context,
+      builder: (context) => _RenameOrgUnitDialog(
+        unit: unit,
+        // Sibling names within the same parent, excluding this unit so
+        // re-submitting its own current name (a no-op) is not blocked.
+        existingNames: _siblingNamesExcluding(
+          unit.parentOrgUnitId,
+          unit.orgUnitId,
+        ),
+      ),
+    );
+    if (draft == null || !mounted) return;
+    setState(() => _busyOrgUnitIds.add(unit.orgUnitId));
+    try {
+      await widget.gateway.renameOrgUnit(
+        TeamOrgUnitRenameCommand(
+          actorUserId: widget.session.uid,
+          operatorId: widget.session.operatorId,
+          locationId: widget.session.primaryLocationId ?? '',
+          orgUnitId: unit.orgUnitId,
+          name: draft,
+        ),
+        idempotencyKey: _nextIdempotencyKey(),
+      );
+      await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Org unit renamed.')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_friendlyMutationError(error))));
+    } finally {
+      if (mounted) {
+        setState(() => _busyOrgUnitIds.remove(unit.orgUnitId));
+      }
+    }
+  }
+
+  Set<String> _siblingNamesExcluding(
+    String? parentOrgUnitId,
+    String excludeOrgUnitId,
+  ) {
+    return <String>{
+      for (final unit in _orgUnits)
+        if (unit.parentOrgUnitId == parentOrgUnitId &&
+            unit.orgUnitId != excludeOrgUnitId)
+          unit.label.toLowerCase(),
+    };
+  }
+
   Future<void> _onMoveLocation(TeamOrgLocationEntry location) async {
     if (!widget._canMutate) return;
     final targets = _orgUnits
@@ -438,6 +497,7 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
             collapsedScopeIds: _legacyCollapsedScopeIds,
             onToggleCollapsed: _toggleLegacyCollapsed,
             onAddChildOrgUnit: _onAddChildOrgUnit,
+            onRenameOrgUnit: _onRenameOrgUnit,
             onMoveLocation: _onMoveLocation,
           ),
         ],
@@ -464,6 +524,7 @@ class _OperatorWebHierarchyInheritanceTree extends StatelessWidget {
     required this.collapsedScopeIds,
     required this.onToggleCollapsed,
     required this.onAddChildOrgUnit,
+    required this.onRenameOrgUnit,
     required this.onMoveLocation,
   });
 
@@ -475,6 +536,7 @@ class _OperatorWebHierarchyInheritanceTree extends StatelessWidget {
   final Set<String> collapsedScopeIds;
   final ValueChanged<String> onToggleCollapsed;
   final ValueChanged<TeamOrgUnitEntry> onAddChildOrgUnit;
+  final ValueChanged<TeamOrgUnitEntry> onRenameOrgUnit;
   final ValueChanged<TeamOrgLocationEntry> onMoveLocation;
 
   @override
@@ -532,6 +594,7 @@ class _OperatorWebHierarchyInheritanceTree extends StatelessWidget {
             collapsed: collapsedScopeIds.contains(unit.orgUnitId),
             onToggleCollapsed: onToggleCollapsed,
             onAddChildOrgUnit: onAddChildOrgUnit,
+            onRenameOrgUnit: onRenameOrgUnit,
           );
         },
       ),
@@ -652,6 +715,7 @@ class _OrgUnitNodeAnnotation extends StatelessWidget {
     required this.collapsed,
     required this.onToggleCollapsed,
     required this.onAddChildOrgUnit,
+    required this.onRenameOrgUnit,
   });
 
   final InheritanceTreeNode node;
@@ -661,6 +725,7 @@ class _OrgUnitNodeAnnotation extends StatelessWidget {
   final bool collapsed;
   final ValueChanged<String> onToggleCollapsed;
   final ValueChanged<TeamOrgUnitEntry> onAddChildOrgUnit;
+  final ValueChanged<TeamOrgUnitEntry> onRenameOrgUnit;
 
   @override
   Widget build(BuildContext context) {
@@ -707,7 +772,14 @@ class _OrgUnitNodeAnnotation extends StatelessWidget {
           padding: EdgeInsets.zero,
           constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
         ),
-        if (canMutate)
+        if (canMutate) ...<Widget>[
+          IconButton(
+            key: Key('operator_web_org_unit_rename_${unit.orgUnitId}'),
+            tooltip: 'Rename',
+            icon: const Icon(Icons.drive_file_rename_outline, size: 18),
+            color: AppColors.sunsetDark,
+            onPressed: busy ? null : () => onRenameOrgUnit(unit),
+          ),
           IconButton(
             key: Key('operator_web_org_unit_add_child_${unit.orgUnitId}'),
             tooltip: 'Add child unit',
@@ -715,6 +787,7 @@ class _OrgUnitNodeAnnotation extends StatelessWidget {
             color: AppColors.sunsetDark,
             onPressed: busy ? null : () => onAddChildOrgUnit(unit),
           ),
+        ],
       ],
     );
   }
@@ -1032,6 +1105,120 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
           key: const Key('operator_web_org_unit_add_dialog_submit'),
           onPressed: _submit,
           child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+}
+
+/// GAP A1 — rename an org unit's display name. The corp root IS
+/// renameable (it is the operator-facing Business label), so this
+/// dialog has no root carve-out. Duplicate-name-within-parent is
+/// re-validated client-side here with the same locked copy the server
+/// returns, so the operator sees the guidance without a round-trip.
+class _RenameOrgUnitDialog extends StatefulWidget {
+  const _RenameOrgUnitDialog({
+    required this.unit,
+    required this.existingNames,
+  });
+
+  final TeamOrgUnitEntry unit;
+
+  /// Sibling display names (lowercased) in the same parent, excluding
+  /// this unit, so re-submitting its own current name is allowed.
+  final Set<String> existingNames;
+
+  @override
+  State<_RenameOrgUnitDialog> createState() => _RenameOrgUnitDialogState();
+}
+
+class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
+  late final TextEditingController _name = TextEditingController(
+    text: widget.unit.label,
+  );
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    _name.addListener(_handleTextChanged);
+  }
+
+  @override
+  void dispose() {
+    _name.removeListener(_handleTextChanged);
+    _name.dispose();
+    super.dispose();
+  }
+
+  void _handleTextChanged() {
+    if (mounted && _errorText != null) {
+      setState(() => _errorText = null);
+    }
+  }
+
+  void _submit() {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _errorText = HierarchyCopy.emptyOrgUnitName);
+      return;
+    }
+    if (widget.existingNames.contains(name.toLowerCase())) {
+      setState(() => _errorText = HierarchyCopy.duplicateOrgUnitName);
+      return;
+    }
+    Navigator.of(context).pop(name);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('operator_web_org_unit_rename_dialog'),
+      title: const Text('Rename org unit'),
+      content: SizedBox(
+        width: 380,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Text(
+              'This changes how the unit is named everywhere your team '
+              'sees it. It does not move anything.',
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('operator_web_org_unit_rename_dialog_name'),
+              controller: _name,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Display name',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            if (_errorText != null) ...<Widget>[
+              const SizedBox(height: 10),
+              Text(
+                _errorText!,
+                key: const Key('operator_web_org_unit_rename_dialog_error'),
+                style: AppTextStyles.body12(color: AppColors.negative),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          key: const Key('operator_web_org_unit_rename_dialog_cancel'),
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('operator_web_org_unit_rename_dialog_submit'),
+          onPressed: _submit,
+          child: const Text('Save'),
         ),
       ],
     );

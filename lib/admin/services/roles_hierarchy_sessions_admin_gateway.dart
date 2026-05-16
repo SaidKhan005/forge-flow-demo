@@ -330,6 +330,18 @@ abstract class RolesHierarchySessionsAdminGateway {
     required String adminReason,
   });
 
+  /// GAP A1 — rename an org unit's display name (F&F admin path).
+  /// `admin_reason` is REQUIRED. The corp root IS renameable.
+  Future<OrgUnitAdminNode> renameOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String name,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  });
+
   Future<OrgUnitAdminNode> suspendOrgUnit({
     required String operatorId,
     required String orgUnitId,
@@ -664,6 +676,39 @@ class HttpRolesHierarchySessionsAdminGateway
           orgUnitId,
       operatorId: operatorId,
       parentOrgUnitId: newParentOrgUnitId,
+    );
+  }
+
+  @override
+  Future<OrgUnitAdminNode> renameOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String name,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'renameOrgUnit');
+    _requireAdminReason(adminReason, 'renameOrgUnit');
+    final body = await _send(
+      method: 'PATCH',
+      path: '$orgUnitsPath/${Uri.encodeComponent(orgUnitId)}/name',
+      idempotencyKey: idempotencyKey,
+      jsonBody: <String, Object?>{
+        'operator_id': operatorId,
+        'name': name,
+        'admin_reason': adminReason,
+      },
+    );
+    final orgUnit = body['org_unit'];
+    if (orgUnit != null) {
+      return _orgUnitFromJson(_asMap(orgUnit));
+    }
+    return OrgUnitAdminNode(
+      orgUnitId: orgUnitId,
+      name: name,
+      operatorId: operatorId,
     );
   }
 

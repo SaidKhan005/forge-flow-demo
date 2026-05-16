@@ -105,6 +105,7 @@ import 'session_record_predicate.dart';
 import 'star_target_routes.dart';
 import 'team_users_edit_member_validation.dart' show validateEditMemberRouteBody;
 import 'auth_self_profile_routes.dart' show SelfProfileRouter, authSelfProfilePath, authSelfProfilePermissionKey;
+import 'org_unit_rename_route.dart' show OrgUnitRenameRouter;
 import 'auth_operations_route_paths.dart' show canonicalAuthOperationPath, AuthOperationPathTranslationEntry;
 import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
@@ -12654,6 +12655,34 @@ Future<void> routeRequest(
               return;
             }
 
+            // GAP A1 rename — logic in `org_unit_rename_route.dart`.
+            if (request.method == 'PATCH' &&
+                authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
+                authOperationPath.endsWith('/name')) {
+              if (!await requirePermission('team.roles.assign')) return;
+              final renameId = OrgUnitRenameRouter.orgUnitIdFromNamePath(
+                  authOperationPath, adminAuthOrgUnitPrefix);
+              final idempotencyKey = readIdempotencyKeyOrFail();
+              if (idempotencyKey == null) return;
+              final cached = await OrgUnitRenameRouter(
+                authOperationsGateway: authOperationsGateway,
+                orgUnitToJson: _teamOrgUnitToJson,
+              ).dispatch(
+                targetOrgUnitId: renameId,
+                isSelfService: path.startsWith(authTeamOrgUnitPrefix),
+                scopeUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                body: body,
+                nonBlankString: _nonBlankString,
+                cache: authOpsCache,
+                idempotencyKey: idempotencyKey,
+                route: '$adminAuthOrgUnitPrefix$renameId/name',
+              );
+              _writeJson(response, cached.statusCode, cached.body);
+              return;
+            }
+
             if (request.method == 'PATCH' &&
                 authOperationPath.startsWith(adminAuthOrgUnitPrefix) &&
                 (authOperationPath.endsWith('/suspend') ||
@@ -18863,8 +18892,9 @@ bool _isAdminAuthOperation(String path, String method) {
   }
   if (method == 'GET' && p == adminAuthOrgUnitsPath) { return true; }
   if (method == 'POST' && p == adminAuthOrgUnitsPath) { return true; }
+  // `/parent` = move, `/name` = GAP A1 rename (both PATCH).
   if (method == 'PATCH' && p.startsWith(adminAuthOrgUnitPrefix) &&
-      p.endsWith('/parent')) { return true; }
+      (p.endsWith('/parent') || p.endsWith('/name'))) { return true; }
   if (p.startsWith(adminAuthOrgUnitPrefix) &&
       ((method == 'PATCH' &&
               (p.endsWith('/suspend') || p.endsWith('/reactivate'))) ||

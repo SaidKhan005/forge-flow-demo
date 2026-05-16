@@ -493,6 +493,80 @@ class InMemoryRolesHierarchySessionsAdminGateway
   }
 
   @override
+  Future<OrgUnitAdminNode> renameOrgUnit({
+    required String operatorId,
+    required String orgUnitId,
+    required String name,
+    required String idempotencyKey,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    required String adminReason,
+  }) async {
+    _ensureForgeAdmin(actorIsForgeAdmin, 'renameOrgUnit');
+    _ensureAdminReason(adminReason, 'renameOrgUnit');
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is OrgUnitAdminNode) return cached;
+    final units = _orgUnitsFor(operatorId);
+    final index = units.indexWhere((u) => u.orgUnitId == orgUnitId);
+    if (index < 0) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 404,
+        errorCode: 'unknown_org_unit',
+        message: 'org unit $orgUnitId not found for operator $operatorId',
+      );
+    }
+    final prev = units[index];
+    final trimmedName = name.trim();
+    if (trimmedName.isEmpty) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 400,
+        errorCode: 'validation_failed',
+        message: HierarchyValidationCopy.orgUnitNameEmpty,
+      );
+    }
+    // Duplicate-name-within-parent rejection. Root rename
+    // (parentOrgUnitId == null) IS allowed — the corp root is the
+    // operator-facing Business label.
+    final hasDuplicate = units.any(
+      (u) =>
+          u.orgUnitId != orgUnitId &&
+          u.parentOrgUnitId == prev.parentOrgUnitId &&
+          u.name.toLowerCase() == trimmedName.toLowerCase(),
+    );
+    if (hasDuplicate) {
+      throw RolesHierarchySessionsGatewayError(
+        statusCode: 409,
+        errorCode: 'org_unit_name_taken',
+        message: HierarchyValidationCopy.orgUnitNameDuplicate,
+      );
+    }
+    final renamed = OrgUnitAdminNode(
+      orgUnitId: prev.orgUnitId,
+      name: trimmedName,
+      operatorId: prev.operatorId,
+      parentOrgUnitId: prev.parentOrgUnitId,
+      unitType: prev.unitType,
+      suspendedAt: prev.suspendedAt,
+      deletedAt: prev.deletedAt,
+    );
+    units[index] = renamed;
+    _record(
+      action: 'team.org_unit.rename',
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      targetKind: 'org_unit',
+      targetId: orgUnitId,
+      payload: <String, Object?>{
+        'before': <String, Object?>{'name': prev.name},
+        'after': <String, Object?>{'name': trimmedName},
+      },
+      adminReason: adminReason,
+    );
+    _idempotentResults[idempotencyKey] = renamed;
+    return renamed;
+  }
+
+  @override
   Future<OrgUnitAdminNode> suspendOrgUnit({
     required String operatorId,
     required String orgUnitId,

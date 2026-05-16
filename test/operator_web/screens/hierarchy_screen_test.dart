@@ -309,6 +309,141 @@ void main() {
     });
   });
 
+  group('HierarchyScreen rename org unit (GAP A1)', () {
+    testWidgets('rename dialog opens with locked validation copy', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_demo-org-east')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog')),
+        findsOneWidget,
+      );
+
+      // Clearing to empty -> "Org unit name is required."
+      await tester.enterText(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_name')),
+        '   ',
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Org unit name is required.'), findsOneWidget);
+
+      // Duplicate-within-parent -> locked copy. East + West are
+      // siblings under demo-org-root; rename East onto West.
+      await tester.enterText(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_name')),
+        'West region',
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('An org unit with this name already exists in this group.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('successful rename updates the node label in the tree', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_demo-org-east')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_name')),
+        'Eastern Region',
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Org unit renamed.'), findsOneWidget);
+      expect(find.text('Eastern Region'), findsOneWidget);
+    });
+
+    testWidgets('the corp root is renameable (rename affordance present)', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      // The root carries a rename button (no root carve-out). Renaming
+      // the root succeeds — it is the operator-facing Business label.
+      expect(
+        find.byKey(const Key('operator_web_org_unit_rename_demo-org-root')),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_demo-org-root')),
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_name')),
+        'Acme Holdings',
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_dialog_submit')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Org unit renamed.'), findsOneWidget);
+      expect(find.text('Acme Holdings'), findsOneWidget);
+    });
+
+    testWidgets('location_manager sees no rename affordance (read-only)', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('location_manager'));
+
+      expect(
+        find.byKey(const Key('operator_web_org_unit_rename_demo-org-east')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('rename dialog copy is plain English with no error codes', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1200));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_org_unit_rename_demo-org-east')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rename org unit'), findsOneWidget);
+      // No raw error codes, no em dash in any visible copy.
+      final texts = tester
+          .widgetList<Text>(find.byType(Text))
+          .map((t) => t.data ?? '')
+          .toList();
+      for (final t in texts) {
+        expect(t.contains('—'), isFalse, reason: 'em dash in: $t');
+        expect(
+          RegExp(r'[a-z]+_[a-z]+').hasMatch(t) &&
+              t.contains(RegExp(r'error|failed|_code')),
+          isFalse,
+          reason: 'raw error code in: $t',
+        );
+      }
+    });
+  });
+
   group('HierarchyScreen move location', () {
     testWidgets('move dialog repositions a location under a different unit',
         (tester) async {
@@ -684,6 +819,14 @@ class _StubMoveErrorGateway implements WebTeamHierarchyGateway {
   }
 
   @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command, {
+    required String idempotencyKey,
+  }) {
+    return _delegate.renameOrgUnit(command, idempotencyKey: idempotencyKey);
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command, {
     required String idempotencyKey,
@@ -717,6 +860,22 @@ class _StubHierarchyTreeGateway implements WebTeamHierarchyGateway {
     required String idempotencyKey,
   }) async {
     return const TeamOrgUnitCreated(orgUnitId: 'stub-created');
+  }
+
+  @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command, {
+    required String idempotencyKey,
+  }) async {
+    return TeamOrgUnitRenamed(
+      orgUnit: TeamOrgUnitEntry(
+        orgUnitId: command.orgUnitId,
+        parentOrgUnitId: null,
+        unitType: 'region',
+        path: 'stub',
+        label: command.name,
+      ),
+    );
   }
 
   @override
