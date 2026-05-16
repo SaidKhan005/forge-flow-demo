@@ -39,6 +39,60 @@ Each row is a parity surface. All three consoles must satisfy the same proxy / a
 
 If a future slice needs a route not in this table, the parity contract is incomplete — update this table and the consuming slice prompt before implementation.
 
+## Hard Rule W3.A — mobile Settings is an intentional read-only mirror
+
+**The mobile Settings screen is a deliberate read-only mirror of the
+operator-web settings/identity/team/security surface. Operator Web
+(and, on the support path, the F&F Operations Console) owns every write
+path for the surfaces in the table above. This is a PRODUCTION posture,
+not a demo-mode carve-out and not a gap.**
+
+The mobile sections collapse to a read/summary view and unconditionally
+suppress their mutation affordances. The suppression is hardcoded — not
+gated on `kDemoMode`, not branched on environment — so demo and prod
+behave identically (consistent with `CLAUDE.md` Demo Mode "Default = NO
+branch"). The verified suppressions, with the owning write surface for
+each:
+
+| Mobile site (verified) | Suppression | Write owned by |
+|---|---|---|
+| `lib/screens/settings_screen.dart:33`, `:206-208`; `lib/forge_flow_app.dart:1347-1349` | Settings collapsed to 3 read-only tabs (Account / Setup / Data); Team / Diagnostics / Advisor tabs removed | Operator Web (Team management); Operator Web + F&F admin (advisor admin) |
+| `lib/screens/settings_screen.dart:600-608` | Data-alignment section gated to `super_admin` / `ff_support` only; removed from operator (owner/manager) Data tab | F&F Operations Console (support path) |
+| `lib/screens/settings/settings_wage_authority_section.dart:24-27` (wired `viewOnly: true` at `settings_screen.dart:379-382`) | Wage editor button suppressed; read-only summary only | Operator Web (`lib/operator_web/screens/wage_authority_screen.dart` — wage role rows) |
+| `lib/screens/settings/settings_mfa_section.dart:84-87` (wired `viewOnly: true` at `settings_screen.dart:477-486`) | Enrolled-factor list rendered read-only; enrollment + removal hidden | Operator Web (`11W.6` Security, `/v1/auth/mfa/*`) |
+| `lib/screens/settings/settings_active_sessions_section.dart:155-158` (wired `viewOnly: true` at `settings_screen.dart:529-540`) | Every revoke / sign-out affordance hidden; session list with last-active timestamps still shown | Operator Web (`11W.4` Sessions, `/v1/auth/sessions` + `/v1/auth/session/revoke`) |
+| `lib/screens/settings/settings_data_sections.dart:469-478`, `:699-711` (wired `viewOnly: true` at `settings_screen.dart:504-510`) | Password-change form + bulk sign-out hidden; account-info summary + sign-out-this-device fallback only; `SettingsPointerRow` deep-links to operator-web My Account | Operator Web (`/v1/auth/password/*`, My Account via JWT-handoff) |
+| `lib/screens/settings/settings_timing_authority_section.dart:110-118` | Timing authority rendered view-only on mobile | Operator Web |
+| `lib/screens/settings/settings_pointer_row.dart:1-8` | Mobile sections that used to host edit affordances end with a pointer row deep-linking to the matching operator-web surface | Operator Web |
+
+**Rationale.** Mobile is the read-mostly single-location operational
+tool (see Hard Rule 9 in
+`docs/contracts/mobile_core_business_scope_contract.md`). Settings,
+identity, team, and security mutations are owned by the Operator Web
+Console, with the F&F Operations Console as the support path. This keeps
+a single authoritative write surface per the Core promise above ("a team
+member who can do action X on the mobile Settings screen can do action X
+with identical effect on the Operator Web Console screen for the same
+surface") rather than forking write flows across three clients.
+
+**Posture, not a gap.** This mirror is a deliberate PRODUCTION design
+decision. It is NOT a `kDemoMode` carve-out (the suppression is
+unconditional, with no demo branch) and NOT an incomplete or backend-only
+capability — the write paths exist and are fully exposed on Operator Web
+/ F&F admin per the § Surface map. It satisfies `CLAUDE.md` Hard Promise
+#10 (every backend phase ships operator-facing UX before phase close —
+the UX ships on Operator Web / F&F admin, mirrored read-only on mobile)
+and is the mobile companion to Hard Promise #11's "or document why the
+capability is backend-only/gated/incomplete" clause, the same clause
+exercised by Hard Rule 9 in `mobile_core_business_scope_contract.md`.
+
+**Change control.** Removing or altering the mirror — bringing any of the
+suppressed write affordances onto mobile — is a deliberate scope decision
+that requires an update to this contract (and re-evaluation of the Core
+promise + § Surface map) before implementation, not an ad-hoc code
+change. The W3.A code comments at the sites above are descriptive; this
+rule is the binding source.
+
 ## Backend route invariants (must hold across all three surfaces)
 
 These invariants are already enforced by the Phase 9 + 11A.1 proxy code. Slice prompts must NOT introduce new routes that break them.
