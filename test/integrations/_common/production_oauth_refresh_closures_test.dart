@@ -1168,6 +1168,177 @@ void main() {
     });
   });
 
+  // ─── SevenRooms — makeSevenRoomsOauthRefreshClosure ──────────────────
+  //
+  // 2026-05-09 P1 closeout: wired after the bridge change that
+  // persists `client_secret` + `venue_id` on metadata. Closure POSTs
+  // `{client_id, client_secret, venue_id, grant_type:
+  // client_credentials}` as JSON to `/2_2/auth` — the same body the
+  // transport's `authenticate()` sends. No refresh_token (client_
+  // credentials does not rotate one).
+  group('SevenRooms — makeSevenRoomsOauthRefreshClosure', () {
+    VendorCredentialBundle bundleWithSevenRoomsMetadata({
+      String? clientSecretOnMetadata = 'sr-secret-1',
+      String? venueIdOnMetadata = 'venue-42',
+    }) {
+      final metadata = <String, Object?>{};
+      if (clientSecretOnMetadata != null) {
+        metadata['client_secret'] = clientSecretOnMetadata;
+      }
+      if (venueIdOnMetadata != null) {
+        metadata['venue_id'] = venueIdOnMetadata;
+      }
+      return _bundle(
+        clientId: 'sr-client-1',
+        clientSecret: null, // force read from metadata via hoist fallback
+        metadata: metadata,
+      );
+    }
+
+    test('happy refresh posts JSON body and parses access_token + expires_in',
+        () async {
+      late http.Request seen;
+      final closure = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _capturedClient(
+          response: http.Response(
+            jsonEncode(<String, Object?>{
+              'access_token': 'sr-bearer-2',
+              'venue_id': 'venue-42',
+              'expires_in': 3600,
+            }),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+          onRequest: (request) => seen = request,
+        ),
+        authBaseUri: Uri.parse('https://api.sevenrooms.com'),
+        clock: () => DateTime.utc(2026, 5, 9, 12),
+      );
+      final result = await closure(bundleWithSevenRoomsMetadata());
+      expect(result.accessToken, 'sr-bearer-2');
+      // client_credentials does not rotate; closure leaves refreshToken
+      // null so the broker does not overwrite the row's
+      // refresh_token_ciphertext column.
+      expect(result.refreshToken, isNull);
+      expect(result.expiresAt, DateTime.utc(2026, 5, 9, 13));
+      expect(seen.method, 'POST');
+      expect(seen.url.host, 'api.sevenrooms.com');
+      expect(seen.url.path, '/2_2/auth');
+      expect(seen.headers['content-type'], contains('application/json'));
+      // Body is JSON; assert each documented field is present.
+      final decoded = jsonDecode(seen.body) as Map<String, Object?>;
+      expect(decoded['client_id'], 'sr-client-1');
+      expect(decoded['client_secret'], 'sr-secret-1');
+      expect(decoded['venue_id'], 'venue-42');
+      expect(decoded['grant_type'], 'client_credentials');
+    });
+
+    test('401 / 5xx / malformed', () async {
+      final c401 = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _staticClient(
+          http.Response('{"error":"invalid_client"}', 401),
+        ),
+      );
+      await expectLater(
+        () => c401(bundleWithSevenRoomsMetadata()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          allOf(contains('vendor=sevenrooms'), contains('auth_rejected')),
+        )),
+      );
+      final c5xx = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('boom', 502)),
+      );
+      await expectLater(
+        () => c5xx(bundleWithSevenRoomsMetadata()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('vendor_5xx'),
+        )),
+      );
+      final cBad = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('not-json', 200)),
+      );
+      await expectLater(
+        () => cBad(bundleWithSevenRoomsMetadata()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('malformed_json'),
+        )),
+      );
+    });
+
+    test(
+        'legacy row without client_secret on metadata surfaces '
+        'missing_credential (operator-reconnect prompt path)', () async {
+      final closure = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('{}', 200)),
+      );
+      await expectLater(
+        () => closure(bundleWithSevenRoomsMetadata(
+            clientSecretOnMetadata: null)),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('missing_credential'),
+            contains('client_secret'),
+            contains('operator must reconnect'),
+          ),
+        )),
+      );
+    });
+
+    test(
+        'legacy row without venue_id on metadata surfaces '
+        'missing_credential (covers pre-2026-05-09 connection rows)',
+        () async {
+      final closure = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _staticClient(http.Response('{}', 200)),
+      );
+      await expectLater(
+        () => closure(
+            bundleWithSevenRoomsMetadata(venueIdOnMetadata: null)),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          allOf(
+            contains('missing_credential'),
+            contains('venue_id'),
+          ),
+        )),
+      );
+    });
+
+    test('missing access_token in response surfaces malformed_json',
+        () async {
+      final closure = makeSevenRoomsOauthRefreshClosure(
+        httpClient: _staticClient(
+          http.Response(
+            jsonEncode(<String, Object?>{'expires_in': 3600}),
+            200,
+            headers: const <String, String>{
+              'content-type': 'application/json',
+            },
+          ),
+        ),
+      );
+      await expectLater(
+        () => closure(bundleWithSevenRoomsMetadata()),
+        throwsA(isA<VendorRefreshFailed>().having(
+          (e) => e.message,
+          'message',
+          contains('access_token'),
+        )),
+      );
+    });
+  });
+
   // ─── Closure registry / no-closure delegation ───────────────────────
   //
   // Phase 5 pressure-preview findings (P1) called out four mismatches
@@ -1176,29 +1347,28 @@ void main() {
   // `kVendorsWithoutRefreshClosureReason` with documented delegation
   // surfaces.
   //
-  // 2026-05-09 RE-INVESTIGATION (this PR): on re-verification ADP and
+  // 2026-05-09 RE-INVESTIGATION (PR #465): on re-verification ADP and
   // OpenTable both expose a programmatic OAuth `grant_type=refresh_token`
   // surface using per-tenant `client_id` / `client_secret` from
   // `metadata` — both moved into the wired registry via
   // `makeAdpOauthRefreshClosure` / `makeOpenTableOauthRefreshClosure`.
-  // SevenRooms remains unwired with a refined reason
-  // (`sevenrooms_client_secret_not_persisted`) because the bridge drops
-  // `client_secret` after the connect-time `authenticate()` call, so the
-  // broker has no way to call `POST /2_2/auth` to mint a fresh bearer
-  // without an architectural change. Humanity stays on the map for the
-  // keyPaste reason; Agendrix / Tock / Push Operations stay too.
+  //
+  // 2026-05-09 P1 CLOSEOUT (this PR): SevenRooms wired after the
+  // bridge change that persists `client_secret` + `venue_id` on
+  // metadata. Closure POSTs `grant_type=client_credentials` to
+  // `/2_2/auth`. Humanity stays on the map for the keyPaste reason;
+  // Agendrix / Tock / Push Operations stay too.
   group('closure registry: documented delegation surfaces', () {
     test(
-      'SevenRooms / Humanity / Agendrix / Tock / Push Operations each '
-      'carry a documented delegation reason and are NOT in the '
-      'production registry (ADP / OpenTable wired post-2026-05-09)',
+      'Humanity / Agendrix / Tock / Push Operations each carry a '
+      'documented delegation reason and are NOT in the production '
+      'registry (ADP / OpenTable / SevenRooms wired post-2026-05-09)',
       () {
         final result = worker.buildProductionRefreshClosures(
           env: const <String, String>{},
           httpClient: _NoopRegistryHttpClient(),
         );
         const expectedDelegations = <String, String>{
-          'sevenrooms': 'sevenrooms_client_secret_not_persisted',
           'humanity': 'humanity_keypaste_password_grant_no_broker_refresh',
           'agendrix': 'agendrix_oauth_sliding_refresh_not_yet_wired',
           'tock': 'tock_static_api_key',
@@ -1226,7 +1396,8 @@ void main() {
             reason: '${entry.key} must be in kVendorsWithoutRefreshClosure',
           );
         }
-        // ADP and OpenTable are decisively wired post-2026-05-09.
+        // ADP, OpenTable, and SevenRooms are decisively wired
+        // post-2026-05-09.
         expect(
           result.registry.containsKey('adp'),
           isTrue,
@@ -1241,11 +1412,22 @@ void main() {
               'refresh_token)',
         );
         expect(
+          result.registry.containsKey('sevenrooms'),
+          isTrue,
+          reason: 'SevenRooms wires via makeSevenRoomsOauthRefreshClosure '
+              '(per-tenant client_id/client_secret/venue_id in '
+              'metadata + client_credentials grant)',
+        );
+        expect(
           worker.kVendorsWithoutRefreshClosureReason.containsKey('adp'),
           isFalse,
         );
         expect(
           worker.kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
+        );
+        expect(
+          worker.kVendorsWithoutRefreshClosureReason.containsKey('sevenrooms'),
           isFalse,
         );
       },

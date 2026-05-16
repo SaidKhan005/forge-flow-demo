@@ -107,8 +107,19 @@ abstract class SevenRoomsCredentialStore {
   /// Persist a freshly-issued bearer token + lifetime so subsequent
   /// resolve calls hit the cache instead of the auth endpoint. Returns
   /// the credential id the rest of the system addresses the token by.
+  ///
+  /// [clientSecret] and [venueId] are persisted alongside the bearer so
+  /// the cross-tenant OAuth refresh worker (see
+  /// `makeSevenRoomsOauthRefreshClosure` in
+  /// `lib/integrations/_common/production_oauth_refresh_closures.dart`)
+  /// can re-mint a fresh bearer via `POST /2_2/auth` without prompting
+  /// the operator to reconnect. SevenRooms uses a `client_credentials`
+  /// grant rather than a `refresh_token` grant, so re-exchange
+  /// requires the full `(client_id, client_secret, venue_id)` triple
+  /// rather than a refresh token. Phase 5 P1 closeout.
   Future<String> persistIssuedBearerToken({
     required String clientId,
+    required String clientSecret,
     required String venueId,
     required String accessToken,
     required Duration? lifetime,
@@ -409,6 +420,7 @@ class SevenRoomsAuthProductionApiClient implements SevenRoomsAuthClient {
     final lifetime = _readLifetime(decoded);
     final credentialId = await deps.credentialStore.persistIssuedBearerToken(
       clientId: clientId,
+      clientSecret: clientSecret,
       venueId: returnedVenueId,
       accessToken: accessToken,
       lifetime: lifetime,

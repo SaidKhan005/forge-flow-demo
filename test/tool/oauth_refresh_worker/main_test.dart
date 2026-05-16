@@ -395,11 +395,18 @@ void main() {
               'owner.',
         );
 
-        // SevenRooms — `client_secret` not persisted; architectural
-        // gap. Re-wiring requires bridge change + connect-flow update.
+        // SevenRooms — wired post-2026-05-09 P1 closeout; must NOT be
+        // on the no-closure map anymore. The bridge now persists
+        // `client_secret` + `venue_id` on metadata so
+        // `makeSevenRoomsOauthRefreshClosure` can POST
+        // `client_credentials` to `/2_2/auth`.
         expect(
-          kVendorsWithoutRefreshClosureReason['sevenrooms'],
-          equals('sevenrooms_client_secret_not_persisted'),
+          kVendorsWithoutRefreshClosureReason.containsKey('sevenrooms'),
+          isFalse,
+          reason:
+              'SevenRooms wires after the 2026-05-09 P1 closeout (bridge '
+              'persists client_secret + venue_id; closure POSTs '
+              'client_credentials to /2_2/auth)',
         );
         // Humanity — keyPaste password-grant; no broker refresh.
         expect(
@@ -429,36 +436,36 @@ void main() {
               'set must mirror reason-map keys so the boot log + per-row '
               'skip log surface a reason for every skipped vendor',
         );
-        // After the re-investigation the map shrinks to 5 entries:
-        // sevenrooms, humanity, agendrix, tock, push_operations.
+        // After the 2026-05-09 P1 closeout the map shrinks to 4 entries:
+        // humanity, agendrix, tock, push_operations.
         expect(kVendorsWithoutRefreshClosureReason.keys.toList()..sort(),
             equals(<String>[
               'agendrix',
               'humanity',
               'push_operations',
-              'sevenrooms',
               'tock',
             ]));
       },
     );
 
     test(
-      'tick: claimed row for an unsupported vendor (SevenRooms / '
+      'tick: claimed row for an unsupported vendor (Agendrix / '
       'Humanity) is logged-and-skipped, broker untouched, no '
-      'failure-count increment (ADP / OpenTable wired post-2026-05-09)',
+      'failure-count increment (ADP / OpenTable / SevenRooms wired '
+      'post-2026-05-09)',
       () async {
-        // After the 2026-05-09 re-investigation, ADP and OpenTable wire
-        // into the broker registry; the remaining no-closure vendors
-        // are SevenRooms (architectural gap — `client_secret` not
-        // persisted) and Humanity (keyPaste). Both must still traverse
-        // the skip path.
+        // After the 2026-05-09 P1 closeout, ADP, OpenTable, and
+        // SevenRooms all wire into the broker registry. The remaining
+        // no-closure vendors are Agendrix (closure factory not yet
+        // wired) and Humanity (keyPaste). Both must still traverse the
+        // skip path.
         final gateway = _FakeGateway()
           ..addClaimable(
             ClaimedCredentialRow(
               credentialId: '55555555-5555-4555-8555-555555555555',
               operatorId: _opIdA,
               locationId: _locIdA,
-              vendorId: 'sevenrooms',
+              vendorId: 'agendrix',
               consecutiveFailuresBefore: 0,
             ),
           )
@@ -487,7 +494,7 @@ void main() {
           result.skippedNoCloser,
           2,
           reason:
-              'SevenRooms / Humanity must hit the no-closure skip path; '
+              'Agendrix / Humanity must hit the no-closure skip path; '
               'the broker must NOT be invoked',
         );
         expect(result.refreshFailures, 0);
@@ -500,20 +507,25 @@ void main() {
         // map so the per-row skip log can surface a stable, queryable
         // label.
         expect(
-          kVendorsWithoutRefreshClosureReason['sevenrooms'],
-          equals('sevenrooms_client_secret_not_persisted'),
+          kVendorsWithoutRefreshClosureReason['agendrix'],
+          equals('agendrix_oauth_sliding_refresh_not_yet_wired'),
         );
         expect(
           kVendorsWithoutRefreshClosureReason['humanity'],
           equals('humanity_keypaste_password_grant_no_broker_refresh'),
         );
-        // Sanity: ADP and OpenTable are no longer on the no-closure map.
+        // Sanity: ADP, OpenTable, and SevenRooms are no longer on the
+        // no-closure map.
         expect(
           kVendorsWithoutRefreshClosureReason.containsKey('adp'),
           isFalse,
         );
         expect(
           kVendorsWithoutRefreshClosureReason.containsKey('opentable'),
+          isFalse,
+        );
+        expect(
+          kVendorsWithoutRefreshClosureReason.containsKey('sevenrooms'),
           isFalse,
         );
       },

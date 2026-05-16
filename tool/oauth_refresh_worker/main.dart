@@ -21,18 +21,16 @@
 //   2. For each claimed row: looks up the per-vendor production
 //      OAuth refresh closure (Toast / Square / Clover / Lightspeed
 //      LSK / Aloha NCR Voyix / Oracle MICROS Simphony / Revel /
-//      7shifts / QuickBooks Time / Libro / ADP / OpenTable per
+//      7shifts / QuickBooks Time / Libro / ADP / OpenTable /
+//      SevenRooms per
 //      `lib/integrations/_common/production_oauth_refresh_closures.dart`).
-//      Vendors WITHOUT a closure (SevenRooms, Tock, Push Operations,
-//      Agendrix, Humanity per [kVendorsWithoutRefreshClosureReason])
-//      are SKIPPED with a structured trace log carrying the per-vendor
+//      Vendors WITHOUT a closure (Tock, Push Operations, Agendrix,
+//      Humanity per [kVendorsWithoutRefreshClosureReason]) are
+//      SKIPPED with a structured trace log carrying the per-vendor
 //      delegation reason: their rotation lives elsewhere — static API
 //      keys (Tock, Push Operations), keyPaste connect-time bearer
-//      (Humanity), an OAuth sliding-refresh whose closure factory
-//      isn't wired yet (Agendrix), or `client_credentials` re-exchange
-//      that requires `client_secret` ciphertext on the credential row
-//      which the bridge does not currently persist (SevenRooms — see
-//      reason `sevenrooms_client_secret_not_persisted`).
+//      (Humanity), or an OAuth sliding-refresh whose closure factory
+//      isn't wired yet (Agendrix).
 //   3. Calls `VendorCredentialBroker.refreshAccessToken(...)` with
 //      the resolved closure. The broker:
 //        * acquires a per-(operator, location, vendor) Future lock
@@ -95,13 +93,13 @@
 //
 // Vendor coverage matches
 // `lib/integrations/_common/production_oauth_refresh_closures.dart`:
-//   POS:        toast, square, clover, lightspeed_lsk, aloha_ncr_voyix,
-//               oracle_micros_simphony, revel
-//   Labor:      7shifts, quickbooks_time, libro, adp
-//   Reservation: opentable
+//   POS:         toast, square, clover, lightspeed_lsk, aloha_ncr_voyix,
+//                oracle_micros_simphony, revel
+//   Labor:       7shifts, quickbooks_time, libro, adp
+//   Reservation: opentable, sevenrooms
 //   No closure (skipped, with documented reason in
-//   [kVendorsWithoutRefreshClosureReason]): sevenrooms, tock,
-//          push_operations, agendrix, humanity
+//   [kVendorsWithoutRefreshClosureReason]): tock, push_operations,
+//          agendrix, humanity
 //
 // CLAUDE.md alignment:
 //   * HP #1 — pure transport swap. The worker reads `vendor_credentials`
@@ -422,20 +420,26 @@ typedef RefreshClosureRegistry = Map<String, RefreshClosure>;
 ///     (SevenRooms). Re-wiring requires persisting `client_secret`
 ///     ciphertext + a connect-flow update; out of scope for this PR.
 ///
-/// 2026-05-09 RE-INVESTIGATION: PR #455 placed ADP, OpenTable, and
-/// SevenRooms on this map under the categories
+/// 2026-05-09 RE-INVESTIGATION (PR #465): PR #455 placed ADP,
+/// OpenTable, and SevenRooms on this map under the categories
 /// `adp_partner_ops_mtls_out_of_band`,
 /// `opentable_transport_internal_refresh`, and
 /// `sevenrooms_transport_cron_hour05`. On re-verification ADP and
 /// OpenTable both expose a programmatic OAuth `grant_type=refresh_token`
 /// surface using per-tenant `client_id` / `client_secret` from
-/// `metadata` — both moved into [buildProductionRefreshClosures] this
-/// PR. SevenRooms remains here under
-/// `sevenrooms_client_secret_not_persisted` because the bridge's
-/// `persistIssuedBearerToken` only writes `client_id` to metadata; the
-/// `client_secret` is dropped after the connect-time `authenticate()`
-/// call, so the broker has no way to call `POST /2_2/auth` to mint a
-/// fresh bearer without an architectural change.
+/// `metadata` — both moved into [buildProductionRefreshClosures] in
+/// PR #465. SevenRooms initially remained under
+/// `sevenrooms_client_secret_not_persisted` (the bridge dropped
+/// `client_secret` after the connect-time `authenticate()` call).
+///
+/// 2026-05-09 SECOND PASS (P1 closeout, this commit): the bridge now
+/// persists `client_secret` + `venue_id` on `metadata` alongside
+/// `client_id` (`sevenrooms_credential_bridge.dart`). SevenRooms moves
+/// into [buildProductionRefreshClosures] via
+/// `makeSevenRoomsOauthRefreshClosure`, which posts the
+/// `client_credentials` grant to `POST /2_2/auth`. Legacy rows that
+/// connected before this slice are surfaced via the standard
+/// `missing_credential` reconnect-prompt path.
 ///
 /// The reason string is exposed in the boot-time registry log and in
 /// every per-row skip event so a deploy review can verify intent and
@@ -444,7 +448,6 @@ const Map<String, String> kVendorsWithoutRefreshClosureReason =
     <String, String>{
   'tock': 'tock_static_api_key',
   'push_operations': 'push_operations_partner_issued_bearer',
-  'sevenrooms': 'sevenrooms_client_secret_not_persisted',
   'humanity': 'humanity_keypaste_password_grant_no_broker_refresh',
   'agendrix': 'agendrix_oauth_sliding_refresh_not_yet_wired',
 };
@@ -557,14 +560,6 @@ class ProductionRefreshClosureBuildResult {
 /// rotation surface lives elsewhere. They land in
 /// [kVendorsWithoutRefreshClosure] / [kVendorsWithoutRefreshClosureReason]:
 ///
-///   * SevenRooms — `client_credentials` re-exchange requires
-///     `client_id + client_secret + venue_id`, but the bridge persists
-///     only `client_id`; the `client_secret` is dropped after the
-///     connect-time `authenticate()` call. Re-wiring is an
-///     architectural change (persist `client_secret` ciphertext on the
-///     credential row + connect-flow update) that's out of scope for
-///     this PR — see `docs/integrations/sevenrooms/oauth_shape.md` for
-///     the follow-up spec.
 ///   * Tock — static API key on `metadata.api_key`.
 ///   * Push Operations — partner-issued bearer.
 ///   * Agendrix — OAuth sliding-refresh per adapter declaration but no
@@ -573,6 +568,13 @@ class ProductionRefreshClosureBuildResult {
 ///     no broker refresh path. Inverse of the Phase 5 mismatch (the
 ///     adapter's keyPaste is the source of truth; v2 OAuth-program
 ///     re-wiring is future work).
+///
+/// (SevenRooms previously lived here under
+/// `sevenrooms_client_secret_not_persisted`; bridge now persists
+/// `client_secret` + `venue_id` on metadata so SevenRooms moved into
+/// the wired set via `makeSevenRoomsOauthRefreshClosure`. Legacy rows
+/// without `client_secret` surface a reconnect prompt via the standard
+/// `missing_credential` path.)
 ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
   required Map<String, String> env,
   required http.Client httpClient,
@@ -598,6 +600,19 @@ ProductionRefreshClosureBuildResult buildProductionRefreshClosures({
   // Square / Clover pattern).
   registry['opentable'] =
       makeOpenTableOauthRefreshClosure(httpClient: httpClient);
+
+  // ─── SevenRooms ─ no app-wide secrets; per-tenant client_id /
+  // client_secret / venue_id live on bundle metadata after the
+  // 2026-05-09 bridge change (`sevenrooms_credential_bridge.dart`
+  // now persists all three on `metadataPatch`). SevenRooms uses a
+  // `client_credentials` grant rather than a `refresh_token` grant
+  // — the closure POSTs the same body the transport's
+  // `authenticate()` uses. Legacy rows that connected before this
+  // slice lack `client_secret` on metadata and surface
+  // `missing_credential` via the standard helper, which the broker
+  // reports as a reconnect prompt.
+  registry['sevenrooms'] =
+      makeSevenRoomsOauthRefreshClosure(httpClient: httpClient);
 
   // ─── Aloha NCR Voyix ─ binder gates on hasAlohaNcrVoyixCredentials.
   // The closure itself reads client_id / client_secret /
