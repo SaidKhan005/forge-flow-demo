@@ -1,5 +1,33 @@
 # Demo Dataset — Full End-to-End Specification
 
+> ## ⚠️ CURRENT-STATE CORRECTION — 2026-05-16, re-baselined to `master` @ `b7d53df5`
+>
+> The body of this document is baselined at `master @ 5c3fc74c`. Master has since
+> advanced (incl. PR #854). **The headline "BLOCKER" below is RESOLVED and
+> device-verified**, and several "verify" items now have fixes landed. Read the
+> body as a historical snapshot; the live status is:
+>
+> - **Cross-tenant-wipe BLOCKER (§F.4, §G) → RESOLVED & DEVICE-VERIFIED.** PR
+>   #829 (`e8601d5b`) landed the demo-bootstrap-only fix; the prior "didn't work
+>   on device" report was a stale incremental build. On 2026-05-16 a full clean
+>   rebuild + on-device hierarchy walk (Downtown→North Loop→Riverside→Harbour→
+>   back, + pull-to-refresh) preserved every location's data; the 684→171→0
+>   collapse did NOT reproduce. Production `defaultCrossTenantWipe` byte-unchanged.
+> - **N5 honest-degrade-per-connection-state → LANDED & EXTENDED.** PR #839
+>   (`14b116cc`/`087ecfdb`) wired `ShiftVendorSourceResolver`. PR #854 makes the
+>   "none-connected" location (Harbour) honest-EMPTY (seed writes no operational
+>   data; readers degrade) and guarantees connected locations always have a live
+>   in-progress Shift (never blank). Both device-verified 2026-05-16.
+> - **Benchmark coherence (§B.4 / N1) → fix landed.** PR #847 (`498cac7b`).
+> - **Open-shift realism + weekend Lunch → landed.** PR #843 (`66699ac8`).
+> - **Mobile HP #11 pills (G10 / N4) → reframed, not a data gap.** PR #846
+>   (`155eb427`) + `memory/project_mobile_hp11_carveout.md`: mobile is a
+>   deliberate single-location HP #11 carve-out.
+>
+> **Net current status:** no missing seed data; no open BLOCKER (wipe fix
+> device-verified). Harbour honest-empty + Shift-never-blank shipped (#854).
+> Phase 0 decisions D-1/D-2 remain LOCKED.
+
 **Status:** Specification / research output. NO production code changed by this document.
 **Created:** 2026-05-16
 **Refresh 2026-05-16 (post symptom-B):** Re-baselined against `master` @ `5c3fc74c` (includes #822 cold-boot current-week-to-today, #824 per-location operational envelope, #826 cold-boot partial-seed fix, #827 per-location current-week open/projected shift for all 4 locations, #828 demo location switch re-scopes the data). Every "State" cell re-verified against code on master — the prior spec's cells were NOT trusted. **Two operator decisions are now LOCKED (§Phase 0). One OPEN, device-proven blocking defect was found and folded in (§G blocker, §F.4): the production cross-tenant wipe permanently wipes the 3 non-active demo locations on every scope switch.**

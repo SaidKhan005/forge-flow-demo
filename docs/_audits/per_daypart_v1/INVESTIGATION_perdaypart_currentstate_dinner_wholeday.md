@@ -1,5 +1,14 @@
 # INVESTIGATION — Per-Daypart Shift card: Dinner shows the whole-day total on Saturday
 
+> ## ✅ RESOLVED in source — 2026-05-16, master `b7d53df5`
+> Baselined at `e8601d5b`. The root cause (demo weekly-slot calendar had NO
+> Lunch slot on Saturday/Sunday, open shift pinned to dinner → Whole Day ≡
+> Dinner on weekends) was fixed by PR #843 (`66699ac8`, weekend Lunch +
+> clock-derived open shift). PR #854 then guaranteed a connected location's
+> Shift home is never blank between services. Device-verified 2026-05-16
+> (Saturday): Downtown Shift at 4:47 PM shows a full live whole-day card with a
+> Whole Day / Lunch / Dinner / Late Night selector. **Closed.**
+
 **Status:** READ-ONLY audit. No code changed. Master baseline = `e8601d5b`.
 **Surface:** Shift dashboard per-daypart selector (Whole Day / Lunch / Dinner / Late Night).
 **Device ground truth:** Harbour (`demo_restaurant_harbour`), Saturday 2026-05-16, wall clock 09:25.

@@ -1,5 +1,16 @@
 # INVESTIGATION — demo location-switch wipe: the actual delete path
 
+> ## ✅ RESOLVED & DEVICE-VERIFIED — 2026-05-16, master `b7d53df5`
+> This investigation's hypothesis is CONFIRMED: #829 was correctly wired in
+> source; the prior on-device 684→171→0 repro was a **stale incremental build**,
+> not a second delete path. On 2026-05-16 a full clean uninstall + `flutter
+> clean` + fresh build + on-device hierarchy walk (Downtown→North Loop→
+> Riverside→Harbour→back to Downtown, with pull-to-refresh on each) preserved
+> EVERY location's full distinct dataset; returning to Downtown showed numbers
+> byte-identical to cold boot; the 684→171→0 collapse did NOT reproduce.
+> Production `defaultCrossTenantWipe` byte-unchanged. **Closed — no further
+> action.** Build-provenance lesson: always clean-rebuild demo verifications.
+
 Read-only code investigation. Master = `e8601d5b` (includes #827/#828/#829).
 Question: what code path produces the device-observed `684 → 171 → 0`
 `open_shift_snapshots` signature on a demo scope switch, and why did

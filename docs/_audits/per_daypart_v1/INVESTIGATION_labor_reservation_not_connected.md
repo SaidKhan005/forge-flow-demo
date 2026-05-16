@@ -1,5 +1,15 @@
 # INVESTIGATION — Labor-derived Shift metrics render "not connected" for ALL demo locations
 
+> ## ✅ RESOLVED in source — 2026-05-16, master `b7d53df5`
+> Baselined at `e8601d5b`. The root cause (whole-day Shift labor provenance
+> getters hard-gate on `laborSourceVendorId == null`; no production caller
+> passed it) was fixed by PR #839 (`14b116cc` + `087ecfdb`) which wired
+> `ShiftVendorSourceResolver` so both `buildWholeDay()` callers pass
+> `posSourceVendorId`/`laborSourceVendorId`. PR #854 further made the
+> none-connected location honest-EMPTY. Device-verified 2026-05-16: Riverside
+> (all-live) shows no demo banner; Downtown/North Loop show demo banners
+> correctly; Harbour honest-empty. **Closed.**
+
 Status: COMPLETE — root cause definitively isolated. Read-only investigation, no code changes.
 Repo root: `C:\Git Local Repos\forge_flow_demo`. Master baseline: `e8601d5b`.
 
