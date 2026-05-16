@@ -69,6 +69,23 @@ const bool _kAdminDemoAuth = bool.fromEnvironment('ADMIN_DEMO_AUTH');
 /// data for emailed review links.
 const bool _kAdminSharePreview = bool.fromEnvironment('ADMIN_SHARE_PREVIEW');
 
+/// Share-preview role selector. When [ADMIN_SHARE_PREVIEW] is true, this
+/// switch picks the fixture identity that's auto-signed-in:
+///
+///   * `false` (default) -> [DemoAdminAuthSource.signedInAsSupport]
+///     (`support@forgeflow.test`, `ff_support` role, read-only). This is
+///     the historical share-preview behavior used by the public emailed
+///     review link deploy (`scripts/deploy_admin_console.ps1
+///     -SharePreview`).
+///   * `true` -> [DemoAdminAuthSource.signedInAsSuperAdmin]
+///     (`demo.super.admin@forgeflow.test`, `super_admin` role, full
+///     write access). Used by `scripts/run_admin_console_dev.ps1 -Mode
+///     demo` so a local walkthrough exercises every admin surface
+///     including the writes that read-only support cannot reach.
+const bool _kAdminSharePreviewAsSuperAdmin = bool.fromEnvironment(
+  'ADMIN_SHARE_PREVIEW_AS_SUPER_ADMIN',
+);
+
 /// Admin proxy base URL. `--dart-define=ADMIN_PROXY_BASE_URI=...`
 /// points the live HTTP gateway at the F&F admin Cloud Run proxy
 /// (e.g. `https://admin-proxy.forgeflow.app`). Live mode requires
@@ -223,8 +240,11 @@ class _AdminAuthBinding {
 
 Future<_AdminAuthBinding> _resolveAuthSource() async {
   if (_kAdminSharePreview) {
+    final demoSource = _kAdminSharePreviewAsSuperAdmin
+        ? DemoAdminAuthSource.signedInAsSuperAdmin()
+        : DemoAdminAuthSource.signedInAsSupport();
     return _AdminAuthBinding(
-      source: DemoAdminAuthSource.signedInAsSupport(),
+      source: demoSource,
       authClient: null,
     );
   }
@@ -254,7 +274,7 @@ Future<_AdminAuthBinding> _resolveAuthSource() async {
 OperatorLocationAdminGateway? _resolveOperatorLocationGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) {
@@ -279,7 +299,7 @@ OperatorLocationAdminGateway? _resolveOperatorLocationGateway(
 PricingTierAdminGateway? _resolvePricingTierAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -298,7 +318,7 @@ PricingTierAdminGateway? _resolvePricingTierAdminGateway(
 DataAccuracyAdminGateway? _resolveDataAccuracyAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -316,7 +336,7 @@ DataAccuracyAdminGateway? _resolveDataAccuracyAdminGateway(
 VendorApplicabilityAdminGateway? _resolveVendorApplicabilityAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -329,7 +349,7 @@ VendorApplicabilityAdminGateway? _resolveVendorApplicabilityAdminGateway(
 }
 
 CorpusAdminGateway? _resolveCorpusAdminGateway(FirebaseAuthClient? authClient) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -347,7 +367,7 @@ CorpusAdminGateway? _resolveCorpusAdminGateway(FirebaseAuthClient? authClient) {
 IntegrationAdminGateway? _resolveIntegrationAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -365,7 +385,7 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway(
 VendorConnectionsGateway? _resolveVendorConnectionsGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -384,7 +404,7 @@ VendorConnectionsGateway? _resolveVendorConnectionsGateway(
 /// returns null and the route falls back to the seeded in-memory
 /// envelope in `admin_routes.dart`.
 HealthAdminGateway? _resolveHealthAdminGateway() {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
   final baseUri = Uri.parse(rawBaseUri);
@@ -400,7 +420,7 @@ HealthAdminGateway? _resolveHealthAdminGateway() {
 ObservabilityAdminGateway? _resolveObservabilityAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -418,7 +438,7 @@ ObservabilityAdminGateway? _resolveObservabilityAdminGateway(
 FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -446,7 +466,7 @@ String _mintDefaultRoleCatalogIdempotencyKey() {
 DefaultRoleCatalogAdminGateway? _resolveDefaultRoleCatalogAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -469,7 +489,7 @@ DefaultRoleCatalogAdminGateway? _resolveDefaultRoleCatalogAdminGateway(
 DebugConsoleAdminGateway? _resolveDebugConsoleAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -488,7 +508,7 @@ DebugConsoleAdminGateway? _resolveDebugConsoleAdminGateway(
 MembersAdminGateway? _resolveMembersAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -507,7 +527,7 @@ MembersAdminGateway? _resolveMembersAdminGateway(
 RolesHierarchySessionsAdminGateway? _resolveRolesHierarchySessionsAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
@@ -526,7 +546,7 @@ RolesHierarchySessionsAdminGateway? _resolveRolesHierarchySessionsAdminGateway(
 AuditedSupportActionsAdminGateway? _resolveAuditedSupportActionsAdminGateway(
   FirebaseAuthClient? authClient,
 ) {
-  if (_kAdminDemoAuth) return null;
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
   final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
