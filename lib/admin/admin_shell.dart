@@ -12,6 +12,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../auth/permission_keys.dart';
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
 import 'admin_button_styles.dart';
@@ -459,8 +460,8 @@ class _RolePill extends StatelessWidget {
       orElse: () => roles.isEmpty ? 'unknown' : roles.first,
     );
     final roleLabel = switch (adminRole) {
-      'super_admin' => 'Ecosystem admin',
-      'ff_support' => 'Support access',
+      PermissionKeys.roleSuperAdmin => 'Ecosystem admin',
+      PermissionKeys.roleFfSupport => 'Support access',
       'unknown' => 'Unknown role',
       _ => adminRole.replaceAll('_', ' '),
     };
