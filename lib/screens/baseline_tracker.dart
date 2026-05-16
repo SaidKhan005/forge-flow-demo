@@ -126,7 +126,8 @@ class _BaselineTrackerState extends State<BaselineTracker> {
               slivers: [
                 SliverPersistentHeader(
                   pinned: true,
-                  delegate: StickySectionDelegate('DAYPART BREAKDOWN'),
+                  delegate:
+                      StickySectionDelegate('DAYPART TARGET BREAKDOWNS'),
                 ),
                 SliverToBoxAdapter(
                   child: DaypartTable(
@@ -137,7 +138,8 @@ class _BaselineTrackerState extends State<BaselineTracker> {
                   ),
                 ),
                 const SliverToBoxAdapter(child: SizedBox(height: 8)),
-                // Same section-header grammar as DAYPART BREAKDOWN above
+                // Same section-header grammar as DAYPART TARGET
+                // BREAKDOWNS above
                 // so the wage-mix + theoretical-floor strip reads as a
                 // deliberate sibling, not an afterthought.
                 const SliverPersistentHeader(
