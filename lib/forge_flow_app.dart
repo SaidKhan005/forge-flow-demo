@@ -50,7 +50,6 @@ import 'screens/notifications_screen.dart';
 import 'services/realtime/realtime_event.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/sync/sync_proxy_client.dart';
-import 'widgets/demo_mode_banner.dart';
 import 'widgets/operator_brand_mark.dart';
 import 'widgets/peer_edit_toast.dart';
 import 'screens/schedule_builder.dart';
@@ -476,9 +475,9 @@ class ForgeFlowScope extends StatelessWidget {
           },
         ),
         // 8.demo-mode-banner — runtime per-(operator, location, category)
-        // demo-mode notifier. The AppShell-mounted [DemoModeBanner]
-        // watches this so the banner reflects the live `demo_mode_state`
-        // rows pulled via the proxy. Bound to the active scope from
+        // demo-mode notifier. Surfaces the live `demo_mode_state` rows
+        // pulled via the proxy to the Integrations fold + demo→live
+        // switch. Bound to the active scope from
         // inside the AppShell (auth session + RestaurantScopeNotifier);
         // bound to the proxy `SyncProxyClient` so a refresh round-trips
         // through `/v1/operators/{op}/locations/{loc}/demo_mode_states`.
@@ -787,7 +786,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// Demo-data Slice E pt2: when the bootstrap wired no real proxy
   /// (the demo flavor) the demo `demo_mode_state` source armed by the
   /// demo seed (`DemoVendorIntegrationDemoModeSource`) is used so the
-  /// Integrations fold + `DemoModeBanner` render pt1's per-(operator,
+  /// Integrations fold + demo→live switch reflect pt1's per-(operator,
   /// location, category) vendor demo state. This is an UNCONDITIONAL
   /// `??` fallback, NOT a `kDemoMode` reader branch: in production the
   /// Provider value is the real `HttpSyncProxyClient` (non-null) so the
@@ -1605,28 +1604,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         backgroundColor: AppColors.backgroundDeep,
         appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
         drawer: _buildBusinessScopeDrawer(context),
-        // 8.demo-mode-banner — runtime per-(operator, location, category)
-        // demo banner mounted directly above the tab body, beneath the
-        // app bar. Renders one slim row per category whose
-        // `demo_mode_state.is_demo` is still `true`; auto-clears once
-        // every row flips after the operator's first vendor backfill
-        // commits (HP #2 — runtime-state read, no kDemoMode branch).
         body: SafeArea(
           top: !widget.embeddedInBarrio,
-          child: Column(
-            mainAxisSize: MainAxisSize.max,
-            children: <Widget>[
-              const DemoModeBanner(),
-              Expanded(
-                child: IndexedStack(
-                  index: _selectedIndex,
-                  children: List<Widget>.generate(
-                    4,
-                    (index) => _buildTab(index, revision),
-                  ),
-                ),
-              ),
-            ],
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: List<Widget>.generate(
+              4,
+              (index) => _buildTab(index, revision),
+            ),
           ),
         ),
         bottomNavigationBar: _AppBottomNav(

@@ -7,8 +7,8 @@
 // drawer). That re-ran `_bindDemoModeNotifier` -> `_syncDemoModeScope`
 // -> `DemoModeStateNotifier.setScope`, which synchronously cleared the
 // snapshot and called `notifyListeners()` *inside the build phase*.
-// The mounted `DemoModeBanner` (a `context.watch` dependent of the
-// notifier) was then `markNeedsBuild`-ed mid-build -> framework throw,
+// A mounted `context.watch` dependent of the
+// notifier was then `markNeedsBuild`-ed mid-build -> framework throw,
 // and the just-cleared empty snapshot flashed scope-dependent screens
 // to their empty state.
 //
@@ -22,8 +22,8 @@
 // provider set, lets the initial scope bind settle, then flips the
 // active (operator, location) and pumps. Asserts: NO framework
 // exception, `DemoModeStateNotifier` still received the new scope
-// (semantics preserved), and the demo/scope-dependent consumer
-// (`DemoModeBanner`) is still mounted (screen not torn down).
+// (semantics preserved), and the scope-dependent screen
+// (`AppShell`) is still mounted (screen not torn down).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -57,7 +57,6 @@ import 'package:forge_and_flow/models/history_pattern_record.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/models/week_record.dart';
-import 'package:forge_and_flow/widgets/demo_mode_banner.dart';
 
 // ── Stubs (mirrors test/app_resume_refresh_test.dart harness) ────────────
 
@@ -378,7 +377,7 @@ void main() {
       );
       expect(harness.demo.snapshot.operatorId, 'op-1');
       expect(harness.demo.snapshot.locationId, 'loc-1');
-      expect(find.byType(DemoModeBanner), findsOneWidget);
+      expect(find.byType(AppShell), findsOneWidget);
 
       // Operator switches the active location. AppShell `context.watch`es
       // RestaurantScopeNotifier (business-scope drawer), so this re-runs
@@ -400,9 +399,9 @@ void main() {
       expect(harness.demo.snapshot.operatorId, 'op-2');
       expect(harness.demo.snapshot.locationId, 'loc-2');
       expect(harness.client.fetchedScopes, contains('op-2:loc-2'));
-      // The demo/scope-dependent consumer is still mounted — the screen
+      // The scope-dependent screen is still mounted — the screen
       // was not torn down / blanked by the transient.
-      expect(find.byType(DemoModeBanner), findsOneWidget);
+      expect(find.byType(AppShell), findsOneWidget);
     },
   );
 }

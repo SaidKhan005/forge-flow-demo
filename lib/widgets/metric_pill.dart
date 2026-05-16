@@ -35,16 +35,30 @@ export '../domain/models/metric_provenance.dart' show MetricState;
 /// unavailable branch where a one-liner helps the operator understand
 /// why there is no number.
 class MetricPillProvenance {
-  const MetricPillProvenance({required this.label, this.tooltip});
+  const MetricPillProvenance({
+    required this.label,
+    this.tooltip,
+    this.targetLabel,
+  });
 
   /// Short source name. Examples: "Toast", "QuickBooks Time",
   /// "Forecast", "Manual". Rendered small beneath the value in live
-  /// / stale / demo branches.
+  /// / stale / demo branches when [targetLabel] is null.
   final String label;
 
   /// Optional explanation for empty / unavailable states. When present,
   /// rendered as a one-liner hint beneath "No data yet" or the em dash.
   final String? tooltip;
+
+  /// Optional actual-vs-target reference line. When non-null it REPLACES
+  /// [label] in the live / stale / demo / partial / fallback branches —
+  /// the small line under the value shows the metric's TARGET (e.g.
+  /// "Forecast 220", "Target \$3.25") instead of the vendor source name,
+  /// mirroring how SALES / LABOR % already show their reference line.
+  /// When null, behaviour is unchanged ([label] is shown) — back-compat.
+  /// The empty / unavailable branches always keep the honest tooltip and
+  /// are NOT affected by this field; the Demo / Stale badges are unchanged.
+  final String? targetLabel;
 }
 
 /// Central KPI metric pill widget that enforces [MetricState] +
@@ -307,8 +321,13 @@ class MetricPill extends StatelessWidget {
   }
 
   Widget _buildProvenanceLabel() {
+    // When a target reference line is supplied, it replaces the vendor
+    // source label (parity with SALES / LABOR %). Same key, style, and
+    // position so the honesty contract + tests stay stable. Source /
+    // liveness is still conveyed by the top DataSourceHealthPill + the
+    // ● Live header — not per pill.
     return Text(
-      provenance.label,
+      provenance.targetLabel ?? provenance.label,
       key: Key('metric_pill_provenance_$label'),
       style: AppTextStyles.mono10(color: AppColors.textMuted),
     );
