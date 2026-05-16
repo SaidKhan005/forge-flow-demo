@@ -25,6 +25,7 @@ import '../../auth/permission_keys.dart';
 import '../../domain/models/inheritance_tree_node.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/inheritance_tree.dart';
+import '../../widgets/permission_explainer_view.dart';
 import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../services/demo_roles_hierarchy_sessions_admin_gateway.dart';
@@ -1229,105 +1230,33 @@ String _titleCaseToken(String token) {
   return words.join(' ');
 }
 
-/// Permission Explainer card. Renders every key in the frozen
-/// [PermissionKeys.all] catalog grouped by the nine categories the
-/// parity contract pins at § "Roles + Permission Explainer"
-/// line 102: `product.*` → `forgeflow.*` → `barrio.*` → `admin.*` →
-/// `team.*` → `billing.*` → `integration.*` → `integrations.*` →
-/// `workflow.*`.
+/// Permission Explainer card. Read-only card that hosts the shared,
+/// surface-agnostic [PermissionExplainerView]
+/// (`lib/widgets/permission_explainer_view.dart`) so the F&F Admin
+/// Roles tab renders byte-identical Explainer content to the Operator
+/// Web screen per the parity contract
+/// § "Roles + Permission Explainer (11W.2 + 11A.13 Roles tab)".
 ///
-/// MFA-required keys carry the [PermissionKeyChip] MFA marker per
-/// line 110. The chip text is a human permission label; raw catalog
-/// keys stay available in chip tooltips for support diagnostics.
+/// Before this lift the admin Explainer DUPLICATED the bucketing and
+/// (a) paraphrased the catalog `description` text (the contract
+/// forbids paraphrasing) and (b) omitted the `account.*` +
+/// `business_timing.*` categories (the contract requires every
+/// catalog key to appear). The shared view fixes both: verbatim
+/// catalog descriptions and the full 11-category order.
+///
+/// Stays behind the existing admin Roles-tab posture (`admin.roles.view`,
+/// already in the catalog). The card is read-only — NO new permission
+/// key, NO gating change, NOT auth-touching.
 class _PermissionExplainerCard extends StatelessWidget {
   const _PermissionExplainerCard();
 
-  static const List<String> _categoryOrder = <String>[
-    'product',
-    'forgeflow',
-    'barrio',
-    'admin',
-    'team',
-    'billing',
-    'integration',
-    'integrations',
-    'workflow',
-  ];
-
-  static const Map<String, String> _categoryLabels = <String, String>{
-    'product': 'Product access',
-    'forgeflow': 'Forge & Flow surfaces',
-    'barrio': 'Barrio surfaces',
-    'admin': 'Admin actions',
-    'team': 'Operator team management',
-    'billing': 'Billing',
-    'integration': 'Integration management',
-    'integrations': 'Vendor integrations',
-    'workflow': 'Workflow automation',
-  };
-
-  Map<String, List<String>> _bucket() {
-    final buckets = <String, List<String>>{
-      for (final c in _categoryOrder) c: <String>[],
-    };
-    for (final key in PermissionKeys.all) {
-      final dot = key.indexOf('.');
-      if (dot <= 0) continue;
-      final prefix = key.substring(0, dot);
-      buckets[prefix]?.add(key);
-    }
-    for (final list in buckets.values) {
-      list.sort();
-    }
-    return buckets;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final bucketed = _bucket();
-    return AdminCard(
-      child: Column(
-        key: const Key('admin_rhs_permission_explainer'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: <Widget>[
-          Text(
-            'Permission catalog',
-            style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Human permissions available to roles. Hover a permission for '
-            'the raw catalog key; a lock marker means multi-factor sign-in.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 8),
-          for (final category in _categoryOrder)
-            if ((bucketed[category] ?? const <String>[]).isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
-                child: Column(
-                  key: Key('admin_rhs_permission_category_$category'),
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      _categoryLabels[category] ?? category,
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ).copyWith(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 4),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: <Widget>[
-                        for (final key in bucketed[category]!)
-                          PermissionKeyChip(permissionKey: key),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-        ],
+    return const AdminCard(
+      key: Key('admin_rhs_permission_explainer'),
+      child: PermissionExplainerView(
+        embedded: true,
+        keyPrefix: 'admin_rhs_permission_explainer',
       ),
     );
   }
