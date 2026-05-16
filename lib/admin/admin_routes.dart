@@ -3443,56 +3443,341 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
   );
 }();
 
+// Realistic demo seed for vendor_applicability — mirrors what an F&F super
+// admin would have populated by the time staging/prod is in steady state. All
+// 17 supported vendors (POS x7, labor x6, reservation x4) appear at least
+// once per applicable kind, with metadata that matches the per-kind schemas
+// in lib/services/settings/applicability_metadata_schemas.dart. operator_id
+// stays NULL — these are global F&F-admin defaults; per-operator overrides
+// would land as separate rows from the admin upsert flow.
 final VendorApplicabilityAdminGateway _defaultVendorApplicabilityDemoGateway =
     _InMemoryVendorApplicabilityAdminGateway(
-      seed: <VendorApplicabilityAdminRow>[
-        VendorApplicabilityAdminRow(
-          id: 'demo-va-wage-toast',
-          operatorId: null,
-          settingKind: 'wage',
-          settingKey: 'default',
-          vendorSlug: 'toast',
-          enabled: true,
-          metadata: const <String, Object?>{
-            'authority_basis': 'job_code',
-            'requires_job_code': true,
-          },
-          effectiveFrom: DateTime.utc(2026, 5, 13, 15),
-          effectiveUntil: null,
-          createdAt: DateTime.utc(2026, 5, 13, 15),
-          createdBy: 'demo-super-admin',
-        ),
-        VendorApplicabilityAdminRow(
-          id: 'demo-va-covers-libro',
-          operatorId: null,
-          settingKind: 'covers',
-          settingKey: 'default',
-          vendorSlug: 'libro',
-          enabled: true,
-          metadata: const <String, Object?>{
-            'cover_filter': 'all_covers',
-            'exclude_voids': true,
-          },
-          effectiveFrom: DateTime.utc(2026, 5, 13, 15),
-          effectiveUntil: null,
-          createdAt: DateTime.utc(2026, 5, 13, 15),
-          createdBy: 'demo-super-admin',
-        ),
-        VendorApplicabilityAdminRow(
-          id: 'demo-va-polling-qbt',
-          operatorId: null,
-          settingKind: 'polling',
-          settingKey: 'standard',
-          vendorSlug: 'quickbooks_time',
-          enabled: true,
-          metadata: const <String, Object?>{'tier_key': 'standard'},
-          effectiveFrom: DateTime.utc(2026, 5, 13, 15),
-          effectiveUntil: null,
-          createdAt: DateTime.utc(2026, 5, 13, 15),
-          createdBy: 'demo-super-admin',
-        ),
-      ],
+      seed: _seedVendorApplicabilityRows(),
     );
+
+List<VendorApplicabilityAdminRow> _seedVendorApplicabilityRows() {
+  final seededAt = DateTime.utc(2026, 5, 13, 15);
+  final rows = <VendorApplicabilityAdminRow>[];
+
+  VendorApplicabilityAdminRow row({
+    required String id,
+    required String settingKind,
+    required String settingKey,
+    required String vendorSlug,
+    required bool enabled,
+    Map<String, Object?> metadata = const <String, Object?>{},
+  }) {
+    return VendorApplicabilityAdminRow(
+      id: id,
+      operatorId: null,
+      settingKind: settingKind,
+      settingKey: settingKey,
+      vendorSlug: vendorSlug,
+      enabled: enabled,
+      metadata: metadata,
+      effectiveFrom: seededAt,
+      effectiveUntil: null,
+      createdAt: seededAt,
+      createdBy: 'demo-super-admin',
+    );
+  }
+
+  // -- Wage --------------------------------------------------------------
+  // Labor vendors are eligible wage sources; POS vendors with payroll
+  // add-ons (Toast, Square) are also eligible. Other POS show as disabled
+  // so the screen demonstrates both the enabled and disabled states.
+  rows.addAll(<VendorApplicabilityAdminRow>[
+    row(
+      id: 'demo-va-wage-adp',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'adp',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'job_code',
+        'requires_job_code': true,
+        'vendor_field': 'gross_wages',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-agendrix',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'agendrix',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'job_code',
+        'requires_job_code': true,
+      },
+    ),
+    row(
+      id: 'demo-va-wage-humanity',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'humanity',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-push-operations',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'push_operations',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-quickbooks-time',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'quickbooks_time',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-seven-shifts',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'seven_shifts',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'job_code',
+        'requires_job_code': true,
+      },
+    ),
+    row(
+      id: 'demo-va-wage-toast',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'toast',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+        'vendor_field': 'gross_wages',
+        'notes': 'Requires Toast Payroll add-on.',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-square',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'square',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'authority_basis': 'vendor_pay_rate',
+        'notes': 'Requires Square Payroll subscription.',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-clover',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'clover',
+      enabled: false,
+      metadata: const <String, Object?>{
+        'authority_basis': 'manual_mapping',
+        'notes': 'Clover labor module not certified for wage authority.',
+      },
+    ),
+    row(
+      id: 'demo-va-wage-oracle-micros-simphony',
+      settingKind: 'wage',
+      settingKey: 'default',
+      vendorSlug: 'oracle_micros_simphony',
+      enabled: false,
+      metadata: const <String, Object?>{
+        'authority_basis': 'manual_mapping',
+        'notes': 'Simphony exports rates only; not approved as wage source.',
+      },
+    ),
+  ]);
+
+  // -- Covers ------------------------------------------------------------
+  // Reservation vendors track real guest counts (all_covers); POS vendors
+  // approximate covers from dine-in checks (dine_in_only) with voids
+  // excluded so service-period totals do not double-count.
+  rows.addAll(<VendorApplicabilityAdminRow>[
+    row(
+      id: 'demo-va-covers-libro',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'libro',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-opentable',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'opentable',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-sevenrooms',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'sevenrooms',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-tock',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'tock',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'all_covers',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-toast',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'toast',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-square',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'square',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-clover',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'clover',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-aloha-ncr-voyix',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'aloha_ncr_voyix',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-lightspeed-lsk',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'lightspeed_lsk',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-revel',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'revel',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+    row(
+      id: 'demo-va-covers-oracle-micros-simphony',
+      settingKind: 'covers',
+      settingKey: 'default',
+      vendorSlug: 'oracle_micros_simphony',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'cover_filter': 'dine_in_only',
+        'exclude_voids': true,
+      },
+    ),
+  ]);
+
+  // -- Polling -----------------------------------------------------------
+  // Every supported vendor lands on the standard polling tier by default.
+  // Toast also has a premium-tier override row so the screen demonstrates
+  // multi-setting_key grouping (production typically has tiered overrides
+  // for high-volume operators).
+  const standardPollingVendors = <String>[
+    'adp',
+    'agendrix',
+    'aloha_ncr_voyix',
+    'clover',
+    'humanity',
+    'libro',
+    'lightspeed_lsk',
+    'opentable',
+    'oracle_micros_simphony',
+    'push_operations',
+    'quickbooks_time',
+    'revel',
+    'seven_shifts',
+    'sevenrooms',
+    'square',
+    'toast',
+    'tock',
+  ];
+  for (final vendor in standardPollingVendors) {
+    rows.add(
+      row(
+        id: 'demo-va-polling-standard-${vendor.replaceAll('_', '-')}',
+        settingKind: 'polling',
+        settingKey: 'standard',
+        vendorSlug: vendor,
+        enabled: true,
+        metadata: const <String, Object?>{'tier_key': 'standard'},
+      ),
+    );
+  }
+  rows.add(
+    row(
+      id: 'demo-va-polling-premium-toast',
+      settingKind: 'polling',
+      settingKey: 'premium',
+      vendorSlug: 'toast',
+      enabled: true,
+      metadata: const <String, Object?>{
+        'tier_key': 'premium',
+        'polling_seconds_override': 60,
+      },
+    ),
+  );
+
+  return rows;
+}
 
 class _InMemoryVendorApplicabilityAdminGateway
     implements VendorApplicabilityAdminGateway {
