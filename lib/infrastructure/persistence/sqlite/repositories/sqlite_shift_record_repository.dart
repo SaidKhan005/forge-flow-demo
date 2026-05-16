@@ -58,4 +58,15 @@ class SqliteShiftRecordRepository implements ShiftRecordRepository {
     final dao = await _daoReady;
     return dao.deleteForOtherRestaurants(keepRestaurantId);
   }
+
+  /// Set-preserving sibling of [wipeForOtherScopes]. Deletes every
+  /// mirrored `shift_records` row whose `restaurant_id` is NOT in
+  /// [keepRestaurantIds]. Used only by the demo bootstrap source-swap
+  /// (`demoScopePreservingCrossTenantWipe`) so a demo location switch
+  /// keeps every demo location's rows; production keeps the single-keep
+  /// path byte-unchanged.
+  Future<int> wipeForScopesNotIn(Set<String> keepRestaurantIds) async {
+    final dao = await _daoReady;
+    return dao.deleteForRestaurantsNotIn(keepRestaurantIds);
+  }
 }

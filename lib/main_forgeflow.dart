@@ -16,6 +16,7 @@ import 'services/observability/crash_reporter.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/realtime/web_socket_channel_realtime_transport.dart';
 import 'services/sync/http_sync_proxy_client.dart';
+import 'services/sync/mobile_operational_sync_runtime.dart';
 
 Future<void> main() async {
   // MP1 — Crashlytics: initialize PII-scrubbing crash reporter once
@@ -136,6 +137,18 @@ Future<void> main() async {
       authLoginService: const DemoAuthLoginService(),
       secureSessionStorage: InMemorySecureSessionStorage(),
       authSessionLedgerWriter: InMemoryAuthSessionLedgerWriter(),
+      // HP #2 bootstrap source-swap: the 4 DemoScope locations are one
+      // demo operator's tenancy and there is no operational proxy sync
+      // to re-materialize a wiped location, so the production
+      // cross-tenant wipe would destroy the 3 non-active demo
+      // locations' cold-boot envelope on every location switch
+      // (HISTORICAL ONLY defect). The demo-preserving strategy keeps
+      // all 4 demo locations while still purging a genuinely-foreign
+      // tenant. Same place this branch already swaps
+      // DemoAuthLoginService / InMemorySecureSessionStorage. No
+      // production path passes this -> defaultCrossTenantWipe stays in
+      // force, byte-unchanged, for prod.
+      crossTenantWipe: demoScopePreservingCrossTenantWipe,
     );
     return;
   }

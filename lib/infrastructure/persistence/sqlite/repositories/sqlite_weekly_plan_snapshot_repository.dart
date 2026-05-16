@@ -84,4 +84,17 @@ class SqliteWeeklyPlanSnapshotRepository
     final dao = await _daoReady;
     return dao.wipeForOtherScopes(keepRestaurantId);
   }
+
+  /// Set-preserving sibling of [wipeForOtherScopes]. Deletes every
+  /// mirrored `weekly_plan_snapshots` row whose `restaurant_id` is NOT
+  /// in [keepRestaurantIds]. Used only by the demo bootstrap
+  /// source-swap (`demoScopePreservingCrossTenantWipe`) so a demo
+  /// location switch keeps every demo location's locked plans;
+  /// production keeps the single-keep path byte-unchanged. Concrete-only
+  /// (the demo wipe calls the SQLite repo directly), so it is not added
+  /// to the domain `WeeklyPlanSnapshotRepository` interface.
+  Future<int> wipeForScopesNotIn(Set<String> keepRestaurantIds) async {
+    final dao = await _daoReady;
+    return dao.deleteForRestaurantsNotIn(keepRestaurantIds);
+  }
 }

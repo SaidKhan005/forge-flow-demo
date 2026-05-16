@@ -51,4 +51,16 @@ class SqliteTargetProfileRepository implements TargetProfileRepository {
     final dao = await _daoReady;
     return dao.wipeForOtherScopes(keepRestaurantId);
   }
+
+  /// Set-preserving sibling of [wipeForOtherScopes]. Deletes every
+  /// mirrored `active_target_profiles` + `target_profile_versions` row
+  /// whose `restaurant_id` is NOT in [keepRestaurantIds]. Used only by
+  /// the demo bootstrap source-swap
+  /// (`demoScopePreservingCrossTenantWipe`) so a demo location switch
+  /// keeps every demo location's profiles; production keeps the
+  /// single-keep path byte-unchanged.
+  Future<int> wipeForScopesNotIn(Set<String> keepRestaurantIds) async {
+    final dao = await _daoReady;
+    return dao.deleteForRestaurantsNotIn(keepRestaurantIds);
+  }
 }

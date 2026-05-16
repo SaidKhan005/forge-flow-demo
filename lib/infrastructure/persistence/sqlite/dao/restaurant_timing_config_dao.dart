@@ -62,4 +62,24 @@ class RestaurantTimingConfigDao {
       whereArgs: [keepRestaurantId],
     );
   }
+
+  /// Deletes every `restaurant_timing_configs` row whose `restaurant_id`
+  /// is NOT in [keepRestaurantIds]. The set-preserving sibling of
+  /// [deleteForOtherRestaurants]; the demo bootstrap source-swap
+  /// (`demoScopePreservingCrossTenantWipe`) passes the demo operator's
+  /// full `DemoScope.locations` set so a demo location switch keeps
+  /// every demo location's timing config while a genuinely-foreign
+  /// tenant is still purged. Production keeps using the single-keep
+  /// method byte-unchanged. No-ops on an empty keep set (NOT IN () is
+  /// invalid SQL and would otherwise delete everything).
+  Future<int> deleteForRestaurantsNotIn(Set<String> keepRestaurantIds) async {
+    if (keepRestaurantIds.isEmpty) return 0;
+    final keep = keepRestaurantIds.toList(growable: false);
+    final placeholders = List.filled(keep.length, '?').join(', ');
+    return _db.delete(
+      'restaurant_timing_configs',
+      where: 'restaurant_id NOT IN ($placeholders)',
+      whereArgs: keep,
+    );
+  }
 }
