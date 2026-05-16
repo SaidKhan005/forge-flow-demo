@@ -28,6 +28,7 @@
 # Examples:
 #   scripts/run_operator_web_dev.ps1
 #   scripts/run_operator_web_dev.ps1 -WebPort 8182
+#   scripts/run_operator_web_dev.ps1 -Device chrome
 #   scripts/run_operator_web_dev.ps1 -LiveAuth -ProxyBaseUri https://proxy.forgeflow.app
 #   scripts/run_operator_web_dev.ps1 -PrintCommandOnly
 #   scripts/run_operator_web_dev.ps1 -- --dart-define=OPERATOR_WEB_DEMO_SCENARIO=onboarding
@@ -68,6 +69,15 @@ param(
   [Parameter()][string] $WebPort = '8181',
 
   [Parameter()][string] $WebHostname = '0.0.0.0',
+
+  # Flutter target device. `web-server` (default) serves the bundle so
+  # any browser / LAN device can attach on $WebHostname:$WebPort.
+  # `chrome` launches Chrome directly with the Dart debugger attached
+  # (hot reload, DevTools) — convenient for local dev. The dev-CSP swap
+  # applies identically either way.
+  [Parameter()]
+  [ValidateSet('web-server', 'chrome')]
+  [string] $Device = 'web-server',
 
   [Parameter()][string] $ProxyBaseUri = $env:FORGE_FLOW_OPERATOR_WEB_PROXY_BASE_URI,
 
@@ -214,11 +224,18 @@ function Build-FlutterArgs {
     exit 1
   }
 
+  # `0.0.0.0` is right for web-server (LAN/device testing), but Chrome
+  # must be pointed at a concrete loopback host or it fails to attach.
+  $effectiveWebHostname = $WebHostname
+  if ($Device -eq 'chrome' -and $WebHostname -eq '0.0.0.0') {
+    $effectiveWebHostname = 'localhost'
+  }
+
   $argsList = @(
     'run',
-    '-d', 'web-server',
+    '-d', $Device,
     "--web-port=$WebPort",
-    "--web-hostname=$WebHostname",
+    "--web-hostname=$effectiveWebHostname",
     '-t', 'lib/main_operator_web.dart'
   )
 

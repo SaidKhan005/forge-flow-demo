@@ -102,7 +102,10 @@ docs/internal/barrio/barrio_legado_business_plan.pdf
 # children only — subdirectory contents are excluded by the matching parent.
 !.claude/launch.json
 
-# Codex local tooling
+# Codex local tooling. `.codex/` holds the Codex skill + per-lane
+# worktrees (`.codex/worktrees/<lane>/`) — local executor scaffolding
+# only, never committed (mirrors the `.claude/*` carve-out above).
+.codex/
 .codex_appdata/
 .codex_tmp_*
 
