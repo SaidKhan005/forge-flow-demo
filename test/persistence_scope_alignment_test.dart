@@ -281,24 +281,44 @@ void main() {
       expect(restaurant.businessTimezone, 'America/St_Johns');
     });
 
-    test('all seeded shift rows are backfilled with demo restaurant id',
-        () async {
+    // Demo-data Slice C: the demo is now multi-location by design — the
+    // §2c hierarchy (Slice A) plus per-location closed history/cycles
+    // (Slice C) seed North Loop / Riverside / Harbour into the SAME
+    // production tables, scoped by their own restaurant_id (HP #4). The
+    // v7-backfill invariant is therefore "every row belongs to a known
+    // demo location and never NULL/orphan/foreign", with Downtown still
+    // present (backward compat) — not "every row is Downtown".
+    final demoLocationIds =
+        DemoScope.locations.map((l) => l.restaurantId).toSet();
+
+    test('all seeded shift rows carry a known demo location id '
+        '(Downtown present; no NULL/orphan/foreign — HP #4)', () async {
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('shift_records');
       expect(rows, isNotEmpty);
       for (final row in rows) {
-        expect(row['restaurant_id'], 'demo_restaurant_001');
+        expect(demoLocationIds, contains(row['restaurant_id']));
       }
+      expect(
+        rows.where((r) => r['restaurant_id'] == 'demo_restaurant_001'),
+        isNotEmpty,
+        reason: 'Downtown (demo_restaurant_001) must still be seeded',
+      );
     });
 
-    test('all seeded week rows are backfilled with demo restaurant id',
-        () async {
+    test('all seeded week rows carry a known demo location id '
+        '(Downtown present; no NULL/orphan/foreign — HP #4)', () async {
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('week_records');
       expect(rows, isNotEmpty);
       for (final row in rows) {
-        expect(row['restaurant_id'], 'demo_restaurant_001');
+        expect(demoLocationIds, contains(row['restaurant_id']));
       }
+      expect(
+        rows.where((r) => r['restaurant_id'] == 'demo_restaurant_001'),
+        isNotEmpty,
+        reason: 'Downtown (demo_restaurant_001) must still be seeded',
+      );
     });
   });
 
