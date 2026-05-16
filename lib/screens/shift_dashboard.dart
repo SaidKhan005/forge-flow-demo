@@ -823,36 +823,59 @@ class _ShiftSectionViewData {
 
     _OpzBandData? opz;
     if (tc.hasOpzBand) {
-      final currentCplh = hasLabor ? bucket.cplh : 0.0;
       final floor = tc.opzFloorCPLH!;
       final ceiling = tc.opzCeilingCPLH!;
       final target = tc.targetCPLH!;
-      final status = currentCplh < floor
-          ? 'below'
-          : currentCplh > ceiling
-              ? 'above'
-              : 'in';
-      final label = status == 'below'
-          ? 'BELOW OPZ'
-          : status == 'above'
-              ? 'ABOVE OPZ'
-              : 'IN OPZ';
-      final sub = status == 'below'
-          ? 'Productivity is below the OPZ floor. Too many labor hours '
-              'for the volume.'
-          : status == 'above'
-              ? 'Productivity is above the OPZ ceiling. Service quality '
-                  'may suffer.'
-              : 'Team is producing. Watch covers.';
-      opz = _OpzBandData(
-        currentCPLH: currentCplh,
-        opzFloorCPLH: floor,
-        opzCeilingCPLH: ceiling,
-        targetCPLH: target,
-        opzStatus: status,
-        opzLabel: label,
-        opzSubLabel: sub,
-      );
+      if (!hasLabor) {
+        // Locked band exists but NO in-period labor punches yet. Do NOT
+        // score the period off a phantom `0.0` CPLH — that previously
+        // rendered an alarming "BELOW OPZ" verdict + a 0.0 needle for a
+        // period that simply has no actuals in yet (Metric Honesty
+        // Doctrine / Design Rule 2: missing actuals → honest pending
+        // state, never a verdict computed off a sentinel zero). The band
+        // is still shown (floor/ceiling/target) so the operator sees the
+        // locked standard; `'pending'` makes ZoneStatusCard suppress the
+        // needle, dash the CURRENT CPLH value, and neutralize the label.
+        opz = _OpzBandData(
+          currentCPLH: 0.0, // sentinel — not rendered in the pending state
+          opzFloorCPLH: floor,
+          opzCeilingCPLH: ceiling,
+          targetCPLH: target,
+          opzStatus: 'pending',
+          opzLabel: 'AWAITING ACTUALS',
+          opzSubLabel:
+              'Locked productivity zone is set. Waiting on labor punches '
+              'for this period before scoring.',
+        );
+      } else {
+        final currentCplh = bucket.cplh;
+        final status = currentCplh < floor
+            ? 'below'
+            : currentCplh > ceiling
+                ? 'above'
+                : 'in';
+        final label = status == 'below'
+            ? 'BELOW OPZ'
+            : status == 'above'
+                ? 'ABOVE OPZ'
+                : 'IN OPZ';
+        final sub = status == 'below'
+            ? 'Productivity is below the OPZ floor. Too many labor hours '
+                'for the volume.'
+            : status == 'above'
+                ? 'Productivity is above the OPZ ceiling. Service quality '
+                    'may suffer.'
+                : 'Team is producing. Watch covers.';
+        opz = _OpzBandData(
+          currentCPLH: currentCplh,
+          opzFloorCPLH: floor,
+          opzCeilingCPLH: ceiling,
+          targetCPLH: target,
+          opzStatus: status,
+          opzLabel: label,
+          opzSubLabel: sub,
+        );
+      }
     }
 
     String hrs(int minutes) => minutes > 0
