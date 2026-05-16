@@ -1621,26 +1621,36 @@ class _ShiftPeriodSelector extends StatelessWidget {
               );
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _PeriodPill(
-                  label: 'Whole Day',
-                  selected: selectedPeriodId == null,
-                  onTap: () => onChanged(null),
-                ),
-                for (final definition in definitions) ...[
-                  const SizedBox(width: 8),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+          child: Container(
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundDeep.withValues(alpha: 0.45),
+              border: Border.all(
+                color: AppColors.borderSubtle.withValues(alpha: 0.6),
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
                   _PeriodPill(
-                    label: definition.label,
-                    selected: selectedPeriodId == definition.id,
-                    activeNow: activeId == definition.id,
-                    onTap: () => onChanged(definition.id),
+                    label: 'Whole Day',
+                    selected: selectedPeriodId == null,
+                    onTap: () => onChanged(null),
                   ),
+                  for (final definition in definitions) ...[
+                    const SizedBox(width: 8),
+                    _PeriodPill(
+                      label: definition.label,
+                      selected: selectedPeriodId == definition.id,
+                      activeNow: activeId == definition.id,
+                      onTap: () => onChanged(definition.id),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         );
@@ -1668,12 +1678,14 @@ class _PeriodPill extends StatelessWidget {
     // The active (current real-time) period is signalled by an orange
     // (sunset) border only — no "ACTIVE NOW" text. Selected styling keeps
     // its own border; an unselected-but-active chip gets the bold orange
-    // border as the sole live affordance, others stay subtle.
+    // border as the sole live affordance. Idle chips carry a clearer
+    // border than before so the whole row reads as a tappable view
+    // switcher rather than static labels (UX: discoverability).
     final borderColor = selected
         ? AppColors.sunsetDark
         : activeNow
         ? AppColors.sunset
-        : AppColors.borderSubtle.withValues(alpha: 0.7);
+        : AppColors.borderSubtle;
     final borderWidth = activeNow && !selected ? 2.0 : 1.0;
     final textColor = selected
         ? AppColors.textPrimary
@@ -1689,12 +1701,12 @@ class _PeriodPill extends StatelessWidget {
         onTap: onTap,
         child: Container(
           key: activeNow ? const Key('shift_period_pill_active') : null,
-          constraints: const BoxConstraints(minWidth: 88, minHeight: 38),
-          padding: const EdgeInsets.symmetric(vertical: 7, horizontal: 12),
+          constraints: const BoxConstraints(minWidth: 92, minHeight: 44),
+          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
           decoration: BoxDecoration(
             color: bgColor,
             border: Border.all(color: borderColor, width: borderWidth),
-            borderRadius: BorderRadius.circular(2),
+            borderRadius: BorderRadius.circular(8),
           ),
           alignment: Alignment.center,
           child: Text(

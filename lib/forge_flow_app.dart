@@ -1083,14 +1083,17 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _selectBusinessScope(BusinessScope scope) async {
-    if (!scope.isLocationScope) return;
+  /// Activates [scope] for the signed-in user. Returns `true` only when a
+  /// real switch happened (location scope, signed in, and not already the
+  /// active scope) so the caller can confirm the change to the operator.
+  Future<bool> _selectBusinessScope(BusinessScope scope) async {
+    if (!scope.isLocationScope) return false;
+    final scopeNotifier = context.read<RestaurantScopeNotifier>();
+    if (scope.stableKey == scopeNotifier.activeScope?.stableKey) return false;
     final session = context.read<AuthSessionNotifier>().session;
-    if (session == null) return;
-    await context.read<RestaurantScopeNotifier>().activateBusinessScope(
-      scope,
-      userId: session.userId,
-    );
+    if (session == null) return false;
+    await scopeNotifier.activateBusinessScope(scope, userId: session.userId);
+    return true;
   }
 
   Widget _buildBusinessScopeDrawer(BuildContext context) {
@@ -1196,8 +1199,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                           scope: scope,
                           selected: selected,
                           onTap: () {
+                            // Capture the messenger before the drawer pops —
+                            // its context is gone by the time the async scope
+                            // activation completes.
+                            final messenger = ScaffoldMessenger.of(context);
                             Navigator.of(context).maybePop();
-                            unawaited(_selectBusinessScope(scope));
+                            unawaited(
+                              _selectBusinessScope(scope).then((switched) {
+                                if (!switched || !mounted) return;
+                                messenger
+                                  ..clearSnackBars()
+                                  ..showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Now showing ${scope.label}',
+                                      ),
+                                      duration: const Duration(seconds: 3),
+                                    ),
+                                  );
+                              }),
+                            );
                           },
                         );
                       },
