@@ -1,24 +1,26 @@
 // Per-Daypart Targets V1 — Slice 4 closed-state + honest empty-state
 // parity fix.
 //
-// Pins the two defects this fix closes (operator decision: "Full card,
-// dashes — maximum 1:1 parity"):
+// Operator instruction (2026-05-16): the daypart header is plain — it
+// carries ONLY the operator-configured clock window and the
+// primary-driver chip. The tri-state status line ("Period closed" /
+// "Active now" / "Opens at …") was REMOVED. This test now pins:
 //
 //   1a. Closed/past-period state. A past, already-closed period (e.g.
 //       demo Lunch 11:00–15:00 viewed at 16:00) must render the full
-//       3-section card with honest "—" actuals, its real locked
-//       per-period targets, AND a "Period closed" status line — never
-//       the old binary "Projected / unavailable until this period
-//       opens." catch-all and never an "Opens at …" / "Active now".
+//       3-section card with honest "—" actuals and its real locked
+//       per-period targets — and NO status verbiage of any kind
+//       ("Period closed" / "Active now" / "Opens at …" / the old
+//       "until this period opens." catch-all all absent). The
+//       operator-configured clock window still renders.
 //
 //   1b. Honest empty-state parity. Labor-unconnected (POS sales
 //       present, no labor punches) must render Labor % and Blended
 //       Wage as "—", never a phantom `0.0%` / `$0.00` (Design Rule 2 +
 //       Metric Honesty Doctrine).
 //
-//   + A genuinely future period frames as "Opens at {start}", and the
-//     authoritative whole-day half stays byte-untouched (Promise 3 /
-//     Layer 9 — daypart is adjacent, never replaces).
+//   + The authoritative whole-day half stays byte-untouched (Promise 3
+//     / Layer 9 — daypart is adjacent, never replaces).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -122,8 +124,8 @@ void main() {
   group('Per-Daypart V1 Slice 4 — closed-state + honest empty parity', () {
     testWidgets(
       'past/closed period renders the full 3-section card with "—" '
-      'actuals, its real locked targets, and a "Period closed" status '
-      'line (NOT "until this period opens")',
+      'actuals and its real locked targets, the clock window, and NO '
+      'status verbiage',
       (tester) async {
         // Tuesday 2026-03-31 16:00 — Lunch (11:00–15:00) already closed.
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 16, 0);
@@ -149,11 +151,12 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
-        // Correct tri-state status — the bug was this falling through
-        // to the future copy.
+        // Plain header (operator instruction 2026-05-16): NO status
+        // verbiage of any kind — not the old catch-all, not the
+        // tri-state line.
         expect(
           find.text('Period closed', skipOffstage: false),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
           find.text(
@@ -167,6 +170,13 @@ void main() {
           findsNothing,
         );
         expect(find.text('Active now', skipOffstage: false), findsNothing);
+
+        // …but the operator-configured clock window for the selected
+        // period still renders (the one element the plain header keeps).
+        expect(
+          find.text('11:00 – 15:00', skipOffstage: false),
+          findsOneWidget,
+        );
 
         // Full card — never collapses to a one-liner.
         expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
@@ -223,8 +233,14 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
-        // Active period — full card renders.
-        expect(find.text('Active now', skipOffstage: false), findsOneWidget);
+        // Active period — full card renders, but the plain header shows
+        // NO "Active now" verbiage (operator instruction 2026-05-16),
+        // only the operator-configured clock window.
+        expect(find.text('Active now', skipOffstage: false), findsNothing);
+        expect(
+          find.text('11:00 – 15:00', skipOffstage: false),
+          findsOneWidget,
+        );
         expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
 
         // POS actuals still surface honestly.
@@ -243,7 +259,8 @@ void main() {
     );
 
     testWidgets(
-      'genuinely future period frames as "Opens at {start}"',
+      'genuinely future period shows NO status verbiage — only the '
+      'operator-configured clock window + the full card',
       (tester) async {
         // Tuesday 2026-03-31 12:30 — Dinner (17:00) has not opened yet.
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
@@ -256,11 +273,17 @@ void main() {
 
         expect(
           find.text('Opens at 17:00', skipOffstage: false),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
           find.text('Period closed', skipOffstage: false),
           findsNothing,
+        );
+        expect(find.text('Active now', skipOffstage: false), findsNothing);
+        // The one element the plain header keeps.
+        expect(
+          find.text('17:00 – 23:00', skipOffstage: false),
+          findsOneWidget,
         );
         expect(find.text('OUTPUTS', skipOffstage: false), findsOneWidget);
       },

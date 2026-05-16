@@ -166,9 +166,11 @@ void main() {
       // 10.5.2 replaces the 10.5.0 "build out in upcoming 10.5 slices"
       // banner with live per-period accumulator metrics on each card.
       // The Slice 4 closed-state fix then made the card always render
-      // the full 3-section grammar with honest "—" actuals + a
-      // tri-state status line for buckets the notifier hasn't filled
-      // yet (no more "No data yet for this period." one-liner).
+      // the full 3-section grammar with honest "—" actuals for buckets
+      // the notifier hasn't filled yet (no more "No data yet for this
+      // period." one-liner). The tri-state status line was later
+      // removed (operator instruction 2026-05-16) — the plain header
+      // keeps only the clock window + driver chip.
 
       // Active period chip surfaces exactly once — Lunch is live.
       expect(find.byKey(const Key('shift_period_pill_active'), skipOffstage: false), findsOneWidget);

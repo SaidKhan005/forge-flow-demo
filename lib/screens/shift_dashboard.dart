@@ -63,7 +63,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
   /// A4.2 (R2) per `docs/_audits/code_health/a4_performance_audit.md`:
   /// one shared 30-second ticker drives every wall-clock-dependent
   /// widget on the screen (`_LiveClock`, `_ShiftPeriodSelector`,
-  /// `_DaypartScaffoldSection`, `_TimeIntoServiceHeader`). Before the
+  /// `_DaypartPeriodHeader`). Before the
   /// coalesce each widget owned its own `Timer.periodic` — four timers,
   /// four independent tick offsets, four `setState` calls per cycle.
   /// Now: one timer fires; all four widgets rebuild on the same vsync
@@ -262,12 +262,13 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
 
   /// Daypart slivers — a TRUE 1:1 of [_wholeDaySlivers]: the SAME three
   /// pinned-header section groups, the SAME section widgets, scoped to
-  /// the selected period via [_ShiftSectionViewData.fromPeriod]. The
-  /// period's identity + closed/active/future status renders as a
-  /// compact header element above the sections (not a bordered card
-  /// wrapping everything). The time-into-service header
-  /// ("Lunch · 1h 12m in") sits above that and only renders when the
-  /// period is active.
+  /// the selected period via [_ShiftSectionViewData.fromPeriod]. A
+  /// plain compact header above the sections carries ONLY the
+  /// operator-configured clock window and the primary-driver chip
+  /// (operator instruction 2026-05-16). The old time-into-service
+  /// strip ("Lunch · 1h 12m in") and the tri-state status line were
+  /// removed — the period pill's border-only active affordance is the
+  /// sole live-state signal.
   List<Widget> _servicePeriodSlivers(
     BuildContext context,
     String selectedPeriodId,
@@ -284,12 +285,6 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     }
 
     final slivers = <Widget>[
-      SliverToBoxAdapter(
-        child: _TimeIntoServiceHeader(
-          selectedPeriodId: selectedPeriodId,
-          ticker: _ticker,
-        ),
-      ),
       SliverToBoxAdapter(
         child: _DaypartPeriodHeader(
           selectedPeriodId: selectedPeriodId,
@@ -488,9 +483,8 @@ class _ShiftHeaderMeta extends StatelessWidget {
 const Duration _kShiftDashboardTickInterval = Duration(seconds: 30);
 
 /// One owner of the periodic timer + one [ValueListenable] feed for the
-/// four shift-dashboard widgets that need a wall-clock pulse:
-/// `_LiveClock`, `_ShiftPeriodSelector`, `_DaypartScaffoldSection`,
-/// `_TimeIntoServiceHeader`.
+/// shift-dashboard widgets that need a wall-clock pulse:
+/// `_LiveClock`, `_ShiftPeriodSelector`, `_DaypartPeriodHeader`.
 ///
 /// Owned by [_ShiftDashboardState]; constructed in `initState`,
 /// disposed in `dispose`, and passed to each consumer widget via
@@ -1648,28 +1642,23 @@ class _PeriodPill extends StatelessWidget {
 
 // ─── Daypart period header (Per-Daypart V1 — true 1:1 layout) ───────────────
 
-/// Compact period-identity + status element rendered ABOVE the three
-/// shared section groups in the daypart lens — NOT a bordered card
-/// wrapping the sections (operator instruction: the daypart layout is
-/// the SAME grammar as Whole Day, not a lookalike). It carries only the
-/// things the whole-day lens has no equivalent for: which period is
-/// selected, its clock window, its tri-state status line, the missing-
-/// timezone banner, and the Phase 10.5.3 per-period primary-driver chip.
+/// Compact period element rendered ABOVE the three shared section
+/// groups in the daypart lens — NOT a bordered card wrapping the
+/// sections (operator instruction: the daypart layout is the SAME
+/// grammar as Whole Day, not a lookalike).
+///
+/// Operator instruction (2026-05-16): the header is plain — it carries
+/// ONLY the operator-configured clock window (`startLocalTime –
+/// endLocalTime` from the restaurant's service-period definitions) and
+/// the Phase 10.5.3 per-period primary-driver chip. The tri-state
+/// status line ("Period closed" / "Active now" / "Opens at …") was
+/// removed: the `_ShiftPeriodSelector` pill's border-only active
+/// affordance already conveys live state, and the selected pill already
+/// announces which period is in view. The honest missing-timezone
+/// banner is retained (Metric Honesty Doctrine — a real config gap is
+/// surfaced, not the period-status verbiage the operator asked to drop).
 /// The metric sections themselves are the SAME `_OutputsSection` /
 /// `_InputsSection` / `_FohProductivitySection` whole-day uses.
-///
-/// **Time-source contract (mirrors `current_state_boundary_monitor.dart`):**
-/// the active/closed/future phase is computed from `tz.TZDateTime.now`
-/// for the restaurant's IANA `businessTimezone`, bucketed by
-/// **business-date weekday** via [BusinessDateResolver] — never raw
-/// `DateTime.now().weekday`. Tests inject a restaurant-local [DateTime]
-/// via [ShiftDashboard.clockOverride]. No usable IANA timezone → the
-/// status line degrades honestly ("Opens at …" / the missing-tz copy),
-/// never a false "closed".
-///
-/// A4.2 (R2): rebuilds via the dashboard-wide [_ShiftDashboardTicker]
-/// (30s) so the status line follows the live clock across a
-/// service-period boundary without a local `Timer.periodic`.
 class _DaypartPeriodHeader extends StatelessWidget {
   final String selectedPeriodId;
   final ValueListenable<DateTime> ticker;
@@ -1684,15 +1673,10 @@ class _DaypartPeriodHeader extends StatelessWidget {
     return ValueListenableBuilder<DateTime>(
       valueListenable: ticker,
       builder: (context, _, __) {
-        final restaurant =
-            context.watch<RestaurantScopeNotifier?>()?.restaurant;
         final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
 
         final definitions = periodNotifier?.definitions ??
             ServicePeriodDefinitionResolver.demoDefinitions;
-        final cutoff = periodNotifier?.businessDayStartLocalTime ??
-            _defaultBusinessDayStartLocalTime;
-        final localNow = _restaurantLocalNow(restaurant);
         final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
         ServicePeriodDefinition? selectedDefinition;
         for (final definition in ordered) {
@@ -1741,44 +1725,21 @@ class _DaypartPeriodHeader extends StatelessWidget {
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 )
               else ...[
-                // Item 1 de-dup (operator walkthrough 2026-05-16): the
-                // `_ShiftPeriodSelector` pills above already announce the
-                // selected period by `definition.label` (the selected
-                // pill is the canonical period switcher). The old
-                // identity Row here (shortLabel pill + duplicated full
-                // label) repeated that, so the period was announced
-                // twice. We keep ONLY what the selector does NOT convey:
-                // the clock window, the tri-state status line, and the
-                // primary-driver chip. Status line + time range share
-                // one row to stay visually clean and aligned with the
-                // true-1:1 grammar.
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    // Tri-state status line — preserved verbatim from the
-                    // retired bespoke card (Period closed / Active now /
-                    // Opens at … / missing-tz). Never a false "closed".
-                    Expanded(
-                      child: _DaypartStatusLine(
-                        missingTimezone: missingTimezone,
-                        phase: localNow == null
-                            ? null
-                            : resolveServicePeriodPhase(
-                                localNow: localNow,
-                                businessDayStartLocalTime: cutoff,
-                                definitions: definitions,
-                                periodId: selectedDefinition.id,
-                              ),
-                        startLocalTime: selectedDefinition.startLocalTime,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      '${selectedDefinition.startLocalTime} – '
-                      '${selectedDefinition.endLocalTime}',
-                      style: AppTextStyles.mono10(color: AppColors.textMuted),
-                    ),
-                  ],
+                // Operator instruction (2026-05-16): the daypart header
+                // carries ONLY the operator-configured clock window and
+                // the primary-driver chip — nothing else at the top. The
+                // tri-state status line ("Period closed" / "Active now" /
+                // "Opens at …") was removed; the period pill's
+                // border-only active affordance already conveys live
+                // state, and the operator asked for a plain header. The
+                // `_ShiftPeriodSelector` pills above announce which
+                // period is selected (by `definition.label`), so this
+                // header keeps only the clock window the selector does
+                // not convey.
+                Text(
+                  '${selectedDefinition.startLocalTime} – '
+                  '${selectedDefinition.endLocalTime}',
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 8),
                 // Phase 10.5.3 — per-period primary driver chip. Resolves
@@ -1795,58 +1756,6 @@ class _DaypartPeriodHeader extends StatelessWidget {
   }
 }
 
-/// Per-Daypart V1 (Slice 4 closed-state fix) — the tri-state status
-/// line rendered inside (never instead of) the full daypart card.
-///
-/// Copy is intentionally minimal and reads as training (UX Writing
-/// Standard):
-///   * missing timezone → "Timezone not configured — metrics
-///     unavailable." (kept verbatim from the prior implementation);
-///   * [ServicePeriodPhase.past] → "Period closed" (the bug: a
-///     past/closed period previously fell through to the future copy);
-///   * [ServicePeriodPhase.active] → "Active now";
-///   * [ServicePeriodPhase.future] (or null clock) → "Opens at
-///     {startLocalTime}" — only a genuinely not-yet-open period is
-///     framed as opening.
-class _DaypartStatusLine extends StatelessWidget {
-  final bool missingTimezone;
-  final ServicePeriodPhase? phase;
-  final String startLocalTime;
-
-  const _DaypartStatusLine({
-    required this.missingTimezone,
-    required this.phase,
-    required this.startLocalTime,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final String text;
-    if (missingTimezone) {
-      text = 'Timezone not configured — metrics unavailable.';
-    } else {
-      switch (phase) {
-        case ServicePeriodPhase.past:
-          text = 'Period closed';
-          break;
-        case ServicePeriodPhase.active:
-          text = 'Active now';
-          break;
-        case ServicePeriodPhase.future:
-        case null:
-          // Null clock degrades to the honest "opens at" framing — it
-          // must never claim a period is closed without proof.
-          text = 'Opens at $startLocalTime';
-          break;
-      }
-    }
-    return Text(
-      text,
-      style: AppTextStyles.mono10(color: AppColors.textMuted),
-    );
-  }
-}
-
 // Per-Daypart V1 — true 1:1 refactor: the bespoke daypart card family
 // (`_DaypartScaffoldSection`, `_DaypartScaffoldCard`,
 // `_DaypartSectionHeader`, `_dpFmt`, `_DaypartOutputsSection`,
@@ -1857,9 +1766,11 @@ class _DaypartStatusLine extends StatelessWidget {
 // sticky-section groups the whole-day lens does, fed by
 // `_ShiftSectionViewData.fromPeriod`. The honest per-period degrade
 // (Design Rule 2) is preserved inside those shared widgets +
-// `MetricPill`'s unavailable branch. `_DaypartStatusLine` (above) and
-// `_DaypartDriverChip` (below) are kept — they back the compact
-// `_DaypartPeriodHeader` element that sits above the sections.
+// `MetricPill`'s unavailable branch. The tri-state status line was
+// retired (operator instruction 2026-05-16: plain header — clock
+// window + driver chip only); `_DaypartDriverChip` (below) is kept —
+// it backs the compact `_DaypartPeriodHeader` element that sits above
+// the sections.
 
 /// Phase 10.5.3 — per-period primary driver chip rendered alongside
 /// the daypart metric grid. Mirrors the Variance daypart lens chip so
@@ -1926,86 +1837,10 @@ DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
   }
 }
 
-// ─── Time-into-service header (Phase 10.5.2) ────────────────────────────────
-
-/// Thin header strip rendered above the SERVICE PERIODS sticky group
-/// when the daypart lens is open. Shows the active period label and
-/// elapsed minutes (e.g., "Lunch · 1h 12m in"). Hidden when no period
-/// is active (between Lunch and Dinner) or when the restaurant has no
-/// usable IANA timezone.
-///
-/// A4.2 (R2): rebuilds via the dashboard-wide [_ShiftDashboardTicker]
-/// (provided at the dashboard root) instead of a local
-/// `Timer.periodic`. The shared 30s pulse keeps the elapsed display
-/// current without owning its own timer or a snapshot refresh.
-class _TimeIntoServiceHeader extends StatelessWidget {
-  final String selectedPeriodId;
-  final ValueListenable<DateTime> ticker;
-
-  const _TimeIntoServiceHeader({
-    required this.selectedPeriodId,
-    required this.ticker,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<DateTime>(
-      valueListenable: ticker,
-      builder: (context, _, __) {
-        final restaurant =
-            context.watch<RestaurantScopeNotifier?>()?.restaurant;
-        final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
-        final definitions =
-            periodNotifier?.definitions ??
-            ServicePeriodDefinitionResolver.demoDefinitions;
-        final cutoff =
-            periodNotifier?.businessDayStartLocalTime ??
-            _defaultBusinessDayStartLocalTime;
-        final localNow = _restaurantLocalNow(restaurant);
-        if (localNow == null) return const SizedBox.shrink();
-        final interval = resolveActiveServicePeriodInterval(
-          localNow: localNow,
-          businessDayStartLocalTime: cutoff,
-          definitions: definitions,
-        );
-        if (interval == null) return const SizedBox.shrink();
-        if (interval.definition.id != selectedPeriodId) {
-          return const SizedBox.shrink();
-        }
-        final elapsedMinutes = localNow.difference(interval.start).inMinutes;
-        if (elapsedMinutes < 0) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Container(
-                width: 6,
-                height: 6,
-                decoration: const BoxDecoration(
-                  color: AppColors.sunset,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${interval.definition.label} · ${_formatElapsed(elapsedMinutes)} in',
-                style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  static String _formatElapsed(int totalMinutes) {
-    final hours = totalMinutes ~/ 60;
-    final minutes = totalMinutes % 60;
-    if (hours == 0) return '${minutes}m';
-    return '${hours}h ${minutes}m';
-  }
-}
+// Time-into-service header ("Lunch · 1h 12m in") removed 2026-05-16
+// per operator instruction — the daypart header is plain (clock window
+// + driver chip only). The period pill's border-only active affordance
+// is the sole live-state signal.
 
 // ─── Empty state ────────────────────────────────────────────────────────────
 

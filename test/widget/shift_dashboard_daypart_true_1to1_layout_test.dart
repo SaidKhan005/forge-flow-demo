@@ -16,8 +16,9 @@
 //      sub-line never reappear.
 //   3. Per-period LABOR Theoretical sub-line + ±pts delta pill render
 //      via the SAME shared labor widget (parity with #789).
-//   4. A closed period still shows "Period closed" + honest "—" with no
-//      phantom zeros (Design Rule 2) — through the shared widgets.
+//   4. A closed period shows NO status verbiage (plain header — only
+//      the clock window) + honest "—" with no phantom zeros (Design
+//      Rule 2) — through the shared widgets.
 //   5. Whole Day render is structurally unchanged (Promise 3 / Layer 9).
 //   6. No RenderFlex overflow at 1080px or 360px in the daypart lens.
 
@@ -264,8 +265,8 @@ void main() {
     );
 
     testWidgets(
-      'closed period → "Period closed" + honest "—" through the shared '
-      'widgets, no phantom zeros (Design Rule 2)',
+      'closed period → no status verbiage + honest "—" through the '
+      'shared widgets, no phantom zeros (Design Rule 2)',
       (tester) async {
         // 16:00 — Lunch (11:00–15:00) already closed; empty bucket.
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 16, 0);
@@ -282,8 +283,14 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
+        // Plain header (operator instruction 2026-05-16): no status
+        // verbiage; only the operator-configured clock window renders.
         expect(
           find.text('Period closed', skipOffstage: false),
+          findsNothing,
+        );
+        expect(
+          find.text('11:00 – 15:00', skipOffstage: false),
           findsOneWidget,
         );
         // Shared MetricPill unavailable branch → honest em dash.

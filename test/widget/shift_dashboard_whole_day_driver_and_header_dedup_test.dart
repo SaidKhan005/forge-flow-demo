@@ -16,9 +16,10 @@
 //   Item 1 — The daypart header announced the selected period twice:
 //   once via the `_ShiftPeriodSelector` pill (canonical switcher) and
 //   again via the in-header shortLabel pill + duplicated full label.
-//   The duplicate identity block is removed; the status line, the
-//   clock window (time range), and the driver chip — the things the
-//   selector does NOT convey — are kept.
+//   The duplicate identity block is removed; the plain header keeps
+//   ONLY the clock window (time range) and the driver chip — the
+//   things the selector does NOT convey. The tri-state status line was
+//   removed (operator instruction 2026-05-16).
 //
 // Pins:
 //   1. Whole-day lens renders the primary-driver chip with the
@@ -32,8 +33,8 @@
 //   4. Whole-day chip sits ABOVE the SHIFT OUTPUTS section (mirrors the
 //      daypart chip's structural position).
 //   5. Daypart header announces the period EXACTLY once — the duplicate
-//      shortLabel pill + full label are gone, while the status line +
-//      time range + driver chip remain.
+//      shortLabel pill + full label are gone; the plain header keeps
+//      only the time range + driver chip (no status verbiage).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -236,8 +237,8 @@ void main() {
   group('Shift UX — daypart header de-dup (Item 1)', () {
     testWidgets(
       'daypart header announces the period EXACTLY once — duplicate '
-      'shortLabel pill + full label gone; status line + time range + '
-      'driver chip remain',
+      'shortLabel pill + full label gone; plain header keeps only the '
+      'time range + driver chip, no status verbiage',
       (tester) async {
         // Tuesday 2026-03-31 12:30 — Lunch active.
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 30);
@@ -259,13 +260,14 @@ void main() {
           findsOneWidget,
         );
 
-        // The things the selector does NOT convey are preserved:
-        //  - tri-state status line (Lunch active at 12:30 → 'Active now')
+        // The things the selector does NOT convey are preserved — and
+        // ONLY these (operator instruction 2026-05-16: plain header):
         //  - the clock window (time range)
         //  - the primary-driver chip
+        // The tri-state status line ("Active now" etc.) was removed.
         expect(
           find.text('Active now', skipOffstage: false),
-          findsOneWidget,
+          findsNothing,
         );
         expect(
           find.text('11:00 – 15:00', skipOffstage: false),

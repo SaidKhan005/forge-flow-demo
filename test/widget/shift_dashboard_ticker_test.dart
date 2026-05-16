@@ -1,22 +1,24 @@
 // A4.2 (R2) per `docs/_audits/code_health/a4_performance_audit.md`:
 //
-// The four wall-clock-driven widgets on the shift dashboard
-// (`_LiveClock`, `_ShiftPeriodSelector`, `_DaypartPeriodHeader`,
-// `_TimeIntoServiceHeader`) used to each own a `Timer.periodic(30s)`.
-// After R2 they share a single `_ShiftDashboardTicker` constructed by
-// `_ShiftDashboardState`. This test file is the regression guard:
+// The wall-clock-driven widgets on the shift dashboard (`_LiveClock`,
+// `_ShiftPeriodSelector`, `_DaypartPeriodHeader`) used to each own a
+// `Timer.periodic(30s)`. After R2 they share a single
+// `_ShiftDashboardTicker` constructed by `_ShiftDashboardState`. (The
+// `_TimeIntoServiceHeader` consumer was removed 2026-05-16 — operator
+// instruction: plain daypart header.) This test file is the
+// regression guard:
 //
 //   1. **Static guard** — `lib/screens/shift_dashboard.dart` must
 //      contain exactly one `Timer.periodic(...)` call after the
 //      coalesce. If a future change adds a second timer to the file,
 //      this test fails and the author has to either justify the new
 //      timer (and update the count) or wire the new widget into the
-//      shared ticker like the other four.
+//      shared ticker like the existing consumers.
 //
 //   2. **Functional guard** — pumping the dashboard with a
 //      `clockOverride` and advancing the ticker once must update the
 //      live clock display (proxy for "the shared ticker drives the UI").
-//      The other three consumers also rebuild on the same tick because
+//      The other consumers also rebuild on the same tick because
 //      they all listen to the same `ValueListenable<DateTime>`; the
 //      live clock check is sufficient since a regression that broke
 //      shared-ticker fan-out would also stop the clock from updating.
@@ -220,14 +222,13 @@ void main() {
 
     testWidgets(
       'pumping the dashboard does not crash when the shared ticker is the '
-      'sole source of wall-clock rebuilds for all four consumer widgets',
+      'sole source of wall-clock rebuilds for all consumer widgets',
       (tester) async {
         // Smoke check: open the daypart lens (which mounts
-        // _TimeIntoServiceHeader + _DaypartPeriodHeader alongside
-        // _LiveClock + _ShiftPeriodSelector). All four must render
-        // without throwing — proves they all received the shared
-        // ticker through their constructors and resolved it via
-        // `ValueListenableBuilder`.
+        // _DaypartPeriodHeader alongside _LiveClock +
+        // _ShiftPeriodSelector). All must render without throwing —
+        // proves they received the shared ticker through their
+        // constructors and resolved it via `ValueListenableBuilder`.
         ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 12);
         await tester.pumpWidget(_buildShiftDashboard());
         await tester.pump();
@@ -239,9 +240,15 @@ void main() {
 
         // _LiveClock rendered.
         expect(find.text('12:12'), findsOneWidget);
-        // _TimeIntoServiceHeader rendered ("Lunch · 1h 12m in").
+        // The removed time-into-service strip never renders (operator
+        // instruction 2026-05-16 — plain header).
         expect(
           find.text('Lunch · 1h 12m in', skipOffstage: false),
+          findsNothing,
+        );
+        // _DaypartPeriodHeader keeps only the clock window.
+        expect(
+          find.text('11:00 – 15:00', skipOffstage: false),
           findsOneWidget,
         );
         // _DaypartPeriodHeader + the shared section groups rendered.

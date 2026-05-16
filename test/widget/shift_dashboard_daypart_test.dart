@@ -5,11 +5,12 @@
 //      metrics (covers, sales, CPLH, SPLH, PPA, blended wage) in
 //      place of the 10.5.0 placeholder text.
 //   2. Empty buckets still render the full 3-section card (Slice 4
-//      closed-state fix) with honest "—" actuals and a tri-state
-//      status line — never silent zeros, never a one-liner collapse.
-//   3. The time-into-service header ("Lunch · 1h 12m in") renders
-//      when the daypart lens is active and a service period is in
-//      progress; it stays hidden when no period is active.
+//      closed-state fix) with honest "—" actuals — never silent zeros,
+//      never a one-liner collapse. The plain header (operator
+//      instruction 2026-05-16) carries no status verbiage.
+//   3. The time-into-service header ("Lunch · 1h 12m in") was removed
+//      (operator instruction 2026-05-16) — it never renders, even
+//      during an active period.
 //   4. The Whole Day view is byte-identical regardless of whether the
 //      ShiftServicePeriodNotifier provides buckets — additive only.
 
@@ -216,10 +217,11 @@ void main() {
       },
     );
 
-    testWidgets('time-into-service header renders during an active period '
-        '("Lunch · 1h 12m in")', (tester) async {
-      // Tuesday 2026-03-31 12:12. Lunch starts at 11:00, so
-      // elapsed = 1h 12m exactly.
+    testWidgets('time-into-service header is GONE even during an active '
+        'period (plain header — operator instruction 2026-05-16)',
+        (tester) async {
+      // Tuesday 2026-03-31 12:12. Lunch starts at 11:00, so the old
+      // strip would have read "Lunch · 1h 12m in" — it must not render.
       ShiftDashboard.clockOverride = () => DateTime(2026, 3, 31, 12, 12);
 
       await tester.pumpWidget(
@@ -231,9 +233,18 @@ void main() {
       await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
 
-      // Header strip above the SERVICE PERIODS sticky group.
+      // The removed time-into-service strip never renders.
       expect(
         find.text('Lunch · 1h 12m in', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.textContaining(' in', skipOffstage: false),
+        findsNothing,
+      );
+      // The one element the plain header keeps: the clock window.
+      expect(
+        find.text('11:00 – 15:00', skipOffstage: false),
         findsOneWidget,
       );
     });
@@ -258,8 +269,9 @@ void main() {
     });
 
     testWidgets(
-        'future selected period renders the full 3-section card with an '
-        '"Opens at …" status line (Slice 4 closed-state fix)', (
+        'future selected period renders the full 3-section card with the '
+        'clock window and NO status verbiage (plain header — operator '
+        'instruction 2026-05-16)', (
       tester,
     ) async {
       // Tuesday 2026-03-31 12:30: Lunch is active, Dinner is still
@@ -279,19 +291,24 @@ void main() {
       // pinned-header section groups as Whole Day.
       expect(find.text('SERVICE PERIOD', skipOffstage: false), findsNothing);
 
-      // Tri-state status line: a genuinely future period frames as
-      // "Opens at {start}" — never the old "until this period opens"
-      // catch-all (which also swallowed already-closed periods).
+      // Plain header: NO status verbiage of any kind — not the
+      // tri-state line, not the old catch-all. Only the
+      // operator-configured clock window for Dinner (17:00–23:00).
       expect(
         find.text('Opens at 17:00', skipOffstage: false),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.text('Active now', skipOffstage: false), findsNothing);
       expect(
         find.text(
           'Projected / unavailable until this period opens.',
           skipOffstage: false,
         ),
         findsNothing,
+      );
+      expect(
+        find.text('17:00 – 23:00', skipOffstage: false),
+        findsOneWidget,
       );
 
       // The card never collapses to a one-liner — all three sections
@@ -323,7 +340,11 @@ void main() {
         await tester.tap(find.text('Lunch', skipOffstage: false));
         await tester.pump();
 
-        // Explicit config-degraded message renders above the cards.
+        // The honest config-degraded banner renders above the cards.
+        // This banner is RETAINED (Metric Honesty Doctrine) — the
+        // operator's "plain header" instruction (2026-05-16) removed
+        // the period-status verbiage, not the genuine missing-tz
+        // degrade.
         expect(
           find.textContaining(
             'Restaurant timezone is not configured',
@@ -331,14 +352,14 @@ void main() {
           ),
           findsOneWidget,
         );
-        // Each card's empty-state subline is also degraded — not the
-        // generic "No data yet for this period." copy.
+        // The removed `_DaypartStatusLine` no longer renders its
+        // missing-tz copy — the banner above is the sole degrade signal.
         expect(
           find.text(
             'Timezone not configured — metrics unavailable.',
             skipOffstage: false,
           ),
-          findsOneWidget,
+          findsNothing,
         );
         // The generic no-data copy must NOT appear when timezone is the
         // honest cause of the empty state.
@@ -393,12 +414,17 @@ void main() {
       await tester.pump();
 
       // Confirm starting state — Lunch is active (12:30) but has no
-      // actuals yet. The full card still renders with an "Active now"
-      // status line (no more "No data yet" one-liner collapse).
+      // actuals yet. The full card still renders (no "No data yet"
+      // one-liner collapse) with a plain header: NO status verbiage,
+      // only the operator-configured clock window (11:00–15:00).
       await tester.tap(find.text('Lunch', skipOffstage: false));
       await tester.pump();
       expect(
         find.text('Active now', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text('11:00 – 15:00', skipOffstage: false),
         findsOneWidget,
       );
       expect(
