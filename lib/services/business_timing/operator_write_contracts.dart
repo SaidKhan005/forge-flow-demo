@@ -51,6 +51,9 @@ class OperatorBusinessTimingServicePeriodRecord {
     required this.startLocal,
     required this.endLocal,
     required this.rollsPastMidnight,
+    this.shortLabel = '',
+    this.sortOrder = 0,
+    this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
   });
 
   final String key;
@@ -59,12 +62,27 @@ class OperatorBusinessTimingServicePeriodRecord {
   final String endLocal;
   final bool rollsPastMidnight;
 
+  /// Fix #4 / S1 — previously dropped on the wire. The canonical
+  /// `ServicePeriodDefinition` carries these three; the read surfaces
+  /// need them so day-restricted periods (e.g. "Weekend Brunch") and
+  /// the operator-chosen short label / display order round-trip back
+  /// out instead of being faked client-side.
+  final String shortLabel;
+  final int sortOrder;
+
+  /// ISO weekdays the period applies to (1 = Monday .. 7 = Sunday).
+  /// A full Mon..Sun list means "every day".
+  final List<int> applicableDays;
+
   Map<String, Object?> toJson() => <String, Object?>{
         'key': key,
         'label': label,
         'startLocal': startLocal,
         'endLocal': endLocal,
         'rollsPastMidnight': rollsPastMidnight,
+        'shortLabel': shortLabel,
+        'sortOrder': sortOrder,
+        'applicableDays': List<int>.unmodifiable(applicableDays),
       };
 }
 
@@ -107,6 +125,118 @@ class OperatorBusinessTimingProfileRecord {
         ],
         'createdAt': createdAt.toUtc().toIso8601String(),
         'updatedAt': updatedAt.toUtc().toIso8601String(),
+      };
+}
+
+/// Fix #4 / S1 — one candidate in the location-scoped business-timing
+/// resolution chain. The proxy returns the FULL ordered candidate list
+/// (operator default -> org-unit ancestors -> location override) so
+/// the Flutter client can run the one canonical pure resolver. The
+/// server does NOT fork the resolver; this record only carries the
+/// candidate's raw fields plus the scope ancestry the wire previously
+/// dropped (`scopeType`, `scopeId`, a human scope label) and the
+/// location timezone the resolver needs.
+class OperatorBusinessTimingResolutionCandidate {
+  const OperatorBusinessTimingResolutionCandidate({
+    required this.profileId,
+    required this.scopeType,
+    required this.scopeId,
+    required this.scopeLabel,
+    required this.scopeDepthRank,
+    required this.ianaTimezone,
+    required this.effectiveAtBusinessDate,
+    required this.weekStartDay,
+    required this.businessDayStartLocal,
+    required this.servicePeriods,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String profileId;
+
+  /// `operator` | `org_unit` | `location` — the canonical
+  /// `business_timing_profiles.scope_type`.
+  final String scopeType;
+  final String scopeId;
+
+  /// Human label for the rung. The profile's own `display_name` when
+  /// set, else a scope-kind fallback ("Operator default", "Org unit",
+  /// "Location override"). Never blank so the UI can render the
+  /// inheritance chain without faking strings.
+  final String scopeLabel;
+
+  /// Position in resolver precedence as returned by the canonical
+  /// `listCandidateProfilesForLocation` CTE (`scope_depth asc`): 0 for
+  /// the operator default, ascending through org-unit ancestors,
+  /// largest for the location override. The list is already ordered;
+  /// this is exposed only so a client can assert the order it relied
+  /// on without re-deriving it.
+  final int scopeDepthRank;
+
+  final String ianaTimezone;
+  final String effectiveAtBusinessDate;
+  final String weekStartDay;
+  final String businessDayStartLocal;
+  final List<OperatorBusinessTimingServicePeriodRecord> servicePeriods;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'profileId': profileId,
+        'versionId': profileId,
+        'scopeType': scopeType,
+        // Back-compat alias: existing operator-web records key on
+        // `scopeKind`; emit both so the read gateway can consume this
+        // record with the same field accessor as the list route.
+        'scopeKind': scopeType,
+        'scopeId': scopeId,
+        'scopeLabel': scopeLabel,
+        'scopeDepthRank': scopeDepthRank,
+        'ianaTimezone': ianaTimezone,
+        'effectiveAtBusinessDate': effectiveAtBusinessDate,
+        'weekStartDay': weekStartDay,
+        'businessDayStartLocal': businessDayStartLocal,
+        'servicePeriods': <Map<String, Object?>>[
+          for (final period in servicePeriods) period.toJson(),
+        ],
+        'createdAt': createdAt.toUtc().toIso8601String(),
+        'updatedAt': updatedAt.toUtc().toIso8601String(),
+      };
+}
+
+/// Wire response for
+/// `GET /v1/operator/locations/:locationId/business-timing-resolution`.
+/// The candidate list is in canonical resolver precedence order
+/// (operator default first, location override last). `businessDate`
+/// echoes the date the candidate window was evaluated against so the
+/// client can prove which effective-dated rows it received.
+class OperatorBusinessTimingResolutionResult {
+  const OperatorBusinessTimingResolutionResult({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDate,
+    required this.ianaTimezone,
+    required this.candidates,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDate;
+
+  /// `locations.timezone` for the resolved location, surfaced once at
+  /// the top level (the resolver needs it even when no candidate
+  /// overrides it). Null only when the location row is missing.
+  final String? ianaTimezone;
+  final List<OperatorBusinessTimingResolutionCandidate> candidates;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'operatorId': operatorId,
+        'locationId': locationId,
+        'businessDate': businessDate,
+        'ianaTimezone': ianaTimezone,
+        'candidates': <Map<String, Object?>>[
+          for (final candidate in candidates) candidate.toJson(),
+        ],
       };
 }
 
@@ -160,6 +290,20 @@ abstract class OperatorBusinessTimingWriteGateway {
   Future<OperatorBusinessTimingProfileRecord?> loadProfile({
     required String operatorId,
     required String profileId,
+  });
+
+  /// Fix #4 / S1 — the location-scoped, org-unit-ancestor-resolved
+  /// candidate chain for [locationId] on [businessDate], in canonical
+  /// resolver precedence order. Delegates to the canonical
+  /// `BusinessTimingProfilesRepository.listCandidateProfilesForLocation`
+  /// (the ltree ancestor CTE, ordered `scope_depth asc`) — NO
+  /// server-side resolver fork. The client runs the one pure
+  /// `BusinessTimingProfileResolver` over these candidates. Read-only.
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocation({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    String? actorUserId,
   });
 
   /// 11W.7 ops-debt — lists every business-timing profile owned by

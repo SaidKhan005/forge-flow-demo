@@ -137,6 +137,90 @@ class RepositoryOperatorBusinessTimingWriteGateway
   }
 
   @override
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocation({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    String? actorUserId,
+  }) async {
+    // Canonical chain — do NOT fork. `listCandidateProfilesForLocation`
+    // runs the ltree ancestor CTE and returns the candidates already
+    // ordered `scope_depth asc` (operator default first, location
+    // override last) with `locations.timezone` and the FULL service-
+    // period fields (`short_label` / `sort_order` /
+    // `applicable_weekdays`). The client runs the one pure
+    // `BusinessTimingProfileResolver` over these rows.
+    final rows = await _repository.listCandidateProfilesForLocation(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+    );
+    final candidates = <OperatorBusinessTimingResolutionCandidate>[
+      for (var i = 0; i < rows.length; i++)
+        _toResolutionCandidate(rows[i], scopeDepthRank: i),
+    ];
+    // `locations.timezone` is denormalised onto every candidate row by
+    // the CTE; surface it once at the top level too so the resolver
+    // has a timezone even when zero candidates override it.
+    final String? locationTimezone = rows.isEmpty
+        ? null
+        : rows.first.locationTimezone;
+    return OperatorBusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: locationTimezone,
+      candidates: candidates,
+    );
+  }
+
+  OperatorBusinessTimingResolutionCandidate _toResolutionCandidate(
+    BusinessTimingProfileRow row, {
+    required int scopeDepthRank,
+  }) {
+    return OperatorBusinessTimingResolutionCandidate(
+      profileId: row.profileId,
+      scopeType: row.scopeType,
+      scopeId: row.scopeId,
+      scopeLabel: _scopeLabel(row),
+      scopeDepthRank: scopeDepthRank,
+      ianaTimezone: row.locationTimezone ?? 'UTC',
+      effectiveAtBusinessDate: row.effectiveFromBusinessDate,
+      weekStartDay: _weekStartIntToString(row.weekStartDay),
+      businessDayStartLocal: row.businessDayStartLocalTime,
+      servicePeriods: <OperatorBusinessTimingServicePeriodRecord>[
+        for (final period in row.servicePeriods)
+          _toServicePeriodRecord(period),
+      ],
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
+  }
+
+  /// Human label for an inheritance rung. The profile's own
+  /// `display_name` when the operator set one, else a stable
+  /// scope-kind fallback. Never blank so the operator-web inheritance
+  /// chrome (S3) can render real rungs instead of faking labels. The
+  /// `org_units.name` / `locations.name` join is intentionally NOT
+  /// added here: that would require touching the canonical repository
+  /// CTE (out of S1 scope) — S3 already has the org-unit tree from
+  /// its existing hierarchy bundle and only needs the scope id +
+  /// kind + a non-blank label to bind the rung.
+  static String _scopeLabel(BusinessTimingProfileRow row) {
+    final displayName = row.displayName?.trim();
+    if (displayName != null && displayName.isNotEmpty) return displayName;
+    switch (row.scopeType) {
+      case 'operator':
+        return 'Operator default';
+      case 'org_unit':
+        return 'Org unit';
+      case 'location':
+        return 'Location override';
+    }
+    return row.scopeType;
+  }
+
+  @override
   Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
     required String operatorId,
   }) async {
@@ -229,10 +313,26 @@ class RepositoryOperatorBusinessTimingWriteGateway
     ValidatedServicePeriod period,
     int sortOrder,
   ) {
+    // Fix #4 / S1 / G45: stop fabricating an empty short label. The
+    // canonical column is NOT NULL-friendly but a blank string is
+    // lossy — every read surface then has to invent one. Derive the
+    // short label from the operator-supplied label so it round-trips
+    // instead of vanishing.
+    //
+    // `applicableWeekdays` stays the all-days mask here on purpose:
+    // the operator-web write *validator* (`ValidatedServicePeriod`)
+    // does not yet carry a day restriction, so there is genuinely no
+    // day data to persist on this write path. Per the Fix #4 spec
+    // that day-restriction capture lands in per-daypart Slice 2.5
+    // (the `ServicePeriodDraft` / editor change, Gap 28); forcing a
+    // non-all-days value here without validator support would be
+    // scope creep into S3/Slice 2.5 and could not be honestly
+    // populated. The READ round-trip (the S1 deliverable) surfaces
+    // whatever days are already stored via the resolution route.
     return BusinessTimingServicePeriodWrite(
       servicePeriodKey: period.key,
       label: period.label,
-      shortLabel: '',
+      shortLabel: period.label,
       sortOrder: sortOrder,
       startLocalTime: period.startLocal,
       endLocalTime: period.endLocal,
@@ -254,16 +354,28 @@ class RepositoryOperatorBusinessTimingWriteGateway
       businessDayStartLocal: row.businessDayStartLocalTime,
       servicePeriods: <OperatorBusinessTimingServicePeriodRecord>[
         for (final period in row.servicePeriods)
-          OperatorBusinessTimingServicePeriodRecord(
-            key: period.servicePeriodKey,
-            label: period.label,
-            startLocal: period.startLocalTime,
-            endLocal: period.endLocalTime,
-            rollsPastMidnight: period.rollsPastMidnight,
-          ),
+          _toServicePeriodRecord(period),
       ],
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
+    );
+  }
+
+  /// Fix #4 / S1 — single mapper so the list route, the load route
+  /// and the new resolution route all surface the previously-dropped
+  /// `shortLabel` / `sortOrder` / `applicableDays` fields identically.
+  static OperatorBusinessTimingServicePeriodRecord _toServicePeriodRecord(
+    BusinessTimingServicePeriodRow period,
+  ) {
+    return OperatorBusinessTimingServicePeriodRecord(
+      key: period.servicePeriodKey,
+      label: period.label,
+      startLocal: period.startLocalTime,
+      endLocal: period.endLocalTime,
+      rollsPastMidnight: period.rollsPastMidnight,
+      shortLabel: period.shortLabel,
+      sortOrder: period.sortOrder,
+      applicableDays: List<int>.unmodifiable(period.applicableWeekdays),
     );
   }
 

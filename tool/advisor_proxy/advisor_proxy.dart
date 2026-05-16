@@ -133,11 +133,17 @@ export 'operator_routes.dart'
         OperatorAccountRecord,
         OperatorBusinessTimingProfileRecord,
         OperatorBusinessTimingServicePeriodRecord,
+        OperatorBusinessTimingResolutionCandidate,
+        OperatorBusinessTimingResolutionResult,
         OperatorWriteRejected,
         kOperatorWriteRoles,
         operatorAccountPatchPath,
         operatorBusinessTimingProfilesPath,
         operatorBusinessTimingProfilePrefix,
+        operatorLocationBusinessTimingResolutionPrefix,
+        operatorLocationBusinessTimingResolutionSuffix,
+        operatorLocationBusinessTimingResolutionIdOf,
+        isOperatorLocationBusinessTimingResolutionPath,
         hashOperatorRequestBody,
         readOperatorJsonBody;
 export 'admin_business_timing_routes.dart'
@@ -15179,6 +15185,104 @@ Future<void> routeRequest(
               'error': 'vendor_applicability_unavailable',
               'message':
                   'vendor applicability lookup is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Fix #4 / S1 — operator-web location-scoped business-timing
+        // resolution route. GET only, read-only, no Idempotency-Key.
+        // Same operator owner / admin role gate as the write router,
+        // plus an explicit tenant scope-mismatch reject (mirrors the
+        // auth-location-integrations route): the path locationId must
+        // equal the signed-in location scope. operatorId is ALWAYS the
+        // JWT operator — never the URL.
+        if (request.method == 'GET' &&
+            isOperatorLocationBusinessTimingResolutionPath(path)) {
+          if (operatorWriteRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_write_router_not_configured',
+              'message':
+                  'route requires an OperatorWriteRouter to be installed',
+            });
+            return;
+          }
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          if (!scope.roles.any(kOperatorWriteRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'forbidden',
+              'message': 'operator owner or operator admin role is required',
+              'required_roles': kOperatorWriteRoles.toList(),
+            });
+            return;
+          }
+          final locationId =
+              operatorLocationBusinessTimingResolutionIdOf(path)!;
+          if (scope.operatorId.isEmpty || scope.locationId.isEmpty) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'business-timing resolution requires a tenant-scoped token',
+            });
+            return;
+          }
+          if (locationId != scope.locationId) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'location_scope_mismatch',
+              'message':
+                  'business-timing resolution can only be read for the '
+                  'signed-in location',
+            });
+            return;
+          }
+          final businessDateParam = _nonBlankString(
+            request.uri.queryParameters['business_date'],
+          );
+          if (businessDateParam != null &&
+              !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(businessDateParam)) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'invalid_business_date',
+              'message':
+                  'business_date must be an ISO calendar date (YYYY-MM-DD)',
+            });
+            return;
+          }
+          try {
+            final result =
+                await operatorWriteRouter.handleBusinessTimingResolution(
+              operatorId: scope.operatorId,
+              locationId: locationId,
+              businessDate: businessDateParam,
+            );
+            // Stamp the verified scope on the response so the gateway
+            // cannot leak another tenant's identifiers (defense in
+            // depth alongside RLS + the repository SET LOCAL).
+            final outgoing = <String, Object?>{
+              ...result.body,
+              if (result.statusCode == 200) ...<String, Object?>{
+                'operatorId': scope.operatorId,
+                'locationId': locationId,
+              },
+            };
+            _writeJson(response, result.statusCode, outgoing);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'operator_business_timing_resolution',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_business_timing_resolution_unavailable',
+              'message':
+                  'business-timing resolution is unavailable; please retry',
             });
           }
           return;

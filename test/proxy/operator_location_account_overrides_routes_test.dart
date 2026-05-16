@@ -736,6 +736,22 @@ class _UnusedTimingGateway implements OperatorBusinessTimingWriteGateway {
       null;
 
   @override
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocation({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    String? actorUserId,
+  }) async {
+    return OperatorBusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: null,
+      candidates: const <OperatorBusinessTimingResolutionCandidate>[],
+    );
+  }
+
+  @override
   Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
     required String operatorId,
   }) async =>
