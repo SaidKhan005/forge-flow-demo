@@ -30,6 +30,14 @@
 //     starts signed in as read-only F&F support against seeded fixture
 //     data. No Firebase, no proxy, no live staging data, and no login
 //     screen are exposed.
+//
+//   G5 fail-closed guard: in a non-debug (release/profile) build, demo
+//   or share-preview auth is REFUSED at runtime unless the explicit,
+//   default-false `--dart-define=ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=true`
+//   opt-in is also passed. This is real runtime code (not an `assert`,
+//   which is stripped in release), so a forgotten fixture flag can
+//   never publish bypass auth on a public `--allow-unauthenticated`
+//   Cloud Run service. Debug-mode local dev is unaffected.
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
@@ -70,6 +78,25 @@ const bool _kAdminDemoAuth = bool.fromEnvironment('ADMIN_DEMO_AUTH');
 /// data for emailed review links.
 const bool _kAdminSharePreview = bool.fromEnvironment('ADMIN_SHARE_PREVIEW');
 
+/// G5 (cross-surface parity audit) — the ONLY compile-time opt-in that
+/// permits fixture/demo/share-preview auth to run in a non-debug
+/// (release/profile) build. **Must default to false.** Its name is
+/// deliberately alarming: turning it on means a publicly-routed
+/// `--allow-unauthenticated` Cloud Run build could serve a full-write
+/// fixture super_admin with no Firebase in the loop.
+///
+/// Why a separate flag (not a relaxation of [ADMIN_DEMO_AUTH] /
+/// [ADMIN_SHARE_PREVIEW]): those two are routinely set by local dev
+/// scripts and the emailed-review-link deploy, so a release build that
+/// merely carries one of them must still fail closed. Only an explicit,
+/// unmistakable `--dart-define=ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=true`
+/// (combined with one of the fixture flags) lets fixture auth survive
+/// the release-mode guard in [main]. `kDebugMode` local dev never needs
+/// this flag — it is unaffected by the guard.
+const bool _kAdminAllowPublicFixtureAuth = bool.fromEnvironment(
+  'ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH',
+);
+
 /// Share-preview role selector. When [ADMIN_SHARE_PREVIEW] is true, this
 /// switch picks the fixture identity that's auto-signed-in:
 ///
@@ -95,6 +122,52 @@ const bool _kAdminSharePreviewAsSuperAdmin = bool.fromEnvironment(
 const String _kAdminProxyBaseUri = String.fromEnvironment(
   'ADMIN_PROXY_BASE_URI',
 );
+
+/// G5 (cross-surface parity audit) — message shown on the calm
+/// `_AdminAuthInitFailedApp` surface when the release-mode fixture-auth
+/// guard fires. Surfaced as a constant so a focused test can assert the
+/// exact copy without reaching into widget internals.
+@visibleForTesting
+const String kAdminFixtureAuthBlockedMessage =
+    'Fixture/demo/share-preview admin auth is blocked in a non-debug '
+    'build. ADMIN_DEMO_AUTH / ADMIN_SHARE_PREVIEW were set, but '
+    'ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH was not. Fixture auth bypasses '
+    'Firebase and must never ship on a public endpoint. If this is an '
+    'intentional internal preview, rebuild with '
+    '--dart-define=ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH=true; otherwise drop '
+    'the fixture flags and ship live Firebase auth.';
+
+/// G5 (cross-surface parity audit) — pure decision for the real
+/// runtime, release-mode fail-closed guard in [main].
+///
+/// Returns `true` when the app MUST refuse to wire auth and instead
+/// land on the calm `_AdminAuthInitFailedApp` surface. The rule:
+///
+///   * Debug builds ([isDebugMode] true) are never blocked — local dev
+///     and `flutter test` keep working.
+///   * In a non-debug (release/profile) build, if any fixture flag
+///     ([adminDemoAuth] or [adminSharePreview]) is set, the build is
+///     blocked UNLESS the explicit, default-false
+///     [adminAllowPublicFixtureAuth] opt-in is also set.
+///   * The normal live path (no fixture flags) is never blocked, in
+///     debug or release.
+///
+/// Extracted as a pure, parameterized, `@visibleForTesting` function so
+/// the four-way matrix (debug, release+fixture, release+fixture+opt-in,
+/// release+live) is testable without flipping `bool.fromEnvironment`
+/// compile-time constants. [main] calls it with the real constants.
+@visibleForTesting
+bool adminFixtureAuthBlockedInRelease({
+  required bool isDebugMode,
+  required bool adminDemoAuth,
+  required bool adminSharePreview,
+  required bool adminAllowPublicFixtureAuth,
+}) {
+  if (isDebugMode) return false;
+  final bool fixtureAuthRequested = adminDemoAuth || adminSharePreview;
+  if (!fixtureAuthRequested) return false;
+  return !adminAllowPublicFixtureAuth;
+}
 
 /// Firebase web options for the admin console project.
 ///
@@ -149,6 +222,33 @@ Future<void> main() async {
     return true;
   }());
   WidgetsFlutterBinding.ensureInitialized();
+  // G5 (cross-surface parity audit) — REAL runtime, release-mode
+  // fail-closed guard. Unlike the `assert` above (compiled out in
+  // release, so it is dead code on the exact builds we worry about),
+  // this branch executes in release/profile. If a non-debug build
+  // carries any fixture/demo/share-preview auth flag WITHOUT the
+  // explicit, unmistakable `ADMIN_ALLOW_PUBLIC_FIXTURE_AUTH` opt-in,
+  // the app refuses to wire auth and lands on the calm
+  // `_AdminAuthInitFailedApp` surface instead of proceeding into the
+  // console as a fixture super_admin. `kDebugMode` local dev and
+  // intentional internal preview keep working — debug is exempt, and a
+  // deliberate preview deploy passes the opt-in. The default-false
+  // opt-in means a forgotten flag can never publish fixture auth on a
+  // public `--allow-unauthenticated` Cloud Run service.
+  if (adminFixtureAuthBlockedInRelease(
+    isDebugMode: kDebugMode,
+    adminDemoAuth: _kAdminDemoAuth,
+    adminSharePreview: _kAdminSharePreview,
+    adminAllowPublicFixtureAuth: _kAdminAllowPublicFixtureAuth,
+  )) {
+    runApp(
+      _AdminAuthInitFailedApp(
+        error: StateError(kAdminFixtureAuthBlockedMessage),
+        stack: StackTrace.current,
+      ),
+    );
+    return;
+  }
   try {
     final authBinding = await _resolveAuthSource();
     final source = authBinding.source;
