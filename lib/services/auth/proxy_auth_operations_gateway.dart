@@ -12,6 +12,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+
 import 'auth_operations_gateway.dart';
 
 class ProxyAuthOperationsResponse {
@@ -216,12 +218,30 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }) : _proxyBaseUri = proxyBaseUri,
        _idTokenProvider = idTokenProvider,
        _httpClient = httpClient,
-       _idempotencyKeyFactory = idempotencyKeyFactory ?? _defaultIdempotencyKey;
+       // X-G72 — when a caller injects an explicit factory (legacy
+       // call sites + the gateway's own test suite that pins a fixed
+       // key) it wins VERBATIM so its behavior is byte-unchanged.
+       // Otherwise the gateway derives a CALLER-STABLE key per logical
+       // mutation (see [_idempotencyKeyFor]) so a mobile retry of the
+       // same write collapses against the proxy's `proxy_requests`
+       // UNIQUE guard instead of double-applying the mutation. The old
+       // default minted a fresh random key on EVERY HTTP send, which
+       // defeated the replay guard the moment the mobile transport
+       // retried a flaky org/team write. Production wiring
+       // (`firebase_auth_runtime_bindings.dart`) injects nothing, so
+       // production now gets the stable strategy.
+       _idempotencyKeyFactory = idempotencyKeyFactory;
 
   final Uri _proxyBaseUri;
   final Future<String?> Function() _idTokenProvider;
   final ProxyAuthOperationsHttpClient _httpClient;
-  final String Function() _idempotencyKeyFactory;
+
+  /// Optional caller-injected idempotency-key override. Null in
+  /// production (the bindings inject no factory) so [_idempotencyKeyFor]
+  /// derives a deterministic per-logical-action key. Non-null only for
+  /// legacy call sites + this gateway's own tests that pin a fixed key
+  /// — those keep working byte-unchanged because the override wins.
+  final String Function()? _idempotencyKeyFactory;
 
   static const String invitesPath = '/v1/admin/auth/invites';
   static const String usersPath = '/v1/admin/auth/users';
@@ -1065,6 +1085,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
 
   Future<ProxyAuthOperationsResponse> _get(String relativePath) async {
     return _send(
+      method: 'GET',
       relativePath: relativePath,
       send: (url, headers) => _httpClient.getJson(url: url, headers: headers),
     );
@@ -1075,7 +1096,9 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     Map<String, Object?> body,
   ) async {
     return _send(
+      method: 'POST',
       relativePath: relativePath,
+      body: body,
       send: (url, headers) =>
           _httpClient.postJson(url: url, headers: headers, body: body),
     );
@@ -1086,7 +1109,9 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     Map<String, Object?> body,
   ) async {
     return _send(
+      method: 'PATCH',
       relativePath: relativePath,
+      body: body,
       send: (url, headers) =>
           _httpClient.patchJson(url: url, headers: headers, body: body),
     );
@@ -1097,7 +1122,9 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     Map<String, Object?> body,
   ) async {
     return _send(
+      method: 'DELETE',
       relativePath: relativePath,
+      body: body,
       send: (url, headers) =>
           _httpClient.deleteJson(url: url, headers: headers, body: body),
     );
@@ -1302,12 +1329,14 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   Future<ProxyAuthOperationsResponse> _send({
+    required String method,
     required String relativePath,
     required Future<ProxyAuthOperationsResponse> Function(
       Uri url,
       Map<String, String> headers,
     )
     send,
+    Map<String, Object?>? body,
   }) async {
     final token = await _idTokenProvider();
     if (token == null || token.trim().isEmpty) {
@@ -1318,7 +1347,11 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     }
     final headers = <String, String>{
       HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
-      'Idempotency-Key': _idempotencyKeyFactory(),
+      'Idempotency-Key': _idempotencyKeyFor(
+        method: method,
+        relativePath: relativePath,
+        body: body,
+      ),
     };
     try {
       return await send(_proxyBaseUri.resolve(relativePath), headers);
@@ -1382,7 +1415,72 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
 
   static final math.Random _idempotencyRandom = math.Random.secure();
 
-  static String _defaultIdempotencyKey() {
+  /// X-G72 — picks the `Idempotency-Key` for a single HTTP send.
+  ///
+  /// Precedence:
+  ///
+  ///   1. An explicitly-injected [_idempotencyKeyFactory] wins
+  ///      VERBATIM. Only legacy call sites + this gateway's own test
+  ///      suite inject one; production injects nothing so this branch
+  ///      never runs in production.
+  ///   2. For a mutating verb (POST / PATCH / DELETE) with no injected
+  ///      factory, derive a DETERMINISTIC SHA-256 key from the verb +
+  ///      proxy route + canonicalised body. The same logical mutation
+  ///      retried by the mobile transport (flaky network, app resume
+  ///      mid-flight) produces the SAME key, so the proxy's
+  ///      `proxy_requests` UNIQUE guard collapses the duplicate
+  ///      instead of double-applying the org/team write. A different
+  ///      route — or the same route with a different payload — yields
+  ///      a different key, so genuinely-distinct actions are never
+  ///      coalesced. This mirrors the operator-web stable-key posture
+  ///      (`operator_web_proxy_client.dart` `stableIdempotencyKey`).
+  ///   3. Reads (GET) carry a fresh random key. GETs are not replay-
+  ///      guarded server-side, so a per-call value is harmless and
+  ///      preserves the pre-fix wire shape for reads.
+  String _idempotencyKeyFor({
+    required String method,
+    required String relativePath,
+    Map<String, Object?>? body,
+  }) {
+    final injected = _idempotencyKeyFactory;
+    if (injected != null) {
+      return injected();
+    }
+    final upper = method.toUpperCase();
+    final isMutating =
+        upper == 'POST' || upper == 'PATCH' || upper == 'DELETE';
+    if (!isMutating) {
+      return _randomIdempotencyKey();
+    }
+    final canonical = StringBuffer('auth-ops:$upper|$relativePath');
+    if (body != null && body.isNotEmpty) {
+      canonical
+        ..write('|')
+        ..write(_canonicalisePart(body));
+    }
+    final digest = sha256.convert(utf8.encode(canonical.toString()));
+    return 'mob-authops-$digest';
+  }
+
+  /// Canonicalises an idempotency-key part so the same logical
+  /// payload always hashes identically (map keys sorted, nested
+  /// collections recursed) regardless of literal map ordering.
+  static String _canonicalisePart(Object? part) {
+    if (part == null) return ' ';
+    if (part is Map) {
+      final sortedKeys = part.keys
+          .map((key) => key.toString())
+          .toList(growable: false)
+        ..sort();
+      return '{${sortedKeys.map((k) => '$k=${_canonicalisePart(part[k])}').join(',')}}';
+    }
+    if (part is Iterable) {
+      return '[${part.map(_canonicalisePart).join(',')}]';
+    }
+    return part.toString();
+  }
+
+  static String _randomIdempotencyKey() {
     final bytes = Uint8List(16);
     for (var i = 0; i < bytes.length; i++) {
       bytes[i] = _idempotencyRandom.nextInt(256);

@@ -65,12 +65,22 @@ Future<void> main() async {
             transport: const WebSocketChannelRealtimeTransport(),
             watermarkStore: SqliteRealtimeSubscriptionWatermarkStore.instance,
           );
+    // MOB-G70 — pass the bindings-exposed force-refresh hook so the
+    // existing 401-refresh-and-retry in `HttpSyncProxyClient`
+    // (`http_sync_proxy_client.dart` `_getJson` / `_postJson`) is
+    // actually reachable in the production flavor. Before this, the
+    // `refreshIdToken` arg was never passed here, so a skew /
+    // rotation 401 hard-failed operational sync with no recovery
+    // (only test bindings wired the refresher). `idTokenProvider`
+    // alone is NOT enough — it returns the cached token, which on a
+    // 401 is the very stale token that triggered the 401.
     final syncProxyClient =
         proxyBaseUri == null || bindings.idTokenProvider == null
         ? null
         : HttpSyncProxyClient(
             proxyBaseUri: proxyBaseUri,
             idTokenProvider: bindings.idTokenProvider!,
+            refreshIdToken: bindings.forceRefreshIdToken,
           );
     final mobilePushNotifications = createFirebaseMobilePushNotificationService(
       tokenGateway: bindings.mobilePushTokenGateway,
