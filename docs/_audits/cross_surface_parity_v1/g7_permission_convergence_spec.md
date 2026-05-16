@@ -2,6 +2,16 @@
 
 > **STATUS 2026-05-16 — §0 HEADLINE IS INVALID (see register §0).** This spec reasoned off the **stale v1 seed (6 roles)**. The real current model is the **v2 default role catalog, 10 roles** (`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql` — incl. `location_manager`, `team_admin`, `operator_general_manager`; `operator_admin` is NOT a role key). The "web-console roles are phantom fallbacks / catalog is authoritative-as-is" conclusion in §0 is **wrong**. **G7 must be RE-SPEC'd against the v2 catalog** before any G7 work. The **§3 G30** slice (bare permission-string → `PermissionKeys` constant aliasing) is **still valid, behavior-preserving, and safe** — it is unaffected by the v1/v2 role distinction (keys, not roles). Everything else here is PARKED pending re-spec.
 
+## operator_admin VERDICT — resolved 2026-05-16 (independent trace)
+
+`operator_admin` is a **phantom**: never seeded in v1 or v2; only the F&F-grant `operator_admins` *table* shares the name (unrelated — ignore). Sole producer is `_inferRoles` (`firebase_operator_web_auth_source.dart:732-735`) synthesizing it from free-text role labels; every consumer is a **fallback-only** admit/write set (read only when `session.permissions.isEmpty`). Live path always hydrates the permission snapshot ⇒ `PermissionKeys.*` per-screen gates win ⇒ synthesized `operator_admin` is **never read on a real decision**. No demo session produces it either.
+
+**Decision:** fold into **`operator_owner`** (catalog intent always bundled them for the same surfaces — `auth_permission_key_catalog.md:208-210,242,258,304`, all hedged "(when seeded)"). Do **not** map to a v2 role; do **not** seed a 7th role. → G7c (doc-only, strike the "(when seeded)" clauses + fix stale `operator_web_auth_source.dart:356-359` comment) + G7d (delete `'operator_admin'` from `_inferRoles` synthesis + all ~16 fallback sets + the `web_app_shell.dart:536` pill).
+
+**Prerequisite for G7d (newly surfaced):** `lib/auth/permission_keys.dart:379-394` role constants are still **v1-shaped (6 roles)** — `roleTeamAdmin`/`roleOperatorGeneralManager`/etc. do NOT exist. Refreshing that constant block to the v2 catalog is a **co-requisite** of G7d (can't replace bare strings with constants that don't exist yet).
+
+**One operator confirm needed:** the only behavior change is demo/boot-window (empty snapshot): a `team_admin` user (whose display name "Team Admin" accidentally collides → currently synthesized to `operator_admin` ⇒ full owner-tier fallback) would, after removal, get **nothing until the real snapshot hydrates** (fail-closed tightening; zero live impact). Recommended: accept (fail-closed is safer; live path unaffected).
+
 **Date:** 2026-05-16 · Read-only investigation · Auth-critical; §G7c is CONTRACT-TOUCHING (operator-gated).
 
 ## 0. Headline — the operator steer is partially REFUTED by proxy ground truth
