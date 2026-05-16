@@ -88,11 +88,11 @@ if (-not (Test-Path $PromptFile)) {
   throw "Prompt file not found: $PromptFile"
 }
 # Resolve to an ABSOLUTE path. The launch below runs cmd.exe with
-# -WorkingDirectory set to the fresh worktree (a clean master checkout
-# that does NOT contain uncommitted prompt files), so a relative
-# `< "$PromptFile"` redirect would resolve against the worktree and
-# fail with "The system cannot find the path specified." Absolute path
-# makes the stdin redirect work regardless of cmd's working directory.
+# -WorkingDirectory set to the fresh worktree (a clean checkout that
+# does NOT contain uncommitted prompt files), so a relative
+# `< "$PromptFile"` stdin redirect would resolve against the worktree
+# and fail with "The system cannot find the path specified." Absolute
+# path makes the redirect work regardless of cmd's working directory.
 $PromptFile = (Resolve-Path -LiteralPath $PromptFile).Path
 $promptText = Get-Content -Raw -Encoding utf8 $PromptFile
 
