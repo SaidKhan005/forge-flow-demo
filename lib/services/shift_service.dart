@@ -64,6 +64,7 @@ import '../models/week_record.dart';
 import 'daypart_plan_allocator.dart';
 import 'history_pattern_builder.dart';
 import 'integration/close_authority_capability.dart';
+import 'integration/shift_vendor_source_resolver.dart';
 import 'labor_model.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../domain/constants/app_defaults.dart'; // MeridianConfig for blended-wage zero-hour fallback only
@@ -1020,6 +1021,11 @@ class ShiftService {
     final totalUnseated =
         resSnapshots.fold<int>(0, (s, r) => s + r.unseatedCovers);
 
+    // Per-location vendor provenance (Defect 1): same fixture-derived
+    // resolver as the notifier path, so every Shift surface tells the
+    // same per-(operator, location, category) story. Caller-only — the
+    // read-model gate bodies are untouched.
+    final vendorSource = ShiftVendorSourceResolver.forLocation(restaurantId);
     return ShiftDashboardReadModel.buildWholeDay(
       snapshots: snapshots,
       profile: profile,
@@ -1028,6 +1034,8 @@ class ShiftService {
       planFohHours: dayPlan.requiredFohHours,
       planBohHours: dayPlan.requiredBohHours,
       inTheBooksCovers: totalUnseated > 0 ? totalUnseated : null,
+      posSourceVendorId: vendorSource.posSourceVendorId,
+      laborSourceVendorId: vendorSource.laborSourceVendorId,
     );
   }
 
