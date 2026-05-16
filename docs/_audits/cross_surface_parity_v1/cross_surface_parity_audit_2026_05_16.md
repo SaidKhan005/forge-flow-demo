@@ -35,7 +35,14 @@ This doc is the canonical register. IDs are stable; reference them as G1, D1, U1
 
 **Audit trail:** this register + all PR audits + specs committed via **PR #845** (`claude/cross-surface-parity-audit-docs`), which also fixes the dead doc-pointer left in merged #838.
 
-**Parked (no work until operator resumes):** G24/G3 S3′ · G7 re-spec vs v2 · Fix #4 residual (G41/G42/G13) · Fix #6 (G62+G19). **G60 (Fix #3) — SKIPPED by operator** (remains OPEN, no work planned).
+**Operator-accepted / WON'T-FIX (2026-05-16):** **D1 / G65** (web apps have no realtime; data stale until manual refresh) — operator ruled "not needed". Reclassified BY-DESIGN-accepted; closed, no work.
+
+**Active wave (2026-05-16, sequenced — operator-web/proxy work must serialize to avoid merge conflicts):**
+- **G24 / G3 — S3′** IN PROGRESS (agent): delete magic-link/custom-token surface + ToS-less Firebase reset-email onboarding. PR #832 to be closed unmerged.
+- **operator_admin investigation** IN PROGRESS (read-only) — feeds the G7 re-spec.
+- **Queued behind S3′ (same package/proxy collision):** G60 (operator-web stable idempotency — un-skipped by operator) → G19/G62 (operator-web demo banner + fail-loud) → G30 (permission-string→constant aliasing) → G41/G42/G13 (HP#11 timing: admin read-only-accurate + new dedicated resolution endpoint; backend route needed) → G7 re-spec vs v2 catalog (after operator_admin verdict).
+
+**No longer parked:** Fix #3/G60 (now in the active wave). Still open & unscheduled: none beyond the queued list above.
 
 ---
 
