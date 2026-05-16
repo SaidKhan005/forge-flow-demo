@@ -40,6 +40,27 @@ DaypartRange _range(String id, String label, int avgCovers) => DaypartRange(
       targetCovers: 999,
     );
 
+/// An empty range — the read service's empty-range branch
+/// (`benchmark_tracker_read_service.dart` ~138-154) emits this shape:
+/// `sampleSize == 0` with sentinel `0` numerics. The table must read
+/// the `sampleSize` signal and render honest dashes, never the `0`s.
+DaypartRange _emptyRange(String id, String label) => DaypartRange(
+      id: id,
+      label: label,
+      sampleSize: 0,
+      selectedCount: 0,
+      avgCovers: 0,
+      avgCPLH: 0,
+      avgSPLH: 0,
+      avgPPA: 0,
+      minCPLH: 0,
+      maxCPLH: 0,
+      targetCPLH: 0,
+      targetSPLH: 0,
+      targetPPA: 0,
+      targetCovers: 0,
+    );
+
 final _ranges = [
   _range('lunch', 'Lunch', 150),
   _range('dinner', 'Dinner', 220),
@@ -109,6 +130,37 @@ const _emptyDaypartsProfile = ActiveTargetProfile(
   theoreticalLaborPct: 21.0,
   builtAt: '2026-05-15T00:00:00Z',
   // dayparts defaults to const [] — the Gap 42 path.
+);
+
+// Whole-day pool with a per-period child row for `dinner` only —
+// `lunch` and `late_night` hit the Gap 42 whole-day-pool fallback,
+// `dinner` is a true per-period target. Proves the fallback marker
+// distinguishes pooled stand-ins from real per-period rows.
+const _dinnerOnlyProfile = ActiveTargetProfile(
+  targetProfileId: 'p3',
+  restaurantId: 'r',
+  sourceType: 'cycle_recommended',
+  targetCPLH: 4.50,
+  targetSPLH: 180.0,
+  targetPPA: 42.00,
+  fohWage: 17.0,
+  bohWage: 22.0,
+  opzFloorCPLH: 4.00,
+  opzCeilingCPLH: 5.00,
+  theoreticalFohLaborPct: 9.0,
+  theoreticalBohLaborPct: 12.0,
+  theoreticalLaborPct: 21.0,
+  builtAt: '2026-05-15T00:00:00Z',
+  dayparts: [
+    ActiveTargetProfileDaypart(
+      servicePeriodId: 'dinner',
+      daypartTargetCPLH: 4.77,
+      daypartTargetSPLH: 188.0,
+      daypartTargetPPA: 45.20,
+      daypartOpzFloorCPLH: 4.50,
+      daypartOpzCeilingCPLH: 5.10,
+    ),
+  ],
 );
 
 Future<void> _pump(WidgetTester tester, Widget child) async {
@@ -332,6 +384,173 @@ void main() {
       // Hardcoded English labels must not appear.
       expect(find.text('Lunch'), findsNothing);
       expect(find.text('Dinner'), findsNothing);
+    });
+  });
+
+  group('Phantom-zero fix — empty period honesty (Metric Honesty Doctrine)',
+      () {
+    // lunch has no historical evidence (sampleSize == 0); dinner +
+    // late_night are populated. The per-period profile carries a child
+    // row for every period, so the empty period would otherwise render
+    // a real per-period target on top of a `0` AVG COVERS.
+    final mixed = [
+      _emptyRange('lunch', 'Lunch'),
+      _range('dinner', 'Dinner', 220),
+      _range('late_night', 'Late Night', 80),
+    ];
+
+    testWidgets(
+        'empty period → AVG COVERS + target cells render "—", never a 0',
+        (tester) async {
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: mixed,
+          profile: _perPeriodProfile,
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+
+      // No phantom zeros anywhere from the empty lunch row.
+      expect(find.text('0'), findsNothing); // AVG COVERS sentinel
+      expect(find.text('0.00'), findsNothing); // CPLH sentinel
+      expect(find.text('\$0'), findsNothing); // SPLH sentinel
+      expect(find.text('\$0.00'), findsNothing); // PPA sentinel
+      expect(find.text('0.00 – 0.00'), findsNothing); // OPZ sentinel
+
+      // Lunch's own per-period child target must NOT surface — the
+      // empty period is dashed outright, not shown as a hard number.
+      expect(find.text('3.11'), findsNothing); // lunch child CPLH
+      expect(find.text('2.90 – 3.40'), findsNothing); // lunch child OPZ
+
+      // The honest dash is present for the empty row's cells.
+      expect(find.text('—'), findsWidgets);
+
+      // Populated periods are untouched — real values still render.
+      expect(find.text('220'), findsOneWidget); // dinner AVG COVERS
+      expect(find.text('4.77'), findsOneWidget); // dinner CPLH target
+      expect(find.text('5.66'), findsOneWidget); // late_night CPLH target
+
+      // Whole Day rollup row unchanged: still the cover-weighted pool,
+      // covers summed (empty period contributes 0 to a *sum*, correct).
+      expect(find.text('Whole Day'), findsOneWidget);
+      expect(find.text('300'), findsOneWidget); // 0 + 220 + 80
+      expect(find.text('4.50'), findsOneWidget); // pool CPLH (rollup only)
+    });
+  });
+
+  group('Phantom-zero fix — Gap 42 pool-fallback marker (Design Rule 1)', () {
+    testWidgets(
+        'pooled-stand-in rows carry the "whole-day est." marker; '
+        'true per-period rows do not', (tester) async {
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: _ranges, // all populated (sampleSize > 0)
+          profile: _dinnerOnlyProfile, // child row for dinner only
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+
+      // lunch + late_night fall back to the whole-day pool → marked.
+      // dinner has its own child row → no marker. Rollup is the pool by
+      // definition and is not a per-period stand-in → no marker.
+      expect(find.text('whole-day est.'), findsNWidgets(2));
+
+      // dinner renders its true per-period target, not the pool.
+      expect(find.text('4.77'), findsOneWidget); // dinner child CPLH
+      // lunch + late_night show the pooled CPLH (4.50) — 2 rows + the
+      // rollup all read the pool.
+      expect(find.text('4.50'), findsNWidgets(3));
+    });
+
+    testWidgets('no marker when every period has its own child row',
+        (tester) async {
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: _ranges,
+          profile: _perPeriodProfile,
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+
+      expect(find.text('whole-day est.'), findsNothing);
+    });
+
+    testWidgets(
+        'empty period that would pool does NOT get the marker — it is '
+        'dashed instead (no misleading pooled stand-in)', (tester) async {
+      // lunch empty + profile has no child rows → lunch would pool, but
+      // because it has no evidence it must dash, not show a marked pool
+      // stand-in. dinner/late_night (populated, no child row) DO pool.
+      final mixed = [
+        _emptyRange('lunch', 'Lunch'),
+        _range('dinner', 'Dinner', 220),
+        _range('late_night', 'Late Night', 80),
+      ];
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: mixed,
+          profile: _emptyDaypartsProfile,
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+
+      // Only the 2 populated-but-pooled rows are marked; the empty
+      // lunch row is dashed (not a marked pool stand-in).
+      expect(find.text('whole-day est.'), findsNWidgets(2));
+      expect(find.text('—'), findsWidgets); // lunch's dashed cells
+    });
+  });
+
+  group('Phantom-zero fix — no overflow with empty + fallback rows', () {
+    Future<void> pumpAt(WidgetTester tester, double width) async {
+      tester.view.physicalSize = Size(width, 2000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final mixed = [
+        _emptyRange('lunch', 'Lunch'),
+        _range('dinner', 'Dinner', 220),
+        _range('late_night', 'Late Night', 80),
+      ];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: width,
+              child: SingleChildScrollView(
+                child: DaypartTable(
+                  dayparts: mixed,
+                  profile: _dinnerOnlyProfile,
+                  servicePeriodDefinitions:
+                      ServicePeriodDefinitionResolver.demoDefinitions,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('no RenderFlex overflow at demo width (1080)',
+        (tester) async {
+      await pumpAt(tester, 1080);
+      expect(tester.takeException(), isNull);
+      expect(find.text('whole-day est.'), findsWidgets);
+    });
+
+    testWidgets('no RenderFlex overflow at narrow phone width (360)',
+        (tester) async {
+      await pumpAt(tester, 360);
+      expect(tester.takeException(), isNull);
+      expect(find.text('DAYPART'), findsOneWidget);
     });
   });
 }
