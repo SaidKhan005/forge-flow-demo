@@ -373,23 +373,79 @@ class PermissionKeys {
     integrationKeyRotate,
   };
 
-  /// Frozen role keys for the six baseline roles seeded by 9.0. Custom
-  /// operator-scoped roles created at runtime via 9.6 are NOT listed
-  /// here.
+  /// Frozen role keys for the baseline roles seeded by the default
+  /// role catalog. Custom operator-scoped roles created at runtime via
+  /// 9.6 are NOT listed here.
+  ///
+  /// Refreshed to the R-2L v2 default role catalog
+  /// (`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`).
+  /// Each constant's string value is byte-equal to the migration's
+  /// `role_key` literal. The three carry-over roles
+  /// (`super_admin`/`ff_support`/`operator_owner`) keep their v1 keys;
+  /// the seven v2 roles below have no v1 antecedent constant. The three
+  /// v1-only role constants are soft-deleted (kept as `@Deprecated`
+  /// migration-history aliases per the 2026-05-16 operator decision —
+  /// still referenced by tests/fixtures/policy in the migration window;
+  /// do NOT hard-remove).
   static const String roleSuperAdmin = 'super_admin';
   static const String roleFfSupport = 'ff_support';
   static const String roleOperatorOwner = 'operator_owner';
+
+  // ── v2 roles (R-2L default role catalog, 202605150000) ──
+  // String values byte-equal to the migration's INSERT `role_key`
+  // literals (202605150000_phase_r2l_default_role_catalog_v2.sql):
+  //   operator_general_manager  :291
+  //   location_manager          :299
+  //   supervisor                :307
+  //   finance_analyst           :315
+  //   auditor_compliance        :323
+  //   training_lead             :331
+  //   team_admin                :340
+  static const String roleOperatorGeneralManager =
+      'operator_general_manager';
+  static const String roleLocationManager = 'location_manager';
+  static const String roleSupervisor = 'supervisor';
+  static const String roleFinanceAnalyst = 'finance_analyst';
+  static const String roleAuditorCompliance = 'auditor_compliance';
+  static const String roleTrainingLead = 'training_lead';
+  static const String roleTeamAdmin = 'team_admin';
+
+  // ── Soft-deleted v1 role constants (KEEP — operator decision) ──
+  // Retained as migration-history aliases only; not part of
+  // `baselineRoleKeys`. Still referenced by migration-window
+  // tests/fixtures/policy, so they are NOT hard-removed.
+  @Deprecated(
+    'Soft-deleted in R-2L v2 (202605150000); maps to '
+    'operator_general_manager per spec §3; migration-history only',
+  )
   static const String roleOperatorManager = 'operator_manager';
+  @Deprecated(
+    'Soft-deleted in R-2L v2 (202605150000); maps to supervisor per '
+    'spec §3; migration-history only',
+  )
   static const String roleOperatorSupervisor = 'operator_supervisor';
+  @Deprecated(
+    'Soft-deleted in R-2L v2 (202605150000); maps to supervisor per '
+    'spec §3; migration-history only',
+  )
   static const String roleOperatorStaff = 'operator_staff';
 
-  /// Set of all baseline role keys.
+  /// Set of all active baseline role keys (R-2L v2 catalog — 10 roles).
+  ///
+  /// Three carry-over roles + the seven v2 roles. The soft-deleted v1
+  /// keys (`operator_manager`/`operator_supervisor`/`operator_staff`)
+  /// are intentionally EXCLUDED — they are migration-history only and
+  /// no longer seeded by the active catalog.
   static const Set<String> baselineRoleKeys = <String>{
     roleSuperAdmin,
     roleFfSupport,
     roleOperatorOwner,
-    roleOperatorManager,
-    roleOperatorSupervisor,
-    roleOperatorStaff,
+    roleOperatorGeneralManager,
+    roleLocationManager,
+    roleSupervisor,
+    roleFinanceAnalyst,
+    roleAuditorCompliance,
+    roleTrainingLead,
+    roleTeamAdmin,
   };
 }
