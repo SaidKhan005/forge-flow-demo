@@ -134,6 +134,14 @@ class _OperatorWebSignInScreenState extends State<OperatorWebSignInScreen> {
             onPressed: widget.submitting ? null : _resetPassword,
             child: const Text('Send password reset email'),
           ),
+          const SizedBox(height: 14),
+          Text(
+            'New here? Forge & Flow emailed you an invite. Open it and use '
+            'the link to set your password, then come back and sign in with '
+            'your email and that password.',
+            key: const Key('operator_web_signin_invite_hint'),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
         ],
       ),
     );
