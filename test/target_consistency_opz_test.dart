@@ -242,11 +242,11 @@ void main() {
         find.text('BENCHMARK RANGE', skipOffstage: false),
         findsOneWidget,
       );
-      // Per-Daypart Targets V1 / Slice 2: OPZ now lives in the
-      // daypart table's "OPZ RANGE" column + Whole Day rollup; the
-      // old "Targets Derived from Benchmark" card is cut. Wages +
+      // Per-Daypart Targets V1 / Slice 2: OPZ now lives in each
+      // daypart card's "OPZ Range" row + the Whole Day rollup card;
+      // the old "Targets Derived from Benchmark" card is cut. Wages +
       // theoretical % rehome to the slim strip with Option B labels.
-      expect(find.text('OPZ RANGE', skipOffstage: false), findsOneWidget);
+      expect(find.text('OPZ Range', skipOffstage: false), findsWidgets);
       expect(find.text('Whole Day', skipOffstage: false), findsOneWidget);
       expect(
         find.text('Theoretical Labor %: The Floor', skipOffstage: false),
@@ -500,7 +500,7 @@ void main() {
           findsOneWidget);
       expect(find.text(skipOffstage: false, 'Theoretical Labor %: The Floor'),
           findsOneWidget);
-      expect(find.text(skipOffstage: false, 'OPZ RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'OPZ Range'), findsWidgets);
       expect(find.text(skipOffstage: false, 'Whole Day'), findsOneWidget);
 
       // Strip wage value comes from the BaselineData fallback.
