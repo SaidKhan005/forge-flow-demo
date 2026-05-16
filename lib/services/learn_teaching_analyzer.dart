@@ -6,6 +6,7 @@
 // source label and target metrics now come from injected
 // LearnBenchmarkContext, resolved by LearnBenchmarkContextService.
 
+import '../domain/constants/app_defaults.dart';
 import '../models/cross_axis_pair_record.dart';
 import '../models/history_pattern_record.dart';
 import '../models/learn_benchmark_context.dart';
@@ -14,6 +15,46 @@ import 'history_teaching_analyzer.dart';
 
 class LearnTeachingAnalyzer {
   LearnTeachingAnalyzer._();
+
+  /// Per-Daypart V1 (Slice D, Gap 39) — one training-grade sentence on
+  /// how a per-period target is derived and how it relates to the
+  /// whole-day number. Decision 13: copy-only narration sharpening, no
+  /// UX overhaul. Plain English, reads as operator training, no
+  /// engineering jargon (UX Writing Standard). It states how the feature
+  /// works, not a recurring pattern, so it is honest in every state
+  /// (Metric Honesty) and rides the existing `coachToLine` copy slot.
+  static const String _perPeriodDerivationLine =
+      'These are your whole-day numbers. Each service period now carries '
+      "its own target, set from that period's own benchmark shifts; the "
+      'whole-day figure blends those period targets by how busy each '
+      'period runs, so one period can leak while the day still looks on '
+      'plan.';
+
+  // Plain-English direction for a leak lever, taken from the lever id's
+  // own suffix — the same direction the engine already classified. No
+  // magnitude is asserted (the analyzer has no per-shift deviation), so
+  // the narration stays honest about what the data supports.
+  static String _leakDirectionPhrase(String leverId) {
+    if (leverId.endsWith('_down')) return 'running low';
+    if (leverId.endsWith('_up')) return 'running high';
+    if (leverId.endsWith('_over')) return 'running over plan';
+    if (leverId.endsWith('_under')) return 'running lean';
+    return 'off target';
+  }
+
+  // Real seeded recurrence, phrased for an operator. `count` is the
+  // number of times the dominant leak repeated in `period`; `weekCount`
+  // is the tracked-week denominator. Both come from the analyzer data
+  // path — nothing is hardcoded.
+  static String _recurrencePhrase(int count, int weekCount) {
+    if (weekCount > 0 && count >= weekCount) {
+      return 'every one of the last $weekCount tracked weeks';
+    }
+    if (weekCount > 0) {
+      return '$count of the last $weekCount tracked weeks';
+    }
+    return '$count weeks running';
+  }
 
   static LearnTeachingSummary summarize({
     required List<HistoryPatternRecord> patternRecords,
@@ -85,7 +126,27 @@ class LearnTeachingAnalyzer {
       hasBenchmarkPatterns = historySummary.mostCommonBenchmarkCount > 0;
       crossAxisPairs = historySummary.crossAxisPairs;
 
-      if (topLeakDayparts.isEmpty) {
+      // Per-Daypart V1 (Slice D, Gap 39) — resolve the fix line to the
+      // service period the leak actually lives in, with its real seeded
+      // recurrence and (when a same-day benchmark exists) the period
+      // contrast Decision 13 calls for. Falls back to the existing
+      // general copy whenever the period / lever cannot be resolved, so
+      // no period is named that the data does not support.
+      final periodLabel = historySummary.topLeakDaypartLabel;
+      final leakCard = LeverCards.lookup(primaryLeakId);
+      if (periodLabel.isNotEmpty && leakCard != null) {
+        final direction = _leakDirectionPhrase(primaryLeakId);
+        final recurrence = _recurrencePhrase(
+          historySummary.topLeakDaypartCount,
+          weekCount,
+        );
+        final contrast = historySummary.contrastBenchmarkDaypartLabel;
+        final contrastClause =
+            contrast == null ? '' : ', while $contrast holds on plan';
+        primaryFixLine =
+            '${leakCard.shortLabel} is $direction at $periodLabel — it has '
+            'leaked $recurrence$contrastClause. Tighten $periodLabel first.';
+      } else if (topLeakDayparts.isEmpty) {
         primaryFixLine =
             'Fix ${primaryLeakSideLabel.toLowerCase()} first.';
       } else {
@@ -101,10 +162,15 @@ class LearnTeachingAnalyzer {
       }
     }
 
+    // Per-Daypart V1 (Slice D, Gap 39) — the whole-day coach numbers
+    // keep their existing slot; the per-period derivation training line
+    // rides the same slot so the operator learns how the targets are
+    // built without a new card/section (Decision 13 — no UX overhaul).
     final coachToLine =
         'Coach to ${targetCPLH.toStringAsFixed(1)} CPLH / '
         '${targetSPLH.toStringAsFixed(0)} SPLH / '
-        '${targetPPA.toStringAsFixed(0)} PPA.';
+        '${targetPPA.toStringAsFixed(0)} PPA. '
+        '$_perPeriodDerivationLine';
 
     // 7.58.3 — debug-mode invariant guard. Catches a caller passing
     // an explicit `coverageCount` smaller than the leak count it is
