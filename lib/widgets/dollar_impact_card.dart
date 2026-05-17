@@ -10,12 +10,18 @@
 // non-null. The owning screen renders its own section label outside the
 // card; this widget is layout + rows + dividers + footer only.
 //
-// Sign convention: positive `value` (over model) → `−$X` in negative color.
-// Negative `value` (under model) → `+$X` in positive color.
+// Sign + sentiment convention (V2-2): the displayed sign glyph and the
+// color are decided together from a single sentiment source via
+// [MoneySentiment], never independently from `value > 0`. A positive
+// `value` (over the best-possible floor) is a loss → `−$X` red; a
+// non-positive `value` is at-or-under the floor → `+$X` green. Spec:
+// docs/contracts/phase_7_58_primary_driver_contract.md V2-2 and
+// docs/_audits/variance_coaching_v2/driver_logic_reconciliation.md 5b.
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
+import 'money_sentiment.dart';
 
 class DollarImpactCard extends StatelessWidget {
   /// Required. The week's own dollar gap. Always rendered as the primary row.
@@ -177,9 +183,11 @@ class _ImpactRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOver = value > 0;
-    final color = isOver ? AppColors.negative : AppColors.positive;
-    final sign = isOver ? '\u2212' : '+';
+    // V2-2: one sentiment source (loss vs gain to the operator). Color
+    // and glyph are both read off it so they can never disagree.
+    final sentiment = MoneySentiment.fromDollarGap(value);
+    final color = sentiment.color;
+    final sign = sentiment.sign;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.baseline,
       textBaseline: TextBaseline.alphabetic,

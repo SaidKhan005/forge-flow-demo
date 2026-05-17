@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../domain/constants/app_defaults.dart';
 import '../utils/formatters.dart';
+import 'money_sentiment.dart';
 
 /// Renders the deep Primary Driver card. Pass a non-null [data] for one of
 /// the 16 known levers; for the `on_model` sentinel or any unknown id,
@@ -193,7 +194,7 @@ class _DollarAttributionSection extends StatelessWidget {
 
   static String _axisLabelForId(String id) {
     for (final a in _axes) {
-      if (a.favorableId == id || a.unfavorableId == id) return a.label;
+      if (a.idA == id || a.idB == id) return a.label;
     }
     return id;
   }
@@ -203,13 +204,22 @@ class _DollarAttributionSection extends StatelessWidget {
     final perAxis = <_AxisRow>[];
     double total = 0;
     for (final a in _axes) {
-      final v = (dollarImpactByAxis[a.unfavorableId] ?? 0) +
-          (dollarImpactByAxis[a.favorableId] ?? 0);
+      final aVal = dollarImpactByAxis[a.idA] ?? 0;
+      final bVal = dollarImpactByAxis[a.idB] ?? 0;
+      final v = aVal + bVal;
       total += v;
       if (v.abs() >= 1.0) {
+        // Sentiment source: the model's own signed contribution.
+        // `attributeDollarImpactByAxis` pre-encodes sentiment in the
+        // sign (positive = adverse, negative = favorable - see
+        // `LaborModel` "positive = adverse, negative = favorable").
+        // We capture that ONE decision in a single MoneySentiment at
+        // render time so the glyph and the color cannot be derived
+        // independently; the renderer never re-evaluates `value > 0`.
         perAxis.add(_AxisRow(
           label: a.label,
           value: v,
+          favorable: MoneySentiment.fromAxisImpact(v).favorable,
           stretched: _isStretched(a.label),
         ));
       }
@@ -257,14 +267,30 @@ class _DollarAttributionSection extends StatelessWidget {
 
 class _AxisDef {
   final String label;
-  final String favorableId;
-  final String unfavorableId;
-  const _AxisDef(this.label, this.favorableId, this.unfavorableId);
+  // The two lever ids that share this axis. `attributeDollarImpactByAxis`
+  // populates at most one of them, and pre-encodes sentiment in the SIGN
+  // of the contribution (positive = adverse, negative = favorable - see
+  // `LaborModel`, consistent with `isFavorableLever`).
+  // NOTE: these are deliberately NOT named favorable/unfavorable - e.g.
+  // for the covers axis `idA = covers_down` is the UNfavorable id, so a
+  // positional/name assumption would mis-color; sentiment is taken from
+  // the signed contribution via `MoneySentiment.fromAxisImpact`, never
+  // from a positional assumption and never from a raw `value > 0`.
+  final String idA;
+  final String idB;
+  const _AxisDef(this.label, this.idA, this.idB);
 }
 
 class _AxisRow {
   final String label;
   final double value;
+  // V2-2 sentiment for this row, captured once from the model's signed
+  // contribution (`attributeDollarImpactByAxis` encodes sentiment in
+  // the sign: negative = favorable, positive = adverse). The renderer
+  // reads color AND glyph off this single flag via [MoneySentiment] and
+  // never re-evaluates `row.value > 0` independently - that twin
+  // independent derivation is exactly the Subject 5b divergence.
+  final bool favorable;
   // 7.58.UX.8: when true, the row label is rendered with the
   // ` : team was stretched` suffix (cplh / splh axis whose actual
   // crossed the OPZ ceiling).
@@ -272,6 +298,7 @@ class _AxisRow {
   const _AxisRow({
     required this.label,
     required this.value,
+    required this.favorable,
     this.stretched = false,
   });
 }
@@ -282,9 +309,11 @@ class _AttributionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isOver = row.value > 0;
-    final color = isOver ? AppColors.negative : AppColors.positive;
-    final sign = isOver ? '−' : '+';
+    // V2-2: color + glyph from the row's sentiment flag (which lever id
+    // carried the dollars), never from `row.value > 0`.
+    final sentiment = MoneySentiment.fromFavorable(row.favorable);
+    final color = sentiment.color;
+    final sign = sentiment.sign;
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
