@@ -243,7 +243,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Previous Weeks'), findsOneWidget);
-      expect(find.text('Jan 26 - Mar 22'), findsOneWidget);
+      // Range is derived end-to-end from the mock-replay fixture, not
+      // hardcoded in the UI: oldest historical week start → newest
+      // historical week closedAt. With defaultBusinessDate 2026-03-27 the
+      // newest historical week (2026-W12) closes Sun 2026-03-22 and the
+      // oldest of the 12 historical weeks (2025-W53) starts Mon
+      // 2025-12-29 → Dec 29. The historical-week count was raised 8 → 12
+      // on 2026-05-15 (commit 733ffe7d, "Demo data Slice B" — needed to
+      // surface all 12 rate/volume lever badges in Variance History), so
+      // the oldest start moved Jan 26 → Dec 29. This asserts the real
+      // current rendered range, proving the header reflects the fixture
+      // rather than a stale literal.
+      expect(find.text('Dec 29 - Mar 22'), findsOneWidget);
     });
   });
 
