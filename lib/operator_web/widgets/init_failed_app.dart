@@ -3,12 +3,20 @@
 // Shown when `main_operator_web.dart` catches an error during startup
 // (e.g. missing `OPERATOR_WEB_PROXY_BASE_URI` in a live build). The
 // widget intentionally does NOT show developer details in the primary
-// body — those stay behind a "Show technical details" disclosure that
-// support staff can expand from a screenshot or screen-share.
+// body — a short error type + message stay behind a "Show technical
+// details" disclosure that support staff can read from a screenshot or
+// screen-share.
+//
+// OW-G74 — the raw stack trace is no longer rendered anywhere on this
+// surface (it was engineering noise an operator should never have to
+// read). The `stack` is still accepted by this widget so the caller
+// (`main_operator_web.dart`) can record the full error + stack through
+// the startup error log for engineers. Removing the on-screen trace
+// changes only what the operator SEES; the fail-closed behaviour and
+// the engineering log path are preserved.
 //
 // The underlying `StateError` that guards misconfigured deployments is
-// NOT removed — it is the dev/CI fail-closed signal. Only the
-// rendering changes.
+// NOT removed — it is the dev/CI fail-closed signal.
 
 import 'package:flutter/material.dart';
 
@@ -196,10 +204,22 @@ class _OperatorWebInitFailedBodyState
                               ),
                             ),
                             const SizedBox(height: 10),
+                            // OW-G74 — the raw stack trace is no longer
+                            // shown here. It was engineering noise on an
+                            // operator-facing screen. The full error and
+                            // stack are recorded for our engineers
+                            // through the startup log when the console
+                            // fails to start, so support can still trace
+                            // it without the operator reading a code
+                            // dump. Share the short summary above with
+                            // support@forgeflow.app if you contact us.
                             Text(
-                              '${widget.stack}',
-                              key: const Key('init_failed_stack_trace'),
-                              style: AppTextStyles.mono10(
+                              'Our engineers have the full technical '
+                              'record. Send the summary above to '
+                              'support@forgeflow.app and we will take '
+                              'it from here.',
+                              key: const Key('init_failed_support_hint'),
+                              style: AppTextStyles.body13(
                                 color: AppColors.textMuted,
                               ),
                             ),

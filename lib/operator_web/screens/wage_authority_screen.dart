@@ -85,12 +85,12 @@ class _BucketSpec {
 /// under the Data Accuracy page, so the editable content moved into
 /// [WageAuthoritySection] (a `Column`-returning widget that any host can
 /// embed inside its own scrollable). This screen keeps its scroll view
-/// + page-level header so existing tests, deep links, and the
-/// `kOperatorWebNavWageAuthority` constant continue to mount the same
-/// surface without router changes; the production router now routes
-/// `wage_authority` deep links to the Data Accuracy page, but the
-/// screen stays available for direct mounts (tests, future standalone
-/// surfaces).
+/// + page-level header so it stays available for direct mounts (tests,
+/// future standalone surfaces). The production router does NOT mount
+/// this screen: it folds Wage authority into the Data Accuracy page and
+/// redirects every `wage_authority` deep link there. OW-G73 removed the
+/// dead standalone router case + the `kOperatorWebNavWageAuthority` nav
+/// constant that used to mount it.
 class WageAuthorityScreen extends StatelessWidget {
   const WageAuthorityScreen({
     super.key,

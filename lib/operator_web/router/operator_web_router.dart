@@ -65,7 +65,6 @@ import '../screens/settings_notifications_screen.dart';
 import '../screens/schedule_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/vendor_connections_screen.dart';
-import '../screens/wage_authority_screen.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
 
@@ -89,7 +88,13 @@ const String kOperatorWebNavAuditLog = 'audit_log';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
 const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 const String kOperatorWebNavNotifications = 'notifications';
-const String kOperatorWebNavWageAuthority = 'wage_authority';
+// Wave 2 S-2 (`debug.md:220`, OW-13c) folded the Wage authority surface
+// under Data accuracy. There is no standalone Wage authority nav id:
+// `_navIdFromRaw` redirects every `wage_authority` deep link / bookmark
+// to `kOperatorWebNavDataAccuracy`, where the editable Wage authority
+// section is embedded. The former `kOperatorWebNavWageAuthority`
+// constant + its router case were dead (no production entry point
+// could ever select them) and were removed in OW-G73.
 const String kOperatorWebNavSchedule = 'schedule';
 
 /// Sub-route names mounted under the Roles nav surface. The router
@@ -1011,9 +1016,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       ),
       // Wave 2 S-2 (`debug.md:220`, OW-13c) — the standalone Wage
       // authority nav row is gone; the surface now folds under Data
-      // accuracy. Deep links and the `kOperatorWebNavWageAuthority`
-      // constant still resolve (via `_navIdFromRaw`) but redirect to
-      // the Data accuracy page.
+      // accuracy. `wage_authority` deep links / bookmarks resolve via
+      // `_navIdFromRaw` to `kOperatorWebNavDataAccuracy` (the embedded
+      // Wage authority section), so there is no Wage authority nav id.
       const OperatorWebNavItem(
         id: kOperatorWebNavNotifications,
         title: 'Notifications',
@@ -1275,48 +1280,16 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               );
         }
         break;
-      case kOperatorWebNavWageAuthority:
-        // OW-G70 — extend the #857 G62 fail-loud guard to Wage
-        // authority. The production `FirebaseOperatorWebAuthSource`
-        // genuinely mixes `OperatorWebWageAuthorityGatewayProvider`
-        // (firebase_operator_web_auth_source.dart:50) — the
-        // `_wageAuthorityGateway` getter returns the live proxy
-        // gateway iff that mixin is present (~:1567-1574). A *live*
-        // source missing it would silently fall back to
-        // `OperatorWebDemoWageAuthorityGateway()` (in-memory fixtures);
-        // that is a wiring regression on the genuinely-live provider,
-        // so fail loud. Demo source short-circuits via
-        // `_isDemoAuthSource` (the fixture fallback stays intact for
-        // demo — byte-unchanged).
-        final wageAuthorityWiringError = _liveSurfaceMissingGateway(
-          hasLiveProvider:
-              widget.source is OperatorWebWageAuthorityGatewayProvider,
-          surfaceTitle: 'Wage authority',
-        );
-        if (wageAuthorityWiringError != null) {
-          body = wageAuthorityWiringError;
-        } else if (locationScope == null) {
-          body = _RequiresLocationScopeSurface(
-            key: const Key('operator_web_wage_authority_requires_location'),
-            icon: Icons.payments_outlined,
-            title: 'Choose a location',
-            body:
-                'Wage rows are saved per location. Use Managing to pick the '
-                'location whose wage mix you want to manage.',
-            selectedScopeLabel: managementScope.label,
-          );
-        } else {
-          body = WageAuthorityScreen(
-            session: session,
-            locationId: locationScope.id,
-            locationName: locationScope.label,
-            gateway:
-                _wageAuthorityGateway ??
-                (_routerOwnedDemoWageAuthorityGateway ??=
-                    OperatorWebDemoWageAuthorityGateway()),
-          );
-        }
-        break;
+      // OW-G73 — the standalone `kOperatorWebNavWageAuthority` case was
+      // dead: Wave 2 S-2 folded Wage authority under Data accuracy and
+      // `_navIdFromRaw` redirects every `wage_authority` deep link /
+      // bookmark to `kOperatorWebNavDataAccuracy`, so no production
+      // entry point could ever select a Wage authority nav id. The
+      // live fail-loud guard for the embedded Wage authority section
+      // lives in the Data accuracy case above (it resolves the same
+      // `_wageAuthorityGateway`). Removed here to delete unreachable
+      // code; operators reach Wage authority unchanged via Data
+      // accuracy.
       case kOperatorWebNavNotifications:
         body =
             _liveSurfaceMissingGateway(
