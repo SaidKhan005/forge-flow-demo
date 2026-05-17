@@ -1,13 +1,19 @@
 // Phase 8 spine-bridge Lane .B — Covers manual entry sub-card.
 //
-// Surfaces beneath the covers source picker when ANY daypart is set
-// to `manual`. The operator types today's covers per manual daypart
+// Surfaces beneath the covers source picker when ANY service period is
+// set to `manual`. The operator types today's covers per manual period
 // and can copy yesterday's value with one tap.
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md
 // "Covers source card" + manual entry handling sections.
 //
-// When no dayparts are set to manual the card still renders (so its
+// Per-Daypart V1 Slice R5 (Gap 27/36): the hardcoded 3-daypart
+// `Daypart.values` iteration is replaced by the operator-configured
+// service periods (resolver-ordered by the screen). An operator with
+// any number of periods gets one manual-entry row per period set to
+// manual.
+//
+// When no periods are set to manual the card still renders (so its
 // presence is testable) but shows a muted hint pointing the operator
 // back at the covers picker above.
 
@@ -15,6 +21,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
 
 class CoversManualEntryCard extends StatefulWidget {
@@ -23,6 +30,7 @@ class CoversManualEntryCard extends StatefulWidget {
     required this.businessDateIso,
     required this.yesterdayBusinessDateIso,
     required this.settings,
+    required this.servicePeriods,
     required this.onEnterCovers,
     required this.onCopyYesterday,
   });
@@ -35,48 +43,57 @@ class CoversManualEntryCard extends StatefulWidget {
   /// "Copy yesterday's value" shortcut.
   final String yesterdayBusinessDateIso;
 
-  /// Current settings row. Used to determine which dayparts are
-  /// manual and to read prefilled values from `coversManualEntries`.
+  /// Current settings row. Used to determine which periods are manual
+  /// and to read prefilled values from `coversManualEntries`.
   final DataAccuracySettings settings;
 
+  /// Operator-configured service periods, resolver-ordered by the
+  /// screen. Only the periods whose covers source is `manual` render a
+  /// manual-entry row; never a hardcoded daypart list.
+  final List<ServicePeriodDefinition> servicePeriods;
+
   /// Called when the operator commits a value. `null` means clear.
-  final void Function(Daypart daypart, int? covers) onEnterCovers;
+  final void Function(String servicePeriodId, int? covers) onEnterCovers;
 
   /// Called when the operator taps "Copy yesterday's value" for a
-  /// daypart. The parent is responsible for reading yesterday's
-  /// value off `settings.manualCoversFor(...)` and writing it to
-  /// today.
-  final void Function(Daypart daypart) onCopyYesterday;
+  /// period. The parent is responsible for reading yesterday's value
+  /// off `settings.manualCoversFor(...)` and writing it to today.
+  final void Function(String servicePeriodId) onCopyYesterday;
 
   @override
   State<CoversManualEntryCard> createState() => _CoversManualEntryCardState();
 }
 
 class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
-  late final Map<Daypart, TextEditingController> _controllers;
-  final Map<Daypart, String?> _errors = {};
+  late Map<String, TextEditingController> _controllers;
+  final Map<String, String?> _errors = {};
 
   @override
   void initState() {
     super.initState();
     _controllers = {
-      for (final d in Daypart.values)
-        d: TextEditingController(
-          text: _initialText(d),
-        ),
+      for (final p in widget.servicePeriods)
+        p.id: TextEditingController(text: _initialText(p.id)),
     };
   }
 
   @override
   void didUpdateWidget(covariant CoversManualEntryCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // When parent pushes new settings (e.g. after a copy-yesterday
-    // tap) refresh any field that the operator isn't actively
-    // editing. We keep it simple: re-sync text from settings if it
-    // diverges and the field isn't focused.
-    for (final d in Daypart.values) {
-      final next = _initialText(d);
-      final controller = _controllers[d]!;
+    // Reconcile controllers when the operator's configured period set
+    // changes (e.g. they add a new period under Business timing) or
+    // the parent pushes new settings (e.g. after a copy-yesterday tap).
+    final nextIds = widget.servicePeriods.map((p) => p.id).toSet();
+    for (final removed
+        in _controllers.keys.where((k) => !nextIds.contains(k)).toList()) {
+      _controllers.remove(removed)?.dispose();
+    }
+    for (final p in widget.servicePeriods) {
+      final controller = _controllers.putIfAbsent(
+        p.id,
+        () => TextEditingController(text: _initialText(p.id)),
+      );
+      final next = _initialText(p.id);
       if (controller.text != next && next.isNotEmpty) {
         controller.text = next;
         controller.selection = TextSelection.fromPosition(
@@ -94,46 +111,38 @@ class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
     super.dispose();
   }
 
-  String _initialText(Daypart d) {
-    final v = widget.settings.manualCoversFor(widget.businessDateIso, d);
+  String _initialText(String servicePeriodId) {
+    final v = widget.settings.manualCoversFor(
+      widget.businessDateIso,
+      servicePeriodId,
+    );
     return v?.toString() ?? '';
   }
 
-  String _daypartLabel(Daypart d) {
-    switch (d) {
-      case Daypart.lunch:
-        return 'Lunch';
-      case Daypart.dinner:
-        return 'Dinner';
-      case Daypart.lateNight:
-        return 'Late night';
-    }
-  }
-
-  void _commit(Daypart d, String raw) {
+  void _commit(String servicePeriodId, String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) {
-      setState(() => _errors[d] = null);
-      widget.onEnterCovers(d, null);
+      setState(() => _errors[servicePeriodId] = null);
+      widget.onEnterCovers(servicePeriodId, null);
       return;
     }
     final parsed = int.tryParse(trimmed);
     if (parsed == null || parsed < 0) {
       setState(() {
-        _errors[d] = 'Type a whole number, 0 or greater.';
+        _errors[servicePeriodId] = 'Type a whole number, 0 or greater.';
       });
       return;
     }
-    setState(() => _errors[d] = null);
-    widget.onEnterCovers(d, parsed);
+    setState(() => _errors[servicePeriodId] = null);
+    widget.onEnterCovers(servicePeriodId, parsed);
   }
 
   @override
   Widget build(BuildContext context) {
-    final manualDayparts = Daypart.values
+    final manualPeriods = widget.servicePeriods
         .where(
-          (d) =>
-              widget.settings.coversSourceFor(d) == CoversSource.manual,
+          (p) =>
+              widget.settings.coversSourceFor(p.id) == CoversSource.manual,
         )
         .toList();
 
@@ -169,33 +178,33 @@ class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
           ),
           const SizedBox(height: 6),
           Text(
-            'You set this daypart to manual. Type how many guests you '
-            "served. Leave blank if you don't have the count yet. F&F "
+            'You set this service period to manual. Type how many guests '
+            "you served. Leave blank if you don't have the count yet. F&F "
             "will show \"not yet available\" rather than make up a number.",
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
-          if (manualDayparts.isEmpty)
+          if (manualPeriods.isEmpty)
             Text(
-              "Switch a daypart to 'Manual' above to type today's covers "
-              'here.',
+              "Switch a service period to 'Manual' above to type today's "
+              'covers here.',
               style: AppTextStyles.body13(color: AppColors.textMuted),
             )
           else
-            for (final d in manualDayparts) ...[
+            for (final p in manualPeriods) ...[
               _ManualRow(
-                daypart: d,
-                label: _daypartLabel(d),
-                controller: _controllers[d]!,
-                error: _errors[d],
+                servicePeriodId: p.id,
+                label: p.label,
+                controller: _controllers[p.id]!,
+                error: _errors[p.id],
                 yesterdayValue: widget.settings.manualCoversFor(
                   widget.yesterdayBusinessDateIso,
-                  d,
+                  p.id,
                 ),
-                onCommit: (raw) => _commit(d, raw),
-                onCopyYesterday: () => widget.onCopyYesterday(d),
+                onCommit: (raw) => _commit(p.id, raw),
+                onCopyYesterday: () => widget.onCopyYesterday(p.id),
               ),
-              if (d != manualDayparts.last) const SizedBox(height: 12),
+              if (p != manualPeriods.last) const SizedBox(height: 12),
             ],
         ],
       ),
@@ -205,7 +214,7 @@ class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
 
 class _ManualRow extends StatelessWidget {
   const _ManualRow({
-    required this.daypart,
+    required this.servicePeriodId,
     required this.label,
     required this.controller,
     required this.error,
@@ -214,7 +223,7 @@ class _ManualRow extends StatelessWidget {
     required this.onCopyYesterday,
   });
 
-  final Daypart daypart;
+  final String servicePeriodId;
   final String label;
   final TextEditingController controller;
   final String? error;
@@ -250,7 +259,7 @@ class _ManualRow extends StatelessWidget {
               ),
               Expanded(
                 child: TextField(
-                  key: Key('covers_manual_entry_field_${daypart.wire}'),
+                  key: Key('covers_manual_entry_field_$servicePeriodId'),
                   controller: controller,
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: false,
@@ -271,7 +280,7 @@ class _ManualRow extends StatelessWidget {
                 message: canCopy ? "Copy yesterday's value" : disabledTooltip,
                 child: TextButton.icon(
                   key: Key(
-                    'covers_manual_entry_copy_yesterday_${daypart.wire}',
+                    'covers_manual_entry_copy_yesterday_$servicePeriodId',
                   ),
                   onPressed: canCopy ? onCopyYesterday : null,
                   icon: const Icon(Icons.content_copy_outlined, size: 16),

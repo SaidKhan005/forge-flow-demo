@@ -80,9 +80,14 @@ class _PerLocationDataAccuracyTableState
 
   static String _coversSummary(DataAccuracyAdminRow row) {
     final s = row.settings;
-    return '${_coversLabel(s.coversSourceLunch)} / '
-        '${_coversLabel(s.coversSourceDinner)} / '
-        '${_coversLabel(s.coversSourceLateNight)}';
+    // Per-Daypart V1 Slice R5 (Gap 27/36): covers source is keyed by
+    // service period. This admin summary keeps the legacy 3-daypart
+    // shape (the admin-hierarchy per-period table is a scoped
+    // follow-up); each lookup resolves to the vendor default when the
+    // period has no keyed row.
+    return '${_coversLabel(s.coversSourceFor('lunch'))} / '
+        '${_coversLabel(s.coversSourceFor('dinner'))} / '
+        '${_coversLabel(s.coversSourceFor('late_night'))}';
   }
 
   @override
@@ -151,9 +156,9 @@ class _PerLocationDataAccuracyTableState
     if (filter == null || filter.isEmpty) return true;
     final settings = row.settings;
     final coversUsesVendor =
-        settings.coversSourceLunch == CoversSource.vendor ||
-        settings.coversSourceDinner == CoversSource.vendor ||
-        settings.coversSourceLateNight == CoversSource.vendor;
+        settings.coversSourceFor('lunch') == CoversSource.vendor ||
+        settings.coversSourceFor('dinner') == CoversSource.vendor ||
+        settings.coversSourceFor('late_night') == CoversSource.vendor;
     final wageUsesVendor = settings.wageSource == WageSource.vendor;
     switch (filter) {
       case 'vendor_any':
@@ -172,9 +177,15 @@ class _PerLocationDataAccuracyTableState
     final updatedBy = _updatedByLabel(row.settings.updatedBy);
     final updatedAt = _modifiedAtLabel(row);
     final covers = <_MiniFact>[
-      _MiniFact('Lunch', _coversLabel(row.settings.coversSourceLunch)),
-      _MiniFact('Dinner', _coversLabel(row.settings.coversSourceDinner)),
-      _MiniFact('Late night', _coversLabel(row.settings.coversSourceLateNight)),
+      _MiniFact('Lunch', _coversLabel(row.settings.coversSourceFor('lunch'))),
+      _MiniFact(
+        'Dinner',
+        _coversLabel(row.settings.coversSourceFor('dinner')),
+      ),
+      _MiniFact(
+        'Late night',
+        _coversLabel(row.settings.coversSourceFor('late_night')),
+      ),
     ];
     final metadata = <_MiniFact>[
       _MiniFact('Wage source', _wageLabel(row.settings.wageSource)),

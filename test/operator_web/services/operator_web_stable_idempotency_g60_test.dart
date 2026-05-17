@@ -436,9 +436,11 @@ void main() {
         settingId: 'setting-1',
         operatorId: 'op-1',
         locationId: 'loc-1',
-        coversSourceLunch: CoversSource.manual,
-        coversSourceDinner: CoversSource.vendor,
-        coversSourceLateNight: CoversSource.forecast,
+        coversSourcePerServicePeriod: const <String, CoversSource>{
+          'lunch': CoversSource.manual,
+          'dinner': CoversSource.vendor,
+          'late_night': CoversSource.forecast,
+        },
         coversManualEntries: const <String, Map<String, int>>{},
         wageSource: WageSource.manualMix,
         walkInHandlingMode:

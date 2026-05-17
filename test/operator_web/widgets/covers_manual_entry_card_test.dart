@@ -1,16 +1,22 @@
 // Phase 8 spine-bridge Lane .B — CoversManualEntryCard widget tests.
 //
+// Per-Daypart V1 Slice R5 (Gap 27/36): the card iterates the
+// operator-configured service periods passed in by the screen, keyed
+// by service_period_id, NOT a hardcoded `Daypart` enum.
+//
 // Cover acceptance item C: non-negative integer validation +
-// "copy yesterday" populates. The widget itself uses
+// "copy yesterday" populates. The widget uses
 // `FilteringTextInputFormatter.digitsOnly` so negatives cannot be
 // typed — these tests cover the positive submission path, the
 // empty-clear path, the copy-yesterday enable/disable, and the
-// pre-fill from `coversManualEntries[today][daypart]`.
+// pre-fill from `coversManualEntries[today][servicePeriodId]`.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/operator_web/widgets/covers_manual_entry_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -30,6 +36,8 @@ void main() {
     });
   }
 
+  final periods = ServicePeriodDefinitionResolver.demoDefinitions;
+
   DataAccuracySettings buildSettings({
     CoversSource lunch = CoversSource.vendor,
     CoversSource dinner = CoversSource.manual,
@@ -41,9 +49,11 @@ void main() {
         settingId: 'test-id',
         operatorId: 'op',
         locationId: 'loc',
-        coversSourceLunch: lunch,
-        coversSourceDinner: dinner,
-        coversSourceLateNight: lateNight,
+        coversSourcePerServicePeriod: <String, CoversSource>{
+          'lunch': lunch,
+          'dinner': dinner,
+          'late_night': lateNight,
+        },
         coversManualEntries: manualEntries,
         wageSource: WageSource.vendor,
         createdAt: DateTime.utc(2026, 5, 5),
@@ -51,7 +61,7 @@ void main() {
       );
 
   group('CoversManualEntryCard', () {
-    testWidgets('card renders with hint when no daypart is manual',
+    testWidgets('card renders with hint when no period is manual',
         (tester) async {
       await sizeViewport(tester);
       final settings = buildSettings(
@@ -65,6 +75,7 @@ void main() {
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (_, __) {},
           onCopyYesterday: (_) {},
         ),
@@ -76,12 +87,12 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('Switch a daypart to'),
+        find.textContaining('Switch a service period to'),
         findsOneWidget,
       );
     });
 
-    testWidgets('renders one input row per manual daypart',
+    testWidgets('renders one input row per manual period',
         (tester) async {
       await sizeViewport(tester);
       final settings = buildSettings(
@@ -95,6 +106,7 @@ void main() {
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (_, __) {},
           onCopyYesterday: (_) {},
         ),
@@ -120,13 +132,14 @@ void main() {
         (tester) async {
       await sizeViewport(tester);
       final settings = buildSettings(dinner: CoversSource.manual);
-      final captured = <(Daypart, int?)>[];
+      final captured = <(String, int?)>[];
 
       await tester.pumpWidget(wrap(
         CoversManualEntryCard(
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (d, v) => captured.add((d, v)),
           onCopyYesterday: (_) {},
         ),
@@ -140,19 +153,20 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(captured, equals(<(Daypart, int?)>[(Daypart.dinner, 127)]));
+      expect(captured, equals(<(String, int?)>[('dinner', 127)]));
     });
 
     testWidgets('empty submission emits null (clear)', (tester) async {
       await sizeViewport(tester);
       final settings = buildSettings(dinner: CoversSource.manual);
-      final captured = <(Daypart, int?)>[];
+      final captured = <(String, int?)>[];
 
       await tester.pumpWidget(wrap(
         CoversManualEntryCard(
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (d, v) => captured.add((d, v)),
           onCopyYesterday: (_) {},
         ),
@@ -166,7 +180,7 @@ void main() {
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
 
-      expect(captured, equals(<(Daypart, int?)>[(Daypart.dinner, null)]));
+      expect(captured, equals(<(String, int?)>[('dinner', null)]));
     });
 
     testWidgets(
@@ -179,13 +193,14 @@ void main() {
           '2026-05-04': <String, int>{'dinner': 187},
         },
       );
-      final copied = <Daypart>[];
+      final copied = <String>[];
 
       await tester.pumpWidget(wrap(
         CoversManualEntryCard(
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (_, __) {},
           onCopyYesterday: copied.add,
         ),
@@ -197,7 +212,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(copied, equals(<Daypart>[Daypart.dinner]));
+      expect(copied, equals(<String>['dinner']));
     });
 
     testWidgets(
@@ -211,6 +226,7 @@ void main() {
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (_, __) {},
           onCopyYesterday: (_) {},
         ),
@@ -223,7 +239,7 @@ void main() {
       expect(button.onPressed, isNull);
     });
 
-    testWidgets('pre-fills field from manualEntries[today][daypart]',
+    testWidgets('pre-fills field from manualEntries[today][servicePeriodId]',
         (tester) async {
       await sizeViewport(tester);
       final settings = buildSettings(
@@ -238,6 +254,7 @@ void main() {
           businessDateIso: '2026-05-05',
           yesterdayBusinessDateIso: '2026-05-04',
           settings: settings,
+          servicePeriods: periods,
           onEnterCovers: (_, __) {},
           onCopyYesterday: (_) {},
         ),

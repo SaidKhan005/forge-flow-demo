@@ -41,8 +41,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
-import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart'
-    show Daypart;
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
@@ -200,7 +198,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(agg, isNotNull);
@@ -408,7 +406,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(aggV1, isNotNull);
@@ -457,7 +455,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(aggV2, isNotNull);
@@ -522,7 +520,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
       forecastContext: DemandForecastContext(
         restaurantId: _restaurantA,
@@ -595,7 +593,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
         walkInOverride: const ReservationWalkInOverride(operatorWalkInCount: 8),
       );
@@ -668,7 +666,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
       walkInOverride: const ReservationWalkInOverride(operatorWalkInCount: 0),
     );
@@ -732,7 +730,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(result, isNotNull);
@@ -809,7 +807,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(result, isNotNull);
@@ -865,7 +863,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(result, isNotNull);
@@ -930,7 +928,7 @@ void main() {
       businessDate: _businessDate,
       weekId: '2026-W18',
       dayLabel: 'Mon',
-      daypart: Daypart.dinner,
+      servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
     expect(result, isNotNull);

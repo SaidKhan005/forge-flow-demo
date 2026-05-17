@@ -7,7 +7,6 @@
 // existing OpenShiftSnapshotProjector.
 
 import '../../domain/models/aggregator_provenance_context.dart';
-import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/demand_forecast_context.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/models/shift_fact.dart';
@@ -61,7 +60,7 @@ class ExistingClosedShiftPostCommitAggregator
       businessDate: period.businessDateAsDateTime,
       weekId: period.weekId,
       dayLabel: period.dayLabel,
-      daypart: DaypartWire.fromWire(period.servicePeriodKey),
+      servicePeriodId: period.servicePeriodKey,
       periodDefinition: period.servicePeriodDefinition,
       businessTimingProfileId: period.businessTimingProfileId,
       businessTimingProfileVersionId: period.businessTimingProfileVersionId,

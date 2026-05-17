@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**56 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605161501_per_daypart_v1_s0_verdict_persistence.sql`;
+**57 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -94,8 +94,9 @@ Production1 apply.
 | `202605160000_per_daypart_v1_per_period_target_persistence.sql` | Per-Daypart V1 Slice 1 per-period data layer foundation. Adds `target_cycle_dayparts` (per-(cycle, service_period) locked CPLH/SPLH/PPA + OPZ + cover_count for cover-weighted whole-day pool rollup) and `weekly_plan_snapshot_day_dayparts` (per-(snapshot, business_date, service_period) demand-derived values + theoretical FOH/BOH dollars at lock time). Adds `weekly_plan_snapshots.wage_at_lock_time_json` (JSONB stamp — Design Rule 8: audit checks compare locked dollars against this column, not current wages). Adds 5 per-shift per-period target stamp columns on `shift_records` so closed truth retains its period band stamp per Promise 2. Both new tables are operator-scoped + RLS-policy-protected with the four sanctioned wrapper functions; B-tree indexes lead with `(operator_id, location_id)` per `hardening_rls_and_repository_pattern_contract.md`. | code-ready |
 | `202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql` | Per-Daypart V1 Slice 7b option (b) deprecation note on `public.locations.business_day_rollover_hour`. `COMMENT ON COLUMN` only — no DDL or data change, fully backward compatible. Documents that vendor sinks now resolve the business-day cutoff via the canonical `business_timing_profiles.business_day_start_local_time` chain (operator → org_unit → location inheritance per HP #11, sub-hour aware). The SQL trigger `phase_8_set_business_date()` still reads the column as a defense-in-depth backup (sub-decision b1). The drop migration is deferred to a follow-up after a deprecation cycle. | code-ready |
 | `202605161501_per_daypart_v1_s0_verdict_persistence.sql` | Per-Daypart V1 Slice S0 per-period verdict persistence foundation. Adds two additive, nullable, no-default TEXT columns (`verdict`, `verdict_reason`) to the existing per-period child table `public.target_cycle_dayparts`. Back-compat: pre-S0 rows (and rows the future selection algorithm leaves unscored) read back NULL; Design Rule 2 — callers never substitute 0/empty. No algorithm, seeder, widget, or copy change. RLS posture unchanged (inherits the table's existing `(operator_id, location_id)` per-tenant-location policy). | code-ready |
+| `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql` | Per-Daypart V1 R5 covers-source de-hardcode. Data-preserving backfill of legacy `covers_source_{lunch,dinner,late_night}` into the keyed `public.data_accuracy_service_period_settings` table (sentinel `effective_at_business_date` reproducing the legacy always-applies semantics, `ON CONFLICT DO NOTHING` so an operator-set keyed row is never clobbered, operator_id/location_id copied for per-tenant isolation, the keyed table's existing wrapper-only RLS preserved). Legacy 3 columns marked DEPRECATED via `COMMENT ON COLUMN`; no read path uses them post-R5. Hard column drop deferred to follow-up R7 (after proxy bootstrap SQL + `effective_data_accuracy_settings_v` view + HP #11 hierarchy surface are migrated). Additive + comment-only; no down migration. | code-ready |
 
-**Action:** apply all 55 in next Production1 event per
+**Action:** apply all 56 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

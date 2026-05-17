@@ -35,7 +35,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/schedule_distribution_weights.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
@@ -138,7 +137,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -200,7 +199,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
         businessTimingProfileId: _timingProfileA,
       );
@@ -251,7 +250,7 @@ void main() {
           businessDate: _businessDate,
           weekId: '2026-W18',
           dayLabel: 'Mon',
-          daypart: Daypart.dinner,
+          servicePeriodId: 'dinner',
           periodDefinition: _dinnerPeriod,
           businessTimingProfileId: _timingProfileB,
         );
@@ -314,7 +313,7 @@ void main() {
           businessDate: _businessDate,
           weekId: '2026-W18',
           dayLabel: 'Mon',
-          daypart: Daypart.dinner,
+          servicePeriodId: 'dinner',
           periodDefinition: _dinnerPeriod,
         ),
         throwsA(isA<MultiplePosAdaptersException>()),
@@ -370,7 +369,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
         forecastContext: forecast,
       );
@@ -436,7 +435,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -516,7 +515,7 @@ void main() {
             businessDate: _businessDate,
             weekId: '2026-W18',
             dayLabel: 'Mon',
-            daypart: Daypart.dinner,
+            servicePeriodId: 'dinner',
             periodDefinition: _dinnerPeriod,
           );
 
@@ -599,7 +598,7 @@ void main() {
             businessDate: _businessDate,
             weekId: '2026-W18',
             dayLabel: 'Mon',
-            daypart: Daypart.dinner,
+            servicePeriodId: 'dinner',
             periodDefinition: _dinnerPeriod,
             forecastContext: forecast,
           );
@@ -666,7 +665,7 @@ void main() {
             businessDate: _businessDate,
             weekId: '2026-W18',
             dayLabel: 'Mon',
-            daypart: Daypart.dinner,
+            servicePeriodId: 'dinner',
             periodDefinition: _dinnerPeriod,
             forecastContext: forecast,
           );
@@ -718,7 +717,7 @@ void main() {
             businessDate: _businessDate,
             weekId: '2026-W18',
             dayLabel: 'Mon',
-            daypart: Daypart.dinner,
+            servicePeriodId: 'dinner',
             periodDefinition: _dinnerPeriod,
           );
 
@@ -787,7 +786,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
         walkInOverride: const ReservationWalkInOverride(
           operatorWalkInCount: 25,
@@ -868,7 +867,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -913,7 +912,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
         walkInOverride: const ReservationWalkInOverride(operatorWalkInCount: 0),
       );
@@ -985,7 +984,7 @@ void main() {
           businessDate: _businessDate,
           weekId: '2026-W18',
           dayLabel: 'Mon',
-          daypart: Daypart.dinner,
+          servicePeriodId: 'dinner',
           periodDefinition: _dinnerPeriod,
         );
 
@@ -1064,7 +1063,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -1135,7 +1134,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -1198,7 +1197,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -1251,7 +1250,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -1308,7 +1307,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
       final resultB = await aggregator.aggregate(
@@ -1318,7 +1317,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
 
@@ -1408,7 +1407,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
       expect(result, isNotNull);
@@ -1470,7 +1469,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
       expect(result, isNotNull);
@@ -1538,7 +1537,7 @@ void main() {
         businessDate: _businessDate, // 2026-05-04
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
       expect(result, isNotNull);
@@ -1613,7 +1612,7 @@ void main() {
         businessDate: _businessDate,
         weekId: '2026-W18',
         dayLabel: 'Mon',
-        daypart: Daypart.dinner,
+        servicePeriodId: 'dinner',
         periodDefinition: _dinnerPeriod,
       );
       expect(result, isNotNull);
@@ -1769,7 +1768,7 @@ void main() {
             businessDate: _businessDate,
             weekId: '2026-W18',
             dayLabel: 'Mon',
-            daypart: Daypart.lunch,
+            servicePeriodId: 'lunch',
             periodDefinition: lunchPeriod,
             allServicePeriodDefinitions: const <ServicePeriodDefinition>[
               lunchPeriod,
@@ -1836,7 +1835,7 @@ void main() {
                   businessDate: _businessDate,
                   weekId: '2026-W18',
                   dayLabel: 'Mon',
-                  daypart: Daypart.lunch,
+                  servicePeriodId: 'lunch',
                   periodDefinition: lunchPeriod,
                   allServicePeriodDefinitions: const <ServicePeriodDefinition>[
                     lunchPeriod,
@@ -1880,7 +1879,7 @@ void main() {
                   businessDate: _businessDate,
                   weekId: '2026-W18',
                   dayLabel: 'Mon',
-                  daypart: Daypart.dinner,
+                  servicePeriodId: 'dinner',
                   periodDefinition: dinnerPeriodFull,
                   allServicePeriodDefinitions: const <ServicePeriodDefinition>[
                     lunchPeriod,
@@ -1979,7 +1978,7 @@ void main() {
                   businessDate: DateTime.utc(2026, 5, 4),
                   weekId: '2026-W18',
                   dayLabel: 'Mon',
-                  daypart: Daypart.lateNight,
+                  servicePeriodId: 'late_night',
                   periodDefinition: lateNightMon,
                   allServicePeriodDefinitions: allPeriods,
                 );
@@ -2030,7 +2029,7 @@ void main() {
                   businessDate: DateTime.utc(2026, 5, 5),
                   weekId: '2026-W19',
                   dayLabel: 'Tue',
-                  daypart: Daypart.lunch,
+                  servicePeriodId: 'lunch',
                   periodDefinition: lunchPeriod,
                   allServicePeriodDefinitions: allPeriods,
                 );
@@ -2098,7 +2097,7 @@ void main() {
 
           Future<int?> coversFor(
             ServicePeriodDefinition target,
-            Daypart targetDaypart,
+            String targetServicePeriodId,
           ) async {
             // Pool has NO POS rows -> stage 4 fallback kicks in.
             final pool = _FakePool()..seedLocation(_opA, _locA);
@@ -2112,7 +2111,7 @@ void main() {
                   businessDate: _businessDate,
                   weekId: '2026-W18',
                   dayLabel: 'Mon',
-                  daypart: targetDaypart,
+                  servicePeriodId: targetServicePeriodId,
                   periodDefinition: target,
                   allServicePeriodDefinitions: const <ServicePeriodDefinition>[
                     lunch,
@@ -2126,9 +2125,9 @@ void main() {
           }
 
           // 90 × 0.3 = 27, 90 × 0.5 = 45, 90 × 0.2 = 18.
-          expect(await coversFor(lunch, Daypart.lunch), 27);
-          expect(await coversFor(dinner, Daypart.dinner), 45);
-          expect(await coversFor(lateNight, Daypart.lateNight), 18);
+          expect(await coversFor(lunch, 'lunch'), 27);
+          expect(await coversFor(dinner, 'dinner'), 45);
+          expect(await coversFor(lateNight, 'late_night'), 18);
         },
       );
 
@@ -2165,7 +2164,7 @@ void main() {
                   businessDate: _businessDate,
                   weekId: '2026-W18',
                   dayLabel: 'Mon',
-                  daypart: Daypart.dinner,
+                  servicePeriodId: 'dinner',
                   periodDefinition: dinnerPeriodFull,
                 );
             expect(
@@ -2191,7 +2190,7 @@ void main() {
                   businessDate: _businessDate,
                   weekId: '2026-W18',
                   dayLabel: 'Mon',
-                  daypart: Daypart.dinner,
+                  servicePeriodId: 'dinner',
                   periodDefinition: dinnerPeriodFull,
                   forecastContext: DemandForecastContext(
                     restaurantId: _restaurantA,
@@ -2340,7 +2339,7 @@ void main() {
               businessDate: tuesdayBusinessDate,
               weekId: '2026-W20',
               dayLabel: 'Tue',
-              daypart: Daypart.lateNight,
+              servicePeriodId: 'late_night',
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
@@ -2394,7 +2393,7 @@ void main() {
               businessDate: tuesdayBusinessDate,
               weekId: '2026-W20',
               dayLabel: 'Tue',
-              daypart: Daypart.lateNight,
+              servicePeriodId: 'late_night',
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
@@ -2507,7 +2506,7 @@ void main() {
               businessDate: DateTime.utc(2026, 5, 13),
               weekId: '2026-W20',
               dayLabel: 'Wed',
-              daypart: Daypart.lateNight,
+              servicePeriodId: 'late_night',
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
@@ -2563,7 +2562,7 @@ void main() {
               businessDate: tuesdayBusinessDate,
               weekId: '2026-W20',
               dayLabel: 'Tue',
-              daypart: Daypart.lateNight,
+              servicePeriodId: 'late_night',
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
@@ -2669,7 +2668,7 @@ void main() {
             businessDate: tuesdayBusinessDate,
             weekId: '2026-W20',
             dayLabel: 'Tue',
-            daypart: Daypart.lateNight,
+            servicePeriodId: 'late_night',
             periodDefinition: lateNightPeriod,
             allServicePeriodDefinitions: allPeriods,
             // Pattern A path — operator walk-in count = 0 + seated
@@ -2797,7 +2796,7 @@ void main() {
             businessDate: tuesdayBusinessDate,
             weekId: '2026-W20',
             dayLabel: 'Tue',
-            daypart: Daypart.lateNight,
+            servicePeriodId: 'late_night',
             periodDefinition: lateNightPeriod,
             allServicePeriodDefinitions: allPeriods,
           );
@@ -2927,7 +2926,16 @@ class _FakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
-    if (sql.contains('from public.data_accuracy_service_period_settings')) {
+    // Per-Daypart V1 Slice R5 (Gap 27/36): the DAS read SELECT now
+    // embeds a `from public.data_accuracy_service_period_settings`
+    // sub-SELECT to project the keyed per-period covers source. Route
+    // by the bound `service_period_key` param (only the standalone
+    // keyed at-or-before read carries it) so the DAS read is NOT
+    // mis-routed into the keyed-period branch.
+    final hasServicePeriodKeyParam =
+        parameters['service_period_key'] is String;
+    if (sql.contains('from public.data_accuracy_service_period_settings') &&
+        hasServicePeriodKeyParam) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final servicePeriodKey = parameters['service_period_key'] as String;
@@ -2948,7 +2956,23 @@ class _FakeTransaction implements PostgresTransaction {
       final locationId = parameters['location_id'] as String;
       final row = pool.dataAccuracySettingsByTenant['$operatorId|$locationId'];
       if (row == null) return const <PostgresRow>[];
-      return <PostgresRow>[row];
+      // The R5 DAS read projects a `covers_source_per_service_period`
+      // jsonb (from the keyed table) instead of the legacy columns.
+      // Synthesize it from any seeded keyed rows for this tenant so
+      // the model's `coversSourceFor` resolves the same way the real
+      // keyed sub-SELECT would; the seeded legacy columns on the row
+      // remain as the backward-compat fallback fromRow honours.
+      final perPeriod = <String, Object?>{};
+      final prefix = '$operatorId|$locationId|';
+      pool.dataAccuracyServicePeriodSettingsByTenant.forEach((key, kr) {
+        if (!key.startsWith(prefix)) return;
+        final spk = kr['service_period_key'];
+        final cs = kr['covers_source'];
+        if (spk is String && cs is String) perPeriod[spk] = cs;
+      });
+      final projected = Map<String, Object?>.from(row);
+      projected['covers_source_per_service_period'] = perPeriod;
+      return <PostgresRow>[projected];
     }
     if (sql.contains(
       'select timezone, business_day_rollover_hour from public.locations',
