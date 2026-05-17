@@ -23,6 +23,19 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
       const <BusinessTimingProfileWriteResult>[];
 
   @override
+  Future<BusinessTimingResolutionResult> resolveForLocation({
+    required String locationId,
+    String? businessDate,
+  }) async =>
+      BusinessTimingResolutionResult(
+        operatorId: 'op-1',
+        locationId: locationId,
+        businessDate: businessDate ?? '2026-05-01',
+        ianaTimezone: 'America/Toronto',
+        candidates: const <BusinessTimingResolutionCandidate>[],
+      );
+
+  @override
   Future<BusinessTimingProfileWriteResult> createProfile(
     BusinessTimingProfileCreate request,
   ) async {
