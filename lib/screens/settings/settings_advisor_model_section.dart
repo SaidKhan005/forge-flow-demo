@@ -227,7 +227,7 @@ class _AdvisorRoutingHeader extends StatelessWidget {
             textAlign: TextAlign.right,
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11,
+              fontSize: 13,
               height: 1.15,
             ),
           ),
@@ -264,7 +264,7 @@ class _OverrideField extends StatelessWidget {
             label,
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11,
+              fontSize: 13,
             ),
           ),
           const SizedBox(height: 4),
@@ -342,7 +342,7 @@ class _CheckResultRow extends StatelessWidget {
             label,
             style: const TextStyle(
               color: AppColors.textSecondary,
-              fontSize: 11,
+              fontSize: 13,
             ),
           ),
           const SizedBox(height: 4),
@@ -385,7 +385,7 @@ class _VoyagePinnedRow extends StatelessWidget {
         children: [
           const Text(
             'Search model settings',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 4),
           Text(
