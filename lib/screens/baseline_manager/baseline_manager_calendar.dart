@@ -1,15 +1,21 @@
-// Phase 7.55o.5 — Baseline Manager calendar grid + legend.
+// Choose Star Shifts R1: hero calendar grid (60-day window).
 //
-// Extracted from baseline_manager_screen.dart. Shows the 60-day
-// calendar window with selected / suggested star overlays and the
-// legend that explains the three dot colors. Behaviour and colors
-// are unchanged.
+// The calendar is the dominant element of the screen. Cells have TWO
+// states only: closed (has selectable closed shifts) and selected (the
+// operator picked at least one shift on that day). The old "suggested"
+// state and its legend were removed in R1.
+//
+// The grid is filtered by the active service-period lens: when a period
+// lens is active only that period's shifts count toward a day's state;
+// "Whole day" shows every period. Lens filtering uses the day's already
+// loaded candidates; no targets are recomputed here.
 
 import 'package:flutter/material.dart';
 
 import '../../models/baseline_candidate_shift.dart';
 import '../../theme/app_theme.dart';
 import 'baseline_manager_helpers.dart';
+import 'baseline_manager_lens.dart';
 
 // ─── Calendar grid (60-day window) ────────────────────────────────────────────
 
@@ -19,13 +25,26 @@ class CalendarGrid extends StatelessWidget {
   final Set<String> draftKeys;
   final ValueChanged<String> onDateTap;
 
+  /// Active lens id: [kWholeDayLensId] shows every period; a period id
+  /// restricts each day's state to that period's shifts only.
+  final String activeLensId;
+
   const CalendarGrid({
     super.key,
     required this.windowDates,
     required this.shiftsByDate,
     required this.draftKeys,
     required this.onDateTap,
+    required this.activeLensId,
   });
+
+  /// Returns the candidates for [dateStr] that match the active lens.
+  /// Whole day = all; a period lens = only that period's shifts.
+  List<BaselineCandidateShift> _lensShifts(String dateStr) {
+    final all = shiftsByDate[dateStr] ?? const <BaselineCandidateShift>[];
+    if (activeLensId == kWholeDayLensId) return all;
+    return all.where((c) => c.daypart == activeLensId).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +96,7 @@ class CalendarGrid extends StatelessWidget {
         if (!windowSet.contains(formatIsoDate(dt))) continue;
         if (dt.month != prevMonth) {
           rows.add(Padding(
-            padding: EdgeInsets.fromLTRB(0, prevMonth == null ? 0 : 8, 0, 4),
+            padding: EdgeInsets.fromLTRB(0, prevMonth == null ? 0 : 10, 0, 6),
             child: Text(
               '${monthNames[dt.month - 1].toUpperCase()} ${dt.year}',
               style: AppTextStyles.mono8(color: AppColors.textMuted),
@@ -93,7 +112,7 @@ class CalendarGrid extends StatelessWidget {
       for (int j = 0; j < 7; j++) {
         final dayIndex = weekStart + j;
         if (dayIndex >= gridDates.length) {
-          cells.add(const Expanded(child: SizedBox(height: 38)));
+          cells.add(const Expanded(child: SizedBox(height: 52)));
           continue;
         }
 
@@ -102,18 +121,17 @@ class CalendarGrid extends StatelessWidget {
         final inWindow = windowSet.contains(dateStr);
 
         if (!inWindow) {
-          cells.add(const Expanded(child: SizedBox(height: 38)));
+          cells.add(const Expanded(child: SizedBox(height: 52)));
           continue;
         }
 
-        final shifts = shiftsByDate[dateStr] ?? [];
+        // Lens-filtered shifts drive this day's state.
+        final shifts = _lensShifts(dateStr);
         final hasShifts = shifts.isNotEmpty;
         final hasSelected =
             shifts.any((c) => draftKeys.contains(c.recordKey));
-        final hasSuggested =
-            shifts.any(isSuggestedStar);
 
-        // Visual priority: selected > suggested > available
+        // TWO states only: selected > closed. No "suggested".
         final Color cellBg;
         final Color cellBorder;
         final Color dotColor;
@@ -121,10 +139,6 @@ class CalendarGrid extends StatelessWidget {
           cellBg = AppColors.sunset.withValues(alpha: 0.15);
           cellBorder = AppColors.sunset.withValues(alpha: 0.5);
           dotColor = AppColors.sunset;
-        } else if (hasSuggested) {
-          cellBg = AppColors.jade.withValues(alpha: 0.12);
-          cellBorder = AppColors.jade.withValues(alpha: 0.5);
-          dotColor = AppColors.peacock;
         } else if (hasShifts) {
           cellBg = AppColors.backgroundMid;
           cellBorder = AppColors.borderSubtle;
@@ -140,29 +154,30 @@ class CalendarGrid extends StatelessWidget {
             key: ValueKey<String>('cal_$dateStr'),
             onTap: () => onDateTap(dateStr),
             child: Container(
-              height: 38,
-              margin: const EdgeInsets.all(1),
+              height: 52,
+              margin: const EdgeInsets.all(2),
               decoration: BoxDecoration(
                 color: cellBg,
                 border: Border.all(color: cellBorder, width: 1),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     '${dt.day}',
-                    style: AppTextStyles.mono10(
+                    style: AppTextStyles.mono14(
                       color: hasShifts
                           ? AppColors.textPrimary
                           : AppColors.textMuted,
+                      weight: hasShifts ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
                   if (hasShifts)
                     Container(
-                      width: 4,
-                      height: 4,
-                      margin: const EdgeInsets.only(top: 2),
+                      width: 5,
+                      height: 5,
+                      margin: const EdgeInsets.only(top: 3),
                       decoration: BoxDecoration(
                         color: dotColor,
                         shape: BoxShape.circle,
@@ -183,27 +198,19 @@ class CalendarGrid extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
+          // Header: exact text per R1 spec, no scope word, no dashes.
           Text('LAST 60 DAYS',
-              style: AppTextStyles.mono11(color: AppColors.textMuted)),
+              style: AppTextStyles.mono14(
+                color: AppColors.textPrimary,
+                weight: FontWeight.w600,
+              )),
           const SizedBox(height: 4),
           Text(
-            '${formatDisplayDate(windowDates.first)} – '
+            '${formatDisplayDate(windowDates.first)} to '
             '${formatDisplayDate(windowDates.last)}',
             style: AppTextStyles.mono8(color: AppColors.textMuted),
           ),
-          const SizedBox(height: 6),
-          // Legend
-          Row(
-            children: [
-              _LegendDot(color: AppColors.textMuted, label: 'Closed shifts'),
-              const SizedBox(width: 12),
-              _LegendDot(color: AppColors.peacock, label: 'Suggested star'),
-              const SizedBox(width: 12),
-              _LegendDot(color: AppColors.sunset, label: 'Selected star'),
-            ],
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           // Weekday labels
           Row(
             children: ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -216,36 +223,11 @@ class CalendarGrid extends StatelessWidget {
                     ))
                 .toList(),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           // Calendar rows
           ...rows,
         ],
       ),
-    );
-  }
-}
-
-// ─── Legend dot ───────────────────────────────────────────────────────────────
-
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-
-  const _LegendDot({required this.color, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(label, style: AppTextStyles.mono7(color: AppColors.textMuted)),
-      ],
     );
   }
 }

@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
 import '../../models/baseline_candidate_shift.dart';
 import '../../theme/app_theme.dart';
@@ -20,6 +21,11 @@ class DayDetail extends StatelessWidget {
   final ValueChanged<String> onToggle;
   final VoidCallback onBack;
 
+  /// Operator-configured service-period definitions (resolved by the
+  /// screen from the persisted timing config). Drives section order and
+  /// period labels, never a hardcoded daypart list.
+  final List<ServicePeriodDefinition> defs;
+
   const DayDetail({
     super.key,
     required this.date,
@@ -27,6 +33,7 @@ class DayDetail extends StatelessWidget {
     required this.draftKeys,
     required this.onToggle,
     required this.onBack,
+    required this.defs,
   });
 
   @override
@@ -86,15 +93,16 @@ class DayDetail extends StatelessWidget {
       groups.putIfAbsent(c.daypart, () => []).add(c);
     }
 
-    final order = ServicePeriodDefinitionResolver.ordered(
-      ServicePeriodDefinitionResolver.demoDefinitions,
-    ).map((d) => d.id).toList();
+    final order =
+        ServicePeriodDefinitionResolver.ordered(defs).map((d) => d.id).toList();
     final items = <Widget>[];
 
     for (final dp in order) {
       final group = groups[dp];
       if (group == null || group.isEmpty) continue;
-      items.add(_daypartHeader(group.first.daypartLabel));
+      items.add(_daypartHeader(
+        ServicePeriodDefinitionResolver.labelForId(defs, dp),
+      ));
       for (final c in group) {
         items.add(_CandidateTile(
           candidate: c,
@@ -104,10 +112,12 @@ class DayDetail extends StatelessWidget {
       }
     }
 
-    // Unknown dayparts after known ones
+    // Periods not present in the operator config, after configured ones.
     for (final entry in groups.entries) {
       if (order.contains(entry.key)) continue;
-      items.add(_daypartHeader(entry.key));
+      items.add(_daypartHeader(
+        ServicePeriodDefinitionResolver.labelForId(defs, entry.key),
+      ));
       for (final c in entry.value) {
         items.add(_CandidateTile(
           candidate: c,

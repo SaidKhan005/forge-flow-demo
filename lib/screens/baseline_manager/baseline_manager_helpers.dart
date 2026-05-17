@@ -6,7 +6,6 @@
 // shell files can share them by public name. Semantics unchanged.
 
 import '../../domain/constants/app_defaults.dart';
-import '../../models/baseline_candidate_shift.dart';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -35,18 +34,6 @@ String formatDisplayDate(String iso) {
 String formatDayDetailDate(String iso) {
   final dt = parseIsoDate(iso);
   return '${_weekdayNames[dt.weekday - 1]}, ${monthNames[dt.month - 1]} ${dt.day}';
-}
-
-// ─── Suggested star shift helper ──────────────────────────────────────────────
-// A candidate is "suggested" when its lever signal is favorable.
-// Uses the canonical LeverCards lookup — no new scoring model.
-
-bool isSuggestedStar(BaselineCandidateShift c) {
-  final card = LeverCards.all.cast<LeverCardData?>().firstWhere(
-        (l) => l!.id == c.primaryLeverId,
-        orElse: () => null,
-      );
-  return card != null && card.isFavorable;
 }
 
 // ─── Lever label formatter ───────────────────────────────────────────────────
