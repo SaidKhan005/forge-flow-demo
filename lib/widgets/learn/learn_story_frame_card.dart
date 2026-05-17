@@ -10,10 +10,12 @@
 // ("THE PLAY"). This widget renders one such frame.
 //
 // All teaching prose is rendered through Lane E's `InlineEmphasisText`
-// (the V2-4 renderer). Catalog strings currently carry no markup tokens,
-// so this renders identically to a plain `Text` (the no-markup path);
-// the renderer is wired here for forward-compat without hand-adding any
-// markup to the locked catalog.
+// (the V2-4 renderer). The caller (variance_learn_tab.dart) routes the
+// verbatim catalog body through `LearnEmphasisMap` first, which wraps
+// exact catalog substrings in the V2-4 causal tokens at RENDER time so
+// the mockup `.em-bad` / `.em-good` highlights show. The catalog stays
+// byte-for-byte plain; `InlineEmphasisMarkup.stripMarkup` of any body
+// this card receives equals the plain catalog sentence exactly.
 
 import 'package:flutter/material.dart';
 

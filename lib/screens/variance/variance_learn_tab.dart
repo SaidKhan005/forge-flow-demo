@@ -26,6 +26,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/learn/learn_carousel.dart';
 import '../../widgets/learn/learn_chapter_rail.dart';
 import '../../widgets/learn/learn_cross_axis_card.dart';
+import '../../widgets/learn/learn_emphasis_map.dart';
 import '../../widgets/learn/learn_story_frame_card.dart';
 import '../../widgets/learn/learn_teaching_card.dart';
 
@@ -226,7 +227,13 @@ class _LearnContentState extends State<_LearnContent> {
                 heading: leakCard.metric,
                 caption: caption,
                 visualHint: _leverVisualHint(leakCard, favorable: false),
-                body: leakCard.whatHappened,
+                // V2-4: emphasis is applied at RENDER over the verbatim
+                // catalog `whatHappened`. `stripMarkup` of this equals
+                // `leakCard.whatHappened` byte-for-byte.
+                body: LearnEmphasisMap.emphasizeWhatHappened(
+                  leakCard.id,
+                  leakCard.whatHappened,
+                ),
                 accent: AppColors.negative,
               );
             case 1:
@@ -234,15 +241,24 @@ class _LearnContentState extends State<_LearnContent> {
                 stepLabel: 'FRAME 2 · WHY IT MATTERS',
                 heading: 'Luck does not repeat',
                 visualHint: _consequenceHint(leakCard),
-                body: leakCard.teachingNote,
+                body: LearnEmphasisMap.emphasizeTeachingNote(
+                  leakCard.id,
+                  leakCard.teachingNote,
+                ),
                 accent: AppColors.negative,
               );
             default:
               return LearnStoryFrameCard(
                 stepLabel: 'FRAME 3 · WHAT TO DO',
                 heading: 'Schedule from the math',
-                body: leakCard.whatToDo,
-                actionPlay: leakCard.whatToDo,
+                body: LearnEmphasisMap.emphasizeWhatToDo(
+                  leakCard.id,
+                  leakCard.whatToDo,
+                ),
+                actionPlay: LearnEmphasisMap.emphasizeWhatToDo(
+                  leakCard.id,
+                  leakCard.whatToDo,
+                ),
                 accent: AppColors.sunset,
               );
           }
@@ -270,7 +286,12 @@ class _LearnContentState extends State<_LearnContent> {
                 caption: caption,
                 visualHint:
                     _leverVisualHint(benchmarkCard, favorable: true),
-                body: benchmarkCard.whatHappened,
+                // V2-4: emphasis applied at RENDER over the verbatim
+                // catalog string (round-trips to it via stripMarkup).
+                body: LearnEmphasisMap.emphasizeWhatHappened(
+                  benchmarkCard.id,
+                  benchmarkCard.whatHappened,
+                ),
                 accent: AppColors.positive,
               );
             case 1:
@@ -278,15 +299,24 @@ class _LearnContentState extends State<_LearnContent> {
                 stepLabel: 'FRAME 2 · WHY IT MATTERS',
                 heading: 'You cannot repeat what you do not understand',
                 visualHint: _consequenceHint(benchmarkCard),
-                body: benchmarkCard.teachingNote,
+                body: LearnEmphasisMap.emphasizeTeachingNote(
+                  benchmarkCard.id,
+                  benchmarkCard.teachingNote,
+                ),
                 accent: AppColors.positive,
               );
             default:
               return LearnStoryFrameCard(
                 stepLabel: 'FRAME 3 · WHAT TO PROTECT',
                 heading: 'Bank the setup',
-                body: benchmarkCard.whatToDo,
-                actionPlay: benchmarkCard.whatToDo,
+                body: LearnEmphasisMap.emphasizeWhatToDo(
+                  benchmarkCard.id,
+                  benchmarkCard.whatToDo,
+                ),
+                actionPlay: LearnEmphasisMap.emphasizeWhatToDo(
+                  benchmarkCard.id,
+                  benchmarkCard.whatToDo,
+                ),
                 accent: AppColors.sunset,
               );
           }
