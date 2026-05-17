@@ -19,6 +19,13 @@ class ZoneStatusCard extends StatelessWidget {
   /// marker.
   final String? splhState;
 
+  /// Closed-state Shift dashboard: when true the "CURRENT CPLH" header
+  /// label is rendered as "FINAL CPLH". On a finished/closed day the
+  /// value is a settled final, so "CURRENT" would mislead. Wording
+  /// only; the value, needle, band and zone math are byte-identical.
+  /// No kDemoMode fork (demo and production identical).
+  final bool closed;
+
   const ZoneStatusCard({
     super.key,
     required this.currentCPLH,
@@ -29,6 +36,7 @@ class ZoneStatusCard extends StatelessWidget {
     required this.opzLabel,
     required this.opzSubLabel,
     this.splhState,
+    this.closed = false,
   });
 
   static OpzCplhBand _cplhBandFor(String status) {
@@ -92,7 +100,7 @@ class ZoneStatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('CURRENT CPLH',
+          Text(closed ? 'FINAL CPLH' : 'CURRENT CPLH',
               style: AppTextStyles.mono10(color: AppColors.textMuted)),
           const SizedBox(height: 4),
           Row(
