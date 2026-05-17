@@ -549,17 +549,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       viewOnly: true,
                     ),
                   ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SettingsPointerRow(
-                        label: 'Manage active sessions on Ops Web',
-                        opWebPath: 'sessions',
-                        navId: 'sessions',
-                        handoffCodeGateway: widget.handoffCodeGateway,
-                      ),
-                    ),
-                  ),
                 ],
               ),
           ],
