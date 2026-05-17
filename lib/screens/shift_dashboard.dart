@@ -170,6 +170,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                     selectedPeriodId: _selectedServicePeriodId,
                     onChanged: _setSelectedServicePeriodId,
                     ticker: _ticker,
+                    closed: closed,
                   ),
                 ),
                 // Phase 8.0 V1 lean cut 2 — DataSourceHealthPill
@@ -179,13 +180,26 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                 // metric_card_honesty_contract.md "Forbidden
                 // Patterns": no card-level chrome, no "All live"
                 // pill.
-                SliverToBoxAdapter(
-                  child: _ShiftDashboardHealthPill(readModel: rm),
-                ),
+                //
+                // Closed-state carve-out (presentation only): on a
+                // finished/closed day a live "connect a vendor" prompt
+                // is meaningless. The Closed status marker plus the
+                // "Final results for this day. Live shift reopens …"
+                // line already carry provenance. The pill renders
+                // nothing when every metric is live anyway, so
+                // omitting it entirely when closed is layout-safe.
+                if (!closed)
+                  SliverToBoxAdapter(
+                    child: _ShiftDashboardHealthPill(readModel: rm),
+                  ),
                 if (_selectedServicePeriodId == null)
-                  ..._wholeDaySlivers(rm)
+                  ..._wholeDaySlivers(rm, closed: closed)
                 else
-                  ..._servicePeriodSlivers(context, _selectedServicePeriodId!),
+                  ..._servicePeriodSlivers(
+                    context,
+                    _selectedServicePeriodId!,
+                    closed: closed,
+                  ),
                 const SliverToBoxAdapter(child: SizedBox(height: 48)),
               ],
             ),
@@ -207,6 +221,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     required String outputsLabel,
     required String inputsLabel,
     required String fohLabel,
+    bool closed = false,
   }) {
     return [
       SliverMainAxisGroup(
@@ -233,7 +248,9 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             pinned: true,
             delegate: StickySectionDelegate(fohLabel),
           ),
-          SliverToBoxAdapter(child: _FohProductivitySection(data: data)),
+          SliverToBoxAdapter(
+            child: _FohProductivitySection(data: data, closed: closed),
+          ),
         ],
       ),
     ];
@@ -255,7 +272,10 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
   /// the already-computed `rm.primaryLeverCard` (resolved through
   /// `LeverCards.lookup` in `buildWholeDay`); whole-day always
   /// determines a lever so it shows a real driver, never a phantom.
-  List<Widget> _wholeDaySlivers(ShiftDashboardReadModel rm) {
+  List<Widget> _wholeDaySlivers(
+    ShiftDashboardReadModel rm, {
+    bool closed = false,
+  }) {
     return [
       SliverToBoxAdapter(
         child: _WholeDayPeriodHeader(primaryLeverCard: rm.primaryLeverCard),
@@ -265,6 +285,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
         outputsLabel: 'SHIFT OUTPUTS',
         inputsLabel: 'SHIFT INPUTS',
         fohLabel: 'FOH PRODUCTIVITY',
+        closed: closed,
       ),
     ];
   }
@@ -280,8 +301,9 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
   /// sole live-state signal.
   List<Widget> _servicePeriodSlivers(
     BuildContext context,
-    String selectedPeriodId,
-  ) {
+    String selectedPeriodId, {
+    bool closed = false,
+  }) {
     final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
     final definitions =
         periodNotifier?.definitions ??
@@ -356,6 +378,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
           outputsLabel: 'OUTPUTS',
           inputsLabel: 'INPUTS',
           fohLabel: 'FOH PRODUCTIVITY',
+          closed: closed,
         ),
       );
     }
@@ -489,13 +512,22 @@ class _ShiftHeaderMeta extends StatelessWidget {
                 // Live time, pulled down from the old title-row trailing slot
                 // so the restaurant name gets the full title width (less
                 // mid-word truncation) and date + time read as one line.
-                const SizedBox(width: 8),
-                Text(
-                  '·',
-                  style: AppTextStyles.mono12(color: AppColors.textMuted),
-                ),
-                const SizedBox(width: 8),
-                _LiveClock(ticker: ticker),
+                //
+                // Closed-state carve-out (presentation only): a closed
+                // day is historical, so the ticking device wall clock
+                // would lie (it keeps advancing past the finished day).
+                // When closed: drop the live clock AND its leading `·`
+                // separator + spacing entirely. The "day · Mon DD" date
+                // text above stays. No fabricated time is substituted.
+                if (!closed) ...[
+                  const SizedBox(width: 8),
+                  Text(
+                    '·',
+                    style: AppTextStyles.mono12(color: AppColors.textMuted),
+                  ),
+                  const SizedBox(width: 8),
+                  _LiveClock(ticker: ticker),
+                ],
               ],
             ),
           ),
@@ -1654,7 +1686,14 @@ class _InputsSection extends StatelessWidget {
 /// share the identical inset.
 class _FohProductivitySection extends StatelessWidget {
   final _ShiftSectionViewData data;
-  const _FohProductivitySection({required this.data});
+
+  /// Closed-state Shift dashboard: when true the zone card's
+  /// "CURRENT CPLH" label is rendered as "FINAL CPLH". The value is a
+  /// finished-day final, so "CURRENT" would be wrong. Wording only; the
+  /// value, needle and zone math are identical. No kDemoMode fork
+  /// (demo and production identical).
+  final bool closed;
+  const _FohProductivitySection({required this.data, this.closed = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1693,6 +1732,7 @@ class _FohProductivitySection extends StatelessWidget {
         opzLabel: opz.opzLabel,
         opzSubLabel: opz.opzSubLabel,
         splhState: opz.splhState,
+        closed: closed,
       ),
     );
   }
@@ -1753,10 +1793,19 @@ class _ShiftPeriodSelector extends StatelessWidget {
   final ValueChanged<String?> onChanged;
   final ValueListenable<DateTime> ticker;
 
+  /// Closed-state Shift dashboard: when true the live "currently in
+  /// progress" orange affordance is suppressed for every pill. On a
+  /// finished/historical day no period is actually live-active. The
+  /// selected/tapped period's normal selection styling is unaffected.
+  /// Label/affordance-only; no kDemoMode fork (demo and production
+  /// identical).
+  final bool closed;
+
   const _ShiftPeriodSelector({
     required this.selectedPeriodId,
     required this.onChanged,
     required this.ticker,
+    this.closed = false,
   });
 
   // A4.2 (R2): rebuilds are driven by the dashboard-wide ticker
@@ -1780,7 +1829,12 @@ class _ShiftPeriodSelector extends StatelessWidget {
             periodNotifier?.businessDayStartLocalTime ??
             _defaultBusinessDayStartLocalTime;
         final localNow = _restaurantLocalNow(restaurant);
-        final activeId = localNow == null
+        // Closed-state: no period is live-active on a finished/
+        // historical day, so force no active-period highlight. The
+        // normal selection styling (the tapped pill) is unaffected;
+        // only the live "currently in progress" orange affordance is
+        // suppressed.
+        final activeId = (closed || localNow == null)
             ? null
             : resolveActiveServicePeriodId(
                 localNow: localNow,
