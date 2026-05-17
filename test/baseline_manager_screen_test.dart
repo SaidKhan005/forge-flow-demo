@@ -10,7 +10,7 @@ import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
-import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_day_detail.dart';
+import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_day_sheet.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:provider/provider.dart';
@@ -126,36 +126,12 @@ Widget _wrap(Widget child) => ChangeNotifierProvider(
   child: MaterialApp(theme: ThemeData.dark(), home: child),
 );
 
-// ── Tile label helper ─────────────────────────────────────────────────────────
-// Mirrors the screen's tile label logic: human-friendly date + daypart when
-// businessDate is present, otherwise falls back to the model's displayLabel.
-
-const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const _monthAbbrs = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
-
-String _tileLabel(BaselineCandidateShift c) {
-  if (c.businessDate == null) return c.displayLabel;
-  final p = c.businessDate!.split('-');
-  final dt = DateTime(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
-  final dayName = _dayNames[dt.weekday - 1];
-  final mon = _monthAbbrs[dt.month - 1];
-  return '$dayName, $mon ${dt.day} ${c.daypartLabel}';
-}
-
-// ── Navigation helpers ────────────────────────────────────────────────────────
+// ── R2 navigation helpers ─────────────────────────────────────────────────────
+// R2 replaced the full-screen day-detail PUSH navigation with an in-place
+// `showModalBottomSheet`. Tapping a calendar day opens the sheet; there
+// is no route push and no "BACK TO CALENDAR" affordance. The default
+// lens ("Whole day") opens the whole-day rollup sheet; a period lens
+// opens that period's single-shift sheet.
 
 Future<void> _tapCalendarDate(WidgetTester tester, String date) async {
   final finder = find.byKey(ValueKey<String>('cal_$date'));
@@ -165,23 +141,62 @@ Future<void> _tapCalendarDate(WidgetTester tester, String date) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _tapBackToCalendar(WidgetTester tester) async {
-  await tester.tap(find.text('BACK TO CALENDAR'));
+Future<void> _closeSheet(WidgetTester tester) async {
+  await tester.tap(find.text('CLOSE'));
   await tester.pumpAndSettle();
 }
 
-/// Tap a candidate tile by its rendered label, handling offstage from
-/// the narrow test viewport (CLEAR ALL bar can push tiles below viewport).
-Future<void> _tapCandidateTile(
+/// Dismiss a modal bottom sheet that has no CLOSE affordance (the
+/// period-lens variant closes via its SELECT/REMOVE action; a test that
+/// only wants to move on taps the scrim/barrier instead).
+Future<void> _dismissModalBarrier(WidgetTester tester) async {
+  await tester.tapAt(const Offset(10, 10));
+  await tester.pumpAndSettle();
+}
+
+Future<void> _tapLensChip(WidgetTester tester, String lensId) async {
+  await tester.tap(find.byKey(ValueKey<String>('lens_$lensId')));
+  await tester.pumpAndSettle();
+}
+
+/// Toggle a service inside the open WHOLE-DAY sheet via its per-service
+/// breakdown row. The sheet stays open after the toggle.
+Future<void> _toggleWholeDayService(
   WidgetTester tester,
-  BaselineCandidateShift candidate,
+  String periodLabel,
 ) async {
-  final label = _tileLabel(candidate);
-  final finder = find.text(label, skipOffstage: false);
-  await tester.ensureVisible(finder);
+  final row = find.descendant(
+    of: find.byType(BottomSheet),
+    matching: find.text(periodLabel),
+  );
+  await tester.ensureVisible(row);
   await tester.pumpAndSettle();
-  await tester.tap(finder);
+  await tester.tap(row);
   await tester.pumpAndSettle();
+}
+
+/// Finds the SELECTED SHIFTS preview-cell value. The cell renders
+/// "SELECTED SHIFTS" then the count in the next Text in the same Column;
+/// the calendar day-number cells also render bare digits, so count
+/// assertions must be scoped here, not to a bare `find.text`.
+Finder _selectedShiftsValue() {
+  return find.descendant(
+    of: find.ancestor(
+      of: find.text('SELECTED SHIFTS'),
+      matching: find.byType(Column),
+    ).first,
+    matching: find.byType(Text),
+  );
+}
+
+void _expectSelectedShiftsCount(WidgetTester tester, String count) {
+  final texts = tester.widgetList<Text>(_selectedShiftsValue()).toList();
+  // [0] = label "SELECTED SHIFTS", [1] = the value.
+  expect(
+    texts.any((t) => t.data == count),
+    isTrue,
+    reason: 'SELECTED SHIFTS cell should show $count',
+  );
 }
 
 Future<Set<String>> _commitDoneAndReadKeys(WidgetTester tester) async {
@@ -302,9 +317,11 @@ void main() {
 
       expect(find.text('--'), findsNWidgets(11));
 
-      // Navigate to _lunch1's date and tap its tile
+      // Default whole-day lens: tap the date, toggle the lunch service
+      // in the sheet, then close so the preview underneath is visible.
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
 
       expect(find.text('--'), findsNothing);
     });
@@ -321,63 +338,15 @@ void main() {
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
 
-      // In day detail: only preview panel shows '1', no calendar day cells
-      expect(find.text('1'), findsOneWidget);
+      _expectSelectedShiftsCount(tester, '1');
     });
   });
 
-  group('D - candidate tiles show required fields', () {
-    testWidgets('LUNCH section header renders in day detail', (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // Navigate to date with lunch shift. R1 adds an always-visible
-      // lens chip also labelled "LUNCH", so scope the section-header
-      // assertion to the day-detail subtree.
-      await _tapCalendarDate(tester, '2026-03-02');
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('LUNCH'),
-        ),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('DINNER section header renders in day detail', (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // Navigate to date with dinner shift. R1 adds an always-visible
-      // lens chip also labelled "DINNER", so scope the section-header
-      // assertion to the day-detail subtree.
-      await _tapCalendarDate(tester, '2026-03-06');
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('DINNER'),
-        ),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('each tile shows CPLH, COVERS, SPLH, PPA, and lever', (
+  group('D - period-lens sheet shows required metrics', () {
+    testWidgets('period-lens tap opens a bottom sheet with the 6 metrics', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -390,18 +359,60 @@ void main() {
       );
       await tester.pump();
 
-      // Navigate to date with one shift (_lunch1 on 2026-03-02)
+      await _tapLensChip(tester, 'lunch');
       await _tapCalendarDate(tester, '2026-03-02');
 
-      expect(find.text('CPLH ', skipOffstage: false), findsNWidgets(1));
-      expect(find.text('COVERS ', skipOffstage: false), findsNWidgets(1));
-      expect(find.text('SPLH ', skipOffstage: false), findsNWidgets(1));
-      expect(find.text('PPA ', skipOffstage: false), findsNWidgets(1));
-      expect(find.text('LEVER ', skipOffstage: false), findsNWidgets(1));
-      // Lever label shows full natural-language meaning (metric from
-      // LeverCards). V2-1 catalog moved metric copy from ALL-CAPS to
-      // sentence case ('CPLH ABOVE TARGET' -> 'CPLH above target');
-      // leverLabel() returns LeverCardData.metric verbatim.
+      // The sheet is a modal overlay, not a route push.
+      expect(find.byType(BottomSheet), findsOneWidget);
+      final inSheet = find.byType(BottomSheet);
+      expect(
+        find.descendant(of: inSheet, matching: find.text('CPLH')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('COVERS')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('SPLH')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('PPA')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('LABOR %')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('LEVER')),
+        findsOneWidget,
+      );
+      // Primary toggle action.
+      expect(
+        find.descendant(of: inSheet, matching: find.text('SELECT')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('period-lens sheet shows the lever full meaning', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await _tapLensChip(tester, 'lunch');
+      await _tapCalendarDate(tester, '2026-03-02');
+
+      expect(find.text('cplh_up', skipOffstage: false), findsNothing);
       expect(
         find.text('CPLH above target', skipOffstage: false),
         findsAtLeastNWidgets(1),
@@ -422,8 +433,9 @@ void main() {
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
-      expect(find.text('1'), findsOneWidget);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
+      _expectSelectedShiftsCount(tester, '1');
 
       await tester.tap(find.text('CANCEL'));
       await tester.pump();
@@ -448,11 +460,9 @@ void main() {
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
-      expect(find.text('1'), findsOneWidget);
-
-      // Back to calendar so DONE is reachable
-      await _tapBackToCalendar(tester);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
+      _expectSelectedShiftsCount(tester, '1');
 
       final stored = await _commitDoneAndReadKeys(tester);
       expect(stored, contains(_lunch1.recordKey));
@@ -521,9 +531,9 @@ void main() {
       );
       await tester.pump();
 
-      // Navigate to _lunch1's date and select
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
 
       // Forecast covers fixed from canonical demand context
       final expectedCovers = demandCovers;
@@ -696,10 +706,10 @@ void main() {
     });
   });
 
-  // ── K — Candidate tiles show LABOR % chips (Phase 7.55f.2) ───────────────
+  // ── K — Period-lens sheet shows LABOR % ──────────────────────────────────
 
-  group('K - candidate tile LABOR % chips', () {
-    testWidgets('each candidate tile shows LABOR % chip with actual value', (
+  group('K - period-lens sheet LABOR %', () {
+    testWidgets('period-lens sheet shows LABOR % with the actual value', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -712,37 +722,46 @@ void main() {
       );
       await tester.pump();
 
-      // Navigate to _lunch1's date (only 1 shift on this date)
+      await _tapLensChip(tester, 'lunch');
       await _tapCalendarDate(tester, '2026-03-02');
 
-      // 1 tile on this date → 1 LABOR % chip
-      expect(find.text('LABOR % ', skipOffstage: false), findsNWidgets(1));
-      expect(find.text('24.3%', skipOffstage: false), findsOneWidget);
+      // Scope to the sheet: the preview panel behind the modal also
+      // carries a "LABOR %" cell.
+      final inSheet = find.byType(BottomSheet);
+      expect(
+        find.descendant(of: inSheet, matching: find.text('LABOR %')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('24.3%')),
+        findsOneWidget,
+      );
 
-      // Navigate back and check another date
-      await _tapBackToCalendar(tester);
+      await _dismissModalBarrier(tester);
       await _tapCalendarDate(tester, '2026-03-10');
-      expect(find.text('25.1%', skipOffstage: false), findsOneWidget);
-
-      await _tapBackToCalendar(tester);
-      await _tapCalendarDate(tester, '2026-03-06');
-      expect(find.text('23.8%', skipOffstage: false), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('25.1%'),
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('candidate tile shows -- when labor truth is unavailable', (
+    testWidgets('period-lens sheet shows -- when labor truth is unavailable', (
       tester,
     ) async {
       const unknownLabor = BaselineCandidateShift(
-        recordKey: '2026-W10|Mon|dinner_unknown',
+        recordKey: '2026-W10|Mon|lunch_unknown',
         weekId: '2026-W10',
         weekLabel: 'Week of Mar 3',
         dayLabel: 'Mon',
-        daypart: 'dinner',
+        daypart: 'lunch',
         covers: 190,
         cplh: 4.4,
         splh: 178.0,
         ppa: 41.0,
-        primaryLeverId: 'splh_down',
+        primaryLeverId: 'cplh_up',
         isSelected: false,
         businessDate: '2026-03-02',
         actualLaborPct: 0.0,
@@ -758,11 +777,22 @@ void main() {
       );
       await tester.pump();
 
+      await _tapLensChip(tester, 'lunch');
       await _tapCalendarDate(tester, '2026-03-02');
 
-      expect(find.text('LABOR % ', skipOffstage: false), findsOneWidget);
-      expect(find.text('--', skipOffstage: false), findsAtLeastNWidgets(1));
-      expect(find.text('0.0%', skipOffstage: false), findsNothing);
+      final inSheet = find.byType(BottomSheet);
+      expect(
+        find.descendant(of: inSheet, matching: find.text('LABOR %')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('--')),
+        findsAtLeastNWidgets(1),
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('0.0%')),
+        findsNothing,
+      );
     });
   });
 
@@ -806,7 +836,7 @@ void main() {
       expect(find.text('Jan 10 to Mar 10'), findsOneWidget);
     });
 
-    testWidgets('dates with closed shifts show a marker dot', (tester) async {
+    testWidgets('dates with closed shifts have a keyed cell', (tester) async {
       await tester.pumpWidget(
         _wrap(
           BaselineManagerScreen.withCandidates(
@@ -817,10 +847,6 @@ void main() {
       );
       await tester.pump();
 
-      // Calendar cells with shifts have a 4x4 Container dot
-      // 3 unique dates with shifts: Mar 2, Mar 6, Mar 10
-      // Find all DecoratedBox containers that could be dots
-      // Just verify the calendar cell keys exist for shift dates
       expect(
         find.byKey(const ValueKey<String>('cal_2026-03-02')),
         findsOneWidget,
@@ -846,8 +872,6 @@ void main() {
       );
       await tester.pump();
 
-      // _selectedLunch is on 2026-03-16 and is pre-selected.
-      // The cell should exist and be tappable.
       expect(
         find.byKey(const ValueKey<String>('cal_2026-03-16')),
         findsOneWidget,
@@ -869,108 +893,10 @@ void main() {
     });
   });
 
-  // ── M — Calendar navigation (Phase 7.55f.3) ──────────────────────────────
+  // ── M — Tap-day bottom sheet (R2) ─────────────────────────────────────────
 
-  group('M - calendar navigation', () {
-    testWidgets('tapping a date with shifts opens day detail', (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      await _tapCalendarDate(tester, '2026-03-02');
-
-      expect(find.text('BACK TO CALENDAR'), findsOneWidget);
-      expect(find.text('Mon, Mar 2'), findsOneWidget);
-      // _lunch1 is on this date: its day-detail section renders. R1
-      // adds an always-visible lens chip also labelled "LUNCH", so
-      // scope this to the day-detail subtree.
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('LUNCH'),
-        ),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('day detail shows only that date\'s shifts', (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      // Mar 2 has _lunch1 only (lunch). Scope to the day-detail subtree
-      // because R1 adds always-visible lens chips labelled "LUNCH" /
-      // "DINNER" outside the day detail.
-      await _tapCalendarDate(tester, '2026-03-02');
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('LUNCH'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('DINNER'),
-        ),
-        findsNothing,
-      );
-
-      // Back, then navigate to Mar 6 which has _dinner1 only
-      await _tapBackToCalendar(tester);
-      await _tapCalendarDate(tester, '2026-03-06');
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('DINNER'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('LUNCH'),
-        ),
-        findsNothing,
-      );
-    });
-
-    testWidgets('back returns to calendar grid', (tester) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      expect(find.text('LAST 60 DAYS'), findsOneWidget);
-
-      await _tapCalendarDate(tester, '2026-03-02');
-      expect(find.text('LAST 60 DAYS'), findsNothing);
-      expect(find.text('BACK TO CALENDAR'), findsOneWidget);
-
-      await _tapBackToCalendar(tester);
-      expect(find.text('LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('BACK TO CALENDAR'), findsNothing);
-    });
-
-    testWidgets('tapping a date without shifts shows empty day detail', (
+  group('M - tap-day bottom sheet', () {
+    testWidgets('tapping a date opens a modal sheet, not a route push', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -983,7 +909,87 @@ void main() {
       );
       await tester.pump();
 
-      // Jan 15 is in the 60-day window but has no shifts
+      // The calendar header is still mounted underneath (no route swap).
+      await _tapCalendarDate(tester, '2026-03-02');
+      expect(find.byType(BottomSheet), findsOneWidget);
+      expect(find.text('LAST 60 DAYS'), findsOneWidget);
+      // No legacy push-nav affordance.
+      expect(find.text('BACK TO CALENDAR'), findsNothing);
+    });
+
+    testWidgets('whole-day sheet shows only that date\'s services', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Mar 2 has _lunch1 only.
+      await _tapCalendarDate(tester, '2026-03-02');
+      final inSheet = find.byType(BottomSheet);
+      expect(
+        find.descendant(of: inSheet, matching: find.text('Lunch')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet, matching: find.text('Dinner')),
+        findsNothing,
+      );
+
+      await _closeSheet(tester);
+      // Mar 6 has _dinner1 only.
+      await _tapCalendarDate(tester, '2026-03-06');
+      final inSheet2 = find.byType(BottomSheet);
+      expect(
+        find.descendant(of: inSheet2, matching: find.text('Dinner')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: inSheet2, matching: find.text('Lunch')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('CLOSE dismisses the whole-day sheet, calendar remains', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await _tapCalendarDate(tester, '2026-03-02');
+      expect(find.byType(BottomSheet), findsOneWidget);
+
+      await _closeSheet(tester);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(find.text('LAST 60 DAYS'), findsOneWidget);
+    });
+
+    testWidgets('tapping a date without shifts shows empty sheet state', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
       await _tapCalendarDate(tester, '2026-01-15');
       expect(find.text('No closed shifts for this date.'), findsOneWidget);
     });
@@ -1005,19 +1011,15 @@ void main() {
       );
       await tester.pump();
 
-      // Pre-selected state. R1 moved CLEAR ALL + summary into a
-      // scrollable band; ensure visible before tapping.
       final clearAll = find.text('CLEAR ALL');
       expect(clearAll, findsOneWidget);
       await tester.ensureVisible(clearAll);
       await tester.pumpAndSettle();
 
-      // Tap CLEAR ALL
       await tester.tap(clearAll);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // Preview returns to no-selection state
       expect(find.text('0', skipOffstage: false), findsOneWidget);
       expect(find.text('--', skipOffstage: false), findsNWidgets(11));
       expect(find.text('CLEAR ALL'), findsNothing);
@@ -1059,8 +1061,6 @@ void main() {
   // ── O — DST-safe calendar grid (Phase 7.55f.3a) ──────────────────────────
 
   group('O - DST-safe calendar grid', () {
-    // US DST 2026: spring forward Mar 8.  Window Jan 10 – Mar 10 crosses it.
-
     testWidgets('all 60 in-window dates have a calendar cell key', (
       tester,
     ) async {
@@ -1074,8 +1074,6 @@ void main() {
       );
       await tester.pump();
 
-      // Window: 2026-01-10 to 2026-03-10 (60 days inclusive).
-      // Every date in that range must have a keyed cell.
       var d = DateTime(2026, 1, 10);
       final end = DateTime(2026, 3, 10);
       int count = 0;
@@ -1107,8 +1105,6 @@ void main() {
       );
       await tester.pump();
 
-      // March 7 (day before DST) and March 8 (DST spring-forward)
-      // must each have exactly one cell, not zero or two.
       expect(
         find.byKey(
           const ValueKey<String>('cal_2026-03-07'),
@@ -1147,16 +1143,8 @@ void main() {
 
       // _lunch2 is on 2026-03-10 (after DST transition on Mar 8)
       await _tapCalendarDate(tester, '2026-03-10');
-      expect(find.text('BACK TO CALENDAR'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsOneWidget);
       expect(find.text('Tue, Mar 10'), findsOneWidget);
-      // Scope to day-detail subtree (R1 lens chip also says "LUNCH").
-      expect(
-        find.descendant(
-          of: find.byType(DayDetail),
-          matching: find.text('LUNCH'),
-        ),
-        findsOneWidget,
-      );
     });
   });
 
@@ -1174,8 +1162,6 @@ void main() {
       );
       await tester.pump();
 
-      // R1 collapses to two cell states (closed, selected) and removes
-      // the suggested state plus its whole legend.
       expect(find.text('Suggested star'), findsNothing);
       expect(find.text('Selected star'), findsNothing);
       expect(find.text('Closed shifts'), findsNothing);
@@ -1194,9 +1180,6 @@ void main() {
       );
       await tester.pump();
 
-      // _selectedLunch is pre-selected (2026-03-16); _lunch1 (2026-03-02)
-      // is closed-only. Both cells exist; visual distinction is in
-      // decoration (selected vs closed), no third "suggested" state.
       expect(
         find.byKey(
           const ValueKey<String>('cal_2026-03-16'),
@@ -1214,39 +1197,12 @@ void main() {
     });
   });
 
-  // ── Q — Lever / date polish (Phase 7.55f.3b) ─────────────────────────────
+  // ── Q — Lever / date polish ──────────────────────────────────────────────
 
   group('Q - lever and date polish', () {
     testWidgets(
-      'day detail shows full lever meaning, not raw id or generic bucket',
+      'period-lens sheet shows full lever meaning, not raw id',
       (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-            ),
-          ),
-        );
-        await tester.pump();
-
-        await _tapCalendarDate(tester, '2026-03-02');
-
-        // Should NOT find raw snake_case lever id
-        expect(find.text('cplh_up', skipOffstage: false), findsNothing);
-        // Should find full natural-language meaning, not just the metric
-        // bucket. V2-1 catalog moved metric copy to sentence case.
-        expect(
-          find.text('CPLH above target', skipOffstage: false),
-          findsAtLeastNWidgets(1),
-        );
-      },
-    );
-
-    testWidgets(
-      'distinct lever directions show distinct meanings, not collapsed buckets',
-      (tester) async {
-        // _leverTestCandidates has cplh_up and splh_down on the same date
         await tester.pumpWidget(
           _wrap(
             BaselineManagerScreen.withCandidates(
@@ -1257,28 +1213,19 @@ void main() {
         );
         await tester.pump();
 
-        // Navigate to 2026-03-02 which has both _lunch1 (cplh_up) and
-        // _dinnerSplhDown (splh_down)
+        await _tapLensChip(tester, 'dinner');
         await _tapCalendarDate(tester, '2026-03-02');
 
-        // Each should show its full distinct meaning. V2-1 catalog moved
-        // metric copy from ALL-CAPS to sentence case.
-        expect(
-          find.text('CPLH above target', skipOffstage: false),
-          findsAtLeastNWidgets(1),
-        );
+        // _dinnerSplhDown on 2026-03-02 under the dinner lens.
         expect(
           find.text('SPLH below target', skipOffstage: false),
           findsAtLeastNWidgets(1),
         );
-
-        // Raw snake_case ids must not appear
-        expect(find.text('cplh_up', skipOffstage: false), findsNothing);
         expect(find.text('splh_down', skipOffstage: false), findsNothing);
       },
     );
 
-    testWidgets('day detail shows human-friendly date text, not raw week-id', (
+    testWidgets('whole-day sheet shows human-friendly date, not raw week-id', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -1293,13 +1240,8 @@ void main() {
 
       await _tapCalendarDate(tester, '2026-03-02');
 
-      // Should NOT show raw week-id like '2026-W10'
       expect(find.textContaining('2026-W', skipOffstage: false), findsNothing);
-      // Should show human-friendly date text
-      expect(
-        find.text(_tileLabel(_lunch1), skipOffstage: false),
-        findsOneWidget,
-      );
+      expect(find.text('Mon, Mar 2'), findsOneWidget);
     });
   });
 
@@ -1330,10 +1272,8 @@ void main() {
       );
       await tester.pump();
 
-      // The CLEAR ALL text should be inside a Container with decoration
       final clearAll = find.text('CLEAR ALL');
       expect(clearAll, findsOneWidget);
-      // Verify it's inside a decorated container (border makes it a button)
       expect(
         find.ancestor(of: clearAll, matching: find.byType(Container)),
         findsAtLeastNWidgets(1),
@@ -1353,8 +1293,6 @@ void main() {
       );
       await tester.pump();
 
-      // R1 moved CLEAR ALL + the summary into a scrollable band, so
-      // ensure it is visible before tapping in the tight test viewport.
       final clearAll = find.text('CLEAR ALL');
       expect(clearAll, findsOneWidget);
       await tester.ensureVisible(clearAll);
@@ -1369,17 +1307,6 @@ void main() {
   });
 
   // ── S — 7.55q.8 Manager Override preview wage authority ──────────────
-  //
-  // Runtime contract: `_PlanImpactSection` reads the active profile
-  // wages via `context.watch<ActiveTargetProfileNotifier?>()?.profile`
-  // and passes `profile?.fohWage` / `profile?.bohWage` into
-  // `ManagerOverridePlanPreview.fromDraftSelection`. The MeridianConfig
-  // defaults remain a detached/unit fallback only; the live screen hides
-  // wage-dependent preview cells until profile wage authority is present.
-  //
-  // Proof: with a profile whose wages differ from the config defaults
-  // in the provider scope, preview `targetBlendedWage` / `theoreticalLaborPct`
-  // must move off the config-default result.
 
   group('S - 7.55q.8 preview wage authority', () {
     const distinctFohWage = 25.00; // vs MeridianConfig.fohWage = 16.50
@@ -1426,21 +1353,16 @@ void main() {
       expect(configDefault, isNotNull);
       expect(profileDriven, isNotNull);
 
-      // Blended wage is an hour-weighted mix of FOH/BOH wages — must
-      // move with the wage inputs.
       expect(
         profileDriven!.targetBlendedWage,
         isNot(closeTo(configDefault!.targetBlendedWage, 0.01)),
         reason: 'distinct wages must produce a distinct blended wage',
       );
-      // Labor % depends on wage inputs as well — must move too.
       expect(
         profileDriven.theoreticalLaborPct,
         isNot(closeTo(configDefault.theoreticalLaborPct, 0.01)),
         reason: 'distinct wages must produce a distinct theoretical %',
       );
-      // Volume-side fields stay the same across both calls (same
-      // shift inputs, same demand context).
       expect(
         profileDriven.forecastCovers,
         equals(configDefault.forecastCovers),
@@ -1461,8 +1383,6 @@ void main() {
         ),
       );
 
-      // Expected preview computed through the production seam with the
-      // distinct profile wages.
       final expectedPreview = ManagerOverridePlanPreview.fromDraftSelection(
         [_lunch1],
         historicalWeeklyAvgCovers: demandCovers,
@@ -1473,7 +1393,6 @@ void main() {
       final expectedWageStr =
           '\$${expectedPreview!.targetBlendedWage.toStringAsFixed(2)}';
 
-      // Config-default path is the "negative" — must NOT be rendered.
       final configDefaultPreview =
           ManagerOverridePlanPreview.fromDraftSelection([
             _lunch1,
@@ -1488,7 +1407,6 @@ void main() {
             'rendered strings',
       );
 
-      // Render with the profile notifier in scope.
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData.dark(),
@@ -1503,12 +1421,10 @@ void main() {
       );
       await tester.pump();
 
-      // Select a candidate so the preview flips off "--".
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
 
-      // The preview now reads the profile-driven blended wage, not the
-      // config-default blended wage.
       expect(
         find.text(expectedWageStr, skipOffstage: false),
         findsAtLeastNWidgets(1),
@@ -1541,7 +1457,8 @@ void main() {
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-02');
-      await _tapCandidateTile(tester, _lunch1);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
 
       expect(
         find.text('--'),
@@ -1554,28 +1471,16 @@ void main() {
   });
 
   // ── T — 7.55q.9 Done routes through cycle path; SnackBar on denial ───────
-  //
-  // After the first Done, the active TargetCycle has consumed its
-  // once-per-cycle manager override. A second Done must surface the
-  // ManagerOverrideDeniedException via SnackBar and KEEP the draft
-  // intact (no Navigator.pop). The first-Done plumbing is covered
-  // by `target_state_alignment_test.dart` group H; this widget test
-  // focuses on the denial UX only.
 
   group('T - 7.55q.9 Done denial surfaces as SnackBar', () {
     testWidgets('Done after the override is already consumed shows the '
         '"already used" SnackBar and keeps the screen open', (tester) async {
-      // Consume the once-per-cycle manager override at the SERVICE
-      // layer first. This removes the widget-level fragility of
-      // running two full Done flows back-to-back in one widget tree.
       await tester.runAsync(() async {
         await BaselineManagerService.instance.saveSelection({
           _lunch1.recordKey,
         });
       });
 
-      // Now mount the form, draft a different selection, hit Done.
-      // Cycle is locked → ManagerOverrideDeniedException → SnackBar.
       await tester.pumpWidget(
         _wrap(
           BaselineManagerScreen.withCandidates(
@@ -1587,20 +1492,15 @@ void main() {
       await tester.pump();
 
       await _tapCalendarDate(tester, '2026-03-10');
-      await _tapCandidateTile(tester, _lunch2);
+      await _toggleWholeDayService(tester, 'Lunch');
+      await _closeSheet(tester);
 
-      // Drive the Done tap + saveSelection's real async DB work via
-      // runAsync (the same pattern as the existing
-      // `_commitDoneAndReadKeys` helper). Pumping frames alone does
-      // not advance real async; it only ticks the fake clock.
       await tester.runAsync(() async {
         await tester.tap(find.text('DONE'));
         await Future<void>.delayed(const Duration(milliseconds: 600));
       });
-      // Pump a frame so the SnackBar renders.
       await tester.pump();
 
-      // SnackBar with the "already used" copy must be visible.
       expect(
         find.textContaining(
           'Manager override already used',
@@ -1614,7 +1514,6 @@ void main() {
         findsAtLeastNWidgets(1),
         reason: 'SnackBar must point users at the admin reset path',
       );
-      // Screen is still mounted — DONE button still present.
       expect(
         find.text('DONE'),
         findsOneWidget,
@@ -1646,9 +1545,17 @@ void main() {
       );
       await tester.pump();
 
+      // Use the period lens for this candidate so the single-shift
+      // sheet's SELECT action toggles and auto-closes.
+      await _tapLensChip(tester, candidate.daypart);
       await _tapCalendarDate(tester, candidate.businessDate!);
-      await _tapCandidateTile(tester, candidate);
-      await _tapBackToCalendar(tester);
+      await tester.tap(
+        find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.text('SELECT'),
+        ),
+      );
+      await tester.pumpAndSettle();
 
       await tester.runAsync(() async {
         await tester.tap(find.text('DONE'));
@@ -1669,18 +1576,8 @@ void main() {
   });
 
   // ── R1 - operator-config lens, 2-state filter, pre-commit gate ────────────
-  //
-  // Proves the three R1 behaviors with the injectable test constructor
-  // params so no DB / timing-config plumbing is needed:
-  //   (a) lens options derive from a 4-period operator config (not a
-  //       hardcoded 3),
-  //   (b) the calendar 2-state cell filters by the active lens period,
-  //   (c) the pre-commit once-per-cycle gate renders a disabled commit
-  //       state BEFORE any selection when the override is already used.
 
   group('R1 - lens / 2-state filter / pre-commit gate', () {
-    // A deliberately 4-period config (NOT the canonical demo 3) so the
-    // test fails if anything assumes a fixed 3-daypart shape.
     const fourPeriodDefs = <ServicePeriodDefinition>[
       ServicePeriodDefinition(
         id: 'breakfast',
@@ -1739,15 +1636,11 @@ void main() {
         );
         await tester.pump();
 
-        // "Whole day" plus exactly the 4 configured periods, in the
-        // operator's configured order. Labels and count come from the
-        // config, never a hardcoded 3-daypart list.
         expect(find.text('WHOLE DAY'), findsOneWidget);
         expect(find.text('BREAKFAST'), findsOneWidget);
         expect(find.text('LUNCH'), findsOneWidget);
         expect(find.text('DINNER'), findsOneWidget);
         expect(find.text('LATE NIGHT'), findsOneWidget);
-        // The 4th period proves no /3 or fixed-3 assumption survived.
         expect(
           find.byKey(const ValueKey<String>('lens_late_night')),
           findsOneWidget,
@@ -1762,8 +1655,6 @@ void main() {
     testWidgets(
       'b) calendar 2-state cell filters by the active lens period',
       (tester) async {
-        // _withPreSelected = [_selectedLunch (lunch, 2026-03-16, selected),
-        // _lunch1 (lunch, 2026-03-02), _dinner1 (dinner, 2026-03-06)].
         await tester.pumpWidget(
           _wrap(
             BaselineManagerScreen.withCandidates(
@@ -1788,15 +1679,10 @@ void main() {
           return container.decoration! as BoxDecoration;
         }
 
-        // Whole day: the dinner-only date 2026-03-06 has a closed cell
-        // (non-transparent border).
         final wholeDayDinnerBorder =
             (decoFor('2026-03-06').border! as Border).top.color;
         expect(wholeDayDinnerBorder, isNot(Colors.transparent));
 
-        // Switch the lens to Lunch. The dinner-only date now has no
-        // lens-matching shift, so the cell collapses to the empty
-        // (transparent) state.
         await tester.tap(
           find.byKey(const ValueKey<String>('lens_lunch')),
         );
@@ -1805,8 +1691,6 @@ void main() {
             (decoFor('2026-03-06').border! as Border).top.color;
         expect(lunchLensDinnerBorder, Colors.transparent);
 
-        // The pre-selected lunch date stays a (selected) non-empty cell
-        // under the Lunch lens.
         final lunchLensSelected =
             (decoFor('2026-03-16').border! as Border).top.color;
         expect(lunchLensSelected, isNot(Colors.transparent));
@@ -1822,15 +1706,12 @@ void main() {
               _allCandidates,
               initialDemandCovers: demandCovers,
               initialDefs: fourPeriodDefs,
-              // managerOverrideUsed -> gate closed.
               initialCanOverride: false,
             ),
           ),
         );
         await tester.pump();
 
-        // The disabled-commit state and plain-English notice render
-        // BEFORE the operator builds any selection.
         expect(
           find.byKey(const ValueKey<String>('override_used_notice')),
           findsOneWidget,
@@ -1840,7 +1721,6 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('OVERRIDE USED'), findsOneWidget);
-        // The live DONE action is not present while the gate is closed.
         expect(find.text('DONE'), findsNothing);
       },
     );
@@ -1870,6 +1750,369 @@ void main() {
         expect(find.text('DONE'), findsOneWidget);
       },
     );
+  });
+
+  // ── R2 - tap-day bottom sheet + whole-day rollup + per-service toggles ────
+  //
+  // (a) period-lens tap opens a bottom sheet (not a route push) with the
+  //     6 metrics + a toggle action;
+  // (b) whole-day-lens tap shows a cover-weighted rollup whose CPLH
+  //     equals the cover-weighted combination of that day's services
+  //     (reconciliation assertion) with per-service toggles, for a
+  //     4-period operator config;
+  // (c) toggling in the sheet mutates the draft set and the calendar
+  //     reflects it.
+
+  group('R2 - tap-day bottom sheet + whole-day rollup', () {
+    // 4-period config so nothing assumes a fixed 3-daypart shape.
+    const fourPeriodDefs = <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '11:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      ),
+    ];
+
+    // One day (2026-03-20) with four distinct service shifts so the
+    // cover-weighted rollup has a non-trivial denominator.
+    const bShift = BaselineCandidateShift(
+      recordKey: '2026-W12|Fri|breakfast',
+      weekId: '2026-W12',
+      weekLabel: 'Week of Mar 17',
+      dayLabel: 'Fri',
+      daypart: 'breakfast',
+      covers: 60,
+      cplh: 5.20,
+      splh: 120.0,
+      ppa: 18.0,
+      primaryLeverId: 'cplh_up',
+      isSelected: false,
+      businessDate: '2026-03-20',
+      actualLaborPct: 28.0,
+    );
+    const lShift = BaselineCandidateShift(
+      recordKey: '2026-W12|Fri|lunch',
+      weekId: '2026-W12',
+      weekLabel: 'Week of Mar 17',
+      dayLabel: 'Fri',
+      daypart: 'lunch',
+      covers: 150,
+      cplh: 4.80,
+      splh: 185.0,
+      ppa: 42.0,
+      primaryLeverId: 'cplh_up',
+      isSelected: false,
+      businessDate: '2026-03-20',
+      actualLaborPct: 24.0,
+    );
+    const dShift = BaselineCandidateShift(
+      recordKey: '2026-W12|Fri|dinner',
+      weekId: '2026-W12',
+      weekLabel: 'Week of Mar 17',
+      dayLabel: 'Fri',
+      daypart: 'dinner',
+      covers: 220,
+      cplh: 4.50,
+      splh: 200.0,
+      ppa: 46.0,
+      primaryLeverId: 'cplh_up',
+      isSelected: false,
+      businessDate: '2026-03-20',
+      actualLaborPct: 22.5,
+    );
+    const lnShift = BaselineCandidateShift(
+      recordKey: '2026-W12|Fri|late_night',
+      weekId: '2026-W12',
+      weekLabel: 'Week of Mar 17',
+      dayLabel: 'Fri',
+      daypart: 'late_night',
+      covers: 70,
+      cplh: 3.90,
+      splh: 150.0,
+      ppa: 35.0,
+      primaryLeverId: 'cplh_up',
+      isSelected: false,
+      businessDate: '2026-03-20',
+      actualLaborPct: 30.0,
+    );
+    const fourServiceDay = [bShift, lShift, dShift, lnShift];
+
+    testWidgets(
+      'a) period-lens tap opens a bottom sheet (no route push) with the '
+      '6 metrics + toggle',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // No modal route is pushed (the screen's Navigator only has the
+        // home route until the sheet opens).
+        expect(find.byType(BottomSheet), findsNothing);
+
+        await _tapLensChip(tester, 'dinner');
+        await _tapCalendarDate(tester, '2026-03-20');
+
+        // showModalBottomSheet overlay, not a full-screen route.
+        expect(find.byType(BottomSheet), findsOneWidget);
+        final inSheet = find.byType(BottomSheet);
+        for (final label in const [
+          'CPLH',
+          'COVERS',
+          'SPLH',
+          'PPA',
+          'LABOR %',
+          'LEVER',
+        ]) {
+          expect(
+            find.descendant(of: inSheet, matching: find.text(label)),
+            findsOneWidget,
+            reason: '$label metric must render in the period sheet',
+          );
+        }
+        expect(
+          find.descendant(of: inSheet, matching: find.text('SELECT')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'b) whole-day rollup CPLH reconciles to the cover-weighted '
+      'combination of that day\'s 4 services',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Default lens is whole-day. Tap the 4-service day.
+        await _tapCalendarDate(tester, '2026-03-20');
+        expect(
+          find.byKey(const ValueKey<String>('whole_day_rollup_card')),
+          findsOneWidget,
+        );
+
+        // Reconciliation: the rendered rollup CPLH must equal the
+        // cover-weighted combination computed independently here,
+        // mirroring TargetCycleDaypartPool.fromDayparts.
+        final totalCovers =
+            fourServiceDay.fold<int>(0, (s, c) => s + c.covers);
+        double expectedCplh = 0;
+        for (final c in fourServiceDay) {
+          expectedCplh += c.cplh * (c.covers / totalCovers);
+        }
+        // Independent rollup model produces the same scalar.
+        final rollup = WholeDayRollup.fromShifts(
+          fourServiceDay,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        );
+        expect(rollup.cplh, closeTo(expectedCplh, 0.0001));
+        expect(rollup.totalCovers, equals(totalCovers));
+
+        // The rendered rollup card shows that same CPLH (2 dp) and the
+        // summed covers, proving the UI reconciles to per-service.
+        expect(
+          find.text(expectedCplh.toStringAsFixed(2), skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+        expect(
+          find.text('$totalCovers', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+
+        // Per-service breakdown: one row per configured period present,
+        // count + labels from the resolved defs (4 here).
+        final inSheet = find.byType(BottomSheet);
+        for (final label in const [
+          'Breakfast',
+          'Lunch',
+          'Dinner',
+          'Late Night',
+        ]) {
+          expect(
+            find.descendant(of: inSheet, matching: find.text(label)),
+            findsOneWidget,
+            reason: '$label per-service row must render',
+          );
+        }
+      },
+    );
+
+    testWidgets(
+      'c) toggling a service in the whole-day sheet mutates the draft '
+      'and the calendar reflects it (badge count)',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Whole-day badge before any selection: 0 of 4 services.
+        expect(
+          find.byKey(const ValueKey<String>('cal_badge_2026-03-20')),
+          findsOneWidget,
+        );
+        expect(find.text('0/4'), findsOneWidget);
+
+        await _tapCalendarDate(tester, '2026-03-20');
+        // Toggle two services; the sheet STAYS open between toggles.
+        await _toggleWholeDayService(tester, 'Lunch');
+        expect(find.byType(BottomSheet), findsOneWidget);
+        await _toggleWholeDayService(tester, 'Dinner');
+        expect(find.byType(BottomSheet), findsOneWidget);
+
+        await _closeSheet(tester);
+
+        // Draft mutated: preview count is 2 and the calendar badge moves
+        // to 2/4 (selection flowed only through the draft set).
+        _expectSelectedShiftsCount(tester, '2');
+        expect(find.text('2/4'), findsOneWidget);
+
+        // Commit proves the draft set carried the toggled keys.
+        final stored = await _commitDoneAndReadKeys(tester);
+        expect(stored, containsAll(<String>[lShift.recordKey, dShift.recordKey]));
+        expect(stored, isNot(contains(bShift.recordKey)));
+        expect(stored, isNot(contains(lnShift.recordKey)));
+      },
+    );
+
+    test(
+      'WholeDayRollup zero-covers fallback uses an unweighted mean '
+      '(mirrors TargetCycleDaypartPool)',
+      () {
+        const z1 = BaselineCandidateShift(
+          recordKey: 'z|Fri|lunch',
+          weekId: 'z',
+          weekLabel: 'z',
+          dayLabel: 'Fri',
+          daypart: 'lunch',
+          covers: 0,
+          cplh: 4.0,
+          splh: 100.0,
+          ppa: 30.0,
+          primaryLeverId: 'cplh_up',
+          isSelected: false,
+        );
+        const z2 = BaselineCandidateShift(
+          recordKey: 'z|Fri|dinner',
+          weekId: 'z',
+          weekLabel: 'z',
+          dayLabel: 'Fri',
+          daypart: 'dinner',
+          covers: 0,
+          cplh: 6.0,
+          splh: 200.0,
+          ppa: 50.0,
+          primaryLeverId: 'cplh_up',
+          isSelected: false,
+        );
+        final r = WholeDayRollup.fromShifts(
+          [z1, z2],
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        );
+        expect(r.totalCovers, equals(0));
+        expect(r.cplh, closeTo(5.0, 0.0001)); // (4+6)/2
+        expect(r.splh, closeTo(150.0, 0.0001)); // (100+200)/2
+        expect(r.ppa, closeTo(40.0, 0.0001)); // (30+50)/2
+      },
+    );
+
+    test(
+      'WholeDayRollup labor % uses the WHOLE-DAY wage on the '
+      'cover-weighted rates (display only, no per-period wage)',
+      () {
+        final r = WholeDayRollup.fromShifts(
+          fourServiceDay,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        );
+        // Labor % is the existing whole-day shape: theoreticalLaborPct
+        // of the rolled-up (cover-weighted) rates with the single
+        // whole-day wage pair, never a per-period wage.
+        expect(
+          r.laborPct,
+          closeTo(
+            LaborModel.theoreticalLaborPct(
+              r.cplh,
+              r.splh,
+              r.ppa,
+              MeridianConfig.fohWage,
+              MeridianConfig.bohWage,
+            ),
+            0.0001,
+          ),
+        );
+      },
+    );
+
+    test('WholeDayRollup labor % is an honest unknown without wage '
+        'authority', () {
+      final r = WholeDayRollup.fromShifts(
+        fourServiceDay,
+        fohWage: null,
+        bohWage: null,
+      );
+      expect(r.laborPct, isNull);
+    });
   });
 }
 
