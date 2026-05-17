@@ -88,6 +88,77 @@ class AppSpacing {
   );
 }
 
+/// Corner-radius scale — collapses the ad-hoc 2/3/4/6/8/10/12/16/20px
+/// zoo into three intentional steps. Premium feel = ONE consistent
+/// rounding, not nine. See the typography/spacing contract.
+class AppRadius {
+  AppRadius._();
+
+  /// 6 — chips, badges, small inline controls.
+  static const double small = 6;
+
+  /// 10 — the standard surface: cards, tiles, panels, inputs.
+  static const double card = 10;
+
+  /// 999 — fully rounded (pills, avatars).
+  static const double pill = 999;
+
+  static const BorderRadius smallR = BorderRadius.all(Radius.circular(small));
+  static const BorderRadius cardR = BorderRadius.all(Radius.circular(card));
+  static const BorderRadius pillR = BorderRadius.all(Radius.circular(pill));
+}
+
+/// Shared surface decorations — one hairline-bordered card treatment so
+/// screens stop hand-rolling `Container` + random-alpha `Border.all` +
+/// random `borderRadius`. Calmer, consistent, premium.
+class AppDecoration {
+  AppDecoration._();
+
+  /// Single hairline border opacity (was 0.4–0.7 scattered ad-hoc).
+  static const double hairlineAlpha = 0.7;
+
+  static final Border hairline = Border.all(
+    color: AppColors.borderSubtle.withValues(alpha: hairlineAlpha),
+    width: 1,
+  );
+
+  /// Standard elevated surface: white, hairline border, card radius.
+  static final BoxDecoration surfaceCard = BoxDecoration(
+    color: AppColors.backgroundSurface,
+    border: hairline,
+    borderRadius: AppRadius.cardR,
+  );
+
+  /// Tinted accent chip surface (badges/status). Pass the accent colour;
+  /// fill + border opacities are fixed so every chip matches.
+  static BoxDecoration accentChip(Color accent) => BoxDecoration(
+    color: accent.withValues(alpha: 0.12),
+    border: Border.all(color: accent.withValues(alpha: 0.45), width: 1),
+    borderRadius: AppRadius.smallR,
+  );
+}
+
+/// Hairline divider. Replaces hand-rolled
+/// `Container(height: 1, color: AppColors.borderSubtle)` so spacing and
+/// weight are consistent everywhere.
+class AppDivider extends StatelessWidget {
+  const AppDivider({super.key, this.indent = 0});
+
+  /// Symmetric horizontal inset (e.g. to align with card padding).
+  final double indent;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.symmetric(horizontal: indent),
+    child: Container(
+      height: 1,
+      color: AppColors.borderSubtle.withValues(
+        alpha: AppDecoration.hairlineAlpha,
+      ),
+    ),
+  );
+}
+
 /// Text scale roles.
 ///
 /// IMPORTANT: the legacy method names below (e.g. `body11`, `mono10`) name a

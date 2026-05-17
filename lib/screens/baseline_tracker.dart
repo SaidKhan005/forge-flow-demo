@@ -466,7 +466,7 @@ class _CplhRangeBar extends StatelessWidget {
           ),
 
           const SizedBox(height: 16),
-          Container(height: 1, color: AppColors.borderSubtle),
+          const AppDivider(),
           const SizedBox(height: 16),
 
           // Explanation block (7.55p.5h honest badge + optional fallback copy)
@@ -750,7 +750,7 @@ class _StripHalf extends StatelessWidget {
             ),
           ),
         ),
-        Container(height: 1, color: AppColors.rule),
+        const AppDivider(),
         ...rows.asMap().entries.map((entry) {
           final isLast = entry.key == rows.length - 1;
           final (label, value) = entry.value;
@@ -800,7 +800,7 @@ class _StripHalf extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!isLast) Container(height: 1, color: AppColors.rule),
+              if (!isLast) const AppDivider(),
             ],
           );
         }),

@@ -412,8 +412,7 @@ class _GroupedSummaryTable extends StatelessWidget {
     return (fohHours * fohWage + bohHours * bohWage) / totalHours;
   }
 
-  static Widget _divider() =>
-      Container(height: 1, color: AppColors.borderSubtle);
+  static Widget _divider() => const AppDivider();
 }
 
 

@@ -225,16 +225,13 @@ class _NotificationTile extends StatelessWidget {
     final tile = Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppRadius.cardR,
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: onTap,
-            child: Container(
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                border: Border.all(color: AppColors.borderSubtle),
-              ),
+            child: DecoratedBox(
+              decoration: AppDecoration.surfaceCard,
               child: IntrinsicHeight(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -259,14 +256,7 @@ class _NotificationTile extends StatelessWidget {
                               width: 32,
                               height: 32,
                               alignment: Alignment.center,
-                              decoration: BoxDecoration(
-                                color: accent.withValues(alpha: 0.12),
-                                border: Border.all(
-                                  color: accent.withValues(alpha: 0.5),
-                                  width: 1,
-                                ),
-                                borderRadius: BorderRadius.circular(8),
-                              ),
+                              decoration: AppDecoration.accentChip(accent),
                               child: Icon(icon, size: 16, color: accent),
                             ),
                             const SizedBox(width: 10),
