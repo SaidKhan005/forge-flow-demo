@@ -64,6 +64,45 @@ names — use the semantic role.
 Helpers: `AppSpacing.screenH`, `AppSpacing.card`, `AppSpacing.row`. New
 screens MUST use these; ad-hoc `EdgeInsets` literals are a review finding.
 
+## Surface system — radius, border, dividers (clutter / premium)
+
+Screens were hand-rolling `Container` + random-alpha `Border.all` +
+arbitrary `borderRadius` (2–20px, 9 distinct values; border opacity
+0.4–0.7). That reads as clutter. The surface system collapses it:
+
+**`AppRadius`** — three steps only:
+
+| Token | px | Use |
+|-------|----|-----|
+| `small` / `smallR` | 6 | chips, badges, small controls |
+| `card` / `cardR` | 10 | the standard surface (cards, tiles, panels, inputs) |
+| `pill` / `pillR` | 999 | pills, avatars |
+
+No other radius values in new code.
+
+**`AppDecoration`** — don't hand-build card decorations:
+- `AppDecoration.surfaceCard` — white + single hairline border + card
+  radius. The default container look.
+- `AppDecoration.accentChip(accent)` — tinted status/badge chip; fixed
+  fill/border opacity so every chip matches.
+- `AppDecoration.hairline` / `hairlineAlpha` (0.7) — the ONE border
+  opacity. No more per-screen 0.4/0.5/0.6 variants.
+
+**`AppDivider`** — replaces every hand-rolled
+`Container(height: 1, color: …)`. Use `AppDivider()` (optional
+`indent:` to align with card padding). Prefer whitespace over a divider
+where grouping is already clear.
+
+### Hard rules
+
+6. No raw `borderRadius: BorderRadius.circular(N)` in `lib/screens/**` —
+   use an `AppRadius` token.
+7. No hand-built bordered `BoxDecoration` for a card/chip — use
+   `AppDecoration`.
+8. No hand-rolled 1px divider containers — use `AppDivider`.
+9. Prefer `DecoratedBox` over `Container` when only a decoration is
+   needed (one less layout layer = calmer tree).
+
 ## Accessibility — OS text scaling
 
 The app root (`lib/forge_flow_app.dart`) clamps the OS font-size setting to
