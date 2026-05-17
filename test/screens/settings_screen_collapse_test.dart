@@ -477,13 +477,15 @@ void main() {
       // This test pins the Account tab surfaces:
       //   1. Section header (`_settingsSection` title) —
       //      "Two-factor authentication" → "Two-factor sign-in".
-      //   2. Pointer row label —
-      //      "Manage two-factor authentication on Ops Web" →
-      //      "Manage two-factor sign-in on Ops Web".
-      //   3. Account info card row label —
+      //   2. Account info card row label —
       //      "Two-factor authentication" → "Two-factor sign-in"
       //      (wraps to 2 lines inside the 128-px label cell;
       //      constraint documented in `settings_data_sections.dart`).
+      //
+      // Mobile-native 2FA (operator-directed 2026-05-17): the
+      // "Manage two-factor sign-in on Ops Web" pointer row was
+      // removed when the section went interactive on mobile, so it
+      // must now be absent.
       tester.view.physicalSize = const Size(1080, 2400);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
@@ -516,12 +518,13 @@ void main() {
         find.text('Two-factor sign-in', skipOffstage: false),
         findsWidgets,
       );
+      // Mobile-native 2FA: the Ops Web pointer row is gone.
       expect(
         find.text(
           'Manage two-factor sign-in on Ops Web',
           skipOffstage: false,
         ),
-        findsOneWidget,
+        findsNothing,
       );
 
       // Old labels removed (including the previous Wave 2 canonical
