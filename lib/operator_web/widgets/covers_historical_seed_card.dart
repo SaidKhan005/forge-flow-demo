@@ -1,21 +1,24 @@
 // Phase 8 spine-bridge Lane .B — 60-day covers historical seed card.
 //
 // Surfaced as an onboarding prompt for operators whose POS does not
-// expose covers. Lets them bulk-fill prior business dates × dayparts
-// so F&F has a baseline to forecast off of.
+// expose covers. Lets them bulk-fill prior business dates x service
+// periods so F&F has a baseline to forecast off of.
 //
 // Authority: docs/contracts/data_accuracy_settings_contract.md
 // historical seed handling section.
 //
-// Bulk paste accepts TSV/CSV in the form
-// `date<TAB>lunch<TAB>dinner<TAB>late_night` (one row per date).
+// Per-Daypart V1 Slice R5 (Gap 27/36): the matrix columns are the
+// operator-configured service periods (resolver-ordered by the
+// screen), not a hardcoded `Daypart.values` triplet. Bulk paste
+// accepts TSV/CSV in the form `date<TAB>period1<TAB>period2...` (one
+// row per date, columns in the same order as the configured periods).
 // Errors render inline in the dialog so the operator can fix them
 // without losing what they've already typed in the matrix.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
 
 class CoversHistoricalSeedCard extends StatefulWidget {
@@ -23,6 +26,7 @@ class CoversHistoricalSeedCard extends StatefulWidget {
     super.key,
     required this.endDateIso,
     required this.dayCount,
+    required this.servicePeriods,
     required this.initialEntries,
     required this.onApplySeed,
   });
@@ -34,14 +38,19 @@ class CoversHistoricalSeedCard extends StatefulWidget {
   /// How many days of history to surface. Typically 60.
   final int dayCount;
 
-  /// Existing entries the operator may already have typed. Outer key
-  /// = ISO `YYYY-MM-DD`, inner key = `Daypart`.
-  final Map<String, Map<Daypart, int>> initialEntries;
+  /// Operator-configured service periods, resolver-ordered by the
+  /// screen. One matrix column per period; never a hardcoded daypart
+  /// list.
+  final List<ServicePeriodDefinition> servicePeriods;
 
-  /// Called when the operator applies the seed. The map carries
-  /// every date+daypart cell that holds a value; cells the operator
-  /// left blank are absent.
-  final void Function(Map<String, Map<Daypart, int>>) onApplySeed;
+  /// Existing entries the operator may already have typed. Outer key
+  /// = ISO `YYYY-MM-DD`, inner key = service period id.
+  final Map<String, Map<String, int>> initialEntries;
+
+  /// Called when the operator applies the seed. The map carries every
+  /// date+period cell that holds a value (inner key = service period
+  /// id); cells the operator left blank are absent.
+  final void Function(Map<String, Map<String, int>>) onApplySeed;
 
   @override
   State<CoversHistoricalSeedCard> createState() =>
@@ -50,23 +59,25 @@ class CoversHistoricalSeedCard extends StatefulWidget {
 
 class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
   late final List<String> _dates;
-  late final Map<String, Map<Daypart, int>> _draft;
-  late final Map<String, Map<Daypart, TextEditingController>> _controllers;
+  late final Map<String, Map<String, int>> _draft;
+  late final Map<String, Map<String, TextEditingController>> _controllers;
+
+  List<ServicePeriodDefinition> get _periods => widget.servicePeriods;
 
   @override
   void initState() {
     super.initState();
     _dates = _buildDateList(widget.endDateIso, widget.dayCount);
-    _draft = <String, Map<Daypart, int>>{};
+    _draft = <String, Map<String, int>>{};
     for (final entry in widget.initialEntries.entries) {
-      _draft[entry.key] = Map<Daypart, int>.from(entry.value);
+      _draft[entry.key] = Map<String, int>.from(entry.value);
     }
-    _controllers = <String, Map<Daypart, TextEditingController>>{
+    _controllers = <String, Map<String, TextEditingController>>{
       for (final date in _dates)
-        date: <Daypart, TextEditingController>{
-          for (final d in Daypart.values)
-            d: TextEditingController(
-              text: _draft[date]?[d]?.toString() ?? '',
+        date: <String, TextEditingController>{
+          for (final p in _periods)
+            p.id: TextEditingController(
+              text: _draft[date]?[p.id]?.toString() ?? '',
             ),
         },
     };
@@ -96,11 +107,11 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
     return out;
   }
 
-  void _writeCell(String date, Daypart d, String raw) {
+  void _writeCell(String date, String servicePeriodId, String raw) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) {
       setState(() {
-        _draft[date]?.remove(d);
+        _draft[date]?.remove(servicePeriodId);
         if (_draft[date]?.isEmpty ?? false) {
           _draft.remove(date);
         }
@@ -110,7 +121,8 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
     final parsed = int.tryParse(trimmed);
     if (parsed == null || parsed < 0) return;
     setState(() {
-      _draft.putIfAbsent(date, () => <Daypart, int>{})[d] = parsed;
+      _draft.putIfAbsent(date, () => <String, int>{})[servicePeriodId] =
+          parsed;
     });
   }
 
@@ -128,6 +140,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
   Future<void> _openBulkPaste() async {
     final controller = TextEditingController();
     String? error;
+    final orderHint = _periods.map((p) => p.label.toLowerCase()).join(', ');
     final applied = await showDialog<bool>(
       context: context,
       builder: (ctx) {
@@ -149,10 +162,9 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
                   children: [
                     Text(
                       'One row per business date. Separate values with '
-                      'tabs or commas in this order: date, lunch, dinner, '
-                      "late night. Use a number, or leave a column empty "
-                      "if you don't have it. Example: "
-                      '2026-04-30, 32, 88, 14',
+                      'tabs or commas in this order: date, $orderHint. '
+                      "Use a number, or leave a column empty if you "
+                      "don't have it.",
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -211,13 +223,13 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
     }
   }
 
-  void _applyParsed(Map<String, Map<Daypart, int>> parsed) {
+  void _applyParsed(Map<String, Map<String, int>> parsed) {
     parsed.forEach((date, byPart) {
-      _draft.putIfAbsent(date, () => <Daypart, int>{}).addAll(byPart);
+      _draft.putIfAbsent(date, () => <String, int>{}).addAll(byPart);
       final byCtl = _controllers[date];
       if (byCtl != null) {
-        byPart.forEach((d, v) {
-          byCtl[d]?.text = v.toString();
+        byPart.forEach((id, v) {
+          byCtl[id]?.text = v.toString();
         });
       }
     });
@@ -227,7 +239,8 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
     if (raw.trim().isEmpty) {
       return _BulkParseResult(error: 'Paste at least one row to continue.');
     }
-    final out = <String, Map<Daypart, int>>{};
+    final periodIds = _periods.map((p) => p.id).toList();
+    final out = <String, Map<String, int>>{};
     final lines = raw.split('\n');
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
@@ -256,8 +269,10 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
           '${parsedDate.year.toString().padLeft(4, '0')}-'
           '${parsedDate.month.toString().padLeft(2, '0')}-'
           '${parsedDate.day.toString().padLeft(2, '0')}';
-      final byPart = <Daypart, int>{};
-      for (var col = 1; col < cells.length && col <= 3; col++) {
+      final byPart = <String, int>{};
+      for (var col = 1;
+          col < cells.length && col <= periodIds.length;
+          col++) {
         final cell = cells[col];
         if (cell.isEmpty) continue;
         final parsed = int.tryParse(cell);
@@ -268,8 +283,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
                 'number 0 or greater.',
           );
         }
-        final d = Daypart.values[col - 1];
-        byPart[d] = parsed;
+        byPart[periodIds[col - 1]] = parsed;
       }
       if (byPart.isNotEmpty) {
         out[iso] = byPart;
@@ -281,17 +295,6 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
       );
     }
     return _BulkParseResult(entries: out);
-  }
-
-  String _daypartHeader(Daypart d) {
-    switch (d) {
-      case Daypart.lunch:
-        return 'Lunch';
-      case Daypart.dinner:
-        return 'Dinner';
-      case Daypart.lateNight:
-        return 'Late night';
-    }
   }
 
   @override
@@ -336,57 +339,65 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              OutlinedButton.icon(
-                key: const Key('covers_historical_seed_bulk_paste'),
-                onPressed: _openBulkPaste,
-                icon: const Icon(Icons.content_paste_outlined, size: 16),
-                label: const Text('Bulk paste'),
-              ),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: hasDraft ? _clearAll : null,
-                child: Text(
-                  'Clear all',
-                  style: AppTextStyles.body13(
-                    color: hasDraft
-                        ? AppColors.sunsetDark
-                        : AppColors.textMuted,
+          if (_periods.isEmpty)
+            Text(
+              'No service periods are configured yet. Set up your service '
+              'periods under Business timing and they will appear here.',
+              key: const Key('covers_historical_seed_no_periods'),
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            )
+          else ...[
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  key: const Key('covers_historical_seed_bulk_paste'),
+                  onPressed: _openBulkPaste,
+                  icon: const Icon(Icons.content_paste_outlined, size: 16),
+                  label: const Text('Bulk paste'),
+                ),
+                const SizedBox(width: 8),
+                TextButton(
+                  onPressed: hasDraft ? _clearAll : null,
+                  child: Text(
+                    'Clear all',
+                    style: AppTextStyles.body13(
+                      color: hasDraft
+                          ? AppColors.sunsetDark
+                          : AppColors.textMuted,
+                    ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              FilledButton(
-                key: const Key('covers_historical_seed_apply'),
-                onPressed:
-                    hasDraft ? () => widget.onApplySeed(_draft) : null,
-                child: const Text('Apply seed'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _MatrixHeader(
-            daypartLabels: [
-              for (final d in Daypart.values) _daypartHeader(d),
-            ],
-          ),
-          const SizedBox(height: 6),
-          LimitedBox(
-            maxHeight: 360,
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  for (final date in _dates)
-                    _MatrixRow(
-                      date: date,
-                      controllers: _controllers[date]!,
-                      onChanged: (d, raw) => _writeCell(date, d, raw),
-                    ),
-                ],
+                const Spacer(),
+                FilledButton(
+                  key: const Key('covers_historical_seed_apply'),
+                  onPressed:
+                      hasDraft ? () => widget.onApplySeed(_draft) : null,
+                  child: const Text('Apply seed'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _MatrixHeader(
+              periodLabels: [for (final p in _periods) p.label],
+            ),
+            const SizedBox(height: 6),
+            LimitedBox(
+              maxHeight: 360,
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    for (final date in _dates)
+                      _MatrixRow(
+                        date: date,
+                        periods: _periods,
+                        controllers: _controllers[date]!,
+                        onChanged: (id, raw) => _writeCell(date, id, raw),
+                      ),
+                  ],
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -396,14 +407,14 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
 class _BulkParseResult {
   _BulkParseResult({this.entries = const {}, this.error});
 
-  final Map<String, Map<Daypart, int>> entries;
+  final Map<String, Map<String, int>> entries;
   final String? error;
 }
 
 class _MatrixHeader extends StatelessWidget {
-  const _MatrixHeader({required this.daypartLabels});
+  const _MatrixHeader({required this.periodLabels});
 
-  final List<String> daypartLabels;
+  final List<String> periodLabels;
 
   @override
   Widget build(BuildContext context) {
@@ -418,7 +429,7 @@ class _MatrixHeader extends StatelessWidget {
               style: AppTextStyles.body13(color: AppColors.textMuted),
             ),
           ),
-          for (final label in daypartLabels)
+          for (final label in periodLabels)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -437,13 +448,15 @@ class _MatrixHeader extends StatelessWidget {
 class _MatrixRow extends StatelessWidget {
   const _MatrixRow({
     required this.date,
+    required this.periods,
     required this.controllers,
     required this.onChanged,
   });
 
   final String date;
-  final Map<Daypart, TextEditingController> controllers;
-  final void Function(Daypart, String) onChanged;
+  final List<ServicePeriodDefinition> periods;
+  final Map<String, TextEditingController> controllers;
+  final void Function(String, String) onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -458,19 +471,19 @@ class _MatrixRow extends StatelessWidget {
               style: AppTextStyles.body14(color: AppColors.textPrimary),
             ),
           ),
-          for (final d in Daypart.values)
+          for (final p in periods)
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 4),
                 child: TextField(
-                  key: Key('covers_historical_seed_${date}_${d.wire}'),
-                  controller: controllers[d],
+                  key: Key('covers_historical_seed_${date}_${p.id}'),
+                  controller: controllers[p.id],
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: false,
                     signed: false,
                   ),
                   inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  onChanged: (raw) => onChanged(d, raw),
+                  onChanged: (raw) => onChanged(p.id, raw),
                   decoration: const InputDecoration(
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(

@@ -94,7 +94,7 @@ void main() {
       );
 
       expect(settings, isNotNull);
-      expect(settings!.coversSourceLunch, CoversSource.manual);
+      expect(settings!.coversSourceFor('lunch'), CoversSource.manual);
       expect(settings.wageSource, WageSource.manualMix);
       expect(settings.walkInCountFor('2026-05-06'), 8);
       final request = capturedRequests.single;
@@ -152,9 +152,11 @@ void main() {
           settingId: 'setting-1',
           operatorId: 'op-1',
           locationId: 'loc-1',
-          coversSourceLunch: CoversSource.manual,
-          coversSourceDinner: CoversSource.vendor,
-          coversSourceLateNight: CoversSource.forecast,
+          coversSourcePerServicePeriod: const <String, CoversSource>{
+            'lunch': CoversSource.manual,
+            'dinner': CoversSource.vendor,
+            'late_night': CoversSource.forecast,
+          },
           coversManualEntries: const <String, Map<String, int>>{
             '2026-05-06': <String, int>{'lunch': 42},
           },
@@ -168,7 +170,7 @@ void main() {
         ),
       );
 
-      expect(result.coversSourceLateNight, CoversSource.forecast);
+      expect(result.coversSourceFor('late_night'), CoversSource.forecast);
       final request = capturedRequests.single;
       expect(request.method, 'PATCH');
       expect(

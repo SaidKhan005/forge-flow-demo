@@ -637,9 +637,16 @@ class _DataAccuracyOverrideDialog extends StatefulWidget {
 
 class _DataAccuracyOverrideDialogState
     extends State<_DataAccuracyOverrideDialog> {
-  late CoversSource _lunch = widget.initial.settings.coversSourceLunch;
-  late CoversSource _dinner = widget.initial.settings.coversSourceDinner;
-  late CoversSource _lateNight = widget.initial.settings.coversSourceLateNight;
+  // Per-Daypart V1 Slice R5 (Gap 27/36): covers source is keyed by
+  // service period. This admin override dialog keeps the legacy
+  // 3-daypart shape (the admin-hierarchy per-period editor is a scoped
+  // follow-up); each lookup resolves to the vendor default when the
+  // period has no keyed row.
+  late CoversSource _lunch = widget.initial.settings.coversSourceFor('lunch');
+  late CoversSource _dinner =
+      widget.initial.settings.coversSourceFor('dinner');
+  late CoversSource _lateNight =
+      widget.initial.settings.coversSourceFor('late_night');
   late WageSource _wage = widget.initial.settings.wageSource;
   late DataAccuracyWalkInHandlingMode _walkInMode =
       widget.initial.settings.walkInHandlingMode;
