@@ -27,6 +27,7 @@ import 'models/feature_flags_admin_models.dart';
 import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
+import 'screens/admin_notification_preferences_screen.dart';
 import 'screens/admin_timing_setup_screen.dart';
 import 'screens/corpus_admin_screen.dart';
 import 'screens/debug_console_admin_screen.dart';
@@ -50,6 +51,7 @@ import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
 import 'services/admin_business_timing_resolution_gateway.dart';
 import 'services/admin_business_timing_resolution_projection.dart';
+import 'services/admin_notification_preferences_gateway.dart';
 import 'services/admin_security_gateway.dart';
 import 'services/admin_sessions_gateway.dart';
 import 'services/audit_log_admin_rootnode_builder.dart';
@@ -293,6 +295,16 @@ const String kAdminOperatorPickerRouteId = 'operator-picker';
 /// mutate paths once those gateways exist.
 const String kAdminMyAccountRouteId = 'my-account';
 
+/// X-G71 (cross-surface parity register, audit
+/// `docs/_audits/cross_surface_parity_v1/cross_surface_parity_audit_2026_05_16.md`
+/// section 0b) — admin notification-preferences parity surface.
+/// Mirrors the customer operator-web Notifications editor for the
+/// admin actor (`super_admin` / `ff_support`). Wired to the SAME
+/// existing `/v1/operator/notification-preferences` route through
+/// `AdminNotificationPreferencesGateway`; no new proxy/backend route.
+const String kAdminNotificationPreferencesRouteId =
+    'notification-preferences';
+
 /// The admin route table. Order is the side-nav order.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
@@ -512,6 +524,17 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Review your admin sign-in details, two-factor sign-in status, '
         'and current session.',
     builder: _buildMyAccount,
+  ),
+  AdminRoute(
+    id: kAdminNotificationPreferencesRouteId,
+    title: 'Notifications',
+    path: '/admin/notification-preferences',
+    icon: Icons.notifications_outlined,
+    section: AdminRouteSection.account,
+    subtitle:
+        'Pick how Forge & Flow lets you know about important events for '
+        'your admin sign-in.',
+    builder: _buildAdminNotificationPreferences,
   ),
 ];
 
@@ -2612,6 +2635,20 @@ Widget _buildMyAccount(BuildContext context) {
   );
 }
 
+/// X-G71 — admin notification-preferences route builder. Reads the
+/// gateway from [AdminConsoleServicesScope]; when null the screen
+/// itself renders the honest read-only "saving turned off" posture
+/// (mirrors the sibling admin screens' null-gateway fallback). No auth
+/// session is needed because the gateway resolves the actor from the
+/// verified bearer token server-side.
+Widget _buildAdminNotificationPreferences(BuildContext context) {
+  final gateway =
+      AdminConsoleServicesScope.adminNotificationPreferencesGatewayOf(
+    context,
+  );
+  return AdminNotificationPreferencesScreen(gateway: gateway);
+}
+
 /// Calm placeholder rendered when the admin auth source has not
 /// resolved an authenticated session. The shell only mounts the My
 /// Account route on the authenticated branch, so this is intentionally
@@ -2686,6 +2723,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.rolesHierarchySessionsAdminGateway,
     this.auditedSupportActionsAdminGateway,
     this.adminAccountGateway,
+    this.adminNotificationPreferencesGateway,
     this.adminSessionsGateway,
     this.adminSecurityGateway,
     this.timingResolutionGateway,
@@ -2797,6 +2835,16 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// pass an `InMemoryAdminAccountGateway`. When null, the My Account
   /// Identity card renders in read-only mode (the W-4 posture).
   final AdminAccountGateway? adminAccountGateway;
+
+  /// X-G71 (cross-surface parity register §0b) — admin self-service
+  /// notification-preferences gateway. Production binds the HTTP-backed
+  /// gateway here (same admin proxy base URI + Firebase ID-token bearer
+  /// the sibling admin gateways use); demo / share-preview leave it
+  /// null so the accessor falls back to the seeded in-memory gateway
+  /// and the walkthrough renders the toggle click path without a
+  /// backend (parity with [adminSessionsGateway] /
+  /// [adminSecurityGateway]).
+  final AdminNotificationPreferencesGateway? adminNotificationPreferencesGateway;
 
   /// Audit fix-first #2 (G1 + G2) — admin auth-session ledger +
   /// Active Sessions gateway. Production binds the HTTP-backed
@@ -2972,6 +3020,21 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.adminAccountGateway;
   }
 
+  /// X-G71 — admin self-service notification-preferences gateway
+  /// accessor. Falls back to the seeded in-memory demo gateway so the
+  /// kDemoMode / share-preview walkthrough renders the catalog + toggle
+  /// click path without a backend (parity with the other `*Of(context)`
+  /// demo-fallback accessors). The default gateway is seeded empty, so
+  /// every row renders at its catalog default until the admin toggles
+  /// it.
+  static AdminNotificationPreferencesGateway
+      adminNotificationPreferencesGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.adminNotificationPreferencesGateway ??
+        _defaultAdminNotificationPreferencesDemoGateway;
+  }
+
   /// Audit fix-first #2 (G2) — admin Active Sessions gateway
   /// accessor. Falls back to the seeded in-memory demo gateway so the
   /// kDemoMode / share-preview walkthrough renders the list + revoke +
@@ -3015,6 +3078,8 @@ class AdminConsoleServicesScope extends InheritedWidget {
       auditedSupportActionsAdminGateway !=
           oldWidget.auditedSupportActionsAdminGateway ||
       adminAccountGateway != oldWidget.adminAccountGateway ||
+      adminNotificationPreferencesGateway !=
+          oldWidget.adminNotificationPreferencesGateway ||
       adminSessionsGateway != oldWidget.adminSessionsGateway ||
       adminSecurityGateway != oldWidget.adminSecurityGateway ||
       timingResolutionGateway != oldWidget.timingResolutionGateway ||
@@ -3993,3 +4058,13 @@ final AdminSessionsGateway _defaultAdminSessionsDemoGateway =
 /// paths) without the Cloud Run admin proxy.
 final AdminSecurityGateway _defaultAdminSecurityDemoGateway =
     InMemoryAdminSecurityGateway();
+
+/// X-G71 — seeded in-memory admin notification-preferences gateway
+/// shared by the kDemoMode / share-preview walkthrough when no live
+/// `AdminNotificationPreferencesGateway` is wired. Seeded EMPTY so
+/// every catalog row renders at its default channels until the admin
+/// toggles one (the walkthrough exercises the toggle + save click path
+/// without the Cloud Run admin proxy).
+final AdminNotificationPreferencesGateway
+    _defaultAdminNotificationPreferencesDemoGateway =
+    InMemoryAdminNotificationPreferencesGateway();
