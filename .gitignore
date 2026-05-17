@@ -12,6 +12,9 @@
 .swiftpm/
 migrate_working_dir/
 
+# LibreOffice scratch profile created by xlsx/spreadsheet tooling — never committed.
+.tmp_xls/
+
 # IntelliJ related
 *.iml
 *.ipr
