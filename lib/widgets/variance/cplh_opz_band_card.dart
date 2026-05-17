@@ -260,31 +260,68 @@ class CplhOpzBandCard extends StatelessWidget {
   String _weekWord(int m) => m == 1 ? 'week' : 'weeks';
 }
 
-/// The `.opzscale` band: a lived-range rail, min/max ticks, the green OPZ
-/// box, OPZ + ceiling labels, and the red "now" dot + label. Laid out
-/// with [LayoutBuilder] so positions map to the same fractional geometry
-/// as the mockup's percentage `left/right` styles.
+/// The `.opzscale` band, laid out 1:1 with the approved mockup
+/// (docs/f&f Coaching/variance_tab_v2_mockup.html `#hist .opzscale`,
+/// CSS lines 153-159, DOM lines 277-285):
+///
+///   - `.lived` : a single full-width rail (`left:0; right:0`). Its two
+///     ends ARE the real lived 60-day CPLH min (far left) and max (far
+///     right); the rail spans the whole card, not just a sub-segment.
+///   - `.tickm` : the lived-min label pinned to the FAR LEFT end and the
+///     lived-max label pinned to the FAR RIGHT end of the rail. These are
+///     the real lived-range bounds, not the OPZ bounds.
+///   - `.opzbox`: the green OPZ zone, spanning opzFloor->opzCeiling,
+///     positioned along the rail by VALUE within the lived range.
+///   - `.opzlab`: `OPZ {floor}` and `{ceiling}` ABOVE the green box,
+///     over the box span.
+///   - `.nowdot`: the red current-CPLH dot on the rail, centred on its
+///     value position.
+///   - `.nowlab`: `now {value}` DIRECTLY BELOW the dot, horizontally
+///     tracking the dot's position.
+///
+/// Positions are derived ONLY from the real values already on [data]
+/// ([CplhOpzBandData.livedMin]/[CplhOpzBandData.livedMax] from the real
+/// `weeklyCplhSeries`, [CplhOpzBandData.opzFloor]/[CplhOpzBandData.opzCeiling]
+/// from the active target profile, [CplhOpzBandData.now] from the latest
+/// real week). No mockup constant is ever drawn. The mockup's `46% / 21%
+/// / 36%` percentages are an illustrative example, not literals: the
+/// horizontal mapping is the real lived range, so the rail ends always
+/// coincide with the real lived min/max and the box/dot fall where the
+/// real values land within that range.
 class _OpzScale extends StatelessWidget {
   const _OpzScale({required this.data});
 
   final CplhOpzBandData data;
+
+  /// Render-only horizontal mapping: a value's position along the rail,
+  /// where the rail's left end (0) is the real lived min and its right
+  /// end (1) is the real lived max. This is a presentation transform of
+  /// the already-derived real bounds; it does NOT touch
+  /// [CplhOpzBandData.fromInputs] math or any data source.
+  double _railFraction(double value) {
+    final span = data.livedMax - data.livedMin;
+    if (span <= 0) return 0;
+    return ((value - data.livedMin) / span).clamp(0.0, 1.0);
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
-        final livedLeft = data.fractionFor(data.livedMin) * w;
-        final livedRight = data.fractionFor(data.livedMax) * w;
-        final floorX = data.fractionFor(data.opzFloor) * w;
-        final ceilX = data.fractionFor(data.opzCeiling) * w;
-        final nowX = data.fractionFor(data.now) * w;
+        final floorX = _railFraction(data.opzFloor) * w;
+        final ceilX = _railFraction(data.opzCeiling) * w;
+        final nowX = _railFraction(data.now) * w;
         final hasNow = data.now > 0;
 
-        // Geometry mirrors the mockup `.opzscale` (54px tall):
-        //   rail   top:24  height:3
-        //   box    top:16  height:19
-        //   labels top:-2 (opz) / top:30 (ticks) / top:40 (now)
+        // Vertical geometry mirrors the mockup `.opzscale` (54px tall;
+        // 60 here for label headroom under the rail):
+        //   .opzlab top:-2   (above the green box)
+        //   .opzbox top:16  height:19
+        //   .nowdot top:6   (on the rail)
+        //   .lived  top:24  height:3   (full-width rail)
+        //   .tickm  top:30  (lived min/max at the rail ends)
+        //   .nowlab top:40  (directly below the dot)
         const scaleHeight = 60.0;
 
         return SizedBox(
@@ -293,11 +330,12 @@ class _OpzScale extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // .lived rail — full lived min..max span.
+              // .lived: full-width rail (mockup `left:0; right:0`). The
+              // rail's ends ARE the real lived min/max.
               Positioned(
-                top: 30,
-                left: livedLeft,
-                width: (livedRight - livedLeft).clamp(1.0, w),
+                top: 26,
+                left: 0,
+                right: 0,
                 child: Container(
                   height: 3,
                   decoration: BoxDecoration(
@@ -307,9 +345,10 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .opzbox — the green healthy zone.
+              // .opzbox: the green healthy zone, by value over the
+              // real lived range.
               Positioned(
-                top: 22,
+                top: 18,
                 left: floorX,
                 width: (ceilX - floorX).clamp(1.0, w),
                 child: Container(
@@ -325,7 +364,8 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .opzlab — "OPZ {floor}" at the box left edge.
+              // .opzlab: "OPZ {floor}" ABOVE the green box, at its left
+              // edge (mockup `.opzlab` top:-2, over the box span).
               Positioned(
                 top: 0,
                 left: floorX,
@@ -335,7 +375,8 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .opzlab — ceiling value at the box right edge.
+              // .opzlab: ceiling value ABOVE the green box, at its right
+              // edge.
               Positioned(
                 top: 0,
                 left: ceilX,
@@ -348,33 +389,33 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .tickm — lived min label, left-anchored.
+              // .tickm: lived MIN at the FAR LEFT end of the rail
+              // (mockup `left:0`). Real lived-range lower bound.
               Positioned(
-                top: 44,
-                left: livedLeft,
+                top: 32,
+                left: 0,
                 child: Text(
                   data.livedMin.toStringAsFixed(1),
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ),
 
-              // .tickm — lived max label, right-anchored.
+              // .tickm: lived MAX at the FAR RIGHT end of the rail
+              // (mockup `right:0`). Real lived-range upper bound.
               Positioned(
-                top: 44,
-                left: livedRight,
-                child: FractionalTranslation(
-                  translation: const Offset(-1.0, 0),
-                  child: Text(
-                    data.livedMax.toStringAsFixed(1),
-                    style: AppTextStyles.mono10(color: AppColors.textMuted),
-                  ),
+                top: 32,
+                right: 0,
+                child: Text(
+                  data.livedMax.toStringAsFixed(1),
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ),
 
-              // .nowdot — red marker at the current CPLH.
+              // .nowdot: red current-CPLH marker on the rail, centred
+              // on its value position.
               if (hasNow)
                 Positioned(
-                  top: 12,
+                  top: 8,
                   left: nowX - 5.5,
                   child: Container(
                     width: 11,
@@ -386,10 +427,11 @@ class _OpzScale extends StatelessWidget {
                   ),
                 ),
 
-              // .nowlab — "now {cplh}" centred under the dot.
+              // .nowlab: "now {cplh}" DIRECTLY BELOW the dot, tracking
+              // the dot's position (mockup `top:40`, translateX(-50%)).
               if (hasNow)
                 Positioned(
-                  top: 44,
+                  top: 42,
                   left: nowX,
                   child: FractionalTranslation(
                     translation: const Offset(-0.5, 0),
