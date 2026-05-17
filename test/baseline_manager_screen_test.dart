@@ -10,6 +10,7 @@ import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
+import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_band.dart';
 import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_day_sheet.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
@@ -2112,6 +2113,430 @@ void main() {
         bohWage: null,
       );
       expect(r.laborPct, isNull);
+    });
+  });
+
+  // ── R3 - Lean/Balanced/Generous band + per-period preview (Gap 40) ───────
+  //
+  // (a) each band tier derives the expected top-N-per-period recordKey
+  //     set for a 4-period config (not a hardcoded 3), and the band only
+  //     mutates the draft set (no persistence shape change);
+  // (b) per-period preview values reflect the active period lens and use
+  //     the period's OWN candidate covers, and the whole-day lens preview
+  //     reconciles to the cover-weighted rollup of the per-period pieces;
+  // (c) the commit path / saveSelection call shape is unchanged: the band
+  //     produces only recordKeys that flow through the existing write.
+
+  group('R3 - band + per-period preview', () {
+    // 4-period config so nothing assumes a fixed 3-daypart shape.
+    const fourPeriodDefs = <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '11:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      ),
+    ];
+
+    // Build a candidate pool with a known CPLH ranking per period so the
+    // top-N-by-CPLH selection is fully deterministic. Three shifts in
+    // each of the four configured periods (12 total). Higher CPLH = a
+    // stronger shift; the band keeps the strongest N per period.
+    List<BaselineCandidateShift> poolFor(String period, double base) {
+      return List.generate(3, (i) {
+        final cplh = base + i; // i=2 strongest, i=0 weakest
+        return BaselineCandidateShift(
+          recordKey: '$period|r$i',
+          weekId: 'W',
+          weekLabel: 'W',
+          dayLabel: 'Fri',
+          daypart: period,
+          covers: 100 + i * 10,
+          cplh: cplh,
+          splh: 150.0 + i,
+          ppa: 40.0 + i,
+          primaryLeverId: 'cplh_up',
+          isSelected: false,
+          businessDate: '2026-03-2$i',
+          actualLaborPct: 22.0,
+        );
+      });
+    }
+
+    final fourPeriodPool = <BaselineCandidateShift>[
+      ...poolFor('breakfast', 5.0),
+      ...poolFor('lunch', 4.0),
+      ...poolFor('dinner', 4.5),
+      ...poolFor('late_night', 3.0),
+    ];
+
+    // Window-valid pool: same recordKey / businessDate shape the passing
+    // R1/R2 fixtures use, so saveSelection -> TargetCycleService resolves
+    // these against the seeded demo 60-day window. Two shifts per period
+    // on two valid business dates so the band's top-N-per-period ranking
+    // is still exercised end to end through the unchanged write path.
+    BaselineCandidateShift winShift(
+      String week,
+      String day,
+      String date,
+      String period,
+      double cplh,
+    ) {
+      return BaselineCandidateShift(
+        recordKey: '$week|$day|$period',
+        weekId: week,
+        weekLabel: 'Week of Mar',
+        dayLabel: day,
+        daypart: period,
+        covers: 150,
+        cplh: cplh,
+        splh: 180.0,
+        ppa: 42.0,
+        primaryLeverId: 'cplh_up',
+        isSelected: false,
+        businessDate: date,
+        actualLaborPct: 24.0,
+      );
+    }
+
+    final windowValidPool = <BaselineCandidateShift>[
+      for (final period in const [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'late_night',
+      ]) ...[
+        winShift('2026-W12', 'Fri', '2026-03-20', period, 5.0),
+        winShift('2026-W12', 'Mon', '2026-03-16', period, 4.0),
+      ],
+    ];
+
+    Set<String> expectedTopN(int n) {
+      final keys = <String>{};
+      for (final period in const [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'late_night',
+      ]) {
+        final list = fourPeriodPool
+            .where((c) => c.daypart == period)
+            .toList()
+          ..sort((a, b) {
+            final cmp = b.cplh.compareTo(a.cplh);
+            return cmp != 0 ? cmp : a.recordKey.compareTo(b.recordKey);
+          });
+        for (final c in list.take(n)) {
+          keys.add(c.recordKey);
+        }
+      }
+      return keys;
+    }
+
+    test(
+      'a) each band tier derives top-N-per-period by CPLH for a '
+      '4-period config (not a hardcoded 3)',
+      () {
+        // Lean keeps the fewest, Generous the most. N is per period and
+        // applied across all FOUR configured periods.
+        final lean =
+            deriveBandSelection(fourPeriodPool, fourPeriodDefs, StarBand.lean);
+        final balanced = deriveBandSelection(
+            fourPeriodPool, fourPeriodDefs, StarBand.balanced);
+        final generous = deriveBandSelection(
+            fourPeriodPool, fourPeriodDefs, StarBand.generous);
+
+        // Lean N=2 across 4 periods -> 8 keys, exactly the 2 strongest
+        // (highest CPLH) shifts in each period.
+        expect(lean.length, equals(StarBand.lean.nPerPeriod * 4));
+        expect(lean, equals(expectedTopN(StarBand.lean.nPerPeriod)));
+        // The weakest shift in every period (r0) is excluded by Lean.
+        for (final period in const [
+          'breakfast',
+          'lunch',
+          'dinner',
+          'late_night',
+        ]) {
+          expect(lean.contains('$period|r0'), isFalse);
+          expect(lean.contains('$period|r2'), isTrue); // strongest kept
+        }
+
+        // Balanced N=4 but each period only has 3 shifts: take() caps at
+        // 3, so all 12 are kept (proves N is a cap, period-scoped, not a
+        // hardcoded count).
+        expect(balanced.length, equals(12));
+        expect(balanced, equals(fourPeriodPool.map((c) => c.recordKey).toSet()));
+
+        // Generous keeps at least as many as Balanced (here also all 12).
+        expect(generous.length, greaterThanOrEqualTo(balanced.length));
+        expect(generous, equals(fourPeriodPool.map((c) => c.recordKey).toSet()));
+      },
+    );
+
+    testWidgets(
+      'a) applying a band in the screen only mutates the draft set and '
+      'commits through the unchanged save path (no new persistence)',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              windowValidPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // No band pre-selected; nothing selected yet.
+        _expectSelectedShiftsCount(tester, '0');
+
+        // The band's ONLY effect is to replace the draft set with the
+        // pure derivation output. Compute the expectation independently
+        // from the same window-valid pool.
+        final derivedLean = deriveBandSelection(
+          windowValidPool,
+          fourPeriodDefs,
+          StarBand.lean,
+        );
+
+        // Apply Lean -> draft becomes exactly that derived set. This
+        // flows ONLY through the draft set (no persistence here yet).
+        await tester.tap(find.byKey(const ValueKey<String>('band_lean')));
+        await tester.pumpAndSettle();
+        _expectSelectedShiftsCount(tester, '${derivedLean.length}');
+
+        // Commit: the exact same Set<String> recordKeys land via the
+        // unchanged saveSelection path. No new column / persistence shape;
+        // the band never touches the write path itself.
+        final stored = await _commitDoneAndReadKeys(tester);
+        expect(stored, equals(derivedLean));
+      },
+    );
+
+    test(
+      'b) per-period preview uses the period\'s OWN candidate covers '
+      '(not a split) and whole-day reconciles to the cover-weighted '
+      'rollup of the per-period pieces',
+      () {
+        // Select every shift so each period contributes its full pool.
+        final selected = fourPeriodPool;
+
+        // Per-period preview for one period: covers are the SUM of that
+        // period\'s selected shifts\' own covers, never a /N split or the
+        // demand-context forecast number.
+        final dinnerSelected =
+            selected.where((c) => c.daypart == 'dinner').toList();
+        final dinnerCovers =
+            dinnerSelected.fold<int>(0, (s, c) => s + c.covers);
+        final dinnerPreview = ManagerOverridePlanPreview.forPeriod(
+          dinnerSelected,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        );
+        expect(dinnerPreview, isNotNull);
+        expect(dinnerPreview!.forecastCovers, equals(dinnerCovers));
+
+        // Cover-weighted period PPA computed independently here; sales
+        // must be period covers * period cover-weighted PPA.
+        double dinnerPpa = 0;
+        for (final c in dinnerSelected) {
+          final w = c.covers / dinnerCovers;
+          dinnerPpa += c.ppa * w;
+        }
+        expect(
+          dinnerPreview.forecastSales,
+          closeTo(dinnerCovers * dinnerPpa, 0.0001),
+        );
+
+        // Reconciliation: the whole-day cover-weighted rollup of ALL
+        // selected shifts equals the cover-weighted combination of the
+        // per-period pieces. The per-period factory and the existing
+        // WholeDayRollup share the same cover-weighting shape, so rolling
+        // the per-period covers + cover-weighted rates back up reproduces
+        // the whole-day rollup scalar (one truth, not a second one).
+        final rollup = WholeDayRollup.fromShifts(
+          selected,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        );
+
+        final periodIds =
+            selected.map((c) => c.daypart).toSet().toList();
+        var sumCovers = 0;
+        double wCplh = 0;
+        double wSplh = 0;
+        double wPpa = 0;
+        for (final pid in periodIds) {
+          final ps = selected.where((c) => c.daypart == pid).toList();
+          final pPrev = ManagerOverridePlanPreview.forPeriod(
+            ps,
+            fohWage: MeridianConfig.fohWage,
+            bohWage: MeridianConfig.bohWage,
+          )!;
+          // Recover the per-period cover-weighted rates from the period
+          // pool (the factory keeps them internally; covers are exposed).
+          final pc = pPrev.forecastCovers;
+          double pCplh = 0;
+          double pSplh = 0;
+          double pPpa = 0;
+          for (final c in ps) {
+            final w = c.covers / pc;
+            pCplh += c.cplh * w;
+            pSplh += c.splh * w;
+            pPpa += c.ppa * w;
+          }
+          sumCovers += pc;
+          wCplh += pCplh * pc;
+          wSplh += pSplh * pc;
+          wPpa += pPpa * pc;
+        }
+        wCplh /= sumCovers;
+        wSplh /= sumCovers;
+        wPpa /= sumCovers;
+
+        expect(sumCovers, equals(rollup.totalCovers));
+        expect(wCplh, closeTo(rollup.cplh, 0.0001));
+        expect(wSplh, closeTo(rollup.splh, 0.0001));
+        expect(wPpa, closeTo(rollup.ppa, 0.0001));
+      },
+    );
+
+    testWidgets(
+      'b) period lens shows the per-period preview; whole-day lens keeps '
+      'the existing cover-weighted rollup preview',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourPeriodPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Select everything via the Generous band.
+        await tester.tap(find.byKey(const ValueKey<String>('band_generous')));
+        await tester.pumpAndSettle();
+
+        // Whole-day lens (default): FORECAST COVERS is the existing
+        // demand-context plan number (read from the unchanged plumbing).
+        final wholeDayPreview =
+            ManagerOverridePlanPreview.fromDraftSelection(
+          fourPeriodPool,
+          historicalWeeklyAvgCovers: demandCovers,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        );
+        expect(wholeDayPreview, isNotNull);
+        expect(
+          find.text('${wholeDayPreview!.forecastCovers}',
+              skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+
+        // Switch to the Lunch period lens: the preview region now shows
+        // the per-period covers (sum of that period\'s own candidate
+        // covers), which differs from the whole-day demand number.
+        await _tapLensChip(tester, 'lunch');
+        final lunchSelected =
+            fourPeriodPool.where((c) => c.daypart == 'lunch').toList();
+        final lunchCovers =
+            lunchSelected.fold<int>(0, (s, c) => s + c.covers);
+        expect(
+          find.text('$lunchCovers', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+        // The per-period covers are NOT a /N split of the whole-day
+        // number.
+        expect(lunchCovers, isNot(equals(wholeDayPreview.forecastCovers)));
+      },
+    );
+
+    test(
+      'c) per-period labor dollars use the SINGLE whole-day wage pair '
+      '(no per-period / cover-weighted wage)',
+      () {
+        final lunch =
+            fourPeriodPool.where((c) => c.daypart == 'lunch').toList();
+        final p = ManagerOverridePlanPreview.forPeriod(
+          lunch,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+        )!;
+        // Labor % is theoreticalLaborPct of the period cover-weighted
+        // rates with the ONE whole-day wage pair, never a per-period wage.
+        final covers = lunch.fold<int>(0, (s, c) => s + c.covers);
+        double cplh = 0;
+        double splh = 0;
+        double ppa = 0;
+        for (final c in lunch) {
+          final w = c.covers / covers;
+          cplh += c.cplh * w;
+          splh += c.splh * w;
+          ppa += c.ppa * w;
+        }
+        expect(
+          p.theoreticalLaborPct,
+          closeTo(
+            LaborModel.theoreticalLaborPct(
+              cplh,
+              splh,
+              ppa,
+              MeridianConfig.fohWage,
+              MeridianConfig.bohWage,
+            ),
+            0.0001,
+          ),
+        );
+      },
+    );
+
+    test('forPeriod returns null when no shifts are selected', () {
+      expect(
+        ManagerOverridePlanPreview.forPeriod(
+          const <BaselineCandidateShift>[],
+        ),
+        isNull,
+      );
     });
   });
 }

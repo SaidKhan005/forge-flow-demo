@@ -17,6 +17,7 @@ import '../domain/services/service_period_definition_resolver.dart';
 import '../models/baseline_candidate_shift.dart';
 import '../theme/app_theme.dart';
 import 'baseline_manager/baseline_manager_actions.dart';
+import 'baseline_manager/baseline_manager_band.dart';
 import 'baseline_manager/baseline_manager_calendar.dart';
 import 'baseline_manager/baseline_manager_day_sheet.dart';
 import 'baseline_manager/baseline_manager_helpers.dart';
@@ -79,6 +80,12 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
 
   // R1: active lens. Default "Whole day" (cover-weighted rollup).
   String _selectedLensId = kWholeDayLensId;
+
+  // R3: last applied band, or null when none applied / the operator has
+  // hand-tweaked since. Pure UI sugar: it only drives a one-shot draft
+  // derivation; nothing about it is persisted and it never reaches the
+  // write path.
+  StarBand? _selectedBand;
 
   // R1: pre-commit once-per-60-day override gate. Null until resolved;
   // false means the override is used / out of window and commit is
@@ -190,11 +197,31 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
       } else {
         _draftKeys.add(recordKey);
       }
+      // A hand-tweak means the selection no longer exactly matches a
+      // band, so drop the band highlight (the selection itself stays).
+      _selectedBand = null;
     });
   }
 
   void _clearAll() {
-    setState(() => _draftKeys.clear());
+    setState(() {
+      _draftKeys.clear();
+      _selectedBand = null;
+    });
+  }
+
+  /// R3: applying a band DERIVES a draft selection. For every
+  /// operator-configured period it keeps the top-N strongest candidate
+  /// shifts by CPLH (N per tier). This ONLY mutates the draft set; the
+  /// operator can still hand-tweak afterwards and commit still flows
+  /// through the unchanged `BaselineManagerService.saveSelection`. No
+  /// persistence, no parallel target stack.
+  void _applyBand(StarBand band) {
+    final derived = deriveBandSelection(_candidates, _defs, band);
+    setState(() {
+      _draftKeys = derived;
+      _selectedBand = band;
+    });
   }
 
   /// R2: tapping a calendar day opens an in-place bottom sheet (no
@@ -353,9 +380,14 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                           defs: _defs,
                           selectedLensId: _selectedLensId,
                         ),
+                        BaselineManagerBandSelector(
+                          selectedBand: _selectedBand,
+                          onBandSelected: _applyBand,
+                        ),
                         PreviewPanel(
                           selected: _lensScopedSelected,
                           historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
+                          selectedLensId: _selectedLensId,
                         ),
                         if (_draftKeys.isNotEmpty)
                           ClearAllBar(onClearAll: _clearAll),

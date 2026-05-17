@@ -16,6 +16,7 @@ import '../../domain/models/active_target_profile.dart';
 import '../../models/baseline_candidate_shift.dart';
 import '../../services/labor_model.dart';
 import '../../theme/app_theme.dart';
+import 'baseline_manager_lens.dart';
 
 // ─── Plan impact preview model ───────────────────────────────────────────────
 // Computed from the draft selected shifts through SchedulePlanReadService.
@@ -108,6 +109,95 @@ class ManagerOverridePlanPreview {
       targetBlendedWage: previewTargetBlendedWage,
     );
   }
+
+  /// R3 per-period preview (closes Gap 40).
+  ///
+  /// Builds the preview for a single service period from THAT period's
+  /// selected candidate shifts only. Covers come from the selected
+  /// shifts' own covers for the period (timing-config-driven), never a
+  /// `/N` or fixed-fraction split of a whole-day number and never the
+  /// demand-context forecast covers used by the whole-day path.
+  ///
+  /// Rates (CPLH / SPLH / PPA) are cover-weighted exactly like the
+  /// existing whole-day [WholeDayRollup] cover-weighting (unweighted-mean
+  /// fallback when every selected shift has zero covers) so the per-period
+  /// pieces reconcile up to the whole-day rollup. Required hours use the
+  /// same Jim Taylor model-hour formulas the shared plan resolver uses
+  /// ([LaborModel.modelFohHours] / [LaborModel.modelBohHoursFromSales]).
+  ///
+  /// Labor dollars use the SINGLE whole-day wage pair (Design Rule 5):
+  /// there is no per-period or cover-weighted wage. [fohWage] / [bohWage]
+  /// are the one whole-day wage authority applied to every period.
+  ///
+  /// Returns null when no shifts are selected for the period.
+  static ManagerOverridePlanPreview? forPeriod(
+    List<BaselineCandidateShift> periodSelected, {
+    double fohWage = MeridianConfig.fohWage,
+    double bohWage = MeridianConfig.bohWage,
+  }) {
+    if (periodSelected.isEmpty) return null;
+
+    final totalCovers =
+        periodSelected.fold<int>(0, (s, c) => s + c.covers);
+    double cplh = 0;
+    double splh = 0;
+    double ppa = 0;
+    if (totalCovers > 0) {
+      // Cover-weighted: the same shape as WholeDayRollup so the
+      // per-period pieces reconcile up to the whole-day rollup.
+      for (final c in periodSelected) {
+        final w = c.covers / totalCovers;
+        cplh += c.cplh * w;
+        splh += c.splh * w;
+        ppa += c.ppa * w;
+      }
+    } else {
+      // Zero covers across every selected shift: unweighted mean keeps
+      // the summary honest instead of dividing by zero (mirrors the
+      // WholeDayRollup / TargetCycleDaypartPool zero-covers fallback).
+      for (final c in periodSelected) {
+        cplh += c.cplh;
+        splh += c.splh;
+        ppa += c.ppa;
+      }
+      final n = periodSelected.length;
+      cplh /= n;
+      splh /= n;
+      ppa /= n;
+    }
+
+    // Per-period covers come from the selected shifts themselves, never
+    // a split of a whole-day number.
+    final periodCovers = totalCovers;
+    final sales = periodCovers * ppa;
+    final fohHours = LaborModel.modelFohHours(periodCovers, cplh);
+    final bohHours = LaborModel.modelBohHoursFromSales(sales, splh);
+
+    final laborPct = LaborModel.theoreticalLaborPct(
+      cplh,
+      splh,
+      ppa,
+      fohWage,
+      bohWage,
+    );
+    final blendedWage = ActiveTargetProfile.computeTargetBlendedWage(
+      targetCPLH: cplh,
+      targetSPLH: splh,
+      targetPPA: ppa,
+      fohWage: fohWage,
+      bohWage: bohWage,
+    );
+
+    return ManagerOverridePlanPreview(
+      forecastCovers: periodCovers,
+      coversSourceLabel: 'Selected period shifts',
+      forecastSales: sales,
+      requiredFohHours: fohHours,
+      requiredBohHours: bohHours,
+      theoreticalLaborPct: laborPct,
+      targetBlendedWage: blendedWage,
+    );
+  }
 }
 
 // ─── Preview panel ─────────────────────────────────────────────────────────────
@@ -116,10 +206,17 @@ class PreviewPanel extends StatelessWidget {
   final List<BaselineCandidateShift> selected;
   final int? historicalWeeklyAvgCovers;
 
+  /// R1 active lens. [kWholeDayLensId] keeps the existing cover-weighted
+  /// whole-day rollup preview (read from the unchanged plan plumbing); a
+  /// period id switches the plan-impact region to the R3 per-period
+  /// preview built from that period's selected shifts.
+  final String selectedLensId;
+
   const PreviewPanel({
     super.key,
     required this.selected,
     required this.historicalWeeklyAvgCovers,
+    this.selectedLensId = kWholeDayLensId,
   });
 
   @override
@@ -215,6 +312,7 @@ class PreviewPanel extends StatelessWidget {
           _PlanImpactSection(
             selected: selected,
             historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+            selectedLensId: selectedLensId,
           ),
         ],
       ),
@@ -227,22 +325,35 @@ class PreviewPanel extends StatelessWidget {
 class _PlanImpactSection extends StatelessWidget {
   final List<BaselineCandidateShift> selected;
   final int? historicalWeeklyAvgCovers;
+  final String selectedLensId;
 
   const _PlanImpactSection({
     required this.selected,
     required this.historicalWeeklyAvgCovers,
+    required this.selectedLensId,
   });
 
   @override
   Widget build(BuildContext context) {
     final profile = context.watch<ActiveTargetProfileNotifier?>()?.profile;
     final hasWageAuthority = profile != null;
-    final preview = ManagerOverridePlanPreview.fromDraftSelection(
-      selected,
-      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
-      fohWage: profile?.fohWage ?? MeridianConfig.fohWage,
-      bohWage: profile?.bohWage ?? MeridianConfig.bohWage,
-    );
+    final isWholeDay = selectedLensId == kWholeDayLensId;
+    // Whole-day: the existing cover-weighted rollup, READ from the
+    // unchanged plan plumbing (not recomputed). Period lens: the R3
+    // per-period preview built from THIS period's selected shifts'
+    // own covers, never a split of the whole-day number.
+    final preview = isWholeDay
+        ? ManagerOverridePlanPreview.fromDraftSelection(
+            selected,
+            historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+            fohWage: profile?.fohWage ?? MeridianConfig.fohWage,
+            bohWage: profile?.bohWage ?? MeridianConfig.bohWage,
+          )
+        : ManagerOverridePlanPreview.forPeriod(
+            selected,
+            fohWage: profile?.fohWage ?? MeridianConfig.fohWage,
+            bohWage: profile?.bohWage ?? MeridianConfig.bohWage,
+          );
     final hasData = preview != null;
 
     final fcCovers = hasData ? '${preview.forecastCovers}' : '--';
