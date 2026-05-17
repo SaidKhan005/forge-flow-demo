@@ -27,6 +27,7 @@ import '../../widgets/comparison_metric_row.dart';
 import '../../widgets/dollar_impact_card.dart';
 import '../../widgets/lever_card.dart';
 import '../../widgets/money_sentiment.dart';
+import '../../widgets/variance/driver_arrow_chain.dart';
 import '../../widgets/sticky_section_delegate.dart';
 
 class ThisWeekTab extends StatelessWidget {
@@ -221,23 +222,45 @@ class _ThisWeekContent extends StatelessWidget {
             SliverToBoxAdapter(
               child: lever == null
                   ? const LeverCardNotYetAvailable()
-                  : LeverCardWidget(
-                      data: lever,
-                      dollarImpactByAxis:
-                          primaryDriverDollarImpactByAxis,
-                      // 7.58.UX.8 — OPZ-aware row annotation. CPLH ceiling
-                      // comes from the active target profile; SPLH ceiling
-                      // is not modeled in `ActiveTargetProfile` today, so
-                      // the splh annotation stays gated on null. When the
-                      // notifier is out of scope (legacy widget tests),
-                      // both actual + ceiling read null and the row
-                      // renders unchanged.
-                      actualCPLH: activeProfile != null
-                          ? weekData.avgCPLH
-                          : null,
-                      opzCeilingCPLH: activeProfile?.opzCeilingCPLH,
-                      actualSPLH: null,
-                      opzCeilingSPLH: null,
+                  // Variance Coaching V2 (Lane D) — the arrow chain
+                  // (V2-3) renders fused directly above the card's
+                  // `whatHappened` sentence (no chart-then-paragraph
+                  // gap). It consumes the SAME
+                  // `primaryDriverDollarImpactByAxis` map the card
+                  // already computes — no new math. The degraded
+                  // (`lever == null`) branch above is untouched: it
+                  // still renders `LeverCardNotYetAvailable` with NO
+                  // chain. See
+                  // docs/contracts/phase_7_58_primary_driver_contract.md
+                  // V2-3 / V2-2.
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DriverArrowChain(
+                          lever: lever,
+                          dollarImpactByAxis:
+                              primaryDriverDollarImpactByAxis,
+                        ),
+                        LeverCardWidget(
+                          data: lever,
+                          dollarImpactByAxis:
+                              primaryDriverDollarImpactByAxis,
+                          // 7.58.UX.8 — OPZ-aware row annotation. CPLH
+                          // ceiling comes from the active target
+                          // profile; SPLH ceiling is not modeled in
+                          // `ActiveTargetProfile` today, so the splh
+                          // annotation stays gated on null. When the
+                          // notifier is out of scope (legacy widget
+                          // tests), both actual + ceiling read null
+                          // and the row renders unchanged.
+                          actualCPLH: activeProfile != null
+                              ? weekData.avgCPLH
+                              : null,
+                          opzCeilingCPLH: activeProfile?.opzCeilingCPLH,
+                          actualSPLH: null,
+                          opzCeilingSPLH: null,
+                        ),
+                      ],
                     ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
