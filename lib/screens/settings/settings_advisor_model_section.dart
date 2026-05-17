@@ -214,12 +214,7 @@ class _AdvisorRoutingHeader extends StatelessWidget {
             '$tier - $modelId',
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontSize: 13,
-              fontFamily: 'monospace',
-              height: 1.2,
-            ),
+            style: AppTextStyles.mono12(),
           ),
         ),
         const SizedBox(width: 8),
@@ -303,11 +298,7 @@ class _OverrideField extends StatelessWidget {
         hintText: 'Optional model ID. Current: $hintModelId',
         isDense: true,
       ),
-      style: const TextStyle(
-        color: AppColors.textPrimary,
-        fontSize: 14,
-        fontFamily: 'monospace',
-      ),
+      style: AppTextStyles.mono14(),
     );
   }
 
@@ -365,19 +356,13 @@ class _CheckResultRow extends StatelessWidget {
               Text(
                 'Quick answer update: ${result.latestQuickCandidate}',
                 key: const Key('advisor_check_quick_candidate'),
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontFamily: 'monospace',
-                ),
+                style: AppTextStyles.mono12(),
               ),
             if (result.latestNuancedCandidate != null)
               Text(
                 'Detailed answer update: ${result.latestNuancedCandidate}',
                 key: const Key('advisor_check_nuanced_candidate'),
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontFamily: 'monospace',
-                ),
+                style: AppTextStyles.mono12(),
               ),
           ],
         ],
@@ -407,19 +392,13 @@ class _VoyagePinnedRow extends StatelessWidget {
             'Embedding: ${routing.voyageEmbeddingProviderId}/'
             '${routing.voyageEmbeddingModelId} '
             '(${routing.voyageEmbeddingDimensions} dims)',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           const SizedBox(height: 2),
           Text(
             'Rerank: ${routing.voyageRerankProviderId}/'
             '${routing.voyageRerankModelId}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
         ],
       ),
