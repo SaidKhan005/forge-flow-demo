@@ -204,7 +204,7 @@ class _ThisWeekContent extends StatelessWidget {
               // the hero and the impact rows already read
               // (`MoneySentiment.fromDollarGap(weekData.dollarGap)`),
               // never from `value > 0`. Favourable mirrors the hero's
-              // gain framing (`GAINED` / `above best possible`).
+              // win framing (`GAINED` / `above best possible`).
               // Presentation only: no math, table, or attribution
               // change. Spec:
               // docs/contracts/phase_7_58_primary_driver_contract.md
@@ -212,7 +212,7 @@ class _ThisWeekContent extends StatelessWidget {
               // variance_tab_v2_mockup.html `<summary>`.
               delegate: StickySectionDelegate(
                 MoneySentiment.fromDollarGap(weekData.dollarGap).favorable
-                    ? 'Gain if this continues'
+                    ? 'Win if this continues'
                     : 'Loss if this continues',
               ),
             ),

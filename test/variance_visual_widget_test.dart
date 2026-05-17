@@ -571,11 +571,11 @@ void main() {
       // to a sentiment-aware projection title. The loss framing is
       // unfavourable-only; the StaticShiftDataSource fixture is an
       // at-or-under-best-possible (favourable) week (dollarGap < 0), so
-      // it renders the favourable counterpart `Gain if this continues`.
+      // it renders the favourable counterpart `Win if this continues`.
       // The legacy literal must be gone.
       expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsNothing);
       expect(
-        find.text('Gain if this continues', skipOffstage: false),
+        find.text('Win if this continues', skipOffstage: false),
         findsOneWidget,
       );
       expect(find.text('this week', skipOffstage: false), findsOneWidget);
@@ -609,12 +609,12 @@ void main() {
         'title (sentiment-aware, not the legacy literal)', (tester) async {
       await loadThisWeek(tester);
       // V2-2:578 / V2-6:712 — pre-V2 `DOLLAR IMPACT` is retired. The
-      // favourable fixture week renders `Gain if this continues`; the
+      // favourable fixture week renders `Win if this continues`; the
       // unfavourable counterpart is the contract-verbatim
       // `Loss if this continues`.
       expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsNothing);
       expect(
-        find.text('Gain if this continues', skipOffstage: false),
+        find.text('Win if this continues', skipOffstage: false),
         findsOneWidget,
       );
     });
