@@ -163,16 +163,22 @@ class ShiftDashboardNotifier extends ChangeNotifier {
       lockedPlanUnavailable = built.lockedPlanUnavailable;
     } else {
       // ── No open shift. Closed-state Shift dashboard (Per-Daypart V1
-      // — closed-state screen): if the operator HAS prior shift
-      // history, bind the last completed business day's already-
-      // persisted final values and render the SAME Shift layout marked
-      // Closed. Brand-new operator (no history at all) keeps the
-      // simple empty state — nothing to show yet. This is presentation
-      // only: it reuses `_buildDayReadModel` (the same wiring the live
-      // path uses) verbatim — no recompute, no new persistence, no
-      // formula change. ───────────────────────────────────────────────
+      // — closed-state screen): if the operator HAS prior COMPLETED
+      // shift history, bind the last COMPLETED (settled) business day's
+      // already-persisted final values and render the SAME Shift layout
+      // marked Closed. The selection filters to `status='closed'` rows
+      // ONLY: the demo seed (and real operation) persists future
+      // `status='projected'` rows for the current/forthcoming week, so
+      // an unfiltered max-date query would bind a forecast-only future
+      // day with no completed actuals — a misleading all-zeros "Closed"
+      // screen. Honesty: never build a Closed screen from
+      // projected/forecast-only rows. Brand-new operator (no completed
+      // history at all) keeps the simple empty state — nothing to show
+      // yet. This is presentation only: it reuses `_buildDayReadModel`
+      // (the same wiring the live path uses) verbatim — no recompute,
+      // no new persistence, no formula change. ──────────────────────
       final mostRecentDate = await SqliteOpenShiftSnapshotRepository.instance
-          .getMostRecentBusinessDate(restaurantId);
+          .getMostRecentClosedBusinessDate(restaurantId);
       if (mostRecentDate != null) {
         final built = await _buildDayReadModel(
           restaurantId: restaurantId,
@@ -196,8 +202,10 @@ class ShiftDashboardNotifier extends ChangeNotifier {
           nextOpen = await _resolveNextOpen();
         }
       } else {
-        // Brand-new operator / no shift history at all → simple empty
-        // state (nothing to show yet).
+        // Brand-new operator / no COMPLETED (closed) shift history at
+        // all → simple empty state (nothing to show yet). A
+        // projected-only future week alone does NOT produce a Closed
+        // screen — there are no settled finals to honestly show.
         loadedReadModel = null;
         loadedFreshness = null;
         lockedPlanUnavailable = false;

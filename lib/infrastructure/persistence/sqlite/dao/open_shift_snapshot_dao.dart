@@ -69,6 +69,32 @@ class OpenShiftSnapshotDao {
     return rows.first['business_date'] as String;
   }
 
+  /// Returns the most recent `business_date` (ISO `YYYY-MM-DD`, so
+  /// lexicographic ordering is chronological) that has at least one
+  /// `status='closed'` snapshot row for [restaurantId] — i.e. the last
+  /// COMPLETED (settled) business day, never a `projected`/forecast
+  /// future day or an `open` in-progress day. This is what the
+  /// closed-state Shift dashboard must bind: the demo seed (and real
+  /// operation) persists future `status='projected'` rows for the
+  /// current/forthcoming week, so the unfiltered max-date query would
+  /// return a forecast-only future day that has no completed actuals
+  /// (showing a misleading all-zeros "Closed" screen). Read-only — no
+  /// recompute, no write. Null when the operator has no completed shift
+  /// history at all (brand-new operator → simple empty state, NOT a
+  /// zero "Closed" screen).
+  Future<String?> getMostRecentClosedBusinessDate(String restaurantId) async {
+    final rows = await _db.query(
+      'open_shift_snapshots',
+      columns: ['business_date'],
+      where: "restaurant_id = ? AND status = 'closed'",
+      whereArgs: [restaurantId],
+      orderBy: 'business_date DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['business_date'] as String;
+  }
+
   Future<void> replaceOpenShiftSnapshot(OpenShiftSnapshot snapshot) async {
     await _db.transaction((txn) async {
       await txn.delete(

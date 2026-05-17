@@ -51,6 +51,12 @@ class SqliteOpenShiftSnapshotRepository
   }
 
   @override
+  Future<String?> getMostRecentClosedBusinessDate(String restaurantId) async {
+    final dao = await _daoReady;
+    return dao.getMostRecentClosedBusinessDate(restaurantId);
+  }
+
+  @override
   Future<void> replaceOpenShiftSnapshot(OpenShiftSnapshot snapshot) async {
     final dao = await _daoReady;
     return dao.replaceOpenShiftSnapshot(snapshot);
