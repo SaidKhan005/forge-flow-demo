@@ -12,7 +12,6 @@ import '../../services/learn_benchmark_context_service.dart';
 import '../../domain/constants/app_defaults.dart';
 import '../../domain/constants/cross_axis_pair_catalog.dart';
 import '../../services/shift_data_source.dart';
-import '../../models/cross_axis_pair_record.dart';
 import '../../models/history_pattern_record.dart';
 import '../../models/learn_benchmark_context.dart';
 import '../../models/learn_repeatable_win_summary.dart';
@@ -26,6 +25,8 @@ import '../../services/variance_driver_pattern_read_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/learn/learn_carousel.dart';
 import '../../widgets/learn/learn_chapter_rail.dart';
+import '../../widgets/learn/learn_cross_axis_card.dart';
+import '../../widgets/learn/learn_story_frame_card.dart';
 import '../../widgets/learn/learn_teaching_card.dart';
 import 'variance_shared_widgets.dart';
 
@@ -162,12 +163,18 @@ class _LearnContent extends StatefulWidget {
 }
 
 class _LearnContentState extends State<_LearnContent> {
-  // 0 = Recurring Leak, 1 = Repeatable Wins
+  // V2-5: the rail is preserved exactly with three permanent entries in
+  // the mockup order. 0 = Recurring Leak, 1 = Repeatable Wins,
+  // 2 = Cross-Axis. None of the three is ever dropped; Cross-Axis is its
+  // own 4-pair section rather than a conditional swap of chapter 0. See
+  // docs/contracts/phase_7_58_primary_driver_contract.md V2-5 and the
+  // binding mockup docs/f&f Coaching/variance_tab_v2_mockup.html #rail.
   int _activeChapter = 0;
 
   static const List<LearnChapter> _chapters = [
     LearnChapter(title: 'Recurring Leak', icon: Icons.warning_amber_rounded),
     LearnChapter(title: 'Repeatable Wins', icon: Icons.trending_up_rounded),
+    LearnChapter(title: 'Cross-Axis', icon: Icons.swap_horiz_rounded),
   ];
 
   @override
@@ -175,82 +182,33 @@ class _LearnContentState extends State<_LearnContent> {
     final summary = widget.summary;
     final wins = widget.repeatableWins;
 
-    // Resolve lever cards once per build ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â same logic the retired
-    // `_RecurringLeakCard` / `_RepeatableWinsCard` used internally. Pure
-    // read, no state mutation.
-    // 7.58.UX.5 (F-1): explicit lookup; null → fall back to the existing
-    // "no patterns yet" branch instead of fabricating a coversDown / ppaUp
-    // card from an unknown id.
-    // 7.58.2 — leak card comes from the shared
-    // `VarianceDriverPatternReadService`, the same service the History
-    // tab consults. Both tabs end up rendering off the same
-    // LeverCardData for the same closed-shift scope.
-    // 7.58.UX.5 (F-1): the service returns a null card for unknown
-    // ids / empty sets / `on_model` sentinel — Learn falls back to
-    // the existing "no patterns yet" branch instead of fabricating a
-    // coversDown / ppaUp card.
-    final leakCard = summary.hasHistoryPatterns
-        ? widget.leakDriver.card
-        : null;
-    // 7.58.UX.9: cross-axis swap predicate. When the cross-axis
-    // analyzer surfaces a recurring CPLH x SPLH pair pattern that is
-    // BOTH (a) at least 3 contributing records strong AND (b) larger
-    // than the dominant single-axis leak, the carousel swaps its data
-    // source from `LeverCards` to `CrossAxisPairs` so the operator
-    // walks the joint diagnosis instead of the single-axis one. The
-    // single-axis path stays the default whenever the predicate is
-    // false (empty pairs list, weak pair, or single-axis leak still
-    // dominates). See `docs/contracts/phase_7_58_primary_driver_contract.md`
-    // "Depth Surfaces" addendum.
-    final CrossAxisPairData? crossAxisCard =
-        (summary.crossAxisPairs.isNotEmpty &&
-                summary.crossAxisPairs.first.count >= 3 &&
-                summary.crossAxisPairs.first.count > summary.primaryLeakCount)
-            ? CrossAxisPairs.lookup(summary.crossAxisPairs.first.pairId)
-            : null;
-    final LearnRepeatableWinSummary? topWin = wins.isNotEmpty
-        ? wins.first
-        : null;
+    // V2-5: resolve the locked-catalog source for each section. Pure
+    // read, no state mutation, no engine call.
+    //
+    // The leak card comes from the shared
+    // `VarianceDriverPatternReadService` (the same service Variance >
+    // History consults), so the Learn story and the History leak card
+    // resolve the identical `LeverCardData` for the same closed-shift
+    // scope (7.58.2 Single Source of Truth). A null card (unknown id /
+    // empty set / `on_model` sentinel) falls back to the honest
+    // "no patterns yet" frame instead of fabricating a card.
+    final leakCard =
+        summary.hasHistoryPatterns ? widget.leakDriver.card : null;
+    final LearnRepeatableWinSummary? topWin =
+        wins.isNotEmpty ? wins.first : null;
     final benchmarkCard =
         topWin == null ? null : LeverCards.lookup(topWin.dominantLeverId);
 
-    // Carousel configuration for the active chapter.
+    // V2-5: Carousel configuration for the active section. Leak and
+    // Wins each render as a 3-frame story (dots adapt to 3); Cross-Axis
+    // is the locked 4-pair walk (dots adapt to 4). The honest-fallback
+    // single card stays 1 frame. `LearnCarousel` reads `cardCount`
+    // directly so the worm-dot indicator adapts to the active section.
     final int cardCount;
     final IndexedWidgetBuilder cardBuilder;
     if (_activeChapter == 0) {
-      if (crossAxisCard != null) {
-        // 7.58.UX.9: cross-axis 4-card walk. Same shape as the
-        // single-axis branch; only the input changes.
-        final pairRecord = summary.crossAxisPairs.first;
-        cardCount = 4;
-        cardBuilder = (ctx, i) {
-          switch (i) {
-            case 0:
-              return _CrossAxisSnapshotCard(
-                pairCard: crossAxisCard,
-                pairRecord: pairRecord,
-              );
-            case 1:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT HAPPENED',
-                badgeColor: AppColors.negative,
-                body: crossAxisCard.whatHappened,
-              );
-            case 2:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT TO DO',
-                badgeColor: AppColors.sunset,
-                body: crossAxisCard.whatToDo,
-              );
-            default:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT TO STUDY',
-                badgeColor: AppColors.sunsetDark,
-                body: crossAxisCard.teachingNote,
-              );
-          }
-        };
-      } else if (leakCard == null) {
+      // Recurring Leak.
+      if (leakCard == null) {
         cardCount = 1;
         cardBuilder = (ctx, _) => LearnTeachingCard(
           badgeLabel: 'NO PATTERNS YET',
@@ -259,33 +217,40 @@ class _LearnContentState extends State<_LearnContent> {
           body: summary.primaryFixLine,
         );
       } else {
-        cardCount = 4;
+        final caption = _leakCoverageCaption(summary);
+        cardCount = 3;
         cardBuilder = (ctx, i) {
           switch (i) {
             case 0:
-              return _LeakSnapshotCard(leakCard: leakCard, summary: summary);
-            case 1:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT HAPPENED',
-                badgeColor: AppColors.negative,
+              return LearnStoryFrameCard(
+                stepLabel: 'FRAME 1 · WHAT HAPPENED',
+                heading: leakCard.metric,
+                caption: caption,
+                visualHint: _leverVisualHint(leakCard, favorable: false),
                 body: leakCard.whatHappened,
+                accent: AppColors.negative,
               );
-            case 2:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT TO DO',
-                badgeColor: AppColors.sunset,
-                body: leakCard.whatToDo,
+            case 1:
+              return LearnStoryFrameCard(
+                stepLabel: 'FRAME 2 · WHY IT MATTERS',
+                heading: 'Luck does not repeat',
+                visualHint: _consequenceHint(leakCard),
+                body: leakCard.teachingNote,
+                accent: AppColors.negative,
               );
             default:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT TO STUDY',
-                badgeColor: AppColors.sunsetDark,
-                body: leakCard.teachingNote,
+              return LearnStoryFrameCard(
+                stepLabel: 'FRAME 3 · WHAT TO DO',
+                heading: 'Schedule from the math',
+                body: leakCard.whatToDo,
+                actionPlay: leakCard.whatToDo,
+                accent: AppColors.sunset,
               );
           }
         };
       }
-    } else {
+    } else if (_activeChapter == 1) {
+      // Repeatable Wins.
       if (benchmarkCard == null || topWin == null) {
         cardCount = 1;
         cardBuilder = (ctx, _) => LearnTeachingCard(
@@ -295,35 +260,51 @@ class _LearnContentState extends State<_LearnContent> {
           body: summary.studyLine,
         );
       } else {
-        cardCount = 4;
+        final caption = _winCoverageCaption(topWin);
+        cardCount = 3;
         cardBuilder = (ctx, i) {
           switch (i) {
             case 0:
-              return _WinsSnapshotCard(
-                benchmarkCard: benchmarkCard,
-                wins: wins,
+              return LearnStoryFrameCard(
+                stepLabel: 'FRAME 1 · WHAT HELD',
+                heading: benchmarkCard.metric,
+                caption: caption,
+                visualHint:
+                    _leverVisualHint(benchmarkCard, favorable: true),
+                body: benchmarkCard.whatHappened,
+                accent: AppColors.positive,
               );
             case 1:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT HELD',
-                badgeColor: AppColors.positive,
-                body: benchmarkCard.whatHappened,
-              );
-            case 2:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT TO PROTECT',
-                badgeColor: AppColors.sunset,
-                body: benchmarkCard.whatToDo,
+              return LearnStoryFrameCard(
+                stepLabel: 'FRAME 2 · WHY IT MATTERS',
+                heading: 'You cannot repeat what you do not understand',
+                visualHint: _consequenceHint(benchmarkCard),
+                body: benchmarkCard.teachingNote,
+                accent: AppColors.positive,
               );
             default:
-              return LearnTeachingCard(
-                badgeLabel: 'WHAT TO STUDY',
-                badgeColor: AppColors.sunsetDark,
-                body: benchmarkCard.teachingNote,
+              return LearnStoryFrameCard(
+                stepLabel: 'FRAME 3 · WHAT TO PROTECT',
+                heading: 'Bank the setup',
+                body: benchmarkCard.whatToDo,
+                actionPlay: benchmarkCard.whatToDo,
+                accent: AppColors.sunset,
               );
           }
         };
       }
+    } else {
+      // Cross-Axis: the locked 4-pair swipe, one card per
+      // `CrossAxisPairs` entry, exactly as the mockup `#crossTrack`.
+      const pairs = CrossAxisPairs.all;
+      cardCount = pairs.length;
+      cardBuilder = (ctx, i) {
+        final pair = pairs[i];
+        return LearnCrossAxisCard(
+          pair: pair,
+          axisBadge: _pairAxisBadge(pair.id),
+        );
+      };
     }
 
     return SingleChildScrollView(
@@ -428,158 +409,20 @@ class _LearnHero extends StatelessWidget {
   }
 }
 
-/// First card in the Recurring Leak chapter ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â surfaces the lever
-/// identity chips and the leak-frequency metrics that `_RecurringLeakCard`
-/// used to render inline. Wraps the shared `LearnTeachingCard` via its
-/// `trailing` slot so styling stays consistent with the teaching cards.
-class _LeakSnapshotCard extends StatelessWidget {
-  final LeverCardData leakCard;
-  final LearnTeachingSummary summary;
-  const _LeakSnapshotCard({required this.leakCard, required this.summary});
+// === V2-5 Learn-story helpers ============================================
+// Derive the optional frame-1 caption and the `.fvis` visual-hint chips
+// from the LOCKED catalog identity fields only. These never author new
+// teaching prose into the catalog and never call the driver engine; they
+// compose short, truthful identity strings from data the read services
+// already resolved (lever short label / side / cause category, repeat
+// counts, daypart labels). Honest-fallback rules return null so a frame
+// never asserts a denominator or hint the data cannot back.
 
-  @override
-  Widget build(BuildContext context) {
-    // 7.58.UX.7: append the coverage denominator caption to the lever
-    // metric so the leak headline names the population the repeat
-    // counter was drawn from. Honest fallback: omit the caption when
-    // `coverageCount == 0` or no top daypart label is available, so
-    // the copy never asserts a denominator we cannot back. Middot
-    // (U+00B7) joins the metric and the caption so the depth-wave
-    // em-dash ban (hard gate #4) is not introduced. See
-    // `docs/contracts/phase_7_58_primary_driver_contract.md`
-    // "Depth Surfaces" addendum.
-    final coverageCaption = _coverageCaption(summary);
-    final title = coverageCaption == null
-        ? leakCard.metric
-        : '${leakCard.metric} \u00b7 $coverageCaption';
-    return LearnTeachingCard(
-      badgeLabel: 'LEAK',
-      badgeColor: AppColors.negative,
-      title: title,
-      body:
-          'This lever has shown up most often as the top driver of '
-          'variance across your tracked weeks. The next three cards '
-          'break down what happens, what to do about it, and what to '
-          'study next.',
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              VarianceChip(label: leakCard.shortLabel, color: AppColors.negative),
-              VarianceChip(
-                label: leakCard.causeCategory,
-                color: AppColors.textMuted,
-              ),
-              VarianceChip(label: leakCard.sideLabel, color: AppColors.textMuted),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _LearnMetricRow(
-                  label: 'LEAK REPEATS',
-                  value: summary.primaryLeakCount.toString(),
-                  valueColor: AppColors.negative,
-                ),
-              ),
-              Expanded(
-                child: _LearnMetricRow(
-                  label: 'REPEATS IN',
-                  value: summary.topLeakDayparts.isEmpty
-                      ? '-'
-                      : summary.topLeakDayparts.join(' / '),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 7.58.UX.9 - cross-axis snapshot card. Same chrome and layout as
-/// `_LeakSnapshotCard`; reads from `CrossAxisPairData` plus the
-/// matching `CrossAxisPairRecord` instead of the single-axis lever
-/// card and `LearnTeachingSummary`. Caption + chips + metric rows
-/// follow the same shape so the operator walks an identical 4-card
-/// rhythm whether the recurring pattern is single-axis or cross-axis.
-class _CrossAxisSnapshotCard extends StatelessWidget {
-  final CrossAxisPairData pairCard;
-  final CrossAxisPairRecord pairRecord;
-  const _CrossAxisSnapshotCard({
-    required this.pairCard,
-    required this.pairRecord,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LearnTeachingCard(
-      badgeLabel: 'CROSS AXIS LEAK',
-      badgeColor: AppColors.negative,
-      title: pairCard.metric,
-      body:
-          'CPLH and SPLH moved together on the same shifts, repeating '
-          'across your closed weeks. The next three cards break down '
-          'what happened on both sides, what to do about the joint '
-          'pattern, and what to study next.',
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              VarianceChip(
-                label: pairCard.shortLabel,
-                color: AppColors.negative,
-              ),
-              VarianceChip(
-                label: pairCard.causeCategory,
-                color: AppColors.textMuted,
-              ),
-              VarianceChip(
-                label: pairCard.sideLabel,
-                color: AppColors.textMuted,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _LearnMetricRow(
-                  label: 'PAIR REPEATS',
-                  value: pairRecord.count.toString(),
-                  valueColor: AppColors.negative,
-                ),
-              ),
-              Expanded(
-                child: _LearnMetricRow(
-                  label: 'REPEATS IN',
-                  value: pairRecord.topDayparts.isEmpty
-                      ? '-'
-                      : pairRecord.topDayparts.join(' / '),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// 7.58.UX.7 - assembles the coverage caption suffix for the leak
-/// snapshot title. Returns `null` when the caption should be omitted
-/// (zero coverage OR no recurring leak yet OR no daypart label
-/// available); otherwise returns a string of the form
-/// `Repeated <count> of last <coverageCount> <pluralized daypart>`.
-String? _coverageCaption(LearnTeachingSummary summary) {
+/// Frame-1 caption for the Recurring Leak story. Mirrors the mockup
+/// `.lcap` ("Repeated 6 of last 12 Fri dinners"). Returns null when the
+/// denominator is unknown (zero coverage / no recurring leak / no top
+/// daypart) so the copy stays honest.
+String? _leakCoverageCaption(LearnTeachingSummary summary) {
   if (summary.coverageCount <= 0) return null;
   if (summary.primaryLeakCount <= 0) return null;
   if (summary.topLeakDayparts.isEmpty) return null;
@@ -588,98 +431,61 @@ String? _coverageCaption(LearnTeachingSummary summary) {
       '${summary.coverageCount} $daypartLabel';
 }
 
-/// 7.58.UX.7 - pluralizes the trailing daypart noun on a `fullLabel`
-/// like `Tue Lunch` -> `Tue Lunches`. The three daypart labels in the
-/// canonical catalog (`Lunch` / `Dinner` / `Late Night`) cover the
-/// plural rules: `Lunch` takes `es`, the others take `s`.
+/// Frame-1 caption for the Repeatable Wins story. Mirrors the mockup
+/// `.lcap` ("In the zone 9 of last 12 Tue lunches"). Returns null when
+/// the win has no resolvable daypart label so the copy stays honest.
+String? _winCoverageCaption(LearnRepeatableWinSummary win) {
+  if (win.closedShiftCount <= 0) return null;
+  if (win.label.isEmpty) return null;
+  final daypartLabel = _pluralizeDaypart(win.label);
+  return 'In the zone ${win.benchmarkCount} of last '
+      '${win.closedShiftCount} $daypartLabel';
+}
+
+/// Pluralizes the trailing daypart noun on a `fullLabel` like
+/// `Tue Lunch` -> `Tue Lunches`. The three canonical daypart labels
+/// (`Lunch` / `Dinner` / `Late Night`) cover the plural rules: `Lunch`
+/// takes `es`, the others take `s`.
 String _pluralizeDaypart(String fullLabel) {
   if (fullLabel.isEmpty) return fullLabel;
   if (fullLabel.endsWith('Lunch')) return '${fullLabel}es';
   return '${fullLabel}s';
 }
 
-/// First card in the Repeatable Wins chapter ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â surfaces the dominant
-/// lever identity + per-win evidence rows.
-class _WinsSnapshotCard extends StatelessWidget {
-  final LeverCardData benchmarkCard;
-  final List<LearnRepeatableWinSummary> wins;
-  const _WinsSnapshotCard({required this.benchmarkCard, required this.wins});
+/// Frame-1 `.fvis` visual hint built from the locked lever identity.
+/// Composed from `shortLabel` + sentiment glyph + side, never authored
+/// prose, so it cannot drift the frozen catalog. Returns null when the
+/// short label is unavailable.
+String? _leverVisualHint(LeverCardData card, {required bool favorable}) {
+  if (card.shortLabel.isEmpty) return null;
+  final glyph = card.isFavorable ? '↑ held' : '↓ soft';
+  return '${card.shortLabel} $glyph · ${card.sideLabel.toLowerCase()}';
+}
 
-  @override
-  Widget build(BuildContext context) {
-    return LearnTeachingCard(
-      badgeLabel: 'WINS',
-      badgeColor: AppColors.positive,
-      title: benchmarkCard.metric,
-      body:
-          'These are the dayparts where your benchmark range held. '
-          'The next three cards show what held, what to protect, and '
-          'what to study next to keep the streak alive.',
-      trailing: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              VarianceChip(
-                label: benchmarkCard.shortLabel,
-                color: AppColors.positive,
-              ),
-              VarianceChip(
-                label: benchmarkCard.causeCategory,
-                color: AppColors.sunsetDark,
-              ),
-              VarianceChip(
-                label: benchmarkCard.sideLabel,
-                color: AppColors.sunsetDark,
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'WIN REPEATS',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 8),
-          for (final w in wins) ...[
-            Row(
-              children: [
-                VarianceChip(
-                  label: _leverShortLabel(w.dominantLeverId),
-                  color: AppColors.positive,
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    '${w.label} \u00b7 ${w.benchmarkCount}/${w.closedShiftCount} wins \u00b7 '
-                    '${w.avgCPLH.toStringAsFixed(2)} CPLH \u00b7 '
-                    '\$${w.avgSPLH.toStringAsFixed(0)} SPLH',
-                    style: AppTextStyles.mono11(color: AppColors.positive),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-          ],
-        ],
-      ),
-    );
+/// Frame-2 `.fvis` consequence hint. Names the lever and its cause
+/// category as the "why it matters" thread, composed from locked
+/// identity fields only.
+String _consequenceHint(LeverCardData card) {
+  return '${card.shortLabel} · ${card.causeCategory.toLowerCase()} pattern';
+}
+
+/// CPLH/SPLH glyph badge for a Cross-Axis pair card (mockup `.lb`,
+/// e.g. `CPLH ↓ · SPLH ↑`). Keyed off the locked pair id so the badge
+/// stays in lockstep with the frozen `CrossAxisPairs` catalog.
+String _pairAxisBadge(String pairId) {
+  switch (pairId) {
+    case 'cplh_below_splh_above':
+      return 'CPLH ↓ · SPLH ↑';
+    case 'cplh_on_splh_below':
+      return 'CPLH = · SPLH ↓';
+    case 'cplh_above_splh_below':
+      return 'CPLH ↑ · SPLH ↓';
+    case 'both_below':
+      return 'CPLH ↓ · SPLH ↓';
+    default:
+      return 'CPLH · SPLH';
   }
 }
-
-/// Resolves a lever ID to its compact short label for per-row identity chips.
-///
-/// 7.58.UX.5 (F-1): null lookup -> '-' badge text instead of a silent
-/// fall-through to the ppaUp short label. 7.58.UX.7+9 swapped the
-/// rendered placeholder from U+2014 to ASCII hyphen so the depth
-/// wave's em-dash ban (hard gate #4) holds across this file. See
-/// `docs/contracts/phase_7_58_primary_driver_contract.md`.
-String _leverShortLabel(String leverId) {
-  final card = LeverCards.lookup(leverId);
-  return card?.shortLabel ?? '-';
-}
-
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Coach Next Week card ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
 class _CoachNextWeekCard extends StatelessWidget {
@@ -757,37 +563,6 @@ class _CoachLine extends StatelessWidget {
           child: Text(
             text,
             style: AppTextStyles.mono12(color: AppColors.textPrimary),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Shared Learn components ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-
-class _LearnMetricRow extends StatelessWidget {
-  final String label;
-  final String value;
-  final Color? valueColor;
-  const _LearnMetricRow({
-    required this.label,
-    required this.value,
-    this.valueColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(label, style: AppTextStyles.mono7(color: AppColors.textMuted)),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: AppTextStyles.mono12(
-            color: valueColor ?? AppColors.textPrimary,
           ),
         ),
       ],
