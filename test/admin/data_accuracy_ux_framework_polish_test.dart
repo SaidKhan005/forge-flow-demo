@@ -532,11 +532,23 @@ void main() {
       expect(find.text('95 Water Street'), findsOneWidget);
       expect(find.text('Duckworth Street'), findsOneWidget);
 
-      await tester.tap(
-        find.byKey(const Key('admin_polling_vendor_filter_dropdown')),
+      // The filter controls row sits below the fold on the test surface, so
+      // the vendor-filter dropdown button itself renders off-screen. A real
+      // user scrolls down to it; mirror that here so the open tap is a
+      // deterministic on-screen hit instead of an off-screen miss.
+      final vendorFilterDropdown = find.byKey(
+        const Key('admin_polling_vendor_filter_dropdown'),
       );
+      await tester.ensureVisible(vendorFilterDropdown);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('QuickBooks Time').last);
+      await tester.tap(vendorFilterDropdown);
+      await tester.pumpAndSettle();
+      // The opened menu is anchored as a full-screen overlay; ensure the
+      // target item is on-screen before tapping it too.
+      final quickBooksItem = find.text('QuickBooks Time').last;
+      await tester.ensureVisible(quickBooksItem);
+      await tester.pumpAndSettle();
+      await tester.tap(quickBooksItem);
       await tester.pumpAndSettle();
 
       expect(find.text('QuickBooks Time'), findsWidgets);
