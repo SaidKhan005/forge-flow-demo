@@ -88,6 +88,13 @@ No other radius values in new code.
 - `AppDecoration.hairline` / `hairlineAlpha` (0.7) — the ONE border
   opacity. No more per-screen 0.4/0.5/0.6 variants.
 
+**`AppDecoration.gradientCard`** — the ONE intentional gradient surface
+(warm cream top-left → glow bottom-right + the standard hairline border
++ card radius). Decision: gradients are kept but unified to a single
+deliberate treatment, not flattened. Any gradient *card* uses this; do
+not hand-roll `LinearGradient` card decorations. (Thin decorative
+accent stripes/underlines are not cards and are exempt.)
+
 **`AppDivider`** — replaces every hand-rolled
 `Container(height: 1, color: …)`. Use `AppDivider()` (optional
 `indent:` to align with card padding). Prefer whitespace over a divider
@@ -115,6 +122,19 @@ override `textScaler` per-screen.
 The 2026-05-17 pass landed: the central scale fix (propagates to every
 screen using `AppTextStyles`), `AppSpacing`, the semantic roles, the
 text-scale clamp, and removed every raw `'monospace'` literal in `lib/**`.
+
+Surface system (`AppRadius`/`AppDecoration`/`AppDivider`) adopted in
+notifications, baseline_tracker, week_detail. `AppDecoration.gradientCard`
+adopted: all 5 `shift_dashboard` gradient cards unified (consistent
+gradient + hairline border + card radius + one card padding).
+
+Standard-spacing adoption is incremental. Landed: value-preserving
+screen-gutter tokenisation (`AppSpacing.screenH`) + unified gradient-card
+padding on `shift_dashboard`, plus the variance header gutter. The
+remaining off-scale literals (14/18/20/6/10 paddings, `SizedBox` gaps)
+across the broader screen set are the CONTINUING de-clutter wave —
+normalised screen-by-screen with the FOH-matrix overflow test
+(300/360/1080px) as the gate, not a single big-bang sweep.
 
 Remaining inline `TextStyle(fontSize: N)` cleanup in auth (`totp_*`) and
 MFA (`settings_mfa_section`) surfaces is a SEPARATE, operator-approval-gated

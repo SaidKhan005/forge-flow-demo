@@ -22,7 +22,7 @@ class VarianceReport extends StatelessWidget {
         header: AppScreenHeader(
           title: 'Variance',
           bottom: Container(
-            margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            margin: AppSpacing.screenH,
             decoration: BoxDecoration(
               border: Border(
                 bottom: BorderSide(
