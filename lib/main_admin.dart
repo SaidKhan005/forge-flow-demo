@@ -46,6 +46,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/admin_business_timing_resolution_gateway.dart';
 import 'admin/services/admin_http_timeout.dart';
 import 'admin/services/admin_notification_preferences_gateway.dart';
 import 'admin/services/admin_security_gateway.dart';
@@ -330,6 +331,16 @@ Future<void> main() async {
     final adminNotificationPreferencesGateway = gateway == null
         ? null
         : _resolveAdminNotificationPreferencesGateway(authBinding.authClient);
+    // HP#11 S2/S4 — admin cross-tenant business-timing-resolution
+    // gateway. Same admin proxy base URI + Firebase ID-token bearer the
+    // sibling admin gateways use; demo / share-preview leave it null so
+    // `admin_routes.dart` falls back to the seeded in-memory gateway and
+    // the S4 Timing screens render the honest "no profile yet" state.
+    final adminBusinessTimingResolutionGateway = gateway == null
+        ? null
+        : _resolveAdminBusinessTimingResolutionGateway(
+            authBinding.authClient,
+          );
     final adminApp = AdminConsoleApp(
       authSource: source,
       sharePreviewMode: _kAdminSharePreview,
@@ -361,6 +372,7 @@ Future<void> main() async {
         adminSecurityGateway: adminSecurityGateway,
         adminNotificationPreferencesGateway:
             adminNotificationPreferencesGateway,
+        timingResolutionGateway: adminBusinessTimingResolutionGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -791,6 +803,31 @@ AdminNotificationPreferencesGateway? _resolveAdminNotificationPreferencesGateway
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpAdminNotificationPreferencesGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// HP#11 S2/S4 — admin cross-tenant business-timing-resolution gateway.
+/// Lives on the SAME admin proxy base URI as the other admin surfaces
+/// with the Firebase ID-token bearer the sibling `_resolve*` resolvers
+/// use; demo / share-preview return null so `admin_routes.dart` falls
+/// back to the seeded in-memory gateway and the walkthrough renders
+/// backendless. Mirrors `_resolveAdminNotificationPreferencesGateway`
+/// exactly. The proxy resolves the actor from the verified bearer
+/// token, so this calls the merged, operator-approved S2 cross-tenant
+/// route `/v1/admin/operators/<op>/locations/<loc>/business-timing-resolution`
+/// (no new backend route).
+AdminBusinessTimingResolutionGateway? _resolveAdminBusinessTimingResolutionGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpAdminBusinessTimingResolutionGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
