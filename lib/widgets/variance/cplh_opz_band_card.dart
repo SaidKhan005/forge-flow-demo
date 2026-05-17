@@ -56,9 +56,11 @@ class CplhOpzBandData {
   final double livedMin;
   final double livedMax;
 
-  /// The scale domain the band is mapped onto. Chosen so the lived range,
-  /// the OPZ box, and the "now" marker all fall inside [0, 1] after
-  /// normalisation, with a small visual margin.
+  /// Retained for API stability. Option 1 (operator-approved, mockup-
+  /// faithful) maps render geometry onto the lived 60-day range
+  /// `[livedMin, livedMax]` via [OpzScaleGeometry], NOT onto a union
+  /// domain, so these are no longer the active scale. They mirror the
+  /// lived range so any legacy `fractionFor` caller stays well-defined.
   final double scaleMin;
   final double scaleMax;
 
@@ -73,8 +75,12 @@ class CplhOpzBandData {
   final int weeksBelowFloor;
   final int weekCount;
 
-  /// Normalised [0,1] position of [value] on the scale domain. Clamped so
-  /// a marker never escapes the rail even if the domain padding is tight.
+  /// Normalised [0,1] position of [value] on the lived 60-day range.
+  /// Option 1: the rail IS the real lived range, so this maps onto
+  /// `[livedMin, livedMax]` and clamps so a marker (or a clamped OPZ
+  /// edge) never escapes the rail. `scaleMin`/`scaleMax` mirror the
+  /// lived range, so legacy callers get the same answer as the new
+  /// [OpzScaleGeometry] helper.
   double fractionFor(double value) {
     final span = scaleMax - scaleMin;
     if (span <= 0) return 0;
@@ -117,24 +123,17 @@ class CplhOpzBandData {
     final livedMin = lived.reduce((a, b) => a < b ? a : b);
     final livedMax = lived.reduce((a, b) => a > b ? a : b);
 
-    // The scale must contain everything we draw: the lived range, the OPZ
-    // box, and the "now" marker. Otherwise the box / dot would clip.
-    // `opzFloor` / `opzCeiling` are non-null here: the `hasOpz` guard
-    // above proved it and the analyzer promotes them.
-    var domainMin = livedMin;
-    var domainMax = livedMax;
-    domainMin = domainMin < opzFloor ? domainMin : opzFloor;
-    domainMax = domainMax > opzCeiling ? domainMax : opzCeiling;
-    if (now != null) {
-      domainMin = domainMin < now ? domainMin : now;
-      domainMax = domainMax > now ? domainMax : now;
-    }
-
-    // Small visual margin so endpoints are not flush against the edge.
-    final rawSpan = domainMax - domainMin;
-    final pad = rawSpan > 0 ? rawSpan * 0.08 : 0.1;
-    final scaleMin = domainMin - pad;
-    final scaleMax = domainMax + pad;
+    // Option 1 (operator-approved, mockup-faithful): the rail IS the
+    // real 60-day lived range. Render geometry maps onto
+    // `[livedMin, livedMax]` (see [OpzScaleGeometry]); the OPZ box and
+    // now marker are CLAMPED to the rail and an extends-beyond cap
+    // signals when the healthy zone continues past the observed range.
+    // `scaleMin`/`scaleMax` therefore mirror the lived range so the
+    // legacy `fractionFor` agrees with the new helper. This is a
+    // RENDER-domain choice only; livedMin/Max, opzFloor/Ceiling, now,
+    // weeksBelowFloor and weekCount are computed exactly as before.
+    final scaleMin = livedMin;
+    final scaleMax = livedMax;
 
     final weeksBelowFloor =
         lived.where((v) => v < opzFloor).length;
@@ -262,15 +261,23 @@ class CplhOpzBandCard extends StatelessWidget {
 
 /// Pure, unit-testable render geometry for the `.opzscale` band.
 ///
-/// Every horizontal position is a fraction in [0, 1] of the rail width,
-/// mapped through the UNION scale domain the data layer already chose
-/// ([CplhOpzBandData.scaleMin]/[CplhOpzBandData.scaleMax], which contain
-/// the lived range, the OPZ box AND the now marker: see
-/// [CplhOpzBandData.fromInputs]). Using the union domain (not
-/// `[livedMin, livedMax]`) is what keeps the green OPZ box a proper
-/// proportional sub-segment even when the OPZ range is wider than the
-/// lived range: with the lived-only domain a wider OPZ overflowed the
-/// rail and clamped to full width.
+/// Option 1 (operator-approved, mockup-faithful). The rail IS the real
+/// 60-day lived CPLH range: `domain = [livedMin, livedMax]` and
+/// `pct(v) = clamp01((v - livedMin) / (livedMax - livedMin))`. The lived
+/// min/max land at the rail ends (~0% / ~100%), exactly like the mockup
+/// `.tickm` `left:0` / `right:0`.
+///
+/// The green OPZ box maps `opzFloor`->`opzCeiling` into that domain and
+/// CLAMPS to `[0%, 100%]`:
+///   - OPZ inside the lived range  -> an interior band (mockup shape);
+///   - OPZ extends past an end     -> the box clamps to that rail edge
+///     and an extends-beyond cap ([leftCap] / [rightCap]) signals the
+///     healthy zone continues past the observed range.
+///
+/// HONEST LABELS: the box edge clamps, but the `.opzlab` text always
+/// shows the TRUE `opzFloor` / `opzCeiling` numbers (the widget reads
+/// `data.opzFloor` / `data.opzCeiling`, never a clamped value). The cap
+/// flags here only drive the subtle edge affordance.
 ///
 /// This is a presentation transform of values the data layer already
 /// derived. It does NOT touch [CplhOpzBandData.fromInputs] math or any
@@ -284,75 +291,109 @@ class OpzScaleGeometry {
     required this.opzLeftPct,
     required this.opzRightPct,
     required this.nowPct,
+    required this.leftCap,
+    required this.rightCap,
   });
 
-  /// Builds the band geometry from the (already real) values on [data].
-  /// All fractions use the union scale domain via
-  /// [CplhOpzBandData.fractionFor], so the OPZ box is always a strict
-  /// sub-segment of the rail (never full-width) unless OPZ literally
-  /// spans the entire domain.
+  /// Builds the band geometry from the (already real) values on [data],
+  /// mapping onto the lived range `[livedMin, livedMax]` and clamping the
+  /// OPZ box / now marker to the rail.
   factory OpzScaleGeometry.fromData(CplhOpzBandData data) {
-    final floor = data.fractionFor(data.opzFloor);
-    final ceil = data.fractionFor(data.opzCeiling);
+    // `pct` clamps to [0,1] via [CplhOpzBandData.fractionFor], whose
+    // domain is the lived range (scaleMin/scaleMax mirror livedMin/Max).
+    final floorClamped = data.fractionFor(data.opzFloor);
+    final ceilClamped = data.fractionFor(data.opzCeiling);
+
+    // Extends-beyond detection uses the TRUE values (not the clamped
+    // fractions): the zone continues past an observed end when the OPZ
+    // bound sits outside the lived range. Strictly-outside only, so an
+    // exact touch (opzFloor == livedMin) is the mockup interior case,
+    // not a cap.
+    final extendsLeft = data.opzFloor < data.livedMin;
+    final extendsRight = data.opzCeiling > data.livedMax;
+
     return OpzScaleGeometry._(
       livedMinPct: data.fractionFor(data.livedMin),
       livedMaxPct: data.fractionFor(data.livedMax),
-      opzLeftPct: floor,
-      // CSS `right:` inset (mockup `.opzbox{...;right:21%}`): the gap from
-      // the rail's right edge to the OPZ ceiling position.
-      opzRightPct: (1.0 - ceil).clamp(0.0, 1.0),
+      opzLeftPct: floorClamped,
+      // CSS `right:` inset (mockup `.opzbox{...;right:21%}`): the gap
+      // from the rail's right edge to the (clamped) OPZ ceiling.
+      opzRightPct: (1.0 - ceilClamped).clamp(0.0, 1.0),
       nowPct: data.fractionFor(data.now),
+      leftCap: extendsLeft,
+      rightCap: extendsRight,
     );
   }
 
-  /// Lived-range min/max rail fractions. When the lived range is the
-  /// widest input these are ~0.0 / ~1.0 (rail ends, like the mockup);
-  /// when the OPZ range is wider they sit inset, which is correct.
+  /// Lived-range min/max rail fractions. These are the rail ENDS
+  /// (~0.0 / ~1.0) because the domain is exactly `[livedMin, livedMax]`,
+  /// mirroring the mockup `.tickm` `left:0` / `right:0`.
   final double livedMinPct;
   final double livedMaxPct;
 
-  /// OPZ box left edge fraction (== `pct(opzFloor)`).
+  /// OPZ box left edge fraction (== clamped `pct(opzFloor)`). 0.0 when
+  /// the floor extends past the lived min (clamped to the rail edge).
   final double opzLeftPct;
 
-  /// OPZ box right INSET fraction (== `1 - pct(opzCeiling)`), mirroring
-  /// the mockup's CSS `right:` value so the box spans floor->ceiling.
+  /// OPZ box right INSET fraction (== `1 - clamped pct(opzCeiling)`),
+  /// mirroring the mockup's CSS `right:` so the box spans floor->ceiling.
+  /// 0.0 when the ceiling extends past the lived max.
   final double opzRightPct;
+
+  /// True when the OPZ floor sits below the lived min: the green box is
+  /// clamped at the LEFT rail edge and the left extends-beyond cap is
+  /// drawn (the healthy zone continues below the observed range).
+  final bool leftCap;
+
+  /// True when the OPZ ceiling sits above the lived max: the green box
+  /// is clamped at the RIGHT rail edge and the right extends-beyond cap
+  /// is drawn (the healthy zone continues above the observed range).
+  final bool rightCap;
 
   /// OPZ ceiling rail fraction (the box's right edge position).
   double get opzCeilingPct => (1.0 - opzRightPct).clamp(0.0, 1.0);
 
-  /// Width of the OPZ box as a fraction of the rail. Always < 1 unless
-  /// OPZ literally equals the whole domain (proves "no longer
-  /// full-width" deterministically in tests).
+  /// Width of the OPZ box as a fraction of the rail. When the zone is
+  /// wider than the lived range on both sides this is ~1.0 (the box
+  /// fills the rail and BOTH caps signal it continues past each end).
   double get opzWidthPct => (opzCeilingPct - opzLeftPct).clamp(0.0, 1.0);
 
-  /// Now-marker rail fraction (dot + label share this position).
+  /// Now-marker rail fraction (dot + label share this position),
+  /// clamped to the rail.
   final double nowPct;
 }
 
 /// The `.opzscale` band, laid out 1:1 with the approved mockup
 /// (docs/f&f Coaching/variance_tab_v2_mockup.html `#hist .opzscale`,
-/// CSS lines 153-159, DOM lines 277-285):
+/// CSS lines 153-159, DOM lines 277-283), under the operator-approved
+/// Option 1 (the rail IS the real 60-day lived range):
 ///
-///   - `.lived` : a single full-width rail (`left:0; right:0`). It spans
-///     the whole card; the lived 60-day CPLH min/max are POSITIONED BY
-///     VALUE on it via the union domain (they land at the ends only when
-///     the lived range is the widest input, exactly like the mockup).
-///   - `.tickm` : the lived-min / lived-max labels anchored at the rail
-///     positions for `livedMin` / `livedMax` (not hard-pinned to the
-///     ends). Real lived-range bounds, not the OPZ bounds.
-///   - `.opzbox`: the green OPZ zone, a proportional sub-segment from
-///     `pct(opzFloor)` to `pct(opzCeiling)` on the union domain.
-///   - `.opzlab`: `OPZ {floor}` anchored at the box's left edge and
-///     `{ceiling}` near its right edge, ABOVE the green box.
-///   - `.nowdot`: the red current-CPLH dot, centred on `pct(now)`.
+///   - `.lived` : a single full-width rail (`left:0; right:0`). The
+///     domain is exactly `[livedMin, livedMax]`, so the lived min/max
+///     ARE the rail ends.
+///   - `.tickm` : the lived-min / lived-max labels at the rail ends
+///     (~0% / ~100%), exactly like the mockup `left:0` / `right:0`.
+///     Real lived-range bounds, not the OPZ bounds.
+///   - `.opzbox`: the green OPZ zone, `pct(opzFloor)`->`pct(opzCeiling)`
+///     CLAMPED to the rail. Interior band when the zone fits inside the
+///     lived range (mockup shape); clamps to a rail edge when it
+///     extends past an end.
+///   - extends-beyond cap: a subtle on-theme chevron at a clamped edge
+///     ([OpzScaleGeometry.leftCap] / `rightCap`) signalling the healthy
+///     zone continues past the observed range. The only new visual.
+///   - `.opzlab`: `OPZ {floor}` at the box's (possibly clamped) left
+///     edge and `{ceiling}` near its right edge, ABOVE the green box.
+///     The text is ALWAYS the TRUE floor/ceiling (`data.opzFloor` /
+///     `data.opzCeiling`), never the clamped position's value.
+///   - `.nowdot`: the red current-CPLH dot, centred on clamped
+///     `pct(now)`.
 ///   - `.nowlab`: `now {value}` DIRECTLY BELOW the dot, sharing
 ///     `pct(now)` so it tracks under the dot.
 ///
 /// Positions are derived ONLY from the real values already on [data]
 /// (lived bounds from the real `weeklyCplhSeries`, OPZ bounds from the
-/// active target profile, now from the latest real week), mapped through
-/// the union scale domain. No mockup constant is ever drawn. The mockup's
+/// active target profile, now from the latest real week), mapped onto
+/// the lived range. No mockup constant is ever drawn. The mockup's
 /// `46% / 21% / 36%` percentages are an illustrative example, not
 /// literals.
 class _OpzScale extends StatelessWidget {
@@ -373,6 +414,12 @@ class _OpzScale extends StatelessWidget {
         final livedMaxX = g.livedMaxPct * w;
         final hasNow = data.now > 0;
 
+        // Box edges, kept on-rail (the geometry already clamps; this
+        // belt-and-braces guards float drift at the very edges).
+        final boxLeft = floorX.clamp(0.0, w);
+        final boxRight = ceilX.clamp(0.0, w);
+        final boxWidth = (boxRight - boxLeft).clamp(1.0, w);
+
         // Vertical geometry mirrors the mockup `.opzscale` (54px tall;
         // 60 here for label headroom under the rail):
         //   .opzlab top:-2   (above the green box)
@@ -389,9 +436,9 @@ class _OpzScale extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // .lived: full-width rail (mockup `left:0; right:0`).
-              // Values are positioned ON it by the union domain; the
-              // rail itself always spans the whole card.
+              // .lived: full-width rail (mockup `left:0; right:0`). The
+              // domain IS the lived range, so the rail spans exactly
+              // livedMin..livedMax.
               Positioned(
                 top: 26,
                 left: 0,
@@ -405,13 +452,14 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .opzbox: the green healthy zone, a proportional
-              // sub-segment from pct(opzFloor) to pct(opzCeiling) on the
-              // union domain (never the full rail unless OPZ == domain).
+              // .opzbox: the green healthy zone, pct(opzFloor) ->
+              // pct(opzCeiling) CLAMPED to the rail. Interior band when
+              // the zone fits inside the lived range (mockup shape);
+              // clamps to a rail edge when it extends past an end.
               Positioned(
                 top: 18,
-                left: floorX,
-                width: (ceilX - floorX).clamp(1.0, w),
+                left: boxLeft,
+                width: boxWidth,
                 child: Container(
                   height: 19,
                   decoration: BoxDecoration(
@@ -425,22 +473,44 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .opzlab: "OPZ {floor}" ABOVE the green box, at its left
-              // edge (mockup `.opzlab` top:-2, over the box span).
+              // Extends-beyond cap (LEFT): a subtle on-theme chevron at
+              // the clamped left edge signalling the healthy zone
+              // continues BELOW the observed 60-day range. Subtle, not a
+              // big arrow. The OPZ label still shows the TRUE floor.
+              if (g.leftCap)
+                Positioned(
+                  top: 18,
+                  left: boxLeft,
+                  child: const _ExtendsBeyondCap(pointsLeft: true),
+                ),
+
+              // Extends-beyond cap (RIGHT): same affordance at the
+              // clamped right edge (zone continues ABOVE the range).
+              if (g.rightCap)
+                Positioned(
+                  top: 18,
+                  left: (boxRight - _ExtendsBeyondCap.width).clamp(0.0, w),
+                  child: const _ExtendsBeyondCap(pointsLeft: false),
+                ),
+
+              // .opzlab: "OPZ {floor}" ABOVE the green box, at its
+              // (possibly clamped) left edge. The TEXT is always the
+              // TRUE floor value, never the clamped position's value
+              // (honest-labels-even-when-clamped).
               Positioned(
                 top: 0,
-                left: floorX,
+                left: boxLeft,
                 child: Text(
                   'OPZ ${data.opzFloor.toStringAsFixed(2)}',
                   style: AppTextStyles.mono10(color: AppColors.positive),
                 ),
               ),
 
-              // .opzlab: ceiling value ABOVE the green box, at its right
-              // edge.
+              // .opzlab: ceiling value ABOVE the green box, at its
+              // (possibly clamped) right edge. Always the TRUE ceiling.
               Positioned(
                 top: 0,
-                left: ceilX,
+                left: boxRight,
                 child: FractionalTranslation(
                   translation: const Offset(-1.0, 0),
                   child: Text(
@@ -450,9 +520,9 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .tickm: lived MIN anchored at the rail position for
-              // `livedMin` (mockup `left:0` when lived is widest, inset
-              // otherwise). Real lived-range lower bound.
+              // .tickm: lived MIN at the rail's LEFT end (mockup
+              // `left:0`). The domain IS the lived range, so livedMin
+              // sits at ~0%. Real lived-range lower bound.
               Positioned(
                 top: 32,
                 left: livedMinX,
@@ -462,11 +532,11 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .tickm: lived MAX anchored at the rail position for
-              // `livedMax` (mockup `right:0` when lived is widest, inset
-              // otherwise). Right-aligned so the label reads up to that
-              // position rather than spilling past it. Real lived-range
-              // upper bound.
+              // .tickm: lived MAX at the rail's RIGHT end (mockup
+              // `right:0`). The domain IS the lived range, so livedMax
+              // sits at ~100%. Right-aligned so the label reads up to
+              // that position rather than spilling past it. Real
+              // lived-range upper bound.
               Positioned(
                 top: 32,
                 left: livedMaxX,
@@ -480,7 +550,7 @@ class _OpzScale extends StatelessWidget {
               ),
 
               // .nowdot: red current-CPLH marker on the rail, centred
-              // on its value position.
+              // on its (clamped) value position.
               if (hasNow)
                 Positioned(
                   top: 8,
@@ -516,4 +586,76 @@ class _OpzScale extends StatelessWidget {
       },
     );
   }
+}
+
+/// Subtle on-theme extends-beyond affordance drawn at a CLAMPED OPZ box
+/// edge. Signals the healthy zone continues past the observed 60-day
+/// range without shouting: a small chevron in the same OPZ green,
+/// matching the green box height (19px) so it reads as part of the zone,
+/// not a separate control. Deliberately small (not a big arrow): the
+/// card stays clean like the mockup, and the honest `.opzlab` text still
+/// carries the TRUE OPZ bound number, so this is purely "there's more
+/// healthy zone off this edge".
+class _ExtendsBeyondCap extends StatelessWidget {
+  const _ExtendsBeyondCap({required this.pointsLeft});
+
+  /// Chevron points outward from the rail: left at the left-clamped
+  /// edge, right at the right-clamped edge.
+  final bool pointsLeft;
+
+  /// Footprint width so callers can right-align the right-edge cap.
+  static const double width = 7.0;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      height: 19,
+      child: CustomPaint(
+        painter: _ChevronPainter(
+          pointsLeft: pointsLeft,
+          color: AppColors.positive.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChevronPainter extends CustomPainter {
+  _ChevronPainter({required this.pointsLeft, required this.color});
+
+  final bool pointsLeft;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final midY = size.height / 2;
+    // A single small `>` / `<` chevron, vertically centred, inset a
+    // touch from the edge so it sits just past the clamped box border.
+    const inset = 1.5;
+    final path = Path();
+    if (pointsLeft) {
+      path
+        ..moveTo(size.width - inset, midY - 4)
+        ..lineTo(inset, midY)
+        ..lineTo(size.width - inset, midY + 4);
+    } else {
+      path
+        ..moveTo(inset, midY - 4)
+        ..lineTo(size.width - inset, midY)
+        ..lineTo(inset, midY + 4);
+    }
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(_ChevronPainter old) =>
+      old.pointsLeft != pointsLeft || old.color != color;
 }
