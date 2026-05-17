@@ -155,31 +155,56 @@ void main() {
           reason: 'closed Fri-lunch cell carries no fabricated '
               'reservation row');
 
-      // Downtown scenario open-shift row preserves the pinned value.
+      // Double-count fix (claude/fix-reservation-inthebooks-double-count):
+      // 72 / 18 is the WHOLE-DAY Friday baseline, not a per-period
+      // figure. The forward envelope now apportions it across the day's
+      // served periods by cover share, so the Shift dashboard whole-day
+      // read model (which sums every daypart row for the day) counts the
+      // day's unseated covers exactly once. Pin the corrected invariant:
+      // Downtown Friday's per-period rows SUM to the whole-day baseline,
+      // and the open dinner row carries an honest cover-share slice
+      // (strictly < the whole-day figure), not the replicated whole-day
+      // figure that produced the 72 -> 144 double-count.
+      final dtDay = await db.query(
+        'reservation_book_snapshots',
+        where: 'restaurant_id = ? AND business_date = ?',
+        whereArgs: [downtown, '2026-03-27'],
+      );
+      expect(dtDay, isNotEmpty);
+      final dtDayCovers = dtDay.fold<int>(
+          0, (s, r) => s + (r['unseated_covers'] as int));
+      final dtDayParties = dtDay.fold<int>(
+          0, (s, r) => s + (r['unseated_party_count'] as int));
+      expect(dtDayCovers, 72,
+          reason: 'Downtown Friday unseated covers sum exactly to the '
+              'whole-day baseline (single-counted, no double-count)');
+      expect(dtDayParties, 18,
+          reason: 'Downtown Friday unseated parties sum exactly to the '
+              'whole-day baseline');
+
       final dt = await db.query(
         'reservation_book_snapshots',
         where: 'restaurant_id = ? AND business_date = ? AND daypart = ?',
         whereArgs: [downtown, '2026-03-27', 'dinner'],
       );
       expect(dt.length, 1);
-      expect(dt.first['unseated_covers'], 72);
-      expect(dt.first['unseated_party_count'], 18);
+      expect(dt.first['unseated_covers'] as int, lessThan(72),
+          reason: 'open dinner row is an honest cover-share slice, not '
+              'the replicated whole-day figure (double-count guard)');
+      expect(dt.first['unseated_covers'] as int, greaterThan(0));
       expect(dt.first['source_service_id'], 'demo_res_fri_dinner');
 
       // Per-location distinctness — a higher-volume location books more
-      // unseated covers for the same forward cell than Downtown.
-      final nl = await db.query(
+      // unseated covers for the whole forward day than Downtown.
+      final nlDay = await db.query(
         'reservation_book_snapshots',
-        where: 'restaurant_id = ? AND business_date = ? AND daypart = ?',
-        whereArgs: [
-          DemoScope.northLoopRestaurantId,
-          '2026-03-27',
-          'dinner',
-        ],
+        where: 'restaurant_id = ? AND business_date = ?',
+        whereArgs: [DemoScope.northLoopRestaurantId, '2026-03-27'],
       );
-      expect(nl, isNotEmpty);
-      expect((nl.first['unseated_covers'] as int),
-          greaterThan(dt.first['unseated_covers'] as int),
+      expect(nlDay, isNotEmpty);
+      final nlDayCovers = nlDay.fold<int>(
+          0, (s, r) => s + (r['unseated_covers'] as int));
+      expect(nlDayCovers, greaterThan(dtDayCovers),
           reason: 'North Loop (higher volume) > Downtown — not a clone');
     });
 
