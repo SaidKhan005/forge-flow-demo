@@ -1,5 +1,22 @@
 # CLAUDE.md
 
+## Operator Communication Style (binding — applies to every reply)
+
+When reporting to the operator in chat (status, findings, summaries,
+recommendations, results), the default and required format is:
+
+- **Plain English.** No engineering jargon, no unexplained acronyms, no
+  git/internal-tool vocabulary unless the operator used it first. If a
+  technical term is unavoidable, explain it in the same breath.
+- **Simple bullet points.** Short, scannable bullets — not walls of prose,
+  not dense paragraphs. Lead with the answer/outcome, then specifics.
+- **Tables only when they genuinely aid scanning** (e.g., a few rows of
+  status); otherwise bullets.
+- This governs operator-facing chat replies. It does NOT change commit
+  messages, code comments, PR bodies, or contract/audit doc prose, which
+  follow their own standards. Mirrors the product UX writing standard
+  (plain English, reads as training).
+
 ## Authority Order
 
 When sources conflict, earlier wins:
