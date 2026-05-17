@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Variance composed</title>
+<style>
+  :root{
+    --bg:#f2eadd; --card1:#f8f2e8; --card2:#efe6d6;
+    --line:#e4d9c6; --line2:#ece2d1;
+    --ink:#2c2722; --txt:#4c463d; --txt2:#776e60; --muted:#9a907e;
+    --sunset:#c25a2a; --sunsetSoft:#d98a4f; --good:#4f8a52; --bad:#b5402a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#cdbfa6;color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    display:flex;flex-direction:column;align-items:center;gap:14px;padding:24px 12px 50px}
+  .serif{font-family:Georgia,"Times New Roman",serif}
+  .cap{color:#5f574a;font-size:12px;text-align:center;max-width:400px;line-height:1.5}
+  .cap b{color:var(--sunset)}
+
+  .phone{width:392px;max-width:96vw;height:780px;background:var(--bg);border-radius:38px;
+    border:9px solid #d8cbb4;box-shadow:0 22px 56px rgba(80,60,30,.45);overflow:hidden;
+    display:flex;flex-direction:column;position:relative}
+  .appbar{display:flex;align-items:center;justify-content:space-between;padding:16px 18px 0;flex-shrink:0}
+  .ibtn{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--card1);
+    display:flex;align-items:center;justify-content:center;font-size:15px;color:var(--txt2)}
+  .logo{width:38px;height:38px;border-radius:50%;border:2px solid var(--sunset);background:var(--card1);
+    display:flex;align-items:center;justify-content:center;font-weight:800;color:var(--sunset);
+    font-family:Georgia,serif;font-size:14px}
+  .right{display:flex;gap:9px}
+  .hdr{padding:12px 18px 0;flex-shrink:0}
+  .hdr h1{font-size:28px;font-weight:700;color:var(--ink)}
+  .tabs{display:flex;gap:26px;margin-top:14px;border-bottom:1px solid var(--line)}
+  .tabs button{border:0;background:transparent;padding:0 0 11px;font-family:"Courier New",monospace;
+    font-size:13px;color:var(--muted);cursor:pointer;position:relative}
+  .tabs button.on{color:var(--sunset);font-weight:700}
+  .tabs button.on::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:3px;
+    background:var(--sunset);border-radius:3px}
+  .scroll{flex:1;overflow-y:auto;padding:16px}
+  .scroll::-webkit-scrollbar{width:0}
+
+  .h2{font-family:Georgia,serif;font-size:23px;font-weight:700;color:var(--ink)}
+  .sub{font-family:"Courier New",monospace;font-size:12px;color:var(--txt2);margin-top:4px}
+  .seclabel{display:flex;align-items:center;gap:8px;margin:22px 0 11px}
+  .seclabel .tk{width:3px;height:13px;background:var(--sunset);border-radius:2px}
+  .seclabel span{font-family:"Courier New",monospace;font-size:12px;font-weight:700;
+    letter-spacing:1px;color:var(--txt2);text-transform:uppercase}
+  .seclabel .rule{flex:1;height:1px;background:var(--line)}
+  .card{background:linear-gradient(165deg,var(--card1),var(--card2));border:1px solid var(--line);
+    border-radius:14px;padding:16px;margin-bottom:14px}
+  .driver{border:1.5px solid rgba(194,90,42,.38);background:linear-gradient(165deg,#f8efe1,#f1e3cd)}
+  .dtag{display:inline-block;font-family:"Courier New",monospace;font-size:10px;font-weight:700;
+    letter-spacing:1px;border:1px solid var(--sunset);color:var(--sunset);padding:3px 9px;border-radius:6px}
+  .driver h3{font-family:Georgia,serif;font-size:19px;color:var(--ink);margin:11px 0 6px}
+  .lbl{font-family:"Courier New",monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;
+    color:var(--muted);margin:18px 0 7px}
+  .driver p,.tp{font-size:14px;line-height:1.6;color:var(--txt)}
+
+  .hero{padding:34px 6px 28px;text-align:center}
+  .hero .kpi{font-family:"Courier New",monospace;font-size:11px;letter-spacing:2px;color:var(--muted);text-transform:uppercase}
+  .hero .num{font-family:Georgia,serif;font-size:60px;font-weight:700;color:var(--bad);line-height:1;margin:12px 0 10px}
+  .hero .verdict{display:inline-block;font-family:"Courier New",monospace;font-size:11px;font-weight:700;
+    letter-spacing:1px;background:rgba(181,64,42,.13);color:var(--bad);padding:5px 11px;border-radius:99px}
+  .hero .ctx{font-family:"Courier New",monospace;font-size:12px;color:var(--txt2);margin-top:10px}
+  .heroline{height:1px;background:var(--line)}
+
+  /* arrow chain */
+  .chain{display:flex;align-items:stretch;flex-wrap:wrap;margin:4px 0 12px}
+  .cnode{flex:1;min-width:84px;background:#fff7ec;border:1px solid var(--line);border-radius:10px;
+    padding:10px 8px;text-align:center}
+  .cnode .cn{font-family:"Courier New",monospace;font-size:10px;color:var(--muted);letter-spacing:.5px}
+  .cnode .cv{font-family:Georgia,serif;font-size:16px;font-weight:700;margin-top:3px}
+  .cnode.up .cv{color:var(--good)}.cnode.dn .cv{color:var(--bad)}.cnode.end .cv{color:var(--bad)}
+  .carrow{display:flex;align-items:center;justify-content:center;color:var(--sunset);font-size:17px;font-weight:700;padding:0 4px}
+
+  /* diverging bars */
+  .abar{display:grid;grid-template-columns:64px 1fr 54px;align-items:center;gap:10px;margin:9px 0}
+  .al{font-family:"Courier New",monospace;font-size:12px;color:var(--txt2)}
+  .atrack{position:relative;height:14px}
+  .atrack::before{content:"";position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:var(--line)}
+  .afill{position:absolute;top:2px;height:10px;border-radius:3px}
+  .afill.pos{left:50%;background:#4f8a52}.afill.neg{right:50%;background:#b5402a}
+  .av{font-family:"Courier New",monospace;font-size:12px;font-weight:700;text-align:right}
+  .av.pos{color:var(--good)}.av.neg{color:var(--bad)}
+  .readline{font-size:14px;line-height:1.62;color:var(--ink);margin-top:14px;
+    border-top:1px solid var(--line2);padding-top:13px}
+
+  /* inline emphasis */
+  .em-bad{color:var(--bad);font-weight:700}
+  .em-good{color:var(--good);font-weight:700}
+  .chip{display:inline-block;font-family:"Courier New",monospace;font-size:12px;font-weight:700;
+    background:rgba(181,64,42,.12);color:var(--bad);padding:1px 7px;border-radius:6px}
+  .chip.g{background:rgba(79,138,82,.15);color:var(--good)}
+
+  /* learn rail + 3-frame */
+  .rail{display:flex;gap:8px;margin:14px 0 12px}
+  .rail button{flex:1;border:1px solid var(--line);background:var(--card1);color:var(--txt2);
+    padding:11px 0;border-radius:11px;font-family:"Courier New",monospace;font-size:11px;font-weight:700;cursor:pointer}
+  .rail button.on{border-color:var(--sunset);background:rgba(194,90,42,.10);color:var(--sunset)}
+  .track{display:flex;gap:11px;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;padding:0 16px 8px}
+  .track::-webkit-scrollbar{height:0}
+  .lc{scroll-snap-align:center;flex:0 0 87%;background:linear-gradient(165deg,var(--card1),var(--card2));
+    border:1px solid var(--line);border-radius:14px;padding:18px;min-height:282px;display:flex;flex-direction:column}
+  .fstep{font-family:"Courier New",monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--muted)}
+  .lc h3{font-family:Georgia,serif;font-size:19px;color:var(--ink);margin:8px 0 4px;line-height:1.3}
+  .lcap{font-family:"Courier New",monospace;font-size:11px;color:var(--muted)}
+  .lc p{font-size:14px;line-height:1.58;color:var(--txt);margin-top:11px}
+  .fvis{margin:12px 0 2px;display:flex;align-items:center;gap:8px;font-family:"Courier New",monospace;
+    font-size:12px;color:var(--txt2);background:#fff7ec;border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  .fvis .g{color:var(--good);font-weight:700}.fvis .b{color:var(--bad);font-weight:700}
+  .fvis .s{color:var(--sunset);font-weight:700}
+  .lb{display:inline-block;font-family:"Courier New",monospace;font-size:10px;font-weight:700;
+    letter-spacing:1px;padding:4px 9px;border-radius:6px;align-self:flex-start;
+    background:rgba(181,64,42,.13);color:var(--bad)}
+  .actioncard{margin-top:auto;background:rgba(194,90,42,.10);border-left:3px solid var(--sunset);
+    border-radius:9px;padding:12px 13px;font-size:13.5px;line-height:1.5;color:var(--ink)}
+  .actioncard b{font-family:"Courier New",monospace;font-size:10px;letter-spacing:1px;color:var(--sunset);display:block;margin-bottom:5px}
+  .fdots{display:flex;gap:6px;justify-content:center;margin-top:12px}
+  .fdots i{width:6px;height:6px;border-radius:50%;background:var(--line)}
+  .fdots i.on{width:20px;border-radius:99px;background:var(--sunset)}
+  .hint{text-align:center;color:var(--muted);font-family:"Courier New",monospace;font-size:11px;margin-top:6px}
+
+  details{border:1px solid var(--line);border-radius:13px;margin-bottom:14px;background:var(--card1);overflow:hidden}
+  summary{list-style:none;cursor:pointer;padding:14px 16px;display:flex;justify-content:space-between;
+    align-items:center;font-family:"Courier New",monospace;font-size:13px;font-weight:700;color:var(--ink)}
+  summary::-webkit-details-marker{display:none}
+  summary .ch{color:var(--muted)}
+  .dbody{padding:0 16px 12px}
+  .band{font-family:"Courier New",monospace;font-size:10px;font-weight:700;letter-spacing:1px;
+    color:var(--sunset);margin:15px 0 2px;display:flex;align-items:center;gap:6px}
+  .band::before{content:"";width:3px;height:11px;background:var(--sunset);border-radius:2px}
+  .thead{display:grid;grid-template-columns:1fr auto auto auto;gap:16px;font-family:"Courier New",monospace;
+    font-size:10px;letter-spacing:1px;color:var(--muted);padding:4px 0;text-align:right}
+  .thead span:first-child{text-align:left}
+  .trow{display:grid;grid-template-columns:1fr auto auto auto;gap:16px;align-items:center;padding:11px 0;
+    border-top:1px solid var(--line2);font-family:"Courier New",monospace;font-size:13px}
+  .trow .nm{color:var(--ink);font-weight:600}.trow .tg,.trow .ac{color:var(--txt2);text-align:right}
+  .trow .vr{text-align:right;font-weight:700}.vr.good{color:var(--good)}.vr.bad{color:var(--bad)}
+  .di{display:flex;align-items:baseline;gap:10px;padding:8px 0;border-top:1px solid var(--line2)}
+  .di:first-child{border-top:0}.di .n{font-family:Georgia,serif;font-size:24px;font-weight:700;color:var(--bad)}
+  .di .t{font-family:"Courier New",monospace;font-size:12px;color:var(--txt2)}
+  .floor{font-family:"Courier New",monospace;font-size:12px;color:var(--muted);margin-top:11px;
+    line-height:1.7;border-top:1px solid var(--line2);padding-top:10px}
+  .day{display:grid;grid-template-columns:1fr auto auto 20px;gap:10px;align-items:center;padding:13px 4px;
+    border-top:1px solid var(--line2);font-family:"Courier New",monospace;font-size:13px}
+  .day .d{font-weight:700;color:var(--ink)}.day .dp{font-size:10px;color:var(--muted);margin-top:3px}
+  .day.today .d{color:var(--sunset)}.day .pct{color:var(--txt2);text-align:right}
+  .day .pts{font-weight:700;text-align:right}.pts.good{color:var(--good)}.pts.bad{color:var(--bad)}
+  .day .cv{color:var(--muted);text-align:center}
+  .ptot{display:grid;grid-template-columns:1fr auto auto;gap:10px;padding:13px 4px;border-top:2px solid var(--sunset);
+    font-family:"Courier New",monospace;font-size:13px}.ptot .pl{font-weight:700;color:var(--ink)}
+  .opzscale{position:relative;height:54px;margin:22px 6px 6px}
+  .lived{position:absolute;top:24px;left:0;right:0;height:3px;background:var(--line);border-radius:3px}
+  .opzbox{position:absolute;top:16px;height:19px;border-radius:5px;background:rgba(79,138,82,.16);border:1px solid rgba(79,138,82,.5)}
+  .opzlab{position:absolute;top:-2px;font-family:"Courier New",monospace;font-size:10px;color:var(--good);letter-spacing:1px}
+  .tickm{position:absolute;top:30px;font-family:"Courier New",monospace;font-size:10px;color:var(--muted)}
+  .nowdot{position:absolute;top:6px;width:11px;height:11px;border-radius:50%;background:var(--bad);transform:translateX(-50%)}
+  .nowlab{position:absolute;top:40px;font-family:"Courier New",monospace;font-size:11px;font-weight:700;color:var(--bad);transform:translateX(-50%)}
+  .teach{margin-top:10px;font-size:14px;line-height:1.58;color:var(--txt)}
+  .wk{display:flex;justify-content:space-between;align-items:center;padding:13px 2px;border-top:1px solid var(--line2);
+    font-family:"Courier New",monospace;font-size:13px}.wk .wl{font-weight:700;color:var(--ink)}
+  .wk .wb{font-size:11px;color:var(--txt2);border:1px solid var(--line);padding:4px 9px;border-radius:99px}.wk .wa{color:var(--muted)}
+  .nav{display:flex;justify-content:space-around;padding:13px 0 16px;border-top:1px solid var(--line);
+    background:var(--card1);flex-shrink:0;font-size:17px;color:var(--muted)}.nav .act{color:var(--sunset)}
+  .pane{display:none}.pane.on{display:block}
+</style>
+</head>
+<body>
+
+<div class="cap"><b>Composed</b>: arrow chain + inline emphasis on This Week; Learn keeps the
+  Recurring Leak / Repeatable Wins / Cross-Axis rail, each section as a 3-frame story. No em dashes.</div>
+
+<div class="phone">
+  <div class="appbar"><div class="ibtn">☰</div><div class="logo">F</div>
+    <div class="right"><div class="ibtn">◔</div><div class="ibtn">⚙</div></div></div>
+  <div class="hdr"><h1 class="serif">Variance</h1>
+    <div class="tabs">
+      <button class="on" data-t="week">This Week</button>
+      <button data-t="hist">History</button>
+      <button data-t="learn">Learn</button>
+    </div>
+  </div>
+  <div class="scroll">
+
+    <div class="pane on" id="week">
+      <div class="h2 serif">This Week</div><div class="sub">May 15 · Friday · Business Day 5 of 7</div>
+      <div class="hero">
+        <div class="kpi">This week vs best possible</div>
+        <div class="num serif">−$247</div>
+        <div class="verdict">▼ $247 LOST · below best possible</div>
+        <div class="ctx">actual labor 20.7% vs best possible 20.0%</div>
+      </div>
+      <div class="heroline"></div>
+
+      <div class="seclabel"><span class="tk"></span><span>Primary Driver</span><span class="rule"></span></div>
+      <div class="card driver">
+        <span class="dtag">VOLUME</span>
+        <h3 class="serif">Volume came in above plan</h3>
+
+        <div class="lbl">WHAT HAPPENED</div>
+        <div class="chain">
+          <div class="cnode up"><div class="cn">COVERS</div><div class="cv">↑ over plan</div></div>
+          <div class="carrow">→</div>
+          <div class="cnode dn"><div class="cn">CPLH</div><div class="cv">↓ soft</div></div>
+          <div class="carrow">→</div>
+          <div class="cnode end"><div class="cn">RESULT</div><div class="cv">−$247 lost</div></div>
+        </div>
+        <p class="tp">More guests showed up than you forecast, and the team carried them on the
+          hours already on the schedule. Both sides looked better because the extra covers grew the
+          sales side. The rule before you celebrate a good number: <span class="em-bad">check
+          CPLH</span>. Yours <span class="em-bad">ran below target</span>. The volume did work the
+          schedule should have done.</p>
+
+        <div class="lbl">DOLLAR ATTRIBUTION</div>
+        <div class="abar"><span class="al">covers</span><div class="atrack"><div class="afill pos" style="width:48%"></div></div><span class="av pos">+$686</span></div>
+        <div class="abar"><span class="al">cplh</span><div class="atrack"><div class="afill neg" style="width:32%"></div></div><span class="av neg">−$462</span></div>
+        <div class="abar"><span class="al">splh</span><div class="atrack"><div class="afill neg" style="width:28%"></div></div><span class="av neg">−$406</span></div>
+        <div class="abar"><span class="al">boh wage</span><div class="atrack"><div class="afill neg" style="width:2%"></div></div><span class="av neg">−$27</span></div>
+        <div class="abar"><span class="al">ppa</span><div class="atrack"><div class="afill neg" style="width:1.6%"></div></div><span class="av neg">−$21</span></div>
+        <div class="abar"><span class="al">foh wage</span><div class="atrack"><div class="afill neg" style="width:1.3%"></div></div><span class="av neg">−$17</span></div>
+        <div class="readline">Manage the variance, not the percentage. Covers were worth
+          <span class="chip g">+$686</span> to the floor, but a soft CPLH cost
+          <span class="chip">−$462</span> and the kitchen's SPLH cost <span class="chip">−$406</span>.
+          Net you finish <span class="em-bad">−$247 below best possible</span>, a loss this week.
+          A good week that hides a soft CPLH is <span class="em-bad">luck, not design</span>.</div>
+
+        <div class="lbl">WHAT TO STUDY</div>
+        <p class="tp">You cannot build a business on <span class="em-bad">accidents</span>. Do not raise
+          the forecast yet. First get <span class="em-bad">CPLH back inside its zone</span>: build FOH
+          hours from <span class="em-good">covers divided by your CPLH target</span>, not from last
+          week's sheet. One hot week that masks a soft CPLH is a <span class="em-bad">blip</span>. If
+          covers keep bailing out a schedule that runs below target, the leak is the schedule, not
+          the forecast.</p>
+      </div>
+
+      <details><summary>Week to date vs plan <span class="ch">›</span></summary><div class="dbody">
+        <div class="thead"><span>METRIC</span><span>TARGET</span><span>ACTUAL</span><span>VAR</span></div>
+        <div class="band">CONDITIONS</div>
+        <div class="trow"><span class="nm">Covers</span><span class="tg">910</span><span class="ac">992</span><span class="vr good">+82</span></div>
+        <div class="trow"><span class="nm">Blended Wage</span><span class="tg">$19.07</span><span class="ac">$19.10</span><span class="vr bad">+$0.03</span></div>
+        <div class="band">EXECUTION</div>
+        <div class="trow"><span class="nm">PPA</span><span class="tg">$41.87</span><span class="ac">$41.65</span><span class="vr bad">−$0.22</span></div>
+        <div class="trow"><span class="nm">FOH Hours</span><span class="tg">188</span><span class="ac">216</span><span class="vr bad">+28</span></div>
+        <div class="trow"><span class="nm">BOH Hours</span><span class="tg">212</span><span class="ac">231</span><span class="vr bad">+19</span></div>
+        <div class="trow"><span class="nm">CPLH</span><span class="tg">4.85</span><span class="ac">4.59</span><span class="vr bad">−0.26</span></div>
+        <div class="trow"><span class="nm">SPLH</span><span class="tg">$180</span><span class="ac">$179</span><span class="vr bad">−$0.87</span></div>
+        <div class="band">OUTCOMES</div>
+        <div class="trow"><span class="nm">FOH Labor %</span><span class="tg">8.1%</span><span class="ac">8.7%</span><span class="vr bad">+0.5 pts</span></div>
+      </div></details>
+
+      <details><summary>Loss if this continues <span class="ch">›</span></summary><div class="dbody" style="padding-top:10px">
+        <div class="di"><span class="n serif">−$247</span><span class="t">this week</span></div>
+        <div class="di"><span class="n serif">−$797</span><span class="t">this month</span></div>
+        <div class="di"><span class="n serif">−$2,658</span><span class="t">last 60 days</span></div>
+        <div class="di"><span class="n serif">−$16,170</span><span class="t">annualized</span></div>
+        <div class="floor">Best possible labor %: 20.0% &nbsp;·&nbsp; Actual labor %: 20.7% &nbsp;·&nbsp; Closable labor % gap: 0.7 pts</div>
+      </div></details>
+
+      <div class="seclabel"><span class="tk"></span><span>Full Week Projection</span><span class="rule"></span></div>
+      <div class="card" style="padding:4px 16px">
+        <div class="day"><div><span class="d">Mon</span><div class="dp">L D</div></div><span class="pct">20.7%</span><span class="pts bad">+0.2 pts</span><span class="cv">⌄</span></div>
+        <div class="day"><div><span class="d">Tue</span><div class="dp">L D</div></div><span class="pct">19.5%</span><span class="pts good">−1.0 pts</span><span class="cv">⌄</span></div>
+        <div class="day"><div><span class="d">Wed</span><div class="dp">L D</div></div><span class="pct">20.2%</span><span class="pts good">−0.3 pts</span><span class="cv">⌄</span></div>
+        <div class="day"><div><span class="d">Thu</span><div class="dp">L D</div></div><span class="pct">20.4%</span><span class="pts good">−0.0 pts</span><span class="cv">⌄</span></div>
+        <div class="day today"><div><span class="d">Fri</span><div class="dp">L D LN</div></div><span class="pct">22.1%</span><span class="pts bad">+1.6 pts</span><span class="cv">⌄</span></div>
+        <div class="day"><div><span class="d">Sat</span><div class="dp">L D LN</div></div><span class="pct">20.7%</span><span class="pts bad">+0.8 pts</span><span class="cv">⌄</span></div>
+        <div class="day"><div><span class="d">Sun</span><div class="dp">L D</div></div><span class="pct">19.9%</span><span class="pts good">−0.2 pts</span><span class="cv">⌄</span></div>
+        <div class="ptot"><span class="pl">PROJ TOTAL</span><span style="color:var(--txt2)">20.0% target</span><span class="pts bad">+0.5 pts</span></div>
+      </div>
+    </div>
+
+    <div class="pane" id="hist">
+      <div class="h2 serif">Previous Weeks</div><div class="sub">Jan 15 to May 15</div>
+      <div class="seclabel"><span class="tk"></span><span>CPLH vs your OPZ · 60-day</span><span class="rule"></span></div>
+      <div class="card">
+        <div class="opzscale">
+          <div class="lived"></div>
+          <span class="tickm" style="left:0">3.9</span><span class="tickm" style="right:0">5.3</span>
+          <div class="opzbox" style="left:46%;right:21%"></div>
+          <span class="opzlab" style="left:46%">OPZ 4.70</span><span class="opzlab" style="right:18%">5.00</span>
+          <div class="nowdot" style="left:36%"></div><div class="nowlab" style="left:36%">now 4.59</div>
+        </div>
+        <div class="teach"><b>What the zone is telling you.</b> The green band is where your CPLH is
+          healthy: enough hands to take care of the guest, not so many you are paying for tables that
+          are not there. You have sat <span class="em-bad">below it 5 of the last 6 weeks</span>. The
+          volume keeps showing up. The hours are not tightening to meet it.</div>
+      </div>
+      <div class="seclabel"><span class="tk"></span><span>Most common leak</span><span class="rule"></span></div>
+      <div class="card">
+        <h3 style="font-family:Georgia,serif;font-size:17px;color:var(--ink);margin:0 0 8px">CPLH below OPZ on busy weeks</h3>
+        <p class="tp">It has been your top driver in <span class="em-bad">8 of the last 24 dayparts</span>.
+          Once is a bad night. Eight times in the same place is a habit, and a habit is what Learn is for.</p>
+      </div>
+      <div class="seclabel"><span class="tk"></span><span>Previous weeks</span><span class="rule"></span></div>
+      <div class="card" style="padding:4px 16px">
+        <div class="wk"><span class="wl">May 5 to 11</span><span class="wb">CPLH below OPZ</span><span class="wa">›</span></div>
+        <div class="wk"><span class="wl">Apr 28 to May 4</span><span class="wb">Covers light</span><span class="wa">›</span></div>
+        <div class="wk"><span class="wl">Apr 21 to 27</span><span class="wb">In the zone</span><span class="wa">›</span></div>
+      </div>
+    </div>
+
+    <div class="pane" id="learn">
+      <div class="h2 serif">Learn</div><div class="sub">One idea per frame. Swipe each section.</div>
+      <div class="rail" id="rail">
+        <button class="on" data-c="leak">⚠ Recurring Leak</button>
+        <button data-c="win">↗ Repeatable Wins</button>
+        <button data-c="cross">⤬ Cross-Axis</button>
+      </div>
+
+      <div class="track" id="leakTrack">
+        <div class="lc"><div class="fstep">FRAME 1 · WHAT HAPPENED</div>
+          <h3 class="serif">CPLH below OPZ on busy weeks</h3>
+          <div class="lcap">Repeated 6 of last 12 Fri dinners</div>
+          <div class="fvis"><span class="g">covers ↑</span> carried a <span class="b">CPLH ↓</span> week</div>
+          <p>More front-of-house hours were scheduled than the covers needed. Servers had tables to
+            spare, and you paid for <span class="em-bad">hours the volume never used</span>. The
+            kitchen was fine. This is a front-of-house scheduling decision, which is exactly why it
+            is fixable.</p></div>
+        <div class="lc"><div class="fstep">FRAME 2 · WHY IT MATTERS</div>
+          <h3 class="serif">Luck does not repeat</h3>
+          <div class="fvis">best possible <span class="b">→ −$247 loss</span> when CPLH runs soft</div>
+          <p>This is your <span class="em-bad">most frequent top driver</span>. A hot week hides it.
+            Next normal week the same soft CPLH shows up as a real gap with no covers to bail it out.
+            Worth learning once, not re-fighting every week.</p></div>
+        <div class="lc"><div class="fstep">FRAME 3 · WHAT TO DO</div>
+          <h3 class="serif">Schedule from the math</h3>
+          <div class="fvis">FOH hours = <span class="g">covers ÷ CPLH target</span></div>
+          <p>Before you build next week's FOH schedule, start from the math. That number is the FOH
+            hours the week actually needs, not <span class="em-bad">last week's sheet</span>.</p>
+          <div class="actioncard"><b>THE PLAY</b>Rebuild FOH off the cover forecast and your CPLH
+            target before the roster goes out. Re-check the gap next week.</div></div>
+      </div>
+
+      <div class="track" id="winTrack" style="display:none">
+        <div class="lc"><div class="fstep">FRAME 1 · WHAT HELD</div>
+          <h3 class="serif">Tuesday lunch held its OPZ</h3>
+          <div class="lcap">In the zone 9 of last 12 Tue lunches</div>
+          <div class="fvis"><span class="g">CPLH in zone</span> · service held</div>
+          <p>FOH hours were matched to the covers that came in. The team moved efficiently, service
+            held, and labor <span class="em-good">landed below model</span>. That is what a well
+            scheduled shift looks like.</p></div>
+        <div class="lc"><div class="fstep">FRAME 2 · WHY IT MATTERS</div>
+          <h3 class="serif">You cannot repeat what you do not understand</h3>
+          <div class="fvis">unnamed win <span class="b">→</span> <span class="g">named benchmark</span></div>
+          <p>The shift where the schedule matched the volume is the one to copy, but only if you can
+            name <span class="em-good">why</span> it worked. An accident you cannot reproduce is not
+            a benchmark.</p></div>
+        <div class="lc"><div class="fstep">FRAME 3 · WHAT TO PROTECT</div>
+          <h3 class="serif">Bank the setup</h3>
+          <div class="fvis">cover count · floor plan · deployment</div>
+          <p>Write the setup down: cover count, who was on the floor, how the team was deployed.
+            Find which dayparts can sustain it <span class="em-bad">without pushing CPLH above the
+            OPZ ceiling</span>.</p>
+          <div class="actioncard"><b>THE PLAY</b>Save this shift's deployment as the benchmark and
+            build the same daypart from it next week.</div></div>
+      </div>
+
+      <div class="track" id="crossTrack" style="display:none">
+        <div class="lc"><span class="lb">CPLH ↓ · SPLH ↑</span>
+          <h3 class="serif">Forecast was low. The team executed.</h3>
+          <p><b>What happened.</b> Fewer guests walked in than the schedule was built for, but
+            everyone who came spent well and was served right. Not an execution miss.</p>
+          <p><b>What to do.</b> Fix the forecast, not the floor. Re-anchor covers, then build FOH
+            from <span class="em-good">covers ÷ CPLH target</span>.</p>
+          <p><b>What to study.</b> CPLH below with SPLH above is a volume problem, not a
+            people problem.</p></div>
+        <div class="lc"><span class="lb">CPLH = · SPLH ↓</span>
+          <h3 class="serif">Kitchen slowed. Dining room held.</h3>
+          <p><b>What happened.</b> Covers came in at forecast and FOH flexed to them. The kitchen
+            did not keep pace. Leak is back of house only.</p>
+          <p><b>What to do.</b> Pull ticket times and BOH hours vs sales. Clean tickets mean
+            overstaffing, slow tickets mean throughput.</p>
+          <p><b>What to study.</b> When only the kitchen axis moves, the diagnosis lives
+            in BOH deployment or throughput.</p></div>
+        <div class="lc"><span class="lb">CPLH ↑ · SPLH ↓</span>
+          <h3 class="serif">Floor ran lean. Kitchen slowed.</h3>
+          <p><b>What happened.</b> The dining room covered more guests with fewer hours. The kitchen
+            lagged. Two stories on one shift.</p>
+          <p><b>What to do.</b> Check PPA first. If it held, document the FOH deployment. Then look
+            at the kitchen on its own.</p>
+          <p><b>What to study.</b> Opposite-axis movement is two stories on one shift.
+            Do not average them into one take.</p></div>
+        <div class="lc"><span class="lb">CPLH ↓ · SPLH ↓</span>
+          <h3 class="serif">Demand was soft.</h3>
+          <p><b>What happened.</b> Fewer covers and lower spend. Both sides carried more hours than
+            the volume needed. Leak is upstream of execution.</p>
+          <p><b>What to do.</b> Check weather, a nearby event, a day-of-week anomaly first. If
+            structural, re-anchor the forecast and trim both sides.</p>
+          <p><b>What to study.</b> Both axes down together is the one case you look
+            outside the building first.</p></div>
+      </div>
+
+      <div class="fdots" id="fdots"></div>
+      <div class="hint">‹ swipe ›</div>
+    </div>
+
+  </div>
+  <div class="nav"><span>⤢</span><span class="act">▥</span><span>▦</span><span>↻</span></div>
+</div>
+
+<script>
+  document.querySelectorAll('.tabs button').forEach(function(b){
+    b.onclick=function(){
+      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+      document.getElementById(b.dataset.t).classList.add('on');
+      document.querySelector('.scroll').scrollTop=0;
+    };
+  });
+  var tracks={leak:document.getElementById('leakTrack'),
+              win:document.getElementById('winTrack'),
+              cross:document.getElementById('crossTrack')};
+  var dots=document.getElementById('fdots');
+  function setDots(t){
+    var n=t.children.length;
+    dots.innerHTML=Array.from({length:n}).map((_,i)=>'<i'+(i===0?' class="on"':'')+'></i>').join('');
+    t.onscroll=function(){
+      var i=Math.round(t.scrollLeft/(t.scrollWidth/n));
+      [...dots.children].forEach((d,k)=>d.classList.toggle('on',k===i));
+    };
+  }
+  document.querySelectorAll('#rail button').forEach(function(b){
+    b.onclick=function(){
+      document.querySelectorAll('#rail button').forEach(x=>x.classList.remove('on'));
+      b.classList.add('on');
+      Object.keys(tracks).forEach(k=>tracks[k].style.display=(k===b.dataset.c)?'flex':'none');
+      tracks[b.dataset.c].scrollLeft=0;
+      setDots(tracks[b.dataset.c]);
+    };
+  });
+  setDots(tracks.leak);
+</script>
+</body>
+</html>
