@@ -227,26 +227,21 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
   /// The shared section widgets consume the whole-day projection, which
   /// reproduces the pre-refactor inline render exactly.
   ///
-  /// The leading primary-driver chip is additive chrome only — it
-  /// displays the already-computed `rm.primaryLeverCard` (the read
-  /// model resolves it through `LeverCards.lookup` in `buildWholeDay`;
-  /// no new metric math here). It is positioned to mirror the daypart
-  /// lens, where `_DaypartPeriodHeader`'s `_DaypartDriverChip` sits
-  /// directly above the section groups, so the two lenses read as a
-  /// true 1:1. The chip uses the SAME `_DaypartDriverChip` widget and
-  /// its existing null → "No pattern yet" degraded state (7.58 F-1 /
-  /// F-6); whole-day always determines a lever so it shows a real
-  /// driver, never a phantom.
+  /// The leading [_WholeDayPeriodHeader] is additive chrome only — it
+  /// mirrors the daypart lens's `_DaypartPeriodHeader` 1:1: the
+  /// operator's operating-envelope clock window above the SAME
+  /// `_DaypartDriverChip`. The window is the first configured service
+  /// period's start to the last configured period's end ("start to end
+  /// the way they set it up"), read from the SAME operator-scoped
+  /// `ServicePeriodDefinition` list the per-period header uses — not a
+  /// hardcoded range and no new metric math. The chip still displays
+  /// the already-computed `rm.primaryLeverCard` (resolved through
+  /// `LeverCards.lookup` in `buildWholeDay`); whole-day always
+  /// determines a lever so it shows a real driver, never a phantom.
   List<Widget> _wholeDaySlivers(ShiftDashboardReadModel rm) {
     return [
       SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: _DaypartDriverChip(card: rm.primaryLeverCard),
-          ),
-        ),
+        child: _WholeDayPeriodHeader(primaryLeverCard: rm.primaryLeverCard),
       ),
       ..._sectionGroups(
         data: _ShiftSectionViewData.fromWholeDay(rm),
@@ -1946,6 +1941,62 @@ class _DaypartPeriodHeader extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// Whole-day analogue of [_DaypartPeriodHeader] — a true 1:1 of the
+/// per-period header for the authoritative Whole Day lens.
+///
+/// Renders the operator's full operating envelope ("start to end the
+/// way they set it up") above the SAME `_DaypartDriverChip` the daypart
+/// header shows, with the SAME padding/typography, so Whole Day and the
+/// per-period lens are visually consistent.
+///
+/// Proper behaviour (not just UX): the window is DERIVED from the SAME
+/// operator-scoped `ServicePeriodDefinition` list `_DaypartPeriodHeader`
+/// reads (`ShiftServicePeriodNotifier.definitions`, i.e. the persisted
+/// per-(operator, location) timing config — demo defs only as the
+/// fallback) — never a hardcoded range. It is the first configured
+/// period's `startLocalTime` to the last configured period's
+/// `endLocalTime` in canonical sort order (`ServicePeriodDefinitionResolver
+/// .ordered`), the SAME order the `_ShiftPeriodSelector` pills use, so
+/// the envelope tracks exactly how the operator sequenced their
+/// dayparts (a past-midnight close like Late Night `02:00` reads as the
+/// honest envelope end). When no periods are configured the window is
+/// omitted entirely (Metric Honesty / Design Rule 2 — no phantom range);
+/// the driver chip still renders so Whole Day never loses its driver.
+class _WholeDayPeriodHeader extends StatelessWidget {
+  final LeverCardData primaryLeverCard;
+
+  const _WholeDayPeriodHeader({required this.primaryLeverCard});
+
+  @override
+  Widget build(BuildContext context) {
+    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+    final definitions =
+        periodNotifier?.definitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+    final ordered = ServicePeriodDefinitionResolver.ordered(definitions);
+    final window = ordered.isEmpty
+        ? null
+        : '${ordered.first.startLocalTime} – ${ordered.last.endLocalTime}';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (window != null) ...[
+            Text(
+              window,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+            const SizedBox(height: 8),
+          ],
+          _DaypartDriverChip(card: primaryLeverCard),
+        ],
+      ),
     );
   }
 }
