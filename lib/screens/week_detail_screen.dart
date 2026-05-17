@@ -12,7 +12,10 @@ import '../widgets/comparison_group_band.dart';
 import '../widgets/comparison_metric_row.dart';
 import '../widgets/dollar_impact_card.dart';
 import '../widgets/lever_card.dart';
+import '../widgets/money_sentiment.dart';
 import '../widgets/sticky_section_delegate.dart';
+import '../widgets/variance/driver_arrow_chain.dart';
+import '../widgets/variance/sticky_disclosure_section.dart';
 
 class WeekDetailScreen extends StatelessWidget {
   final WeekRecord week;
@@ -80,20 +83,19 @@ class WeekDetailScreen extends StatelessWidget {
           ),
 
           // ── Grouped Summary Table ───────────────────────────────────
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('WEEKLY SUMMARY vs LOCKED TARGETS'),
-              ),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: const StickyColumnHeaderDelegate(),
-              ),
-              SliverToBoxAdapter(
-                child: _GroupedSummaryTable(week: week),
-              ),
-            ],
+          // Variance V2 parity (G4): the closed-week summary now renders
+          // inside the SAME shared single-title disclosure the This Week
+          // tab uses for its `Week to date vs plan` table — collapsed by
+          // default, the title IS the dropdown header, and the
+          // TARGET/ACTUAL/VAR column header pins under it while expanded
+          // (showColumnHeader: true), mirroring
+          // variance_this_week_tab.dart `StickyDisclosureSection(... 'Week
+          // to date vs plan', showColumnHeader: true ...)`. The
+          // `_GroupedSummaryTable` content is byte-preserved.
+          StickyDisclosureSection(
+            title: 'Weekly summary vs locked targets',
+            showColumnHeader: true,
+            child: _GroupedSummaryTable(week: week),
           ),
 
           // ── Dollar Impact Card ─────────────────────────────────────
@@ -102,31 +104,37 @@ class WeekDetailScreen extends StatelessWidget {
           // the closing wrote frozen month + 60-day windows). Legacy
           // rows (closed before V22) fall back to the historical 2-row
           // + boilerplate-footer view; no silent re-modeling.
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('DOLLAR IMPACT'),
-              ),
-              SliverToBoxAdapter(
-                child: DollarImpactCard(
-                  weekImpact: week.dollarGap,
-                  monthImpact: week.monthDollarImpact,
-                  sixtyDayImpact: week.sixtyDayDollarImpact,
-                  annualizedImpact: week.frozenAnnualizedImpact ??
-                      (week.closedAt == null
-                          ? (week.dollarGap >= 0
-                              ? week.dollarGapAnnualized
-                              : -week.dollarGapAnnualized)
-                          : null),
-                  footerText: week.closedAt != null
-                      ? 'As of close, ${_fmtClosedAt(week.closedAt!)}'
-                      : 'At \$3M annual sales. One location.',
-                  theoreticalLaborPct: week.theoreticalLaborPct,
-                  actualLaborPct: week.actualLaborPct,
-                ),
-              ),
-            ],
+          // Variance V2 parity (G1): the DOLLAR IMPACT section now uses
+          // the SAME shared single-title disclosure the This Week tab
+          // uses for its dollar-impact card. The title is the verbatim
+          // sentiment-driven expression from
+          // variance_this_week_tab.dart (`MoneySentiment.fromDollarGap(
+          // week.dollarGap).favorable ? 'Win if this continues' : 'Loss
+          // if this continues'`) — it must NOT hardcode "Loss" (a week
+          // at or under best possible is a win). The favourable / loss
+          // decision comes from the single MoneySentiment source; the
+          // `DollarImpactCard` content + all its args are byte-preserved
+          // (FROZEN math). Collapsed by default, same as This Week.
+          StickyDisclosureSection(
+            title: MoneySentiment.fromDollarGap(week.dollarGap).favorable
+                ? 'Win if this continues'
+                : 'Loss if this continues',
+            child: DollarImpactCard(
+              weekImpact: week.dollarGap,
+              monthImpact: week.monthDollarImpact,
+              sixtyDayImpact: week.sixtyDayDollarImpact,
+              annualizedImpact: week.frozenAnnualizedImpact ??
+                  (week.closedAt == null
+                      ? (week.dollarGap >= 0
+                          ? week.dollarGapAnnualized
+                          : -week.dollarGapAnnualized)
+                      : null),
+              footerText: week.closedAt != null
+                  ? 'As of close, ${_fmtClosedAt(week.closedAt!)}'
+                  : 'At \$3M annual sales. One location.',
+              theoreticalLaborPct: week.theoreticalLaborPct,
+              actualLaborPct: week.actualLaborPct,
+            ),
           ),
 
           // ── Primary Lever ──────────────────────────────────────────
@@ -178,6 +186,23 @@ class WeekDetailScreen extends StatelessWidget {
                   return LeverCardWidget(
                     data: lever,
                     dollarImpactByAxis: dollarImpactByAxis,
+                    // Variance V2 parity (G2): the 3-node arrow chain
+                    // renders INSIDE the single bordered driver card,
+                    // exactly as the This Week tab wires it
+                    // (variance_this_week_tab.dart `chainAboveWhatHappened:
+                    // DriverArrowChain(lever: lever, dollarImpactByAxis:
+                    // primaryDriverDollarImpactByAxis)`). It consumes the
+                    // SAME `dollarImpactByAxis` map computed above from the
+                    // pre-existing `LaborModel.attributeDollarImpactByAxis`
+                    // call — no new math. When `dollarImpactByAxis` is null
+                    // (legacy row without locked targets) `DriverArrowChain`
+                    // self-suppresses to `SizedBox.shrink()`; the
+                    // `lever == null` degraded branch above is untouched
+                    // and renders no chain.
+                    chainAboveWhatHappened: DriverArrowChain(
+                      lever: lever,
+                      dollarImpactByAxis: dollarImpactByAxis,
+                    ),
                     // 7.58.UX.8 — OPZ-aware row annotation. `WeekRecord`
                     // does not yet preserve the OPZ ceiling alongside
                     // its locked target rates, so closed-week rows pass

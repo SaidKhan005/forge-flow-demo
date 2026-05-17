@@ -64,6 +64,43 @@ Future<void> _scrollWeekDetailToText(WidgetTester tester, String text) async {
   );
 }
 
+/// Variance V2 parity (G1 / G4): the closed-week summary table and the
+/// dollar-impact card now render inside the SAME shared
+/// `StickyDisclosureSection` the This Week tab uses (default-collapsed,
+/// content built only when expanded). Tests that assert the disclosed
+/// CONTENT must first expand the disclosure by its title.
+///
+/// Same technique as variance_visual_widget_test.dart
+/// `_expandCollapsibleSections`: the summary `Text` + its wrapping
+/// `InkWell` live in an offstage `SliverToBoxAdapter` beneath one or
+/// two PINNED sticky delegates, so a coordinate tap is unreliable
+/// (it lands on the sticky overlay). Match the `InkWell` whose subtree
+/// carries the title string and drive its real `onTap` toggle directly.
+Future<void> _expandWeekDetailDisclosure(
+  WidgetTester tester,
+  String title,
+) async {
+  final tappable = find.ancestor(
+    of: find.text(title, skipOffstage: false),
+    matching: find.byType(InkWell, skipOffstage: false),
+  );
+  for (final element in tappable.evaluate().toList()) {
+    final onTap = (element.widget as InkWell).onTap;
+    if (onTap == null) continue;
+    onTap();
+    await tester.pump();
+    await tester.pump();
+  }
+}
+
+/// The G1 dollar-impact disclosure title is the verbatim
+/// `MoneySentiment.fromDollarGap` expression (same as the This Week
+/// tab): `dollarGap > 0` (over best possible, a loss) renders
+/// "Loss if this continues"; `dollarGap <= 0` renders
+/// "Win if this continues".
+String _dollarImpactDisclosureTitle(WeekRecord week) =>
+    week.dollarGap <= 0 ? 'Win if this continues' : 'Loss if this continues';
+
 bool _includePrunedLabelGroups() => false;
 
 // 7.55q.5: WeekRecord fixtures now include `lockedRequiredFohHours` /
@@ -253,12 +290,30 @@ void main() {
     testWidgets('renders core history sections and preserved locked targets',
         (tester) async {
       await _pumpWeekDetail(tester, _overModel);
-      expect(find.text('WEEKLY SUMMARY vs LOCKED TARGETS'), findsOneWidget);
-      expect(find.text('CONDITIONS'), findsOneWidget);
-      expect(find.text('EXECUTION'), findsOneWidget);
-      expect(find.text('OUTCOMES'), findsOneWidget);
-      expect(find.text('260'), findsWidgets);
-      expect(find.text('275'), findsWidgets);
+      // DELIBERATE V2 SPEC CHANGE, not a regression. Variance V2
+      // parity (G4): the closed-week summary is now the SAME shared
+      // single-title disclosure the This Week tab uses for its
+      // `Week to date vs plan` table. The old uppercase pinned
+      // `StickySectionDelegate` title (`WEEKLY SUMMARY vs LOCKED
+      // TARGETS`) is gone; the section is the plain-English disclosure
+      // header `Weekly summary vs locked targets`, collapsed by
+      // default, so the CONDITIONS/EXECUTION/OUTCOMES bands + the
+      // preserved-target cells (260 / 275) only render once expanded.
+      expect(
+        find.text('WEEKLY SUMMARY vs LOCKED TARGETS', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text('Weekly summary vs locked targets', skipOffstage: false),
+        findsOneWidget,
+      );
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
+      expect(find.text('CONDITIONS', skipOffstage: false), findsOneWidget);
+      expect(find.text('EXECUTION', skipOffstage: false), findsOneWidget);
+      expect(find.text('OUTCOMES', skipOffstage: false), findsOneWidget);
+      expect(find.text('260', skipOffstage: false), findsWidgets);
+      expect(find.text('275', skipOffstage: false), findsWidgets);
 
       await _scrollWeekDetailToText(tester, 'PRIMARY DRIVER');
       expect(
@@ -266,11 +321,27 @@ void main() {
         findsAtLeastNWidgets(1),
       );
 
-      await _scrollWeekDetailToText(tester, 'DOLLAR IMPACT');
+      // DELIBERATE V2 SPEC CHANGE, not a regression. Variance V2
+      // parity (G1): the DOLLAR IMPACT section now uses the SAME shared
+      // sentiment-titled disclosure the This Week tab uses. The plain
+      // uppercase `DOLLAR IMPACT` delegate title is gone; the single
+      // disclosure header is the verbatim
+      // `MoneySentiment.fromDollarGap(week.dollarGap)` expression.
+      // `_overModel.dollarGap = 478.50 > 0` (over best possible, a
+      // loss) → "Loss if this continues".
       expect(
         find.text('DOLLAR IMPACT', skipOffstage: false),
-        findsAtLeastNWidgets(1),
+        findsNothing,
       );
+      expect(
+        find.text(
+          _dollarImpactDisclosureTitle(_overModel),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(_dollarImpactDisclosureTitle(_overModel),
+          'Loss if this continues');
     });
   });
 
@@ -331,9 +402,14 @@ void main() {
         home: WeekDetailScreen(week: _overModel),
       ));
       await tester.pump();
-      // _overModel.lockedRequiredFohHours = 260 â€” must render literally.
-      // Note: LaborModel.modelFohHours(1200, 4.58) = 262, distinct from 260.
-      expect(find.text('260'), findsWidgets);
+      // Variance V2 parity (G4): the summary table is now collapsed
+      // by default inside the shared disclosure; expand it before
+      // asserting cell content. _overModel.lockedRequiredFohHours =
+      // 260 â€” must render literally. Note:
+      // LaborModel.modelFohHours(1200, 4.58) = 262, distinct from 260.
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
+      expect(find.text('260', skipOffstage: false), findsWidgets);
     });
 
     testWidgets('BOH Hours target row shows preserved lockedRequiredBohHours', (tester) async {
@@ -342,9 +418,13 @@ void main() {
         home: WeekDetailScreen(week: _overModel),
       ));
       await tester.pump();
-      // _overModel.lockedRequiredBohHours = 275 â€” must render literally.
-      // Note: LaborModel.modelBohHours(1200, 41.79, 180.0) = 279, distinct from 275.
-      expect(find.text('275'), findsWidgets);
+      // Variance V2 parity (G4): expand the collapsed summary
+      // disclosure first. _overModel.lockedRequiredBohHours = 275 â€”
+      // must render literally. Note: LaborModel.modelBohHours(1200,
+      // 41.79, 180.0) = 279, distinct from 275.
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
+      expect(find.text('275', skipOffstage: false), findsWidgets);
     });
   });
 
@@ -370,7 +450,12 @@ void main() {
       await tester.pump();
       // "â€”" appears in: FOH target, FOH variance, BOH target, BOH variance,
       // Blended Wage target, Blended Wage variance. Must be >= 4 occurrences.
-      expect(find.text('\u2014'), findsAtLeastNWidgets(4));
+      // Variance V2 parity (G4): the summary table is collapsed by
+      // default inside the shared disclosure; expand it first.
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
+      expect(find.text('\u2014', skipOffstage: false),
+          findsAtLeastNWidgets(4));
     });
 
     test('preservedTargetFohHours / preservedTargetBohHours return null', () {
@@ -418,6 +503,10 @@ void main() {
         home: WeekDetailScreen(week: record),
       ));
       await tester.pump();
+      // Variance V2 parity (G4): expand the collapsed summary
+      // disclosure before asserting the Blended Wage cell.
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
 
       // Canonical hour-weighted actual
       final expectedWeighted =
@@ -426,9 +515,13 @@ void main() {
       // Pre-fix unweighted mean (must NOT render)
       final unweightedMean = (blendedFoh + blendedBoh) / 2;
 
-      expect(find.text('\$${expectedWeighted.toStringAsFixed(2)}'),
+      expect(find.text('\$${expectedWeighted.toStringAsFixed(2)}',
+              skipOffstage: false),
           findsOneWidget);
-      expect(find.text('\$${unweightedMean.toStringAsFixed(2)}'), findsNothing);
+      expect(
+          find.text('\$${unweightedMean.toStringAsFixed(2)}',
+              skipOffstage: false),
+          findsNothing);
     });
 
     testWidgets('target blended wage uses preserved plan hours Ã— locked wages', (tester) async {
@@ -437,15 +530,23 @@ void main() {
         home: WeekDetailScreen(week: record),
       ));
       await tester.pump();
+      // Variance V2 parity (G4): expand the collapsed summary
+      // disclosure before asserting the Blended Wage cell.
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
 
       final expectedWeighted =
           (lockedFoh * targetFohWage + lockedBoh * targetBohWage) /
               (lockedFoh + lockedBoh);
       final unweightedMean = (targetFohWage + targetBohWage) / 2;
 
-      expect(find.text('\$${expectedWeighted.toStringAsFixed(2)}'),
+      expect(find.text('\$${expectedWeighted.toStringAsFixed(2)}',
+              skipOffstage: false),
           findsOneWidget);
-      expect(find.text('\$${unweightedMean.toStringAsFixed(2)}'), findsNothing);
+      expect(
+          find.text('\$${unweightedMean.toStringAsFixed(2)}',
+              skipOffstage: false),
+          findsNothing);
     });
   });
 
@@ -465,8 +566,18 @@ void main() {
         home: WeekDetailScreen(week: _underModel),
       ));
       await tester.pump();
-      // Dollar impact card uses '+' sign for under-model
-      expect(find.textContaining('+\$'), findsWidgets);
+      // Variance V2 parity (G1): the dollar-impact card is now
+      // collapsed by default inside the shared sentiment-titled
+      // disclosure. _underModel.dollarGap = -396.00 <= 0 (at/under
+      // best possible, a win) → title "Win if this continues".
+      // Expand it, then assert the '+' sign the card renders for an
+      // under-model week.
+      expect(_dollarImpactDisclosureTitle(_underModel),
+          'Win if this continues');
+      await _expandWeekDetailDisclosure(
+          tester, _dollarImpactDisclosureTitle(_underModel));
+      expect(find.textContaining('+\$', skipOffstage: false),
+          findsWidgets);
     });
   });
 
@@ -550,6 +661,105 @@ void main() {
     });
   });
 
+  // Variance V2 parity (G2 / G1) â€” NEW coverage. The History "open a
+  // past week" detail screen now wires the SAME 3-node DriverArrowChain
+  // (G2) and the SAME sentiment-titled dollar-impact disclosure (G1)
+  // the This Week tab uses. The historical per-axis attribution map is
+  // the PRE-EXISTING computed data on week_detail_screen.dart (the
+  // existing LaborModel.attributeDollarImpactByAxis call guarded by the
+  // locked-target null check) â€” NOT new or hardcoded math.
+  group('WeekDetailScreen â€” Variance V2 driver chain + sentiment title (G2/G1)',
+      () {
+    testWidgets(
+        'over-model week with locked targets renders the 3-node DriverArrowChain',
+        (tester) async {
+      // _overModel has full locked targets + a known lever
+      // (cplh_down), so the pre-existing attribution map is non-null
+      // and DriverArrowChain renders its 3 nodes inside the single
+      // driver card. Node 3 is labelled 'RESULT'.
+      await _pumpWeekDetail(tester, _overModel);
+      await _scrollWeekDetailToText(tester, 'RESULT');
+      expect(find.text('RESULT', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets(
+        'legacy week with null locked targets self-suppresses the chain '
+        'but still renders the sentiment title from dollarGap',
+        (tester) async {
+      // No targetCPLH/SPLH/PPA/FohWage/BohWage â†’ the screen's
+      // existing locked-target null guard skips attribution, the map
+      // is null, and DriverArrowChain self-suppresses to
+      // SizedBox.shrink() (no 'RESULT' node). The dollar-impact
+      // sentiment disclosure title still renders, decided purely from
+      // week.dollarGap via MoneySentiment.fromDollarGap.
+      const legacyNoTargets = WeekRecord(
+        weekId: 'legacy-no-targets', weekLabel: 'LegacyNoTargets',
+        totalCovers: 1200, forecastCovers: 1200,
+        totalFohHours: 262, totalBohHours: 278,
+        avgPPA: 41.79, avgCPLH: 4.58,
+        theoreticalLaborPct: 20.48, actualLaborPct: 21.45,
+        dollarGap: 478.50, primaryLeverId: 'cplh_down',
+        // intentionally omit targetCPLH / targetSPLH / targetPPA /
+        // targetFohWage / targetBohWage â†’ no attribution map
+      );
+      await _pumpWeekDetail(tester, legacyNoTargets);
+      // Chain self-suppressed: no RESULT node anywhere in the tree.
+      expect(find.text('RESULT', skipOffstage: false), findsNothing);
+      // Title still renders from dollarGap (478.50 > 0 â†’ a loss).
+      expect(_dollarImpactDisclosureTitle(legacyNoTargets),
+          'Loss if this continues');
+      expect(
+        find.text(
+          _dollarImpactDisclosureTitle(legacyNoTargets),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'dollar-impact disclosure title equals the MoneySentiment'
+        '.fromDollarGap expression for both sign directions',
+        (tester) async {
+      // Parity: the History screen title is the verbatim
+      // `MoneySentiment.fromDollarGap(week.dollarGap).favorable
+      //   ? 'Win if this continues' : 'Loss if this continues'`
+      // expression â€” identical to variance_this_week_tab.dart. Over
+      // best possible (dollarGap > 0) is a loss; at/under (<= 0) is a
+      // win.
+      // Over-model (dollarGap = 478.50 > 0) â†’ Loss.
+      expect(_dollarImpactDisclosureTitle(_overModel),
+          'Loss if this continues');
+      await _pumpWeekDetail(tester, _overModel);
+      expect(
+        find.text('Loss if this continues', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Win if this continues', skipOffstage: false),
+        findsNothing,
+      );
+
+      // Under-model (dollarGap = -396.00 <= 0) â†’ Win.
+      expect(_dollarImpactDisclosureTitle(_underModel),
+          'Win if this continues');
+      await _pumpWeekDetail(tester, _underModel);
+      expect(
+        find.text('Win if this continues', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Loss if this continues', skipOffstage: false),
+        findsNothing,
+      );
+
+      // Zero gap (dollarGap = 0.0 <= 0) â†’ Win (at best possible is a
+      // win, never a loss â€” the no-hardcoded-"Loss" rule).
+      expect(_dollarImpactDisclosureTitle(_zeroGap),
+          'Win if this continues');
+    });
+  });
+
   group('WeekDetailScreen â€” partial week (7.55q.5)', () {
     testWidgets('partial week with preserved plan hours renders the preserved value literally', (tester) async {
       // 7.55q.5: target hours no longer scale with shiftsCompleted.
@@ -572,10 +782,13 @@ void main() {
         home: WeekDetailScreen(week: partial),
       ));
       await tester.pump();
-      // Full-week locked plan renders literally (262 / 278) regardless
-      // of shiftsCompleted â€” no proration.
-      expect(find.text('262'), findsWidgets);
-      expect(find.text('278'), findsWidgets);
+      // Variance V2 parity (G4): expand the collapsed summary
+      // disclosure first. Full-week locked plan renders literally
+      // (262 / 278) regardless of shiftsCompleted — no proration.
+      await _expandWeekDetailDisclosure(
+          tester, 'Weekly summary vs locked targets');
+      expect(find.text('262', skipOffstage: false), findsWidgets);
+      expect(find.text('278', skipOffstage: false), findsWidgets);
     });
 
     if (_includePrunedLabelGroups())
@@ -1009,11 +1222,18 @@ void main() {
     testWidgets('history screen wires frozen impact rows and depth triplet',
         (tester) async {
       await _pumpWeekDetail(tester, frozen);
-      await _scrollWeekDetailToText(tester, 'this week');
-      expect(find.text('this week'), findsOneWidget);
-      expect(find.text('this month'), findsOneWidget);
-      expect(find.text('last 60 days'), findsOneWidget);
-      expect(find.text('annualized'), findsOneWidget);
+      // Variance V2 parity (G1): the dollar-impact card is collapsed
+      // by default inside the shared sentiment-titled disclosure.
+      // frozen.dollarGap = 478.50 > 0 (over best possible, a loss) →
+      // title "Loss if this continues". Expand it, then assert the
+      // byte-preserved card rows.
+      expect(_dollarImpactDisclosureTitle(frozen), 'Loss if this continues');
+      await _expandWeekDetailDisclosure(
+          tester, _dollarImpactDisclosureTitle(frozen));
+      expect(find.text('this week', skipOffstage: false), findsOneWidget);
+      expect(find.text('this month', skipOffstage: false), findsOneWidget);
+      expect(find.text('last 60 days', skipOffstage: false), findsOneWidget);
+      expect(find.text('annualized', skipOffstage: false), findsOneWidget);
       // 7.58.UX.6.followup: footer is the Best Possible / Actual / Closable
       // Gap triplet whenever theoreticalLaborPct is non-null. Frozen fixture
       // carries theo=20.48 and actual=21.45, gap=+0.97 pts.
@@ -1021,10 +1241,12 @@ void main() {
         find.text(
           'Best Possible: 20.5%  ·  Actual: 21.4%'
           '  ·  Closable Gap: +1.0 pts',
+          skipOffstage: false,
         ),
         findsOneWidget,
       );
-      expect(find.text('As of close, Mar 29'), findsNothing);
+      expect(find.text('As of close, Mar 29', skipOffstage: false),
+          findsNothing);
     });
 
     if (_includePrunedLabelGroups())
@@ -1082,11 +1304,16 @@ void main() {
         // no monthDollarImpact / sixtyDayDollarImpact / closedAt
       );
       await _pumpWeekDetail(tester, legacy);
-      await _scrollWeekDetailToText(tester, 'this week');
-      expect(find.text('this week'), findsOneWidget);
-      expect(find.text('this month'), findsNothing);
-      expect(find.text('last 60 days'), findsNothing);
-      expect(find.text('annualized'), findsOneWidget);
+      // Variance V2 parity (G1): expand the collapsed dollar-impact
+      // disclosure. legacy.dollarGap = 200.0 > 0 (a loss) → title
+      // "Loss if this continues".
+      expect(_dollarImpactDisclosureTitle(legacy), 'Loss if this continues');
+      await _expandWeekDetailDisclosure(
+          tester, _dollarImpactDisclosureTitle(legacy));
+      expect(find.text('this week', skipOffstage: false), findsOneWidget);
+      expect(find.text('this month', skipOffstage: false), findsNothing);
+      expect(find.text('last 60 days', skipOffstage: false), findsNothing);
+      expect(find.text('annualized', skipOffstage: false), findsOneWidget);
       // 7.58.UX.6.followup: theoreticalLaborPct is non-null on this legacy
       // fixture, so the footer renders the depth triplet (theo=20.48,
       // actual=20.95, gap=+0.47 pts), not the static $3M boilerplate.
@@ -1094,10 +1321,14 @@ void main() {
         find.text(
           'Best Possible: 20.5%  ·  Actual: 20.9%'
           '  ·  Closable Gap: +0.5 pts',
+          skipOffstage: false,
         ),
         findsOneWidget,
       );
-      expect(find.text('At \$3M annual sales. One location.'), findsNothing);
+      expect(
+          find.text('At \$3M annual sales. One location.',
+              skipOffstage: false),
+          findsNothing);
     });
   });
 }
