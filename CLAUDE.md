@@ -166,8 +166,16 @@ re-audited after every rebase, lost and redone. These rules cut that:
    already landed/superseded (`tool/verify_pr_landed.sh`, `gh pr list`).
    Do not spawn an agent to redo a merged PR.
 5. **Hygiene is automated, not interactive.** Worktree/branch pruning and
-   WIP rescue run via `tool/repo_janitor.sh` (scheduled/hook), not by
-   spending interactive orchestrator budget re-cleaning the same sprawl.
+   WIP rescue run via `tool/repo_janitor.sh`, wired to the `post-merge`
+   git hook (background, dry-run by default; enable real cleanup with
+   `touch .git/repo_janitor_apply`). Not by spending interactive
+   orchestrator budget re-cleaning the same sprawl.
+6. **Gate merges while CI is dark.** Until 2026-06-01, the orchestrator
+   runs `tool/pre_merge_gate.sh <PR>` before merging any high-risk PR
+   (touching `lib/**`, `db/migrations/**`, `tool/advisor_proxy/**`, auth,
+   RLS, or proxy) — clean merge + analyzer + changed-tests GO/NO-GO. Plus
+   `tool/verify_pr_landed.sh <PR>` after merge to confirm content actually
+   landed (squash orphans branch tips; "MERGED" ≠ on master).
 
 ## Review Loop (user pastes an Execution Report)
 
