@@ -491,6 +491,112 @@ class MockIntegrationReplaySeed {
     'late_night': 1.4,
   };
 
+  // ── Per-shift realism variance (Slice SA) ──────────────────────────────
+  // Before Slice SA every NON-owned rate axis on a closed shift was
+  // pinned to the EXACT per-period target, so within a daypart all
+  // non-driver shifts had byte-identical CPLH/SPLH/PPA. The demo cohort
+  // therefore had ~zero per-shift dispersion (lunch/dinner ≈86%, late
+  // night 100% identical CPLH) and the benchmark card read a degenerate
+  // SPIKE as "RANGE UNCERTAIN" — an OPZ is a *range*, not a point.
+  //
+  // Slice SA layers a deterministic, seeded, CORRELATED per-shift
+  // realism profile onto the NON-owned rate axes only, so a true range
+  // exists while every test invariant is preserved:
+  //
+  //  * Determinism — pure function of (weekIndex, period-membership
+  //    index); NO RNG, NO DateTime.now(). Two reseeds stay byte-stable
+  //    (file-header no-randomness invariant; `demo_slice_b` determinism
+  //    tests unchanged).
+  //  * The owned axis is NEVER touched by the profile (it keeps its
+  //    full per-slot driver `dev`), and every profile offset is
+  //    STRICTLY below its axis's `determineLever` firing threshold
+  //    (cplh/splh < 5%, ppa < 3%), so a perturbed non-owned axis can
+  //    never become a `determineLever` candidate — per-shift levers,
+  //    the 8-family span, the covers_down share, and the recurring
+  //    Fri-dinner `ppa_down` / Tue-lunch `ppa_up` pins are all
+  //    preserved (`demo_slice_b_driver_variance_test`).
+  //  * Every axis's offset vector is EXACTLY zero-sum across the six
+  //    membership positions of a 6-slot period (and across the two of
+  //    late_night). The weekly rotation is a pure index rotation, which
+  //    preserves the sum, so each (week, period) keeps the SAME mean as
+  //    before Slice SA — the week aggregate `determineLever` result and
+  //    the 12 distinct week-driver families are unchanged
+  //    (`replay_week_driver_rotation_test`).
+  //
+  // Cluster semantics by membership position (the realistic shapes the
+  // benchmark range should show):
+  //  * positions 0,1,2 — GOOD core: CPLH, SPLH, PPA all lifted together
+  //    (high covers-per-hour WITH strong sales-per-hour and spend).
+  //  * position 3 — STRETCHED: CPLH high, SPLH and PPA collapsed
+  //    (above-OPZ-ceiling behaviour — running lean on bodies but the
+  //    revenue per labour hour / per cover did not follow).
+  //  * positions 4,5 — SOFT / overstaffed: CPLH below target, spend
+  //    roughly normal.
+  // Net mix ≈ 50% good / 14% stretched / 36% soft across the cohort
+  // (6-slot periods 3/1/2; the 2-slot late_night contributes 1 good /
+  // 1 soft) — good is the plurality, soft is the remainder.
+  static const List<double> _realismCPLH6 = [
+    0.014, 0.018, 0.022, 0.026, -0.038, -0.042,
+  ];
+  static const List<double> _realismSPLH6 = [
+    0.014, 0.018, 0.022, -0.030, -0.013, -0.011,
+  ];
+  static const List<double> _realismPPA6 = [
+    0.009, 0.012, 0.016, -0.020, -0.009, -0.008,
+  ];
+  // late_night has only two slots/week (Fri + Sat); a symmetric
+  // zero-sum pair keeps the same mean while still breaking the old
+  // 100%-identical-CPLH degeneracy.
+  static const List<double> _realismCPLH2 = [0.026, -0.026];
+  static const List<double> _realismSPLH2 = [0.020, -0.020];
+  static const List<double> _realismPPA2 = [0.013, -0.013];
+
+  /// Multiplicative realism factors `(cplh, splh, ppa)` for one closed
+  /// shift, applied to the NON-owned rate axes only (the caller skips
+  /// the owned axis). `weekIndex` rotates the role assignment so a given
+  /// slot is not stuck in one cluster across history (realistic
+  /// week-to-week movement) while the per-(week, period) sum stays
+  /// exactly the pre-Slice-SA mean (rotation preserves the zero sum).
+  ///
+  /// `periodMemberIndex` is the slot's 0-based position within its
+  /// period's ordered slot list for the week (lunch/dinner have six,
+  /// late_night two). Pure function — no RNG, byte-stable across runs.
+  static ({double cplh, double splh, double ppa}) _realismProfile({
+    required String daypart,
+    required int periodMemberIndex,
+    required int weekIndex,
+  }) {
+    if (daypart == 'late_night') {
+      final r = (periodMemberIndex + weekIndex) % 2;
+      return (
+        cplh: 1 + _realismCPLH2[r],
+        splh: 1 + _realismSPLH2[r],
+        ppa: 1 + _realismPPA2[r],
+      );
+    }
+    // 6-slot period (lunch / dinner). Rotate the role by the week so
+    // each membership position cycles through all six cluster roles
+    // across history; the rotation is a pure permutation so the
+    // per-(week, period) sum on every axis stays exactly zero.
+    final role = (periodMemberIndex + weekIndex) % 6;
+    return (
+      cplh: 1 + _realismCPLH6[role],
+      splh: 1 + _realismSPLH6[role],
+      ppa: 1 + _realismPPA6[role],
+    );
+  }
+
+  /// 0-based position of [slotIndex] within its period's ordered slot
+  /// list across [weekSlots] (e.g. the four-th lunch slot → 3). Pure
+  /// lookup over the static [weekSlots] table; deterministic.
+  static int _periodMemberIndex(int slotIndex, String daypart) {
+    var n = 0;
+    for (var i = 0; i < slotIndex; i++) {
+      if (weekSlots[i].$2 == daypart) n++;
+    }
+    return n;
+  }
+
   // ── Week-level deterministic variation (§2d) ────────────────────────────
   // Replaces the fixed 8-element bands. All variation is a pure function
   // of the week index (0 = oldest .. historicalWeekCount-1 = newest;
@@ -876,12 +982,48 @@ class MockIntegrationReplaySeed {
     // break that neutrality for the assigned week, so the week factor
     // is applied to ACTUAL covers only (not forecast), making the
     // week's covers-vs-forecast deviation real.
+    // ── Per-shift realism profile (Slice SA) ───────────────────────────
+    // Deterministic, seeded, correlated good/stretched/soft variation
+    // applied to the NON-owned rate axes (cplh / splh / ppa) only, so a
+    // true per-shift RANGE exists instead of every non-driver shift
+    // sitting on the exact per-period target. The owned axis is
+    // EXCLUDED (it keeps its full per-slot driver `dev`); covers and
+    // wages are left to their existing per-slot/per-week machinery
+    // (covers' ±2% threshold is too tight to perturb safely and it also
+    // drives sales). Every offset is strictly below its axis's lever
+    // threshold and zero-sum across the period, so per-shift levers and
+    // the week aggregate are both preserved (see [_realismProfile]).
+    // The week-tilted axis (if any) is ALSO excluded from the realism
+    // profile: that axis is already deliberately moved week-wide by the
+    // tuned [_weekDriverMag] tilt, and layering an extra ±offset on it
+    // would (a) compound past its lever threshold on a non-owned slot
+    // (false candidate) and (b) inject non-zero-sum noise into the very
+    // week aggregate `replay_week_driver_rotation_test` pins. Realism
+    // therefore rides ONLY on rate axes that are neither this slot's
+    // owned driver nor this week's tilted driver — leaving both the
+    // per-shift lever and the week aggregate exactly as before Slice SA.
+    final weekTiltAxis = weekIndex < historicalWeekCount
+        ? _weekDriverIntent[weekIndex].$1
+        : null;
+    final realism = _realismProfile(
+      daypart: daypart,
+      periodMemberIndex: _periodMemberIndex(slotIndex, daypart),
+      weekIndex: weekIndex,
+    );
+    final realismCPLH =
+        (axis == 'cplh' || weekTiltAxis == 'cplh') ? 1.0 : realism.cplh;
+    final realismSPLH =
+        (axis == 'splh' || weekTiltAxis == 'splh') ? 1.0 : realism.splh;
+    final realismPPA =
+        (axis == 'ppa' || weekTiltAxis == 'ppa') ? 1.0 : realism.ppa;
+
     final wCovers = weekFactor('covers');
     final covers = axis == 'covers'
         ? (baseCoversF * dev * wCovers).round().clamp(10, 9999)
         : (baseCoversF * wCovers).round().clamp(10, 9999);
-    final effPPA =
-        (axis == 'ppa' ? basePPA * dev : basePPA) * weekFactor('ppa');
+    final effPPA = (axis == 'ppa' ? basePPA * dev : basePPA) *
+        weekFactor('ppa') *
+        realismPPA;
     final ppa = double.parse(effPPA.toStringAsFixed(2));
     final sales = covers * ppa;
 
@@ -891,10 +1033,12 @@ class MockIntegrationReplaySeed {
     // while fohHours/bohHours remain the realistic integer model hours.
     // The week cplh/splh tilt rides on the rate; hours then follow from
     // covers/sales ÷ rate exactly as the per-slot path does.
-    final effCPLH =
-        (axis == 'cplh' ? baseCPLH * dev : baseCPLH) * weekFactor('cplh');
-    final effSPLH =
-        (axis == 'splh' ? baseSPLH * dev : baseSPLH) * weekFactor('splh');
+    final effCPLH = (axis == 'cplh' ? baseCPLH * dev : baseCPLH) *
+        weekFactor('cplh') *
+        realismCPLH;
+    final effSPLH = (axis == 'splh' ? baseSPLH * dev : baseSPLH) *
+        weekFactor('splh') *
+        realismSPLH;
     final fohHours = LaborModel.modelFohHours(covers, effCPLH);
     final bohHours = LaborModel.modelBohHoursFromSales(sales, effSPLH);
 
