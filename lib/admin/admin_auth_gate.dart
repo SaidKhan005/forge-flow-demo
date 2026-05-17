@@ -37,6 +37,7 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 
 import '../auth/mfa_freshness_redirect_listener.dart';
+import '../auth/permission_keys.dart';
 import '../screens/auth/totp_challenge_view.dart';
 import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
@@ -50,7 +51,10 @@ import 'services/admin_sessions_gateway.dart';
 /// (`operator_owner` / `operator_manager`) are explicitly NOT
 /// admitted here - the admin console is F&F-internal, not operator
 /// self-service.
-const Set<String> kAdminConsoleRoles = <String>{'super_admin', 'ff_support'};
+const Set<String> kAdminConsoleRoles = <String>{
+  PermissionKeys.roleSuperAdmin,
+  PermissionKeys.roleFfSupport,
+};
 
 /// Identity payload an admit decision was made against. Carries only
 /// what the gate / shell need to render the admin surface; it does
@@ -214,7 +218,7 @@ class DemoAdminAuthSource implements AdminAuthSource {
         uid: 'demo-super-admin',
         email: 'demo.super.admin@forgeflow.test',
         displayName: 'Demo Super Admin',
-        roles: <String>['super_admin'],
+        roles: <String>[PermissionKeys.roleSuperAdmin],
       ),
     ),
   );
@@ -228,7 +232,7 @@ class DemoAdminAuthSource implements AdminAuthSource {
         uid: 'demo-ff-support',
         email: 'support@forgeflow.test',
         displayName: 'Demo F&F Support',
-        roles: <String>['ff_support'],
+        roles: <String>[PermissionKeys.roleFfSupport],
       ),
     ),
   );
@@ -259,13 +263,13 @@ class DemoAdminAuthSource implements AdminAuthSource {
           uid: 'demo-super-admin',
           email: 'super.admin@forgeflow.test',
           displayName: 'Demo Super Admin',
-          roles: <String>['super_admin'],
+          roles: <String>[PermissionKeys.roleSuperAdmin],
         ),
         'support@forgeflow.test': AdminAuthSession(
           uid: 'demo-ff-support',
           email: 'support@forgeflow.test',
           displayName: 'Demo F&F Support',
-          roles: <String>['ff_support'],
+          roles: <String>[PermissionKeys.roleFfSupport],
         ),
         'operator@forgeflow.test': AdminAuthSession(
           uid: 'demo-operator',
@@ -321,7 +325,7 @@ class DemoAdminAuthSource implements AdminAuthSource {
             uid: 'demo-super-admin',
             email: 'super.admin@forgeflow.test',
             displayName: 'Demo Super Admin',
-            roles: <String>['super_admin'],
+            roles: <String>[PermissionKeys.roleSuperAdmin],
           ),
         ),
       );
@@ -660,8 +664,12 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
   @visibleForTesting
   static List<String> extractRolesFromClaims(Map<String, Object?> claims) {
     final roles = <String>[];
-    if (claims['is_super_admin'] == true) roles.add('super_admin');
-    if (claims['is_ff_support'] == true) roles.add('ff_support');
+    if (claims['is_super_admin'] == true) {
+      roles.add(PermissionKeys.roleSuperAdmin);
+    }
+    if (claims['is_ff_support'] == true) {
+      roles.add(PermissionKeys.roleFfSupport);
+    }
     return List<String>.unmodifiable(roles);
   }
 

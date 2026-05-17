@@ -48,6 +48,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../theme/app_theme.dart';
 import '../admin_auth_gate.dart';
 import '../services/admin_account_gateway.dart';
@@ -474,8 +475,8 @@ class _AdminIdentityCard extends StatelessWidget {
 }
 
 String _readableAdminRole(List<String> roles) {
-  if (roles.contains('super_admin')) return 'Ecosystem admin';
-  if (roles.contains('ff_support')) return 'Support access';
+  if (roles.contains(PermissionKeys.roleSuperAdmin)) return 'Ecosystem admin';
+  if (roles.contains(PermissionKeys.roleFfSupport)) return 'Support access';
   if (roles.isEmpty) return 'No role on file';
   return roles.first.replaceAll('_', ' ');
 }

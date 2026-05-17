@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../../auth/permission_keys.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart'
     show VendorCategory;
 import '../models/integration_admin_models.dart';
@@ -172,7 +173,7 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
     final roleResolver = _roleResolver;
     if (roleResolver == null) return; // No role check configured (production).
     final roles = await roleResolver();
-    if (roles.contains('ff_support')) {
+    if (roles.contains(PermissionKeys.roleFfSupport)) {
       throw const PermissionDeniedException('Read-only access');
     }
   }
@@ -768,7 +769,7 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
     final roleResolver = _roleResolver;
     if (roleResolver == null) return; // No role check configured (tests).
     final roles = await roleResolver();
-    if (roles.contains('ff_support')) {
+    if (roles.contains(PermissionKeys.roleFfSupport)) {
       throw const PermissionDeniedException('Read-only access');
     }
   }
