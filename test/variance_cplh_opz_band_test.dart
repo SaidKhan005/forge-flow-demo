@@ -107,6 +107,114 @@ void main() {
     });
   });
 
+  group('OpzScaleGeometry — deterministic render geometry', () {
+    // The historical bug: the band mapped positions on `[livedMin,
+    // livedMax]`, so when the OPZ range was WIDER than the lived range
+    // the green box overflowed and clamped to the full rail. These
+    // assert via the pure geometry helper (no eyeballing the widget).
+
+    test('Case A — mockup-like, lived widest: box strictly interior', () {
+      // livedMin < opzFloor < opzCeiling < livedMax.
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [3.9, 4.2, 4.59, 5.3],
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 4.59,
+      );
+      expect(d.canRenderBand, isTrue);
+      final g = OpzScaleGeometry.fromData(d);
+
+      // OPZ box is a strict interior sub-segment.
+      expect(g.opzLeftPct, greaterThan(0.0));
+      expect(g.opzRightPct, greaterThan(0.0));
+      expect(g.opzWidthPct, lessThan(1.0));
+      expect(g.opzLeftPct, lessThan(g.opzCeilingPct));
+
+      // Lived is the widest input: ticks land at ~0% / ~100% (the
+      // small symmetric domain pad keeps them just off the very edge,
+      // exactly like the mockup's left:0 / right:0 ends).
+      expect(g.livedMinPct, lessThan(0.10));
+      expect(g.livedMaxPct, greaterThan(0.90));
+      expect(g.livedMinPct, greaterThanOrEqualTo(0.0));
+      expect(g.livedMaxPct, lessThanOrEqualTo(1.0));
+    });
+
+    test('Case B — real-data failing case: OPZ WIDER than lived; box is '
+        'a proper sub-segment, NOT full-width', () {
+      // The exact shape the operator hit: lived ~4.3-4.8, OPZ
+      // 4.01-4.93, now 4.57. OPZ span (0.92) > lived span (0.5).
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [4.3, 4.45, 4.57, 4.8],
+        opzFloor: 4.01,
+        opzCeiling: 4.93,
+        nowCplh: 4.57,
+      );
+      expect(d.canRenderBand, isTrue);
+      final g = OpzScaleGeometry.fromData(d);
+
+      // The regression assertion: the box is a proper sub-segment, NOT
+      // the full rail. Both insets strictly positive, width < 1.
+      expect(g.opzLeftPct, greaterThan(0.0),
+          reason: 'OPZ box must not start at the rail left edge');
+      expect(g.opzRightPct, greaterThan(0.0),
+          reason: 'OPZ box must not reach the rail right edge');
+      expect(g.opzWidthPct, lessThan(1.0),
+          reason: 'OPZ box must NOT be full-width (the original bug)');
+      expect(g.opzWidthPct, greaterThan(0.0));
+
+      // OPZ is the widest input here, so the lived ticks are INSET
+      // (strictly inside the rail), not pinned to the ends.
+      expect(g.livedMinPct, greaterThan(0.0));
+      expect(g.livedMinPct, lessThan(1.0));
+      expect(g.livedMaxPct, greaterThan(g.livedMinPct));
+      expect(g.livedMaxPct, lessThan(1.0));
+
+      // Now (4.57) is strictly inside the OPZ box.
+      expect(g.nowPct, greaterThan(g.opzLeftPct));
+      expect(g.nowPct, lessThan(g.opzCeilingPct));
+    });
+
+    test('Case C — now below opzFloor: now dot left of the OPZ box', () {
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [3.6, 3.8, 3.9, 4.1],
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 3.7,
+      );
+      expect(d.canRenderBand, isTrue);
+      final g = OpzScaleGeometry.fromData(d);
+
+      expect(g.nowPct, lessThan(g.opzLeftPct),
+          reason: 'now below the floor must sit left of the green box');
+      expect(g.nowPct, greaterThanOrEqualTo(0.0));
+      // Box still a proper sub-segment.
+      expect(g.opzWidthPct, lessThan(1.0));
+      expect(g.opzWidthPct, greaterThan(0.0));
+    });
+
+    test('Case D — honest degraded: missing bounds, no band, no geometry',
+        () {
+      final missingBounds = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [4.4, 4.5, 4.6],
+        opzFloor: null,
+        opzCeiling: null,
+        nowCplh: 4.5,
+      );
+      expect(missingBounds.canRenderBand, isFalse);
+
+      final missingSeries = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [],
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: null,
+      );
+      expect(missingSeries.canRenderBand, isFalse);
+      // Degraded data carries no scale span, so fractionFor is a safe 0
+      // (no fabricated geometry, no divide-by-zero).
+      expect(missingSeries.fractionFor(4.7), 0.0);
+    });
+  });
+
   group('CplhOpzBandCard — render', () {
     testWidgets('populated state renders OPZ + now labels', (tester) async {
       final d = CplhOpzBandData.fromInputs(
