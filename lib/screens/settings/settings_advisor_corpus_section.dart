@@ -102,7 +102,7 @@ class _CorpusHeader extends StatelessWidget {
         children: [
           Text(
             'Content preview',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           SizedBox(height: 4),
           Text(
@@ -129,7 +129,7 @@ class _FileNameField extends StatelessWidget {
         children: [
           const Text(
             'File name',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 4),
           TextField(
@@ -160,7 +160,7 @@ class _MarkdownField extends StatelessWidget {
         children: [
           const Text(
             'Markdown content',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 4),
           TextField(
@@ -234,7 +234,7 @@ class _PreviewResultRow extends StatelessWidget {
           children: [
             const Text(
               'Preview rejected',
-              style: TextStyle(color: AppColors.negative, fontSize: 11),
+              style: TextStyle(color: AppColors.negative, fontSize: 13),
             ),
             const SizedBox(height: 4),
             Text(
@@ -253,7 +253,7 @@ class _PreviewResultRow extends StatelessWidget {
         children: [
           const Text(
             'Local preview',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
           ),
           const SizedBox(height: 4),
           Text(
@@ -307,7 +307,7 @@ class _CloudBlockedRow extends StatelessWidget {
         children: [
           Text(
             'Cloud load unavailable',
-            style: TextStyle(color: AppColors.sunset, fontSize: 11),
+            style: TextStyle(color: AppColors.sunset, fontSize: 13),
           ),
           SizedBox(height: 4),
           Text(

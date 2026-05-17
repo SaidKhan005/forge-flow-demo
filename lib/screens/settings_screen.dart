@@ -762,13 +762,16 @@ class _SettingsBottomNav extends StatelessWidget {
             unselectedItemColor: AppColors.textMuted,
             type: BottomNavigationBarType.fixed,
             elevation: 0,
+            // Match the app-wide bottom-nav label size (app_theme.dart
+            // BottomNavigationBarThemeData = 12) so the settings tab bar
+            // reads consistently with the main shell tab bar.
             selectedLabelStyle: const TextStyle(
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
             ),
             unselectedLabelStyle: const TextStyle(
-              fontSize: 10,
+              fontSize: 12,
               fontWeight: FontWeight.w400,
               letterSpacing: 0.5,
             ),
