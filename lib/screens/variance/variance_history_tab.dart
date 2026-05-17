@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../domain/constants/app_defaults.dart';
+import '../../state/active_target_profile_notifier.dart';
 import '../../services/shift_data_source.dart';
 import '../../models/history_benchmark_daypart_summary.dart';
 import '../../models/history_pattern_record.dart';
@@ -20,6 +21,7 @@ import '../../services/history_teaching_analyzer.dart';
 import '../../services/variance_driver_pattern_read_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/sticky_section_delegate.dart';
+import '../../widgets/variance/cplh_opz_band_card.dart';
 import '../../widgets/week_history_tile.dart';
 import '../week_detail_screen.dart';
 import 'variance_shared_widgets.dart';
@@ -466,6 +468,36 @@ class _HistoryTabState extends State<HistoryTab>
         );
         final historyRangeLabel = _historyRangeLabel(weeks);
 
+        // ── CPLH vs OPZ 60-day band (Variance V2 Lane HIST) ───────────────
+        // Mockup `#hist` first card. Geometry is sourced ONLY from data
+        // the History tab already loaded (per-week `WeekRecord.avgCPLH`)
+        // plus the active target profile's CPLH OPZ floor/ceiling. NO new
+        // math, no engine change (`lib/services/labor_model.dart` FROZEN).
+        // The active-target notifier is read nullably so surfaces / tests
+        // that do not provide it degrade honestly rather than crash
+        // (same pattern as `variance_this_week_tab.dart`).
+        final activeProfile =
+            context.watch<ActiveTargetProfileNotifier?>()?.profile;
+        final cplhSeries = weeks
+            .map((w) => w.avgCPLH)
+            .where((v) => v.isFinite && v > 0)
+            .toList(growable: false);
+        // The most recent week is the newest by weekId; mirrors the
+        // `_historyRangeLabel` newest-first sort, no re-derivation.
+        double? nowCplh;
+        if (weeks.isNotEmpty) {
+          final sorted = [...weeks]
+            ..sort((a, b) => b.weekId.compareTo(a.weekId));
+          final v = sorted.first.avgCPLH;
+          if (v.isFinite && v > 0) nowCplh = v;
+        }
+        final opzBandData = CplhOpzBandData.fromInputs(
+          weeklyCplhSeries: cplhSeries,
+          opzFloor: activeProfile?.opzFloorCPLH,
+          opzCeiling: activeProfile?.opzCeilingCPLH,
+          nowCplh: nowCplh,
+        );
+
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
@@ -488,12 +520,35 @@ class _HistoryTabState extends State<HistoryTab>
             ),
 
             // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Teaching summary ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â only when pattern records are present ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+            // CPLH vs OPZ 60-day band — mockup `#hist` first card.
+            // Rendered as the first card after the header so the History
+            // tab mirrors the approved mockup ordering. The band itself
+            // degrades honestly inside the card when OPZ bounds or the
+            // CPLH series are unavailable (Metric Honesty Doctrine), so
+            // the section is shown whenever there is any week history.
+            if (weeks.isNotEmpty)
+              SliverMainAxisGroup(
+                slivers: [
+                  const SliverPersistentHeader(
+                    pinned: true,
+                    delegate:
+                        StickySectionDelegate('CPLH VS YOUR OPZ · 60-DAY'),
+                  ),
+                  SliverToBoxAdapter(
+                    child: CplhOpzBandCard(data: opzBandData),
+                  ),
+                ],
+              ),
+
+            // Most common leak — the existing teaching/leak evidence card.
+            // The mockup's "Most common leak" maps to this card's leak
+            // evidence; only shown when pattern records exist.
             if (teachingSummary != null && leakCard != null)
               SliverMainAxisGroup(
                 slivers: [
-                  SliverPersistentHeader(
+                  const SliverPersistentHeader(
                     pinned: true,
-                    delegate: StickySectionDelegate('WHAT HISTORY IS TEACHING'),
+                    delegate: StickySectionDelegate('MOST COMMON LEAK'),
                   ),
                   SliverToBoxAdapter(
                     child: _TeachingSummaryCard(
@@ -518,19 +573,27 @@ class _HistoryTabState extends State<HistoryTab>
                 ),
               )
             else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (_, i) => WeekHistoryTile(
-                    week: weeks[i],
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => WeekDetailScreen(week: weeks[i]),
+              SliverMainAxisGroup(
+                slivers: [
+                  const SliverPersistentHeader(
+                    pinned: true,
+                    delegate: StickySectionDelegate('PREVIOUS WEEKS'),
+                  ),
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (_, i) => WeekHistoryTile(
+                        week: weeks[i],
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => WeekDetailScreen(week: weeks[i]),
+                          ),
+                        ),
                       ),
+                      childCount: weeks.length,
                     ),
                   ),
-                  childCount: weeks.length,
-                ),
+                ],
               ),
           ],
         );

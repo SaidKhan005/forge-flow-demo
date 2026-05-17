@@ -28,7 +28,6 @@ import '../../widgets/learn/learn_chapter_rail.dart';
 import '../../widgets/learn/learn_cross_axis_card.dart';
 import '../../widgets/learn/learn_story_frame_card.dart';
 import '../../widgets/learn/learn_teaching_card.dart';
-import 'variance_shared_widgets.dart';
 
 class LearnTab extends StatefulWidget {
   const LearnTab({super.key});
@@ -336,12 +335,20 @@ class _LearnContentState extends State<_LearnContent> {
               cardBuilder: cardBuilder,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
 
           // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ Coach Next Week footer ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: _CoachNextWeekCard(summary: summary),
+          // V2-5: the mockup `#learn` ends with the `.hint` swipe
+          // affordance, not a coaching footer. The retired
+          // `_CoachNextWeekCard` (primaryFix / study / coachTo lines) is
+          // NOT in the approved mockup; those summary fields are
+          // untouched and still consumed by the honest leak/win fallback
+          // frames (`summary.primaryFixLine` / `summary.studyLine`).
+          Center(
+            child: Text(
+              '‹ swipe ›',
+              style: AppTextStyles.mono12(color: AppColors.textMuted),
+            ),
           ),
         ],
       ),
@@ -360,7 +367,11 @@ class _LearnHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rangeIsGood = summary.rangeQualityLabel == 'GOOD OPZ RANGE';
+    // V2-5: the Learn hero is exactly the mockup `#learn` header: the
+    // serif `Learn` display heading plus the `.sub` line. The decorative
+    // 5-chip benchmark/target Wrap is NOT in the approved mockup and was
+    // trimmed; the benchmark-set facts still live in the read services
+    // and the story frames, this hero is header-only.
     return Padding(
       // Match the This Week / Previous Weeks sub-header padding so
       // the three tab titles align vertically.
@@ -371,37 +382,8 @@ class _LearnHero extends StatelessWidget {
           Text('Learn', style: AppTextStyles.display28()),
           const SizedBox(height: 4),
           Text(
-            summary.weekCount > 0
-                ? 'Last ${summary.weekCount} tracked weeks'
-                : 'No tracked weeks yet',
+            'One idea per frame. Swipe each section.',
             style: AppTextStyles.body13(color: AppColors.textMuted),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              VarianceChip(
-                label: summary.benchmarkSourceLabel,
-                color: AppColors.sunsetDark,
-              ),
-              VarianceChip(
-                label: summary.rangeQualityLabel,
-                color: rangeIsGood ? AppColors.positive : AppColors.warning,
-              ),
-              VarianceChip(
-                label: 'CPLH ${summary.targetCPLH.toStringAsFixed(2)}',
-                color: AppColors.textMuted,
-              ),
-              VarianceChip(
-                label: 'SPLH ${summary.targetSPLH.toStringAsFixed(0)}',
-                color: AppColors.textMuted,
-              ),
-              VarianceChip(
-                label: 'PPA ${summary.targetPPA.toStringAsFixed(0)}',
-                color: AppColors.textMuted,
-              ),
-            ],
           ),
         ],
       ),
