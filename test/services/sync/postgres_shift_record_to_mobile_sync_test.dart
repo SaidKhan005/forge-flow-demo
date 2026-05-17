@@ -328,9 +328,6 @@ void main() {
           DataAccuracySettingsSnapshot(
             operatorId: _opId,
             locationId: _locId,
-            coversSourceLunch: 'manual',
-            coversSourceDinner: 'vendor',
-            coversSourceLateNight: 'forecast',
             coversManualEntries: const {
               '2026-05-04': {'lunch': 87, 'dinner': 187, 'late_night': 12},
             },
@@ -355,10 +352,12 @@ void main() {
 
       final settings = result.dataAccuracySettings;
       expect(settings, isNotNull);
-      expect(settings!.coversSourceLunch, 'manual');
-      expect(settings.coversSourceDinner, 'vendor');
-      expect(settings.coversSourceLateNight, 'forecast');
-      expect(settings.coversManualEntries['2026-05-04']!['dinner'], 187);
+      // R7c: the vestigial covers_source_{lunch,dinner,late_night}
+      // DTO fields were removed (no downstream resolver consumed
+      // them). The snapshot still round-trips through the sync path;
+      // covers resolution uses the keyed service-period settings +
+      // SQLite cache, not this snapshot.
+      expect(settings!.coversManualEntries['2026-05-04']!['dinner'], 187);
       expect(settings.wageSource, 'manual_mix');
       expect(settings.walkInHandlingMode, 'walk_ins_added_to_reservations');
       expect(settings.walkInManualEntries['2026-05-04'], 9);

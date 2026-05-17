@@ -290,9 +290,6 @@ void main() {
         DataAccuracySettingsSnapshot(
           operatorId: _opA,
           locationId: _locA,
-          coversSourceLunch: 'vendor',
-          coversSourceDinner: 'vendor',
-          coversSourceLateNight: 'vendor',
           coversManualEntries: const <String, Map<String, int>>{},
           wageSource: 'vendor',
           updatedAt: DateTime.utc(2026, 5, 4, 12, 0),
@@ -829,9 +826,13 @@ void main() {
       'setting_id': 'das_001',
       'operator_id': _opA,
       'location_id': _locA,
-      'covers_source_lunch': 'vendor',
-      'covers_source_dinner': 'manual',
-      'covers_source_late_night': 'vendor',
+      // R7c: covers source is the keyed/jsonb per-service-period map
+      // (the same shape `_readDataAccuracySettings` projects via
+      // jsonb_object_agg). The deprecated legacy columns are no longer
+      // consulted by fromRow.
+      'covers_source_per_service_period': <String, Object?>{
+        'dinner': 'manual',
+      },
       'covers_manual_entries': <String, Map<String, int>>{
         _businessDateIso: <String, int>{'dinner': 187},
       },
@@ -882,9 +883,9 @@ void main() {
       'setting_id': 'das_001',
       'operator_id': _opA,
       'location_id': _locA,
-      'covers_source_lunch': 'vendor',
-      'covers_source_dinner': 'vendor',
-      'covers_source_late_night': 'vendor',
+      // R7c: empty keyed map -> every period resolves to the vendor
+      // default via coversSourceFor (legacy columns no longer read).
+      'covers_source_per_service_period': <String, Object?>{},
       'covers_manual_entries': <String, Map<String, int>>{},
       'wage_source': 'manual_mix',
       'created_at': DateTime.utc(2026, 5, 1),

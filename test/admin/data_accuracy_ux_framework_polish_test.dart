@@ -197,6 +197,86 @@ void main() {
     );
 
     testWidgets(
+      'R7c: a NEW per-period (service_period_override) audit row renders '
+      'with human labels, AND a legacy-keyed row still renders '
+      '(additive reconciliation, not a swap)',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyAuditHistoryPanel(
+              events: <DataAccuracyAdminAuditEvent>[
+                // New per-period audit shape (R7a/R7b/R7c): the
+                // service_period_override event keys the diff by
+                // service_period_key + covers_source.
+                DataAccuracyAdminAuditEvent(
+                  eventId: 'audit-per-period-1',
+                  eventType: 'admin.data_accuracy.service_period_override',
+                  occurredAt: DateTime.utc(2026, 5, 6, 12),
+                  actorUserId: '90000000-0000-0000-0000-000000000004',
+                  actorDisplayName: 'Amira Chen',
+                  actorRole: 'Super admin',
+                  actorEmail: 'amira@forgeflow.app',
+                  operatorId: 'op-1',
+                  locationId: 'loc-1',
+                  diff: const <String, Object?>{
+                    'service_period_key': 'dinner',
+                    'covers_source': <String, String>{
+                      'from': 'vendor',
+                      'to': 'manual',
+                    },
+                  },
+                  reasonNote: 'Dinner switched to manual entry.',
+                ),
+                // Legacy-keyed historical row must still render.
+                DataAccuracyAdminAuditEvent(
+                  eventId: 'audit-legacy-1',
+                  eventType: 'admin.data_accuracy.override',
+                  occurredAt: DateTime.utc(2026, 5, 5, 12),
+                  actorUserId: '90000000-0000-0000-0000-000000000003',
+                  actorDisplayName: 'Amira Chen',
+                  actorRole: 'Super admin',
+                  actorEmail: 'amira@forgeflow.app',
+                  operatorId: 'op-1',
+                  locationId: 'loc-1',
+                  diff: const <String, Object?>{
+                    'covers_source_lunch': <String, String>{
+                      'from': 'vendor',
+                      'to': 'manual',
+                    },
+                  },
+                  reasonNote: 'Corrected a stale vendor import.',
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('admin_data_accuracy_audit_toggle')),
+        );
+        await tester.pumpAndSettle();
+
+        // New per-period row renders with a human label and the
+        // service period stated.
+        expect(
+          find.text(
+            'Changed Covers source from Vendor feed to Manual entry',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Set Service period to dinner'), findsOneWidget);
+        // Legacy-keyed historical row still renders unchanged.
+        expect(
+          find.text(
+            'Changed Covers source - lunch from Vendor feed to Manual entry',
+          ),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
       'data accuracy table does not show epoch dates for empty rows',
       (tester) async {
         await tester.binding.setSurfaceSize(const Size(1600, 1000));
