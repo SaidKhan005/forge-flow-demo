@@ -32,6 +32,7 @@ import '../domain/models/weekly_plan_snapshot.dart';
 import '../models/shift_record.dart';
 import '../domain/services/business_date_resolver.dart';
 import '../domain/services/daypart_bucketer.dart';
+import '../domain/services/locked_daypart_int_hours.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
@@ -449,8 +450,27 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
       );
       final planForecastCovers = dd?.forecastCovers;
       final planForecastSales = dd?.forecastSales;
-      final planFohHours = dd?.requiredFohHours;
-      final planBohHours = dd?.requiredBohHours;
+      // Per-Daypart V1 (Slice 5): the persisted per-period FOH/BOH hours
+      // are doubles, but the Shift card surfaces them to the operator as
+      // whole hours (`requiredHours.round()` in shift_dashboard). Route
+      // them through the SAME shared reconciliation the Variance Full
+      // Week row uses (`reconcileLockedDaypartIntHours`) so the same
+      // (day, period) shows IDENTICAL integer hours on both screens and
+      // per-period whole hours sum exactly to the locked day-level
+      // integer hours (Option B — not naive independent per-cell round;
+      // parity pinned by test). Carried as doubles to keep the widget
+      // contract byte-unchanged; the value is already a reconciled
+      // integer so `.round()` is now an identity, not a re-rounding.
+      final reconciledHrs = snapshot == null
+          ? null
+          : reconciledLockedDaypartFor(
+              snapshot: snapshot,
+              businessDate: businessDate,
+              servicePeriodId: def.id,
+              definitions: _definitions,
+            );
+      final planFohHours = reconciledHrs?.requiredFohHours.toDouble();
+      final planBohHours = reconciledHrs?.requiredBohHours.toDouble();
 
       final closed = closedByPeriod[def.id];
       if (closed != null) {

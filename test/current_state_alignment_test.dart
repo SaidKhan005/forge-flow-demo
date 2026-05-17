@@ -17,6 +17,7 @@ import 'package:forge_and_flow/services/wage_standard_context_service.dart';
 import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/domain/services/locked_daypart_int_hours.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
@@ -714,95 +715,100 @@ void main() {
   //       Plan-owned comparison targets come from the allocator.
 
   group('J — 7.56c.0 Full Week plan daypart alignment', () {
-    test('J1: open/projected forecastCovers / forecast sales / FOH / '
-        'BOH hours equal '
-        'DaypartPlanAllocator output for the matching daypart', () async {
+    test(
+        'J1 (Slice 5 re-pin): open/projected forecastCovers / forecast '
+        'sales / FOH / BOH hours equal the PERSISTED locked dayDayparts '
+        'sub-rows (FOH/BOH via the shared exact reconciliation), NOT '
+        'the render-time allocator', () async {
       await ensureCurrentWeekSnapshot();
       final snapshot = await WeeklyPlanSnapshotService.instance
           .getExistingCurrentWeekSnapshot();
       expect(snapshot, isNotNull);
+      // Slice 5 precondition: the demo seed persists locked sub-rows, so
+      // the locked-authority branch (not the allocator fallback) runs.
+      expect(snapshot!.dayDayparts, isNotEmpty,
+          reason: 'Slice 5: persisted sub-rows are the authority; the '
+              'allocator is now strictly the empty-dayDayparts fallback');
 
       final config = await RestaurantTimingConfigReadService.instance
           .getActiveTimingConfig();
-      final defs =
-          config?.servicePeriodDefinitions ??
+      final defs = config?.servicePeriodDefinitions ??
           ServicePeriodDefinitionResolver.demoDefinitions;
-      final weights = await SchedulePlanReadService.loadDistributionWeights(
-        'demo_restaurant_001',
-      );
 
       final shifts = await ShiftService.instance.getFullWeekShifts('2026-W13');
       final nonClosed = shifts.where((s) => !s.isClosed).toList();
       expect(nonClosed, isNotEmpty);
 
-      // Build the same allocator output the production path builds.
-      final allocByDay = <String, Map<String, DaypartAllocation>>{};
-      for (final dayRow in snapshot!.dayRows) {
-        final allocs = DaypartPlanAllocator.allocate(
-          day: dayRow.day,
-          dayCovers: dayRow.forecastCovers,
-          daySales: dayRow.forecastSales,
-          dayFohHours: dayRow.requiredFohHours,
-          dayBohHours: dayRow.requiredBohHours,
-          definitions: defs,
-          distributionWeights: weights,
-        );
-        allocByDay[dayRow.day] = {for (final a in allocs) a.daypartId: a};
-      }
+      final businessDateByDay = <String, String>{
+        for (final dr in snapshot.dayRows) dr.day: dr.businessDate,
+      };
 
       for (final s in nonClosed) {
-        final alloc = allocByDay[s.dayLabel]?[s.daypart];
+        final bd = businessDateByDay[s.dayLabel];
+        expect(bd, isNotNull);
+        // The persisted locked sub-row is the authority for covers/sales.
+        final dd = snapshot.dayDaypartFor(
+          businessDate: bd!,
+          servicePeriodId: s.daypart,
+        );
         expect(
-          alloc,
+          dd,
           isNotNull,
           reason:
               '${s.dayLabel}/${s.daypart}: every non-closed Full Week row '
-              'must have a matching locked-plan daypart allocation.',
+              'must map to a persisted locked dayDaypart sub-row.',
         );
-        if (alloc == null) continue;
+        if (dd == null) continue;
+        // FOH/BOH integers from the SINGLE shared exact reconciliation
+        // (per-period whole hours sum exactly to the day-level int).
+        final recon = reconciledLockedDaypartFor(
+          snapshot: snapshot,
+          businessDate: bd,
+          servicePeriodId: s.daypart,
+          definitions: defs,
+        );
+        expect(recon, isNotNull);
         expect(
           s.forecastCovers,
-          equals(alloc.forecastCovers),
+          equals(dd.forecastCovers),
           reason:
               '${s.dayLabel}/${s.daypart}: forecastCovers must come '
-              'from the shared plan allocator, not the snapshot.',
+              'straight from the persisted locked sub-row.',
         );
         expect(
           s.planForecastSales,
-          closeTo(alloc.forecastSales, 0.01),
+          closeTo(dd.forecastSales, 0.01),
           reason:
               '${s.dayLabel}/${s.daypart}: forecast sales must come '
-              'from the shared plan allocator, without rewriting actuals.',
+              'straight from the persisted locked sub-row.',
         );
         expect(
           s.fohHours,
-          equals(alloc.requiredFohHours),
+          equals(recon!.requiredFohHours),
           reason:
-              '${s.dayLabel}/${s.daypart}: fohHours must come from '
-              'the shared plan allocator, not the snapshot.',
+              '${s.dayLabel}/${s.daypart}: fohHours = shared exact '
+              'reconciliation of the persisted locked sub-row.',
         );
         expect(
           s.bohHours,
-          equals(alloc.requiredBohHours),
+          equals(recon.requiredBohHours),
           reason:
-              '${s.dayLabel}/${s.daypart}: bohHours must come from '
-              'the shared plan allocator, not the snapshot.',
+              '${s.dayLabel}/${s.daypart}: bohHours = shared exact '
+              'reconciliation of the persisted locked sub-row.',
         );
         expect(
           s.scheduledFohHours,
-          equals(alloc.requiredFohHours),
+          equals(recon.requiredFohHours),
           reason:
-              '${s.dayLabel}/${s.daypart}: scheduledFohHours is the '
-              'target-hour field the table may read, so it must also '
-              'come from the shared plan allocator.',
+              '${s.dayLabel}/${s.daypart}: scheduledFohHours mirrors the '
+              'reconciled locked FOH hours.',
         );
         expect(
           s.scheduledBohHours,
-          equals(alloc.requiredBohHours),
+          equals(recon.requiredBohHours),
           reason:
-              '${s.dayLabel}/${s.daypart}: scheduledBohHours is the '
-              'target-hour field the table may read, so it must also '
-              'come from the shared plan allocator.',
+              '${s.dayLabel}/${s.daypart}: scheduledBohHours mirrors the '
+              'reconciled locked BOH hours.',
         );
       }
     });
@@ -903,13 +909,21 @@ void main() {
     );
 
     test(
-      'J2: for an all-non-closed day, subrow forecastCovers / forecast '
-      'sales / FOH / BOH hours sum back to the locked snapshot day-row totals',
+      'J2 (Slice 5 re-pin): for an all-non-closed day, subrow FOH/BOH '
+      'hours sum EXACTLY to the locked day-row integer hours (Option B '
+      'shared reconciliation), and per-period covers/sales equal the '
+      'persisted locked sub-rows',
       () async {
         await ensureCurrentWeekSnapshot();
         final snapshot = await WeeklyPlanSnapshotService.instance
             .getExistingCurrentWeekSnapshot();
         expect(snapshot, isNotNull);
+        expect(snapshot!.dayDayparts, isNotEmpty);
+
+        final config = await RestaurantTimingConfigReadService.instance
+            .getActiveTimingConfig();
+        final defs = config?.servicePeriodDefinitions ??
+            ServicePeriodDefinitionResolver.demoDefinitions;
 
         final shifts = await ShiftService.instance.getFullWeekShifts(
           '2026-W13',
@@ -921,51 +935,71 @@ void main() {
             .toSet();
 
         var verifiedAtLeastOneDay = false;
-        for (final dayRow in snapshot!.dayRows) {
+        for (final dayRow in snapshot.dayRows) {
           if (closedDays.contains(dayRow.day)) continue;
           final dayShifts = shifts
               .where((s) => s.dayLabel == dayRow.day)
               .toList();
           if (dayShifts.isEmpty) continue;
 
-          final coverSum = dayShifts.fold<int>(
-            0,
-            (s, r) => s + r.forecastCovers,
+          // Option B core invariant: the SHARED reconciliation
+          // distributes the locked day-level integer hours across ALL
+          // of that day's persisted periods so Σ(per-period whole
+          // hours) == the locked day-row integer EXACTLY (no
+          // independent per-cell rounding). This holds over the full
+          // locked period set, independent of which periods surface as
+          // shift rows (a period with no open snapshot / shift_record
+          // legitimately has no Full Week row).
+          final recon = reconcileLockedDaypartIntHours(
+            snapshot: snapshot,
+            businessDate: dayRow.businessDate,
+            definitions: defs,
           );
-          final salesSum = dayShifts.fold<double>(
-            0,
-            (s, r) => s + (r.planForecastSales ?? 0),
-          );
-          final fohSum = dayShifts.fold<int>(0, (s, r) => s + r.fohHours);
-          final bohSum = dayShifts.fold<int>(0, (s, r) => s + r.bohHours);
-          expect(
-            coverSum,
-            equals(dayRow.forecastCovers),
-            reason:
-                'all-non-closed ${dayRow.day} subrow forecastCovers must '
-                'reconcile to the locked snapshot day-row total',
-          );
-          expect(
-            salesSum,
-            closeTo(dayRow.forecastSales, 0.01),
-            reason:
-                'all-non-closed ${dayRow.day} subrow forecast sales must '
-                'reconcile to the locked snapshot day-row total',
-          );
+          final fohSum =
+              recon.fold<int>(0, (s, r) => s + r.requiredFohHours);
+          final bohSum =
+              recon.fold<int>(0, (s, r) => s + r.requiredBohHours);
           expect(
             fohSum,
             equals(dayRow.requiredFohHours),
             reason:
-                'all-non-closed ${dayRow.day} subrow FOH hours must '
-                'reconcile to the locked snapshot day-row total',
+                '${dayRow.day} per-period FOH hours must sum EXACTLY to '
+                'the locked day-row integer (Option B).',
           );
           expect(
             bohSum,
             equals(dayRow.requiredBohHours),
             reason:
-                'all-non-closed ${dayRow.day} subrow BOH hours must '
-                'reconcile to the locked snapshot day-row total',
+                '${dayRow.day} per-period BOH hours must sum EXACTLY to '
+                'the locked day-row integer (Option B).',
           );
+
+          // Covers / sales carry straight from the persisted locked
+          // sub-rows (Slice 5 authority) — assert per-period equality
+          // with the persisted rows, not a re-derived day-sum.
+          for (final s in dayShifts) {
+            final dd = snapshot.dayDaypartFor(
+              businessDate: dayRow.businessDate,
+              servicePeriodId: s.daypart,
+            );
+            expect(dd, isNotNull,
+                reason: '${dayRow.day}/${s.daypart}: must map to a '
+                    'persisted locked sub-row');
+            expect(s.forecastCovers, equals(dd!.forecastCovers),
+                reason: '${dayRow.day}/${s.daypart}: covers carry from '
+                    'the persisted locked sub-row');
+            expect(s.planForecastSales, closeTo(dd.forecastSales, 0.01),
+                reason: '${dayRow.day}/${s.daypart}: sales carry from '
+                    'the persisted locked sub-row');
+            final recon = reconciledLockedDaypartFor(
+              snapshot: snapshot,
+              businessDate: dayRow.businessDate,
+              servicePeriodId: s.daypart,
+              definitions: defs,
+            );
+            expect(s.fohHours, equals(recon!.requiredFohHours));
+            expect(s.bohHours, equals(recon.requiredBohHours));
+          }
           verifiedAtLeastOneDay = true;
         }
         expect(
@@ -1051,34 +1085,25 @@ void main() {
       },
     );
 
-    test('J4: closed shift_records actuals stay source truth while '
-        'Plan-owned targets come from allocation', () async {
+    test(
+        'J4 (Slice 5 re-pin): closed shift_records actuals stay source '
+        'truth while Plan-owned targets come from the PERSISTED locked '
+        'sub-rows (FOH/BOH via the shared exact reconciliation)',
+        () async {
       await ensureCurrentWeekSnapshot();
       final snapshot = await WeeklyPlanSnapshotService.instance
           .getExistingCurrentWeekSnapshot();
       expect(snapshot, isNotNull);
+      expect(snapshot!.dayDayparts, isNotEmpty);
 
       final config = await RestaurantTimingConfigReadService.instance
           .getActiveTimingConfig();
-      final defs =
-          config?.servicePeriodDefinitions ??
+      final defs = config?.servicePeriodDefinitions ??
           ServicePeriodDefinitionResolver.demoDefinitions;
-      final weights = await SchedulePlanReadService.loadDistributionWeights(
-        'demo_restaurant_001',
-      );
-      final allocByDay = <String, Map<String, DaypartAllocation>>{};
-      for (final dayRow in snapshot!.dayRows) {
-        final allocs = DaypartPlanAllocator.allocate(
-          day: dayRow.day,
-          dayCovers: dayRow.forecastCovers,
-          daySales: dayRow.forecastSales,
-          dayFohHours: dayRow.requiredFohHours,
-          dayBohHours: dayRow.requiredBohHours,
-          definitions: defs,
-          distributionWeights: weights,
-        );
-        allocByDay[dayRow.day] = {for (final a in allocs) a.daypartId: a};
-      }
+
+      final businessDateByDay = <String, String>{
+        for (final dr in snapshot.dayRows) dr.day: dr.businessDate,
+      };
 
       final sourceRows = await SqliteShiftRecordRepository.instance
           .getShiftsForWeek('demo_restaurant_001', '2026-W13');
@@ -1093,17 +1118,29 @@ void main() {
       for (final s in closed) {
         final key = '${s.dayLabel}|${s.daypart}';
         final source = sourceByKey[key];
-        final alloc = allocByDay[s.dayLabel]?[s.daypart];
+        final bd = businessDateByDay[s.dayLabel];
+        final dd = bd == null
+            ? null
+            : snapshot.dayDaypartFor(
+                businessDate: bd, servicePeriodId: s.daypart);
         expect(source, isNotNull);
         expect(
-          alloc,
+          dd,
           isNotNull,
           reason:
-              '$key: every closed Full Week row must have a matching '
-              'locked-plan daypart allocation for target fields.',
+              '$key: every closed Full Week row must map to a persisted '
+              'locked dayDaypart sub-row for its target fields.',
         );
-        if (source == null || alloc == null) continue;
+        if (source == null || dd == null) continue;
+        final recon = reconciledLockedDaypartFor(
+          snapshot: snapshot,
+          businessDate: bd!,
+          servicePeriodId: s.daypart,
+          definitions: defs,
+        );
+        expect(recon, isNotNull);
 
+        // Closed actuals byte-identical to source truth (unchanged).
         expect(
           s.covers,
           equals(source.covers),
@@ -1120,28 +1157,35 @@ void main() {
           reason: '$key: closed actual BOH hours must remain source truth',
         );
 
+        // Plan-owned target fields now read the persisted locked
+        // sub-row (covers/sales straight; FOH/BOH via shared recon).
         expect(
           s.forecastCovers,
-          equals(alloc.forecastCovers),
+          equals(dd.forecastCovers),
           reason:
-              '$key: closed target covers must come from the Plan allocator',
+              '$key: closed target covers come from the persisted '
+              'locked sub-row',
         );
         expect(
           s.scheduledFohHours,
-          equals(alloc.requiredFohHours),
+          equals(recon!.requiredFohHours),
           reason:
-              '$key: closed target FOH hours must come from the Plan allocator',
+              '$key: closed target FOH hours = shared exact '
+              'reconciliation of the persisted locked sub-row',
         );
         expect(
           s.scheduledBohHours,
-          equals(alloc.requiredBohHours),
+          equals(recon.requiredBohHours),
           reason:
-              '$key: closed target BOH hours must come from the Plan allocator',
+              '$key: closed target BOH hours = shared exact '
+              'reconciliation of the persisted locked sub-row',
         );
         expect(
           s.planForecastSales,
-          closeTo(alloc.forecastSales, 0.01),
-          reason: '$key: closed target sales must come from the Plan allocator',
+          closeTo(dd.forecastSales, 0.01),
+          reason:
+              '$key: closed target sales come from the persisted '
+              'locked sub-row',
         );
         expect(
           s.targetCPLH,

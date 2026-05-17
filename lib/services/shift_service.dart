@@ -37,6 +37,7 @@ import '../domain/repositories/target_cycle_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
+import '../domain/services/locked_daypart_int_hours.dart';
 import '../domain/services/shift_boundary_resolver.dart';
 import '../domain/services/utc_metadata_timestamp.dart';
 import '../state/app_runtime_invalidation_bus.dart';
@@ -1173,8 +1174,26 @@ class ShiftService {
     );
   }
 
-  /// 7.56c.0: builds a `dayLabel -> daypart -> [DaypartAllocation]`
-  /// lookup of locked-plan daypart targets for [weekId].
+  /// Per-Daypart V1 (Slice 5): builds a
+  /// `dayLabel -> daypart -> [DaypartAllocation]` lookup of locked-plan
+  /// daypart targets for [weekId].
+  ///
+  /// Precedence (mirrors the proven Slice 3 pattern in
+  /// `ScheduleForecastNotifier`):
+  ///   - When the in-force `WeeklyPlanSnapshot.dayDayparts` is non-empty,
+  ///     those PERSISTED locked per-(business_date, service_period) rows
+  ///     are the AUTHORITY. Covers (int) and sales (double) carry
+  ///     straight from the persisted row; the persisted hour doubles are
+  ///     reconciled into integers via the shared
+  ///     `reconcileLockedDaypartIntHours` helper so per-period whole
+  ///     hours sum EXACTLY to the locked day-level integer hours
+  ///     (Option B — no independent per-cell rounding, consistent with
+  ///     #917 / #941). The set of periods per day is the persisted
+  ///     sub-rows for that business date, NOT the render-time resolver.
+  ///   - When `dayDayparts` is EMPTY (legacy snapshot written before
+  ///     Slice 1, or Gap-42 insufficient-recommendation fallback), and
+  ///     ONLY then, the deprecated render-time [DaypartPlanAllocator]
+  ///     supplies the sub-rows so the screen still renders honestly.
   ///
   /// Returns an empty map (every lookup falls back to snapshot values)
   /// when [weekId] is not the current operational week, when no locked
@@ -1204,11 +1223,51 @@ class ShiftService {
     final defs = config?.servicePeriodDefinitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
 
+    final out = <String, Map<String, DaypartAllocation>>{};
+
+    // Slice 5: persisted locked sub-rows are the authority when present.
+    if (snapshot.dayDayparts.isNotEmpty) {
+      // Day label → locked business date (same idiom Slice 3 uses in
+      // ScheduleForecastNotifier). The period SET per day is the
+      // persisted sub-rows for that business date (locked authority),
+      // NOT the render-time resolver.
+      final businessDateByDay = <String, String>{
+        for (final dr in snapshot.dayRows) dr.day: dr.businessDate,
+      };
+      businessDateByDay.forEach((dayLabel, businessDate) {
+        // FOH/BOH integers reconciled via the SINGLE shared helper so
+        // per-period whole hours sum exactly to the locked day-level
+        // integer hours (Option B). Covers/sales carry straight from the
+        // persisted row.
+        final reconciled = reconcileLockedDaypartIntHours(
+          snapshot: snapshot,
+          businessDate: businessDate,
+          definitions: defs,
+        );
+        if (reconciled.isEmpty) return;
+        out[dayLabel] = {
+          for (final r in reconciled)
+            r.servicePeriodId: DaypartAllocation(
+              daypartId: r.servicePeriodId,
+              label: r.label,
+              forecastCovers: r.forecastCovers,
+              forecastSales: r.forecastSales,
+              requiredFohHours: r.requiredFohHours,
+              requiredBohHours: r.requiredBohHours,
+            ),
+        };
+      });
+      return out;
+    }
+
+    // Empty `dayDayparts` (legacy snapshot pre-Slice 1 / Gap-42
+    // insufficient-recommendation) — and ONLY then — fall back to the
+    // deprecated render-time allocator so the screen still renders
+    // honest sub-rows. New code must NOT add locked-read consumers here.
     final distributionWeights =
         await SchedulePlanReadService.loadDistributionWeights(restaurantId);
-
-    final out = <String, Map<String, DaypartAllocation>>{};
     for (final dayRow in snapshot.dayRows) {
+      // ignore: deprecated_member_use_from_same_package
       final allocations = DaypartPlanAllocator.allocate(
         day: dayRow.day,
         dayCovers: dayRow.forecastCovers,
