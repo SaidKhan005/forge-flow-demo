@@ -1,9 +1,18 @@
-// Phase 7.55o.2 — Variance "History" tab.
+// Phase 7.55o.2 / Variance V2 Lane R-HIST — Variance "History" tab.
 //
-// Extracted from lib/screens/variance_report.dart. Owns the History tab,
-// its data loader, the teaching summary card, and the evidence cards.
-// Behaviour, labels, navigation, and fallback rules are unchanged from
-// the pre-split implementation.
+// Owns the History tab, its data loader, the CPLH-vs-OPZ band card,
+// the "Most common leak" card, and the previous-weeks list. Section
+// order and labels mirror the approved mockup
+// `docs/f&f Coaching/variance_tab_v2_mockup.html` `#hist`:
+//   band -> Most common leak -> Previous weeks
+//
+// Variance V2 round-2 corrective: the benchmark-daypart list that used
+// to sit under "Most common leak" is removed (operator decision: match
+// the HTML exactly — no benchmark-daypart list there). The leak card is
+// now a single styled card with a serif headline (the resolved leak
+// driver) and a richer teaching body whose repeat-count span is
+// emphasised via the V2-4 `[[bad:…]]` markup applied AT RENDER (never
+// stored in the lever catalog).
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -11,41 +20,77 @@ import 'package:provider/provider.dart';
 import '../../domain/constants/app_defaults.dart';
 import '../../state/active_target_profile_notifier.dart';
 import '../../services/shift_data_source.dart';
-import '../../models/history_benchmark_daypart_summary.dart';
 import '../../models/history_pattern_record.dart';
 import '../../models/shift_record.dart';
 import '../../models/week_record.dart';
-import '../../services/daypart_evidence_visibility_policy.dart';
-import '../../services/history_benchmark_daypart_read_service.dart';
 import '../../services/history_teaching_analyzer.dart';
 import '../../services/variance_driver_pattern_read_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/sticky_section_delegate.dart';
 import '../../widgets/variance/cplh_opz_band_card.dart';
+import '../../widgets/variance/inline_emphasis_text.dart';
 import '../../widgets/week_history_tile.dart';
 import '../week_detail_screen.dart';
-import 'variance_shared_widgets.dart';
 
-class _TeachingSummaryCard extends StatelessWidget {
-  final HistoryTeachingSummary summary;
+/// Variance V2 Lane R-HIST — the History "Most common leak" card.
+///
+/// 1:1 with the approved mockup
+/// `docs/f&f Coaching/variance_tab_v2_mockup.html` `#hist` "Most common
+/// leak" section: a single styled card holding a serif headline (the
+/// resolved leak driver) and a richer teaching body with one inline
+/// `.em-bad` emphasis span. The mockup's literal copy ("CPLH below OPZ
+/// on busy weeks", "8 of the last 24 dayparts") is presentation
+/// reference only — the headline is the real resolved
+/// `LeverCardData.metric` and the count is the real
+/// `mostCommonLeakCount` over the closed-shift population the History
+/// tab already loads. The earlier benchmark-daypart list under this
+/// section is removed by operator decision (match the HTML exactly; no
+/// benchmark-daypart list there).
+///
+/// V2-4 inline emphasis: the `[[bad:…]]` markup is applied at RENDER
+/// here, never stored in the lever catalog. The body is routed through
+/// [InlineEmphasisText] so the "N of M dayparts" span renders in the
+/// loss (red, bold) sentiment exactly like the mockup's `.em-bad`. When
+/// the closed-shift denominator is unavailable the body degrades to the
+/// honest no-count sentence (Metric Honesty Doctrine): no fabricated
+/// "N of M".
+class _MostCommonLeakCard extends StatelessWidget {
   final LeverCardData leakCard;
-  final int weekCount;
+  final int repeatCount;
   final int totalHistoricalDayparts;
-  final List<HistoryBenchmarkDaypartSummary> benchmarkDayparts;
 
-  const _TeachingSummaryCard({
-    required this.summary,
+  const _MostCommonLeakCard({
     required this.leakCard,
-    required this.weekCount,
+    required this.repeatCount,
     required this.totalHistoricalDayparts,
-    required this.benchmarkDayparts,
   });
+
+  /// The teaching body, with the real repeat count wrapped in the V2-4
+  /// `[[bad:…]]` token AT RENDER TIME. The numbers are the real
+  /// `mostCommonLeakCount` over the real closed-shift population the
+  /// History tab loaded — only the styling mirrors the mockup, never
+  /// the mockup's literal "8 of 24". When there is no honest
+  /// denominator the count clause is dropped rather than invented.
+  String _bodyMarkup() {
+    if (totalHistoricalDayparts > 0) {
+      return 'It has been your top driver in '
+          '[[bad:$repeatCount of the last $totalHistoricalDayparts dayparts]]. '
+          'Once is a bad night. A pattern in the same place is a habit, '
+          'and a habit is what Learn is for.';
+    }
+    // Honest degraded body: no closed-shift denominator to count
+    // against, so the repeat clause is omitted entirely (Metric
+    // Honesty Doctrine — no fabricated "N of M").
+    return 'It has been your top driver. Once is a bad night. '
+        'A pattern in the same place is a habit, and a habit is what '
+        'Learn is for.';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
@@ -58,254 +103,20 @@ class _TeachingSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // MOST COMMON LEAK
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 13, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'MOST COMMON LEAK',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 8),
-                _LeakEvidenceCard(
-                  leakCard: leakCard,
-                  repeatCount: summary.mostCommonLeakCount,
-                  totalHistoricalDayparts: totalHistoricalDayparts,
-                ),
-              ],
-            ),
-          ),
-          Container(height: 1, color: AppColors.borderSubtle),
-
-          // BENCHMARK DAYPARTS ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â evidence-backed with visibility policy (7.55k.7)
-          ..._buildBenchmarkDaypartRows(benchmarkDayparts),
-        ],
-      ),
-    );
-  }
-}
-
-/// Builds the benchmark daypart rows with visibility policy (7.55k.7).
-/// Strong evidence renders as benchmark truth; thin evidence renders as
-/// early signal; empty renders as a dash.
-List<Widget> _buildBenchmarkDaypartRows(
-  List<HistoryBenchmarkDaypartSummary> benchmarkDayparts,
-) {
-  if (benchmarkDayparts.isEmpty) {
-    return [
-      const _TeachRow(
-        title: 'BENCHMARK DAYPARTS',
-        value: '\u2014',
-        valueColor: AppColors.positive,
-        isLast: true,
-      ),
-    ];
-  }
-
-  final strong = <HistoryBenchmarkDaypartSummary>[];
-  final earlySignal = <HistoryBenchmarkDaypartSummary>[];
-  for (final b in benchmarkDayparts) {
-    final tier = DaypartEvidenceVisibilityPolicy.classifyBenchmark(
-      benchmarkCount: b.benchmarkCount,
-      closedShiftCount: b.closedShiftCount,
-    );
-    if (tier == EvidenceTier.strong) {
-      strong.add(b);
-    } else if (tier == EvidenceTier.earlySignal) {
-      earlySignal.add(b);
-    }
-  }
-
-  return [
-    Padding(
-      padding: const EdgeInsets.fromLTRB(16, 13, 16, 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (strong.isNotEmpty) ...[
-            Text(
-              'BENCHMARK DAYPARTS',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 8),
-            for (final b in strong) ...[
-              _BenchmarkDaypartEvidenceCard(
-                summary: b,
-                tone: AppColors.positive,
-              ),
-              const SizedBox(height: 8),
-            ],
-          ],
-          if (earlySignal.isNotEmpty) ...[
-            if (strong.isNotEmpty) const SizedBox(height: 8),
-            Text(
-              'EARLY SIGNALS',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 8),
-            for (final b in earlySignal) ...[
-              _BenchmarkDaypartEvidenceCard(
-                summary: b,
-                tone: AppColors.warning,
-              ),
-              const SizedBox(height: 8),
-            ],
-          ],
-          if (strong.isEmpty && earlySignal.isEmpty) ...[
-            Text(
-              'BENCHMARK DAYPARTS',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              '\u2014',
-              style: AppTextStyles.mono14(color: AppColors.positive),
-            ),
-          ],
-        ],
-      ),
-    ),
-  ];
-}
-
-String _benchmarkDaypartEvidenceLabel(HistoryBenchmarkDaypartSummary summary) =>
-    'Met benchmark ${summary.benchmarkCount} of ${summary.closedShiftCount} shifts';
-
-class _BenchmarkDaypartEvidenceCard extends StatelessWidget {
-  final HistoryBenchmarkDaypartSummary summary;
-  final Color tone;
-
-  const _BenchmarkDaypartEvidenceCard({
-    required this.summary,
-    required this.tone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.05),
-        border: Border.all(color: tone.withValues(alpha: 0.25), width: 1),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            summary.label,
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            _benchmarkDaypartEvidenceLabel(summary),
-            style: AppTextStyles.mono10(color: tone),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              VarianceChip(
-                label: '${summary.avgCPLH.toStringAsFixed(2)} CPLH',
-                color: tone,
-              ),
-              VarianceChip(
-                label: '\$${summary.avgSPLH.toStringAsFixed(0)} SPLH',
-                color: tone,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _LeakEvidenceCard extends StatelessWidget {
-  final LeverCardData leakCard;
-  final int repeatCount;
-  final int totalHistoricalDayparts;
-
-  const _LeakEvidenceCard({
-    required this.leakCard,
-    required this.repeatCount,
-    required this.totalHistoricalDayparts,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final repeatLabel = totalHistoricalDayparts > 0
-        ? 'Showed up in $repeatCount of $totalHistoricalDayparts dayparts'
-        : null;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: AppColors.negative.withValues(alpha: 0.05),
-        border: Border.all(
-          color: AppColors.negative.withValues(alpha: 0.25),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          // Mockup `#hist`: serif headline `h3`. The headline is the
+          // real resolved leak driver copy (`LeverCardData.metric`),
+          // not the mockup's literal string.
           Text(
             leakCard.metric,
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
+            style: AppTextStyles.display16(color: AppColors.textPrimary),
           ),
-          if (repeatLabel != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              repeatLabel,
-              style: AppTextStyles.mono10(color: AppColors.negative),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-class _TeachRow extends StatelessWidget {
-  final String title;
-  final String value;
-  final Color? valueColor;
-  final bool isLast;
-
-  const _TeachRow({
-    required this.title,
-    required this.value,
-    this.valueColor,
-    this.isLast = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(16, 13, 16, isLast ? 16 : 13),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 128,
-            child: Text(
-              title,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: AppTextStyles.mono14(
-                color: valueColor ?? AppColors.textPrimary,
-              ),
-            ),
+          const SizedBox(height: 8),
+          // Mockup `#hist`: `.tp` teaching paragraph with one `.em-bad`
+          // span. Routed through InlineEmphasisText so the `[[bad:…]]`
+          // markup applied above renders in the loss sentiment.
+          InlineEmphasisText(
+            _bodyMarkup(),
+            baseStyle: AppTextStyles.body14(color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -313,7 +124,7 @@ class _TeachRow extends StatelessWidget {
   }
 }
 
-// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ History tab ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
+// ─────────────────────────────── History tab ───────────────────────────────
 
 /// Holds data sets loaded for the History tab.
 class _HistoryData {
@@ -442,7 +253,7 @@ class _HistoryTabState extends State<HistoryTab>
         final weeks = data.weeks;
         final patternRecords = data.patternRecords;
 
-        // Teaching summary ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â only shown when pattern records exist.
+        // Teaching summary only shown when pattern records exist.
         HistoryTeachingSummary? teachingSummary;
         LeverCardData? leakCard;
         if (patternRecords.isNotEmpty) {
@@ -450,25 +261,20 @@ class _HistoryTabState extends State<HistoryTab>
           // 7.58.2 — single source of truth for the leak driver. Same
           // service Variance > Learn consults; pins parity per
           // `docs/contracts/phase_7_58_primary_driver_contract.md`
-          // Single Source of Truth so the History leak evidence card
-          // and the Learn three-card teaching shape resolve the same
-          // lever id + LeverCardData.metric copy for the same scope.
+          // Single Source of Truth so the History leak card and the
+          // Learn three-card teaching shape resolve the same lever id +
+          // LeverCardData.metric copy for the same scope.
           // 7.58.UX.5 (F-1): the service returns a null card for
           // unknown ids / empty sets, so an unknown leak id still
-          // suppresses the leak evidence card rather than fabricating
-          // a coversDown leak.
+          // suppresses the leak card rather than fabricating a
+          // coversDown leak.
           const driverService = VarianceDriverPatternReadService();
           leakCard = driverService.resolveLeakDriver(patternRecords).card;
         }
 
-        // Benchmark daypart evidence (7.55k.5).
-        const benchmarkService = HistoryBenchmarkDaypartReadService();
-        final benchmarkDayparts = benchmarkService.build(
-          data.historicalClosedShifts,
-        );
         final historyRangeLabel = _historyRangeLabel(weeks);
 
-        // ── CPLH vs OPZ 60-day band (Variance V2 Lane HIST) ───────────────
+        // ── CPLH vs OPZ 60-day band (Variance V2 Lane HIST, #922) ─────────
         // Mockup `#hist` first card. Geometry is sourced ONLY from data
         // the History tab already loaded (per-week `WeekRecord.avgCPLH`)
         // plus the active target profile's CPLH OPZ floor/ceiling. NO new
@@ -520,6 +326,9 @@ class _HistoryTabState extends State<HistoryTab>
             ),
 
             // ── History sections ─────────────────────────────────
+            // Section order mirrors the approved mockup `#hist`:
+            // band -> Most common leak -> Previous weeks.
+            //
             // CPLH vs OPZ 60-day band — mockup `#hist` first card.
             // Rendered as the first card after the header so the History
             // tab mirrors the approved mockup ordering. The band itself
@@ -540,9 +349,12 @@ class _HistoryTabState extends State<HistoryTab>
                 ],
               ),
 
-            // Most common leak — the existing teaching/leak evidence card.
-            // The mockup's "Most common leak" maps to this card's leak
-            // evidence; only shown when pattern records exist.
+            // Most common leak — mockup `#hist` "Most common leak" card.
+            // Single styled card: serif headline (resolved leak driver)
+            // + a richer teaching body with the inline `[[bad:…]]`
+            // emphasis applied at render. Only shown when pattern
+            // records exist; the benchmark-daypart list that used to
+            // sit here is removed (operator decision: match the HTML).
             if (teachingSummary != null && leakCard != null)
               SliverMainAxisGroup(
                 slivers: [
@@ -551,13 +363,11 @@ class _HistoryTabState extends State<HistoryTab>
                     delegate: StickySectionDelegate('MOST COMMON LEAK'),
                   ),
                   SliverToBoxAdapter(
-                    child: _TeachingSummaryCard(
-                      summary: teachingSummary,
+                    child: _MostCommonLeakCard(
                       leakCard: leakCard,
-                      weekCount: weeks.length,
+                      repeatCount: teachingSummary.mostCommonLeakCount,
                       totalHistoricalDayparts:
                           data.historicalClosedShifts.length,
-                      benchmarkDayparts: benchmarkDayparts,
                     ),
                   ),
                 ],
