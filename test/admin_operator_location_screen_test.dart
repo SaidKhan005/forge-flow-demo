@@ -23,6 +23,8 @@ import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
+import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_projection.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
@@ -71,6 +73,69 @@ void main() {
         ),
       ],
     );
+  }
+
+  // Fix #4 / S4 (G42): seed the READ-ONLY admin business-timing
+  // resolution gateway with a real canonical-shaped candidate chain
+  // so the per-location Timing dialog renders the REAL resolved
+  // `EffectiveBusinessTimingProfile` (replacing the deleted synthetic
+  // `_AdminTimingResolution.forScope` fabrication).
+  InMemoryAdminBusinessTimingResolutionGateway seedTimingGateway({
+    required String operatorId,
+    required String locationId,
+    String timezone = 'America/Toronto',
+    String dayStart = '04:00',
+    String weekStart = 'monday',
+    List<AdminResolutionServicePeriod>? periods,
+  }) {
+    final gw = InMemoryAdminBusinessTimingResolutionGateway();
+    gw.put(
+      operatorId,
+      locationId,
+      AdminBusinessTimingResolution(
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDate: '2026-05-01',
+        ianaTimezone: timezone,
+        candidates: <AdminResolutionCandidate>[
+          AdminResolutionCandidate(
+            profileId: '$operatorId-default',
+            scopeType: 'operator',
+            scopeId: operatorId,
+            scopeLabel: 'Operator default',
+            scopeDepthRank: 0,
+            ianaTimezone: timezone,
+            effectiveAtBusinessDate: '2026-05-01',
+            weekStartDay: weekStart,
+            businessDayStartLocal: dayStart,
+            servicePeriods: periods ??
+                <AdminResolutionServicePeriod>[
+                  const AdminResolutionServicePeriod(
+                    key: 'lunch',
+                    label: 'Lunch',
+                    startLocal: '11:00',
+                    endLocal: '16:00',
+                    rollsPastMidnight: false,
+                    shortLabel: 'L',
+                    sortOrder: 1,
+                    applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                  ),
+                  const AdminResolutionServicePeriod(
+                    key: 'dinner',
+                    label: 'Dinner',
+                    startLocal: '16:00',
+                    endLocal: '22:00',
+                    rollsPastMidnight: false,
+                    shortLabel: 'D',
+                    sortOrder: 2,
+                    applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                  ),
+                ],
+          ),
+        ],
+      ),
+    );
+    return gw;
   }
 
   Future<void> chooseTimezone(
@@ -535,8 +600,20 @@ void main() {
         ),
       ],
     );
+    final timingGw = seedTimingGateway(
+      operatorId: 'op-timing',
+      locationId: 'loc-timing',
+      timezone: 'America/Toronto',
+      dayStart: '04:00',
+      weekStart: 'monday',
+    );
     await tester.pumpWidget(
-      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          timingResolutionGateway: timingGw,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -561,12 +638,21 @@ void main() {
       scopeType: 'location',
       locationId: 'loc-timing',
     );
+    // The resolved body is a FutureBuilder over the READ-ONLY S2
+    // admin gateway; let it complete.
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
       findsOneWidget,
     );
     expect(find.text('Timing Cafe / HQ'), findsWidgets);
+    // REAL resolved values from the seeded canonical chain (no longer
+    // the deleted synthetic `_AdminTimingResolution.forScope` path).
+    expect(
+      find.byKey(const Key('admin_timing_resolved_fields')),
+      findsOneWidget,
+    );
     expect(find.text('America/Toronto'), findsOneWidget);
     expect(find.text('04:00'), findsOneWidget);
     expect(find.textContaining('No timing change was written'), findsOneWidget);
@@ -579,8 +665,9 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Timezone source'), findsOneWidget);
-    expect(find.text('Set at this scope'), findsWidgets);
-    expect(find.text('Inherited from business'), findsWidgets);
+    // Provenance is the resolver's resolved scope (operator-only chain
+    // => "Inherited (Operator default)"), NOT a synthetic scope flag.
+    expect(find.text('Inherited (Operator default)'), findsWidgets);
     expect(
       find.byKey(const Key('admin_timing_service_periods_panel')),
       findsOneWidget,
@@ -599,8 +686,22 @@ void main() {
         ),
       ],
     );
+    // At business scope the dialog resolves timing for the primary
+    // location; seed the canonical chain under that location id.
+    final timingGw = seedTimingGateway(
+      operatorId: 'op-business-timing',
+      locationId: 'loc-business-timing',
+      timezone: 'America/Toronto',
+      dayStart: '04:00',
+      weekStart: 'monday',
+    );
     await tester.pumpWidget(
-      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          timingResolutionGateway: timingGw,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -616,12 +717,18 @@ void main() {
       operatorId: 'op-business-timing',
       scopeType: 'business',
     );
+    await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
       findsOneWidget,
     );
     expect(find.text('Showing timing for business scope'), findsOneWidget);
+    // REAL resolved values from the seeded canonical chain.
+    expect(
+      find.byKey(const Key('admin_timing_resolved_fields')),
+      findsOneWidget,
+    );
     expect(find.text('Effective timezone'), findsOneWidget);
     expect(find.text('America/Toronto'), findsOneWidget);
     expect(find.text('Business day starts'), findsOneWidget);
@@ -630,7 +737,9 @@ void main() {
     expect(find.text('Monday'), findsOneWidget);
     expect(find.text('Effective service periods'), findsOneWidget);
     expect(find.text('Lunch'), findsOneWidget);
-    expect(find.text('Set at this scope'), findsWidgets);
+    // Operator-only seeded chain => provenance is the resolver's
+    // resolved scope, not a synthetic "Set at this scope" flag.
+    expect(find.text('Inherited (Operator default)'), findsWidgets);
   });
 
   testWidgets(
@@ -645,9 +754,17 @@ void main() {
           ),
         ],
       );
+      final timingGw = seedTimingGateway(
+        operatorId: 'op-timing-readonly',
+        locationId: 'loc-timing-readonly',
+      );
       await tester.pumpWidget(
         wrap(
-          OperatorLocationAdminScreen(gateway: gateway, editingEnabled: false),
+          OperatorLocationAdminScreen(
+            gateway: gateway,
+            editingEnabled: false,
+            timingResolutionGateway: timingGw,
+          ),
         ),
       );
       await tester.pumpAndSettle();
@@ -673,12 +790,20 @@ void main() {
         scopeType: 'location',
         locationId: 'loc-timing-readonly',
       );
+      await tester.pumpAndSettle();
 
       expect(
         find.byKey(const Key('admin_location_timing_dialog')),
         findsOneWidget,
       );
       expect(find.textContaining('Read-only support view'), findsOneWidget);
+      // Read-only-accurate (operator decision Q3): values are REAL
+      // and resolved, but NO write/edit affordance is added.
+      expect(
+        find.byKey(const Key('admin_timing_resolved_fields')),
+        findsOneWidget,
+      );
+      expect(find.text('America/Toronto'), findsOneWidget);
       expect(
         find.byKey(const Key('admin_location_timing_audit_reason')),
         findsNothing,

@@ -48,6 +48,8 @@ import 'screens/support_operator_view_admin_screen.dart';
 import 'screens/vendor_applicability_admin_screen.dart';
 import 'screens/vendor_connections/vendor_connections_admin_mount.dart';
 import 'services/admin_account_gateway.dart';
+import 'services/admin_business_timing_resolution_gateway.dart';
+import 'services/admin_business_timing_resolution_projection.dart';
 import 'services/admin_security_gateway.dart';
 import 'services/admin_sessions_gateway.dart';
 import 'services/audit_log_admin_rootnode_builder.dart';
@@ -528,6 +530,12 @@ Widget _buildOperators(BuildContext context) {
       gateway: gateway,
       hierarchyGateway: hierarchyGateway,
       vendorConnectionsGateway: vendorConnectionsGateway,
+      // Fix #4 / S4 (G42): READ-ONLY admin business-timing resolution
+      // gateway threaded into the per-location Timing dialog so the
+      // displayed timezone / business-day / week-start / service
+      // periods are the REAL resolved EffectiveBusinessTimingProfile.
+      timingResolutionGateway:
+          AdminConsoleServicesScope.timingResolutionGatewayOf(context),
       editingEnabled: editingEnabled,
       actorUserId: actorUserId,
       onOpenSupportLogs: handoff == null
@@ -1499,6 +1507,12 @@ Widget _buildTimingSetup(BuildContext context) {
         selectedScope: selectedScope,
         scopeLocationIds: selection.locationIds,
         editingEnabled: canEdit,
+        // Fix #4 / S4 (G41): READ-ONLY admin business-timing
+        // resolution gateway so the effective-timing card shows the
+        // REAL resolved EffectiveBusinessTimingProfile instead of
+        // hardcoded periods / week-start / close-rule.
+        timingResolutionGateway:
+            AdminConsoleServicesScope.timingResolutionGatewayOf(context),
       );
     }
 
@@ -2674,6 +2688,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.adminAccountGateway,
     this.adminSessionsGateway,
     this.adminSecurityGateway,
+    this.timingResolutionGateway,
     this.adminAuthSource,
   });
 
@@ -2800,6 +2815,17 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// [adminSessionsGateway]).
   final AdminSecurityGateway? adminSecurityGateway;
 
+  /// Fix #4 / S4 (G41 + G42) — READ-ONLY admin cross-tenant
+  /// business-timing resolution gateway (consumes the S2 route
+  /// `GET /v1/admin/operators/:operatorId/locations/:locationId/
+  /// business-timing-resolution`). Production binds the HTTP-backed
+  /// [HttpAdminBusinessTimingResolutionGateway] here; demo /
+  /// share-preview / widget tests leave it null so the admin timing
+  /// surfaces fall back to the seeded in-memory gateway and render
+  /// without the Cloud Run admin proxy. Admin NEVER writes timing
+  /// cross-tenant (operator decision Q3) — read-only by contract.
+  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
+
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
@@ -2814,6 +2840,20 @@ class AdminConsoleServicesScope extends InheritedWidget {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
     return scope?.operatorLocationGateway ?? _defaultDemoGateway;
+  }
+
+  /// Fix #4 / S4 (G41 + G42) — resolve the READ-ONLY admin
+  /// business-timing resolution gateway. Falls back to a shared
+  /// seeded in-memory gateway (empty by default → the timing
+  /// surfaces render their honest "no profile yet" state instead of
+  /// fabricating values) when no production scope is mounted.
+  static AdminBusinessTimingResolutionGateway timingResolutionGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.timingResolutionGateway ??
+        _defaultTimingResolutionDemoGateway;
   }
 
   static PricingTierAdminGateway pricingTierGatewayOf(BuildContext context) {
@@ -2977,8 +3017,18 @@ class AdminConsoleServicesScope extends InheritedWidget {
       adminAccountGateway != oldWidget.adminAccountGateway ||
       adminSessionsGateway != oldWidget.adminSessionsGateway ||
       adminSecurityGateway != oldWidget.adminSecurityGateway ||
+      timingResolutionGateway != oldWidget.timingResolutionGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
+
+/// Fix #4 / S4 (G41 + G42) — shared seeded in-memory fallback for
+/// the READ-ONLY admin business-timing resolution gateway. Empty by
+/// default so the timing surfaces render their honest "no timing
+/// profile yet" state instead of fabricating values when no
+/// production [HttpAdminBusinessTimingResolutionGateway] is wired.
+final AdminBusinessTimingResolutionGateway
+    _defaultTimingResolutionDemoGateway =
+    InMemoryAdminBusinessTimingResolutionGateway();
 
 /// Demo gateway shared by walkthrough + admin shell when no
 /// production scope is mounted. Seeded with two fixture operators

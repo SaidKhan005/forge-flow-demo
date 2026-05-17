@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/services/business_timing_profile_resolver.dart';
 import '../../theme/app_theme.dart';
 import '../admin_route_handoff.dart';
 import '../models/operator_location_admin_models.dart';
+import '../services/admin_business_timing_resolution_gateway.dart';
+import '../services/admin_business_timing_resolution_projection.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
 
@@ -13,12 +16,21 @@ class AdminTimingSetupScreen extends StatelessWidget {
     required this.selectedScope,
     required this.scopeLocationIds,
     this.editingEnabled = true,
+    this.timingResolutionGateway,
   });
 
   final OperatorLocationAdminGateway operatorGateway;
   final AdminHierarchyScopeIntent selectedScope;
   final Set<String> scopeLocationIds;
   final bool editingEnabled;
+
+  /// Fix #4 / S4 (G41): READ-ONLY S2 admin cross-tenant business-
+  /// timing resolution gateway. Null falls back to the seeded
+  /// in-memory demo gateway (mirrors the established optional-gateway
+  /// admin DI pattern), so demo / share-preview / widget tests render
+  /// without the Cloud Run admin proxy. Admin NEVER writes timing
+  /// cross-tenant (operator decision Q3) — this gateway is read-only.
+  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +75,8 @@ class AdminTimingSetupScreen extends StatelessWidget {
                             ? null
                             : scopeLocationIds.length,
                         editingEnabled: editingEnabled,
+                        timingResolutionGateway: timingResolutionGateway ??
+                            _fallbackTimingResolutionGateway,
                       ),
                   ],
                 ),
@@ -105,18 +119,28 @@ class AdminTimingSetupScreen extends StatelessWidget {
   }
 }
 
+/// Fix #4 / S4 (G41): shared seeded in-memory fallback so demo /
+/// share-preview / widget tests render without the Cloud Run admin
+/// proxy. Empty by default → the screen shows its honest "no timing
+/// profile yet" state instead of fabricating values. Production
+/// passes a real [HttpAdminBusinessTimingResolutionGateway].
+final AdminBusinessTimingResolutionGateway _fallbackTimingResolutionGateway =
+    InMemoryAdminBusinessTimingResolutionGateway();
+
 class _TimingSummaryCard extends StatelessWidget {
   const _TimingSummaryCard({
     required this.selectedScope,
     required this.location,
     required this.scopeLocationCount,
     required this.editingEnabled,
+    required this.timingResolutionGateway,
   });
 
   final AdminHierarchyScopeIntent selectedScope;
   final LocationAdminRecord location;
   final int? scopeLocationCount;
   final bool editingEnabled;
+  final AdminBusinessTimingResolutionGateway timingResolutionGateway;
 
   @override
   Widget build(BuildContext context) {
@@ -186,39 +210,26 @@ class _TimingSummaryCard extends StatelessWidget {
           ),
           AdminDetailRow(label: 'Timing source', value: location.name),
           AdminDetailRow(label: 'Covered locations', value: covered),
-          AdminDetailRow(label: 'Timezone', value: location.timezone),
-          AdminDetailRow(
-            label: 'Business day starts',
-            value: _businessDayStart(location.businessDayRolloverHour),
-          ),
-          const AdminDetailRow(label: 'Week starts', value: 'Monday'),
-          const AdminDetailRow(
-            label: 'Shift close rule',
-            value:
-                'Use the app close time if vendor finalization is unavailable',
-          ),
-          const SizedBox(height: 16),
-          Container(
-            key: const Key('admin_timing_service_periods_panel'),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppColors.cardGlow,
-              border: Border.all(color: AppColors.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: const <Widget>[
-                _TimingPeriodLine(label: 'Lunch', range: '11:00 - 16:00'),
-                _TimingPeriodLine(label: 'Dinner', range: '16:00 - 22:00'),
-                _TimingPeriodLine(label: 'Late night', range: '22:00 - 02:00'),
-              ],
-            ),
+          const SizedBox(height: 12),
+          // Fix #4 / S4 (G41): the timezone / business-day / week-start
+          // / service-period rows below are now the REAL resolved
+          // `EffectiveBusinessTimingProfile` — the canonical S2 admin
+          // candidate chain run through the ONE
+          // `BusinessTimingProfileResolver`. The prior hardcoded
+          // periods, hardcoded "Monday", hardcoded close-rule string,
+          // and the legacy `_businessDayStart(businessDayRolloverHour)`
+          // integer-column path are deleted. Gap 31: the shift-close
+          // rule is being removed as an operator setting, so it is no
+          // longer shown here (auto-derived per shift downstream).
+          _ResolvedTimingFields(
+            operatorId: selectedScope.operatorId,
+            locationId: location.locationId,
+            gateway: timingResolutionGateway,
           ),
           const SizedBox(height: 16),
           Text(
             editingEnabled
-                ? 'Timing is shown here for review so the selected hierarchy has a clear source of truth.'
+                ? 'Timing is shown here for review so the selected hierarchy has a clear source of truth. Operators own these values; admin is read-only.'
                 : 'Support access can review timing without changing it.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
@@ -226,18 +237,161 @@ class _TimingSummaryCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  static String _businessDayStart(int? hour) {
-    final safeHour = (hour ?? 4).clamp(0, 23);
-    return '${safeHour.toString().padLeft(2, '0')}:00';
+/// Fix #4 / S4 (G41): resolves the REAL effective business-timing
+/// profile via the READ-ONLY S2 admin gateway → canonical resolver →
+/// real per-field provenance, replacing every previously hardcoded /
+/// synthetic value on this screen.
+class _ResolvedTimingFields extends StatelessWidget {
+  const _ResolvedTimingFields({
+    required this.operatorId,
+    required this.locationId,
+    required this.gateway,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final AdminBusinessTimingResolutionGateway gateway;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AdminBusinessTimingResolution>(
+      future: gateway.resolve(
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            key: Key('admin_timing_resolution_loading'),
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(minHeight: 2),
+          );
+        }
+        if (snapshot.hasError) {
+          return Padding(
+            key: const Key('admin_timing_resolution_error'),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Effective timing could not load. The operator owns these '
+              'values; try again after the operator has saved a timing '
+              'profile.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          );
+        }
+        final resolution = snapshot.data!;
+        if (resolution.candidates.isEmpty) {
+          return Padding(
+            key: const Key('admin_timing_resolution_empty'),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'No business timing profile has been saved by the operator '
+              'yet. Timezone, business day, and service periods will '
+              'appear here once the operator configures them.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          );
+        }
+        final AdminEffectiveTimingProjection projection;
+        try {
+          projection =
+              AdminBusinessTimingResolutionProjection.project(resolution);
+        } on BusinessTimingProfileResolutionException {
+          return Padding(
+            key: const Key('admin_timing_resolution_error'),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text(
+              'Effective timing could not load. The operator owns these '
+              'values; try again after the operator has saved a timing '
+              'profile.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          );
+        }
+        final effective = projection.effective;
+        final sourceLabel = projection.provenance.detailLabel;
+        final periods = effective.servicePeriodDefinitions.toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        return Column(
+          key: const Key('admin_timing_resolved_fields'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            AdminDetailRow(
+              label: 'Effective from',
+              value: projection.effectiveDateLabel,
+            ),
+            AdminDetailRow(
+              label: 'Timezone',
+              value: effective.businessTimezone,
+            ),
+            AdminDetailRow(label: 'Timezone source', value: sourceLabel),
+            AdminDetailRow(
+              label: 'Business day starts',
+              value: effective.businessDayStartLocalTime,
+            ),
+            AdminDetailRow(label: 'Day-start source', value: sourceLabel),
+            AdminDetailRow(
+              label: 'Week starts',
+              value: AdminBusinessTimingResolutionProjection.weekdayLabel(
+                effective.weekStartDay,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              key: const Key('admin_timing_service_periods_panel'),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.cardGlow,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  for (final period in periods)
+                    _TimingPeriodLine(
+                      label: period.label,
+                      range:
+                          '${period.startLocalTime} - ${period.endLocalTime}',
+                      daysLabel:
+                          AdminBusinessTimingResolutionProjection.daysLabel(
+                        period.applicableDays,
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Source: $sourceLabel',
+                      style: AppTextStyles.mono11(
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
 class _TimingPeriodLine extends StatelessWidget {
-  const _TimingPeriodLine({required this.label, required this.range});
+  const _TimingPeriodLine({
+    required this.label,
+    required this.range,
+    this.daysLabel,
+  });
 
   final String label;
   final String range;
+
+  /// G45 / Gap 28: plain-English day restriction (e.g. "Mon, Tue"),
+  /// or null when the period runs every day (the common case).
+  final String? daysLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -246,9 +400,19 @@ class _TimingPeriodLine extends StatelessWidget {
       child: Row(
         children: <Widget>[
           Expanded(
-            child: Text(
-              label,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  label,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                if (daysLabel != null)
+                  Text(
+                    daysLabel!,
+                    style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  ),
+              ],
             ),
           ),
           Text(range, style: AppTextStyles.mono11(color: AppColors.textMuted)),
