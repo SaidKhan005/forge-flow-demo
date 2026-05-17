@@ -242,7 +242,22 @@ void main() {
   group('E — _buildDayRows rotation', () {
     test('rotation preserves total forecast covers across all day rows',
         () async {
-      // Generate snapshot with Monday start.
+      // Per-Daypart V1 (bottom-up locked snapshot): both the runtime
+      // lock path AND the demo seed now reconcile bottom-up through the
+      // SHARED `WeeklyPlanSnapshotBottomUpReconciler`, but they build
+      // their per-period rows from two different (untouched) builders
+      // (`_buildDayDaypartRowsForLock` vs `_buildSeedDayDaypartRows`),
+      // whose largest-remainder cover allocation totals differ slightly.
+      // This test's intent is rotation invariance (Mon-start vs
+      // Sun-start should yield the same week total), so BOTH snapshots
+      // must come from the SAME generator. Drop the seeded snapshot up
+      // front so the Monday read is runtime-generated too — otherwise
+      // we'd be comparing seed-reconciled vs runtime-reconciled, which
+      // is a different (out-of-scope) cross-path fidelity question.
+      final db0 = await SqliteDatabase.instance.database;
+      await db0.delete('weekly_plan_snapshots');
+
+      // Generate snapshot with Monday start (runtime path).
       final mondaySnap =
           await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
       expect(mondaySnap, isNotNull);
