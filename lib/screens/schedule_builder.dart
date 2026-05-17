@@ -307,8 +307,13 @@ class _DerivedSummaryCards extends StatelessWidget {
             final card = entry.value;
             return Expanded(
               child: Container(
-                margin: EdgeInsets.only(left: i == 0 ? 0 : 6),
-                padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
+                margin: EdgeInsets.only(left: i == 0 ? 0 : AppSpacing.sm),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                  AppSpacing.md,
+                ),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     begin: Alignment.topCenter,
@@ -447,7 +452,12 @@ class _CoverBarChart extends StatelessWidget {
           // Legend — dashed swatch + "DAILY AVG" above the chart so the
           // label never collides with a bar column.
           Padding(
-            padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.xs,
+              AppSpacing.xs,
+              AppSpacing.xs,
+              AppSpacing.sm,
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
