@@ -56,23 +56,41 @@ void main() {
   });
 
   test(
-      'no open shift but history exists → closed-day read model, isClosedDay',
+      'no open shift + closed history + FUTURE projected rows → binds the '
+      'most recent CLOSED day (not the projected future day), isClosedDay',
       () async {
     // Closed-state Shift dashboard (Per-Daypart V1 — closed-state
-    // screen). Delete ONLY the open snapshot rows so the prior days'
-    // closed/projected history remains. The notifier must bind the
-    // most recent business day's already-persisted final values
-    // (reusing the same buildWholeDay wiring) and mark the screen
-    // Closed — NOT show the bare empty state.
+    // screen). Defect fix for PR #937: the demo seed persists FUTURE
+    // `status='projected'` rows for the forthcoming week, so the old
+    // unfiltered max-date selection bound a forecast-only future day
+    // and rendered an all-zeros "Closed" screen. The notifier must
+    // instead bind the most recent COMPLETED (`status='closed'`)
+    // business day's already-persisted final values (reusing the same
+    // buildWholeDay wiring) and mark the screen Closed.
     final db = await SqliteDatabase.instance.database;
     final deleted =
         await db.delete('open_shift_snapshots', where: "status = 'open'");
     expect(deleted, greaterThan(0),
         reason: 'demo seed should have at least one open snapshot');
-    final remaining = await db.rawQuery(
-        "SELECT COUNT(*) c FROM open_shift_snapshots WHERE status != 'open'");
-    expect(remaining.first['c'], greaterThan(0),
-        reason: 'closed/projected history must remain after the delete');
+
+    // Reality-check the fixture: both closed history AND later projected
+    // rows must exist, and the projected max date must be STRICTLY later
+    // than the latest closed date (otherwise this test would not
+    // distinguish the fix from the bug).
+    final latestClosedRow = await db.rawQuery(
+        "SELECT MAX(business_date) d FROM open_shift_snapshots "
+        "WHERE status = 'closed'");
+    final latestClosed = latestClosedRow.first['d'] as String?;
+    final maxAnyRow = await db.rawQuery(
+        "SELECT MAX(business_date) d FROM open_shift_snapshots");
+    final maxAny = maxAnyRow.first['d'] as String?;
+    expect(latestClosed, isNotNull,
+        reason: 'demo seed must have closed history');
+    expect(maxAny, isNotNull);
+    expect(maxAny!.compareTo(latestClosed!), greaterThan(0),
+        reason:
+            'fixture must have a projected future day strictly later than '
+            'the latest closed day for this test to be meaningful');
 
     final notifier = ShiftDashboardNotifier();
     await Future<void>.delayed(const Duration(milliseconds: 500));
@@ -80,12 +98,65 @@ void main() {
     expect(notifier.isLoading, isFalse);
     expect(notifier.readModel, isNotNull,
         reason:
-            'closed-state path must bind the last completed day final values');
+            'closed-state path must bind the last COMPLETED day final values');
     expect(notifier.isClosedDay, isTrue,
-        reason: 'no open shift + history → screen marked Closed');
+        reason: 'no open shift + completed history → screen marked Closed');
+    // The bound day must be the latest CLOSED day, NEVER the later
+    // projected/forecast future day.
+    expect(notifier.readModel!.businessDate, latestClosed,
+        reason: 'must bind the most recent CLOSED day');
+    expect(notifier.readModel!.businessDate, isNot(maxAny),
+        reason: 'must NOT bind the projected future day (the #937 bug)');
+    // Honesty: a real settled day has non-zero finals (not the phantom
+    // all-zeros of a forecast-only projected day).
+    expect(
+        notifier.readModel!.actualSales > 0 ||
+            notifier.readModel!.actualCovers > 0,
+        isTrue,
+        reason: 'a completed day carries non-zero settled finals, not the '
+            'all-zeros of a projected-only future day');
     // Freshness is intentionally null on the closed path — the Closed
     // marker + reopen line carry the state, not a live/stale chip.
     expect(notifier.freshness, isNull);
+    expect(notifier.status, isNotNull);
+
+    notifier.dispose();
+  });
+
+  test(
+      'no open shift + only projected rows (no closed history) → simple '
+      'empty state, NOT a zero Closed screen',
+      () async {
+    // Brand-new operator analogue: a projected-only future week with NO
+    // completed (`status='closed'`) history must fall back to the
+    // existing simple empty state — never a fabricated all-zeros
+    // "Closed" screen built from forecast-only rows (honesty).
+    final db = await SqliteDatabase.instance.database;
+    await db.delete('open_shift_snapshots', where: "status = 'open'");
+    await db.delete('open_shift_snapshots', where: "status = 'closed'");
+    final closedLeft = await db.rawQuery(
+        "SELECT COUNT(*) c FROM open_shift_snapshots WHERE status = 'closed'");
+    expect(closedLeft.first['c'], 0,
+        reason: 'no closed history remains for this case');
+    final projectedLeft = await db.rawQuery(
+        "SELECT COUNT(*) c FROM open_shift_snapshots "
+        "WHERE status = 'projected'");
+    expect(projectedLeft.first['c'], greaterThan(0),
+        reason: 'projected future rows must remain to prove they do NOT '
+            'produce a Closed screen');
+
+    final notifier = ShiftDashboardNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect(notifier.isLoading, isFalse);
+    expect(notifier.readModel, isNull,
+        reason: 'projected-only, no closed history → simple empty state');
+    expect(notifier.isClosedDay, isFalse,
+        reason: 'never a Closed screen from forecast-only rows');
+    expect(notifier.freshness, isNull);
+    expect(notifier.lockedPlanUnavailable, isFalse,
+        reason: 'this is the brand-new/no-history empty path, not the '
+            'locked-plan-missing degrade path');
     expect(notifier.status, isNotNull);
 
     notifier.dispose();
