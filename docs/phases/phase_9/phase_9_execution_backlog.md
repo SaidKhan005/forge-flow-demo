@@ -176,14 +176,18 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
+  (Per-Daypart V1 / R7d FINAL covers-source step, schema-destructive:
+  atomic view re-create minus the 3 legacy scalar outputs, then
+  `drop column if exists` the 3 legacy covers columns on
+  `data_accuracy_settings` + the 3 legacy scalar columns on
+  `data_accuracy_scoped_overrides`; no `cascade`, view never dropped,
+  idempotent, no down migration; safe after R5 backfill + R7a jsonb +
+  R7b proxy + R7c Dart cleanup, zero remaining readers proven). The
+  prior cutoff
   `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
-  (Per-Daypart V1 / R7a per-period covers-source hierarchy: additive,
-  `effective_data_accuracy_settings_v` gains a
-  `covers_source_per_service_period` jsonb output and
-  `data_accuracy_scoped_overrides` gains a per-period jsonb column;
-  existing scalar outputs byte-unchanged, HP #11 precedence preserved,
-  no column dropped or altered, no down migration; hard column drop
-  deferred to follow-up R7d). The prior cutoff
+  (R7a additive per-period hierarchy view + scoped-overrides re-key).
+  The earlier
   `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
   (R5 covers-source keyed backfill, additive + comment-only). The
   earlier `202605161501_per_daypart_v1_s0_verdict_persistence.sql`

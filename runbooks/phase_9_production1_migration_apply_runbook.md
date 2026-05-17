@@ -7,13 +7,18 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
+(Per-Daypart V1 / R7d FINAL covers-source step, schema-destructive:
+atomic view re-create minus the 3 legacy scalar outputs, then
+`drop column if exists` the 3 legacy covers columns on
+`data_accuracy_settings` + the 3 legacy scalar columns on
+`data_accuracy_scoped_overrides`; no `cascade`, view never dropped,
+idempotent, no down migration; safe after R5 backfill + R7a jsonb +
+R7b proxy + R7c Dart cleanup, zero remaining readers proven). The
+prior cutoff
 `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
-(Per-Daypart V1 / R7a per-period covers-source hierarchy: additive,
-`effective_data_accuracy_settings_v` gains a
-`covers_source_per_service_period` jsonb output and
-`data_accuracy_scoped_overrides` gains a per-period jsonb column;
-existing scalar outputs byte-unchanged, HP #11 precedence preserved,
-no column dropped or altered, no down migration). The prior cutoff
+(R7a additive per-period hierarchy view + scoped-overrides re-key).
+The earlier
 `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql` (R5
 covers-source keyed backfill, additive + comment-only; hard column
 drop deferred to follow-up R7d). The earlier
@@ -122,6 +127,7 @@ Pending follow-up scope (49 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605161501_per_daypart_v1_s0_verdict_persistence.sql`
 - `db/migrations/202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
 - `db/migrations/202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
+- `db/migrations/202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
 
 Out of scope:
 
@@ -132,7 +138,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
+  `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
