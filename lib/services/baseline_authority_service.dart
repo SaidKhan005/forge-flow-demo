@@ -860,6 +860,61 @@ class BaselineData {
       'Each period is graded on its own. Coach to the periods marked '
       'ready; leave the others until they settle. One period not being '
       'ready does not hold back the others.';
+
+  /// Public single-source accessor for the Benchmark graph's honest
+  /// explainer state (Per-Daypart Targets V1 SF).
+  ///
+  /// This is a thin, additive forwarder over the private verdict-driven
+  /// [_resolveGraphHonesty]: it changes NO logic and NO strings. It
+  /// exists so the canonical screen path
+  /// (`BenchmarkTrackerReadService._buildGraph`) consumes the SAME
+  /// resolved honesty + copy + state + button policy as the bridge
+  /// `rangeGraphModel`, instead of a parallel stale resolver. There is
+  /// now exactly ONE override-vs-recommendation honesty mapping.
+  ///
+  /// Like `rangeGraphModel`, this reads the live runtime `BaselineData`
+  /// static state (`hasManagerOverride`, `recommendationSignals`,
+  /// `baselineRangeValidation`) that the canonical path already
+  /// populates at bootstrap (`hydrateBenchmarkHonestyFromActiveCycle`)
+  /// and on selection (`BaselineManagerService` /
+  /// `TargetCycleService`).
+  static BaselineGraphHonesty resolveGraphHonesty() {
+    final h = _resolveGraphHonesty();
+    return BaselineGraphHonesty(
+      tier: h.tier,
+      isDegenerate: h.isDegenerate,
+      badgeLabel: h.badgeLabel,
+      explanation: h.explanation,
+      fallbackMessage: h.fallbackMessage,
+      buttonEmphasis: h.buttonEmphasis,
+      perPeriodRollupLine: perPeriodRollupLine,
+    );
+  }
+}
+
+/// Public, immutable single-source result of the Benchmark graph's
+/// verdict-driven honest-explainer mapping (Per-Daypart Targets V1 SF).
+///
+/// Returned by [BaselineData.resolveGraphHonesty]. Carries exactly the
+/// honesty/copy/state/button fields the Benchmark range graph renders,
+/// so the canonical screen path and the bridge path cannot diverge.
+class BaselineGraphHonesty {
+  final String tier;
+  final bool isDegenerate;
+  final String badgeLabel;
+  final String explanation;
+  final String? fallbackMessage;
+  final BaselineGraphButtonEmphasis buttonEmphasis;
+  final String perPeriodRollupLine;
+  const BaselineGraphHonesty({
+    required this.tier,
+    required this.isDegenerate,
+    required this.badgeLabel,
+    required this.explanation,
+    required this.fallbackMessage,
+    required this.buttonEmphasis,
+    required this.perPeriodRollupLine,
+  });
 }
 
 /// How the Benchmark graph's CHOOSE STAR SHIFTS CTA should be drawn for

@@ -1,9 +1,6 @@
-import '../domain/models/benchmark_selection_summary.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/models/target_cycle.dart';
-import '../domain/repositories/benchmark_selection_summary_repository.dart';
 import '../domain/services/service_period_definition_resolver.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'business_date_authority_service.dart';
 import 'baseline_authority_service.dart';
@@ -16,8 +13,11 @@ import 'baseline_manager_service.dart';
 ///
 /// Runtime source of truth:
 /// - 60-day historical evidence: closed shifts from persisted history
-/// - active benchmark geometry: active TargetCycle + persisted summary
+/// - active benchmark geometry: active TargetCycle
 /// - manager override state: persisted selected-key cohort
+/// - honest copy/state/badge/button: the single verdict-driven source
+///   (`BaselineData.resolveGraphHonesty()`), identical to the bridge
+///   `rangeGraphModel`
 ///
 /// A bridge-only mode remains for widget tests that intentionally drive
 /// BaselineData directly without standing up SQLite.
@@ -25,9 +25,6 @@ class BenchmarkTrackerReadService {
   BenchmarkTrackerReadService._();
   static final BenchmarkTrackerReadService instance =
       BenchmarkTrackerReadService._();
-
-  final BenchmarkSelectionSummaryRepository _summaryRepo =
-      SqliteBenchmarkSelectionSummaryRepository.instance;
 
   static bool _useBridgeOnly = false;
 
@@ -70,7 +67,6 @@ class BenchmarkTrackerReadService {
 
     final cycle = await TargetCycleService.instance
         .getOrCreateActiveCycle(restaurantId, businessDate);
-    final summary = await _summaryRepo.getByTargetCycleId(cycle.cycleId);
     final candidates = await BaselineManagerService.instance.getCandidateShifts();
     if (candidates.isEmpty) {
       throw StateError(
@@ -89,13 +85,12 @@ class BenchmarkTrackerReadService {
         ? timingConfig!.servicePeriodDefinitions
         : ServicePeriodDefinitionResolver.demoDefinitions;
 
-    return _buildCanonical(candidates, cycle, summary, defs);
+    return _buildCanonical(candidates, cycle, defs);
   }
 
   BenchmarkTrackerView _buildCanonical(
     List<BaselineCandidateShift> candidates,
     TargetCycle cycle,
-    BenchmarkSelectionSummary? summary,
     List<ServicePeriodDefinition> defs,
   ) {
     final selected = candidates.where((c) => c.isSelected).toList();
@@ -106,7 +101,6 @@ class BenchmarkTrackerReadService {
       candidates: candidates,
       selected: selected,
       cycle: cycle,
-      summary: summary,
     );
 
     return BenchmarkTrackerView(
@@ -179,11 +173,14 @@ class BenchmarkTrackerReadService {
     );
   }
 
+  // `summary` is no longer threaded here: honesty/copy/state come from
+  // the single verdict-driven source (`BaselineData.resolveGraphHonesty()`),
+  // not the persisted `rangeQualityLabel`. Geometry uses `cycle` /
+  // `candidates` / `selected` only.
   BaselineRangeGraphModel _buildGraph({
     required List<BaselineCandidateShift> candidates,
     required List<BaselineCandidateShift> selected,
     required TargetCycle cycle,
-    required BenchmarkSelectionSummary? summary,
   }) {
     final histCplh = candidates.map((r) => r.cplh).toList();
     final histMin = histCplh.reduce((a, b) => a < b ? a : b);
@@ -203,11 +200,18 @@ class BenchmarkTrackerReadService {
     }
     final scaleRange = scaleMax - scaleMin;
 
-    final honesty = _resolveHonesty(
-      hasManagerOverride: hasManagerOverride,
-      selected: selected,
-      summary: summary,
-    );
+    // Honesty / copy / state / button policy come from the SINGLE
+    // verdict-driven source SC built (`BaselineData._resolveGraphHonesty`,
+    // exposed additively via `BaselineData.resolveGraphHonesty()`).
+    // There is no parallel honesty resolver in this service anymore: the
+    // canonical screen path and the bridge `rangeGraphModel` now read the
+    // exact same override-vs-recommendation mapping + approved §9 copy.
+    // GEOMETRY (hist min/max, active range, target, positions, scale)
+    // stays computed here from `cycle`/`candidates`/`selected`; only the
+    // honesty fields delegate. Override geometry still uses the selected
+    // min/max/avg; recommended geometry uses the cycle floor/ceiling/
+    // target (unchanged).
+    final honesty = BaselineData.resolveGraphHonesty();
 
     return BaselineRangeGraphModel(
       historicalRangeStartCPLH: histMin,
@@ -234,6 +238,8 @@ class BenchmarkTrackerReadService {
       isDegenerate: honesty.isDegenerate,
       degenerateFallbackMessage: honesty.fallbackMessage,
       statusBadgeLabel: honesty.badgeLabel,
+      buttonEmphasis: honesty.buttonEmphasis,
+      perPeriodRollupLine: honesty.perPeriodRollupLine,
     );
   }
 
@@ -245,111 +251,6 @@ class BenchmarkTrackerReadService {
 
   double _selectedAvg(List<BaselineCandidateShift> selected) =>
       selected.fold<double>(0, (s, r) => s + r.cplh) / selected.length;
-
-  _GraphHonesty _resolveHonesty({
-    required bool hasManagerOverride,
-    required List<BaselineCandidateShift> selected,
-    required BenchmarkSelectionSummary? summary,
-  }) {
-    if (hasManagerOverride) {
-      final count = selected.length;
-      if (count < 2) {
-        return const _GraphHonesty(
-          tier: 'too_narrow',
-          isDegenerate: true,
-          badgeLabel: 'OPZ RANGE TOO NARROW',
-          explanation:
-              'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
-        );
-      }
-
-      final width = _selectedMax(selected) - _selectedMin(selected);
-      if (width < 0.15) {
-        return const _GraphHonesty(
-          tier: 'too_narrow',
-          isDegenerate: true,
-          badgeLabel: 'OPZ RANGE TOO NARROW',
-          explanation:
-              'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
-        );
-      }
-      if (width > 1.25) {
-        return const _GraphHonesty(
-          tier: 'too_wide',
-          isDegenerate: true,
-          badgeLabel: 'OPZ RANGE TOO WIDE',
-          explanation:
-              'Star shifts are spread too far apart. Tighten the set until the team is working to one standard.',
-        );
-      }
-
-      return const _GraphHonesty(
-        tier: 'good',
-        isDegenerate: false,
-        badgeLabel: 'GOOD OPZ RANGE',
-        explanation:
-            'Team looks busy without getting stretched. Service should hold here.',
-      );
-    }
-
-    if (summary == null) {
-      return const _GraphHonesty(
-        tier: 'unknown',
-        isDegenerate: true,
-        badgeLabel: 'RANGE UNCONFIRMED',
-        explanation:
-            'We are still building a clean read on this range. Use it as a guide, not a standard yet.',
-      );
-    }
-
-    if (summary.sourceType.contains('insufficient')) {
-      return const _GraphHonesty(
-        tier: 'insufficient',
-        isDegenerate: true,
-        badgeLabel: 'RANGE UNCONFIRMED',
-        explanation:
-            'Not enough recent shifts yet to set a reliable benchmark range.',
-        fallbackMessage:
-            'For now this is a placeholder range until more shift history builds.',
-      );
-    }
-
-    switch (summary.rangeQualityLabel) {
-      case 'OPZ RANGE TOO WIDE':
-        // Period names are operator-configured; do not hardcode
-        // 'Lunch, dinner, and late night' here (Design Rule: period
-        // set comes from operator timing config). The honest message
-        // stays period-agnostic.
-        return const _GraphHonesty(
-          tier: 'weak',
-          isDegenerate: true,
-          badgeLabel: 'RANGE TOO WIDE TO TEACH',
-          explanation:
-              'Your service periods are behaving differently from each '
-              'other. This needs period-specific coaching.',
-          fallbackMessage:
-              'Use this as a broad guide for now, not one standard for every period.',
-        );
-      case 'OPZ RANGE TOO NARROW':
-        return const _GraphHonesty(
-          tier: 'weak',
-          isDegenerate: true,
-          badgeLabel: 'RANGE UNCERTAIN',
-          explanation:
-              'We do not have a clean operating range yet. Let more shifts close before coaching to this.',
-          fallbackMessage:
-              'As more shifts close, the benchmark will settle into a clearer working range.',
-        );
-      default:
-        return const _GraphHonesty(
-          tier: 'good',
-          isDegenerate: false,
-          badgeLabel: 'GOOD OPZ RANGE',
-          explanation:
-              'Team looks busy without getting stretched. Service should hold here.',
-        );
-    }
-  }
 }
 
 class BenchmarkTrackerView {
@@ -372,21 +273,5 @@ class BenchmarkTrackerView {
     required this.daypartRanges,
     required this.rangeGraphModel,
     this.servicePeriodDefinitions = const [],
-  });
-}
-
-class _GraphHonesty {
-  final String tier;
-  final bool isDegenerate;
-  final String badgeLabel;
-  final String explanation;
-  final String? fallbackMessage;
-
-  const _GraphHonesty({
-    required this.tier,
-    required this.isDegenerate,
-    required this.badgeLabel,
-    required this.explanation,
-    this.fallbackMessage,
   });
 }
