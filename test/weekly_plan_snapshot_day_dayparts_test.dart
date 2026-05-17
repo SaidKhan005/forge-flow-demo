@@ -7,6 +7,8 @@
 // use whole-day wages × per-period required hours.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
+import 'package:forge_and_flow/domain/models/schedule_plan.dart';
 import 'package:forge_and_flow/domain/models/target_cycle.dart';
 import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
 import 'package:forge_and_flow/domain/models/weekly_plan_snapshot.dart';
@@ -80,11 +82,21 @@ void main() {
         final dinner =
             rows.firstWhere((r) => r.servicePeriodId == 'dinner');
 
-        // Cover allocation: 400 covers split 100:300 → 100 lunch, 300 dinner.
+        // Per-Daypart V1 (bottom-up locked snapshot): cover allocation
+        // is now a single largest-remainder pass over the period cover
+        // weights (100:300) so `Σ(periodCovers) == dayRow
+        // .forecastCovers` EXACTLY. 400 covers split 100:300 → 100
+        // lunch, 300 dinner (exact here; LR matches the prior result
+        // when the split is already integral).
         expect(lunch.forecastCovers, 100);
         expect(dinner.forecastCovers, 300);
 
-        // Sales = period covers × period target PPA.
+        // Σ(per-period covers) == day row forecast covers, EXACTLY.
+        expect(lunch.forecastCovers + dinner.forecastCovers,
+            monRow.forecastCovers);
+
+        // Per-period rate fidelity is unchanged: sales = period covers
+        // × period target PPA (band PPA, NOT pooled Profile PPA).
         // lunch:   100 × 35.0  = 3500
         // dinner:  300 × 45.0  = 13500
         expect(lunch.forecastSales, closeTo(3500.0, 0.001));
@@ -107,6 +119,214 @@ void main() {
             closeTo(dinner.requiredFohHours * 16.5, 0.001));
         expect(dinner.theoreticalBohDollars,
             closeTo(dinner.requiredBohHours * 21.0, 0.001));
+      },
+    );
+
+    test(
+      'largest-remainder: a non-integral cover split still sums to the '
+      'day row EXACTLY (the old independent .round() would drift)',
+      () {
+        // 365 covers split across three periods with weights
+        // 100:300:55. Independent rounding of each
+        // `(365 * w / 455).round()` would give
+        //   lunch  = (36500/455).round() = 80
+        //   dinner = (109500/455).round() = 241  (240.65… → 241)
+        //   late   = (20075/455).round() = 44   (44.12… → 44)
+        // Σ = 365 here by luck, but the contract we are pinning is that
+        // largest-remainder GUARANTEES Σ == day row for ANY weights.
+        final cycle = TargetCycle(
+          cycleId: 'c1',
+          restaurantId: 'r1',
+          source: TargetCycleSource.recommended,
+          effectiveStart: '2026-04-13',
+          effectiveEnd: '2026-06-11',
+          calibrationWindowStart: '2026-02-13',
+          calibrationWindowEnd: '2026-04-13',
+          targetCPLH: 4.75,
+          targetSPLH: 187.5,
+          targetPPA: 42.5,
+          fohWage: 16.5,
+          bohWage: 21.0,
+          opzFloorCPLH: 3.5,
+          opzCeilingCPLH: 5.5,
+          createdAt: '2026-04-13T00:00:00Z',
+          dayparts: const [
+            TargetCycleDaypart(
+              servicePeriodId: 'lunch',
+              targetCPLH: 4.0,
+              targetSPLH: 150.0,
+              targetPPA: 35.0,
+              opzFloorCPLH: 3.5,
+              opzCeilingCPLH: 4.5,
+              coverCount: 100,
+            ),
+            TargetCycleDaypart(
+              servicePeriodId: 'dinner',
+              targetCPLH: 5.0,
+              targetSPLH: 200.0,
+              targetPPA: 45.0,
+              opzFloorCPLH: 4.5,
+              opzCeilingCPLH: 5.5,
+              coverCount: 300,
+            ),
+            TargetCycleDaypart(
+              servicePeriodId: 'late_night',
+              targetCPLH: 3.0,
+              targetSPLH: 120.0,
+              targetPPA: 30.0,
+              opzFloorCPLH: 2.5,
+              opzCeilingCPLH: 3.5,
+              coverCount: 55,
+            ),
+          ],
+        );
+
+        const monRow = WeeklyPlanSnapshotDay(
+          day: 'Mon',
+          businessDate: '2026-04-13',
+          forecastCovers: 365,
+          forecastSales: 15000.0,
+          requiredFohHours: 80,
+          requiredBohHours: 84,
+        );
+
+        final rows = WeeklyPlanSnapshotService.debugBuildDayDaypartRows(
+          cycle: cycle,
+          dayRows: const [monRow],
+        );
+
+        // Exact reconciliation is GUARANTEED by largest-remainder.
+        final sumCovers =
+            rows.fold<int>(0, (s, r) => s + r.forecastCovers);
+        expect(sumCovers, 365,
+            reason: 'Σ(per-period covers) must equal the day row '
+                'EXACTLY under largest-remainder');
+
+        // Per-period rate fidelity preserved: each row's
+        // sales/covers == its band PPA and covers/reqFoh == band CPLH.
+        for (final r in rows) {
+          final dp = cycle.daypartFor(r.servicePeriodId)!;
+          if (r.forecastCovers > 0) {
+            expect(r.forecastSales / r.forecastCovers,
+                closeTo(dp.targetPPA, 0.001),
+                reason: 'period sales/covers must equal band PPA');
+            expect(r.forecastCovers / r.requiredFohHours,
+                closeTo(dp.targetCPLH, 0.001),
+                reason: 'period covers/reqFoh must equal band CPLH');
+          }
+        }
+      },
+    );
+
+    test(
+      'bottom-up reconciliation: day rows + week totals are the SUM '
+      'of the per-period rows; Gap-42 days keep pooled values',
+      () {
+        final cycle = TargetCycle(
+          cycleId: 'c1',
+          restaurantId: 'r1',
+          source: TargetCycleSource.recommended,
+          effectiveStart: '2026-04-13',
+          effectiveEnd: '2026-06-11',
+          calibrationWindowStart: '2026-02-13',
+          calibrationWindowEnd: '2026-04-13',
+          targetCPLH: 4.75,
+          targetSPLH: 187.5,
+          targetPPA: 42.5,
+          fohWage: 16.5,
+          bohWage: 21.0,
+          opzFloorCPLH: 3.5,
+          opzCeilingCPLH: 5.5,
+          createdAt: '2026-04-13T00:00:00Z',
+          dayparts: const [
+            TargetCycleDaypart(
+              servicePeriodId: 'lunch',
+              targetCPLH: 4.0,
+              targetSPLH: 150.0,
+              targetPPA: 35.0,
+              opzFloorCPLH: 3.5,
+              opzCeilingCPLH: 4.5,
+              coverCount: 100,
+            ),
+            TargetCycleDaypart(
+              servicePeriodId: 'dinner',
+              targetCPLH: 5.0,
+              targetSPLH: 200.0,
+              targetPPA: 45.0,
+              opzFloorCPLH: 4.5,
+              opzCeilingCPLH: 5.5,
+              coverCount: 300,
+            ),
+          ],
+        );
+
+        const dayRows = [
+          WeeklyPlanSnapshotDay(
+            day: 'Mon',
+            businessDate: '2026-04-13',
+            forecastCovers: 411,
+            // Pooled whole-day values that DON'T reconcile with the
+            // band-derived per-period sums — bottom-up must overwrite
+            // them.
+            forecastSales: 99999.0,
+            requiredFohHours: 1,
+            requiredBohHours: 1,
+          ),
+        ];
+
+        final dayDayparts =
+            WeeklyPlanSnapshotService.debugBuildDayDaypartRows(
+          cycle: cycle,
+          dayRows: dayRows,
+        );
+
+        final plan = SchedulePlan(
+          forecastCovers: 411,
+          forecastSales: 99999.0,
+          requiredFohHours: 1,
+          requiredBohHours: 1,
+          theoreticalFohLaborDollars: 1.0,
+          theoreticalBohLaborDollars: 1.0,
+          theoreticalLaborPct: 0.0,
+          targetBlendedWage: 0.0,
+          coversSource:
+              ForecastDemandSource.appDerivedFromHistoricalAverage,
+          salesSource:
+              ForecastDemandSource.appDerivedFromHistoricalAverage,
+          dayPlans: const [],
+        );
+
+        final reconciled =
+            WeeklyPlanSnapshotService.debugReconcileBottomUpDayRows(
+          plan: plan,
+          dayRows: dayRows,
+          dayDayparts: dayDayparts,
+        );
+
+        expect(reconciled.length, 1);
+        final mon = reconciled.single;
+
+        final sumCovers =
+            dayDayparts.fold<int>(0, (s, p) => s + p.forecastCovers);
+        final sumSales =
+            dayDayparts.fold<double>(0, (s, p) => s + p.forecastSales);
+        final sumFoh = dayDayparts
+            .fold<double>(0, (s, p) => s + p.requiredFohHours)
+            .round();
+        final sumBoh = dayDayparts
+            .fold<double>(0, (s, p) => s + p.requiredBohHours)
+            .round();
+
+        // Day row is now the SUM of its per-period rows, NOT the
+        // pooled placeholder values.
+        expect(mon.forecastCovers, sumCovers);
+        expect(mon.forecastCovers, 411,
+            reason: 'covers reconcile exactly via largest-remainder');
+        expect(mon.forecastSales, closeTo(sumSales, 0.001));
+        expect(mon.requiredFohHours, sumFoh);
+        expect(mon.requiredBohHours, sumBoh);
+        expect(mon.forecastSales, isNot(closeTo(99999.0, 0.001)),
+            reason: 'pooled placeholder must be overwritten bottom-up');
       },
     );
 

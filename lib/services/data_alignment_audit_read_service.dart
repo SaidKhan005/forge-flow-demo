@@ -1759,7 +1759,19 @@ class DataAlignmentAuditReadService {
       ),
     ]);
 
-    // Day-row equality: snapshot.dayRows[i] vs plan.dayPlans[i].
+    // Per-Daypart V1 (bottom-up locked snapshot): the locked snapshot
+    // is now bottom-up by construction — each day row is the SUM of its
+    // per-period rows, and per-period rows retain per-period rate
+    // fidelity (period sales = period covers × band PPA; not the pooled
+    // Profile PPA). So the honest invariants here are:
+    //   - covers STILL reconcile to the projection: the largest-
+    //     remainder split distributes the SAME day-level forecast
+    //     covers, so `Σ(period covers) == plan.dayPlans[i].covers`.
+    //   - sales / FOH / BOH day rows are intentionally band-derived
+    //     sums and will NOT equal the pooled projection. The bottom-up
+    //     truth is `day row == Σ(per-period rows for that day)`, so we
+    //     assert THAT instead of the (now structurally wrong)
+    //     comparison against `plan.dayPlans`.
     if (snapshot != null && plan != null) {
       final n = snapshot.dayRows.length;
       // Length parity is its own check — the other day-row aggregates
@@ -1772,20 +1784,52 @@ class DataAlignmentAuditReadService {
       ));
 
       final compareLen = n < plan.dayPlans.length ? n : plan.dayPlans.length;
+      // Covers vs projection stays valid: the LR split reconciles to
+      // the same day-level forecast covers the projection carries.
       var coversAligned = 0;
-      var salesAligned = 0;
-      var fohAligned = 0;
-      var bohAligned = 0;
       for (var i = 0; i < compareLen; i++) {
         final row = snapshot.dayRows[i];
         final dp = plan.dayPlans[i];
         if (row.forecastCovers == dp.forecastCovers) coversAligned++;
-        if ((row.forecastSales - dp.forecastSales).abs() <=
-            _bigDollarTolerance) {
-          salesAligned++;
+      }
+      // Bottom-up truth: each day row == Σ(its per-period rows). Days
+      // with no per-period rows (Gap 42 per-day fallback) keep the
+      // pooled whole-day values and are counted aligned by definition
+      // (nothing to reconcile against — the honest fallback is exact).
+      var coversBottomUp = 0;
+      var salesBottomUp = 0;
+      var fohBottomUp = 0;
+      var bohBottomUp = 0;
+      for (var i = 0; i < n; i++) {
+        final row = snapshot.dayRows[i];
+        final periods = snapshot.dayDayparts
+            .where((d) => d.businessDate == row.businessDate)
+            .toList();
+        if (periods.isEmpty) {
+          // Honest Gap-42 per-day fallback: pooled whole-day values
+          // retained verbatim — reconciles trivially.
+          coversBottomUp++;
+          salesBottomUp++;
+          fohBottomUp++;
+          bohBottomUp++;
+          continue;
         }
-        if (row.requiredFohHours == dp.requiredFohHours) fohAligned++;
-        if (row.requiredBohHours == dp.requiredBohHours) bohAligned++;
+        final pCovers =
+            periods.fold<int>(0, (s, p) => s + p.forecastCovers);
+        final pSales =
+            periods.fold<double>(0, (s, p) => s + p.forecastSales);
+        final pFoh = periods
+            .fold<double>(0, (s, p) => s + p.requiredFohHours)
+            .round();
+        final pBoh = periods
+            .fold<double>(0, (s, p) => s + p.requiredBohHours)
+            .round();
+        if (row.forecastCovers == pCovers) coversBottomUp++;
+        if ((row.forecastSales - pSales).abs() <= _bigDollarTolerance) {
+          salesBottomUp++;
+        }
+        if (row.requiredFohHours == pFoh) fohBottomUp++;
+        if (row.requiredBohHours == pBoh) bohBottomUp++;
       }
       out.addAll([
         DataAlignmentAuditCheck.aggregate(
@@ -1796,26 +1840,33 @@ class DataAlignmentAuditReadService {
         ),
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Day-row forecast sales match projection',
-          alignedCount: salesAligned,
-          total: compareLen,
+          label: 'Day-row covers = Sum(per-period covers)',
+          alignedCount: coversBottomUp,
+          total: n,
         ),
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Day-row FOH hours match projection',
-          alignedCount: fohAligned,
-          total: compareLen,
+          label: 'Day-row sales = Sum(per-period sales)',
+          alignedCount: salesBottomUp,
+          total: n,
         ),
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Day-row BOH hours match projection',
-          alignedCount: bohAligned,
-          total: compareLen,
+          label: 'Day-row FOH hrs = Sum(per-period FOH hrs)',
+          alignedCount: fohBottomUp,
+          total: n,
+        ),
+        DataAlignmentAuditCheck.aggregate(
+          groupId: DataAlignmentAuditGroup.planLockedProjection,
+          label: 'Day-row BOH hrs = Sum(per-period BOH hrs)',
+          alignedCount: bohBottomUp,
+          total: n,
         ),
       ]);
     } else {
       // Day-row checks degrade to unavailable so the group counts are
-      // honest when the snapshot is missing.
+      // honest when the snapshot is missing. Labels mirror the
+      // bottom-up set above 1:1.
       out.addAll([
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
@@ -1825,19 +1876,25 @@ class DataAlignmentAuditReadService {
         ),
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Day-row forecast sales match projection',
+          label: 'Day-row covers = Sum(per-period covers)',
           alignedCount: 0,
           total: 0,
         ),
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Day-row FOH hours match projection',
+          label: 'Day-row sales = Sum(per-period sales)',
           alignedCount: 0,
           total: 0,
         ),
         DataAlignmentAuditCheck.aggregate(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Day-row BOH hours match projection',
+          label: 'Day-row FOH hrs = Sum(per-period FOH hrs)',
+          alignedCount: 0,
+          total: 0,
+        ),
+        DataAlignmentAuditCheck.aggregate(
+          groupId: DataAlignmentAuditGroup.planLockedProjection,
+          label: 'Day-row BOH hrs = Sum(per-period BOH hrs)',
           alignedCount: 0,
           total: 0,
         ),
@@ -1911,55 +1968,83 @@ class DataAlignmentAuditReadService {
       ]);
     }
 
-    // Plan formula invariants: snapshot values against the active profile.
-    if (snapshot != null && profile != null) {
-      final expectedSales = snapshot.forecastCovers * profile.targetPPA;
-      final expectedFohDollars =
-          snapshot.requiredFohHours * profile.fohWage;
-      final expectedBohDollars =
-          snapshot.requiredBohHours * profile.bohWage;
+    // Per-Daypart V1 (bottom-up locked snapshot): the locked weekly
+    // totals are now the SUM of the per-period rows (which retain
+    // per-period rate fidelity — period sales = period covers × band
+    // PPA, NOT pooled Profile PPA). The pre-bottom-up invariant
+    // "forecast sales == covers × pooled Profile PPA" is structurally
+    // wrong now and would relocate red into this group. The honest
+    // invariant is bottom-up self-consistency:
+    //   - snapshot weekly covers == Σ(per-period covers)
+    //   - snapshot forecast sales == Σ(per-period sales)
+    //   - snapshot FOH/BOH labor $ == Σ(per-period theoretical $)
+    // When the cycle has NO per-period rows at all (Gap 42 / legacy),
+    // the snapshot honestly keeps the pooled plan totals — there is
+    // nothing to reconcile against, so the check reports unavailable
+    // rather than failing a 0-sum comparison.
+    if (snapshot != null && snapshot.dayDayparts.isNotEmpty) {
+      final sumPeriodCovers = snapshot.dayDayparts
+          .fold<int>(0, (s, p) => s + p.forecastCovers);
+      final sumPeriodSales = snapshot.dayDayparts
+          .fold<double>(0, (s, p) => s + p.forecastSales);
+      final sumPeriodFohDollars = snapshot.dayDayparts
+          .fold<double>(0, (s, p) => s + p.theoreticalFohDollars);
+      final sumPeriodBohDollars = snapshot.dayDayparts
+          .fold<double>(0, (s, p) => s + p.theoreticalBohDollars);
       out.addAll([
+        DataAlignmentAuditCheck.intCount(
+          groupId: DataAlignmentAuditGroup.planLockedProjection,
+          label: 'Snapshot weekly covers = Sum(per-period covers)',
+          expectedValue: snapshot.forecastCovers,
+          comparedValue: sumPeriodCovers,
+        ),
         DataAlignmentAuditCheck.numeric(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Snapshot forecast sales = covers x Profile PPA',
-          expectedValue: expectedSales,
+          label: 'Snapshot forecast sales = Sum(per-period sales)',
+          expectedValue: sumPeriodSales,
           comparedValue: snapshot.forecastSales,
           tolerance: _bigDollarTolerance,
         ),
         DataAlignmentAuditCheck.numeric(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Snapshot FOH labor \$ = FOH hrs x Profile FOH wage',
-          expectedValue: expectedFohDollars,
+          label: 'Snapshot FOH labor \$ = Sum(per-period FOH \$)',
+          expectedValue: sumPeriodFohDollars,
           comparedValue: snapshot.theoreticalFohLaborDollars,
           tolerance: _bigDollarTolerance,
         ),
         DataAlignmentAuditCheck.numeric(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Snapshot BOH labor \$ = BOH hrs x Profile BOH wage',
-          expectedValue: expectedBohDollars,
+          label: 'Snapshot BOH labor \$ = Sum(per-period BOH \$)',
+          expectedValue: sumPeriodBohDollars,
           comparedValue: snapshot.theoreticalBohLaborDollars,
           tolerance: _bigDollarTolerance,
         ),
       ]);
     } else {
       out.addAll([
+        DataAlignmentAuditCheck.intCount(
+          groupId: DataAlignmentAuditGroup.planLockedProjection,
+          label: 'Snapshot weekly covers = Sum(per-period covers)',
+          expectedValue: null,
+          comparedValue: null,
+        ),
         DataAlignmentAuditCheck.numeric(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Snapshot forecast sales = covers x Profile PPA',
+          label: 'Snapshot forecast sales = Sum(per-period sales)',
           expectedValue: null,
           comparedValue: null,
           tolerance: _bigDollarTolerance,
         ),
         DataAlignmentAuditCheck.numeric(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Snapshot FOH labor \$ = FOH hrs x Profile FOH wage',
+          label: 'Snapshot FOH labor \$ = Sum(per-period FOH \$)',
           expectedValue: null,
           comparedValue: null,
           tolerance: _bigDollarTolerance,
         ),
         DataAlignmentAuditCheck.numeric(
           groupId: DataAlignmentAuditGroup.planLockedProjection,
-          label: 'Snapshot BOH labor \$ = BOH hrs x Profile BOH wage',
+          label: 'Snapshot BOH labor \$ = Sum(per-period BOH \$)',
           expectedValue: null,
           comparedValue: null,
           tolerance: _bigDollarTolerance,
