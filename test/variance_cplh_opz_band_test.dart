@@ -430,10 +430,13 @@ void main() {
     bool _isBold(TextStyle? s) =>
         s != null && (s.fontWeight?.index ?? 0) >= FontWeight.w700.index;
 
-    // Regression guard for the all-bold paragraph defect: a plain body
-    // run must render at REGULAR weight (strictly below w700). The base
-    // style is pinned to w400 in the card so this holds even though
-    // AppTextStyles.body14 itself defaults to w600.
+    // Regression guard for the all-same-weight paragraph defect (prior
+    // PRs #961/#964): a plain body run must render at REGULAR weight
+    // (strictly below w700). The card now resolves weight at
+    // font-creation: plain runs use AppTextStyles.body15 (w400) and
+    // bold lead/colour runs use AppTextStyles.body15Bold (w700), instead
+    // of a post-hoc `.copyWith(fontWeight: ...)` that google_fonts ignores
+    // on a runtime-resolved style.
     bool _isRegular(TextStyle? s) =>
         s != null &&
         s.fontWeight != FontWeight.w700 &&
