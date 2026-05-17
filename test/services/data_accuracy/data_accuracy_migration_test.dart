@@ -273,20 +273,30 @@ void main() {
 
   group('Phase 8 spine-bridge Lane .A migration — schema shape', () {
     test(
-      'data_accuracy_settings carries the contract column set: covers '
-      'source per daypart, sparse manual entries jsonb, wage source. '
-      'NO polling cadence override columns (per F&F-controlled tier '
-      'model — the tier table owns cadence).',
+      'data_accuracy_settings original DDL carries covers manual entries '
+      'jsonb + wage source and NO polling cadence override columns (per '
+      'F&F-controlled tier model: the tier table owns cadence). The '
+      'three legacy scalar covers_source_lunch / _dinner / _late_night '
+      'columns the original DDL created are DROPPED by Per-Daypart V1 '
+      'Slice R7d (202605170200); see '
+      'test/per_daypart_v1_r7d_drop_legacy_covers_columns_test.dart for '
+      'the post-R7d effective schema. This original-DDL file is never '
+      'edited by R7d, so it still literally creates those columns: this '
+      'test pins that history without implying they survive to the '
+      'effective schema.',
       () {
         final sql = _readMigration().toLowerCase();
-        // Required columns.
+        // The original 202605050000 DDL still literally CREATES the
+        // three legacy scalar columns (R7d drops them in a later
+        // migration; it does not rewrite this historical file).
         expect(sql, contains('covers_source_lunch text not null'));
         expect(sql, contains('covers_source_dinner text not null'));
         expect(sql, contains('covers_source_late_night text not null'));
+        // Surviving columns from this DDL.
         expect(sql, contains('covers_manual_entries jsonb not null'));
         expect(sql, contains('wage_source text not null'));
-        // Polling cadence override columns are explicitly absent —
-        // F&F admin controls cadence via the tier table, not here.
+        // Polling cadence override columns are explicitly absent: F&F
+        // admin controls cadence via the tier table, not here.
         expect(sql, isNot(contains('polling_cadence_override_seconds')));
         expect(sql, isNot(contains('polling_cost_acknowledged_at')));
       },
