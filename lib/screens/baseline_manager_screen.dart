@@ -479,11 +479,13 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
               child: Container(
                 key: const ValueKey<String>('reset_pill'),
                 padding: const EdgeInsets.symmetric(
-                    horizontal: 16, vertical: 8),
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.sm,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.backgroundMid,
                   border: Border.all(color: AppColors.sunset, width: 1.5),
-                  borderRadius: BorderRadius.circular(999),
+                  borderRadius: AppRadius.pillR,
                 ),
                 child: Text(
                   'RESET',
@@ -592,12 +594,20 @@ class _OverrideUsedNotice extends StatelessWidget {
     return Container(
       key: const ValueKey<String>('override_used_notice'),
       width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.md,
+        vertical: AppSpacing.md,
+      ),
       decoration: BoxDecoration(
         color: AppColors.backgroundMid,
         border: Border.all(color: AppColors.borderStrong, width: 1),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: AppRadius.smallR,
       ),
       child: Text(
         'You get one override per 60 day cycle, and this cycle already '

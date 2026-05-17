@@ -23,16 +23,24 @@ class ClearAllBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        0,
+      ),
       child: Align(
         alignment: Alignment.centerRight,
         child: GestureDetector(
           onTap: onClearAll,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.md,
+              vertical: AppSpacing.sm,
+            ),
             decoration: BoxDecoration(
               border: Border.all(color: AppColors.sunset, width: 1),
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: AppRadius.smallR,
             ),
             child: Text(
               'CLEAR ALL',
@@ -81,7 +89,12 @@ class BottomBar extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 9, 16, 2),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            AppSpacing.xs,
+          ),
           child: Text(
             'ONE OVERRIDE PER 60 DAY CYCLE',
             key: const ValueKey<String>('override_cycle_caption'),
@@ -96,7 +109,12 @@ class BottomBar extends StatelessWidget {
               top: BorderSide(color: AppColors.borderSubtle, width: 1),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.lg,
+            AppSpacing.lg,
+          ),
           child: Row(
             children: [
               // Cancel
@@ -104,7 +122,9 @@ class BottomBar extends StatelessWidget {
                 child: GestureDetector(
                   onTap: onCancel,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.md,
+                    ),
                     decoration: BoxDecoration(
                       border: Border.all(
                           color: AppColors.borderSubtle, width: 1),
@@ -116,7 +136,7 @@ class BottomBar extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.md),
               // Done: gated on connectivity (A9.SY1). Empty draft still
               // routes through _done() which clears the override
               // server-side only when online; offline taps are blocked.
@@ -134,7 +154,9 @@ class BottomBar extends StatelessWidget {
                     : Container(
                         key: const ValueKey<String>('done_disabled_gate'),
                         padding:
-                            const EdgeInsets.symmetric(vertical: 12),
+                            const EdgeInsets.symmetric(
+                          vertical: AppSpacing.md,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.backgroundMid,
                           border: Border.all(
