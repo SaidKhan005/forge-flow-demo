@@ -45,17 +45,16 @@ import 'settings_shared_widgets.dart';
 /// definitions only when no timing config is persisted yet, matching
 /// the canonical pattern in
 /// `lib/services/benchmark_tracker_read_service.dart`.
-typedef ServicePeriodDefinitionsLoader = Future<List<ServicePeriodDefinition>>
-    Function(String restaurantId);
+typedef ServicePeriodDefinitionsLoader =
+    Future<List<ServicePeriodDefinition>> Function(String restaurantId);
 
 /// Loader abstraction. Production reads from SQLite; widget tests
 /// inject a fake to skip database setup.
-typedef ManualCoverEntryLoader = Future<List<ManualCoverEntry>>
-    Function(String restaurantId);
+typedef ManualCoverEntryLoader =
+    Future<List<ManualCoverEntry>> Function(String restaurantId);
 
 /// Writer abstraction with the same separation of concerns.
-typedef ManualCoverEntryWriter = Future<void> Function(
-    ManualCoverEntry entry);
+typedef ManualCoverEntryWriter = Future<void> Function(ManualCoverEntry entry);
 
 class SettingsCoversSetupSection extends StatefulWidget {
   const SettingsCoversSetupSection({
@@ -233,7 +232,8 @@ class _SettingsCoversSetupSectionState
   }
 
   static Future<List<ManualCoverEntry>> _defaultLoader(
-      String restaurantId) async {
+    String restaurantId,
+  ) async {
     final db = await SqliteDatabase.instance.database;
     final dao = ManualCoverEntryDao(db);
     return dao.listRecentForRestaurant(restaurantId, limit: 5);
@@ -317,120 +317,142 @@ class _SettingsCoversSetupSectionState
     final exposes = posVendorExposesCovers(widget.posVendorId);
     final primaryPath = exposes == false || exposes == null;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: SettingsCard(
-        accentColor: primaryPath ? AppColors.sunset : AppColors.positive,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Header(
-                  scopeLabel: widget.scopeLabel,
-                  primaryPath: primaryPath,
-                  posVendorId: widget.posVendorId,
+    // Styled to match the Business timing card on the same Setup tab:
+    // plain SettingsCard (no left accent stripe), 14px inset on all
+    // sides, and the section host (`_settingsSection`) supplies the
+    // horizontal:16 gutter — so this card sits flush with Business
+    // timing instead of being indented + striped.
+    return SettingsCard(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _Header(
+                scopeLabel: widget.scopeLabel,
+                primaryPath: primaryPath,
+                posVendorId: widget.posVendorId,
+              ),
+              const SizedBox(height: 12),
+              _FormRow(
+                label: 'Business date',
+                child: _DatePill(
+                  key: const Key('settings_covers_setup_business_date_button'),
+                  isoDate: _isoDate(_selectedDate),
+                  onTap: _onPickDate,
                 ),
-                const SizedBox(height: 12),
-                _FormRow(
-                  label: 'Business date',
-                  child: _DatePill(
-                    key: const Key(
-                        'settings_covers_setup_business_date_button'),
-                    isoDate: _isoDate(_selectedDate),
-                    onTap: _onPickDate,
-                  ),
+              ),
+              _FormRow(
+                label: 'Service period',
+                child: _ServicePeriodDropdown(
+                  selected: _selectedDaypart,
+                  periods: _servicePeriods,
+                  onChanged: (next) {
+                    if (next == null) return;
+                    setState(() {
+                      _selectedDaypart = next;
+                      _confirmation = null;
+                    });
+                  },
                 ),
-                const SizedBox(height: 10),
-                _FormRow(
-                  label: 'Service period',
-                  child: _ServicePeriodDropdown(
-                    selected: _selectedDaypart,
-                    periods: _servicePeriods,
-                    onChanged: (next) {
-                      if (next == null) return;
-                      setState(() {
-                        _selectedDaypart = next;
-                        _confirmation = null;
-                      });
-                    },
+              ),
+              _FormRow(
+                label: 'Covers',
+                child: TextField(
+                  key: const Key('settings_covers_setup_covers_field'),
+                  controller: _coversController,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: false,
+                    signed: false,
                   ),
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onSubmitted: (_) => _onSave(),
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    hintText: 'e.g. 84',
+                    border: OutlineInputBorder(),
+                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
-                const SizedBox(height: 10),
-                _FormRow(
-                  label: 'Covers',
-                  child: TextField(
-                    key: const Key('settings_covers_setup_covers_field'),
-                    controller: _coversController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: false,
-                      signed: false,
-                    ),
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    onSubmitted: (_) => _onSave(),
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      hintText: 'e.g. 84',
-                      border: OutlineInputBorder(),
-                    ),
-                    style: AppTextStyles.body14(color: AppColors.textPrimary),
-                  ),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _error!,
+                  key: const Key('settings_covers_setup_error_text'),
+                  style: AppTextStyles.body13(color: AppColors.negative),
                 ),
-                if (_error != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _error!,
-                    key: const Key('settings_covers_setup_error_text'),
-                    style: AppTextStyles.body13(color: AppColors.negative),
-                  ),
-                ],
-                if (_confirmation != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    _confirmation!,
-                    key: const Key('settings_covers_setup_confirmation_text'),
-                    style: AppTextStyles.body13(color: AppColors.positive),
-                  ),
-                ],
-                const SizedBox(height: 14),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton(
-                    key: const Key('settings_covers_setup_save_button'),
-                    onPressed: _saving ? null : _onSave,
-                    child: Text(_saving ? 'Saving...' : 'Save covers'),
-                  ),
-                ),
-                if (!_loadingRecent && _recentEntries.isNotEmpty) ...[
-                  const SettingsRowDivider(),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Recent entries',
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ).copyWith(fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  for (final e in _recentEntries)
-                    Padding(
-                      key: Key(
-                          'settings_covers_setup_recent_${e.businessDate}_${e.daypart}'),
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '${e.businessDate} • ${_periodLabel(e.daypart)} • '
-                        '${e.covers} covers',
-                        style: AppTextStyles.body13(
-                          color: AppColors.textPrimary,
-                        ),
-                      ),
-                    ),
-                ],
               ],
-            ),
+              if (_confirmation != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  _confirmation!,
+                  key: const Key('settings_covers_setup_confirmation_text'),
+                  style: AppTextStyles.body13(color: AppColors.positive),
+                ),
+              ],
+              const SizedBox(height: 14),
+              // Same button system as the "Manage ... on Ops Web"
+              // pointer-row buttons elsewhere on the Setup tab:
+              // full-width, height 46, sunset fill / surface
+              // foreground, radius 6, mono12 w600 (see
+              // settings_pointer_row.dart). Keeps the Setup tab's
+              // primary-action styling consistent.
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: FilledButton.icon(
+                  key: const Key('settings_covers_setup_save_button'),
+                  onPressed: _saving ? null : _onSave,
+                  icon: const Icon(Icons.save_outlined, size: 18),
+                  label: Text(_saving ? 'Saving...' : 'Save covers'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.sunset,
+                    foregroundColor: AppColors.backgroundSurface,
+                    disabledBackgroundColor: AppColors.sunset.withValues(
+                      alpha: 0.30,
+                    ),
+                    disabledForegroundColor: AppColors.backgroundSurface
+                        .withValues(alpha: 0.85),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    textStyle: AppTextStyles.mono12(weight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              if (!_loadingRecent && _recentEntries.isNotEmpty) ...[
+                const SettingsRowDivider(),
+                const SizedBox(height: 8),
+                Text(
+                  'Recent entries',
+                  style: AppTextStyles.body13(
+                    color: AppColors.textSecondary,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                for (final e in _recentEntries)
+                  Padding(
+                    key: Key(
+                      'settings_covers_setup_recent_${e.businessDate}_${e.daypart}',
+                    ),
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '${e.businessDate} • ${_periodLabel(e.daypart)} • '
+                      '${e.covers} covers',
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
+                    ),
+                  ),
+              ],
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -501,8 +523,9 @@ class _Header extends StatelessWidget {
   }
 
   static String _explainerWhenOverride(String? posVendorId) {
-    final vendor =
-        posVendorId == null ? 'your point-of-sale' : _humanizeVendor(posVendorId);
+    final vendor = posVendorId == null
+        ? 'your point-of-sale'
+        : _humanizeVendor(posVendorId);
     return "$vendor already sends covers to F&F. Use this form only "
         'when you need to override a count for a specific shift.';
   }
@@ -537,28 +560,32 @@ class _FormRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        SizedBox(
-          width: 110,
-          child: Text(
-            label,
-            style: AppTextStyles.body14(color: AppColors.textPrimary),
+    // Label column mirrors `_TimingValueRow` in
+    // settings_timing_authority_section.dart (width 128, mono10
+    // textMuted, vertical:8 inset, 10px gap) so the Covers setup card
+    // and the Business timing card read as one system.
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 128,
+            child: Text(
+              label,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
           ),
-        ),
-        Expanded(child: child),
-      ],
+          const SizedBox(width: 10),
+          Expanded(child: child),
+        ],
+      ),
     );
   }
 }
 
 class _DatePill extends StatelessWidget {
-  const _DatePill({
-    super.key,
-    required this.isoDate,
-    required this.onTap,
-  });
+  const _DatePill({super.key, required this.isoDate, required this.onTap});
 
   final String isoDate;
   final VoidCallback onTap;
