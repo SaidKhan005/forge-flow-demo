@@ -423,15 +423,20 @@ void main() {
     });
 
     test(
-        'catalog headlines match the depth-wave addendum (locked metric copy)',
+        'catalog headlines match the V2-1 locked metric copy '
+        '(Variance Coaching V2)',
         () {
+      // Updated 2026-05-16 (Variance Coaching V2, Lane B): the
+      // depth-wave ALL-CAPS headlines were replaced by the V2-1
+      // evolved-voice copy. Source: V2 Revision section of
+      // `docs/contracts/phase_7_58_primary_driver_contract.md`.
       expect(CrossAxisPairs.cplhBelowSplhAbove.metric,
-          equals('FORECAST WAS LOW. TEAM EXECUTED.'));
+          equals('Forecast was low. The team executed.'));
       expect(CrossAxisPairs.cplhOnSplhBelow.metric,
-          equals('KITCHEN SLOWED. DINING ROOM HELD.'));
+          equals('Kitchen slowed. Dining room held.'));
       expect(CrossAxisPairs.cplhAboveSplhBelow.metric,
-          equals('TEAM RAN LEAN. KITCHEN SLOWED.'));
-      expect(CrossAxisPairs.bothBelow.metric, equals('DEMAND WAS SOFT.'));
+          equals('Floor ran lean. Kitchen slowed.'));
+      expect(CrossAxisPairs.bothBelow.metric, equals('Demand was soft.'));
     });
 
     test(

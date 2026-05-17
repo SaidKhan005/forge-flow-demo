@@ -87,105 +87,64 @@ class CrossAxisPairData {
 class CrossAxisPairs {
   static const cplhBelowSplhAbove = CrossAxisPairData(
     id: 'cplh_below_splh_above',
-    metric: 'FORECAST WAS LOW. TEAM EXECUTED.',
+    metric: 'Forecast was low. The team executed.',
     causeCategory: 'FORECAST',
     side: LeverSide.both,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'CPLH ran below target. SPLH ran above target. Fewer covers came in '
-        'than the schedule was built for, but every guest who walked in spent '
-        'generously. The team executed well on the volume that arrived. The '
-        'restaurant was carrying more FOH hours than the actual cover pace '
-        'required.',
+        'Fewer guests walked in than the schedule was built for, but everyone who came spent well and was served right. This is not an execution miss. The floor did its job on the volume that showed up.',
     whatToDo:
-        'Adjust the cover forecast for next week before you build the FOH '
-        'schedule. The fix is in the forecast, not on the floor. Pull the '
-        'pattern back to your weekly forecast review and re-anchor covers to '
-        'what the restaurant is actually doing.',
+        'Fix the forecast, not the floor. Re-anchor next week’s covers to what the restaurant is actually doing, then build FOH hours from covers divided by your CPLH target. Leave the team that executed alone.',
     teachingNote:
-        'Jim Taylor Ch. 7: CPLH below + SPLH above is a volume problem, not '
-        'an execution problem. If this repeats in the same dayparts, the '
-        'forecast is running high and the schedule is being built above '
-        'actual demand. Fix the forecast input. Protect the team that '
-        'executed.',
+        'CPLH below with SPLH above is a volume problem, not a people problem. If it repeats in the same dayparts, the forecast is running high and the schedule is built above real demand.',
     shortLabel: 'FORECAST',
     isFavorable: false,
   );
 
   static const cplhOnSplhBelow = CrossAxisPairData(
     id: 'cplh_on_splh_below',
-    metric: 'KITCHEN SLOWED. DINING ROOM HELD.',
+    metric: 'Kitchen slowed. Dining room held.',
     causeCategory: 'KITCHEN PRODUCTIVITY',
     side: LeverSide.boh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'CPLH landed on target. SPLH ran below target. The dining room '
-        'matched the plan: covers came in at forecast and FOH hours flexed '
-        'to volume. The kitchen did not keep pace: sales per BOH labor hour '
-        'fell short of model. The leak is on the back of the house.',
+        'Covers came in at forecast and FOH flexed to them. The kitchen did not keep pace: sales per BOH hour fell short. The leak is on the back of the house only.',
     whatToDo:
-        'Pull the kitchen ticket-time logs and BOH hours against actual '
-        'sales for this daypart. If ticket times were clean, BOH was '
-        'overstaffed for the volume. If ticket times slipped, throughput is '
-        'the constraint. They are different problems with different fixes.',
+        'Pull kitchen ticket times and BOH hours against actual sales for this daypart. Clean tickets mean BOH was overstaffed for the volume. Slow tickets mean throughput is the constraint. Different problems, different fixes. FOH needs nothing this round.',
     teachingNote:
-        'Jim Taylor Ch. 7: when only the kitchen axis moves and the dining '
-        'room held, the diagnosis lives in BOH deployment or throughput. If '
-        'this repeats in the same BOH dayparts, inspect station load and '
-        'prep readiness there. FOH does not need attention this round.',
+        'When only the kitchen axis moves, the diagnosis lives in BOH deployment or throughput. Watch station load and prep readiness in the dayparts where it repeats.',
     shortLabel: 'KITCHEN',
     isFavorable: false,
   );
 
   static const cplhAboveSplhBelow = CrossAxisPairData(
     id: 'cplh_above_splh_below',
-    metric: 'TEAM RAN LEAN. KITCHEN SLOWED.',
+    metric: 'Floor ran lean. Kitchen slowed.',
     causeCategory: 'CROSS AXIS',
     side: LeverSide.both,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'CPLH ran above target. SPLH ran below target. The dining room '
-        'covered more guests with fewer hours: FOH was efficient. The '
-        'kitchen lagged: sales per BOH labor hour came in under model. The '
-        'two sides moved in opposite directions on the same shift.',
+        'The dining room covered more guests with fewer hours, which is efficient. The kitchen lagged on sales per BOH hour. Two different stories on the same shift, moving opposite ways.',
     whatToDo:
-        'Cross-check PPA before you call this a win. If PPA held, the FOH '
-        'configuration is your benchmark: document the deployment. The BOH '
-        'side needs a separate look: pull ticket times and station '
-        'assignments. Fix the kitchen leak without dismantling the FOH '
-        'pattern that worked.',
+        'Check PPA before you call the floor a win. If PPA held, document the FOH deployment: it is a benchmark. Then look at the kitchen on its own: ticket times and station assignments. Fix the kitchen without breaking the FOH pattern that worked.',
     teachingNote:
-        'Jim Taylor Ch. 7: opposite-axis movement is two stories on one '
-        'shift. Treat the lean FOH side as a benchmark candidate. Treat the '
-        'slow kitchen side as a leak that needs its own root cause. Do not '
-        'average them into a single take.',
+        'Opposite-axis movement is two stories on one shift. Bank the lean FOH side as a benchmark. Treat the slow kitchen as its own root cause. Do not average them into one take.',
     shortLabel: 'CROSS AXIS',
     isFavorable: false,
   );
 
   static const bothBelow = CrossAxisPairData(
     id: 'both_below',
-    metric: 'DEMAND WAS SOFT.',
+    metric: 'Demand was soft.',
     causeCategory: 'VOLUME',
     side: LeverSide.both,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'CPLH ran below target. SPLH ran below target. Fewer covers came in '
-        'and the guests who did come in spent less than usual. Both sides '
-        'of the house carried more hours than the volume needed. The leak '
-        'is upstream of execution.',
+        'Fewer covers came in and the guests who did spent less. Both sides carried more hours than the volume needed. The leak is upstream of execution.',
     whatToDo:
-        'Check the external context first: weather, a competing event, a '
-        'day-of-week anomaly. If the cause is external, log the soft '
-        'daypart and protect the schedule pattern for the next normal '
-        'week. If demand is softening structurally, re-anchor next week\'s '
-        'forecast and trim FOH and BOH hours together.',
+        'Check the outside world first: weather, a nearby event, a day-of-week anomaly. If it was external, log the soft daypart and protect the schedule for the next normal week. If demand is softening for real, re-anchor the forecast and trim FOH and BOH hours together.',
     teachingNote:
-        'Jim Taylor Ch. 7: when both axes drop together, the question is '
-        'whether the cause is external (one-off) or structural (forecast '
-        'is stale). Tag the external cause when you can. If the soft '
-        'daypart repeats without an external explanation, the forecast is '
-        'overstating demand.',
+        'Both axes down together is the one case you look outside the building first. A one-off external cause, tag it and move on. Repeats with no explanation mean the forecast is overstating demand.',
     shortLabel: 'DEMAND',
     isFavorable: false,
   );
