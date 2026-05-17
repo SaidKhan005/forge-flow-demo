@@ -1,18 +1,28 @@
 // ─── CPLH-vs-OPZ 60-day band tests (Variance V2 Lane HIST) ──────────────────
 //
-// Covers the mockup `#hist` "CPLH vs your OPZ · 60-day" card:
-//   - geometry sourced only from the per-week CPLH series + the active
-//     target profile's CPLH OPZ floor/ceiling (no new math),
-//   - honest degraded state when OPZ bounds or the CPLH series are
-//     unavailable (Metric Honesty Doctrine — no fabricated zone),
-//   - the "below it N of last M weeks" emphasis applied at render via
-//     the V2-4 `[[bad:…]]` token + InlineEmphasisMarkup verbatim
-//     fallback (markup is NOT stored).
+// Covers the mockup `#hist` "CPLH vs your OPZ · 60-day" card AFTER the
+// operator-approved re-model: the band REUSES the proven baseline_tracker
+// "CPLH RANGE & TARGET" range model + data source. The outer rail domain
+// is `[sixtyDayLow, sixtyDayHigh]` (the lowest / highest CPLH over the
+// last 60 days, sourced from `BaselineData.historicalContextRecords` —
+// the SAME list `rangeGraphModel` reads for its `histMin`/`histMax`).
+// `pct(v) = clamp01((v - scaleMin) / (scaleMax - scaleMin))` mirrors the
+// proven band's normalization exactly
+// (lib/services/baseline_authority_service.dart:672-680).
+//
+// Because the rail is the WIDEST real observed bound, the OPZ range sits
+// strictly interior in every realistic scenario — the previous bespoke
+// clamp + extends-beyond-cap path is gone. The DEGENERATE case (every
+// 60-day CPLH identical) mirrors the proven band's `target ± 1.0` guard
+// (baseline_authority_service.dart:666-669) using the OPZ midpoint as the
+// centring value.
 //
 // Authority: docs/contracts/phase_7_58_primary_driver_contract.md.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/services/baseline_authority_service.dart'
+    show BaselineData;
 import 'package:forge_and_flow/widgets/variance/cplh_opz_band_card.dart';
 import 'package:forge_and_flow/widgets/variance/inline_emphasis_text.dart';
 
@@ -26,6 +36,8 @@ void main() {
     test('no OPZ bounds → cannot render band', () {
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.5, 4.6, 4.7],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
         opzFloor: null,
         opzCeiling: null,
         nowCplh: 4.5,
@@ -33,12 +45,14 @@ void main() {
       expect(d.canRenderBand, isFalse);
     });
 
-    test('empty CPLH series → cannot render band', () {
+    test('missing 60-day rail bounds → cannot render band', () {
       final d = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [],
+        weeklyCplhSeries: const [4.5, 4.6],
+        sixtyDayLowCplh: null,
+        sixtyDayHighCplh: null,
         opzFloor: 4.70,
         opzCeiling: 5.00,
-        nowCplh: null,
+        nowCplh: 4.5,
       );
       expect(d.canRenderBand, isFalse);
     });
@@ -46,6 +60,8 @@ void main() {
     test('ceiling not above floor → cannot render band', () {
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.5],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
         opzFloor: 5.00,
         opzCeiling: 5.00,
         nowCplh: 4.5,
@@ -53,35 +69,46 @@ void main() {
       expect(d.canRenderBand, isFalse);
     });
 
-    test('non-positive CPLH observations are filtered out as noise', () {
+    test('weekly series no longer defines the rail; rail is the 60-day '
+        'low/high (proven source)', () {
+      // The per-week series spans 4.59..4.59 but the rail is the proven
+      // 60-day low/high (3.7..5.43), so livedMin/Max no longer drive the
+      // rail. The series only feeds weeksBelowFloor/weekCount.
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [0, -1, 4.59],
+        sixtyDayLowCplh: 3.7,
+        sixtyDayHighCplh: 5.43,
         opzFloor: 4.70,
         opzCeiling: 5.00,
         nowCplh: 4.59,
       );
       expect(d.canRenderBand, isTrue);
-      expect(d.weekCount, 1);
-      expect(d.livedMin, 4.59);
-      expect(d.livedMax, 4.59);
+      expect(d.weekCount, 1, reason: 'non-positive obs filtered as noise');
+      expect(d.sixtyDayLow, 3.7);
+      expect(d.sixtyDayHigh, 5.43);
+      // The proven-source rail IS the normalization domain.
+      expect(d.scaleMin, 3.7);
+      expect(d.scaleMax, 5.43);
     });
   });
 
-  group('CplhOpzBandData.fromInputs — geometry (no new math)', () {
-    test('scale contains lived range, OPZ box, and now marker', () {
+  group('CplhOpzBandData.fromInputs — proven-source rail', () {
+    test('rail domain == [sixtyDayLow, sixtyDayHigh], all drawn values '
+        'normalise inside [0,1]', () {
       final d = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [3.9, 4.2, 4.59, 5.3],
+        weeklyCplhSeries: const [4.59, 4.62, 4.71],
+        sixtyDayLowCplh: 3.67,
+        sixtyDayHighCplh: 5.43,
         opzFloor: 4.70,
         opzCeiling: 5.00,
         nowCplh: 4.59,
       );
       expect(d.canRenderBand, isTrue);
-      expect(d.livedMin, 3.9);
-      expect(d.livedMax, 5.3);
-      // Every drawn value normalises inside [0, 1].
+      expect(d.scaleMin, 3.67);
+      expect(d.scaleMax, 5.43);
       for (final v in [
-        d.livedMin,
-        d.livedMax,
+        d.sixtyDayLow,
+        d.sixtyDayHigh,
         d.opzFloor,
         d.opzCeiling,
         d.now,
@@ -89,7 +116,6 @@ void main() {
         final f = d.fractionFor(v);
         expect(f, inInclusiveRange(0.0, 1.0));
       }
-      // Floor sits left of ceiling on the scale.
       expect(d.fractionFor(d.opzFloor),
           lessThan(d.fractionFor(d.opzCeiling)));
     });
@@ -97,30 +123,27 @@ void main() {
     test('weeksBelowFloor counts only weeks under the OPZ floor', () {
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.1, 4.2, 4.3, 4.4, 4.5, 5.1],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
         opzFloor: 4.70,
         opzCeiling: 5.00,
         nowCplh: 4.5,
       );
-      // 5 of 6 weeks below 4.70 (matches the mockup example shape).
       expect(d.weekCount, 6);
       expect(d.weeksBelowFloor, 5);
     });
   });
 
-  group('OpzScaleGeometry — Option 1 (rail = real lived range)', () {
-    // Operator-approved Option 1: domain = [livedMin, livedMax];
-    // pct(v) = clamp01((v-livedMin)/(livedMax-livedMin)). Lived ticks
-    // ARE the rail ends. OPZ box clamps to the rail; an extends-beyond
-    // cap signals the zone continues past the observed range. Honest
-    // labels: the box edge clamps but the OPZ label text stays the TRUE
-    // floor/ceiling. All asserted via the pure helper + a focused
-    // widget pump for the label-truth check (no eyeballing).
-
-    test('Case MOCKUP — OPZ inside lived: strictly interior, no caps, '
-        'true OPZ labels', () {
-      // livedMin(3.9) < opzFloor(4.70) < opzCeiling(5.00) < livedMax(5.3)
+  group('OpzScaleGeometry — reused proven model (rail = 60-day low/high)',
+      () {
+    test('Case TYPICAL (profile A) — OPZ strictly interior, ticks at '
+        'rail ends, now interior, true OPZ labels', () {
+      // 60-day rail 3.9..5.3; OPZ 4.70..5.00 sits inside it (the
+      // universal case: rail is the widest observed bound).
       final d = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [3.9, 4.2, 4.59, 5.3],
+        weeklyCplhSeries: const [4.59, 4.62, 4.71],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
         opzFloor: 4.70,
         opzCeiling: 5.00,
         nowCplh: 4.59,
@@ -128,134 +151,189 @@ void main() {
       expect(d.canRenderBand, isTrue);
       final g = OpzScaleGeometry.fromData(d);
 
-      // Box is a strict interior sub-segment.
+      // OPZ box is a strict interior sub-segment.
       expect(g.opzLeftPct, greaterThan(0.0));
       expect(g.opzRightPct, greaterThan(0.0));
       expect(g.opzWidthPct, lessThan(1.0));
       expect(g.opzLeftPct, lessThan(g.opzCeilingPct));
 
-      // The domain IS the lived range, so the ticks are exactly the
-      // rail ends (mockup `left:0` / `right:0`).
-      expect(g.livedMinPct, closeTo(0.0, 1e-9));
-      expect(g.livedMaxPct, closeTo(1.0, 1e-9));
+      // The domain IS the 60-day rail, so the ticks are the rail ends
+      // (mockup `left:0` / `right:0`).
+      expect(g.railLowPct, closeTo(0.0, 1e-9));
+      expect(g.railHighPct, closeTo(1.0, 1e-9));
 
       // pct(opzFloor) = (4.70-3.9)/(5.3-3.9) = 0.8/1.4 ≈ 0.5714.
       // pct(opzCeiling)=(5.00-3.9)/1.4 = 1.1/1.4 ≈ 0.7857.
       expect(g.opzLeftPct, closeTo(0.5714, 1e-3));
       expect(g.opzCeilingPct, closeTo(0.7857, 1e-3));
 
-      // No extends-beyond caps when the zone fits inside.
-      expect(g.leftCap, isFalse);
-      expect(g.rightCap, isFalse);
+      // now(4.59) interior: pct = (4.59-3.9)/1.4 ≈ 0.4929.
+      expect(g.nowPct, closeTo(0.4929, 1e-3));
+      expect(g.nowPct, greaterThan(0.0));
+      expect(g.nowPct, lessThan(1.0));
 
-      // OPZ labels are the TRUE floor/ceiling, not clamped positions.
+      // OPZ labels are the TRUE floor/ceiling.
       expect(d.opzFloor, 4.70);
       expect(d.opzCeiling, 5.00);
     });
 
-    testWidgets('Case REAL-DATA — OPZ wider both sides: box fills rail, '
-        'BOTH caps, ticks at ends, labels stay TRUE', (tester) async {
-      // The exact shape the operator hit: lived 4.3-4.8, OPZ
-      // 4.01-4.93, now 4.57. opzFloor < livedMin AND opzCeiling >
-      // livedMax.
+    testWidgets('Case TYPICAL (profile B) — different OPZ still strictly '
+        'interior; .opzlab text is the TRUE floor/ceiling', (tester) async {
+      // A second representative profile against a wider rail. OPZ
+      // 4.25..4.85 strictly inside the 60-day rail 3.67..5.43.
       final d = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [4.3, 4.45, 4.57, 4.8],
-        opzFloor: 4.01,
-        opzCeiling: 4.93,
-        nowCplh: 4.57,
+        weeklyCplhSeries: const [4.40, 4.55, 4.62, 4.71],
+        sixtyDayLowCplh: 3.67,
+        sixtyDayHighCplh: 5.43,
+        opzFloor: 4.25,
+        opzCeiling: 4.85,
+        nowCplh: 4.62,
       );
       expect(d.canRenderBand, isTrue);
       final g = OpzScaleGeometry.fromData(d);
 
-      // The box clamps to BOTH rail edges (fills the rail).
-      expect(g.opzLeftPct, closeTo(0.0, 1e-9),
-          reason: 'opzFloor below livedMin clamps box to left edge');
-      expect(g.opzRightPct, closeTo(0.0, 1e-9),
-          reason: 'opzCeiling above livedMax clamps box to right edge');
-      expect(g.opzWidthPct, closeTo(1.0, 1e-9));
+      expect(g.opzLeftPct, greaterThan(0.0));
+      expect(g.opzRightPct, greaterThan(0.0));
+      expect(g.opzWidthPct, lessThan(1.0));
+      expect(g.railLowPct, closeTo(0.0, 1e-9));
+      expect(g.railHighPct, closeTo(1.0, 1e-9));
 
-      // BOTH extends-beyond caps present.
-      expect(g.leftCap, isTrue);
-      expect(g.rightCap, isTrue);
+      // pct(opzFloor)=(4.25-3.67)/(5.43-3.67)=0.58/1.76 ≈ 0.3295.
+      // pct(opzCeiling)=(4.85-3.67)/1.76=1.18/1.76 ≈ 0.6705.
+      expect(g.opzLeftPct, closeTo(0.3295, 1e-3));
+      expect(g.opzCeilingPct, closeTo(0.6705, 1e-3));
 
-      // Lived ticks sit at the very rail ends (domain == lived range).
-      expect(g.livedMinPct, closeTo(0.0, 1e-9));
-      expect(g.livedMaxPct, closeTo(1.0, 1e-9));
-
-      // now(4.57) interior: pct = (4.57-4.3)/(4.8-4.3) = 0.27/0.5 = 0.54.
-      expect(g.nowPct, closeTo(0.54, 1e-9));
-      expect(g.nowPct, greaterThan(0.0));
-      expect(g.nowPct, lessThan(1.0));
-
-      // HONEST LABELS even when the box clamps: the rendered .opzlab
-      // text is the TRUE OPZ floor/ceiling (4.01 / 4.93), NOT the
-      // clamped edge values (which would be the lived bounds 4.3/4.8).
+      // .opzlab text is the TRUE floor/ceiling, asserted on the widget.
       await tester.pumpWidget(_wrap(CplhOpzBandCard(data: d)));
       await tester.pump();
-      expect(find.text('OPZ 4.01'), findsOneWidget,
-          reason: 'floor label tells the truth though the box is clamped');
-      expect(find.text('4.93'), findsOneWidget,
-          reason: 'ceiling label tells the truth though the box is clamped');
-      expect(find.text('now 4.57'), findsOneWidget);
-      // The clamped-position numbers must NOT appear as OPZ labels.
-      expect(find.text('OPZ 4.30'), findsNothing);
-      expect(find.text('4.80'), findsNothing);
+      expect(find.text('OPZ 4.25'), findsOneWidget);
+      expect(find.text('4.85'), findsOneWidget);
+      expect(find.text('now 4.62'), findsOneWidget);
     });
 
-    test('Case ONE-SIDE — only opzCeiling > livedMax: right cap only, '
-        'box left inset', () {
-      // livedMin(4.2) < opzFloor(4.40); opzCeiling(5.10) > livedMax(4.9).
+    test('Case NOW-AT-EDGE — now == 60-day low/high lands at ~0% / ~100%',
+        () {
+      final atLow = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [3.9, 4.5],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 3.9, // exactly the 60-day low
+      );
+      expect(atLow.canRenderBand, isTrue);
+      final gLow = OpzScaleGeometry.fromData(atLow);
+      expect(gLow.nowPct, closeTo(0.0, 1e-9));
+      // Geometry still consistent: OPZ interior, ticks at ends.
+      expect(gLow.railLowPct, closeTo(0.0, 1e-9));
+      expect(gLow.railHighPct, closeTo(1.0, 1e-9));
+      expect(gLow.opzLeftPct, greaterThan(0.0));
+
+      final atHigh = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [5.3, 4.5],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 5.3, // exactly the 60-day high
+      );
+      final gHigh = OpzScaleGeometry.fromData(atHigh);
+      expect(gHigh.nowPct, closeTo(1.0, 1e-9));
+      expect(gHigh.opzRightPct, greaterThan(0.0));
+    });
+
+    test('Case DEGENERATE (every 60-day CPLH identical) — mirrors the '
+        'proven band\'s target±1.0 guard, OPZ ⊆ rail invariant holds, '
+        'no bespoke clamp path taken', () {
+      // sixtyDayHigh <= sixtyDayLow is the proven band's degenerate
+      // trigger (baseline_authority_service.dart:666). The proven band
+      // widens to [max(0, target-1), target+1]; here the analogous
+      // centring value is the OPZ midpoint (the band has no single
+      // "target"). OPZ midpoint = (4.70+5.00)/2 = 4.85, so the widened
+      // scale is [3.85, 5.85].
       final d = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [4.2, 4.5, 4.7, 4.9],
-        opzFloor: 4.40,
-        opzCeiling: 5.10,
-        nowCplh: 4.6,
+        weeklyCplhSeries: const [4.85, 4.85],
+        sixtyDayLowCplh: 4.85,
+        sixtyDayHighCplh: 4.85, // collapsed: high == low
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 4.85,
       );
       expect(d.canRenderBand, isTrue);
+      // The proven-band degenerate widening: [max(0,c-1), c+1], c=4.85.
+      expect(d.scaleMin, closeTo(3.85, 1e-9));
+      expect(d.scaleMax, closeTo(5.85, 1e-9));
+
       final g = OpzScaleGeometry.fromData(d);
-
-      // Right cap present, left cap absent.
-      expect(g.rightCap, isTrue);
-      expect(g.leftCap, isFalse);
-
-      // Box left edge is strictly inset (floor inside the lived range):
-      // pct(4.40) = (4.40-4.2)/(4.9-4.2) = 0.2/0.7 ≈ 0.2857.
+      // INVARIANT: OPZ ⊆ rail by construction — no value is actually
+      // clamped (no bespoke clamp/cap path; only the proven band's own
+      // float-safe clamp exists, and it is a no-op here).
+      // pct(opzFloor)=(4.70-3.85)/2.0 = 0.425 (strictly interior).
+      // pct(opzCeiling)=(5.00-3.85)/2.0 = 0.575 (strictly interior).
+      expect(g.opzLeftPct, closeTo(0.425, 1e-9));
+      expect(g.opzCeilingPct, closeTo(0.575, 1e-9));
       expect(g.opzLeftPct, greaterThan(0.0));
-      expect(g.opzLeftPct, closeTo(0.2857, 1e-3));
-      // Right clamps to the rail edge.
-      expect(g.opzRightPct, closeTo(0.0, 1e-9));
-      expect(g.opzCeilingPct, closeTo(1.0, 1e-9));
-      expect(g.opzWidthPct, lessThan(1.0));
-      expect(g.opzWidthPct, greaterThan(0.0));
+      expect(g.opzCeilingPct, lessThan(1.0));
+      expect(g.opzWidthPct, closeTo(0.15, 1e-9));
     });
 
     test('Case DEGRADED — missing bounds/series: no band, no geometry',
         () {
-      final missingBounds = CplhOpzBandData.fromInputs(
+      final missingOpz = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.4, 4.5, 4.6],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
         opzFloor: null,
         opzCeiling: null,
         nowCplh: 4.5,
       );
-      expect(missingBounds.canRenderBand, isFalse);
+      expect(missingOpz.canRenderBand, isFalse);
 
-      final missingSeries = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [],
+      final missingRail = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [4.4, 4.5],
+        sixtyDayLowCplh: null,
+        sixtyDayHighCplh: null,
         opzFloor: 4.70,
         opzCeiling: 5.00,
-        nowCplh: null,
+        nowCplh: 4.5,
       );
-      expect(missingSeries.canRenderBand, isFalse);
+      expect(missingRail.canRenderBand, isFalse);
       // Degraded data carries no scale span, so fractionFor is a safe 0
       // (no fabricated geometry, no divide-by-zero).
-      expect(missingSeries.fractionFor(4.7), 0.0);
+      expect(missingRail.fractionFor(4.7), 0.0);
+    });
+  });
+
+  group('BaselineData proven-source accessors (reused outer rail)', () {
+    test('cplhSixtyDayLow/High equal the historicalContextRecords '
+        'min/max CPLH — the SAME quantities rangeGraphModel reads', () {
+      // These are the exact accessors the History tab passes as the
+      // band rail. Assert they match the proven source the
+      // baseline_tracker band draws as LOWEST/HIGHEST CPLH LAST 60 DAYS.
+      final recs = BaselineData.historicalContextRecords;
+      expect(recs, isNotEmpty,
+          reason: 'seed 60-day context is always present');
+      final cplh = recs.map((r) => r.cplh).toList();
+      final expectedLow =
+          cplh.reduce((a, b) => a < b ? a : b);
+      final expectedHigh =
+          cplh.reduce((a, b) => a > b ? a : b);
+      expect(BaselineData.cplhSixtyDayLow, expectedLow);
+      expect(BaselineData.cplhSixtyDayHigh, expectedHigh);
+      // And the rail is wider than (or equal to) any plausible OPZ, so
+      // the proven model's "OPZ always interior by construction" holds.
+      expect(BaselineData.cplhSixtyDayHigh,
+          greaterThan(BaselineData.cplhSixtyDayLow!));
     });
   });
 
   group('CplhOpzBandCard — render', () {
-    testWidgets('populated state renders OPZ + now labels', (tester) async {
+    testWidgets('populated state renders OPZ + now labels + teaching',
+        (tester) async {
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.1, 4.2, 4.3, 4.4, 4.5, 5.1],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
         opzFloor: 4.70,
         opzCeiling: 5.00,
         nowCplh: 4.59,
@@ -265,6 +343,9 @@ void main() {
       expect(find.text('OPZ 4.70'), findsOneWidget);
       expect(find.text('5.00'), findsOneWidget);
       expect(find.text('now 4.59'), findsOneWidget);
+      // 60-day low/high tick labels (1 decimal, like the mockup).
+      expect(find.text('3.9'), findsOneWidget);
+      expect(find.text('5.3'), findsOneWidget);
       expect(
         find.textContaining('What the zone is telling you.'),
         findsOneWidget,
@@ -275,6 +356,8 @@ void main() {
         (tester) async {
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.5],
+        sixtyDayLowCplh: null,
+        sixtyDayHighCplh: null,
         opzFloor: null,
         opzCeiling: null,
         nowCplh: 4.5,
@@ -287,8 +370,7 @@ void main() {
         findsOneWidget,
       );
       // No fabricated OPZ floor label or "now" marker when bounds
-      // are missing (the degraded copy may mention "OPZ targets",
-      // but never a numeric zone like "OPZ 4.70" / "now 4.50").
+      // are missing.
       expect(find.textContaining(RegExp(r'OPZ \d')), findsNothing);
       expect(find.textContaining(RegExp(r'now \d')), findsNothing);
     });
@@ -296,13 +378,11 @@ void main() {
 
   group('V2-4 markup is render-only — verbatim fallback', () {
     test('the emphasis token strips to the verbatim sentence', () {
-      // The exact span the card wraps for the "all weeks below" case.
       const marked = 'You have sat [[bad:below it 6 of the last 6 weeks]]. '
           'The volume keeps showing up.';
       const verbatim = 'You have sat below it 6 of the last 6 weeks. '
           'The volume keeps showing up.';
       expect(InlineEmphasisMarkup.stripMarkup(marked), verbatim);
-      // No token leakage and no em dash introduced.
       expect(InlineEmphasisMarkup.stripMarkup(marked).contains('[['), isFalse);
       expect(
           InlineEmphasisMarkup.stripMarkup(marked).contains('—'), isFalse);
