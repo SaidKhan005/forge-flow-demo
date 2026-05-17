@@ -122,6 +122,9 @@ class SettingsPointerRow extends StatelessWidget {
                     ),
                     label: Text(
                       _isComingSoon ? '$label (coming soon)' : label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.sunset,
@@ -138,9 +141,7 @@ class SettingsPointerRow extends StatelessWidget {
                         horizontal: 14,
                         vertical: 10,
                       ),
-                      textStyle: AppTextStyles.mono12(
-                        weight: FontWeight.w600,
-                      ),
+                      textStyle: AppTextStyles.mono12(weight: FontWeight.w600),
                     ),
                   ),
                 ),

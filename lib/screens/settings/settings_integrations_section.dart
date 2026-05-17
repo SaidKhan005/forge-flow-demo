@@ -24,7 +24,7 @@
 // currently subscribes to. The richer "connected / polling-stale /
 // error / no-vendor" matrix the eventual ops-portal screen renders
 // is out of scope for this slice and lives on operator-web (the
-// "Manage integrations on operator console" pointer below opens that
+// "Manage Integrations on Ops Web" pointer below opens that
 // surface via the existing B11.1 handoff-code flow).
 //
 // Authority:
@@ -51,7 +51,7 @@ import 'settings_shared_widgets.dart';
 ///     [DemoModeStateNotifier].
 ///   * The mounted master `SettingsDemoLiveSwitch` (the C-4 surface;
 ///     verbatim mount — MP-1 only moves the widget into this section).
-///   * A "Manage integrations on operator console" pointer row that
+///   * A "Manage Integrations on Ops Web" pointer row that
 ///     uses the existing B11.1 `HandoffCodeGateway` mint + opaque-code
 ///     handoff URL (NO JWT or long-lived credential in the URL).
 class SettingsIntegrationsSection extends StatelessWidget {
@@ -99,7 +99,7 @@ class SettingsIntegrationsSection extends StatelessWidget {
         const SettingsDemoLiveSwitch(),
         SettingsPointerRow(
           key: const Key('settings_integrations_console_pointer'),
-          label: 'Manage integrations on operator console',
+          label: 'Manage Integrations on Ops Web',
           opWebPath: _opWebPath,
           navId: _navId,
           handoffCodeGateway: handoffCodeGateway,
@@ -263,10 +263,7 @@ class _CategoryStatusRow extends StatelessWidget {
                 key: Key(
                   'settings_integrations_status_pill_${_categoryKey(category)}',
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 3,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: status.accentColor.withValues(alpha: 0.15),
                   border: Border.all(

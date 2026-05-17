@@ -5,7 +5,7 @@
 //     the correct pill label based on the `demo_mode_state` snapshot.
 //   * The C-4 master Demo→Live switch is mounted inside the section
 //     (key `settings_demo_live_switch_card`).
-//   * Tapping the "Manage integrations on operator console" pointer
+//   * Tapping the "Manage Integrations on Ops Web" pointer
 //     row mints a B11.1 handoff code, launches the operator-web URL
 //     with the short opaque code as a query parameter (addendum A1
 //     — never a JWT), and shows the "Opening Operator Web" toast.
@@ -141,7 +141,7 @@ void main() {
 
         // The InkWell inside `SettingsPointerRow` carries the row's
         // tap target. Tapping by key is equivalent and stable.
-        await tester.tap(find.text('Manage integrations on operator console'));
+        await tester.tap(find.text('Manage Integrations on Ops Web'));
         await tester.pump();
 
         expect(gateway.targets.single.navId, 'vendor_connections');
@@ -183,7 +183,7 @@ void main() {
         );
         await tester.pump();
 
-        await tester.tap(find.text('Manage integrations on operator console'));
+        await tester.tap(find.text('Manage Integrations on Ops Web'));
         await tester.pump();
 
         expect(
