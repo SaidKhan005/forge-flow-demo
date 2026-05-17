@@ -1048,6 +1048,153 @@ void main() {
     });
   });
 
+  // ── Wage-at-lock-time bottom-up reference reframe (mirrors #917) ───────
+  //
+  // Integer-hours is a model constraint: snapshot.requiredFohHours is
+  // `int`, the per-period rows are `double`. Post-#917/#941 the locked
+  // dollars are `wage × Σ(per-period UNROUNDED hours)`. The reframed
+  // check must reconcile against THAT exact basis (float epsilon), not
+  // `wage × snapshot.requiredFohHours(int)` which drifts by the
+  // per-day rounding deltas. Empty dayDayparts must preserve the prior
+  // whole-day honest behavior (no false pass).
+  group('computeAuditChecks — wage-at-lock-time bottom-up reframe', () {
+    test(
+        'per-period snapshot with int-rounding gap reconciles EXACTLY '
+        '(old int-hours reference would have drifted)', () {
+      final snap = _wageStampedSnapshotWithRoundingGap();
+
+      // Sanity: the fixture genuinely exercises the bug — the
+      // int-rounded locked hours differ from the unrounded per-period
+      // sum, so the OLD `wage × int hours` reference would mis-compare
+      // by more than a cent.
+      final sumFoh = snap.dayDayparts
+          .fold<double>(0, (s, d) => s + d.requiredFohHours);
+      final oldRef = snap.requiredFohHours * snap.wageAtLockTime!.fohWage;
+      expect(
+        (oldRef - snap.theoreticalFohLaborDollars).abs(),
+        greaterThan(0.01),
+        reason: 'fixture must exhibit the int-vs-unrounded reference gap '
+            'the reframe fixes (else the test proves nothing)',
+      );
+      expect(
+        (sumFoh - snap.requiredFohHours).abs(),
+        greaterThan(0.0),
+        reason: 'unrounded per-period FOH hours must differ from the '
+            'int-rounded snapshot field',
+      );
+
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: snap,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final wage = checks
+          .where((c) => c.groupId == DataAlignmentAuditGroup.wageAtLockTime)
+          .toList();
+      expect(wage.length, 4,
+          reason: 'stamp presence + FOH \$ + BOH \$ + blended wage');
+      // Reframed against the unrounded per-period basis → exact, no
+      // false drift from the integer-hours model constraint.
+      expect(
+        wage.every((c) => c.status == DriftCheckStatus.aligned),
+        isTrue,
+        reason: 'bottom-up basis (wage × Σ per-period unrounded hrs) '
+            'reconciles exactly; the int-hours reference does not',
+      );
+      final foh = wage.firstWhere((c) =>
+          c.label == 'Locked FOH \$ = lock-time FOH wage x locked FOH hrs');
+      final boh = wage.firstWhere((c) =>
+          c.label == 'Locked BOH \$ = lock-time BOH wage x locked BOH hrs');
+      final blended = wage.firstWhere(
+          (c) => c.label == 'Lock-time blended wage = locked \$ / locked hrs');
+      expect(foh.status, DriftCheckStatus.aligned);
+      expect(boh.status, DriftCheckStatus.aligned);
+      expect(blended.status, DriftCheckStatus.aligned);
+    });
+
+    test('per-period snapshot with tampered locked FOH \$ still drifts', () {
+      final snap = _wageStampedSnapshotWithRoundingGap(tamperFohDollars: true);
+      final checks = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: snap,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final foh = checks.firstWhere((c) =>
+          c.label == 'Locked FOH \$ = lock-time FOH wage x locked FOH hrs');
+      expect(foh.status, DriftCheckStatus.drifted,
+          reason: 'tight epsilon still catches a genuine tamper — the '
+              'reframe narrows the reference, it does not loosen rigor');
+    });
+
+    test(
+        'empty dayDayparts → whole-day honest path preserved exactly '
+        '(legacy snapshot still PASSes, tamper still drifts)', () {
+      // _makeSnapshotWithWageStamp() carries the stamp but NO
+      // per-period rows: a legacy whole-day snapshot whose dollars are
+      // self-consistent at the int-locked-hours scale.
+      final legacy = _makeSnapshotWithWageStamp();
+      final ok = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: legacy,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final okWage = ok
+          .where((c) => c.groupId == DataAlignmentAuditGroup.wageAtLockTime)
+          .toList();
+      expect(
+        okWage.every((c) => c.status == DriftCheckStatus.aligned),
+        isTrue,
+        reason: 'empty dayDayparts keeps the prior whole-day path; a '
+            'self-consistent legacy snapshot still reconciles',
+      );
+
+      // ...and a genuinely tampered legacy snapshot still surfaces drift
+      // (the empty-dayDayparts path is NOT made to falsely pass).
+      final tampered = _makeSnapshotWithWageStamp(tamperFohDollars: true);
+      final bad = DataAlignmentAuditReadService.computeAuditChecks(
+        profile: _profile(),
+        targetCycle: null,
+        snapshot: tampered,
+        plan: null,
+        shiftReadModel: null,
+        weekData: null,
+        benchmarkSelectionSummary: null,
+        benchmarkSelectionSummaryTableAvailable: false,
+        fullWeekShifts: null,
+        servicePeriodDefinitions: null,
+        distributionWeights: null,
+      );
+      final badFoh = bad.firstWhere((c) =>
+          c.label == 'Locked FOH \$ = lock-time FOH wage x locked FOH hrs');
+      expect(badFoh.status, DriftCheckStatus.drifted,
+          reason: 'empty-dayDayparts path must not be made to falsely pass');
+    });
+  });
+
   // ── Per-Daypart V1 / Slice 6 — Gap 38 structural ordering fix ──────────
   //
   // computeAuditChecks is the pure seam; the structural-ordering bug
@@ -1688,6 +1835,96 @@ WeeklyPlanSnapshot _makeSnapshotWithWageStamp({
     generatedAt: '2026-03-23T00:00:00Z',
     lockedAt: '2026-03-23T00:00:01Z',
     dayRows: dayRows,
+    wageAtLockTime: WeeklyPlanSnapshotWagesAtLockTime(
+      fohWage: fohWage,
+      bohWage: bohWage,
+      blendedWage: blended,
+    ),
+  );
+}
+
+/// Builds a wage-stamped, bottom-up locked snapshot that DELIBERATELY
+/// exhibits the integer-hours rounding gap the reframe addresses.
+///
+/// Per-period (`dayDayparts`) required hours are unrounded `double`s
+/// chosen so their sum has a fractional part (e.g. covers / non-divisor
+/// CPLH). `theoreticalFohLaborDollars` is the honest bottom-up basis:
+/// `stamp wage × Σ(per-period UNROUNDED hours)` == `Σ(per-period
+/// theoretical $)`. The whole-day `requiredFohHours` is the int-rounded
+/// sum (model constraint), so the OLD `wage × int hours` audit
+/// reference drifts by `wage × (Σ unrounded − round(Σ))`. The reframed
+/// check reconciles against the unrounded basis and is therefore exact.
+///
+/// [tamperFohDollars] adds a genuine error to the locked FOH dollars so
+/// the tight-epsilon reframe still surfaces real drift.
+WeeklyPlanSnapshot _wageStampedSnapshotWithRoundingGap({
+  bool tamperFohDollars = false,
+}) {
+  const fohWage = 18.00;
+  const bohWage = 20.00;
+  const businessDate = '2026-03-23';
+  // Three periods whose covers/CPLH and sales/SPLH land on fractional
+  // hours so the per-period sum does NOT equal its own integer rounding.
+  const periods = <Map<String, double>>[
+    {'covers': 130, 'ppa': 41, 'cplh': 3, 'splh': 97},
+    {'covers': 280, 'ppa': 39, 'cplh': 3, 'splh': 97},
+    {'covers': 95, 'ppa': 42, 'cplh': 3, 'splh': 97},
+  ];
+  final periodRows = <WeeklyPlanSnapshotDayDaypart>[];
+  for (var i = 0; i < periods.length; i++) {
+    final p = periods[i];
+    final covers = p['covers']!.toInt();
+    final sales = covers * p['ppa']!;
+    final foh = covers / p['cplh']!; // intentionally non-integer
+    final boh = sales / p['splh']!; // intentionally non-integer
+    periodRows.add(WeeklyPlanSnapshotDayDaypart(
+      businessDate: businessDate,
+      servicePeriodId: 'p$i',
+      forecastCovers: covers,
+      forecastSales: sales,
+      requiredFohHours: foh,
+      requiredBohHours: boh,
+      theoreticalFohDollars: foh * fohWage,
+      theoreticalBohDollars: boh * bohWage,
+    ));
+  }
+  final sumCovers = periodRows.fold<int>(0, (s, d) => s + d.forecastCovers);
+  final sumSales = periodRows.fold<double>(0, (s, d) => s + d.forecastSales);
+  final sumFoh = periodRows.fold<double>(0, (s, d) => s + d.requiredFohHours);
+  final sumBoh = periodRows.fold<double>(0, (s, d) => s + d.requiredBohHours);
+  final dayRow = WeeklyPlanSnapshotDay(
+    day: 'Mon',
+    businessDate: businessDate,
+    forecastCovers: sumCovers,
+    forecastSales: sumSales,
+    requiredFohHours: sumFoh.round(), // int model constraint
+    requiredBohHours: sumBoh.round(),
+  );
+  // Honest bottom-up locked dollars = wage × Σ(unrounded per-period hrs).
+  final fohDollars =
+      (sumFoh * fohWage) + (tamperFohDollars ? 250.0 : 0.0);
+  final bohDollars = sumBoh * bohWage;
+  final unroundedTotalHours = sumFoh + sumBoh;
+  final blended =
+      (sumFoh * fohWage + sumBoh * bohWage) / unroundedTotalHours;
+  return WeeklyPlanSnapshot(
+    snapshotId: 'snap_wage_pp',
+    restaurantId: 'r1',
+    weekStartDate: '2026-03-23',
+    weekEndDate: '2026-03-29',
+    targetCycleId: 'cycle_1',
+    forecastCovers: dayRow.forecastCovers,
+    forecastSales: dayRow.forecastSales,
+    requiredFohHours: dayRow.requiredFohHours,
+    requiredBohHours: dayRow.requiredBohHours,
+    theoreticalFohLaborDollars: fohDollars,
+    theoreticalBohLaborDollars: bohDollars,
+    coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+    salesSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+    generatedAt: '2026-03-23T00:00:00Z',
+    lockedAt: '2026-03-23T00:00:01Z',
+    dayRows: [dayRow],
+    dayDayparts: periodRows,
     wageAtLockTime: WeeklyPlanSnapshotWagesAtLockTime(
       fohWage: fohWage,
       bohWage: bohWage,
