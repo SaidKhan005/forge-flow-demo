@@ -279,7 +279,7 @@ class _GroupedSummaryTable extends StatelessWidget {
         : null;
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: AppSpacing.screenH,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topCenter,
