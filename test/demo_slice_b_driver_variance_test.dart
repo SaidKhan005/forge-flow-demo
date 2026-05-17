@@ -150,9 +150,21 @@ void main() {
       expect((lunch.targetSPLH - lateNight.targetSPLH).abs(),
           greaterThanOrEqualTo(5.0));
 
-      // PPA: per-period base 40.5 / 43 / 38.5.
+      // PPA: per-period base 40.5 / 43 / 38.5. SA.1 golden move — before
+      // SA.1 lunch was `building_flat` and late_night
+      // `building_few_strong`, so their per-period PPA rows came from the
+      // FALLBACK demo constants (40.5 / 38.5), giving an artificial
+      // ≥2.5 lunch↔dinner gap. SA.1 makes every period teachable so the
+      // rows now carry the REAL engine all-three-strong median PPA over
+      // the recalibrated cohort: lunch↔dinner ≈ 0.48 (was 2.5),
+      // dinner↔late_night ≈ 4.49, lunch↔late_night ≈ 4.01. The rows are
+      // still clearly distinct (the test's intent — "no longer identical
+      // rows"); the lunch↔dinner literal is lowered 0.50 → 0.30 to match
+      // realistic engine output (a more-realistic-data move, NOT a
+      // regression — confirmed teachable end-to-end by
+      // `demo_slice_sa1_seeder_recalibration_test`).
       expect((lunch.targetPPA - dinner.targetPPA).abs(),
-          greaterThanOrEqualTo(0.50));
+          greaterThanOrEqualTo(0.30));
       expect((dinner.targetPPA - lateNight.targetPPA).abs(),
           greaterThanOrEqualTo(0.50));
       expect((lunch.targetPPA - lateNight.targetPPA).abs(),
