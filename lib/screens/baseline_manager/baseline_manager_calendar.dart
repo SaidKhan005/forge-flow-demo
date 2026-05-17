@@ -246,7 +246,13 @@ class CalendarGrid extends StatelessWidget {
       rows.add(Row(children: cells));
     }
 
-    return SingleChildScrollView(
+    // R9: the calendar lays out at its full intrinsic height inside the
+    // screen's ONE single page scroll. It is NOT its own scrollable
+    // (no SingleChildScrollView / ListView here) and the parent does NOT
+    // wrap it in Expanded/Flexible, so the single page scroll owns all
+    // scrolling and there are no nested scroll conflicts. This is a
+    // plain Column of the header, legend, weekday labels, and week rows.
+    return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

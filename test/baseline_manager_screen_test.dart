@@ -14,6 +14,7 @@ import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
 import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_band.dart';
 import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_lens.dart';
 import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_day_sheet.dart';
+import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_calendar.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:provider/provider.dart';
@@ -168,6 +169,18 @@ Future<void> _clearAllDraft(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// R9: PLAN IMPACT is a tap-to-expand dropdown that is COLLAPSED by
+/// default. Tests that assert on the six plan-impact metric cells must
+/// open the dropdown first (the header row is always visible; the metric
+/// grid is only in the tree when open).
+Future<void> _expandPlanImpact(WidgetTester tester) async {
+  final toggle = find.byKey(const ValueKey<String>('plan_impact_toggle'));
+  await tester.ensureVisible(toggle);
+  await tester.pumpAndSettle();
+  await tester.tap(toggle);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _tapLensChip(WidgetTester tester, String lensId) async {
   final chip = find.byKey(ValueKey<String>('lens_$lensId'));
   // R8 added an app-bar RESET pill + once-per-cycle caption and the
@@ -299,8 +312,12 @@ void main() {
       expect(find.text('TARGET PPA'), findsOneWidget);
       expect(find.text('OPZ FLOOR'), findsOneWidget);
       expect(find.text('OPZ CEILING'), findsOneWidget);
-      // Plan impact section
+      // R9: PLAN IMPACT header is always visible; it is a collapsed
+      // dropdown by default. Its six metric cells render only after the
+      // dropdown is expanded.
       expect(find.text('PLAN IMPACT'), findsOneWidget);
+      expect(find.text('FORECAST COVERS'), findsNothing);
+      await _expandPlanImpact(tester);
       expect(find.text('FORECAST COVERS'), findsOneWidget);
       expect(find.text('FORECAST SALES'), findsOneWidget);
       expect(find.text('FOH HRS'), findsOneWidget);
@@ -381,6 +398,9 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.text('0', skipOffstage: false), findsOneWidget);
+        // R9: PLAN IMPACT is collapsed by default; expand it so the
+        // empty-state sentinel count covers the plan-impact cells too.
+        await _expandPlanImpact(tester);
         // 5 target standard cells + 6 plan impact cells = 11
         expect(
           find.text('--', skipOffstage: false),
@@ -406,6 +426,9 @@ void main() {
 
       // R8 opens populated; clear to reach the empty preview first.
       await _clearAllDraft(tester);
+      // R9: expand the PLAN IMPACT dropdown so all 11 sentinel cells
+      // (5 standard + 6 plan impact) are in the tree.
+      await _expandPlanImpact(tester);
       expect(find.text('--'), findsNWidgets(11));
 
       // Default whole-day lens: tap the date, toggle the lunch service
@@ -414,6 +437,7 @@ void main() {
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
 
+      // Dropdown stays expanded across the selection round-trip.
       expect(find.text('--'), findsNothing);
     });
 
@@ -636,6 +660,8 @@ void main() {
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
+      // R9: forecast covers lives in the collapsed PLAN IMPACT dropdown.
+      await _expandPlanImpact(tester);
 
       // Forecast covers fixed from canonical demand context
       final expectedCovers = demandCovers;
@@ -1123,6 +1149,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
 
       expect(find.text('0', skipOffstage: false), findsOneWidget);
+      // R9: PLAN IMPACT is collapsed by default; expand it so all 11
+      // empty-state sentinels (5 standard + 6 plan impact) are present.
+      await _expandPlanImpact(tester);
       expect(find.text('--', skipOffstage: false), findsNWidgets(11));
       expect(find.text('CLEAR ALL'), findsNothing);
     });
@@ -1408,6 +1437,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('0', skipOffstage: false), findsOneWidget);
+      // R9: PLAN IMPACT is collapsed by default; expand it so all 11
+      // empty-state sentinels (5 standard + 6 plan impact) are present.
+      await _expandPlanImpact(tester);
       expect(find.text('--', skipOffstage: false), findsNWidgets(11));
       expect(find.text('CLEAR ALL'), findsNothing);
     });
@@ -1534,6 +1566,8 @@ void main() {
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
+      // R9: BLENDED WAGE lives in the collapsed PLAN IMPACT dropdown.
+      await _expandPlanImpact(tester);
 
       expect(
         find.text(expectedWageStr, skipOffstage: false),
@@ -1573,6 +1607,9 @@ void main() {
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
+      // R9: the wage-dependent cells live in the collapsed PLAN IMPACT
+      // dropdown; expand it so the honest sentinels are in the tree.
+      await _expandPlanImpact(tester);
 
       expect(
         find.text('--'),
@@ -2602,6 +2639,11 @@ void main() {
         await tester.tap(generousChip);
         await tester.pumpAndSettle();
 
+        // R9: FORECAST COVERS lives in the collapsed PLAN IMPACT
+        // dropdown; expand it so the per-period vs whole-day covers
+        // comparison can read the rendered value.
+        await _expandPlanImpact(tester);
+
         // Whole-day lens (default): FORECAST COVERS is the existing
         // demand-context plan number (read from the unchanged plumbing).
         final wholeDayPreview =
@@ -2940,6 +2982,200 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('4/4'), findsOneWidget);
+      },
+    );
+  });
+
+  // ── R9 - single continuous scroll + PLAN IMPACT dropdown ─────────────────
+  //
+  // (a) the body is ONE scroll: there is exactly one SingleChildScrollView
+  //     between the app bar and the bottom bar, the CalendarGrid is inside
+  //     it and is NOT its own scrollable and NOT wrapped in
+  //     Expanded/Flexible;
+  // (b) PLAN IMPACT is collapsed by default and expands/collapses on tap
+  //     (the chevron rotates);
+  // (c) no regression: still opens populated, the section order holds,
+  //     the Done count is live, and saveSelection is only called on Done.
+
+  group('R9 - single continuous scroll + PLAN IMPACT dropdown', () {
+    testWidgets(
+      'a) the body is a single scroll: one SingleChildScrollView, '
+      'calendar is non-scrollable and not in Expanded/Flexible',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Exactly ONE vertical page scroll between the fixed app bar
+        // and the fixed bottom bar (the prototype's single `.scl`). The
+        // lens chip row is a deliberate HORIZONTAL SingleChildScrollView
+        // (the prototype's `.lens` strip) and is not a second page
+        // scroll, so the page-scroll assertion is scoped to vertical.
+        final verticalPageScroll = find.byWidgetPredicate(
+          (w) =>
+              w is SingleChildScrollView &&
+              w.scrollDirection == Axis.vertical,
+        );
+        expect(verticalPageScroll, findsOneWidget);
+
+        // The calendar is in the tree, inside that one vertical scroll.
+        final calendar = find.byType(CalendarGrid);
+        expect(calendar, findsOneWidget);
+        expect(
+          find.ancestor(of: calendar, matching: verticalPageScroll),
+          findsOneWidget,
+        );
+
+        // The calendar is NOT its own scrollable: no Scrollable lives
+        // under CalendarGrid (it lays out at intrinsic height), so the
+        // single page scroll owns all scrolling, no nested conflict.
+        expect(
+          find.descendant(
+            of: calendar,
+            matching: find.byType(Scrollable),
+          ),
+          findsNothing,
+        );
+
+        // The calendar is NOT flex-wrapped INSIDE the page scroll: the
+        // old `Expanded(child: CalendarGrid)` split-scroll region is
+        // gone. The body-level Expanded that holds the single scroll is
+        // the scroll's PARENT (correct, expected) so it is excluded by
+        // requiring the flex node to also be a descendant of the scroll.
+        // CalendarGrid's own internal cell Expandeds are descendants of
+        // the calendar, not ancestors, so they do not match here.
+        // Flexible is the superclass of Expanded, so this one predicate
+        // covers both.
+        final flexBetweenScrollAndCalendar = find.byWidgetPredicate(
+          (w) => w is Flexible,
+        );
+        expect(
+          find.descendant(
+            of: verticalPageScroll,
+            matching: find.ancestor(
+              of: calendar,
+              matching: flexBetweenScrollAndCalendar,
+            ),
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'b) PLAN IMPACT is collapsed by default and toggles on tap',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Header row is always present; metric cells are NOT in the
+        // tree while collapsed.
+        expect(
+          find.byKey(const ValueKey<String>('plan_impact_toggle')),
+          findsOneWidget,
+        );
+        expect(find.text('PLAN IMPACT'), findsOneWidget);
+        expect(find.text('FORECAST COVERS'), findsNothing);
+        expect(find.text('BLENDED WAGE'), findsNothing);
+
+        // Tap expands inline.
+        await _expandPlanImpact(tester);
+        expect(find.text('FORECAST COVERS'), findsOneWidget);
+        expect(find.text('FORECAST SALES'), findsOneWidget);
+        expect(find.text('FOH HRS'), findsOneWidget);
+        expect(find.text('BOH HRS'), findsOneWidget);
+        expect(find.text('LABOR %'), findsOneWidget);
+        expect(find.text('BLENDED WAGE'), findsOneWidget);
+
+        // Tapping again collapses it back.
+        final toggle =
+            find.byKey(const ValueKey<String>('plan_impact_toggle'));
+        await tester.ensureVisible(toggle);
+        await tester.pumpAndSettle();
+        await tester.tap(toggle);
+        await tester.pumpAndSettle();
+        expect(find.text('FORECAST COVERS'), findsNothing);
+        expect(find.text('PLAN IMPACT'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'c) no regression: opens populated, section order holds, Done '
+      'count is live, and Done is the only write path',
+      (tester) async {
+        // Tall surface so the full single-scroll page lays out and
+        // absolute Y positions reflect the true top-to-bottom order.
+        tester.view.physicalSize = const Size(1200, 4000);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Opens populated (R8 default Balanced preserved).
+        final defs = ServicePeriodDefinitionResolver.demoDefinitions;
+        final expected = deriveBandSelection(
+          _allCandidates,
+          defs,
+          StarBand.balanced,
+        );
+        expect(expected, isNotEmpty);
+        _expectSelectedShiftsCount(tester, '${expected.length}');
+        expect(find.text('Done · ${expected.length}'), findsOneWidget);
+
+        // Opening the screen persists nothing.
+        final storedOnOpen = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(storedOnOpen, isEmpty);
+
+        // Section order top-to-bottom inside the single scroll:
+        // lens, scope tag, summary, STAR SHIFT SELECTION + band,
+        // calendar, then (fixed below) the override caption + CANCEL.
+        double topOf(Finder f) => tester.getTopLeft(f.first).dy;
+        final lensDy = topOf(
+          find.byKey(const ValueKey<String>('lens_$kWholeDayLensId')),
+        );
+        final scopeTagDy = topOf(find.text('Whole day targets'));
+        final summaryDy = topOf(find.text('SELECTED SHIFTS'));
+        final bandLabelDy = topOf(find.text('STAR SHIFT SELECTION'));
+        final calendarDy = topOf(find.text('LAST 60 DAYS'));
+        final captionDy = topOf(
+          find.byKey(const ValueKey<String>('override_cycle_caption')),
+        );
+        final cancelDy = topOf(find.text('CANCEL'));
+        expect(lensDy, lessThan(scopeTagDy));
+        expect(scopeTagDy, lessThan(summaryDy));
+        expect(summaryDy, lessThan(bandLabelDy));
+        expect(bandLabelDy, lessThan(calendarDy));
+        expect(calendarDy, lessThan(captionDy));
+        expect(captionDy, lessThan(cancelDy));
+
+        // Done is still the only write path: tapping it persists the
+        // current draft keys (saveSelection unchanged, called on Done).
+        final stored = await _commitDoneAndReadKeys(tester);
+        expect(stored.toSet(), equals(expected));
       },
     );
   });
