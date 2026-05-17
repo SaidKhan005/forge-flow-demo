@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Choose Star Shifts: daypart lens</title>
+<!-- offline-safe fonts: IBM Plex / Playfair if installed, else system fallback -->
+<style>
+  :root{
+    --bg-deep:#F8EDE6; --bg-mid:#EFE8E0;
+    --sunset:#CC7A3E; --sunset-dark:#9A5C2A;
+    --jade:#A8D8D0; --peacock:#0E8080;
+    --tx-primary:#2C2C2C; --tx-secondary:#5A524A; --tx-muted:#5E564E;
+    --border-sub:#DDD6CC;
+    --good:#2F8F5B; --watch:#9A6B12; --bad:#BE5A43;
+    --mono:'IBM Plex Mono','SF Mono',Menlo,Consolas,monospace;
+    --sans:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+    --disp:'Playfair Display',Georgia,'Times New Roman',serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:linear-gradient(160deg,#efe3d8,#e5d8ca);font-family:var(--sans);color:var(--tx-primary);min-height:100vh;padding:26px 20px 56px}
+  .wrap{max-width:1040px;margin:0 auto}
+  h1{font-family:var(--disp);font-size:25px;font-weight:700}
+  .sub{font-size:13.5px;color:var(--tx-secondary);margin:5px 0 18px;max-width:680px;line-height:1.5}
+  .stage{display:flex;gap:38px;align-items:flex-start;flex-wrap:wrap}
+  .narr{flex:0 0 260px;font-family:var(--mono);font-size:11.5px;color:var(--tx-secondary);line-height:1.55}
+  .narr h3{font-size:10px;letter-spacing:1px;color:var(--sunset-dark);margin:0 0 8px}
+  .narr li{margin:0 0 9px 14px}.narr b{color:var(--tx-primary)}
+  .restart{margin-top:6px;font-family:var(--mono);font-size:11px;color:var(--sunset-dark);background:#fff8f1;border:1px solid var(--border-sub);padding:8px 12px;border-radius:7px;cursor:pointer;display:inline-block}
+
+  .phone{width:392px;flex:0 0 392px;background:var(--bg-deep);border-radius:38px;padding:14px;box-shadow:0 22px 60px rgba(80,50,25,.28),0 0 0 10px #20181266}
+  .notch{width:120px;height:24px;background:#1d1712;border-radius:0 0 16px 16px;margin:0 auto 6px}
+  .screen{background:var(--bg-deep);border-radius:26px;overflow:hidden;height:806px;display:flex;flex-direction:column;position:relative}
+  .appbar{display:flex;align-items:center;gap:11px;padding:14px 16px 8px}
+  .appbar .bk{font-size:17px;color:var(--tx-muted);cursor:pointer}
+  .appbar .ttl{font-family:var(--mono);font-size:13px;letter-spacing:.5px;color:var(--tx-primary);font-weight:600}
+  .appbar .rst{margin-left:auto;font-family:var(--mono);font-size:12px;letter-spacing:.5px;text-transform:uppercase;color:var(--sunset-dark);background:#fff8f1;border:1.5px solid var(--sunset);padding:10px 18px;border-radius:999px;cursor:pointer;font-weight:600}
+  .appbar .rst:active{transform:scale(.95)}
+  .scl{flex:1;overflow-y:auto;padding:0 16px 12px}
+  .scl::-webkit-scrollbar{width:0}
+  .botbar{display:flex;gap:11px;padding:12px 16px 16px;border-top:1px solid var(--border-sub)}
+  .btn{flex:1;text-align:center;font-family:var(--mono);font-size:12.5px;letter-spacing:1.2px;text-transform:uppercase;padding:14px;border-radius:12px;cursor:pointer;border:1px solid var(--sunset);color:var(--sunset-dark);background:transparent;font-weight:600}
+  .btn.pri{flex:1.5;background:var(--sunset);color:#fff;box-shadow:0 6px 16px rgba(204,122,62,.36)}
+
+  /* daypart LENS: screen-level context, top of screen */
+  .lens-h{font-family:var(--mono);font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--tx-muted);margin:4px 2px 6px}
+  .lens{display:flex;gap:5px;background:var(--bg-mid);border:1px solid var(--border-sub);border-radius:12px;padding:4px}
+  .lens div{flex:1;text-align:center;font-family:var(--mono);font-size:9.5px;letter-spacing:0;padding:10px 2px;border-radius:9px;cursor:pointer;color:var(--tx-secondary);white-space:nowrap}
+  .oncenote{font-family:var(--mono);font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--tx-muted);text-align:center;padding:9px 0 2px}
+  .lens div.on{background:var(--peacock);color:#fff;font-weight:600;box-shadow:0 4px 11px rgba(14,128,128,.3)}
+
+  /* compact summary, scoped by lens */
+  .sumcard{border:1px solid var(--sunset);border-radius:14px;padding:11px 12px;margin:12px 0;background:linear-gradient(135deg,var(--bg-mid),var(--bg-deep))}
+  .scope-tag{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--peacock);font-weight:600;margin-bottom:9px}
+  .scope-tag .b{width:7px;height:7px;border-radius:50%;background:var(--peacock)}
+  .mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px 8px}
+  .mc .ml{font-family:var(--mono);font-size:8.5px;letter-spacing:.6px;color:var(--tx-muted);text-transform:uppercase}
+  .mc .mv{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--tx-primary);margin-top:2px}
+  .mc .mv.dim{color:#bcb1a2}
+  .pi{margin-top:10px;border-top:1px solid var(--border-sub);padding-top:8px}
+  .pi-h{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--tx-muted);cursor:pointer;display:flex;justify-content:space-between}
+  .pi-h .cv{transition:.2s;display:inline-block}
+  .pi.open .pi-h .cv{transform:rotate(90deg)}
+  .pi-b{display:none;grid-template-columns:repeat(3,1fr);gap:9px 8px;margin-top:9px}
+  .pi.open .pi-b{display:grid}
+
+  .strip-h{font-family:var(--mono);font-size:9.5px;letter-spacing:1px;text-transform:uppercase;color:var(--tx-muted);margin:2px 0 7px}
+  .seg{display:flex;background:var(--bg-mid);border:1px solid var(--border-sub);border-radius:11px;padding:4px;margin-bottom:14px}
+  .seg div{flex:1;text-align:center;font-family:var(--mono);font-size:11.5px;letter-spacing:.5px;padding:10px 4px;border-radius:8px;cursor:pointer;color:var(--tx-secondary)}
+  .seg div.on{background:var(--sunset);color:#fff;font-weight:600;box-shadow:0 4px 11px rgba(204,122,62,.3)}
+
+  /* CALENDAR hero */
+  .calhd{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0 9px}
+  .calhd .t{font-family:var(--mono);font-size:12px;letter-spacing:1px;color:var(--tx-primary);font-weight:600}
+  .calhd .t .scope{color:var(--peacock)}
+  .calhd .r{font-family:var(--mono);font-size:10px;color:var(--tx-muted)}
+  .legend{display:flex;gap:8px;margin-bottom:11px;flex-wrap:wrap}
+  .lg{display:flex;align-items:center;gap:6px;font-family:var(--mono);font-size:9.5px;color:var(--tx-secondary);background:#fff8f1;border:1px solid var(--border-sub);padding:5px 9px;border-radius:999px}
+  .sw{width:13px;height:13px;border-radius:4px}
+  .sw.cl{background:#e7ded2;border:1px solid var(--border-sub)}
+  .sw.se{background:var(--sunset)}
+  .dow{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px}
+  .dow span{text-align:center;font-family:var(--mono);font-size:10px;color:var(--tx-muted)}
+  .mlab{font-family:var(--mono);font-size:10px;letter-spacing:1px;color:var(--tx-muted);margin:11px 0 6px}
+  .cg{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cell{aspect-ratio:1;border-radius:11px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-family:var(--mono);font-size:13px;cursor:pointer;border:1px solid var(--border-sub);background:#ece3d6;color:var(--tx-secondary);transition:.1s}
+  .cell .cnt{font-size:8px;letter-spacing:.5px;opacity:.62;line-height:1}
+  .cell.sel .cnt{color:#ffe9d6;opacity:1}
+  .cell.empty{background:transparent;border:0;cursor:default}
+  .cell.muted{background:transparent;border:1px dashed #e0d8cb;color:#cabfae;cursor:default}
+  .cell.closed{background:#ece3d6;color:var(--tx-secondary)}
+  .cell.sel{background:var(--sunset);border:2px solid var(--sunset-dark);color:#fff;font-weight:700;box-shadow:0 4px 12px rgba(204,122,62,.4)}
+  .cell:not(.muted):not(.empty):active{transform:scale(.93)}
+
+  /* bottom-sheet shift popup */
+  .scrim{position:absolute;inset:0;background:rgba(40,28,18,.5);display:flex;align-items:flex-end;z-index:6}
+  .sheet{background:var(--bg-deep);border-radius:22px 22px 0 0;width:100%;padding:18px 18px 20px;box-shadow:0 -14px 40px rgba(0,0,0,.28)}
+  .sheet .grab{width:38px;height:4px;border-radius:2px;background:var(--border-sub);margin:0 auto 14px}
+  .sheet .sd{font-family:var(--mono);font-size:12px;color:var(--tx-muted);letter-spacing:.5px}
+  .sheet .st{font-family:var(--disp);font-size:20px;font-weight:600;margin:3px 0 4px}
+  .sheet .lev{font-family:var(--sans);font-size:13px;font-weight:600;margin-bottom:14px}
+  .lev.good{color:var(--good)} .lev.watch{color:var(--watch)} .lev.bad{color:var(--bad)}
+  .sheet .sg{display:grid;grid-template-columns:repeat(3,1fr);gap:13px 10px;margin-bottom:18px}
+  .sheet .sg .ml{font-family:var(--mono);font-size:9px;letter-spacing:.5px;color:var(--tx-muted);text-transform:uppercase}
+  .sheet .sg .mv{font-family:var(--mono);font-size:15px;font-weight:600;color:var(--tx-primary);margin-top:2px}
+  .sheet .act{display:flex;gap:10px}
+  .sheet .act .x{flex:1;text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:14px;border-radius:12px;cursor:pointer;border:1px solid var(--border-sub);color:var(--tx-muted);background:#fff8f1}
+  .sheet .act .go{flex:1.7;text-align:center;font-family:var(--mono);font-size:12px;letter-spacing:1px;text-transform:uppercase;padding:14px;border-radius:12px;cursor:pointer;background:var(--sunset);color:#fff;font-weight:600;border:none}
+  .sheet .act .go.rm{background:transparent;color:var(--sunset-dark);border:1px solid var(--sunset)}
+  .sheet .brk-h{font-family:var(--mono);font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--tx-muted);margin:2px 0 8px}
+  .sheet .brk{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid var(--border-sub);border-radius:11px;margin-bottom:7px;cursor:pointer;background:#fff8f1}
+  .sheet .brk.on{border-color:var(--sunset);background:rgba(204,122,62,.1)}
+  .sheet .brk .bn{font-family:var(--disp);font-size:15px;font-weight:600;flex:0 0 90px}
+  .sheet .brk .bm{flex:1;font-family:var(--mono);font-size:11px;color:var(--tx-secondary)}
+  .sheet .brk .bt{font-family:var(--mono);font-size:10px;letter-spacing:.5px;text-transform:uppercase;color:var(--tx-muted)}
+  .sheet .brk.on .bt{color:var(--sunset-dark);font-weight:600}
+  footer{margin-top:30px;font-size:12px;color:var(--tx-secondary);font-family:var(--mono)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Choose Star Shifts: architecture audited</h1>
+  <p class="sub">Dayparts are now read from a simulated operator timing config (shown with a non default 4 period operator: Breakfast, Lunch, Dinner, Late night) instead of hardcoded. Wage is whole day only per Design Rule 5. The band only produces a selected cohort through the existing override path, no parallel stack. Tap inside the phone.</p>
+
+  <div class="stage">
+    <div class="narr">
+      <h3>Architecture pass</h3>
+      <ul>
+        <li><b>Dayparts not hardcoded:</b> the lens, summary scope, calendar count, breakdown rows and band all derive from TIMING_CONFIG.servicePeriodDefinitions. Change the config and the whole screen follows. Mirrors ServicePeriodDefinitionResolver reading restaurant_timing_configs.</li>
+        <li><b>Whole day wage only:</b> no per period wage. Per period labor dollars = period hours times whole day wage (Design Rule 5).</li>
+        <li><b>No parallel stack:</b> Lean/Balanced/Generous just writes selected recordKeys through the existing manager override path. No strictness column, no second pool formula.</li>
+        <li><b>Whole day = rollup:</b> cover weighted from the per period selected shifts. Covers/hours/sales sum, CPLH/SPLH/PPA cover weighted, verified reconciling.</li>
+        <li><b>Override gate surfaced:</b> "one override per 60 day cycle" shown before Done, not as an after the fact error.</li>
+      </ul>
+      <div class="restart" id="restart">↻ Reset</div>
+    </div>
+
+    <div class="phone"><div class="notch"></div><div class="screen" id="screen"></div></div>
+  </div>
+  <footer>Prototype only. Sample 60-day window. Same write path (select shifts, applyManagerOverrideCycle).</footer>
+</div>
+
+<script>
+// ---- Operator timing config (simulates restaurant_timing_configs.service_period_definitions_json).
+// Dayparts are NOT hardcoded in the screen; the UI resolves them from this config at runtime,
+// the same way ServicePeriodDefinitionResolver reads the operator's configured service periods.
+// Swap this list (count / ids / labels / order) and the whole screen follows. Shown here with a
+// non-default 4-period operator (Breakfast added) to prove nothing is hardwired to lunch/dinner/late.
+const TIMING_CONFIG={ servicePeriodDefinitions:[
+  {id:'breakfast', label:'Breakfast',  sortOrder:1},
+  {id:'lunch',     label:'Lunch',      sortOrder:2},
+  {id:'dinner',    label:'Dinner',     sortOrder:3},
+  {id:'late_night',label:'Late night', sortOrder:4},
+]};
+// resolver-equivalent: ordered periods + lookups
+const PERIODS=[...TIMING_CONFIG.servicePeriodDefinitions].sort((a,b)=>a.sortOrder-b.sortOrder);
+const PIDS=PERIODS.map(p=>p.id);
+const LENS=[{k:'all',n:'Whole day'},...PERIODS.map(p=>({k:p.id,n:p.label}))];
+const NAME=Object.assign({all:'Whole day'},Object.fromEntries(PERIODS.map(p=>[p.id,p.label])));
+// Single whole-day blended wage from the wage waterfall. Design Rule 5: NO per-period wage.
+// Per-period labor dollars = period hours x WHOLE-DAY wage.
+const WHOLE_DAY_WAGE=17.85;
+const MON=['JAN','FEB','MAR','APR','MAY'];
+const DAYS=[];{ const d=new Date(2026,2,19);
+  for(let i=0;i<60;i++){DAYS.push({idx:i,dom:d.getDate(),mon:d.getMonth(),dow:d.getDay()});d.setDate(d.getDate()+1);} }
+// per-period demand/perf shape, keyed by configured id (default if an id is unknown)
+const BASE={breakfast:[4.4,150,28,86], lunch:[5.6,222,45,118], dinner:[6.2,248,52,264], late_night:[3.2,146,61,73]};
+const baseOf=pid=>BASE[pid]||[5.0,200,45,140];
+function strength(i,pid){ const off=Math.round((PIDS.indexOf(pid)/PIDS.length)*60); return (((i*37)+off)%60)/59; }
+function shiftOf(i,pid){ const b=baseOf(pid); const t=strength(i,pid);
+  return {i,dp:pid, cplh:b[0]-b[0]*0.32*t, splh:b[1]-b[1]*0.30*t, ppa:b[2]-b[2]*0.16*t,
+    cov:Math.round(b[3]-b[3]*0.38*t), lab:6.0+3.4*t,
+    lev: t<0.22?['Strong: volume above plan','good']: t<0.45?['Solid: on model','good']:
+         t<0.7?['Mixed: SPLH soft','watch']:['Weak: overstaffed','bad'] }; }
+const key=(i,pid)=>i+':'+pid;
+const BANDS={lean:3,bal:6,gen:10};   // star shifts kept per service period
+let BAND,SEL,LV,PIO,SHEET;           // SHEET = {i, scope} or null
+// The band is pure UI sugar: it only produces a concrete set of selected recordKeys that flows
+// through the existing manager-override write path. No parallel target stack.
+function applyBand(b){ BAND=b; SEL=new Set();
+  PIDS.forEach(pid=>{ const ord=[...Array(60).keys()].sort((x,y)=>strength(x,pid)-strength(y,pid));
+    ord.slice(0,BANDS[b]).forEach(i=>SEL.add(key(i,pid))); }); }
+function reset(){applyBand('bal');LV='all';PIO=false;SHEET=null;render();}
+
+const f1=n=>n.toFixed(1), fd=n=>'$'+Math.round(n);
+// Selected shifts contribute identically at any scope; whole day = union of the periods.
+function selList(scope){ const out=[];
+  SEL.forEach(k=>{ const p=k.split(':'); const i=+p[0], pid=p[1];
+    if(scope==='all'||pid===scope) out.push(shiftOf(i,pid)); });
+  return out; }
+function agg(L){ if(!L.length) return null;
+  const C=L.reduce((a,x)=>a+x.cov,0);
+  const w=f=>L.reduce((a,x)=>a+x[f]*x.cov,0)/C;
+  const cps=L.map(x=>x.cplh);
+  const hours=L.reduce((a,x)=>a+x.cov/x.cplh,0);     // covers / CPLH
+  const cost = hours*WHOLE_DAY_WAGE;                  // Design Rule 5: whole-day wage only
+  const sales=L.reduce((a,x)=>a+x.cov*x.ppa,0);
+  return {n:L.length, cov:C, cplh:w('cplh'), splh:w('splh'), ppa:w('ppa'),
+    floor:Math.min(...cps), ceil:Math.max(...cps),
+    sales, foh:Math.round(hours*0.6), boh:Math.round(hours*0.4),
+    lab: cost/sales*100, wage: WHOLE_DAY_WAGE}; }
+function scopeMetrics(){ return agg(selList(LV)); }
+function render(){
+  const m=scopeMetrics();
+  const D=(v,f)=>m?f(v):'--';
+  const c=(l,v)=>`<div class="mc"><div class="ml">${l}</div><div class="mv ${m?'':'dim'}">${v}</div></div>`;
+  let html=`
+   <div class="appbar"><span class="bk">‹</span><span class="ttl">Choose Star Shifts</span><span class="rst" onclick="reset()">↻ Reset</span></div>
+   <div class="scl">
+     <div class="lens">${LENS.map(l=>`<div class="${LV===l.k?'on':''}" onclick="setLens('${l.k}')">${l.n}</div>`).join('')}</div>
+
+     <div class="sumcard">
+       <div class="scope-tag"><span class="b"></span>${NAME[LV]} targets</div>
+       <div class="mgrid">
+         ${c('Selected', m?m.n:'0')}
+         ${c('Target CPLH', D(m&&m.cplh,f1))}
+         ${c('Target SPLH', D(m&&m.splh,fd))}
+         ${c('Target PPA', D(m&&m.ppa,fd))}
+         ${c('OPZ Floor', D(m&&m.floor,f1))}
+         ${c('OPZ Ceiling', D(m&&m.ceil,f1))}
+       </div>
+       <div class="pi ${PIO?'open':''}">
+         <div class="pi-h" onclick="togPi()"><span>Plan impact</span><span class="cv">›</span></div>
+         <div class="pi-b">
+           ${c('Forecast covers', m?m.cov:'--')}
+           ${c('Forecast sales', m?fd(m.sales):'--')}
+           ${c('FOH hrs', m?m.foh:'--')}
+           ${c('BOH hrs', m?m.boh:'--')}
+           ${c('Labor %', m?m.lab.toFixed(1)+'%':'--')}
+           ${c('Blended wage', m?'$'+m.wage.toFixed(2):'--')}
+         </div>
+       </div>
+     </div>
+
+     <div class="strip-h">Star shift selection</div>
+     <div class="seg">
+       <div class="${BAND==='lean'?'on':''}" onclick="setBand('lean')">Lean</div>
+       <div class="${BAND==='bal'?'on':''}" onclick="setBand('bal')">Balanced</div>
+       <div class="${BAND==='gen'?'on':''}" onclick="setBand('gen')">Generous</div>
+     </div>
+
+     <div class="calhd"><span class="t">LAST 60 DAYS</span><span class="r">Mar 19 to May 17</span></div>
+     <div class="legend">
+       <div class="lg"><span class="sw cl"></span>Closed</div>
+       <div class="lg"><span class="sw se"></span>Selected</div>
+       ${LV==='all'?'<div class="lg" style="color:var(--tx-muted)">Count = services kept that day</div>':''}
+     </div>
+     <div class="dow"><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span></div>
+     ${cal()}
+   </div>
+   <div class="oncenote">One override per 60 day cycle</div>
+   <div class="botbar"><div class="btn">Cancel</div><div class="btn pri">Done${m?' · '+m.n:''}</div></div>`;
+  if(SHEET) html+=sheet(SHEET.i,SHEET.scope);
+  document.getElementById('screen').innerHTML=html;
+}
+function cal(){
+  let out='',cur=-1; const lead=(DAYS[0].dow+6)%7;
+  DAYS.forEach((d,i)=>{
+    if(d.mon!==cur){ if(cur!==-1)out+='</div>'; cur=d.mon;
+      out+=`<div class="mlab">${MON[cur]} 2026</div><div class="cg">`;
+      if(i===0)for(let b=0;b<lead;b++)out+='<div class="cell empty"></div>'; }
+    if(LV==='all'){
+      const sc=PIDS.filter(pid=>SEL.has(key(i,pid))).length;
+      const cls=sc>0?'sel':'closed';
+      const badge=sc>0?`<span class="cnt">${sc}/${PIDS.length}</span>`:'';
+      out+=`<div class="cell ${cls}" onclick="openSheet(${i},'all')"><span class="dn">${d.dom}</span>${badge}</div>`;
+    } else {
+      const cls=SEL.has(key(i,LV))?'sel':'closed';
+      out+=`<div class="cell ${cls}" onclick="openSheet(${i},'${LV}')"><span class="dn">${d.dom}</span></div>`;
+    }
+  });
+  out+='</div>'; return out;
+}
+function sheet(i,scope){ const d=DAYS[i];
+  if(scope!=='all'){ const s=shiftOf(i,scope); const inSel=SEL.has(key(i,scope)); const dn=NAME[scope];
+    return `<div class="scrim" onclick="closeSheet(event)"><div class="sheet" onclick="event.stopPropagation()">
+      <div class="grab"></div>
+      <div class="sd">${MON[d.mon]} ${d.dom}, 2026 · ${dn}</div>
+      <div class="st">${dn} shift</div>
+      <div class="lev ${s.lev[1]}">${s.lev[0]}</div>
+      <div class="sg">
+        <div><div class="ml">CPLH</div><div class="mv">${f1(s.cplh)}</div></div>
+        <div><div class="ml">Covers</div><div class="mv">${s.cov}</div></div>
+        <div><div class="ml">SPLH</div><div class="mv">${fd(s.splh)}</div></div>
+        <div><div class="ml">PPA</div><div class="mv">${fd(s.ppa)}</div></div>
+        <div><div class="ml">Labor %</div><div class="mv">${s.lab.toFixed(1)}%</div></div>
+        <div><div class="ml">Lever</div><div class="mv">${s.lev[1].toUpperCase()}</div></div>
+      </div>
+      <div class="act">
+        <div class="x" onclick="closeSheet()">Close</div>
+        <div class="go ${inSel?'rm':''}" onclick="toggleClose(${i},'${scope}')">${inSel?'Remove star':'Select as star'}</div>
+      </div>
+    </div></div>`;
+  }
+  const parts=PIDS.map(pid=>shiftOf(i,pid)); const r=agg(parts);
+  const rows=PIDS.map(dp=>{ const s=shiftOf(i,dp); const on=SEL.has(key(i,dp));
+    return `<div class="brk ${on?'on':''}" onclick="toggleKeep(${i},'${dp}')">
+      <span class="bn">${NAME[dp]}</span>
+      <span class="bm">CPLH ${f1(s.cplh)} · ${s.cov} cov</span>
+      <span class="bt">${on?'✓ Star':'+ Add'}</span>
+    </div>`; }).join('');
+  return `<div class="scrim" onclick="closeSheet(event)"><div class="sheet" onclick="event.stopPropagation()">
+    <div class="grab"></div>
+    <div class="sd">${MON[d.mon]} ${d.dom}, 2026 · Whole day</div>
+    <div class="st">Whole day rollup</div>
+    <div class="sg">
+      <div><div class="ml">CPLH</div><div class="mv">${f1(r.cplh)}</div></div>
+      <div><div class="ml">Covers</div><div class="mv">${r.cov}</div></div>
+      <div><div class="ml">SPLH</div><div class="mv">${fd(r.splh)}</div></div>
+      <div><div class="ml">PPA</div><div class="mv">${fd(r.ppa)}</div></div>
+      <div><div class="ml">Labor %</div><div class="mv">${r.lab.toFixed(1)}%</div></div>
+      <div><div class="ml">Services</div><div class="mv">${PIDS.length}</div></div>
+    </div>
+    <div class="brk-h">Per service · tap to keep as star</div>
+    ${rows}
+    <div class="act"><div class="x" onclick="closeSheet()">Close</div></div>
+  </div></div>`;
+}
+window.setLens=k=>{LV=k;render();};
+window.setBand=b=>{applyBand(b);render();};
+window.togPi=()=>{PIO=!PIO;render();};
+window.openSheet=(i,scope)=>{SHEET={i,scope};render();};
+window.closeSheet=(e)=>{SHEET=null;render();};
+window.toggleClose=(i,dp)=>{const k=key(i,dp);SEL.has(k)?SEL.delete(k):SEL.add(k);SHEET=null;render();};
+window.toggleKeep=(i,dp)=>{const k=key(i,dp);SEL.has(k)?SEL.delete(k):SEL.add(k);render();};
+window.reset=reset;
+document.getElementById('restart').onclick=reset;
+reset();
+</script>
+</body>
+</html>
