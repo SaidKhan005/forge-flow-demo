@@ -60,6 +60,15 @@ class DaypartCohortStats {
   final int outlierCount;
   final int selectedCount;
 
+  /// Per-Daypart Targets V1 (SB): sum of the real `covers` of the
+  /// benchmark-set shifts (the shifts that were all-three-strong and
+  /// formed the band). Distinct from [selectedCount] (a shift count) —
+  /// this is the cover mass used downstream for the cover-weighted
+  /// whole-day pool rollup (locked decision: weight by real covers, not
+  /// selected-shift count). `0` when no benchmark set formed (any
+  /// `building_*` / `running_hot`-without-band path).
+  final int selectedCoverSum;
+
   final double medianCPLH;
   final double madCPLH;
 
@@ -102,6 +111,7 @@ class DaypartCohortStats {
     required this.eligibleCount,
     required this.outlierCount,
     required this.selectedCount,
+    this.selectedCoverSum = 0,
     required this.medianCPLH,
     required this.madCPLH,
     required this.iqrCPLH,

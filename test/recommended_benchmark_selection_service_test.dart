@@ -1,19 +1,34 @@
-// Phase 7.55p.5g — Recommended Benchmark Selection Service tests.
+// Per-Daypart Targets V1 — Slice SB. Jim-faithful benchmark selection.
 //
 // Pure-service tests: no SQLite, no widgets. The service is a
-// deterministic function over a candidate list.
+// deterministic function over a candidate *set* (output invariant under
+// any input permutation).
+//
+// This suite replaces the Phase-7.55p.5g suite that pinned the OLD
+// "rank by CPLH desc, take top-N, then PPA-veto, min/max band,
+// TOO NARROW / TOO WIDE" behavior. SB intentionally changes that
+// behavior to Jim Taylor's actual method (joint CPLH∧SPLH∧PPA
+// selection, robust P25–P75 band, median target, per-period verdict).
+// Each rewritten assertion's old→new delta is documented in the PR
+// Pattern-B table; the comments below state why the new behavior is the
+// intended Jim-faithful behavior, not a regression.
 //
 // Groups:
-//   A. Eligibility gates
-//   B. Daypart stratification
-//   C. MAD outlier detection
-//   D. CPLH-first top-N selection
-//   E. Robust center (trimmed mean / median fallback)
-//   F. Per-daypart OPZ bands
-//   G. Legacy union band
-//   H. Overall quality tiers
-//   I. PPA / labor % diagnostic flags
-//   J. Degenerate-range per-daypart flags (TOO WIDE / TOO NARROW)
+//   A. Eligibility gates + crash-safety   (kept; gates unchanged)
+//   B. Daypart stratification → building_early (was: skip/insufficient)
+//   C. MAD outlier removal                (kept; robust filter unchanged)
+//   D. Joint CPLH∧SPLH∧PPA selection      (was: CPLH-first top-N)
+//   E. Robust band: P25/P75 + median tgt  (was: min/max + trimmed mean)
+//   F. Verdict emission per period
+//   G. Operation rollup (no poisoning)
+//   H. Determinism under input shuffle
+//   I. High-CPLH/low-PPA cluster excluded (Jim self-defeat eliminated)
+//   J. Per-daypart independence
+//   K. Flat / degenerate → building_flat (never a fake point)
+//   L. running_hot two-signal guardrail
+//   M. Insufficient factory
+
+import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/services/recommended_benchmark_selection_service.dart';
@@ -49,62 +64,62 @@ BaselineCandidateShift _c({
   );
 }
 
-List<BaselineCandidateShift> _goodMix({int perDaypart = 6}) {
-  final out = <BaselineCandidateShift>[];
-  for (var i = 0; i < perDaypart; i++) {
-    // lunch: cplh 4.0..5.0 (teachable strong cohort)
-    out.add(_c(
-      key: 'l$i',
-      daypart: 'lunch',
-      covers: 150 + i,
-      cplh: 4.0 + i * 0.2,
-      splh: 175.0,
-      ppa: 42.0,
-    ));
-    // dinner: cplh 4.2..5.2
-    out.add(_c(
-      key: 'd$i',
-      daypart: 'dinner',
-      covers: 200 + i,
-      cplh: 4.2 + i * 0.2,
-      splh: 180.0,
-      ppa: 44.0,
-    ));
-  }
-  return out;
+/// A cohort with genuine, correlated spread where CPLH/SPLH/PPA rise
+/// together — the shape Jim's method calls teachable. 12 lunch shifts,
+/// CPLH 4.0..5.1 with SPLH/PPA tracking up alongside CPLH so the
+/// at/above-all-three-medians filter keeps the upper half.
+List<BaselineCandidateShift> _teachableLunch({int n = 12}) {
+  return [
+    for (var i = 0; i < n; i++)
+      _c(
+        key: 'l${i.toString().padLeft(2, '0')}',
+        daypart: 'lunch',
+        covers: 150 + i,
+        cplh: 4.0 + i * 0.1,
+        splh: 170.0 + i * 1.5,
+        ppa: 40.0 + i * 0.4,
+      ),
+  ];
 }
 
 void main() {
   final svc = RecommendedBenchmarkSelectionService.instance;
 
-  // ── A: Eligibility gates ────────────────────────────────────────────
+  // ── A: Eligibility gates + crash-safety ────────────────────────────
 
-  group('A — eligibility gates', () {
+  group('A — eligibility gates + crash-safety', () {
     test('drops shifts with covers < minCoversPerShift', () {
       final candidates = [
         _c(key: 'tiny1', daypart: 'lunch', covers: 10, cplh: 4.5, splh: 180, ppa: 42),
         _c(key: 'tiny2', daypart: 'lunch', covers: 5, cplh: 4.5, splh: 180, ppa: 42),
-        for (var i = 0; i < 4; i++)
-          _c(key: 'ok$i', daypart: 'lunch', covers: 100 + i, cplh: 4.5, splh: 180, ppa: 42),
+        ..._teachableLunch(),
       ];
       final r = svc.select(candidates);
-      expect(r.excludedByGateIds, contains('tiny1'));
-      expect(r.excludedByGateIds, contains('tiny2'));
-      for (var i = 0; i < 4; i++) {
-        expect(r.excludedByGateIds.contains('ok$i'), isFalse);
-      }
+      expect(r.excludedByGateIds, containsAll(['tiny1', 'tiny2']));
     });
 
-    test('drops shifts with zero cplh / splh / ppa', () {
+    test('drops shifts with zero/negative cplh / splh / ppa', () {
       final candidates = [
         _c(key: 'badCplh', daypart: 'lunch', covers: 100, cplh: 0, splh: 180, ppa: 42),
         _c(key: 'badSplh', daypart: 'lunch', covers: 100, cplh: 4.5, splh: 0, ppa: 42),
         _c(key: 'badPpa', daypart: 'lunch', covers: 100, cplh: 4.5, splh: 180, ppa: 0),
-        for (var i = 0; i < 4; i++)
-          _c(key: 'ok$i', daypart: 'lunch', covers: 100 + i, cplh: 4.5, splh: 180, ppa: 42),
+        _c(key: 'negCplh', daypart: 'lunch', covers: 100, cplh: -1, splh: 180, ppa: 42),
+        ..._teachableLunch(),
       ];
       final r = svc.select(candidates);
-      expect(r.excludedByGateIds, containsAll(['badCplh', 'badSplh', 'badPpa']));
+      expect(r.excludedByGateIds,
+          containsAll(['badCplh', 'badSplh', 'badPpa', 'negCplh']));
+    });
+
+    test('gates out non-finite (NaN / Infinity) before any stats', () {
+      final candidates = [
+        _c(key: 'nan', daypart: 'lunch', covers: 100, cplh: double.nan, splh: 180, ppa: 42),
+        _c(key: 'inf', daypart: 'lunch', covers: 100, cplh: double.infinity, splh: 180, ppa: 42),
+        ..._teachableLunch(),
+      ];
+      // Must not throw, and must drop the poisoned rows.
+      final r = svc.select(candidates);
+      expect(r.excludedByGateIds, containsAll(['nan', 'inf']));
     });
 
     test('returns insufficient when no candidate passes gates', () {
@@ -114,31 +129,50 @@ void main() {
       ];
       final r = svc.select(candidates);
       expect(r.overallQuality, 'insufficient');
+      expect(r.operationVerdict, isNull);
       expect(r.selectedRecordIds, isEmpty);
       expect(r.perDaypartStats, isEmpty);
     });
+
+    test('does not crash on empty / single input', () {
+      expect(svc.select(const []).isInsufficient, isTrue);
+      final one = svc.select(
+          [_c(key: 's', daypart: 'lunch', covers: 100, cplh: 4.5, splh: 180, ppa: 42)]);
+      // Single eligible shift in one daypart → cohort < minDaypartCohort
+      // → building_early, never a crash.
+      expect(one.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.buildingEarly);
+    });
   });
 
-  // ── B: Daypart stratification ──────────────────────────────────────
+  // ── B: Daypart stratification → building_early ─────────────────────
+  //
+  // OLD: a daypart below minDaypartCohort was silently *skipped*
+  //      (omitted from perDaypartStats), and an all-thin input returned
+  //      `insufficient`.
+  // NEW: the period is graded `building_early` and DOES appear in
+  //      perDaypartStats so the per-period breakdown can render an
+  //      honest "not enough shifts yet" badge (spec §9 building-early).
+  //      This is the intended Jim-faithful behavior: every period is
+  //      graded on its own, never silently dropped.
 
-  group('B — daypart stratification', () {
-    test('skips dayparts with < minDaypartCohort eligible', () {
+  group('B — daypart stratification → building_early', () {
+    test('thin daypart is graded building_early, not dropped', () {
       final candidates = [
-        // Only 2 late_night eligible — below the 3 cohort minimum
         for (var i = 0; i < 2; i++)
           _c(key: 'ln$i', daypart: 'late_night', covers: 80 + i, cplh: 4.5, splh: 175, ppa: 35),
-        // 6 lunch, 6 dinner — well above minimum
-        for (var i = 0; i < 6; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.2 + i * 0.1, splh: 180, ppa: 42),
-        for (var i = 0; i < 6; i++)
-          _c(key: 'd$i', daypart: 'dinner', covers: 210 + i, cplh: 4.3 + i * 0.1, splh: 180, ppa: 44),
+        ..._teachableLunch(),
       ];
       final r = svc.select(candidates);
-      expect(r.perDaypartStats.keys, containsAll(['lunch', 'dinner']));
-      expect(r.perDaypartStats.containsKey('late_night'), isFalse);
+      expect(r.perDaypartStats.containsKey('late_night'), isTrue);
+      expect(r.perDaypartStats['late_night']!.verdict,
+          BenchmarkVerdict.buildingEarly);
+      expect(r.perDaypartStats['late_night']!.opzFloorCPLH, 0,
+          reason: 'building_* never fabricates a band (Design Rule 2)');
     });
 
-    test('insufficient when every daypart has < minDaypartCohort', () {
+    test('all-thin input → every period building_early, operation '
+        'building_early (no insufficient)', () {
       final candidates = [
         _c(key: 'l1', daypart: 'lunch', covers: 150, cplh: 4.5, splh: 180, ppa: 42),
         _c(key: 'l2', daypart: 'lunch', covers: 160, cplh: 4.6, splh: 181, ppa: 42),
@@ -146,22 +180,30 @@ void main() {
         _c(key: 'd2', daypart: 'dinner', covers: 220, cplh: 4.6, splh: 181, ppa: 44),
       ];
       final r = svc.select(candidates);
-      expect(r.overallQuality, 'insufficient');
+      expect(r.operationVerdict, BenchmarkVerdict.buildingEarly);
+      expect(r.overallQuality, 'weak');
+      for (final s in r.perDaypartStats.values) {
+        expect(s.verdict, BenchmarkVerdict.buildingEarly);
+      }
     });
   });
 
-  // ── C: MAD outlier detection ───────────────────────────────────────
+  // ── C: MAD outlier removal ─────────────────────────────────────────
 
-  group('C — MAD outlier detection', () {
-    test('labels an extreme high CPLH as outlier', () {
-      final candidates = <BaselineCandidateShift>[
-        for (var i = 0; i < 10; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.0 + i * 0.1, splh: 180, ppa: 42),
-        // Extreme outlier — median ≈ 4.45, MAD ≈ 0.25; k=3 threshold ≈ 1.11
-        _c(key: 'outlier', daypart: 'lunch', covers: 180, cplh: 9.0, splh: 180, ppa: 42),
+  group('C — MAD outlier removal', () {
+    test('an extreme high CPLH is dropped and never widens the band', () {
+      final base = _teachableLunch(n: 12);
+      final ceilingNoOutlier =
+          svc.select(base).perDaypartStats['lunch']!.opzCeilingCPLH;
+      final withOutlier = [
+        ...base,
+        _c(key: 'outlier', daypart: 'lunch', covers: 180, cplh: 999.0, splh: 999, ppa: 999),
       ];
-      final r = svc.select(candidates);
+      final r = svc.select(withOutlier);
       expect(r.excludedOutlierIds, contains('outlier'));
+      expect(r.perDaypartStats['lunch']!.opzCeilingCPLH,
+          closeTo(ceilingNoOutlier, 1e-9),
+          reason: 'MAD must strip the spike so it never drags the ceiling');
     });
 
     test('does not drop anything when MAD is zero (identical CPLH)', () {
@@ -171,278 +213,390 @@ void main() {
       ];
       final r = svc.select(candidates);
       expect(r.excludedOutlierIds, isEmpty);
+      // …and the flat cohort is honestly building_flat (see group K).
+      expect(r.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.buildingFlat);
     });
   });
 
-  // ── D: CPLH-first top-N selection ──────────────────────────────────
+  // ── D: Joint CPLH∧SPLH∧PPA selection ───────────────────────────────
+  //
+  // OLD: selected = top-N ranked by CPLH descending (a CPLH ranking).
+  // NEW: benchmark set = shifts at/above the kept-cohort median on CPLH
+  //      AND SPLH AND PPA simultaneously (Jim Ch.09 "all three high
+  //      together"). This is the literal Jim method, not a ranking;
+  //      the change is the entire point of the slice.
 
-  group('D — CPLH-first top-N selection', () {
-    test('selects roughly top 50% ranked by CPLH', () {
-      // 10 eligible, 0 outliers → expect 5 selected (50%)
-      final candidates = [
-        for (var i = 0; i < 10; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.0 + i * 0.1, splh: 180, ppa: 42),
-      ];
-      final r = svc.select(candidates);
-      final stats = r.perDaypartStats['lunch']!;
-      expect(stats.selectedCount, 5);
-      // Selected CPLH = top 5 by CPLH = 4.5..4.9
-      expect(stats.opzFloorCPLH, closeTo(4.5, 0.001));
-      expect(stats.opzCeilingCPLH, closeTo(4.9, 0.001));
-    });
-
-    test('respects the top-N minimum floor of 3', () {
-      // 3 eligible → top 50% = 2 desired, clamped up to minimum of 3
-      final candidates = [
-        _c(key: 'l1', daypart: 'lunch', covers: 150, cplh: 4.2, splh: 180, ppa: 42),
-        _c(key: 'l2', daypart: 'lunch', covers: 155, cplh: 4.4, splh: 180, ppa: 42),
-        _c(key: 'l3', daypart: 'lunch', covers: 160, cplh: 4.6, splh: 180, ppa: 42),
-      ];
-      final r = svc.select(candidates);
-      final stats = r.perDaypartStats['lunch']!;
-      expect(stats.selectedCount, 3);
-    });
-
-    test('respects the top-N ceiling of 10', () {
-      // 30 eligible → top 50% = 15 desired, clamped down to max of 10
-      final candidates = [
-        for (var i = 0; i < 30; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.0 + i * 0.05, splh: 180, ppa: 42),
-      ];
-      final r = svc.select(candidates);
-      final stats = r.perDaypartStats['lunch']!;
-      expect(stats.selectedCount, 10);
-    });
-  });
-
-  // ── E: Robust center (trimmed mean / median fallback) ──────────────
-
-  group('E — robust center', () {
-    test('trimmed mean drops top/bottom 10% for n >= 5', () {
-      // 10 selected CPLH values → trim 1 from each end
-      // If we feed clear evidence: 10 eligible with CPLH 4.0..4.9, top 5
-      // selected are 4.5..4.9. 10% trim of 5 = 0 (floor), so this test
-      // needs > 5 selected. Use 20 eligible → top 10 selected.
-      final candidates = [
-        for (var i = 0; i < 20; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.0 + i * 0.05, splh: 180, ppa: 42),
-      ];
-      final r = svc.select(candidates);
-      final stats = r.perDaypartStats['lunch']!;
-      // Top 10 CPLH = 4.50, 4.55, ..., 4.95. 10% trim = drop 1 low + 1 high.
-      // Trimmed mean of 4.55..4.90 = mean of [4.55..4.90 in 0.05 steps] = 4.725
-      expect(stats.recommendedTargetCPLH, closeTo(4.725, 0.001));
-    });
-
-    test('falls back to median for n < 5', () {
-      // 4 eligible → top 50% = 2 desired, clamped up to 3 → trimmed mean
-      // falls back to median because n=3 < 5.
-      final candidates = [
-        _c(key: 'l1', daypart: 'lunch', covers: 150, cplh: 4.2, splh: 180, ppa: 42),
-        _c(key: 'l2', daypart: 'lunch', covers: 155, cplh: 4.4, splh: 180, ppa: 42),
-        _c(key: 'l3', daypart: 'lunch', covers: 160, cplh: 4.6, splh: 180, ppa: 42),
-        _c(key: 'l4', daypart: 'lunch', covers: 165, cplh: 4.8, splh: 180, ppa: 42),
-      ];
-      final r = svc.select(candidates);
-      final stats = r.perDaypartStats['lunch']!;
-      // Top 3 of 4 (clamped from 2) = [4.4, 4.6, 4.8] → median = 4.6
-      expect(stats.recommendedTargetCPLH, closeTo(4.6, 0.001));
-    });
-  });
-
-  // ── F: Per-daypart OPZ bands ───────────────────────────────────────
-
-  group('F — per-daypart OPZ bands', () {
-    test('per-daypart OPZ bands are min/max of the selected cohort', () {
-      final r = svc.select(_goodMix(perDaypart: 6));
+  group('D — joint CPLH∧SPLH∧PPA selection', () {
+    test('benchmark set = at/above-median on all three metrics', () {
+      final r = svc.select(_teachableLunch(n: 12));
       final lunch = r.perDaypartStats['lunch']!;
-      final dinner = r.perDaypartStats['dinner']!;
-      expect(lunch.opzFloorCPLH, lessThan(lunch.opzCeilingCPLH));
-      expect(dinner.opzFloorCPLH, lessThan(dinner.opzCeilingCPLH));
-      // Band width should be non-zero and below the TOO WIDE threshold
-      // for both dayparts.
-      expect(lunch.opzCeilingCPLH - lunch.opzFloorCPLH, greaterThan(0));
-      expect(lunch.opzCeilingCPLH - lunch.opzFloorCPLH, lessThanOrEqualTo(1.25));
-      expect(dinner.opzCeilingCPLH - dinner.opzFloorCPLH, lessThanOrEqualTo(1.25));
+      expect(lunch.verdict, BenchmarkVerdict.teachable);
+      // 12 shifts, all three metrics rise together → kept medians sit at
+      // the mid-point; the upper half (6) is the benchmark set.
+      expect(lunch.selectedCount, 6);
+      // selectedCoverSum is the SUM of real covers of those 6 shifts
+      // (covers 156..161 for i=6..11), not the shift count.
+      final expectedCoverSum =
+          [156, 157, 158, 159, 160, 161].reduce((a, b) => a + b);
+      expect(lunch.selectedCoverSum, expectedCoverSum);
+    });
+
+    test('a shift strong on CPLH but weak on PPA is NOT selected', () {
+      // 11 well-correlated shifts + 1 with the highest CPLH but a PPA
+      // far below the cohort median. The old engine ranked it IN by
+      // CPLH; the Jim method excludes it (PPA < median).
+      final cohort = [
+        for (var i = 0; i < 11; i++)
+          _c(key: 'g${i.toString().padLeft(2, '0')}', daypart: 'lunch', covers: 150 + i,
+              cplh: 4.0 + i * 0.1, splh: 170.0 + i * 1.5, ppa: 40.0 + i * 0.4),
+        _c(key: 'zStretch', daypart: 'lunch', covers: 200, cplh: 5.4, splh: 250, ppa: 28),
+      ];
+      final r = svc.select(cohort);
+      expect(r.selectedRecordIds, isNot(contains('zStretch')),
+          reason: 'high-CPLH/low-PPA shift fails the all-three-high gate');
     });
   });
 
-  // ── G: Union band ──────────────────────────────────────────────────
+  // ── E: Robust band — P25/P75 floor/ceiling + median target ─────────
+  //
+  // OLD: floor/ceiling = min/max of the selected slice; target =
+  //      10% trimmed mean (median fallback for n<5).
+  // NEW: floor = P25, ceiling = P75 of the benchmark-set CPLH; target =
+  //      MEDIAN of the benchmark-set CPLH (Decision 3 locked: median).
+  //      The robust inner band + median keeps the target strictly
+  //      inside the band with headroom by construction.
 
-  group('G — legacy union band', () {
-    test('union band spans the min floor and max ceiling across dayparts', () {
-      final r = svc.select(_goodMix(perDaypart: 6));
-      final minFloor = r.perDaypartStats.values
-          .map((s) => s.opzFloorCPLH)
-          .reduce((a, b) => a < b ? a : b);
-      final maxCeiling = r.perDaypartStats.values
-          .map((s) => s.opzCeilingCPLH)
-          .reduce((a, b) => a > b ? a : b);
-      expect(r.unionOpzFloorCPLH, closeTo(minFloor, 0.001));
-      expect(r.unionOpzCeilingCPLH, closeTo(maxCeiling, 0.001));
-    });
-
-    test('pooled CPLH target is cover-weighted across dayparts', () {
-      final r = svc.select(_goodMix(perDaypart: 6));
-      // The pooled value should lie between the min and max per-daypart
-      // recommended target.
-      final perDaypartCplh =
-          r.perDaypartStats.values.map((s) => s.recommendedTargetCPLH).toList();
-      expect(r.pooledRecommendedTargetCPLH,
-          greaterThanOrEqualTo(perDaypartCplh.reduce((a, b) => a < b ? a : b)));
-      expect(r.pooledRecommendedTargetCPLH,
-          lessThanOrEqualTo(perDaypartCplh.reduce((a, b) => a > b ? a : b)));
+  group('E — robust P25/P75 band + median target', () {
+    test('target is the median of the benchmark-set CPLH, inside the band',
+        () {
+      final r = svc.select(_teachableLunch(n: 12));
+      final lunch = r.perDaypartStats['lunch']!;
+      // Benchmark set CPLH = 4.6,4.7,4.8,4.9,5.0,5.1.
+      final benchCplh = [4.6, 4.7, 4.8, 4.9, 5.0, 5.1];
+      final mid = (benchCplh[2] + benchCplh[3]) / 2; // even n median
+      expect(lunch.recommendedTargetCPLH, closeTo(mid, 1e-9));
+      // P25/P75 strictly inside min/max; target strictly inside band.
+      expect(lunch.opzFloorCPLH, greaterThan(benchCplh.first));
+      expect(lunch.opzCeilingCPLH, lessThan(benchCplh.last));
+      expect(lunch.recommendedTargetCPLH,
+          greaterThan(lunch.opzFloorCPLH));
+      expect(lunch.recommendedTargetCPLH,
+          lessThan(lunch.opzCeilingCPLH));
     });
   });
 
-  // ── H: Overall quality tiers ───────────────────────────────────────
+  // ── F: Verdict emission per period ─────────────────────────────────
 
-  group('H — overall quality tiers', () {
-    test('strong when ≥8 selected across ≥2 dayparts and no weak flags', () {
-      final r = svc.select(_goodMix(perDaypart: 8));
-      expect(r.selectedRecordIds.length, greaterThanOrEqualTo(8));
-      expect(r.perDaypartStats.keys.length, greaterThanOrEqualTo(2));
-      expect(r.overallQuality, anyOf('strong', 'adequate'));
+  group('F — verdict emission', () {
+    test('teachable cohort emits teachable verdict + non-empty reason '
+        'with no em-dashes', () {
+      final r = svc.select(_teachableLunch(n: 12));
+      final lunch = r.perDaypartStats['lunch']!;
+      expect(lunch.verdict, BenchmarkVerdict.teachable);
+      expect(lunch.verdictReason, isNotEmpty);
+      expect(lunch.verdictReason, isNot(contains('—')));
+      expect(BenchmarkVerdict.all, contains(lunch.verdict));
     });
 
-    test('adequate when union band is too wide', () {
-      // Lunch cohort centered at 4.2, dinner centered at 5.8 → union
-      // band spans ~1.5 CPLH, above 1.25 cap.
+    test('few-strong cohort emits building_few_strong', () {
+      // 6 eligible, correlated, but only ~3 land at/above all three
+      // medians → below minBenchmark (5) → building_few_strong.
+      final cohort = [
+        _c(key: 'a', daypart: 'lunch', covers: 150, cplh: 4.0, splh: 170, ppa: 40),
+        _c(key: 'b', daypart: 'lunch', covers: 151, cplh: 4.2, splh: 172, ppa: 41),
+        _c(key: 'c', daypart: 'lunch', covers: 152, cplh: 4.4, splh: 174, ppa: 42),
+        _c(key: 'd', daypart: 'lunch', covers: 153, cplh: 4.6, splh: 176, ppa: 43),
+        _c(key: 'e', daypart: 'lunch', covers: 154, cplh: 4.8, splh: 178, ppa: 44),
+        _c(key: 'f', daypart: 'lunch', covers: 155, cplh: 5.0, splh: 180, ppa: 45),
+      ];
+      final r = svc.select(cohort);
+      expect(r.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.buildingFewStrong);
+      expect(r.perDaypartStats['lunch']!.opzFloorCPLH, 0);
+    });
+  });
+
+  // ── G: Operation rollup (no poisoning) ─────────────────────────────
+  //
+  // OLD: "any daypart weak → overall weak" (one weak period poisoned
+  //      the whole operation) + a dead `qualifyingDayparts !=
+  //      'insufficient'` condition.
+  // NEW: teachable if ANY period teachable; else running_hot if ANY
+  //      running_hot; else the most-informative building_*. One weak
+  //      period never poisons a teachable one (Ch.09 independence).
+
+  group('G — operation rollup never poisons', () {
+    test('one teachable + one thin period → operation teachable', () {
       final candidates = [
+        ..._teachableLunch(n: 12),
+        for (var i = 0; i < 2; i++)
+          _c(key: 'ln$i', daypart: 'late_night', covers: 80 + i, cplh: 4.5, splh: 175, ppa: 35),
+      ];
+      final r = svc.select(candidates);
+      expect(r.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.teachable);
+      expect(r.perDaypartStats['late_night']!.verdict,
+          BenchmarkVerdict.buildingEarly);
+      expect(r.operationVerdict, BenchmarkVerdict.teachable,
+          reason: 'a teachable period must not be poisoned by a thin one');
+      expect(r.overallQuality, 'strong');
+    });
+  });
+
+  // ── H: Determinism under input shuffle ─────────────────────────────
+
+  group('H — determinism', () {
+    test('≥100 shuffles → identical selected set, verdicts, and band', () {
+      // Include duplicate-tied CPLH (the exact instability the old
+      // List.sort had) so the stable compound sort is exercised.
+      final base = <BaselineCandidateShift>[
+        for (var i = 0; i < 16; i++)
+          _c(
+            key: 'k${i.toString().padLeft(2, '0')}',
+            daypart: i.isEven ? 'lunch' : 'dinner',
+            covers: 150 + i,
+            cplh: 4.5 + (i % 4) * 0.1, // ties on CPLH across records
+            splh: 170.0 + (i % 5) * 2.0,
+            ppa: 40.0 + (i % 3) * 0.7,
+          ),
+      ];
+      String sig(RecommendedBenchmarkSelection r) {
+        final sel = r.selectedRecordIds.toList()..sort();
+        final per = r.perDaypartStats.entries
+            .map((e) =>
+                '${e.key}|${e.value.verdict}|${e.value.opzFloorCPLH}|'
+                '${e.value.opzCeilingCPLH}|${e.value.recommendedTargetCPLH}|'
+                '${e.value.selectedCoverSum}')
+            .toList()
+          ..sort();
+        return '${r.operationVerdict}::${sel.join(",")}::${per.join(";")}';
+      }
+
+      final golden = sig(svc.select(base));
+      final rng = math.Random(20260516);
+      final sigs = <String>{golden};
+      for (var t = 0; t < 120; t++) {
+        final shuffled = [...base]..shuffle(rng);
+        sigs.add(sig(svc.select(shuffled)));
+      }
+      expect(sigs.length, 1,
+          reason: 'output must be byte-identical under any input order');
+    });
+  });
+
+  // ── I: High-CPLH/low-PPA cluster excluded (self-defeat eliminated) ──
+  //
+  // The adversarial shape that breaks the OLD engine: a cluster with
+  // the highest CPLH but collapsed PPA. The old engine ranked it IN by
+  // CPLH (raising the ceiling) then flagged the cohort `weak` for low
+  // PPA. The Jim method excludes it from the benchmark set entirely, so
+  // it never raises the ceiling and never self-defeats.
+
+  group('I — adversarial high-CPLH/low-PPA cluster', () {
+    test('stretched cluster excluded, ceiling not dragged up, '
+        'teachable band still forms', () {
+      final good = [
+        for (var i = 0; i < 14; i++)
+          _c(key: 'g${i.toString().padLeft(2, '0')}', daypart: 'lunch', covers: 150 + i,
+              cplh: 4.6 + i * 0.02, splh: 175.0 + i * 1.0, ppa: 41.0 + i * 0.2),
+      ];
+      final stretched = [
         for (var i = 0; i < 6; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.0 + i * 0.1, splh: 180, ppa: 42),
-        for (var i = 0; i < 6; i++)
-          _c(key: 'd$i', daypart: 'dinner', covers: 210 + i, cplh: 5.5 + i * 0.1, splh: 180, ppa: 44),
+          _c(key: 's$i', daypart: 'lunch', covers: 220 + i, cplh: 6.0 + i * 0.1, splh: 300, ppa: 26),
       ];
-      final r = svc.select(candidates);
-      expect(r.unionBandWidth, greaterThan(1.25));
-      expect(r.overallQuality, anyOf('adequate', 'weak'));
-      expect(r.overallQuality, isNot('strong'));
-    });
-
-    test('weak when total selected < 5', () {
-      // Exactly one daypart, 3 eligible → 3 selected (min floor)
-      final candidates = [
-        for (var i = 0; i < 3; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.5 + i * 0.1, splh: 180, ppa: 42),
-      ];
-      final r = svc.select(candidates);
-      expect(r.selectedRecordIds.length, lessThan(5));
-      expect(r.overallQuality, 'weak');
+      final r = svc.select([...good, ...stretched]);
+      final lunch = r.perDaypartStats['lunch']!;
+      expect(lunch.verdict, BenchmarkVerdict.teachable);
+      for (var i = 0; i < 6; i++) {
+        expect(r.selectedRecordIds, isNot(contains('s$i')));
+      }
+      expect(lunch.opzCeilingCPLH, lessThan(6.0),
+          reason: 'the stretched cluster must not raise the ceiling');
     });
   });
 
-  // ── I: PPA / labor % diagnostic flags ──────────────────────────────
+  // ── J: Per-daypart independence ────────────────────────────────────
 
-  group('I — PPA / labor % diagnostic flags', () {
-    test('flags daypart weak when cohort median PPA is notably below '
-        'daypart median (>10% relative gap)', () {
-      // Build a daypart where the top-CPLH cohort has low PPA and
-      // the rest have higher PPA. Top 5 (CPLH-ranked) must have PPA
-      // < 0.90 × full-daypart median PPA to trip the flag.
-      final candidates = [
-        // 10 records. Top 5 by CPLH (4.5..4.9) have PPA=35 (low).
-        // Bottom 5 by CPLH (4.0..4.4) have PPA=50 (high).
-        // Full-cohort median PPA ≈ 42.5; cohort median 35 < 42.5*0.9=38.25.
-        for (var i = 0; i < 5; i++)
-          _c(key: 'slow$i', daypart: 'lunch', covers: 150, cplh: 4.0 + i * 0.1, splh: 180, ppa: 50),
-        for (var i = 0; i < 5; i++)
-          _c(key: 'fast$i', daypart: 'lunch', covers: 150, cplh: 4.5 + i * 0.1, splh: 180, ppa: 35),
+  group('J — per-daypart independence', () {
+    test('dropping one daypart shifts does not change another verdict/band',
+        () {
+      final lunch = _teachableLunch(n: 12);
+      final dinner = [
+        for (var i = 0; i < 12; i++)
+          _c(key: 'd${i.toString().padLeft(2, '0')}', daypart: 'dinner', covers: 200 + i,
+              cplh: 5.0 + i * 0.1, splh: 200.0 + i * 1.5, ppa: 46.0 + i * 0.4),
       ];
-      final r = svc.select(candidates);
-      expect(r.perDaypartStats['lunch']!.cohortQuality, 'weak');
-      expect(r.perDaypartStats['lunch']!.cohortExplanation,
-          contains('PPA'));
+      final both = svc.select([...lunch, ...dinner]).perDaypartStats['lunch']!;
+      final lunchOnly = svc.select(lunch).perDaypartStats['lunch']!;
+      expect(both.verdict, lunchOnly.verdict);
+      expect(both.opzFloorCPLH, closeTo(lunchOnly.opzFloorCPLH, 1e-12));
+      expect(both.opzCeilingCPLH, closeTo(lunchOnly.opzCeilingCPLH, 1e-12));
+      expect(both.recommendedTargetCPLH,
+          closeTo(lunchOnly.recommendedTargetCPLH, 1e-12));
+      expect(both.selectedCoverSum, lunchOnly.selectedCoverSum);
     });
+  });
 
-    test('flags daypart weak when cohort median labor % is notably '
-        'above daypart median (>10% relative gap)', () {
-      // Top 5 (CPLH-ranked) have labor % 28 (high).
-      // Bottom 5 have labor % 20. Daypart median 24; cohort median 28
-      // > 24 * 1.1 = 26.4 → flag fires.
-      final candidates = [
-        for (var i = 0; i < 5; i++)
-          _c(key: 'low$i', daypart: 'lunch', covers: 150, cplh: 4.0 + i * 0.1, splh: 180, ppa: 42, actualLaborPct: 20),
-        for (var i = 0; i < 5; i++)
-          _c(key: 'hi$i', daypart: 'lunch', covers: 150, cplh: 4.5 + i * 0.1, splh: 180, ppa: 42, actualLaborPct: 28),
-      ];
-      final r = svc.select(candidates);
-      expect(r.perDaypartStats['lunch']!.cohortQuality, 'weak');
-      expect(r.perDaypartStats['lunch']!.cohortExplanation,
-          contains('Labor %'));
-    });
+  // ── K: Flat / degenerate → building_flat (never a fake point) ──────
+  //
+  // OLD: a near-flat selected slice was flagged `weak` with a
+  //      "TOO NARROW" message and STILL emitted a (near-zero-width)
+  //      band + point target.
+  // NEW: a cohort whose CPLH barely varies is `building_flat` with NO
+  //      band and NO target (zeros). Honest "no range yet", never a
+  //      fake point, never "too narrow" (spec §6b/§9 building-flat).
 
-    test('ignores unknown labor % values instead of treating 0.0 as evidence',
+  group('K — flat / degenerate → building_flat', () {
+    test('all-identical CPLH → building_flat, no band, no point target',
         () {
       final candidates = [
-        for (var i = 0; i < 5; i++)
-          _c(
-            key: 'known$i',
-            daypart: 'lunch',
-            covers: 150,
-            cplh: 4.5 + i * 0.1,
-            splh: 180,
-            ppa: 42,
-            actualLaborPct: 22,
-          ),
-        for (var i = 0; i < 5; i++)
-          _c(
-            key: 'unknown$i',
-            daypart: 'lunch',
-            covers: 150,
-            cplh: 4.0 + i * 0.1,
-            splh: 180,
-            ppa: 42,
-            actualLaborPct: 0,
-            hasActualLaborPctTruth: false,
-          ),
-      ];
-      final r = svc.select(candidates);
-      expect(r.perDaypartStats['lunch']!.cohortExplanation,
-          isNot(contains('Labor %')),
-          reason: 'missing labor truth should be ignored, not treated as 0.0%');
-    });
-  });
-
-  // ── J: Degenerate per-daypart CPLH range flags ─────────────────────
-
-  group('J — degenerate per-daypart CPLH range flags', () {
-    test('flags weak when per-daypart selected CPLH range < 0.15', () {
-      // 4 records all at nearly identical CPLH → top 3 selected are
-      // within a very narrow band.
-      final candidates = [
-        _c(key: 'l1', daypart: 'lunch', covers: 150, cplh: 4.50, splh: 180, ppa: 42),
-        _c(key: 'l2', daypart: 'lunch', covers: 155, cplh: 4.51, splh: 180, ppa: 42),
-        _c(key: 'l3', daypart: 'lunch', covers: 160, cplh: 4.52, splh: 180, ppa: 42),
-        _c(key: 'l4', daypart: 'lunch', covers: 165, cplh: 4.53, splh: 180, ppa: 42),
+        for (var i = 0; i < 8; i++)
+          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.50, splh: 180, ppa: 42),
       ];
       final r = svc.select(candidates);
       final lunch = r.perDaypartStats['lunch']!;
-      expect(lunch.cohortQuality, 'weak');
-      expect(lunch.cohortExplanation,
-          anyOf(contains('TOO NARROW'), contains('narrow')));
+      expect(lunch.verdict, BenchmarkVerdict.buildingFlat);
+      expect(lunch.opzFloorCPLH, 0);
+      expect(lunch.opzCeilingCPLH, 0);
+      expect(lunch.recommendedTargetCPLH, 0);
+      expect(lunch.cohortExplanation, isNot(contains('narrow')));
+      expect(lunch.cohortExplanation, isNot(contains('NARROW')));
+      expect(lunch.verdictReason, isNot(contains('—')));
     });
 
-    test('flags weak when per-daypart selected CPLH range > 1.25', () {
-      // Build eligible set where top 50% spans > 1.25 CPLH. To trip
-      // only this flag, PPA and labor % must stay uniform.
+    test('near-flat (sub-dispersion-floor) CPLH → building_flat', () {
       final candidates = [
-        for (var i = 0; i < 10; i++)
-          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.0 + i * 0.35, splh: 180, ppa: 42),
+        for (var i = 0; i < 8; i++)
+          _c(key: 'l$i', daypart: 'lunch', covers: 150 + i, cplh: 4.50 + i * 0.002, splh: 180, ppa: 42),
       ];
-      // Top 5: cplh values 4.0 + [5,6,7,8,9]*0.35 = 5.75, 6.10, 6.45, 6.80, 7.15
-      // width = 7.15 - 5.75 = 1.40 > 1.25
       final r = svc.select(candidates);
-      final lunch = r.perDaypartStats['lunch']!;
-      expect(lunch.cohortQuality, 'weak');
-      expect(lunch.cohortExplanation,
-          anyOf(contains('wide'), contains('WIDE')));
+      expect(r.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.buildingFlat);
     });
   });
 
-  // ── K: Insufficient factory produces honest empty output ──────────
+  // ── L: running_hot two-signal guardrail (Decision 5 locked) ────────
+  //
+  // running_hot fires ONLY when BOTH: (a) benchmark-cohort median PPA
+  // is below daypart-wide median PPA by the configured relative gap,
+  // AND (b) benchmark-cohort median actual labor-% is above the
+  // daypart-wide median labor-% by the configured relative gap. Labor
+  // truth absent → signal (b) unconfirmable → never flag (fall through
+  // to teachable). running_hot still reports a real band.
+  //
+  // FINDING (surfaced for orchestrator audit): the all-three-strong
+  // selection gate (benchmark set = shifts at/above the kept-cohort
+  // median on CPLH ∧ SPLH ∧ PPA) guarantees the benchmark set's median
+  // PPA is >= the kept-cohort PPA median *by construction*. So under
+  // the default 10% gap a *uniformly stretched* operation does NOT trip
+  // signal (a) — its whole PPA distribution is low, so the benchmark
+  // median is not 10% below the daypart-wide median. This matches spec
+  // §6b limitation 1 verbatim ("a uniformly stretched operation still
+  // returns teachable … this is not a regression"). running_hot is
+  // therefore a guardrail for the genuine trade-off shape (benchmark
+  // PPA materially below the broader-daypart norm), exercised here via
+  // the explicit, documented-as-uncalibrated thresholds (spec §6b #4)
+  // so the two-signal AND logic + labor-truth suppression are proven
+  // deterministically. The default-threshold uniformly-stretched
+  // fall-through is asserted separately as the intended behavior.
 
-  group('K — insufficient factory', () {
+  group('L — running_hot two-signal guardrail', () {
+    // A genuine throughput/spend trade-off cohort: the all-three-strong
+    // benchmark set runs lower spend + higher labor-% than the rest of
+    // the daypart. `lo*` shifts fail the CPLH/SPLH gate (excluded from
+    // the benchmark) but carry high spend + low labor-%, establishing
+    // the daypart-wide norm the benchmark set is measured against.
+    List<BaselineCandidateShift> tradeoffCohort({required bool laborTruth}) {
+      return [
+        // Excluded-by-CPLH/SPLH, high-PPA, low-labor norm (8).
+        for (var i = 0; i < 8; i++)
+          _c(key: 'lo${i.toString().padLeft(2, '0')}', daypart: 'lunch',
+              covers: 150 + i, cplh: 4.0 + i * 0.02, splh: 150.0 + i.toDouble(),
+              ppa: 55.0, actualLaborPct: 18.0,
+              hasActualLaborPctTruth: laborTruth),
+        // The all-three-strong benchmark set: high CPLH+SPLH together,
+        // depressed PPA, elevated labor-% (8).
+        for (var i = 0; i < 8; i++)
+          _c(key: 'hi${i.toString().padLeft(2, '0')}', daypart: 'lunch',
+              covers: 150 + i, cplh: 4.6 + i * 0.05, splh: 220.0 + i * 2.0,
+              ppa: 41.0, actualLaborPct: 30.0,
+              hasActualLaborPctTruth: laborTruth),
+      ];
+    }
+
+    // Thresholds explicitly documented as defaults-not-calibrated
+    // (spec §6b #4): a small relative gap makes the genuine trade-off
+    // shape trip the two-signal guard deterministically.
+    const sensitive = RecommendedSelectionConfig(
+      runningHotPpaRelativeGap: 0.05,
+      runningHotLaborPctRelativeGap: 0.05,
+    );
+
+    test('both signals hold → running_hot with a real band', () {
+      final r = svc.select(tradeoffCohort(laborTruth: true),
+          config: sensitive);
+      final lunch = r.perDaypartStats['lunch']!;
+      expect(lunch.verdict, BenchmarkVerdict.runningHot);
+      // running_hot is real: it still reports a band + target.
+      expect(lunch.opzCeilingCPLH, greaterThan(lunch.opzFloorCPLH));
+      expect(lunch.recommendedTargetCPLH, greaterThan(0));
+      expect(r.operationVerdict, BenchmarkVerdict.runningHot);
+    });
+
+    test('labor truth absent → signal (b) unconfirmable → NOT running_hot',
+        () {
+      final r = svc.select(tradeoffCohort(laborTruth: false),
+          config: sensitive);
+      // Without labor truth signal (b) cannot be confirmed → running_hot
+      // is suppressed and the cohort falls through to the all-three
+      // strong path. The trade-off shape's throughput-strong shifts have
+      // below-median spend, so the all-three-strong set is too small →
+      // honest building_few_strong (NOT a fabricated running_hot).
+      expect(r.perDaypartStats['lunch']!.verdict,
+          isNot(BenchmarkVerdict.runningHot),
+          reason: 'without labor truth signal (b) cannot be confirmed');
+      expect(r.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.buildingFewStrong);
+    });
+
+    test('only PPA signal (labor not elevated) → NOT running_hot', () {
+      final cohort = [
+        for (var i = 0; i < 8; i++)
+          _c(key: 'lo${i.toString().padLeft(2, '0')}', daypart: 'lunch',
+              covers: 150 + i, cplh: 4.0 + i * 0.02, splh: 150.0 + i.toDouble(),
+              ppa: 55.0, actualLaborPct: 22.0),
+        for (var i = 0; i < 8; i++)
+          _c(key: 'hi${i.toString().padLeft(2, '0')}', daypart: 'lunch',
+              covers: 150 + i, cplh: 4.6 + i * 0.05, splh: 220.0 + i * 2.0,
+              ppa: 41.0, actualLaborPct: 22.0), // labor NOT elevated
+      ];
+      final r = svc.select(cohort, config: sensitive);
+      expect(r.perDaypartStats['lunch']!.verdict,
+          isNot(BenchmarkVerdict.runningHot),
+          reason: 'PPA signal alone is insufficient (two-signal AND)');
+    });
+
+    test('uniformly stretched op at default thresholds → teachable, '
+        'NOT running_hot (spec §6b limitation 1 — not a regression)', () {
+      // Every shift high-CPLH/low-PPA: the whole PPA distribution is
+      // low, so the benchmark median is not 10% below the daypart-wide
+      // median. Correctly teaches to the restaurant's own best band.
+      final cohort = [
+        for (var i = 0; i < 16; i++)
+          _c(key: 'u${i.toString().padLeft(2, '0')}', daypart: 'lunch',
+              covers: 150 + i, cplh: 4.6 + i * 0.05, splh: 200.0 + i * 2.0,
+              ppa: 33.0 + (i % 3) * 0.4, actualLaborPct: 32.0),
+      ];
+      final r = svc.select(cohort); // default thresholds
+      expect(r.perDaypartStats['lunch']!.verdict,
+          BenchmarkVerdict.teachable);
+    });
+  });
+
+  // ── M: Insufficient factory ────────────────────────────────────────
+
+  group('M — insufficient factory', () {
     test('insufficient factory sets quality and zeroes targets', () {
       final r = RecommendedBenchmarkSelection.insufficient(
         excludedByGateIds: {'a', 'b'},
@@ -450,9 +604,9 @@ void main() {
       );
       expect(r.isInsufficient, isTrue);
       expect(r.overallQuality, 'insufficient');
+      expect(r.operationVerdict, isNull);
       expect(r.selectedRecordIds, isEmpty);
       expect(r.perDaypartStats, isEmpty);
-      expect(r.unionBandWidth, 0);
     });
   });
 }

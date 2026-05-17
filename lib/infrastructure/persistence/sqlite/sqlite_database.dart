@@ -15,6 +15,7 @@ import '../../../dev/demo_vendor_integration_state_fixture.dart';
 import '../../../dev/demo_vendor_integration_sync_proxy_client.dart';
 import '../../../dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/domain/services/recommended_benchmark_selection_service.dart';
+import '../../../domain/models/recommended_benchmark_selection.dart';
 import '../../../domain/models/active_target_profile.dart';
 import '../../../domain/models/import_run.dart';
 import '../../../domain/models/open_shift_snapshot.dart';
