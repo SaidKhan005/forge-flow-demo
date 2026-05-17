@@ -143,8 +143,12 @@ class CalendarGrid extends StatelessWidget {
         // periods that have a shift this day (from `defs`, never a
         // hardcoded daypart count). Skipped under a period lens and on
         // days with no shifts so the existing 2-state layout is intact.
+        // Prototype: the badge appears only on a SELECTED day and reads
+        // n/total where total is that day's configured service-period
+        // count (services that ran that day, from the resolved defs,
+        // never a fixed number) and n is how many of them are kept.
         String? countBadge;
-        if (activeLensId == kWholeDayLensId && hasShifts) {
+        if (activeLensId == kWholeDayLensId && hasSelected) {
           final configuredIds = defs.map((d) => d.id).toSet();
           final periodsWithShift = <String>{
             for (final c in shifts)
@@ -163,21 +167,32 @@ class CalendarGrid extends StatelessWidget {
         }
 
         // TWO states only: selected > closed. No "suggested".
+        // Prototype: a selected day is a FILLED sunset cell with the day
+        // number in white plus a small n/total badge; closed days are the
+        // muted outlined style; empty days are blank.
         final Color cellBg;
         final Color cellBorder;
         final Color dotColor;
+        final Color dayNumberColor;
+        final FontWeight dayNumberWeight;
         if (hasSelected) {
-          cellBg = AppColors.sunset.withValues(alpha: 0.15);
-          cellBorder = AppColors.sunset.withValues(alpha: 0.5);
-          dotColor = AppColors.sunset;
+          cellBg = AppColors.sunset;
+          cellBorder = AppColors.sunsetDark;
+          dotColor = Colors.white;
+          dayNumberColor = Colors.white;
+          dayNumberWeight = FontWeight.w700;
         } else if (hasShifts) {
           cellBg = AppColors.backgroundMid;
           cellBorder = AppColors.borderSubtle;
           dotColor = AppColors.textMuted;
+          dayNumberColor = AppColors.textPrimary;
+          dayNumberWeight = FontWeight.w600;
         } else {
           cellBg = Colors.transparent;
           cellBorder = Colors.transparent;
           dotColor = Colors.transparent;
+          dayNumberColor = AppColors.textMuted;
+          dayNumberWeight = FontWeight.w400;
         }
 
         cells.add(Expanded(
@@ -198,10 +213,8 @@ class CalendarGrid extends StatelessWidget {
                   Text(
                     '${dt.day}',
                     style: AppTextStyles.mono14(
-                      color: hasShifts
-                          ? AppColors.textPrimary
-                          : AppColors.textMuted,
-                      weight: hasShifts ? FontWeight.w600 : FontWeight.w400,
+                      color: dayNumberColor,
+                      weight: dayNumberWeight,
                     ),
                   ),
                   if (hasShifts && countBadge != null)
@@ -251,6 +264,44 @@ class CalendarGrid extends StatelessWidget {
             style: AppTextStyles.mono8(color: AppColors.textMuted),
           ),
           const SizedBox(height: 10),
+          // Legend: two pills (Closed, Selected) plus a count caption on
+          // the whole-day lens explaining the n/total badge. Plain
+          // English, no dashes.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              const _LegendPill(
+                key: ValueKey<String>('cal_legend_closed'),
+                swatchColor: AppColors.backgroundMid,
+                swatchBorder: AppColors.borderSubtle,
+                label: 'Closed',
+              ),
+              const _LegendPill(
+                key: ValueKey<String>('cal_legend_selected'),
+                swatchColor: AppColors.sunset,
+                swatchBorder: AppColors.sunsetDark,
+                label: 'Selected',
+              ),
+              if (activeLensId == kWholeDayLensId)
+                Container(
+                  key: const ValueKey<String>('cal_legend_count_caption'),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 9, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundDeep,
+                    border:
+                        Border.all(color: AppColors.borderSubtle, width: 1),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    'Count = services kept that day',
+                    style: AppTextStyles.mono7(color: AppColors.textMuted),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
           // Weekday labels
           Row(
             children: ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -266,6 +317,52 @@ class CalendarGrid extends StatelessWidget {
           const SizedBox(height: 6),
           // Calendar rows
           ...rows,
+        ],
+      ),
+    );
+  }
+}
+
+/// Small pill used in the calendar legend: a colored swatch plus a
+/// plain-English label. Mirrors the prototype's `.lg` chips.
+class _LegendPill extends StatelessWidget {
+  final Color swatchColor;
+  final Color swatchBorder;
+  final String label;
+
+  const _LegendPill({
+    super.key,
+    required this.swatchColor,
+    required this.swatchBorder,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              color: swatchColor,
+              border: Border.all(color: swatchBorder, width: 1),
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: AppTextStyles.mono8(color: AppColors.textSecondary),
+          ),
         ],
       ),
     );

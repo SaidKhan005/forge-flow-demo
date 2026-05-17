@@ -99,13 +99,10 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     super.initState();
     if (widget.initialCandidates != null) {
       _candidates = widget.initialCandidates!;
-      _draftKeys = _candidates
-          .where((c) => c.isSelected)
-          .map((c) => c.recordKey)
-          .toSet();
       if (widget.initialDefs != null) {
         _defs = widget.initialDefs!;
       }
+      _draftKeys = _initialDraftKeys();
       _canOverride = widget.initialCanOverride;
       _loading = false;
       _buildCalendarData();
@@ -130,10 +127,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
       _defs = defs;
       _candidates = candidates;
       _canOverride = canOverride;
-      _draftKeys = candidates
-          .where((c) => c.isSelected)
-          .map((c) => c.recordKey)
-          .toSet();
+      _draftKeys = _initialDraftKeys();
       _loading = false;
       _buildCalendarData();
     });
@@ -146,6 +140,36 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     setState(() {
       _demandWeeklyAvgCovers = ctx.historicalWeeklyAvgCovers;
     });
+  }
+
+  /// R8: the screen OPENS POPULATED. On load the band defaults to
+  /// [StarBand.balanced] and its derived selection is applied to the
+  /// in-memory draft, so SELECTED count / targets / OPZ floor+ceiling /
+  /// preview render populated on entry (matching the committed
+  /// prototype, which calls `applyBand('bal')` on reset).
+  ///
+  /// This is a CLIENT-SIDE DRAFT DEFAULT ONLY. It mutates nothing but
+  /// the in-memory `Set<String>` draft and the `_selectedBand` highlight.
+  /// Nothing is persisted: `BaselineManagerService.saveSelection` is
+  /// still only called from [_done] when the operator taps the action.
+  /// The operator can still switch band, hand-tweak, or Clear (which
+  /// empties the draft).
+  ///
+  /// Falls back to the previously-selected candidate keys when no
+  /// candidate has a service period the band can rank (defensive: keeps
+  /// the screen honest rather than silently empty).
+  Set<String> _initialDraftKeys() {
+    const defaultBand = StarBand.balanced;
+    final derived = deriveBandSelection(_candidates, _defs, defaultBand);
+    if (derived.isEmpty) {
+      _selectedBand = null;
+      return _candidates
+          .where((c) => c.isSelected)
+          .map((c) => c.recordKey)
+          .toSet();
+    }
+    _selectedBand = defaultBand;
+    return derived;
   }
 
   // ── Calendar data ──────────────────────────────────────────────────────────
@@ -207,6 +231,18 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     setState(() {
       _draftKeys.clear();
       _selectedBand = null;
+    });
+  }
+
+  /// R8: the app-bar RESET pill. Restores the default Balanced band
+  /// selection (the same client-side default applied on open) and
+  /// re-scopes back to the whole-day lens. Mutates only the in-memory
+  /// draft / lens / band-highlight state. Nothing is persisted: commit
+  /// still flows through the unchanged `saveSelection` on Done.
+  void _resetToDefault() {
+    setState(() {
+      _selectedLensId = kWholeDayLensId;
+      _draftKeys = _initialDraftKeys();
     });
   }
 
@@ -349,6 +385,33 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
         ),
         title: Text('Choose Star Shifts', style: AppTextStyles.mono11()),
         centerTitle: false,
+        actions: [
+          // R8: RESET pill, top-right, matching the prototype. Tapping
+          // it restores the default Balanced band selection in the
+          // in-memory draft only (same client-side default applied on
+          // open). It never persists anything; commit still flows
+          // through the unchanged save path on Done.
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: GestureDetector(
+              onTap: _resetToDefault,
+              child: Container(
+                key: const ValueKey<String>('reset_pill'),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundMid,
+                  border: Border.all(color: AppColors.sunset, width: 1.5),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'RESET',
+                  style: AppTextStyles.mono8(color: AppColors.sunsetDark),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(
@@ -380,14 +443,19 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                           defs: _defs,
                           selectedLensId: _selectedLensId,
                         ),
-                        BaselineManagerBandSelector(
-                          selectedBand: _selectedBand,
-                          onBandSelected: _applyBand,
-                        ),
+                        // R8: prototype order is summary/preview card
+                        // FIRST, then the STAR SHIFT SELECTION band, then
+                        // the calendar. The band derivation and per-period
+                        // preview behaviour from R3 are unchanged; only
+                        // the placement and the section label move.
                         PreviewPanel(
                           selected: _lensScopedSelected,
                           historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
                           selectedLensId: _selectedLensId,
+                        ),
+                        BaselineManagerBandSelector(
+                          selectedBand: _selectedBand,
+                          onBandSelected: _applyBand,
                         ),
                         if (_draftKeys.isNotEmpty)
                           ClearAllBar(onClearAll: _clearAll),
@@ -414,6 +482,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                   onCancel: _cancel,
                   onDone: _done,
                   commitEnabled: _canOverride != false,
+                  draftCount: _draftKeys.length,
                 ),
               ],
             ),

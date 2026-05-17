@@ -8,9 +8,11 @@ import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
 import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_band.dart';
+import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_lens.dart';
 import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_day_sheet.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
@@ -155,8 +157,27 @@ Future<void> _dismissModalBarrier(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+/// R8: the screen opens populated with the default Balanced selection.
+/// Tests that exercise selection-from-empty first clear the draft via
+/// the CLEAR ALL control to reach the honest empty state.
+Future<void> _clearAllDraft(WidgetTester tester) async {
+  final clearAll = find.text('CLEAR ALL');
+  await tester.ensureVisible(clearAll);
+  await tester.pumpAndSettle();
+  await tester.tap(clearAll);
+  await tester.pumpAndSettle();
+}
+
 Future<void> _tapLensChip(WidgetTester tester, String lensId) async {
-  await tester.tap(find.byKey(ValueKey<String>('lens_$lensId')));
+  final chip = find.byKey(ValueKey<String>('lens_$lensId'));
+  // R8 added an app-bar RESET pill + once-per-cycle caption and the
+  // CLEAR ALL clear path can leave the capped top scroll region
+  // offset; make the lens chip on-screen before tapping so the tap
+  // always lands (an off-target tap would silently leave the lens on
+  // whole-day and open the wrong sheet).
+  await tester.ensureVisible(chip);
+  await tester.pumpAndSettle();
+  await tester.tap(chip);
   await tester.pumpAndSettle();
 }
 
@@ -200,9 +221,15 @@ void _expectSelectedShiftsCount(WidgetTester tester, String count) {
   );
 }
 
+/// R8: the primary action label is now `Done · {draft count}` (matches
+/// the committed prototype). The once-per-cycle caption above the bar is
+/// `ONE OVERRIDE PER 60 DAY CYCLE` (no "Done"), so a Done-prefixed text
+/// match uniquely targets the action button.
+Finder _doneButton() => find.textContaining('Done ·');
+
 Future<Set<String>> _commitDoneAndReadKeys(WidgetTester tester) async {
   return (await tester.runAsync(() async {
-    await tester.tap(find.text('DONE'));
+    await tester.tap(_doneButton());
     await Future<void>.delayed(const Duration(milliseconds: 600));
     return DatabaseHelper.instance.getBaselineSelectedRecordKeys();
   }))!;
@@ -248,7 +275,23 @@ void main() {
 
       expect(find.text('Choose Star Shifts'), findsOneWidget);
       expect(find.text('CANCEL'), findsOneWidget);
-      expect(find.text('DONE'), findsOneWidget);
+      // R8: Done button label includes the live draft count.
+      expect(_doneButton(), findsOneWidget);
+      // R8: app-bar RESET pill + once-per-cycle caption above the bar.
+      expect(find.byKey(const ValueKey<String>('reset_pill')),
+          findsOneWidget);
+      expect(find.text('ONE OVERRIDE PER 60 DAY CYCLE'), findsOneWidget);
+      // R8: calendar legend pills + count caption.
+      expect(find.byKey(const ValueKey<String>('cal_legend_closed')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('cal_legend_selected')),
+          findsOneWidget);
+      expect(
+          find.byKey(
+              const ValueKey<String>('cal_legend_count_caption')),
+          findsOneWidget);
+      // R8: STAR SHIFT SELECTION section label above the band.
+      expect(find.text('STAR SHIFT SELECTION'), findsOneWidget);
       // Target standard cells
       expect(find.text('SELECTED SHIFTS'), findsOneWidget);
       expect(find.text('TARGET CPLH'), findsOneWidget);
@@ -269,37 +312,82 @@ void main() {
     });
   });
 
-  group('B - zero-selection preview', () {
-    testWidgets('SELECTED SHIFTS shows 0 when nothing selected', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
+  group('B - opens populated (R8 default Balanced)', () {
+    testWidgets(
+      'screen opens with Balanced applied: non-empty draft, populated '
+      'preview, and NO persistence call on open',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
           ),
-        ),
-      );
-      await tester.pump();
-      expect(find.text('0'), findsOneWidget);
-    });
+        );
+        await tester.pump();
 
-    testWidgets('all metric cells show -- when nothing selected', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
+        // The default Balanced selection the screen applies on open is
+        // exactly deriveBandSelection(..., balanced) over the same pool.
+        final defs = ServicePeriodDefinitionResolver.demoDefinitions;
+        final expected = deriveBandSelection(
+          _allCandidates,
+          defs,
+          StarBand.balanced,
+        );
+        expect(expected, isNotEmpty);
+
+        // Draft is non-empty: SELECTED SHIFTS shows the derived count,
+        // not 0, on entry.
+        _expectSelectedShiftsCount(tester, '${expected.length}');
+        expect(find.text('0'), findsNothing);
+
+        // Preview is populated, not the empty-state dashes.
+        expect(find.text('--'), findsNothing);
+
+        // Balanced band chip is highlighted.
+        expect(
+          find.byKey(const ValueKey<String>('band_balanced')),
+          findsOneWidget,
+        );
+
+        // CRITICAL: opening the screen must NOT persist anything. The
+        // selected-record-keys store is still empty until the operator
+        // taps Done.
+        final stored = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(stored, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'CLEAR ALL still reaches the honest empty state (-- everywhere)',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
           ),
-        ),
-      );
-      await tester.pump();
-      // 5 target standard cells + 6 plan impact cells = 11
-      expect(find.text('--'), findsNWidgets(11));
-    });
+        );
+        await tester.pump();
+
+        final clearAll = find.text('CLEAR ALL');
+        await tester.ensureVisible(clearAll);
+        await tester.pumpAndSettle();
+        await tester.tap(clearAll);
+        await tester.pumpAndSettle();
+
+        expect(find.text('0', skipOffstage: false), findsOneWidget);
+        // 5 target standard cells + 6 plan impact cells = 11
+        expect(
+          find.text('--', skipOffstage: false),
+          findsNWidgets(11),
+        );
+      },
+    );
   });
 
   group('C - live preview updates on selection', () {
@@ -316,6 +404,8 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear to reach the empty preview first.
+      await _clearAllDraft(tester);
       expect(find.text('--'), findsNWidgets(11));
 
       // Default whole-day lens: tap the date, toggle the lunch service
@@ -337,6 +427,10 @@ void main() {
         ),
       );
       await tester.pump();
+
+      // R8 opens populated; clear to start from zero.
+      await _clearAllDraft(tester);
+      _expectSelectedShiftsCount(tester, '0');
 
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
@@ -360,6 +454,9 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear so the period-lens sheet shows the
+      // unselected SELECT action rather than REMOVE STAR.
+      await _clearAllDraft(tester);
       await _tapLensChip(tester, 'lunch');
       await _tapCalendarDate(tester, '2026-03-02');
 
@@ -433,6 +530,8 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear so the single-toggle count is exact.
+      await _clearAllDraft(tester);
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
@@ -460,6 +559,8 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear so the single-toggle count is exact.
+      await _clearAllDraft(tester);
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
@@ -1259,6 +1360,11 @@ void main() {
         ),
       );
       await tester.pump();
+
+      // R8 opens populated (default Balanced), so CLEAR ALL is visible
+      // on entry. It only disappears once the draft is emptied.
+      expect(find.text('CLEAR ALL'), findsOneWidget);
+      await _clearAllDraft(tester);
       expect(find.text('CLEAR ALL'), findsNothing);
     });
 
@@ -1422,6 +1528,9 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear so only _lunch1 is in the draft and
+      // the rendered preview matches the expectation computed above.
+      await _clearAllDraft(tester);
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
@@ -1457,6 +1566,10 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear so only the single toggled shift
+      // drives the preview and exactly the 2 wage-dependent cells stay
+      // on the honest "--" sentinel.
+      await _clearAllDraft(tester);
       await _tapCalendarDate(tester, '2026-03-02');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
@@ -1492,12 +1605,14 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; the draft is non-empty regardless, so the
+      // cycle (override) write path still runs on Done.
       await _tapCalendarDate(tester, '2026-03-10');
       await _toggleWholeDayService(tester, 'Lunch');
       await _closeSheet(tester);
 
       await tester.runAsync(() async {
-        await tester.tap(find.text('DONE'));
+        await tester.tap(_doneButton());
         await Future<void>.delayed(const Duration(milliseconds: 600));
       });
       await tester.pump();
@@ -1516,7 +1631,7 @@ void main() {
         reason: 'SnackBar must point users at the admin reset path',
       );
       expect(
-        find.text('DONE'),
+        _doneButton(),
         findsOneWidget,
         reason: 'the Baseline Manager must NOT pop on denial',
       );
@@ -1546,6 +1661,10 @@ void main() {
       );
       await tester.pump();
 
+      // R8 opens populated; clear so the single-shift period sheet
+      // shows the unselected SELECT action.
+      await _clearAllDraft(tester);
+
       // Use the period lens for this candidate so the single-shift
       // sheet's SELECT action toggles and auto-closes.
       await _tapLensChip(tester, candidate.daypart);
@@ -1559,7 +1678,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.runAsync(() async {
-        await tester.tap(find.text('DONE'));
+        await tester.tap(_doneButton());
         await Future<void>.delayed(const Duration(milliseconds: 300));
       });
       await tester.pump();
@@ -1568,7 +1687,7 @@ void main() {
         find.textContaining('do not have permission', skipOffstage: false),
         findsAtLeastNWidgets(1),
       );
-      expect(find.text('DONE'), findsOneWidget);
+      expect(_doneButton(), findsOneWidget);
       final stored = await tester.runAsync(
         DatabaseHelper.instance.getBaselineSelectedRecordKeys,
       );
@@ -1722,7 +1841,8 @@ void main() {
           findsOneWidget,
         );
         expect(find.text('OVERRIDE USED'), findsOneWidget);
-        expect(find.text('DONE'), findsNothing);
+        // R8: the live Done-with-count label is absent when gated.
+        expect(_doneButton(), findsNothing);
       },
     );
 
@@ -1748,7 +1868,7 @@ void main() {
           find.byKey(const ValueKey<String>('done_disabled_gate')),
           findsNothing,
         );
-        expect(find.text('DONE'), findsOneWidget);
+        expect(_doneButton(), findsOneWidget);
       },
     );
   });
@@ -1893,6 +2013,8 @@ void main() {
         // home route until the sheet opens).
         expect(find.byType(BottomSheet), findsNothing);
 
+        // R8 opens populated; clear so the period sheet shows SELECT.
+        await _clearAllDraft(tester);
         await _tapLensChip(tester, 'dinner');
         await _tapCalendarDate(tester, '2026-03-20');
 
@@ -2006,12 +2128,15 @@ void main() {
         );
         await tester.pump();
 
-        // Whole-day badge before any selection: 0 of 4 services.
+        // R8 opens populated; clear to start from an empty draft.
+        await _clearAllDraft(tester);
+
+        // Prototype rule: the n/total badge appears only on a SELECTED
+        // day. With nothing selected the 4-service day shows no badge.
         expect(
           find.byKey(const ValueKey<String>('cal_badge_2026-03-20')),
-          findsOneWidget,
+          findsNothing,
         );
-        expect(find.text('0/4'), findsOneWidget);
 
         await _tapCalendarDate(tester, '2026-03-20');
         // Toggle two services; the sheet STAYS open between toggles.
@@ -2323,8 +2448,20 @@ void main() {
         );
         await tester.pump();
 
-        // No band pre-selected; nothing selected yet.
-        _expectSelectedShiftsCount(tester, '0');
+        // R8: the screen OPENS POPULATED with the default Balanced
+        // derivation in the draft (client-side only, no persistence).
+        final derivedBalanced = deriveBandSelection(
+          windowValidPool,
+          fourPeriodDefs,
+          StarBand.balanced,
+        );
+        _expectSelectedShiftsCount(tester, '${derivedBalanced.length}');
+
+        // Opening must NOT have persisted anything.
+        final onOpenStored = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(onOpenStored, isEmpty);
 
         // The band's ONLY effect is to replace the draft set with the
         // pure derivation output. Compute the expectation independently
@@ -2337,7 +2474,10 @@ void main() {
 
         // Apply Lean -> draft becomes exactly that derived set. This
         // flows ONLY through the draft set (no persistence here yet).
-        await tester.tap(find.byKey(const ValueKey<String>('band_lean')));
+        final leanChip = find.byKey(const ValueKey<String>('band_lean'));
+        await tester.ensureVisible(leanChip);
+        await tester.pumpAndSettle();
+        await tester.tap(leanChip);
         await tester.pumpAndSettle();
         _expectSelectedShiftsCount(tester, '${derivedLean.length}');
 
@@ -2453,8 +2593,13 @@ void main() {
         );
         await tester.pump();
 
-        // Select everything via the Generous band.
-        await tester.tap(find.byKey(const ValueKey<String>('band_generous')));
+        // Select everything via the Generous band. R8 moved the band
+        // below the summary card, so ensure it is on-screen first.
+        final generousChip =
+            find.byKey(const ValueKey<String>('band_generous'));
+        await tester.ensureVisible(generousChip);
+        await tester.pumpAndSettle();
+        await tester.tap(generousChip);
         await tester.pumpAndSettle();
 
         // Whole-day lens (default): FORECAST COVERS is the existing
@@ -2538,6 +2683,265 @@ void main() {
         isNull,
       );
     });
+  });
+
+  // ── R8 - align implemented screen to the committed prototype ─────────────
+  //
+  // (a) the screen opens with Balanced applied: a non-empty draft and a
+  //     populated preview, with NO persistence call on open;
+  // (b) the section render order matches the prototype top-to-bottom:
+  //     lens, scope tag, summary card, STAR SHIFT SELECTION + band,
+  //     calendar, the once-per-cycle caption, then the CANCEL / DONE bar;
+  // (c) the Done label includes the live draft count;
+  // (d) the calendar shows the Closed / Selected legend + the count
+  //     caption, and a 4-period config drives the n/total badge total.
+
+  group('R8 - prototype alignment', () {
+    const fourPeriodDefs = <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '11:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      ),
+    ];
+
+    // One business date with all four configured services so the badge
+    // denominator is the day's configured service-period count (4 here),
+    // never a fixed number.
+    BaselineCandidateShift svc(String period, double cplh) =>
+        BaselineCandidateShift(
+          recordKey: '2026-W12|Fri|$period',
+          weekId: '2026-W12',
+          weekLabel: 'Week of Mar',
+          dayLabel: 'Fri',
+          daypart: period,
+          covers: 150,
+          cplh: cplh,
+          splh: 180.0,
+          ppa: 42.0,
+          primaryLeverId: 'cplh_up',
+          isSelected: false,
+          businessDate: '2026-03-20',
+          actualLaborPct: 24.0,
+        );
+
+    final fourServiceDay = <BaselineCandidateShift>[
+      svc('breakfast', 5.0),
+      svc('lunch', 4.0),
+      svc('dinner', 4.5),
+      svc('late_night', 3.0),
+    ];
+
+    testWidgets(
+      'a) opens with Balanced applied: non-empty draft + populated '
+      'preview, and NO persistence call on open',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final expected = deriveBandSelection(
+          fourServiceDay,
+          fourPeriodDefs,
+          StarBand.balanced,
+        );
+        expect(expected, isNotEmpty);
+        _expectSelectedShiftsCount(tester, '${expected.length}');
+        expect(find.text('--'), findsNothing);
+        expect(
+          find.byKey(const ValueKey<String>('band_balanced')),
+          findsOneWidget,
+        );
+
+        final stored = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(
+          stored,
+          isEmpty,
+          reason: 'opening the screen must not persist anything',
+        );
+      },
+    );
+
+    testWidgets(
+      'b) section render order is lens, scope tag, summary, STAR SHIFT '
+      'SELECTION + band, calendar, override caption, bottom bar',
+      (tester) async {
+        // Tall surface so the capped top scroll region is not clipped
+        // and absolute Y positions reflect the true top-to-bottom
+        // section order across the whole screen.
+        tester.view.physicalSize = const Size(1200, 3200);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        double topOf(Finder f) =>
+            tester.getTopLeft(f.first).dy;
+
+        // Anchors for each section, top-to-bottom.
+        final lensDy = topOf(
+          find.byKey(const ValueKey<String>('lens_$kWholeDayLensId')),
+        );
+        final scopeTagDy = topOf(find.text('Whole day targets'));
+        final summaryDy = topOf(find.text('SELECTED SHIFTS'));
+        final bandLabelDy = topOf(find.text('STAR SHIFT SELECTION'));
+        final bandChipDy = topOf(
+          find.byKey(const ValueKey<String>('band_balanced')),
+        );
+        final calendarDy = topOf(find.text('LAST 60 DAYS'));
+        final captionDy = topOf(
+          find.byKey(const ValueKey<String>('override_cycle_caption')),
+        );
+        final cancelDy = topOf(find.text('CANCEL'));
+
+        expect(lensDy, lessThan(scopeTagDy));
+        expect(scopeTagDy, lessThan(summaryDy));
+        // Summary card comes BEFORE the band (the prototype order; the
+        // implemented screen previously had the band first).
+        expect(summaryDy, lessThan(bandLabelDy));
+        expect(bandLabelDy, lessThan(bandChipDy));
+        expect(bandChipDy, lessThan(calendarDy));
+        expect(calendarDy, lessThan(captionDy));
+        expect(captionDy, lessThan(cancelDy));
+      },
+    );
+
+    testWidgets(
+      'c) Done label includes the live draft count',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        final expected = deriveBandSelection(
+          fourServiceDay,
+          fourPeriodDefs,
+          StarBand.balanced,
+        );
+        // Default Balanced count is reflected in the action label.
+        expect(
+          find.text('Done · ${expected.length}'),
+          findsOneWidget,
+        );
+
+        // Clearing the draft updates the label to the new count.
+        await _clearAllDraft(tester);
+        expect(find.text('Done · 0'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'd) calendar shows the Closed / Selected legend + count caption, '
+      'and a 4-period config drives the n/total badge total',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              fourServiceDay,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Legend pills + count caption (whole-day lens is the default).
+        expect(
+          find.byKey(const ValueKey<String>('cal_legend_closed')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey<String>('cal_legend_selected')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const ValueKey<String>('cal_legend_count_caption'),
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Closed'), findsOneWidget);
+        expect(find.text('Selected'), findsOneWidget);
+        expect(
+          find.text('Count = services kept that day'),
+          findsOneWidget,
+        );
+
+        // Default Balanced selects all four services on 2026-03-20, so
+        // the badge total is the day's configured service-period count
+        // (4), driven by the resolved defs, never a fixed number.
+        expect(
+          find.byKey(const ValueKey<String>('cal_badge_2026-03-20')),
+          findsOneWidget,
+        );
+        expect(find.text('4/4'), findsOneWidget);
+      },
+    );
   });
 }
 
