@@ -45,6 +45,7 @@ import '../domain/models/schedule_plan.dart';
 import '../domain/models/target_cycle.dart';
 import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
+import '../domain/services/proportional_allocation.dart';
 import '../domain/services/weekly_plan_snapshot_policy.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
@@ -204,6 +205,22 @@ class WeeklyPlanSnapshotService {
       dayRows: dayRows,
     );
 
+    // Per-Daypart V1 (bottom-up locked snapshot): the locked snapshot
+    // is now bottom-up by construction — day rows are the SUM of their
+    // per-period rows, and week totals are the SUM of the day rows.
+    // This makes `Σ(per-period) == day-row == week-total` true by
+    // construction instead of three independently-sourced layers that
+    // drift. Days with no per-period rows (Gap 42 empty cycle dayparts)
+    // keep their original pooled `plan.dayPlans` whole-day values
+    // (honest fallback — never zeroed). When the cycle has NO
+    // per-period rows at all, the whole snapshot keeps the original
+    // `plan.*` pooled totals.
+    final reconciled = _reconcileBottomUp(
+      plan: plan,
+      dayRows: dayRows,
+      dayDayparts: dayDayparts,
+    );
+
     // Per-Daypart V1 (Slice 1) — wage stamp at lock time. Pull wages
     // from the cycle's parent (cycle-in-force wages, not current).
     // Blended wage uses the canonical cover-independent formula on the
@@ -228,17 +245,17 @@ class WeeklyPlanSnapshotService {
       weekStartDate: weekStart,
       weekEndDate: weekEnd,
       targetCycleId: cycle.cycleId,
-      forecastCovers: plan.forecastCovers,
-      forecastSales: plan.forecastSales,
-      requiredFohHours: plan.requiredFohHours,
-      requiredBohHours: plan.requiredBohHours,
-      theoreticalFohLaborDollars: plan.theoreticalFohLaborDollars,
-      theoreticalBohLaborDollars: plan.theoreticalBohLaborDollars,
+      forecastCovers: reconciled.weekCovers,
+      forecastSales: reconciled.weekSales,
+      requiredFohHours: reconciled.weekFohHours,
+      requiredBohHours: reconciled.weekBohHours,
+      theoreticalFohLaborDollars: reconciled.weekFohDollars,
+      theoreticalBohLaborDollars: reconciled.weekBohDollars,
       coversSource: plan.coversSource,
       salesSource: plan.salesSource,
       generatedAt: now,
       lockedAt: now,
-      dayRows: dayRows,
+      dayRows: reconciled.dayRows,
       dayDayparts: dayDayparts,
       wageAtLockTime: wageStamp,
     );
@@ -415,16 +432,31 @@ class WeeklyPlanSnapshotService {
                   _isoWeekdayFromLabel(dayRow.day)] ??
               cycle.dayparts.map((d) => d.servicePeriodId).toList());
 
-      final totalWeight = periodIds
-          .map((id) => periodCoverWeights[id] ?? 0)
-          .fold<int>(0, (a, b) => a + b);
-      for (final periodId in periodIds) {
+      // Keep only periods that actually exist on the cycle, in the
+      // caller's iteration order, so the allocation weight vector lines
+      // up 1:1 with the rows we emit.
+      final applicableIds = [
+        for (final id in periodIds)
+          if (cycle.daypartFor(id) != null) id,
+      ];
+
+      // Per-Daypart V1 (bottom-up locked snapshot): allocate the day's
+      // forecast covers across the applicable periods with a single
+      // largest-remainder pass so `Σ(periodCovers) == dayRow
+      // .forecastCovers` EXACTLY (no independent per-period `.round()`
+      // drift — that divergence was the Σ(per-period) ≠ day-row root
+      // cause). Per-period rate fidelity (sales/FOH/BOH) is unchanged.
+      final weights = [
+        for (final id in applicableIds) periodCoverWeights[id] ?? 0,
+      ];
+      final allocatedCovers =
+          allocateLargestRemainderInt(dayRow.forecastCovers, weights);
+
+      for (var idx = 0; idx < applicableIds.length; idx++) {
+        final periodId = applicableIds[idx];
         final cycleDp = cycle.daypartFor(periodId);
         if (cycleDp == null) continue;
-        final w = periodCoverWeights[periodId] ?? 0;
-        final periodCovers = totalWeight > 0
-            ? ((dayRow.forecastCovers * w) / totalWeight).round()
-            : 0;
+        final periodCovers = allocatedCovers[idx];
         final periodSales = periodCovers * cycleDp.targetPPA;
         final periodReqFohHours = cycleDp.targetCPLH > 0
             ? periodCovers / cycleDp.targetCPLH
@@ -448,6 +480,127 @@ class WeeklyPlanSnapshotService {
     }
     return out;
   }
+
+  /// Per-Daypart V1 (bottom-up locked snapshot) — recompute day rows
+  /// and week totals as the SUM of the locked per-period rows so the
+  /// snapshot is `Σ(per-period) == day-row == week-total` by
+  /// construction (the plan doc's "1:1 by construction" intent;
+  /// `per_daypart_targets_v1_plan.md` lines ~234, ~241).
+  ///
+  /// Rules:
+  ///   - A day WITH per-period rows: its `forecastCovers`,
+  ///     `forecastSales`, `requiredFohHours`, `requiredBohHours` become
+  ///     the sum of that day's per-period rows. Model field types are
+  ///     honoured — `requiredFohHours`/`requiredBohHours` are `int`
+  ///     (the summed per-period doubles are rounded), `forecastCovers`
+  ///     is `int` (already an exact LR sum), `forecastSales` is
+  ///     `double`.
+  ///   - A day WITHOUT per-period rows (Gap 42 empty cycle dayparts on
+  ///     a per-day basis): keep the original pooled `plan.dayPlans`
+  ///     whole-day values verbatim (honest fallback — never zeroed).
+  ///   - Week totals: covers/sales/FOH/BOH = SUM of the recomputed day
+  ///     rows; theoretical FOH/BOH labor $ = SUM of per-period
+  ///     `theoreticalFohDollars`/`theoreticalBohDollars`.
+  ///   - When the cycle has NO per-period rows at all (`dayDayparts`
+  ///     entirely empty), fall back to the original `plan.*` pooled
+  ///     totals so a legacy / Gap-42 snapshot is unchanged.
+  static _BottomUpReconcileResult _reconcileBottomUp({
+    required SchedulePlan plan,
+    required List<WeeklyPlanSnapshotDay> dayRows,
+    required List<WeeklyPlanSnapshotDayDaypart> dayDayparts,
+  }) {
+    if (dayDayparts.isEmpty) {
+      // No per-period rows anywhere — keep the pooled plan totals and
+      // the original day rows verbatim (legacy / Gap-42 whole-cycle
+      // fallback). Honest: nothing is zeroed.
+      return _BottomUpReconcileResult(
+        dayRows: dayRows,
+        weekCovers: plan.forecastCovers,
+        weekSales: plan.forecastSales,
+        weekFohHours: plan.requiredFohHours,
+        weekBohHours: plan.requiredBohHours,
+        weekFohDollars: plan.theoreticalFohLaborDollars,
+        weekBohDollars: plan.theoreticalBohLaborDollars,
+      );
+    }
+
+    // Bucket per-period rows by business date.
+    final byDate = <String, List<WeeklyPlanSnapshotDayDaypart>>{};
+    for (final dp in dayDayparts) {
+      (byDate[dp.businessDate] ??= <WeeklyPlanSnapshotDayDaypart>[]).add(dp);
+    }
+
+    final recomputedDayRows = <WeeklyPlanSnapshotDay>[];
+    var weekCovers = 0;
+    var weekSales = 0.0;
+    var weekFohHours = 0;
+    var weekBohHours = 0;
+    for (final row in dayRows) {
+      final periods = byDate[row.businessDate];
+      if (periods == null || periods.isEmpty) {
+        // Gap 42 per-day fallback: this day has no per-period rows —
+        // keep its pooled whole-day values verbatim (never zero them).
+        recomputedDayRows.add(row);
+        weekCovers += row.forecastCovers;
+        weekSales += row.forecastSales;
+        weekFohHours += row.requiredFohHours;
+        weekBohHours += row.requiredBohHours;
+        continue;
+      }
+      final dayCovers = periods.fold<int>(0, (s, p) => s + p.forecastCovers);
+      final daySales =
+          periods.fold<double>(0, (s, p) => s + p.forecastSales);
+      final dayFohHours = periods
+          .fold<double>(0, (s, p) => s + p.requiredFohHours)
+          .round();
+      final dayBohHours = periods
+          .fold<double>(0, (s, p) => s + p.requiredBohHours)
+          .round();
+      recomputedDayRows.add(WeeklyPlanSnapshotDay(
+        day: row.day,
+        businessDate: row.businessDate,
+        forecastCovers: dayCovers,
+        forecastSales: daySales,
+        requiredFohHours: dayFohHours,
+        requiredBohHours: dayBohHours,
+      ));
+      weekCovers += dayCovers;
+      weekSales += daySales;
+      weekFohHours += dayFohHours;
+      weekBohHours += dayBohHours;
+    }
+
+    // Week labor dollars = SUM of per-period theoretical dollars
+    // (per-period rate fidelity preserved end-to-end).
+    final weekFohDollars =
+        dayDayparts.fold<double>(0, (s, p) => s + p.theoreticalFohDollars);
+    final weekBohDollars =
+        dayDayparts.fold<double>(0, (s, p) => s + p.theoreticalBohDollars);
+
+    return _BottomUpReconcileResult(
+      dayRows: recomputedDayRows,
+      weekCovers: weekCovers,
+      weekSales: weekSales,
+      weekFohHours: weekFohHours,
+      weekBohHours: weekBohHours,
+      weekFohDollars: weekFohDollars,
+      weekBohDollars: weekBohDollars,
+    );
+  }
+
+  /// Public test seam for the bottom-up reconciliation math. Private
+  /// wiring stays through `_generateAndPersistSnapshot`.
+  @visibleForTesting
+  static List<WeeklyPlanSnapshotDay> debugReconcileBottomUpDayRows({
+    required SchedulePlan plan,
+    required List<WeeklyPlanSnapshotDay> dayRows,
+    required List<WeeklyPlanSnapshotDayDaypart> dayDayparts,
+  }) =>
+      _reconcileBottomUp(
+        plan: plan,
+        dayRows: dayRows,
+        dayDayparts: dayDayparts,
+      ).dayRows;
 
   static int _isoWeekdayFromLabel(String dayLabel) {
     // 1=Mon..7=Sun. Mirrors ScheduleDistributionWeights.canonicalDayOrder.
@@ -510,4 +663,27 @@ class WeeklyPlanSnapshotService {
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
   }
+}
+
+/// Per-Daypart V1 (bottom-up locked snapshot) — result of recomputing
+/// the locked snapshot's day rows + week totals as the SUM of the
+/// per-period rows. Internal to the snapshot writer.
+class _BottomUpReconcileResult {
+  final List<WeeklyPlanSnapshotDay> dayRows;
+  final int weekCovers;
+  final double weekSales;
+  final int weekFohHours;
+  final int weekBohHours;
+  final double weekFohDollars;
+  final double weekBohDollars;
+
+  const _BottomUpReconcileResult({
+    required this.dayRows,
+    required this.weekCovers,
+    required this.weekSales,
+    required this.weekFohHours,
+    required this.weekBohHours,
+    required this.weekFohDollars,
+    required this.weekBohDollars,
+  });
 }

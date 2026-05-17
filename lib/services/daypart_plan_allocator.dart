@@ -18,6 +18,7 @@ library;
 
 import '../domain/models/schedule_distribution_weights.dart';
 import '../domain/models/service_period_definition.dart';
+import '../domain/services/proportional_allocation.dart' as shared;
 import '../domain/services/service_period_definition_resolver.dart';
 
 /// One daypart subrow allocated from a day-level plan target package.
@@ -179,61 +180,29 @@ const _daypartCoverWeight = <String, double>{
   'late_night': 0.15,
 };
 
+// Per-Daypart V1 (bottom-up locked snapshot): the largest-remainder /
+// proportional math now lives in the shared pure helper
+// `lib/domain/services/proportional_allocation.dart` so the locked
+// snapshot writer and this allocator split covers exactly once, the
+// same way (single source of truth — the prior divergence was the root
+// cause of Σ(per-period) ≠ day-row drift). These thin delegates
+// preserve the exact prior behaviour for the allocator's existing
+// live/preview + legacy/Gap-42 + Variance/audit consumers.
+
 /// Largest-remainder allocation of [total] across integer [weights].
 /// Guarantees `sum(result) == total`. Returns zeros when all weights
 /// are zero.
-List<int> _allocateLargestRemainder(int total, List<int> weights) {
-  final weightSum = weights.fold<int>(0, (s, v) => s + v);
-  if (weightSum == 0) return List.filled(weights.length, 0);
-  final fractional = weights.map((w) => total * w / weightSum).toList();
-  return _largestRemainderCore(total, fractional);
-}
+List<int> _allocateLargestRemainder(int total, List<int> weights) =>
+    shared.allocateLargestRemainderInt(total, weights);
 
 /// Largest-remainder allocation of [total] across double [shares].
-List<int> _allocateLargestRemainderByDouble(int total, List<double> shares) {
-  final shareSum = shares.fold<double>(0, (s, v) => s + v);
-  if (shareSum == 0) return List.filled(shares.length, 0);
-  final fractional = shares.map((s) => total * s / shareSum).toList();
-  return _largestRemainderCore(total, fractional);
-}
+List<int> _allocateLargestRemainderByDouble(int total, List<double> shares) =>
+    shared.allocateLargestRemainderByDouble(total, shares);
 
 /// Proportional double split of [total] across integer [weights].
 ///
 /// Returns doubles that sum exactly to [total] (subject to
 /// floating-point precision) by assigning the rounding remainder to
 /// the final slot.
-List<double> _allocateProportionalDoubles(double total, List<int> weights) {
-  final weightSum = weights.fold<int>(0, (s, v) => s + v);
-  if (weightSum == 0 || total == 0) {
-    return List.filled(weights.length, 0.0);
-  }
-  final values = List<double>.filled(weights.length, 0.0);
-  double assigned = 0;
-  for (var i = 0; i < weights.length; i++) {
-    if (i == weights.length - 1) {
-      values[i] = total - assigned;
-    } else {
-      final share = total * weights[i] / weightSum;
-      values[i] = share;
-      assigned += share;
-    }
-  }
-  return values;
-}
-
-/// Core largest-remainder: floor each fractional value, then
-/// distribute remaining units to the slots with the largest
-/// fractional parts.
-List<int> _largestRemainderCore(int total, List<double> fractional) {
-  final floors = fractional.map((f) => f.floor()).toList();
-  var remainder = total - floors.fold<int>(0, (s, v) => s + v);
-  final remainders = List.generate(
-      fractional.length, (i) => (i, fractional[i] - floors[i]));
-  remainders.sort((a, b) => b.$2.compareTo(a.$2));
-  for (final entry in remainders) {
-    if (remainder <= 0) break;
-    floors[entry.$1] += 1;
-    remainder -= 1;
-  }
-  return floors;
-}
+List<double> _allocateProportionalDoubles(double total, List<int> weights) =>
+    shared.allocateProportionalDoubles(total, weights);
