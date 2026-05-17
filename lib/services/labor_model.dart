@@ -13,6 +13,30 @@
 class LaborModel {
   LaborModel._();
 
+  /// No-signal sentinel returned by [determineLeverGated] when no axis
+  /// crossed its firing threshold (the week/shift was on-model). It is
+  /// intentionally outside the 16 catalog ids; `LeverCards.lookup`
+  /// resolves it to `null` so renderers surface the degraded
+  /// "Not yet on-model" / "—" treatment instead of a false leak claim.
+  /// 7.58.0a remediation of Primary Driver Contract Finding F-2.
+  static const String onModelSentinel = 'on_model';
+
+  /// No-signal sentinel returned by [determineLeverGated] when no axis
+  /// crossed its firing threshold (the week/shift was on-model). It is
+  /// intentionally outside the 16 catalog ids; `LeverCards.lookup`
+  /// resolves it to `null` so renderers surface the degraded
+  /// "Not yet on-model" / "—" treatment instead of a false leak claim.
+  /// 7.58.0a remediation of Primary Driver Contract Finding F-2.
+  static const String onModelSentinel = 'on_model';
+
+  /// No-signal sentinel returned by [determineLeverGated] when no axis
+  /// crossed its firing threshold (the week/shift was on-model). It is
+  /// intentionally outside the 16 catalog ids; `LeverCards.lookup`
+  /// resolves it to `null` so renderers surface the degraded
+  /// "Not yet on-model" / "—" treatment instead of a false leak claim.
+  /// 7.58.0a remediation of Primary Driver Contract Finding F-2.
+  static const String onModelSentinel = 'on_model';
+
   // ── FOH model hours ───────────────────────────────────────────────────────
   // Jim Taylor Ch. 5: covers ÷ targetCPLH, rounded to the nearest whole hour.
   // Use actualCovers for live/closed-shift analysis.
@@ -96,6 +120,19 @@ class LaborModel {
   //   avgBohBlendedWage / targetBohWage — enables boh_wage_up / boh_wage_down
   //   scheduledFohHours / modelFohHours — enables foh_hours_over / foh_hours_under
   //   scheduledBohHours / modelBohHours — enables boh_hours_over / boh_hours_under
+  //
+  // Two entry points share one candidate engine:
+  //   • [determineLever]       — legacy single-source semantics. When no
+  //                              axis fires it returns the literal
+  //                              `'covers_down'` (Primary Driver Contract
+  //                              Decision Logic step 3 / Finding F-2, test
+  //                              R10/R6). Never returns [onModelSentinel].
+  //   • [determineLeverGated]  — producer-side entry point for any code
+  //                              that PERSISTS or renders a primary lever.
+  //                              Identical selection, except the empty-
+  //                              candidate (on-model) state returns
+  //                              [onModelSentinel] instead of the false
+  //                              `'covers_down'` overclaim. 7.58.0a.
   static String determineLever({
     required int actualCovers,
     required int forecastCovers,
@@ -103,16 +140,122 @@ class LaborModel {
     required double avgPPA,
     required double targetCPLH,
     required double targetPPA,
-    // SPLH lever (BOH only)
     double? avgSPLH,
     double? targetSPLH,
-    // FOH wage lever
     double? avgFohBlendedWage,
     double? targetFohWage,
-    // BOH wage lever
     double? avgBohBlendedWage,
     double? targetBohWage,
-    // Hours flex levers
+    int? scheduledFohHours,
+    int? modelFohHours,
+    int? scheduledBohHours,
+    int? modelBohHours,
+  }) {
+    final candidates = _leverCandidates(
+      actualCovers: actualCovers,
+      forecastCovers: forecastCovers,
+      avgCPLH: avgCPLH,
+      avgPPA: avgPPA,
+      targetCPLH: targetCPLH,
+      targetPPA: targetPPA,
+      avgSPLH: avgSPLH,
+      targetSPLH: targetSPLH,
+      avgFohBlendedWage: avgFohBlendedWage,
+      targetFohWage: targetFohWage,
+      avgBohBlendedWage: avgBohBlendedWage,
+      targetBohWage: targetBohWage,
+      scheduledFohHours: scheduledFohHours,
+      modelFohHours: modelFohHours,
+      scheduledBohHours: scheduledBohHours,
+      modelBohHours: modelBohHours,
+    );
+    // Legacy single-source fallback — preserved verbatim (contract R10).
+    if (candidates.isEmpty) return 'covers_down';
+    return _selectLever(candidates);
+  }
+
+  /// On-model-honest variant of [determineLever]. Identical inputs and
+  /// identical winner selection, but the empty-candidate state returns
+  /// [onModelSentinel] instead of the legacy `'covers_down'` overclaim.
+  ///
+  /// Every site that PERSISTS a primary lever id (WeekRecord / WeekData /
+  /// ShiftRecord / ShiftFact) or renders one on a leak/history surface
+  /// MUST call this, so an on-model week is reported as "no driver"
+  /// rather than a false red COVERS. Closes Primary Driver Contract
+  /// Finding F-2 (7.58.0a). The contract-pinned [determineLever]
+  /// keeps its legacy fallback for single-source / R10 callers.
+  static String determineLeverGated({
+    required int actualCovers,
+    required int forecastCovers,
+    required double avgCPLH,
+    required double avgPPA,
+    required double targetCPLH,
+    required double targetPPA,
+    double? avgSPLH,
+    double? targetSPLH,
+    double? avgFohBlendedWage,
+    double? targetFohWage,
+    double? avgBohBlendedWage,
+    double? targetBohWage,
+    int? scheduledFohHours,
+    int? modelFohHours,
+    int? scheduledBohHours,
+    int? modelBohHours,
+  }) {
+    final candidates = _leverCandidates(
+      actualCovers: actualCovers,
+      forecastCovers: forecastCovers,
+      avgCPLH: avgCPLH,
+      avgPPA: avgPPA,
+      targetCPLH: targetCPLH,
+      targetPPA: targetPPA,
+      avgSPLH: avgSPLH,
+      targetSPLH: targetSPLH,
+      avgFohBlendedWage: avgFohBlendedWage,
+      targetFohWage: targetFohWage,
+      avgBohBlendedWage: avgBohBlendedWage,
+      targetBohWage: targetBohWage,
+      scheduledFohHours: scheduledFohHours,
+      modelFohHours: modelFohHours,
+      scheduledBohHours: scheduledBohHours,
+      modelBohHours: modelBohHours,
+    );
+    if (candidates.isEmpty) return onModelSentinel;
+    return _selectLever(candidates);
+  }
+
+  // Priority order for tie-breaking (lower index = higher priority).
+  // Volume axes outrank productivity outrank wage outrank hours-flex.
+  static const List<String> _priorityOrder = [
+    'covers_down', 'covers_up',
+    'ppa_down',    'ppa_up',
+    'cplh_down',   'cplh_up',
+    'splh_down',   'splh_up',
+    'foh_wage_down', 'foh_wage_up',
+    'boh_wage_down', 'boh_wage_up',
+    'foh_hours_over', 'foh_hours_under',
+    'boh_hours_over', 'boh_hours_under',
+  ];
+
+  // Shared candidate engine for both [determineLever] and
+  // [determineLeverGated]. An axis contributes its matched id (up vs
+  // down) with weight `|delta|` only when it crosses its threshold; a
+  // null optional input silently skips that axis (no fallback, no zero
+  // treated as real). The two public entry points differ ONLY in how
+  // they treat the empty return.
+  static Map<String, double> _leverCandidates({
+    required int actualCovers,
+    required int forecastCovers,
+    required double avgCPLH,
+    required double avgPPA,
+    required double targetCPLH,
+    required double targetPPA,
+    double? avgSPLH,
+    double? targetSPLH,
+    double? avgFohBlendedWage,
+    double? targetFohWage,
+    double? avgBohBlendedWage,
+    double? targetBohWage,
     int? scheduledFohHours,
     int? modelFohHours,
     int? scheduledBohHours,
@@ -127,18 +270,6 @@ class LaborModel {
     final ppaDelta = targetPPA > 0
         ? (avgPPA - targetPPA) / targetPPA
         : 0.0;
-
-    // Priority order for tie-breaking (lower index = higher priority)
-    const priorityOrder = [
-      'covers_down', 'covers_up',
-      'ppa_down',    'ppa_up',
-      'cplh_down',   'cplh_up',
-      'splh_down',   'splh_up',
-      'foh_wage_down', 'foh_wage_up',
-      'boh_wage_down', 'boh_wage_up',
-      'foh_hours_over', 'foh_hours_under',
-      'boh_hours_over', 'boh_hours_under',
-    ];
 
     final candidates = <String, double>{
       if (coversDelta < -0.02) 'covers_down': coversDelta.abs(),
@@ -184,9 +315,12 @@ class LaborModel {
       if (bohFlexDelta < -0.10) candidates['boh_hours_under'] = bohFlexDelta.abs();
     }
 
-    if (candidates.isEmpty) return 'covers_down';
+    return candidates;
+  }
 
-    // Find the maximum deviation; resolve ties by priority order
+  // Winner selection — assumes a non-empty candidate set. Max `|delta|`
+  // wins; ties resolve by [_priorityOrder] (lower index wins).
+  static String _selectLever(Map<String, double> candidates) {
     final maxVal = candidates.values.reduce((a, b) => a > b ? a : b);
     final tied = candidates.entries
         .where((e) => e.value == maxVal)
@@ -195,9 +329,8 @@ class LaborModel {
 
     if (tied.length == 1) return tied.first;
 
-    // Tie-break: return the candidate that appears earliest in priorityOrder
     tied.sort((a, b) =>
-        priorityOrder.indexOf(a).compareTo(priorityOrder.indexOf(b)));
+        _priorityOrder.indexOf(a).compareTo(_priorityOrder.indexOf(b)));
     return tied.first;
   }
 

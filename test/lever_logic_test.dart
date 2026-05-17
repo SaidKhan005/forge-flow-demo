@@ -320,6 +320,86 @@ void main() {
     });
   });
 
+  group('determineLeverGated — on-model honesty (7.58.0a / Finding F-2)', () {
+    test('empty-candidate (on-model) returns onModelSentinel, not covers_down',
+        () {
+      // Same all-at-target inputs the determineLever edge-case test
+      // above proves return the legacy `covers_down` fallback.
+      const gatedArgs = {
+        'actualCovers': 1200,
+        'forecastCovers': 1200,
+      };
+      final legacy = LaborModel.determineLever(
+        actualCovers: gatedArgs['actualCovers']!,
+        forecastCovers: gatedArgs['forecastCovers']!,
+        avgCPLH: _tCPLH,
+        avgPPA: _tPPA,
+        targetCPLH: _tCPLH,
+        targetPPA: _tPPA,
+        avgSPLH: _tSPLH,
+        targetSPLH: _tSPLH,
+        avgFohBlendedWage: _fohWage,
+        targetFohWage: _fohWage,
+        avgBohBlendedWage: _bohWage,
+        targetBohWage: _bohWage,
+      );
+      final gated = LaborModel.determineLeverGated(
+        actualCovers: gatedArgs['actualCovers']!,
+        forecastCovers: gatedArgs['forecastCovers']!,
+        avgCPLH: _tCPLH,
+        avgPPA: _tPPA,
+        targetCPLH: _tCPLH,
+        targetPPA: _tPPA,
+        avgSPLH: _tSPLH,
+        targetSPLH: _tSPLH,
+        avgFohBlendedWage: _fohWage,
+        targetFohWage: _fohWage,
+        avgBohBlendedWage: _bohWage,
+        targetBohWage: _bohWage,
+      );
+      expect(legacy, 'covers_down',
+          reason: 'control — determineLever keeps the legacy fallback (R10)');
+      expect(gated, LaborModel.onModelSentinel);
+      expect(gated, 'on_model');
+    });
+
+    test('onModelSentinel resolves to null via LeverCards.lookup '
+        '(renderers degrade to "—" / Not yet on-model)', () {
+      expect(LeverCards.lookup(LaborModel.onModelSentinel), isNull);
+      expect(LeverCards.all.map((c) => c.id),
+          isNot(contains(LaborModel.onModelSentinel)));
+    });
+
+    test('when an axis fires, gated == determineLever (same winner)', () {
+      // covers_down scenario (covers −4% > 2% threshold).
+      String pair(int actual) {
+        final a = LaborModel.determineLever(
+          actualCovers: actual, forecastCovers: 1200,
+          avgCPLH: _tCPLH, avgPPA: _tPPA,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+          avgSPLH: _tSPLH, targetSPLH: _tSPLH,
+        );
+        final b = LaborModel.determineLeverGated(
+          actualCovers: actual, forecastCovers: 1200,
+          avgCPLH: _tCPLH, avgPPA: _tPPA,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+          avgSPLH: _tSPLH, targetSPLH: _tSPLH,
+        );
+        expect(a, b, reason: 'fired-axis result must be identical');
+        return b;
+      }
+
+      expect(pair(1140), 'covers_down'); // −5% covers
+      // cplh_up scenario.
+      final cplhUp = LaborModel.determineLeverGated(
+        actualCovers: 1200, forecastCovers: 1200,
+        avgCPLH: _tCPLH * 1.10, avgPPA: _tPPA,
+        targetCPLH: _tCPLH, targetPPA: _tPPA,
+      );
+      expect(cplhUp, 'cplh_up');
+    });
+  });
+
   group('LeverCards completeness', () {
     test('all 12 lever IDs have matching LeverCardData; wage direction correct', () {
       const allLeverIds = [
