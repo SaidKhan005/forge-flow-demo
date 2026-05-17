@@ -152,10 +152,12 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
-(Per-Daypart V1 R7a per-period covers-source hierarchy view +
-scoped-overrides re-key; additive, existing outputs unchanged, hard
-column drop deferred to follow-up R7d), including the later cron
+`202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
+(Per-Daypart V1 R7d FINAL covers-source step: atomic view re-create
+minus the 3 legacy scalar outputs, then drop the legacy covers
+columns on data_accuracy_settings + data_accuracy_scoped_overrides;
+no cascade, idempotent, zero remaining readers proven), including the
+later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
 lifecycle, scoped Data Accuracy/Polling, lifecycle access hardening,
 audit-log actor/reason/business-date migrations, the Lane B B11.1
