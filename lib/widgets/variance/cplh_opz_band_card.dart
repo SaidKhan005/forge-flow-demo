@@ -322,30 +322,35 @@ class CplhOpzBandCard extends StatelessWidget {
           'to meet it.';
     }
 
-    // `AppTextStyles.body14` defaults to FontWeight.w600 (semibold), which
-    // would render the WHOLE teaching paragraph heavy. Mockup `.teach`
-    // (docs/f&f Coaching/variance_tab_v2_mockup.html) is regular-weight
-    // body with bold ONLY on the lead-in and the colored stat spans. Pin
-    // the plain weight explicitly to w400 so plain segments are regular.
-    final base = AppTextStyles.body14(color: AppColors.textPrimary)
-        .copyWith(fontWeight: FontWeight.w400);
+    // Weight is resolved at FONT-CREATION through `AppTextStyles`, never via
+    // a post-hoc `.copyWith(fontWeight: ...)`. google_fonts bakes the
+    // weighted variant when the style is built at runtime, so a later
+    // copyWith on the resolved style is ignored by the rendered glyphs
+    // (prior PRs #961/#964 failed for exactly that reason: the whole
+    // paragraph rendered one semibold weight). Mockup `.teach`
+    // (docs/f&f Coaching/variance_tab_v2_mockup.html) is regular-weight body
+    // with bold ONLY on the lead-in and the colored stat spans:
+    //   - plain body    : body15  (correctly-resolved REGULAR w400)
+    //   - lead-in        : body15Bold (correctly-resolved BOLD w700, ink)
+    //   - colored stat   : body15Bold + sentiment colour (bold + red/green)
+    final plain = AppTextStyles.body15(color: AppColors.textPrimary);
     return Text.rich(
       TextSpan(
         children: [
           // BOLD lead-in: mockup `.teach b` weight, default ink colour
           // (NOT a sentiment colour). Rendered as a prefix span because
           // the shared renderer has no neutral-bold token and must not be
-          // changed.
+          // changed. Bold resolved at font-creation via body15Bold.
           TextSpan(
             text: lead,
-            style: base.copyWith(fontWeight: FontWeight.w700),
+            style: AppTextStyles.body15Bold(color: AppColors.textPrimary),
           ),
           // Remainder rendered through the SAME V2-4 parser the shared
           // InlineEmphasisText uses, so colour spans + verbatim fallback
           // behave identically without touching inline_emphasis_text.dart.
           for (final segment
               in InlineEmphasisMarkup.parse('$intro$body'))
-            _emphasisSpan(segment, base),
+            _emphasisSpan(segment, plain),
         ],
       ),
     );
@@ -360,20 +365,18 @@ class CplhOpzBandCard extends StatelessWidget {
   InlineSpan _emphasisSpan(InlineEmphasisSegment segment, TextStyle base) {
     switch (segment.kind) {
       case InlineEmphasisKind.causalBad:
+        // Bold + red. Weight resolved at font-creation via body15Bold
+        // (NOT base.copyWith: copyWith weight is ignored on a
+        // runtime-resolved google_fonts style).
         return TextSpan(
           text: segment.text,
-          style: base.copyWith(
-            color: AppColors.negative,
-            fontWeight: FontWeight.w700,
-          ),
+          style: AppTextStyles.body15Bold(color: AppColors.negative),
         );
       case InlineEmphasisKind.causalGood:
+        // Bold + green, same font-creation-time resolution.
         return TextSpan(
           text: segment.text,
-          style: base.copyWith(
-            color: AppColors.positive,
-            fontWeight: FontWeight.w700,
-          ),
+          style: AppTextStyles.body15Bold(color: AppColors.positive),
         );
       case InlineEmphasisKind.plain:
       case InlineEmphasisKind.chipBad:

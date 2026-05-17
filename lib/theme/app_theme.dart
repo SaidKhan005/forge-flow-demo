@@ -349,6 +349,22 @@ class AppTextStyles {
     ),
   );
 
+  // Bold sibling of [body15] (same size/height, weight w700). Resolved at
+  // font-creation through `_sans(...)` so google_fonts bakes the bold
+  // variant correctly. A post-hoc `.copyWith(fontWeight: ...)` on a
+  // runtime-resolved google_fonts style is ignored by the rendered glyphs.
+  // Used by the History OPZ teach paragraph for bold lead-in / colored
+  // stat emphasis. Purely additive; does not alter body15/body14/body13.
+  static TextStyle body15Bold({Color? color, FontStyle? style}) => _sans(
+    TextStyle(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      color: color ?? AppColors.textPrimary,
+      height: 1.4,
+      fontStyle: style,
+    ),
+  );
+
   static TextStyle body14({Color? color, FontStyle? style}) => _sans(
     TextStyle(
       fontSize: 15,
