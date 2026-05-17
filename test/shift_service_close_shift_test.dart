@@ -115,6 +115,46 @@ ClosedShiftInput _sunDinner() => ClosedShiftInput(
       sourceShiftId: 'w13-sun-dinner-close',
     );
 
+// re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5):
+// lunch.applicable_days now spans all 7 days, so Sat/Sun lunch are
+// real projected slots that must be closed to reach the production
+// gate (Σ applicableDays = 7 lunch + 7 dinner + 2 late_night = 16).
+ClosedShiftInput _satLunch() => ClosedShiftInput(
+      businessDate: DateTime(2026, 3, 28),
+      weekId: '2026-W13',
+      dayLabel: 'Sat',
+      daypart: 'lunch',
+      covers: 132,
+      forecastCovers: 140,
+      actualSales: 5544.0,
+      actualFohHours: 31,
+      actualBohHours: 33,
+      scheduledFohHours: 30,
+      scheduledBohHours: 32,
+      actualFohLaborDollars: 539.0,
+      actualBohLaborDollars: 707.5,
+      sourceSystem: 'demo_pos',
+      sourceShiftId: 'w13-sat-lunch-close',
+    );
+
+ClosedShiftInput _sunLunch() => ClosedShiftInput(
+      businessDate: DateTime(2026, 3, 29),
+      weekId: '2026-W13',
+      dayLabel: 'Sun',
+      daypart: 'lunch',
+      covers: 118,
+      forecastCovers: 125,
+      actualSales: 4956.0,
+      actualFohHours: 28,
+      actualBohHours: 30,
+      scheduledFohHours: 27,
+      scheduledBohHours: 29,
+      actualFohLaborDollars: 487.0,
+      actualBohLaborDollars: 640.5,
+      sourceSystem: 'demo_pos',
+      sourceShiftId: 'w13-sun-lunch-close',
+    );
+
 // â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void main() {
@@ -136,9 +176,10 @@ void main() {
     // Close the shift
     await ShiftService.instance.closeShift(_friDinner());
 
-    // After: still 14 total rows
+    // After: still 16 total rows
+    // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5)
     final after = await DatabaseHelper.instance.getShiftsForWeek('2026-W13');
-    expect(after.length, 14);
+    expect(after.length, 16);
 
     // Exactly one Fri/dinner row
     final friDinnerAfter = after.where(
@@ -212,12 +253,16 @@ void main() {
 
   // â”€â”€ Test 2: completed week creates a WeekRecord â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  test('closing all 14 shifts creates a WeekRecord for the week', () async {
-    // Close the 5 remaining projected slots
+  test('closing all 16 shifts creates a WeekRecord for the week', () async {
+    // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5):
+    // close the 7 remaining projected slots (Fri/Sat/Sun across all
+    // applicable periods incl. the new weekend Lunch).
     await ShiftService.instance.closeShift(_friDinner());
     await ShiftService.instance.closeShift(_friLateNight());
+    await ShiftService.instance.closeShift(_satLunch());
     await ShiftService.instance.closeShift(_satDinner());
     await ShiftService.instance.closeShift(_satLateNight());
+    await ShiftService.instance.closeShift(_sunLunch());
     await ShiftService.instance.closeShift(_sunDinner());
 
     // Week history should now include 2026-W13
@@ -227,7 +272,7 @@ void main() {
 
     final record = w13.first;
     expect(record.weekLabel, 'Mar 24');
-    expect(record.shiftsCompleted, 14);
+    expect(record.shiftsCompleted, 16);
     // Slice B changed per-period seed covers; assert the WeekRecord's
     // forecastCovers equals Σ of the week's shift forecastCovers
     // (self-consistent) rather than the stale magic 1721.
@@ -244,8 +289,10 @@ void main() {
 
   // â”€â”€ Test 3: incomplete week does not create a WeekRecord â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  test('partial week (13 closed) does not create a WeekRecord', () async {
-    // Close only one of the five projected shifts
+  test('partial week (10 of 16 closed) does not create a WeekRecord',
+      () async {
+    // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5):
+    // close only one of the seven projected shifts (10 of 16 closed).
     await ShiftService.instance.closeShift(_friDinner());
 
     final history = await ShiftService.instance.getWeekHistory();
@@ -255,7 +302,7 @@ void main() {
 
   // â”€â”€ 7.55q.5: preserved locked plan hours from snapshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  test('7.55q.5: closing all 14 shifts preserves locked plan FOH/BOH hours from the snapshot in force',
+  test('7.55q.5: closing all 16 shifts preserves locked plan FOH/BOH hours from the snapshot in force',
       () async {
     // Ensure a WeeklyPlanSnapshot is persisted for the current week.
     // This path auto-generates from the live plan when none is
@@ -267,11 +314,14 @@ void main() {
         reason:
             'current-week snapshot should be generable from the live plan');
 
-    // Close the 5 remaining projected slots to complete the week.
+    // Close the 7 remaining projected slots to complete the week.
+    // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5)
     await ShiftService.instance.closeShift(_friDinner());
     await ShiftService.instance.closeShift(_friLateNight());
+    await ShiftService.instance.closeShift(_satLunch());
     await ShiftService.instance.closeShift(_satDinner());
     await ShiftService.instance.closeShift(_satLateNight());
+    await ShiftService.instance.closeShift(_sunLunch());
     await ShiftService.instance.closeShift(_sunDinner());
 
     // The WeekRecord should carry the snapshot's locked plan hours.
@@ -285,7 +335,7 @@ void main() {
     expect(w13.targetBohHours, snapshot.requiredBohHours);
   });
 
-  test('7.55q.5: closing all 14 shifts without a snapshot leaves preserved plan hours null (honest legacy)',
+  test('7.55q.5: closing all 16 shifts without a snapshot leaves preserved plan hours null (honest legacy)',
       () async {
     // Explicitly remove any snapshot that exists for the current week
     // so the close-time lookup finds nothing. Honest legacy path: the
@@ -294,10 +344,13 @@ void main() {
     final db = await SqliteDatabase.instance.database;
     await db.delete('weekly_plan_snapshots');
 
+    // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5)
     await ShiftService.instance.closeShift(_friDinner());
     await ShiftService.instance.closeShift(_friLateNight());
+    await ShiftService.instance.closeShift(_satLunch());
     await ShiftService.instance.closeShift(_satDinner());
     await ShiftService.instance.closeShift(_satLateNight());
+    await ShiftService.instance.closeShift(_sunLunch());
     await ShiftService.instance.closeShift(_sunDinner());
 
     final history = await ShiftService.instance.getWeekHistory();
@@ -357,7 +410,7 @@ void main() {
   // the historical 2-row + boilerplate-footer view.
 
   group('7.55q.10: frozen dollar impact windows at close', () {
-    test('all 14 closed -> WeekRecord carries month + 60-day + closedAt',
+    test('all 16 closed -> WeekRecord carries month + 60-day + closedAt',
         () async {
       final snapshot = await WeeklyPlanSnapshotService.instance
           .getCurrentWeekSnapshot();
@@ -366,10 +419,13 @@ void main() {
           .getCycleById(snapshot!.targetCycleId);
       expect(cycle, isNotNull);
 
+      // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5)
       await ShiftService.instance.closeShift(_friDinner());
       await ShiftService.instance.closeShift(_friLateNight());
+      await ShiftService.instance.closeShift(_satLunch());
       await ShiftService.instance.closeShift(_satDinner());
       await ShiftService.instance.closeShift(_satLateNight());
+      await ShiftService.instance.closeShift(_sunLunch());
       await ShiftService.instance.closeShift(_sunDinner());
 
       final history = await ShiftService.instance.getWeekHistory();
@@ -388,10 +444,13 @@ void main() {
     });
 
     test('frozenAnnualizedImpact uses the (365/60) trend formula', () async {
+      // re-pinned to weekend-Lunch 16-shift demo shape (commit c07330b5)
       await ShiftService.instance.closeShift(_friDinner());
       await ShiftService.instance.closeShift(_friLateNight());
+      await ShiftService.instance.closeShift(_satLunch());
       await ShiftService.instance.closeShift(_satDinner());
       await ShiftService.instance.closeShift(_satLateNight());
+      await ShiftService.instance.closeShift(_sunLunch());
       await ShiftService.instance.closeShift(_sunDinner());
 
       final history = await ShiftService.instance.getWeekHistory();
