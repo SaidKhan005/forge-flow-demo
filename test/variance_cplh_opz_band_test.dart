@@ -107,14 +107,18 @@ void main() {
     });
   });
 
-  group('OpzScaleGeometry — deterministic render geometry', () {
-    // The historical bug: the band mapped positions on `[livedMin,
-    // livedMax]`, so when the OPZ range was WIDER than the lived range
-    // the green box overflowed and clamped to the full rail. These
-    // assert via the pure geometry helper (no eyeballing the widget).
+  group('OpzScaleGeometry — Option 1 (rail = real lived range)', () {
+    // Operator-approved Option 1: domain = [livedMin, livedMax];
+    // pct(v) = clamp01((v-livedMin)/(livedMax-livedMin)). Lived ticks
+    // ARE the rail ends. OPZ box clamps to the rail; an extends-beyond
+    // cap signals the zone continues past the observed range. Honest
+    // labels: the box edge clamps but the OPZ label text stays the TRUE
+    // floor/ceiling. All asserted via the pure helper + a focused
+    // widget pump for the label-truth check (no eyeballing).
 
-    test('Case A — mockup-like, lived widest: box strictly interior', () {
-      // livedMin < opzFloor < opzCeiling < livedMax.
+    test('Case MOCKUP — OPZ inside lived: strictly interior, no caps, '
+        'true OPZ labels', () {
+      // livedMin(3.9) < opzFloor(4.70) < opzCeiling(5.00) < livedMax(5.3)
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [3.9, 4.2, 4.59, 5.3],
         opzFloor: 4.70,
@@ -124,25 +128,36 @@ void main() {
       expect(d.canRenderBand, isTrue);
       final g = OpzScaleGeometry.fromData(d);
 
-      // OPZ box is a strict interior sub-segment.
+      // Box is a strict interior sub-segment.
       expect(g.opzLeftPct, greaterThan(0.0));
       expect(g.opzRightPct, greaterThan(0.0));
       expect(g.opzWidthPct, lessThan(1.0));
       expect(g.opzLeftPct, lessThan(g.opzCeilingPct));
 
-      // Lived is the widest input: ticks land at ~0% / ~100% (the
-      // small symmetric domain pad keeps them just off the very edge,
-      // exactly like the mockup's left:0 / right:0 ends).
-      expect(g.livedMinPct, lessThan(0.10));
-      expect(g.livedMaxPct, greaterThan(0.90));
-      expect(g.livedMinPct, greaterThanOrEqualTo(0.0));
-      expect(g.livedMaxPct, lessThanOrEqualTo(1.0));
+      // The domain IS the lived range, so the ticks are exactly the
+      // rail ends (mockup `left:0` / `right:0`).
+      expect(g.livedMinPct, closeTo(0.0, 1e-9));
+      expect(g.livedMaxPct, closeTo(1.0, 1e-9));
+
+      // pct(opzFloor) = (4.70-3.9)/(5.3-3.9) = 0.8/1.4 ≈ 0.5714.
+      // pct(opzCeiling)=(5.00-3.9)/1.4 = 1.1/1.4 ≈ 0.7857.
+      expect(g.opzLeftPct, closeTo(0.5714, 1e-3));
+      expect(g.opzCeilingPct, closeTo(0.7857, 1e-3));
+
+      // No extends-beyond caps when the zone fits inside.
+      expect(g.leftCap, isFalse);
+      expect(g.rightCap, isFalse);
+
+      // OPZ labels are the TRUE floor/ceiling, not clamped positions.
+      expect(d.opzFloor, 4.70);
+      expect(d.opzCeiling, 5.00);
     });
 
-    test('Case B — real-data failing case: OPZ WIDER than lived; box is '
-        'a proper sub-segment, NOT full-width', () {
-      // The exact shape the operator hit: lived ~4.3-4.8, OPZ
-      // 4.01-4.93, now 4.57. OPZ span (0.92) > lived span (0.5).
+    testWidgets('Case REAL-DATA — OPZ wider both sides: box fills rail, '
+        'BOTH caps, ticks at ends, labels stay TRUE', (tester) async {
+      // The exact shape the operator hit: lived 4.3-4.8, OPZ
+      // 4.01-4.93, now 4.57. opzFloor < livedMin AND opzCeiling >
+      // livedMax.
       final d = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.3, 4.45, 4.57, 4.8],
         opzFloor: 4.01,
@@ -152,47 +167,69 @@ void main() {
       expect(d.canRenderBand, isTrue);
       final g = OpzScaleGeometry.fromData(d);
 
-      // The regression assertion: the box is a proper sub-segment, NOT
-      // the full rail. Both insets strictly positive, width < 1.
-      expect(g.opzLeftPct, greaterThan(0.0),
-          reason: 'OPZ box must not start at the rail left edge');
-      expect(g.opzRightPct, greaterThan(0.0),
-          reason: 'OPZ box must not reach the rail right edge');
-      expect(g.opzWidthPct, lessThan(1.0),
-          reason: 'OPZ box must NOT be full-width (the original bug)');
-      expect(g.opzWidthPct, greaterThan(0.0));
+      // The box clamps to BOTH rail edges (fills the rail).
+      expect(g.opzLeftPct, closeTo(0.0, 1e-9),
+          reason: 'opzFloor below livedMin clamps box to left edge');
+      expect(g.opzRightPct, closeTo(0.0, 1e-9),
+          reason: 'opzCeiling above livedMax clamps box to right edge');
+      expect(g.opzWidthPct, closeTo(1.0, 1e-9));
 
-      // OPZ is the widest input here, so the lived ticks are INSET
-      // (strictly inside the rail), not pinned to the ends.
-      expect(g.livedMinPct, greaterThan(0.0));
-      expect(g.livedMinPct, lessThan(1.0));
-      expect(g.livedMaxPct, greaterThan(g.livedMinPct));
-      expect(g.livedMaxPct, lessThan(1.0));
+      // BOTH extends-beyond caps present.
+      expect(g.leftCap, isTrue);
+      expect(g.rightCap, isTrue);
 
-      // Now (4.57) is strictly inside the OPZ box.
-      expect(g.nowPct, greaterThan(g.opzLeftPct));
-      expect(g.nowPct, lessThan(g.opzCeilingPct));
+      // Lived ticks sit at the very rail ends (domain == lived range).
+      expect(g.livedMinPct, closeTo(0.0, 1e-9));
+      expect(g.livedMaxPct, closeTo(1.0, 1e-9));
+
+      // now(4.57) interior: pct = (4.57-4.3)/(4.8-4.3) = 0.27/0.5 = 0.54.
+      expect(g.nowPct, closeTo(0.54, 1e-9));
+      expect(g.nowPct, greaterThan(0.0));
+      expect(g.nowPct, lessThan(1.0));
+
+      // HONEST LABELS even when the box clamps: the rendered .opzlab
+      // text is the TRUE OPZ floor/ceiling (4.01 / 4.93), NOT the
+      // clamped edge values (which would be the lived bounds 4.3/4.8).
+      await tester.pumpWidget(_wrap(CplhOpzBandCard(data: d)));
+      await tester.pump();
+      expect(find.text('OPZ 4.01'), findsOneWidget,
+          reason: 'floor label tells the truth though the box is clamped');
+      expect(find.text('4.93'), findsOneWidget,
+          reason: 'ceiling label tells the truth though the box is clamped');
+      expect(find.text('now 4.57'), findsOneWidget);
+      // The clamped-position numbers must NOT appear as OPZ labels.
+      expect(find.text('OPZ 4.30'), findsNothing);
+      expect(find.text('4.80'), findsNothing);
     });
 
-    test('Case C — now below opzFloor: now dot left of the OPZ box', () {
+    test('Case ONE-SIDE — only opzCeiling > livedMax: right cap only, '
+        'box left inset', () {
+      // livedMin(4.2) < opzFloor(4.40); opzCeiling(5.10) > livedMax(4.9).
       final d = CplhOpzBandData.fromInputs(
-        weeklyCplhSeries: const [3.6, 3.8, 3.9, 4.1],
-        opzFloor: 4.70,
-        opzCeiling: 5.00,
-        nowCplh: 3.7,
+        weeklyCplhSeries: const [4.2, 4.5, 4.7, 4.9],
+        opzFloor: 4.40,
+        opzCeiling: 5.10,
+        nowCplh: 4.6,
       );
       expect(d.canRenderBand, isTrue);
       final g = OpzScaleGeometry.fromData(d);
 
-      expect(g.nowPct, lessThan(g.opzLeftPct),
-          reason: 'now below the floor must sit left of the green box');
-      expect(g.nowPct, greaterThanOrEqualTo(0.0));
-      // Box still a proper sub-segment.
+      // Right cap present, left cap absent.
+      expect(g.rightCap, isTrue);
+      expect(g.leftCap, isFalse);
+
+      // Box left edge is strictly inset (floor inside the lived range):
+      // pct(4.40) = (4.40-4.2)/(4.9-4.2) = 0.2/0.7 ≈ 0.2857.
+      expect(g.opzLeftPct, greaterThan(0.0));
+      expect(g.opzLeftPct, closeTo(0.2857, 1e-3));
+      // Right clamps to the rail edge.
+      expect(g.opzRightPct, closeTo(0.0, 1e-9));
+      expect(g.opzCeilingPct, closeTo(1.0, 1e-9));
       expect(g.opzWidthPct, lessThan(1.0));
       expect(g.opzWidthPct, greaterThan(0.0));
     });
 
-    test('Case D — honest degraded: missing bounds, no band, no geometry',
+    test('Case DEGRADED — missing bounds/series: no band, no geometry',
         () {
       final missingBounds = CplhOpzBandData.fromInputs(
         weeklyCplhSeries: const [4.4, 4.5, 4.6],
