@@ -15,6 +15,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dart'
+    show BenchmarkVerdict;
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/services/baseline_authority_service.dart';
@@ -606,6 +608,184 @@ void main() {
       expect(find.text('whole-day est.'), findsOneWidget);
       // dinner's true per-period target still distinct from the pool.
       expect(find.text('4.77'), findsOneWidget);
+    });
+  });
+
+  // ── SC: per-period verdict badges + honest `not set` ────────────────
+  //
+  // Source of truth = the persisted `ActiveTargetProfileDaypart.verdict`
+  // (S0 field, populated by SB), read via `daypartFor`. No verdict is
+  // re-derived in the widget. Badge labels are the verbatim §9 strings.
+  group('SC — per-period verdict badges', () {
+    // Each period carries a different verdict so one badged row per
+    // servicePeriodDefinitions entry is asserted independently.
+    const mixedVerdictProfile = ActiveTargetProfile(
+      targetProfileId: 'pSC',
+      restaurantId: 'r',
+      sourceType: 'cycle_recommended',
+      targetCPLH: 4.50,
+      targetSPLH: 180.0,
+      targetPPA: 42.00,
+      fohWage: 17.0,
+      bohWage: 22.0,
+      opzFloorCPLH: 4.00,
+      opzCeilingCPLH: 5.00,
+      theoreticalFohLaborPct: 9.0,
+      theoreticalBohLaborPct: 12.0,
+      theoreticalLaborPct: 21.0,
+      builtAt: '2026-05-15T00:00:00Z',
+      dayparts: [
+        // teachable — real band, numbers shown.
+        ActiveTargetProfileDaypart(
+          servicePeriodId: 'lunch',
+          daypartTargetCPLH: 3.11,
+          daypartTargetSPLH: 161.0,
+          daypartTargetPPA: 38.10,
+          daypartOpzFloorCPLH: 2.90,
+          daypartOpzCeilingCPLH: 3.40,
+          verdict: BenchmarkVerdict.teachable,
+        ),
+        // building_flat — no band, structural 0s → must show `not set`.
+        ActiveTargetProfileDaypart(
+          servicePeriodId: 'dinner',
+          daypartTargetCPLH: 0,
+          daypartTargetSPLH: 0,
+          daypartTargetPPA: 0,
+          daypartOpzFloorCPLH: 0,
+          daypartOpzCeilingCPLH: 0,
+          verdict: BenchmarkVerdict.buildingFlat,
+        ),
+        // running_hot — real band, numbers shown, negative badge.
+        ActiveTargetProfileDaypart(
+          servicePeriodId: 'late_night',
+          daypartTargetCPLH: 5.66,
+          daypartTargetSPLH: 175.0,
+          daypartTargetPPA: 36.40,
+          daypartOpzFloorCPLH: 5.30,
+          daypartOpzCeilingCPLH: 6.00,
+          verdict: BenchmarkVerdict.runningHot,
+        ),
+      ],
+    );
+
+    testWidgets(
+        'one badged row per servicePeriodDefinitions entry, verbatim copy',
+        (tester) async {
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: _ranges,
+          profile: mixedVerdictProfile,
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+
+      // Verbatim §9 badge labels — one per period, no em-dash anywhere.
+      expect(find.text('GOOD OPZ RANGE'), findsOneWidget); // lunch
+      expect(find.text('RANGE BUILDING'), findsOneWidget); // dinner
+      expect(find.text('OPERATION RUNNING HOT'),
+          findsOneWidget); // late_night
+
+      // teachable + running_hot keep their honest numbers.
+      expect(find.text('3.11'), findsOneWidget);
+      expect(find.text('5.66'), findsOneWidget);
+
+      // building_flat: structural 0 target rendered as muted `not set`,
+      // never `0` / `0.00` (Design Rule 2). CPLH + SPLH + PPA + OPZ.
+      expect(find.text('not set'), findsNWidgets(4));
+      expect(find.text('0.00'), findsNothing);
+      expect(find.text('\$0'), findsNothing);
+    });
+
+    testWidgets('Gap 42 (daypartFor null) renders NO fabricated badge',
+        (tester) async {
+      // _emptyDaypartsProfile has zero per-period rows → every period
+      // hits the whole-day-pool fallback. No per-period verdict exists,
+      // so the table must not invent a badge (spec hazard 4).
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: _ranges,
+          profile: _emptyDaypartsProfile,
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+
+      expect(find.text('GOOD OPZ RANGE'), findsNothing);
+      expect(find.text('RANGE BUILDING'), findsNothing);
+      expect(find.text('NOT ENOUGH SHIFTS YET'), findsNothing);
+      expect(find.text('NOT ENOUGH STRONG SHIFTS'), findsNothing);
+      expect(find.text('OPERATION RUNNING HOT'), findsNothing);
+      // Honest whole-day pool stand-in still shown (the existing marker).
+      expect(find.text('whole-day est.'), findsNWidgets(3));
+      // Pool numbers (4.50) render — never a sentinel 0.
+      expect(find.text('4.50'), findsWidgets);
+      expect(find.text('0.00'), findsNothing);
+    });
+
+    testWidgets('building_few_strong + building_early verbatim labels',
+        (tester) async {
+      const p = ActiveTargetProfile(
+        targetProfileId: 'pSC2',
+        restaurantId: 'r',
+        sourceType: 'cycle_recommended',
+        targetCPLH: 4.50,
+        targetSPLH: 180.0,
+        targetPPA: 42.00,
+        fohWage: 17.0,
+        bohWage: 22.0,
+        opzFloorCPLH: 4.00,
+        opzCeilingCPLH: 5.00,
+        theoreticalFohLaborPct: 9.0,
+        theoreticalBohLaborPct: 12.0,
+        theoreticalLaborPct: 21.0,
+        builtAt: '2026-05-15T00:00:00Z',
+        dayparts: [
+          ActiveTargetProfileDaypart(
+            servicePeriodId: 'lunch',
+            daypartTargetCPLH: 0,
+            daypartTargetSPLH: 0,
+            daypartTargetPPA: 0,
+            daypartOpzFloorCPLH: 0,
+            daypartOpzCeilingCPLH: 0,
+            verdict: BenchmarkVerdict.buildingEarly,
+          ),
+          ActiveTargetProfileDaypart(
+            servicePeriodId: 'dinner',
+            daypartTargetCPLH: 0,
+            daypartTargetSPLH: 0,
+            daypartTargetPPA: 0,
+            daypartOpzFloorCPLH: 0,
+            daypartOpzCeilingCPLH: 0,
+            verdict: BenchmarkVerdict.buildingFewStrong,
+          ),
+          ActiveTargetProfileDaypart(
+            servicePeriodId: 'late_night',
+            daypartTargetCPLH: 5.66,
+            daypartTargetSPLH: 175.0,
+            daypartTargetPPA: 36.40,
+            daypartOpzFloorCPLH: 5.30,
+            daypartOpzCeilingCPLH: 6.00,
+            verdict: BenchmarkVerdict.teachable,
+          ),
+        ],
+      );
+      await _pump(
+        tester,
+        DaypartTable(
+          dayparts: _ranges,
+          profile: p,
+          servicePeriodDefinitions:
+              ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+      expect(find.text('NOT ENOUGH SHIFTS YET'), findsOneWidget);
+      expect(find.text('NOT ENOUGH STRONG SHIFTS'), findsOneWidget);
+      expect(find.text('GOOD OPZ RANGE'), findsOneWidget);
+      // Two not-teachable periods → 2 rows × 4 muted fields each.
+      expect(find.text('not set'), findsNWidgets(8));
     });
   });
 }

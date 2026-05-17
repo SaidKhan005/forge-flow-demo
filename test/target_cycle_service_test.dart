@@ -1508,6 +1508,47 @@ void main() {
       expect(s.overallQuality, isNot('insufficient'));
     });
 
+    test('SC — Learn-chip label and graph badge derive from the SAME '
+        'verdict (no contradiction, Bug #6/#8)', () async {
+      // Write a recommended cycle for the demo restaurant. SA's reseed
+      // makes the demo data teachable, so:
+      //   - the persisted summary's rangeQualityLabel (the Learn-chip
+      //     source, SB `_recommendationAnalytics`) and
+      //   - the Benchmark-graph badge (SC, BaselineData.rangeGraphModel)
+      // must both reflect the SAME single-source operation verdict that
+      // SB carried onto the signal.
+      final cycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+
+      final signals = BaselineData.recommendationSignals;
+      expect(signals, isNotNull);
+      // SC: the verdict is now carried on the signal (single source).
+      expect(signals!.verdict, isNotNull,
+          reason: 'SB rollup verdict must ride on the signal for SC');
+
+      final summary = await SqliteBenchmarkSelectionSummaryRepository
+          .instance
+          .getByTargetCycleId(cycle.cycleId);
+      expect(summary, isNotNull);
+
+      final badge = BaselineData.rangeGraphModel.statusBadgeLabel;
+      final chip = summary!.rangeQualityLabel;
+
+      // For the teachable demo: graph badge is the approved GOOD copy
+      // and the chip is the GOOD-family label — they cannot contradict
+      // because both are derived from `signals.verdict`.
+      if (signals.verdict == BenchmarkVerdict.teachable) {
+        expect(badge, 'GOOD OPZ RANGE');
+        expect(chip, 'GOOD OPZ RANGE');
+      } else {
+        // Any non-teachable verdict: the badge is a not-good state and
+        // the chip is NOT the GOOD label — still consistent, never a
+        // GOOD chip next to a degenerate badge (the old Bug #6/#8).
+        expect(badge, isNot('GOOD OPZ RANGE'));
+        expect(chip, isNot('GOOD OPZ RANGE'));
+      }
+    });
+
     test('hydration for an unknown restaurant (no cycle) clears signals',
         () async {
       // Seed some signals so we can observe the clear.

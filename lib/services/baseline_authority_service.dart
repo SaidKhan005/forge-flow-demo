@@ -34,6 +34,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../domain/constants/app_defaults.dart';
+import '../domain/models/recommended_benchmark_selection.dart'
+    show BenchmarkVerdict;
 import 'labor_model.dart';
 
 // ─── OPZ validation result ────────────────────────────────────────────────────
@@ -712,78 +714,129 @@ class BaselineData {
       isDegenerate:            honesty.isDegenerate,
       degenerateFallbackMessage: honesty.fallbackMessage,
       statusBadgeLabel:        honesty.badgeLabel,
+      buttonEmphasis:          honesty.buttonEmphasis,
+      perPeriodRollupLine:     perPeriodRollupLine,
     );
   }
 
   /// Resolves the Benchmark graph's honest explainer state.
   ///
+  /// Per-Daypart Targets V1 (SC): the recommendation path is now a single
+  /// verdict-driven mapping. The verdict is the persisted/emitted truth
+  /// SB carried onto `BaselineRecommendationSignals.verdict` (rolled up
+  /// from the per-period verdicts without cross-daypart poisoning). SC
+  /// does NOT recompute it from `overallQuality` or the cross-daypart
+  /// union — those collapse the five verdicts and would re-introduce the
+  /// misleading "RANGE TOO WIDE TO TEACH" / "let more shifts close … will
+  /// settle" copy that the spec explicitly removes.
+  ///
   /// Manager-override branch always defers to the existing
   /// `baselineRangeValidation` derivation so manager-selected behavior is
-  /// bit-for-bit preserved.
+  /// bit-for-bit preserved; only its operator copy is the approved
+  /// "YOUR CHOSEN SHIFTS" string.
   static _BaselineGraphHonesty _resolveGraphHonesty() {
-    // 1. Manager override → existing derivation wins.
+    // 1. Manager override → existing derivation wins for tier/geometry;
+    //    the operator-facing copy is the approved hand-picked string.
     if (hasManagerOverride) {
       final v = baselineRangeValidation;
       return _BaselineGraphHonesty(
         tier: v.status,
         isDegenerate: v.showWarning,
-        badgeLabel: v.statusLabel,
-        explanation: v.message,
+        badgeLabel: 'YOUR CHOSEN SHIFTS',
+        explanation:
+            'You are coaching to a hand-picked set of shifts. Make sure '
+            'they represent good shifts.',
         fallbackMessage: null,
+        buttonEmphasis: BaselineGraphButtonEmphasis.solid,
       );
     }
 
-    // 2. Recommendation signals drive honest recommendation-path copy.
+    // 2. Recommendation signals drive honest recommendation-path copy,
+    //    keyed off the single-source verdict (SB). The per-period rollup
+    //    line is appended below the primary explainer so the operator
+    //    knows each period is graded on its own.
     final signals = _runtimeRecommendationSignals;
     if (signals != null) {
-      switch (signals.overallQuality) {
-        case 'insufficient':
-          return const _BaselineGraphHonesty(
-            tier: 'insufficient',
-            isDegenerate: true,
-            badgeLabel: 'RANGE UNCONFIRMED',
-            explanation:
-                'Not enough recent shifts yet to set a reliable '
-                'benchmark range.',
-            fallbackMessage:
-                'For now this is a placeholder range until more shift '
-                'history builds.',
-          );
-        case 'weak':
-          if (signals.unionBandWidth > _unionBandWideThresholdCPLH) {
-            return const _BaselineGraphHonesty(
-              tier: 'weak',
-              isDegenerate: true,
-              badgeLabel: 'RANGE TOO WIDE TO TEACH',
-              explanation:
-                  'Lunch, dinner, and late night are behaving '
-                  'differently. This needs daypart-specific coaching.',
-              fallbackMessage:
-                  'Use this as a broad guide for now, not one standard '
-                  'for every period.',
-            );
-          }
-          return const _BaselineGraphHonesty(
-            tier: 'weak',
-            isDegenerate: true,
-            badgeLabel: 'RANGE UNCERTAIN',
-            explanation:
-                'We do not have a clean operating range yet. Let more '
-                'shifts close before coaching to this.',
-            fallbackMessage:
-                'As more shifts close, the benchmark will settle into a '
-                'clearer working range.',
-          );
-        case 'adequate':
-        case 'strong':
-        default:
+      switch (signals.verdict) {
+        case BenchmarkVerdict.teachable:
           return const _BaselineGraphHonesty(
             tier: 'good',
             isDegenerate: false,
             badgeLabel: 'GOOD OPZ RANGE',
             explanation:
-                'Team looks busy without getting stretched. Service should hold here.',
+                'Covers, sales per hour and spend were all strong '
+                'together on this range.',
+            fallbackMessage: 'Coach the team to this number.',
+            buttonEmphasis: BaselineGraphButtonEmphasis.solid,
+          );
+        case BenchmarkVerdict.buildingEarly:
+          return const _BaselineGraphHonesty(
+            tier: 'building',
+            isDegenerate: true,
+            badgeLabel: 'NOT ENOUGH SHIFTS YET',
+            explanation:
+                'We need more closed shifts before we can set a number '
+                'you can coach to.',
+            fallbackMessage:
+                'Keep running the period as usual. We are just watching '
+                'for now.',
+            buttonEmphasis: BaselineGraphButtonEmphasis.deemphasized,
+          );
+        case BenchmarkVerdict.buildingFlat:
+          return const _BaselineGraphHonesty(
+            tier: 'building',
+            isDegenerate: true,
+            badgeLabel: 'RANGE BUILDING',
+            explanation:
+                'There is not enough real variation between shifts yet '
+                'to define a band.',
+            fallbackMessage:
+                'For now, pick the shifts that felt best for team '
+                'productivity by hand while we keep building.',
+            buttonEmphasis: BaselineGraphButtonEmphasis.solid,
+          );
+        case BenchmarkVerdict.buildingFewStrong:
+          return const _BaselineGraphHonesty(
+            tier: 'building',
+            isDegenerate: true,
+            badgeLabel: 'NOT ENOUGH STRONG SHIFTS',
+            explanation:
+                'Only a handful of shifts had covers, sales per hour and '
+                'spend all strong together. We need more before coaching '
+                'to a number.',
+            fallbackMessage:
+                'For now, pick the shifts where the floor felt good, '
+                'ticket times stayed clean and checks held. Those are '
+                'the ones we need more of.',
+            buttonEmphasis: BaselineGraphButtonEmphasis.solid,
+          );
+        case BenchmarkVerdict.runningHot:
+          return const _BaselineGraphHonesty(
+            tier: 'running_hot',
+            isDegenerate: true,
+            badgeLabel: 'OPERATION RUNNING HOT',
+            explanation:
+                'Your best shifts show the team running hot: high covers '
+                'per hour, weaker spend and labor. Fix the staffing '
+                'pressure before holding the team to this.',
             fallbackMessage: null,
+            buttonEmphasis: BaselineGraphButtonEmphasis.solid,
+          );
+        default:
+          // No verdict (legacy / insufficient writes that predate a
+          // verdict). Honest "not enough shifts yet" — never a fake
+          // point target, never the old "will settle" promise.
+          return const _BaselineGraphHonesty(
+            tier: 'building',
+            isDegenerate: true,
+            badgeLabel: 'NOT ENOUGH SHIFTS YET',
+            explanation:
+                'We need more closed shifts before we can set a number '
+                'you can coach to.',
+            fallbackMessage:
+                'Keep running the period as usual. We are just watching '
+                'for now.',
+            buttonEmphasis: BaselineGraphButtonEmphasis.deemphasized,
           );
       }
     }
@@ -796,29 +849,43 @@ class BaselineData {
       badgeLabel: v.statusLabel,
       explanation: v.message,
       fallbackMessage: null,
+      buttonEmphasis: BaselineGraphButtonEmphasis.solid,
     );
   }
 
-  /// Matches the 7.55p.5f / 7.55p.5g "union full-width adequate cap" so
-  /// the graph cue stays consistent with the recommendation-service threshold
-  /// (see `RecommendedSelectionConfig.unionAdequateCap` and the per-daypart
-  /// TOO WIDE threshold from `baselineRangeValidation`).
-  static const double _unionBandWideThresholdCPLH = 1.25;
+  /// Per-period rollup line (Scenario 7). Rendered above the DAYPART
+  /// BREAKDOWN so the operator understands each period is graded on its
+  /// own and one not-ready period does not hold the others back.
+  static const String perPeriodRollupLine =
+      'Each period is graded on its own. Coach to the periods marked '
+      'ready; leave the others until they settle. One period not being '
+      'ready does not hold back the others.';
 }
 
-/// Internal honest-explainer state for the Benchmark graph (7.55p.5h).
+/// How the Benchmark graph's CHOOSE STAR SHIFTS CTA should be drawn for
+/// the current honest state. `building_early` (and the no-verdict
+/// legacy fallback) de-emphasize it because the copy steers the
+/// operator to keep running the period, not to hand-pick yet; every
+/// other state keeps it solid because the copy actively steers to a
+/// manual pick or the recommended number stands.
+enum BaselineGraphButtonEmphasis { solid, deemphasized }
+
+/// Internal honest-explainer state for the Benchmark graph (7.55p.5h;
+/// SC verdict-driven copy + button policy).
 class _BaselineGraphHonesty {
   final String tier;
   final bool isDegenerate;
   final String badgeLabel;
   final String explanation;
   final String? fallbackMessage;
+  final BaselineGraphButtonEmphasis buttonEmphasis;
   const _BaselineGraphHonesty({
     required this.tier,
     required this.isDegenerate,
     required this.badgeLabel,
     required this.explanation,
     required this.fallbackMessage,
+    required this.buttonEmphasis,
   });
 }
 
@@ -863,6 +930,21 @@ class BaselineRecommendationSignals {
   /// Config Default as appropriate.
   final double targetCPLH;
 
+  /// Per-Daypart Targets V1 (SC): the operation-level verdict the
+  /// selection engine emitted (SB's `RecommendedBenchmarkSelection.
+  /// operationVerdict`, itself the no-poisoning rollup of the persisted
+  /// per-period verdicts). One of [BenchmarkVerdict.all], or `null` for
+  /// legacy / insufficient writes that predate a verdict.
+  ///
+  /// This is the SINGLE source of truth the Benchmark-graph honest copy
+  /// branches on. SC does NOT recompute it from [overallQuality] or the
+  /// cross-daypart union — both collapse the five verdicts into three
+  /// quality buckets, losing the `building_*` distinction the operator
+  /// copy needs. The Learn-chip label
+  /// (`TargetCycleService._recommendationAnalytics`) reads the same
+  /// verdict, so chip and badge cannot contradict each other.
+  final String? verdict;
+
   const BaselineRecommendationSignals({
     required this.sourceType,
     required this.overallQuality,
@@ -871,6 +953,7 @@ class BaselineRecommendationSignals {
     required this.rangeFloorCPLH,
     required this.rangeCeilingCPLH,
     required this.targetCPLH,
+    this.verdict,
   });
 }
 
@@ -931,6 +1014,18 @@ class BaselineRangeGraphModel {
   /// signals are active.
   final String statusBadgeLabel;
 
+  /// Per-Daypart Targets V1 (SC): how the CHOOSE STAR SHIFTS CTA should
+  /// be drawn for the current honest state. `building_early`
+  /// de-emphasizes it (the copy steers to keep running, not hand-pick);
+  /// every other state keeps it solid.
+  final BaselineGraphButtonEmphasis buttonEmphasis;
+
+  /// Per-Daypart Targets V1 (SC, Scenario 7): the per-period rollup line
+  /// rendered above the DAYPART BREAKDOWN so the operator understands
+  /// each period is graded independently. Constant copy; carried on the
+  /// model so the widget never re-authors operator strings.
+  final String perPeriodRollupLine;
+
   const BaselineRangeGraphModel({
     required this.historicalRangeStartCPLH,
     required this.historicalRangeEndCPLH,
@@ -954,5 +1049,7 @@ class BaselineRangeGraphModel {
     required this.isDegenerate,
     required this.degenerateFallbackMessage,
     required this.statusBadgeLabel,
+    this.buttonEmphasis = BaselineGraphButtonEmphasis.solid,
+    this.perPeriodRollupLine = '',
   });
 }

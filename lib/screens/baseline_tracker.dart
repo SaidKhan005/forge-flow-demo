@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../state/active_target_profile_notifier.dart';
 import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
+import '../services/baseline_authority_service.dart'
+    show BaselineRangeGraphModel, BaselineGraphButtonEmphasis;
 import '../domain/constants/app_defaults.dart';
 import '../dev/demo_fixture_data.dart';
 import '../domain/models/active_target_profile.dart';
@@ -129,6 +131,16 @@ class _BaselineTrackerState extends State<BaselineTracker> {
                   delegate:
                       StickySectionDelegate('DAYPART TARGET BREAKDOWNS'),
                 ),
+                // Per-Daypart Targets V1 (SC, Scenario 7): the rollup
+                // line above the breakdown so the operator understands
+                // each period is graded independently and one not-ready
+                // period does not hold back the others. Copy is carried
+                // on the model — never re-authored in the widget.
+                SliverToBoxAdapter(
+                  child: _PerPeriodRollupLine(
+                    text: view.rangeGraphModel.perPeriodRollupLine,
+                  ),
+                ),
                 SliverToBoxAdapter(
                   child: DaypartTable(
                     dayparts: view.daypartRanges,
@@ -202,6 +214,28 @@ class _OverrideBanner extends StatelessWidget {
   }
 }
 
+/// Per-Daypart Targets V1 (SC, Scenario 7) — the per-period grading
+/// rollup line shown above the DAYPART TARGET BREAKDOWNS. Reads its copy
+/// verbatim from [BaselineRangeGraphModel.perPeriodRollupLine] (model-
+/// owned, never re-authored here). Renders nothing when the line is
+/// empty (legacy/no-signal paths) so it never adds dead chrome.
+class _PerPeriodRollupLine extends StatelessWidget {
+  final String text;
+  const _PerPeriodRollupLine({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      child: Text(
+        text,
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
 // _SummaryCards removed — TOTAL COVERS LAST 60 DAYS is now surfaced in
 // the screen header bottom slot via AppHeaderStat instead of in a
 // dedicated card. Same data, single source of truth in the UI.
@@ -217,14 +251,27 @@ class _CplhRangeBar extends StatelessWidget {
     // `isDegenerate` flag + normalized `qualityTier`. `isDegenerate` is
     // the single truth signal for whether the graph should teach
     // precision.
-    final badgeColor =
-        graph.isDegenerate ? AppColors.warning : AppColors.positive;
+    //
+    // Per-Daypart Targets V1 (SC): the `running_hot` verdict is a real,
+    // drawable band but an unhealthy one — it gets the negative-red
+    // badge (and a negative-red target tick) so the operator reads it as
+    // a warning, not a build-up. Other degenerate states keep the warn
+    // amber. Mirrors the existing warn/positive badge construction; no
+    // new layout.
+    final bool isRunningHot = graph.qualityTier == 'running_hot';
+    final Color badgeColor = isRunningHot
+        ? AppColors.negative
+        : (graph.isDegenerate ? AppColors.warning : AppColors.positive);
+    final Color targetTickColor =
+        isRunningHot ? AppColors.negative : AppColors.sunset;
     final innerBoxColor = graph.isDegenerate
         ? AppColors.shimmer.withValues(alpha: 0.35)
         : AppColors.shimmer;
-    final innerBoxBorder = graph.isDegenerate
-        ? AppColors.warning.withValues(alpha: 0.55)
-        : AppColors.borderSubtle;
+    final innerBoxBorder = isRunningHot
+        ? AppColors.negative.withValues(alpha: 0.55)
+        : (graph.isDegenerate
+            ? AppColors.warning.withValues(alpha: 0.55)
+            : AppColors.borderSubtle);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -380,14 +427,16 @@ class _CplhRangeBar extends StatelessWidget {
                       ),
                     ),
 
-                    // Target tick — dominant; 4px teal, crosses through range box
+                    // Target tick — dominant; 4px, crosses through range
+                    // box. Negative red when the operation is running
+                    // hot (SC) so the unhealthy band reads as a warning.
                     Positioned(
                       left: targetPos - 2.0,
                       top: lineY - tickUp,
                       child: Container(
                         width: 4,
                         height: tickH,
-                        color: AppColors.sunset,
+                        color: targetTickColor,
                       ),
                     ),
 
@@ -459,45 +508,63 @@ class _CplhRangeBar extends StatelessWidget {
           ),
           const SizedBox(height: 14),
 
-          // Manager override CTA — taps into BaselineManagerScreen
-          GestureDetector(
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => const BaselineManagerScreen(),
+          // Manager override CTA — taps into BaselineManagerScreen.
+          //
+          // Per-Daypart Targets V1 (SC) button policy: when the honest
+          // state is `building_early` (no shifts to hand-pick yet — the
+          // copy steers the operator to keep running the period) the CTA
+          // is de-emphasized to a ghost outline so it does not compete
+          // with that guidance. Every other state keeps the solid fill
+          // (the copy actively steers to a manual pick, or the
+          // recommended number stands).
+          Builder(builder: (context) {
+            final bool ghost = graph.buttonEmphasis ==
+                BaselineGraphButtonEmphasis.deemphasized;
+            final Color fg = ghost
+                ? AppColors.sunset
+                : AppColors.backgroundDeep;
+            return GestureDetector(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const BaselineManagerScreen(),
+                ),
               ),
-            ),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              decoration: BoxDecoration(
-                color: AppColors.sunset,
-                border: Border.all(color: AppColors.sunsetDark, width: 1),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    size: 18,
-                    color: AppColors.backgroundDeep,
+              child: Container(
+                width: double.infinity,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                decoration: BoxDecoration(
+                  color: ghost ? Colors.transparent : AppColors.sunset,
+                  border: Border.all(
+                    color: ghost ? AppColors.sunset : AppColors.sunsetDark,
+                    width: 1,
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      graph.overrideLabel,
-                      style: AppTextStyles.mono12(
-                          color: AppColors.backgroundDeep,
-                          weight: FontWeight.w700),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.star_rounded,
+                      size: 18,
+                      color: fg,
                     ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right,
-                    size: 20,
-                    color: AppColors.backgroundDeep,
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        graph.overrideLabel,
+                        style: AppTextStyles.mono12(
+                            color: fg, weight: FontWeight.w700),
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      size: 20,
+                      color: fg,
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ),
+            );
+          }),
         ],
       ),
     );
