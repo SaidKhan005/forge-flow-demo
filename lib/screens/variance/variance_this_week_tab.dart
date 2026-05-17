@@ -11,7 +11,10 @@ import 'package:provider/provider.dart';
 
 import '../../state/active_target_profile_notifier.dart';
 import '../../domain/constants/app_defaults.dart';
+import '../../domain/services/variance_empty_state_resolver.dart';
+import '../../services/business_date_authority_service.dart';
 import '../../services/labor_model.dart';
+import '../../services/restaurant_scope_service.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/shift_data_source.dart';
 import '../../state/week_data_notifier.dart';
@@ -31,8 +34,52 @@ import '../../widgets/variance/driver_arrow_chain.dart';
 import '../../widgets/variance/sticky_disclosure_section.dart';
 import '../../widgets/sticky_section_delegate.dart';
 
+/// Genuine no-data / empty copy. Honest sentinel, unchanged from the
+/// pre-existing empty state.
+const String kVarianceNoDataEmptyCopy = 'No closed shifts yet.';
+
+/// First-day-of-business-week copy. Reassures the operator that an empty
+/// "This Week" tab on the week's first day is normal, not a failure.
+/// No em dash (U+2014): the clauses are joined with full stops, and the
+/// label uses a comma. Honest: no fabricated data.
+const String kVarianceWeekStartEmptyCopy =
+    'New week, nothing closed yet. Check back after the first shift closes.';
+
+/// Resolves which empty-state copy to show when the shared `WeekData` is
+/// null. Reads the SAME real business-date + week-start config the app and
+/// seed already use; no weekday literal is hardcoded.
+///
+/// Returns [VarianceEmptyStateKind.noData] on any failure (honest default),
+/// so an unavailable scope/config/date never masks a genuine empty state.
+typedef VarianceEmptyStateClassifier
+    = Future<VarianceEmptyStateKind> Function();
+
+Future<VarianceEmptyStateKind> _resolveVarianceEmptyStateKind() async {
+  try {
+    final restaurantId =
+        await RestaurantScopeService.instance.getActiveRestaurantId();
+    final currentBusinessDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
+    final config = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
+    return VarianceEmptyStateResolver.classify(
+      currentBusinessDate: currentBusinessDate,
+      weekStartDay: config?.weekStartDay,
+    );
+  } catch (_) {
+    // Honest fallback: any resolution failure renders the genuine
+    // no-data copy rather than fabricating a "new week" reassurance.
+    return VarianceEmptyStateKind.noData;
+  }
+}
+
 class ThisWeekTab extends StatelessWidget {
-  const ThisWeekTab({super.key});
+  const ThisWeekTab({super.key, this.emptyStateClassifier});
+
+  /// Injectable for tests: lets a widget test exercise both empty-state
+  /// branches without standing up SQLite. Production passes null and the
+  /// real config-driven classifier is used.
+  final VarianceEmptyStateClassifier? emptyStateClassifier;
 
   @override
   Widget build(BuildContext context) {
@@ -45,14 +92,44 @@ class ThisWeekTab extends StatelessWidget {
         }
         final weekData = notifier.weekData;
         if (weekData == null) {
-          return Center(
-            child: Text(
-              'No closed shifts yet.',
-              style: AppTextStyles.body13(color: AppColors.textMuted),
-            ),
+          return _ThisWeekEmptyState(
+            classifier:
+                emptyStateClassifier ?? _resolveVarianceEmptyStateKind,
           );
         }
         return _ThisWeekContent(weekData: weekData);
+      },
+    );
+  }
+}
+
+/// Empty-state body. The `weekData == null` gate is unchanged — this
+/// widget only branches the *displayed message* based on a read of the
+/// existing business-date / week-start config. While the classifier
+/// resolves it shows the honest no-data copy (no fabricated reassurance),
+/// then upgrades to the "new week" copy only if the current business date
+/// is the configured first day of the business week.
+class _ThisWeekEmptyState extends StatelessWidget {
+  const _ThisWeekEmptyState({required this.classifier});
+
+  final VarianceEmptyStateClassifier classifier;
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<VarianceEmptyStateKind>(
+      future: classifier(),
+      builder: (context, snapshot) {
+        final kind = snapshot.data ?? VarianceEmptyStateKind.noData;
+        final copy = kind == VarianceEmptyStateKind.weekStart
+            ? kVarianceWeekStartEmptyCopy
+            : kVarianceNoDataEmptyCopy;
+        return Center(
+          child: Text(
+            copy,
+            textAlign: TextAlign.center,
+            style: AppTextStyles.body13(color: AppColors.textMuted),
+          ),
+        );
       },
     );
   }
