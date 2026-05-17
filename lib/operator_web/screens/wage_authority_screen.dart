@@ -34,6 +34,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../auth/permission_keys.dart';
 import '../../domain/models/wage_role_row_record.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
@@ -46,9 +47,12 @@ import 'wage_authority/wage_vendor_applicability_label.dart';
 /// Roles admitted to write wage rows. Mirrors `kOperatorWriteRoles` in
 /// `tool/advisor_proxy/operator_routes.dart` so the UI gate matches the
 /// proxy gate.
+// G7d (spec §2.B/§3): v2 catalog constant. Phantom
+// `'operator_admin'` dropped (folded into `operator_owner`).
+// Live-path neutral — the proxy gate is authoritative; this is
+// the empty-snapshot (demo + boot) UI fallback only.
 const Set<String> _kOperatorWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Bucket order rendered in the screen. Wire values match the

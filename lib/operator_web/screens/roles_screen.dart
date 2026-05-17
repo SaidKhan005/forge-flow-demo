@@ -42,18 +42,23 @@ import 'permission_explainer_screen.dart';
 /// `team.roles.view` gate the proxy enforces. Floor managers
 /// (`location_manager`) get read-only roles per the parity contract
 /// § Permission gate cheat sheet.
+///
+/// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+/// `'operator_admin'` dropped (folded into `operator_owner`); v1
+/// soft-deleted `'operator_manager'` → `roleOperatorGeneralManager`
+/// (map, don't drop). `location_manager` kept (REAL v2 role).
 const Set<String> kOperatorWebRolesAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleLocationManager,
 };
 
 /// Role-tier fallback for the create / edit / delete actions.
 /// Authoritative gate is `team.roles.create_custom`.
+///
+/// G7d (spec §2.B/§3): phantom `'operator_admin'` dropped.
 const Set<String> kOperatorWebRolesWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Permission-key bound for the read surface. Aliased to the frozen

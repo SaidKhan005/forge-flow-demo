@@ -76,9 +76,14 @@ import '../../theme/app_theme.dart';
 /// `operator_admin` and `operator_owner`; denied to
 /// `location_manager` (read-only role, no integration mutate
 /// access).
+///
+/// G7d (spec §2.B/§3): v2 catalog constant. Phantom
+/// `'operator_admin'` dropped (folded into `operator_owner`).
+/// Live-path neutral — the snapshot permission key is
+/// authoritative for real sessions; this is the empty-snapshot
+/// (demo + boot) fallback only.
 const Set<String> kOperatorWebVendorConnectionsAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Operator Web Console Vendor Connections screen. Lives behind

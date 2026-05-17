@@ -600,33 +600,84 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
     AccountInfo account,
     OperatorWebPermissionSnapshot snapshot,
   ) {
+    // G7d (spec §2.B/§3, 2026-05-16): re-based on the v2 default role
+    // catalog (`202605150000_phase_r2l_default_role_catalog_v2.sql`).
+    //
+    // Operator decision: live `roleLabels` provenance is
+    // `roles.display_name` (`users_repository.dart:366,458`), so post-v2
+    // labels are the v2 *display names*. There is NO raw v1 role-key
+    // label and NO v1→v2 label-translation table — we normalize the v2
+    // display names directly to their `PermissionKeys.role*` constants.
+    //
+    // Removed vs the v1 shape:
+    //   * the phantom `'operator_admin'` synthesis branch (never seeded
+    //     in v1 or v2; folded into `operator_owner` per the resolved
+    //     `operator_admin` verdict);
+    //   * the `integrations.configure → operator_owner` inflation
+    //     (behavior-neutral on the live path — real users carry the
+    //     hydrated permission snapshot so the per-screen
+    //     `PermissionKeys.*` gates + `_hasConsoleAccess` permission
+    //     fallback decide; the empty-snapshot demo/boot path now
+    //     fails closed for the removed `operator_admin` collision,
+    //     which is the operator-accepted, safer behavior).
+    //
+    // `location_manager` is a REAL v2 role and is KEPT (mapped to
+    // `PermissionKeys.roleLocationManager`).
     final roles = <String>{};
     for (final label in account.roleLabels) {
       final normalized = label.toLowerCase().replaceAll(
         RegExp(r'[^a-z0-9]+'),
         '_',
       );
-      if (normalized.contains('operator_owner') ||
-          normalized == 'owner' ||
-          normalized.endsWith('_owner')) {
-        roles.add('operator_owner');
+      // v2 display name: 'F&F Support' → 'f_f_support'.
+      if (normalized.contains('f_f_support') ||
+          normalized.contains('ff_support')) {
+        roles.add(PermissionKeys.roleFfSupport);
       }
-      if (normalized.contains('operator_admin') ||
-          normalized == 'admin' ||
-          normalized.endsWith('_admin')) {
-        roles.add('operator_admin');
+      // v2 display name: 'Owner'.
+      if (normalized == 'owner' ||
+          normalized.endsWith('_owner') ||
+          normalized.contains('operator_owner')) {
+        roles.add(PermissionKeys.roleOperatorOwner);
       }
-      if (normalized.contains('operator_manager') ||
-          normalized == 'manager' ||
-          normalized.endsWith('_manager')) {
-        roles.add('operator_manager');
+      // v2 display name: 'General Manager' (v1 soft-deleted
+      // `operator_manager` → `operator_general_manager` per spec §3).
+      if (normalized.contains('general_manager') ||
+          normalized.contains('operator_general_manager') ||
+          normalized.contains('operator_manager') ||
+          normalized == 'manager') {
+        roles.add(PermissionKeys.roleOperatorGeneralManager);
       }
+      // v2 display name: 'Location Manager' (REAL v2 role — keep).
       if (normalized.contains('location_manager')) {
-        roles.add('location_manager');
+        roles.add(PermissionKeys.roleLocationManager);
       }
-    }
-    if (snapshot.allows(PermissionKeys.integrationsConfigure)) {
-      roles.add('operator_owner');
+      // v2 display name: 'Supervisor' (v1 soft-deleted
+      // `operator_supervisor`/`operator_staff` → `supervisor`).
+      if (normalized == 'supervisor' ||
+          normalized.endsWith('_supervisor') ||
+          normalized.contains('operator_supervisor') ||
+          normalized.contains('operator_staff')) {
+        roles.add(PermissionKeys.roleSupervisor);
+      }
+      // v2 display name: 'Finance Analyst'.
+      if (normalized.contains('finance_analyst')) {
+        roles.add(PermissionKeys.roleFinanceAnalyst);
+      }
+      // v2 display name: 'Auditor / Compliance' → 'auditor_compliance'.
+      if (normalized.contains('auditor') ||
+          normalized.contains('compliance')) {
+        roles.add(PermissionKeys.roleAuditorCompliance);
+      }
+      // v2 display name: 'Training Lead'.
+      if (normalized.contains('training_lead')) {
+        roles.add(PermissionKeys.roleTrainingLead);
+      }
+      // v2 display name: 'Team Admin' (distinct from the removed
+      // phantom `operator_admin` — this is the seeded v2 `team_admin`).
+      if (normalized.contains('team_admin')) {
+        roles.add(PermissionKeys.roleTeamAdmin);
+      }
     }
     if (roles.isEmpty &&
         snapshot.allowedPermissions.any(
@@ -637,7 +688,9 @@ class FirebaseOperatorWebAuthSource extends OperatorWebAccountActions
             PermissionKeys.integrationsConfigure,
           }.contains,
         )) {
-      roles.add('operator_manager');
+      // Empty-label fallback: emit the v2 General Manager constant
+      // (v1 `operator_manager` → `operator_general_manager`, spec §3).
+      roles.add(PermissionKeys.roleOperatorGeneralManager);
     }
     return roles.toList(growable: false);
   }

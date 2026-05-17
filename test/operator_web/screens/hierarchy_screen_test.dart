@@ -166,10 +166,13 @@ void main() {
       );
     });
 
-    testWidgets('operator_supervisor renders read-only (no add-child or '
+    testWidgets('supervisor renders read-only (no add-child or '
         'move buttons but tree still expands)', (tester) async {
+      // G7d (spec §3): v1 operator_supervisor → v2 `supervisor`.
+      // The Hierarchy admit set now carries `roleSupervisor`; the
+      // read-only intent is preserved (not in the write set).
       await sizeViewport(tester, const Size(1280, 1200));
-      await pumpScreen(tester, session: sessionWithRole('operator_supervisor'));
+      await pumpScreen(tester, session: sessionWithRole('supervisor'));
 
       expect(
         find.byKey(const Key('operator_web_hierarchy_readonly_notice')),

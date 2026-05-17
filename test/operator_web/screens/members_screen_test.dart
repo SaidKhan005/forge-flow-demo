@@ -435,10 +435,14 @@ void main() {
       );
     });
 
-    testWidgets('operator_admin sees an enabled invite button + row actions',
-        (tester) async {
+    testWidgets('operator_admin fold target (owner) sees an enabled '
+        'invite button + row actions', (tester) async {
+      // G7d (spec §3): the phantom operator_admin folds into
+      // operator_owner. The members write set is now
+      // {roleOperatorOwner}; this pins that the fold target keeps the
+      // write surface the phantom previously implied.
       await sizeViewport(tester, const Size(1280, 1200));
-      await pumpScreen(tester, session: sessionWithRole('operator_admin'));
+      await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
       final inviteButton = tester.widget<FilledButton>(
         find.byKey(const Key('operator_web_members_invite_button')),
