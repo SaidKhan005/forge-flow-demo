@@ -1,17 +1,30 @@
-// Phase 7.55o.5 — Baseline Manager calendar grid + legend.
+// R1 — Choose Star Shifts: 2-state hero calendar.
 //
-// Extracted from baseline_manager_screen.dart. Shows the 60-day
-// calendar window with selected / suggested star overlays and the
-// legend that explains the three dot colors. Behaviour and colors
-// are unchanged.
+// The 60-day window calendar is the dominant hero element of the
+// screen. Cells have exactly TWO states: closed (a date with closed
+// shifts in the active lens) and selected (a date with at least one
+// drafted star in the active lens). The old "suggested" state and
+// its legend entry are gone. The legend now has exactly two chips:
+// Closed and Selected.
+//
+// Shifts are filtered to the active lens period before any cell math.
+// For the Whole-day lens a small count badge ("n/total") shows how
+// many of that date's services are drafted. The badge denominator and
+// every period iteration come from the resolved, operator-configured
+// service-period definitions threaded in via [periodIds] — never a
+// hardcoded 3.
+//
+// The header text is exactly "LAST 60 DAYS" (no scope-word prefix);
+// the date range sits on the right of that header line.
 
 import 'package:flutter/material.dart';
 
 import '../../models/baseline_candidate_shift.dart';
 import '../../theme/app_theme.dart';
 import 'baseline_manager_helpers.dart';
+import 'baseline_manager_lens.dart';
 
-// ─── Calendar grid (60-day window) ────────────────────────────────────────────
+// ─── Calendar grid (60-day window, hero element) ──────────────────────────────
 
 class CalendarGrid extends StatelessWidget {
   final List<String> windowDates;
@@ -19,13 +32,35 @@ class CalendarGrid extends StatelessWidget {
   final Set<String> draftKeys;
   final ValueChanged<String> onDateTap;
 
+  /// Active lens period id. [kWholeDayLensId] = rollup of all periods.
+  final String activeLensId;
+
+  /// Resolved, operator-configured service-period ids (ordered). Used
+  /// only for the Whole-day per-day count badge denominator. Never a
+  /// hardcoded list — the parent threads
+  /// `ServicePeriodDefinitionResolver.ordered(defs).map((d) => d.id)`.
+  final List<String> periodIds;
+
   const CalendarGrid({
     super.key,
     required this.windowDates,
     required this.shiftsByDate,
     required this.draftKeys,
     required this.onDateTap,
+    required this.activeLensId,
+    required this.periodIds,
   });
+
+  bool get _isWholeDay => activeLensId == kWholeDayLensId;
+
+  /// Shifts for [dateStr] scoped to the active lens. Whole day = all
+  /// configured-period shifts on that date; a period lens = only that
+  /// period's shifts.
+  List<BaselineCandidateShift> _lensShifts(String dateStr) {
+    final all = shiftsByDate[dateStr] ?? const <BaselineCandidateShift>[];
+    if (_isWholeDay) return all;
+    return all.where((c) => c.daypart == activeLensId).toList();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,7 +112,7 @@ class CalendarGrid extends StatelessWidget {
         if (!windowSet.contains(formatIsoDate(dt))) continue;
         if (dt.month != prevMonth) {
           rows.add(Padding(
-            padding: EdgeInsets.fromLTRB(0, prevMonth == null ? 0 : 8, 0, 4),
+            padding: EdgeInsets.fromLTRB(0, prevMonth == null ? 0 : 10, 0, 6),
             child: Text(
               '${monthNames[dt.month - 1].toUpperCase()} ${dt.year}',
               style: AppTextStyles.mono8(color: AppColors.textMuted),
@@ -93,7 +128,7 @@ class CalendarGrid extends StatelessWidget {
       for (int j = 0; j < 7; j++) {
         final dayIndex = weekStart + j;
         if (dayIndex >= gridDates.length) {
-          cells.add(const Expanded(child: SizedBox(height: 38)));
+          cells.add(const Expanded(child: SizedBox(height: 50)));
           continue;
         }
 
@@ -102,29 +137,24 @@ class CalendarGrid extends StatelessWidget {
         final inWindow = windowSet.contains(dateStr);
 
         if (!inWindow) {
-          cells.add(const Expanded(child: SizedBox(height: 38)));
+          cells.add(const Expanded(child: SizedBox(height: 50)));
           continue;
         }
 
-        final shifts = shiftsByDate[dateStr] ?? [];
+        final shifts = _lensShifts(dateStr);
         final hasShifts = shifts.isNotEmpty;
-        final hasSelected =
-            shifts.any((c) => draftKeys.contains(c.recordKey));
-        final hasSuggested =
-            shifts.any(isSuggestedStar);
+        final selectedCount =
+            shifts.where((c) => draftKeys.contains(c.recordKey)).length;
+        final hasSelected = selectedCount > 0;
 
-        // Visual priority: selected > suggested > available
+        // TWO states only: selected > closed. No "suggested".
         final Color cellBg;
         final Color cellBorder;
         final Color dotColor;
         if (hasSelected) {
           cellBg = AppColors.sunset.withValues(alpha: 0.15);
-          cellBorder = AppColors.sunset.withValues(alpha: 0.5);
+          cellBorder = AppColors.sunset.withValues(alpha: 0.6);
           dotColor = AppColors.sunset;
-        } else if (hasSuggested) {
-          cellBg = AppColors.jade.withValues(alpha: 0.12);
-          cellBorder = AppColors.jade.withValues(alpha: 0.5);
-          dotColor = AppColors.peacock;
         } else if (hasShifts) {
           cellBg = AppColors.backgroundMid;
           cellBorder = AppColors.borderSubtle;
@@ -135,34 +165,61 @@ class CalendarGrid extends StatelessWidget {
           dotColor = Colors.transparent;
         }
 
+        // Whole-day lens: badge "selected/total" of that day's
+        // configured services. Denominator comes from the resolved
+        // configured periods present on the date, never a hardcoded 3.
+        String? countBadge;
+        if (_isWholeDay && hasShifts) {
+          final servicesOnDay = shifts
+              .where((c) => periodIds.contains(c.daypart))
+              .map((c) => c.daypart)
+              .toSet()
+              .length;
+          if (servicesOnDay > 0) {
+            countBadge = '$selectedCount/$servicesOnDay';
+          }
+        }
+
         cells.add(Expanded(
           child: GestureDetector(
             key: ValueKey<String>('cal_$dateStr'),
             onTap: () => onDateTap(dateStr),
             child: Container(
-              height: 38,
-              margin: const EdgeInsets.all(1),
+              height: 50,
+              margin: const EdgeInsets.all(2),
               decoration: BoxDecoration(
                 color: cellBg,
                 border: Border.all(color: cellBorder, width: 1),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(5),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
                     '${dt.day}',
-                    style: AppTextStyles.mono10(
+                    style: AppTextStyles.mono11(
                       color: hasShifts
                           ? AppColors.textPrimary
                           : AppColors.textMuted,
                     ),
                   ),
-                  if (hasShifts)
+                  if (countBadge != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        countBadge,
+                        style: AppTextStyles.mono7(
+                          color: hasSelected
+                              ? AppColors.sunsetDark
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                    )
+                  else if (hasShifts)
                     Container(
-                      width: 4,
-                      height: 4,
-                      margin: const EdgeInsets.only(top: 2),
+                      width: 5,
+                      height: 5,
+                      margin: const EdgeInsets.only(top: 3),
                       decoration: BoxDecoration(
                         color: dotColor,
                         shape: BoxShape.circle,
@@ -183,27 +240,36 @@ class CalendarGrid extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
-          Text('LAST 60 DAYS',
-              style: AppTextStyles.mono11(color: AppColors.textMuted)),
-          const SizedBox(height: 4),
+          // Section title — the calendar is the hero of this screen.
           Text(
-            '${formatDisplayDate(windowDates.first)} – '
-            '${formatDisplayDate(windowDates.last)}',
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
+            'Star shift selection',
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
           ),
-          const SizedBox(height: 6),
-          // Legend
+          const SizedBox(height: 10),
+          // Header line: exactly "LAST 60 DAYS" with the date range
+          // pinned to the right. No scope-word prefix.
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _LegendDot(color: AppColors.textMuted, label: 'Closed shifts'),
-              const SizedBox(width: 12),
-              _LegendDot(color: AppColors.peacock, label: 'Suggested star'),
-              const SizedBox(width: 12),
-              _LegendDot(color: AppColors.sunset, label: 'Selected star'),
+              Text('LAST 60 DAYS',
+                  style: AppTextStyles.mono11(color: AppColors.textMuted)),
+              Text(
+                '${formatDisplayDate(windowDates.first)} to '
+                '${formatDisplayDate(windowDates.last)}',
+                style: AppTextStyles.mono8(color: AppColors.textMuted),
+              ),
             ],
           ),
           const SizedBox(height: 8),
+          // Legend — exactly two chips.
+          Row(
+            children: [
+              _LegendDot(color: AppColors.textMuted, label: 'Closed'),
+              const SizedBox(width: 16),
+              _LegendDot(color: AppColors.sunset, label: 'Selected'),
+            ],
+          ),
+          const SizedBox(height: 10),
           // Weekday labels
           Row(
             children: ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -216,7 +282,7 @@ class CalendarGrid extends StatelessWidget {
                     ))
                 .toList(),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           // Calendar rows
           ...rows,
         ],
@@ -239,12 +305,12 @@ class _LegendDot extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 6,
-          height: 6,
+          width: 7,
+          height: 7,
           decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 4),
-        Text(label, style: AppTextStyles.mono7(color: AppColors.textMuted)),
+        const SizedBox(width: 5),
+        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
       ],
     );
   }

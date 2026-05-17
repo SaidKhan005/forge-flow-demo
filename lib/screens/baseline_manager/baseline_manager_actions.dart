@@ -51,10 +51,16 @@ class BottomBar extends StatelessWidget {
   final VoidCallback onCancel;
   final Future<void> Function() onDone;
 
+  /// R1: when false the commit (Done) action is rendered disabled
+  /// because the once-per-cycle pre-commit gate denied it up front.
+  /// Defaults to true so existing callers are unaffected.
+  final bool doneEnabled;
+
   const BottomBar({
     super.key,
     required this.onCancel,
     required this.onDone,
+    this.doneEnabled = true,
   });
 
   @override
@@ -93,7 +99,7 @@ class BottomBar extends StatelessWidget {
             flex: 2,
             child: ConnectivityRequiredButton(
               label: 'DONE',
-              onPressed: () => onDone(),
+              onPressed: doneEnabled ? () => onDone() : null,
             ),
           ),
         ],

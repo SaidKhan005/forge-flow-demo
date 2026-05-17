@@ -2510,6 +2510,318 @@ Future<void> _seedDemoScopeOverrideDataAccuracy(Database db) async {
   await batch.commit(noResult: true);
 }
 
+// ── R6 "Choose Star Shifts": 4-service-period demo operator ───────────────
+//
+// Authority: this slice's prompt + clarification (R6, data/seed only);
+//            CLAUDE.md HP #2 / HP #4 / HP #11.
+//
+// Why this region exists: every other demo operator carries the
+// fixture-era THREE service periods (lunch / dinner / late_night). That
+// makes a fixed 3-element daypart shape unfalsifiable in demo: a
+// regression that re-hardcodes "3 periods" would still look correct.
+// This region seeds a SEPARATE standalone demo operator/location whose
+// `restaurant_timing_configs.service_period_definitions_json` defines
+// EXACTLY FOUR periods (Breakfast, Lunch, Dinner, Late night), with
+// closed `shift_records` spread across the 60-day window so each of the
+// four configured periods has real candidates. Every period key written
+// is the configured period id; there is no fixed 3-element assumption
+// anywhere in this region.
+//
+// HP #2: standard production tables only (`restaurant_locations`,
+// `restaurant_timing_configs`, `shift_records`, `import_runs`,
+// `raw_import_records`) written through the SAME DAO/insert path as
+// production demo seeding. No `demo_*` table, no `kDemoMode` reader
+// branch. The 4-period config resolves through the exact same
+// `RestaurantTimingConfigDao` -> `ServicePeriodDefinitionResolver` path
+// every reader uses; demo and prod resolve identically.
+// HP #4: every write is scoped to the single
+// `DemoScope.fourPeriodRestaurantId`; no cross-(operator, location)
+// write, and no existing demo restaurant's rows are touched.
+// HP #11: this operator is single-location (its own business default);
+// it never deletes or rewrites a scope/inherited/effective affordance.
+//
+// Determinism (NO RNG): every value is a compile-time constant or a
+// pure function of the deterministic anchor date. Timestamps are fixed
+// literals (never `DateTime.now()`), so two reseeds are byte-identical.
+// Idempotent: `ConflictAlgorithm.ignore` for the location/config rows;
+// the table-wide `shift_records` / `import_runs` / `raw_import_records`
+// deletes in `reseedMockReplayForBusinessDate` clear this operator too,
+// then this re-seeds the identical cohort.
+
+/// The R6 demo operator's four service periods. Order is the canonical
+/// `sortOrder` ascending; ids are stable lowercase tokens. Note the
+/// deliberately non-trivial fourth period (`late_night`) rolls past
+/// midnight, and `breakfast` is unique to this operator: proof that
+/// the resolver consumes whatever the config declares, not a fixed set.
+const List<ServicePeriodDefinition> _kDemoFourPeriodDefinitions =
+    <ServicePeriodDefinition>[
+  ServicePeriodDefinition(
+    id: 'breakfast',
+    label: 'Breakfast',
+    shortLabel: 'B',
+    sortOrder: 1,
+    startLocalTime: '06:00',
+    endLocalTime: '10:30',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'lunch',
+    label: 'Lunch',
+    shortLabel: 'L',
+    sortOrder: 2,
+    startLocalTime: '11:00',
+    endLocalTime: '15:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'dinner',
+    label: 'Dinner',
+    shortLabel: 'D',
+    sortOrder: 3,
+    startLocalTime: '17:00',
+    endLocalTime: '22:30',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'late_night',
+    label: 'Late night',
+    shortLabel: 'LN',
+    sortOrder: 4,
+    startLocalTime: '22:30',
+    endLocalTime: '01:30',
+    rollsPastMidnight: true,
+    applicableDays: [4, 5, 6, 7],
+  ),
+];
+
+/// Per-period base productivity for the R6 cohort. Distinct per period
+/// so Benchmark/Variance render real per-period differences; held within
+/// realistic ranges. Pure constants, NO RNG.
+const Map<String, ({double cplh, double splh, double ppa})>
+    _kDemoFourPeriodRates = {
+  'breakfast': (cplh: 9.0, splh: 145.0, ppa: 16.0),
+  'lunch': (cplh: 11.0, splh: 210.0, ppa: 19.0),
+  'dinner': (cplh: 13.0, splh: 320.0, ppa: 31.0),
+  'late_night': (cplh: 7.5, splh: 165.0, ppa: 22.0),
+};
+
+/// Per-period base covers for the R6 cohort. Deterministic; lightly
+/// tilted day-over-day inside [_seedDemoFourPeriodOperator] so the
+/// 60-day window is not a flat line while staying RNG-free.
+const Map<String, int> _kDemoFourPeriodBaseCovers = {
+  'breakfast': 70,
+  'lunch': 120,
+  'dinner': 180,
+  'late_night': 55,
+};
+
+/// Seeds the R6 "Choose Star Shifts" 4-service-period demo
+/// operator/location: its `restaurant_locations` row, its 4-period
+/// `restaurant_timing_configs` row (same raw insert shape as
+/// `_seedDemoTimingConfig`, byte-identical to the production DAO's
+/// persisted JSON), and a 60-day window of closed `shift_records`
+/// (+ matching `import_runs`/`raw_import_records`) where EVERY one of
+/// the four configured periods has candidates spread across the window.
+///
+/// `anchorIsoDate` is the inclusive last business date of the window
+/// (the caller passes the seed's business date so this cohort lines up
+/// with the rest of the demo timeline). The window is the 60 calendar
+/// days ending at `anchorIsoDate`.
+Future<void> _seedDemoFourPeriodOperator(
+  Database db,
+  String anchorIsoDate,
+) async {
+  const rid = DemoScope.fourPeriodRestaurantId;
+  // Fixed literals for determinism (never DateTime.now()).
+  const seedTs = '2026-05-15T00:00:00.000Z';
+
+  // 1. Location row (scope/identity). HP #2: standard table, `ignore`
+  //    keeps it idempotent across reseeds.
+  await db.insert(
+    'restaurant_locations',
+    {
+      'restaurant_id': rid,
+      'display_name': DemoScope.fourPeriodDisplayName,
+      'business_timezone': DemoScope.businessTimezone,
+      'created_at': seedTs,
+      'updated_at': seedTs,
+    },
+    conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+
+  // 2. 4-period timing config. Written via the SAME raw insert shape as
+  //    `_seedDemoTimingConfig` / `_seedDemoScopeOverrideTimingConfig`
+  //    (the canonical demo timing-config seed path): the persisted
+  //    `service_period_definitions_json` is `jsonEncode` of the ordered
+  //    `ServicePeriodDefinition.toMap()` list, byte-identical to what
+  //    `RestaurantTimingConfigDao.upsert` would write (it only sorts by
+  //    sortOrder/id then jsonEncodes the same maps; the definitions here
+  //    are already in sortOrder order). Resolves through the exact same
+  //    `RestaurantTimingConfigDao.getRaw` -> `ServicePeriodDefinition
+  //    .fromMap` -> `ServicePeriodDefinitionResolver` reader path every
+  //    surface uses. Guard: table may not exist on older upgrade paths.
+  //    Skip-if-present preserves operator authority (mirrors
+  //    `_seedDemoScopeOverrideTimingConfig`).
+  if (await _tableExists(db, 'restaurant_timing_configs')) {
+    final existing = await db.query(
+      'restaurant_timing_configs',
+      where: 'restaurant_id = ?',
+      whereArgs: [rid],
+      limit: 1,
+    );
+    if (existing.isEmpty) {
+      await db.insert(
+        'restaurant_timing_configs',
+        {
+          'restaurant_id': rid,
+          'business_day_start_local_time': '04:00',
+          'week_start_day': DateTime.monday,
+          'service_period_definitions_json': jsonEncode(
+            _kDemoFourPeriodDefinitions.map((d) => d.toMap()).toList(),
+          ),
+          'created_at': seedTs,
+          'updated_at': seedTs,
+        },
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
+  }
+
+  // 3. Closed shift_records across the 60-day window. Every period key
+  //    written is a configured period id (`def.id`); there is NO fixed
+  //    3-element assumption; the loop is driven entirely by
+  //    `_kDemoFourPeriodDefinitions`. A period appears on a given day
+  //    only when that day's ISO weekday is in its `applicableDays`
+  //    (so `late_night`, Thu-Sun only, is correctly sparser), proving
+  //    the cohort honors the per-period config, not a flat 3x60 grid.
+  final anchor = DateTime.parse(anchorIsoDate);
+  final importRunId = 'demo_four_period_seed_$rid';
+  final shiftRows = <Map<String, Object?>>[];
+  final rawRows = <Map<String, Object?>>[];
+  var rawIndex = 0;
+
+  for (var dayOffset = 59; dayOffset >= 0; dayOffset--) {
+    final date = anchor.subtract(Duration(days: dayOffset));
+    final isoWeekday = date.weekday; // 1 = Mon ... 7 = Sun
+    final businessDate =
+        '${date.year.toString().padLeft(4, '0')}-'
+        '${date.month.toString().padLeft(2, '0')}-'
+        '${date.day.toString().padLeft(2, '0')}';
+    // ISO week id (matches `_businessDateFromWeekId`'s leading-date
+    // regex AND the canonical `YYYY-Wnn` shape used elsewhere).
+    final weekId = _isoWeekId(date);
+    final dayLabel = _isoWeekdayLabel(isoWeekday);
+
+    for (final def in _kDemoFourPeriodDefinitions) {
+      if (!def.applicableDays.contains(isoWeekday)) continue;
+      final rate = _kDemoFourPeriodRates[def.id]!;
+      final baseCovers = _kDemoFourPeriodBaseCovers[def.id]!;
+      // Deterministic, RNG-free day tilt: a bounded triangular wave
+      // keyed by the day offset so volume varies realistically across
+      // the window without any random source.
+      final tilt = 1.0 + (((dayOffset % 14) - 7).abs() - 3) * 0.02;
+      final covers = (baseCovers * tilt).round().clamp(10, 9999);
+      final forecastCovers =
+          (baseCovers * (tilt + 0.03)).round().clamp(10, 9999);
+      final fohHours =
+          (covers / rate.cplh).round().clamp(1, 999999);
+      final bohHours =
+          ((covers * rate.ppa) / rate.splh).round().clamp(1, 999999);
+
+      final shift = ShiftRecord(
+        restaurantId: rid,
+        weekId: weekId,
+        dayLabel: dayLabel,
+        // Period key == configured period id (no hardcoded set).
+        daypart: def.id,
+        status: 'closed',
+        covers: covers,
+        forecastCovers: forecastCovers,
+        ppa: rate.ppa,
+        cplh: rate.cplh,
+        splh: rate.splh,
+        fohHours: fohHours,
+        bohHours: bohHours,
+        primaryLever: 'covers',
+        businessDate: businessDate,
+        servicePeriodKey: def.id,
+        sourceSystem: 'demo_four_period_seed',
+      );
+      final map = shift.toMap()..remove('id');
+      shiftRows.add(map);
+      final payloadJson = jsonEncode(map);
+      rawRows.add(
+        RawImportRecord(
+          rawImportId: '${importRunId}_shift_$rawIndex',
+          importRunId: importRunId,
+          restaurantId: rid,
+          sourceType: 'demo_four_period_seed',
+          sourceEntityType: 'shift_record',
+          sourceEntityId: '${weekId}_${dayLabel}_${def.id}',
+          payloadHash: _deterministicHash(payloadJson),
+          businessDate: businessDate,
+          receivedAt: seedTs,
+          status: 'applied',
+          payloadJson: payloadJson,
+        ).toMap(),
+      );
+      rawIndex++;
+    }
+  }
+
+  final batch = db.batch();
+  for (final row in shiftRows) {
+    batch.insert('shift_records', row);
+  }
+  await batch.commit(noResult: true);
+
+  await db.insert(
+    'import_runs',
+    ImportRun(
+      importRunId: importRunId,
+      restaurantId: rid,
+      mode: 'demo_four_period_seed',
+      startedAt: seedTs,
+      completedAt: seedTs,
+      status: 'completed',
+    ).toMap(),
+    conflictAlgorithm: ConflictAlgorithm.ignore,
+  );
+
+  final rawBatch = db.batch();
+  for (final row in rawRows) {
+    rawBatch.insert('raw_import_records', row);
+  }
+  await rawBatch.commit(noResult: true);
+}
+
+/// ISO-8601 week id (`YYYY-Wnn`) for [date]. Matches the
+/// `_businessDateFromWeekId` leading-date heuristic indirectly via the
+/// year segment and the canonical `YYYY-Wnn` shape every other demo
+/// `week_id` uses. Pure, no `DateTime.now()`.
+String _isoWeekId(DateTime date) {
+  // ISO week-numbering: week 1 is the week containing Jan 4th; weeks
+  // start Monday. Mirrors `_businessDateFromWeekDay`'s inverse math.
+  final thursday = date.add(Duration(days: 4 - date.weekday));
+  final firstThursday = DateTime(thursday.year, 1, 4);
+  final firstWeekMonday =
+      firstThursday.subtract(Duration(days: firstThursday.weekday - 1));
+  final week =
+      ((thursday.difference(firstWeekMonday).inDays) ~/ 7) + 1;
+  return '${thursday.year.toString().padLeft(4, '0')}-'
+      'W${week.toString().padLeft(2, '0')}';
+}
+
+/// ISO weekday number (1 = Mon .. 7 = Sun) to the canonical 3-letter
+/// label used by `_businessDateFromWeekDay`.
+String _isoWeekdayLabel(int isoWeekday) {
+  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return labels[(isoWeekday - 1).clamp(0, 6)];
+}
+
 /// Notifications / alerts (§1.6 / Gap G9) — variance-breach-derived.
 ///
 /// Metric Honesty: this does NOT fabricate an alert. It scans the
