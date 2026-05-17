@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/baseline_authority_service.dart'
     show BaselineData;
+import 'package:forge_and_flow/theme/app_theme.dart' show AppColors;
 import 'package:forge_and_flow/widgets/variance/cplh_opz_band_card.dart';
 import 'package:forge_and_flow/widgets/variance/inline_emphasis_text.dart';
 
@@ -386,6 +387,243 @@ void main() {
       expect(InlineEmphasisMarkup.stripMarkup(marked).contains('[['), isFalse);
       expect(
           InlineEmphasisMarkup.stripMarkup(marked).contains('—'), isFalse);
+    });
+  });
+
+  // ─── Teaching copy: bold lead-in + per-variant colour emphasis ────────
+  //
+  // Mockup parity (docs/f&f Coaching/variance_tab_v2_mockup.html `#hist`
+  // `.teach`): the lead-in `What the zone is telling you.` is BOLD on
+  // EVERY variant; the unfavourable (below-zone) variant carries a red
+  // `[[bad:…]]` span and the favourable (in/above-zone) variant a green
+  // `[[good:…]]` span. Numbers must be the REAL computed values, never the
+  // mockup literals (no "5 of 6"). The honest no-history variant gets the
+  // bold lead but NO colour span (no real stat to grade).
+  group('CplhOpzBandCard teaching — bold lead + colour emphasis', () {
+    // The card builds the marked-up string privately; we assert on the
+    // rendered widget tree (the bold lead-in TextSpan + the sentiment
+    // colour of the emphasised stat span) plus an InlineEmphasisMarkup
+    // round-trip on the exact real-number sentence the card would emit.
+
+    /// Text runs of ONLY the teaching paragraph (the single RichText whose
+    /// first run is the bold lead-in). Scoped this way so the OPZ scale's
+    /// own coloured `.opzlab` labels (which legitimately use
+    /// AppColors.positive) never bleed into the teaching-copy assertions.
+    List<(String, TextStyle?)> _runs(WidgetTester tester) {
+      final richTexts = tester.widgetList<RichText>(find.byType(RichText));
+      for (final rt in richTexts) {
+        final local = <(String, TextStyle?)>[];
+        rt.text.visitChildren((span) {
+          if (span is TextSpan && span.text != null) {
+            local.add((span.text!, span.style));
+          }
+          return true;
+        });
+        if (local.isNotEmpty &&
+            local.first.$1.startsWith('What the zone is telling you.')) {
+          return local;
+        }
+      }
+      return const [];
+    }
+
+    bool _isBold(TextStyle? s) =>
+        s != null && (s.fontWeight?.index ?? 0) >= FontWeight.w700.index;
+
+    Future<List<(String, TextStyle?)>> _pump(
+      WidgetTester tester,
+      CplhOpzBandData d,
+    ) async {
+      await tester.pumpWidget(_wrap(CplhOpzBandCard(data: d)));
+      await tester.pump();
+      return _runs(tester);
+    }
+
+    testWidgets('unfavourable (below-zone) variant: bold lead + RED span, '
+        'real numbers', (tester) async {
+      // 5 of the last 6 weeks below the 4.70 floor (real computed, NOT
+      // the mockup literal — these come from the series, not a constant).
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [4.1, 4.2, 4.3, 4.4, 4.5, 5.1],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 4.59,
+      );
+      expect(d.weekCount, 6);
+      expect(d.weeksBelowFloor, 5);
+
+      final runs = await _pump(tester, d);
+
+      // (a) bold lead-in present, bold weight, default ink (not a
+      // sentiment colour).
+      final lead = runs.firstWhere(
+        (r) => r.$1.startsWith('What the zone is telling you.'),
+        orElse: () => ('', null),
+      );
+      expect(lead.$1, 'What the zone is telling you. ');
+      expect(_isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
+      expect(lead.$2?.color, isNot(AppColors.negative));
+      expect(lead.$2?.color, isNot(AppColors.positive));
+
+      // (b) the key stat span is red (unfavourable) and carries the REAL
+      // numbers (5 / 6), not the mockup "5 of 6" literal by coincidence —
+      // assert the run text is built from data.weeksBelowFloor/weekCount.
+      final badRun = runs.firstWhere(
+        (r) => r.$2?.color == AppColors.negative,
+        orElse: () => ('', null),
+      );
+      expect(
+        badRun.$1,
+        'below it ${d.weeksBelowFloor} of the last ${d.weekCount} weeks',
+      );
+      // No green span in an unfavourable message.
+      expect(
+        runs.any((r) => r.$2?.color == AppColors.positive),
+        isFalse,
+      );
+
+      // Verbatim fallback round-trips to the real-number plain sentence.
+      const marked = 'You have sat [[bad:below it 5 of the last 6 weeks]]. '
+          'The volume keeps showing up. The hours are not tightening to '
+          'meet it.';
+      expect(
+        InlineEmphasisMarkup.stripMarkup(marked),
+        'You have sat below it 5 of the last 6 weeks. The volume keeps '
+        'showing up. The hours are not tightening to meet it.',
+      );
+    });
+
+    testWidgets('unfavourable ALL weeks below (n == m): bold lead + RED '
+        'span, real numbers', (tester) async {
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [4.0, 4.1, 4.2, 4.3],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 4.2,
+      );
+      expect(d.weekCount, 4);
+      expect(d.weeksBelowFloor, 4);
+
+      final runs = await _pump(tester, d);
+
+      final lead = runs.firstWhere(
+        (r) => r.$1.startsWith('What the zone is telling you.'),
+        orElse: () => ('', null),
+      );
+      expect(lead.$1, 'What the zone is telling you. ');
+      expect(_isBold(lead.$2), isTrue);
+
+      final badRun = runs.firstWhere(
+        (r) => r.$2?.color == AppColors.negative,
+        orElse: () => ('', null),
+      );
+      expect(
+        badRun.$1,
+        'below it ${d.weeksBelowFloor} of the last ${d.weekCount} weeks',
+      );
+      expect(
+        runs.any((r) => r.$2?.color == AppColors.positive),
+        isFalse,
+      );
+    });
+
+    testWidgets('favourable (in/above zone, n == 0): bold lead + GREEN '
+        'span, real numbers', (tester) async {
+      // Every one of the last 5 weeks at or above the 4.70 floor → the
+      // favourable variant. The green span clause must carry the REAL
+      // weekCount (5), not a mockup literal.
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [4.8, 4.9, 5.0, 4.75, 4.72],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 4.8,
+      );
+      expect(d.weekCount, 5);
+      expect(d.weeksBelowFloor, 0);
+
+      final runs = await _pump(tester, d);
+
+      final lead = runs.firstWhere(
+        (r) => r.$1.startsWith('What the zone is telling you.'),
+        orElse: () => ('', null),
+      );
+      expect(lead.$1, 'What the zone is telling you. ');
+      expect(_isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
+      expect(lead.$2?.color, isNot(AppColors.positive));
+      expect(lead.$2?.color, isNot(AppColors.negative));
+
+      // (b) the positive stat clause is GREEN and carries the REAL count.
+      final goodRun = runs.firstWhere(
+        (r) => r.$2?.color == AppColors.positive,
+        orElse: () => ('', null),
+      );
+      expect(
+        goodRun.$1,
+        'stayed in or above it every one of the last ${d.weekCount} weeks',
+      );
+      // No red span in a favourable message.
+      expect(
+        runs.any((r) => r.$2?.color == AppColors.negative),
+        isFalse,
+      );
+
+      // Verbatim fallback round-trips to the real-number plain sentence.
+      const marked =
+          'You have [[good:stayed in or above it every one of the last 5 '
+          'weeks]]. Hold the line: this is the hours matching the volume.';
+      expect(
+        InlineEmphasisMarkup.stripMarkup(marked),
+        'You have stayed in or above it every one of the last 5 weeks. '
+        'Hold the line: this is the hours matching the volume.',
+      );
+      expect(InlineEmphasisMarkup.stripMarkup(marked).contains('[['),
+          isFalse);
+    });
+
+    testWidgets('honest no-history variant (m == 0): bold lead, NO colour '
+        'span (no real stat to grade)', (tester) async {
+      // canRenderBand needs a usable rail + OPZ; series has no positive
+      // closed weeks so weekCount == 0 → the honest degraded copy. It
+      // still gets the bold lead but NO sentiment span (Metric Honesty:
+      // never fabricate a highlight where there is no real stat).
+      final d = CplhOpzBandData.fromInputs(
+        weeklyCplhSeries: const [0, -1],
+        sixtyDayLowCplh: 3.9,
+        sixtyDayHighCplh: 5.3,
+        opzFloor: 4.70,
+        opzCeiling: 5.00,
+        nowCplh: 4.59,
+      );
+      expect(d.canRenderBand, isTrue);
+      expect(d.weekCount, 0);
+
+      final runs = await _pump(tester, d);
+
+      final lead = runs.firstWhere(
+        (r) => r.$1.startsWith('What the zone is telling you.'),
+        orElse: () => ('', null),
+      );
+      expect(lead.$1, 'What the zone is telling you. ');
+      expect(_isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
+
+      // No fabricated colour emphasis when there is no real stat.
+      expect(
+        runs.any((r) =>
+            r.$2?.color == AppColors.positive ||
+            r.$2?.color == AppColors.negative),
+        isFalse,
+      );
+      // The honest wording is preserved.
+      expect(
+        find.textContaining('Once your weeks close'),
+        findsOneWidget,
+      );
     });
   });
 }

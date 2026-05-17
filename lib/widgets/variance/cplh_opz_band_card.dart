@@ -271,11 +271,27 @@ class CplhOpzBandCard extends StatelessWidget {
     final n = data.weeksBelowFloor;
 
     // The teaching paragraph adapts honestly to where the operator sits.
-    // The "below it N of last M weeks" span is the only emphasised span
-    // and is wrapped in the V2-4 `[[bad:…]]` token at RENDER time
-    // (never stored), then rendered through InlineEmphasisText which
-    // owns the verbatim plain-text fallback. Verbatim copy unchanged.
-    const intro = 'What the zone is telling you. The green band is where '
+    //
+    // Mockup parity (docs/f&f Coaching/variance_tab_v2_mockup.html `#hist`
+    // `.teach`): the lead-in is `<b>What the zone is telling you.</b>` —
+    // BOLD, default ink, on EVERY variant. The shared
+    // InlineEmphasisText renderer has no non-coloured bold token (only
+    // `[[bad:…]]`/`[[good:…]]`/chip), and it is reused by This Week +
+    // Learn, so per the slice contract it is NOT modified here. Instead
+    // the lead-in is rendered as a bold prefix TextSpan and the marked-up
+    // remainder is parsed through the SAME InlineEmphasisMarkup parser so
+    // the verbatim-fallback / V2-4 render contract is preserved.
+    //
+    // Each variant carries EXACTLY ONE colour emphasis span, applied at
+    // RENDER time (never stored): `[[bad:…]]` (red) when the message is
+    // unfavourable (operator below the zone), `[[good:…]]` (green) when
+    // favourable (in or above the zone). The honest no-history variant
+    // (`m == 0`) has no real favourable/unfavourable stat to grade, so it
+    // honestly carries NO colour span (Metric Honesty Doctrine: never
+    // fabricate a highlight where there is no real stat). All numbers are
+    // the real computed values already on `data` (no mockup literals).
+    const lead = 'What the zone is telling you. ';
+    const intro = 'The green band is where '
         'your CPLH is healthy: enough hands to take care of the guest, not '
         'so many you are paying for tables that are not there. ';
 
@@ -283,26 +299,81 @@ class CplhOpzBandCard extends StatelessWidget {
     if (m == 0) {
       // No closed-week history yet to grade against. Stay honest: the
       // zone itself is real (sourced from the proven 60-day rail + OPZ),
-      // but there is no week-count claim to make.
+      // but there is no week-count claim to make — so no colour span.
       body = 'Once your weeks close, this will show how often your hours '
           'matched the volume.';
     } else if (n == 0) {
-      body = 'You have stayed in or above it every one of the last '
-          '$m ${_weekWord(m)}. Hold the line: this is the hours matching '
+      // Favourable: in or above the zone every week → green emphasis on
+      // the positive stat clause, mirroring how the unfavourable variant
+      // emphasises its key stat in red.
+      body = 'You have [[good:stayed in or above it every one of the last '
+          '$m ${_weekWord(m)}]]. Hold the line: this is the hours matching '
           'the volume.';
     } else if (n == m) {
-      body = 'You have sat [[bad:below it ${_count(n, m)}]]. The volume '
+      // Unfavourable. Mockup `.teach`: "You have sat <em-bad>below it N of
+      // the last M weeks</em-bad>." `_count` already begins with "below
+      // it", so the lead-in here is just "You have sat " (no doubled
+      // "below it" — that was a pre-existing copy defect vs the mockup).
+      body = 'You have sat [[bad:${_count(n, m)}]]. The volume '
           'keeps showing up. The hours are not tightening to meet it.';
     } else {
-      body = 'You have sat [[bad:below it ${_count(n, m)}]]. The volume '
+      body = 'You have sat [[bad:${_count(n, m)}]]. The volume '
           'keeps showing up on those weeks. The hours are not tightening '
           'to meet it.';
     }
 
-    return InlineEmphasisText(
-      '$intro$body',
-      baseStyle: AppTextStyles.body14(color: AppColors.textPrimary),
+    final base = AppTextStyles.body14(color: AppColors.textPrimary);
+    return Text.rich(
+      TextSpan(
+        children: [
+          // BOLD lead-in: mockup `.teach b` weight, default ink colour
+          // (NOT a sentiment colour). Rendered as a prefix span because
+          // the shared renderer has no neutral-bold token and must not be
+          // changed.
+          TextSpan(
+            text: lead,
+            style: base.copyWith(fontWeight: FontWeight.w700),
+          ),
+          // Remainder rendered through the SAME V2-4 parser the shared
+          // InlineEmphasisText uses, so colour spans + verbatim fallback
+          // behave identically without touching inline_emphasis_text.dart.
+          for (final segment
+              in InlineEmphasisMarkup.parse('$intro$body'))
+            _emphasisSpan(segment, base),
+        ],
+      ),
     );
+  }
+
+  /// Maps a parsed [InlineEmphasisSegment] to a styled [InlineSpan] using
+  /// the same V2-2 sentiment palette as `InlineEmphasisText` (loss = red /
+  /// `AppColors.negative`, profit = green / `AppColors.positive`). Kept
+  /// local so the shared renderer is not modified (it is reused by This
+  /// Week + Learn). Chips are not produced by this card's copy, so the
+  /// chip kinds fall back to the plain style defensively.
+  InlineSpan _emphasisSpan(InlineEmphasisSegment segment, TextStyle base) {
+    switch (segment.kind) {
+      case InlineEmphasisKind.causalBad:
+        return TextSpan(
+          text: segment.text,
+          style: base.copyWith(
+            color: AppColors.negative,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      case InlineEmphasisKind.causalGood:
+        return TextSpan(
+          text: segment.text,
+          style: base.copyWith(
+            color: AppColors.positive,
+            fontWeight: FontWeight.w700,
+          ),
+        );
+      case InlineEmphasisKind.plain:
+      case InlineEmphasisKind.chipBad:
+      case InlineEmphasisKind.chipGood:
+        return TextSpan(text: segment.text, style: base);
+    }
   }
 
   Widget _buildDegraded(BuildContext context) {
