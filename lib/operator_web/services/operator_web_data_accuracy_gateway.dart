@@ -237,9 +237,19 @@ class OperatorWebHttpDataAccuracyGateway
 
 Map<String, Object?> _settingsToJson(DataAccuracySettings settings) {
   return <String, Object?>{
-    'covers_source_lunch': settings.coversSourceLunch.wire,
-    'covers_source_dinner': settings.coversSourceDinner.wire,
-    'covers_source_late_night': settings.coversSourceLateNight.wire,
+    // Per-Daypart V1 Slice R5 (Gap 27/36): the canonical per-period
+    // covers source is the keyed map. The three legacy wire keys are
+    // still emitted (derived from the keyed map) so the proxy's
+    // not-yet-migrated `data_accuracy_settings` upsert columns keep
+    // working during the deprecation window; `fromRow` prefers the
+    // keyed map when present.
+    'covers_source_per_service_period': <String, Object?>{
+      for (final e in settings.coversSourcePerServicePeriod.entries)
+        e.key: e.value.wire,
+    },
+    'covers_source_lunch': settings.coversSourceFor('lunch').wire,
+    'covers_source_dinner': settings.coversSourceFor('dinner').wire,
+    'covers_source_late_night': settings.coversSourceFor('late_night').wire,
     'covers_manual_entries': <String, Object?>{
       for (final entry in settings.coversManualEntries.entries)
         entry.key: <String, Object?>{

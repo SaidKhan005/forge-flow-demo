@@ -3497,9 +3497,12 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
         settingId: 'demo-setting-$yorkvilleSettingsKey',
         operatorId: dinerOperatorId,
         locationId: yorkvilleLocationId,
-        coversSourceLunch: CoversSource.manual,
-        coversSourceDinner: CoversSource.vendor,
-        coversSourceLateNight: CoversSource.vendor,
+        // Per-Daypart V1 Slice R5 (Gap 27/36): covers source keyed by
+        // service period. Lunch = manual; dinner / late_night fall
+        // through to the vendor default via coversSourceFor.
+        coversSourcePerServicePeriod: const <String, CoversSource>{
+          'lunch': CoversSource.manual,
+        },
         coversManualEntries: const <String, Map<String, int>>{},
         wageSource: WageSource.manualMix,
         createdAt: DateTime.utc(2026, 5, 1, 9),

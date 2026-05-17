@@ -52,6 +52,9 @@ import '../widgets/walk_in_handling_card.dart';
 import 'wage_authority_screen.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/service_period_definition_resolver.dart';
+import '../../services/restaurant_timing_config_read_service.dart';
 import '../../integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
@@ -127,6 +130,7 @@ class DataAccuracyScreen extends StatefulWidget {
     this.tierEmailIdempotencyKeyFactory,
     this.wageAuthorityGateway,
     this.wageAuthorityIdempotencyKeyFactory,
+    this.servicePeriodsLoader,
   });
 
   final OperatorWebSession session;
@@ -194,6 +198,15 @@ class DataAccuracyScreen extends StatefulWidget {
   /// random-bytes generator; tests pass a deterministic counter.
   final String Function()? wageAuthorityIdempotencyKeyFactory;
 
+  /// Per-Daypart V1 Slice R5 (Gap 27/36): resolves the operator's
+  /// configured service periods so the covers cards iterate the real
+  /// period set, never a hardcoded `Daypart.values` triplet.
+  /// Production resolves the persisted timing config; widget tests
+  /// inject a fake. Falls back to the canonical fixture-era
+  /// definitions only when no config is persisted yet.
+  final Future<List<ServicePeriodDefinition>> Function()?
+      servicePeriodsLoader;
+
   bool get _canEditDataAccuracy =>
       session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
 
@@ -235,11 +248,17 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   int _servicePeriodLoadGeneration = 0;
   int _servicePeriodSaveGeneration = 0;
 
+  // Operator-configured service periods (resolver-ordered). The
+  // covers cards iterate this set, never a hardcoded daypart triplet
+  // (Gap 27/36). Empty until the loader resolves; the cards render an
+  // honest "no periods configured" hint while empty.
+  List<ServicePeriodDefinition> _servicePeriods =
+      const <ServicePeriodDefinition>[];
+
   // In-memory editable working copy of the settings. Materialized
-  // back into `DataAccuracySettings` on save.
-  late CoversSource _coversSourceLunch;
-  late CoversSource _coversSourceDinner;
-  late CoversSource _coversSourceLateNight;
+  // back into `DataAccuracySettings` on save. Covers source is keyed
+  // by the operator-configured service-period id.
+  late Map<String, CoversSource> _coversSourcePerPeriod;
   late WageSource _wageSource;
   late Map<String, Map<String, int>> _manualEntries;
   WalkInHandlingMode _walkInMode = WalkInHandlingMode.reservationsOnly;
@@ -258,6 +277,38 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _loadSettings();
     _loadWageApplicability();
     _loadServicePeriodSettings();
+    _loadServicePeriods();
+  }
+
+  Future<void> _loadServicePeriods() async {
+    final loader = widget.servicePeriodsLoader ?? _defaultServicePeriodsLoader;
+    try {
+      final periods = await loader();
+      if (!mounted) return;
+      setState(() => _servicePeriods = periods);
+    } catch (_) {
+      if (!mounted) return;
+      setState(
+        () => _servicePeriods = ServicePeriodDefinitionResolver.ordered(
+          ServicePeriodDefinitionResolver.demoDefinitions,
+        ),
+      );
+    }
+  }
+
+  // Canonical pattern (benchmark_tracker_read_service.dart): period
+  // set + labels + ordering come from the operator's persisted timing
+  // config, never a hardcoded daypart list. Falls back to the
+  // canonical fixture-era definitions only when no config is persisted
+  // yet.
+  static Future<List<ServicePeriodDefinition>>
+      _defaultServicePeriodsLoader() async {
+    final config = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
+    final defs = (config?.servicePeriodDefinitions.isNotEmpty ?? false)
+        ? config!.servicePeriodDefinitions
+        : ServicePeriodDefinitionResolver.demoDefinitions;
+    return ServicePeriodDefinitionResolver.ordered(defs);
   }
 
   Future<void> _loadBundle() async {
@@ -378,9 +429,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   void _applySettingsSeed(DataAccuracySettings? seed) {
     _lastSettings = seed;
-    _coversSourceLunch = seed?.coversSourceLunch ?? CoversSource.vendor;
-    _coversSourceDinner = seed?.coversSourceDinner ?? CoversSource.vendor;
-    _coversSourceLateNight = seed?.coversSourceLateNight ?? CoversSource.vendor;
+    _coversSourcePerPeriod = <String, CoversSource>{
+      for (final e
+          in (seed?.coversSourcePerServicePeriod ?? const {}).entries)
+        e.key: e.value,
+    };
     _wageSource = seed?.wageSource ?? WageSource.vendor;
     _manualEntries = <String, Map<String, int>>{
       for (final e in (seed?.coversManualEntries ?? const {}).entries)
@@ -408,9 +461,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       settingId: base?.settingId ?? 'demo-setting-id',
       operatorId: widget.session.operatorId,
       locationId: widget.locationId,
-      coversSourceLunch: _coversSourceLunch,
-      coversSourceDinner: _coversSourceDinner,
-      coversSourceLateNight: _coversSourceLateNight,
+      coversSourcePerServicePeriod: Map<String, CoversSource>.from(
+        _coversSourcePerPeriod,
+      ),
       coversManualEntries: <String, Map<String, int>>{
         for (final e in _manualEntries.entries)
           e.key: Map<String, int>.from(e.value),
@@ -531,53 +584,46 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _emitSave();
   }
 
-  void _handleCoversSourceChanged(Daypart d, CoversSource value) {
+  void _handleCoversSourceChanged(String servicePeriodId, CoversSource value) {
     setState(() {
-      switch (d) {
-        case Daypart.lunch:
-          _coversSourceLunch = value;
-          break;
-        case Daypart.dinner:
-          _coversSourceDinner = value;
-          break;
-        case Daypart.lateNight:
-          _coversSourceLateNight = value;
-          break;
-      }
+      _coversSourcePerPeriod = <String, CoversSource>{
+        ..._coversSourcePerPeriod,
+        servicePeriodId: value,
+      };
     });
     _emitSave();
   }
 
-  void _handleManualEntry(Daypart d, int? covers) {
+  void _handleManualEntry(String servicePeriodId, int? covers) {
     setState(() {
       final today = widget.businessDateIso;
       final dayMap = _manualEntries.putIfAbsent(today, () => <String, int>{});
       if (covers == null) {
-        dayMap.remove(d.wire);
+        dayMap.remove(servicePeriodId);
         if (dayMap.isEmpty) _manualEntries.remove(today);
       } else {
-        dayMap[d.wire] = covers;
+        dayMap[servicePeriodId] = covers;
       }
     });
     _emitSave();
   }
 
-  void _handleCopyYesterday(Daypart d) {
+  void _handleCopyYesterday(String servicePeriodId) {
     final yesterday = _yesterdayIso(widget.businessDateIso);
-    final value = _manualEntries[yesterday]?[d.wire];
+    final value = _manualEntries[yesterday]?[servicePeriodId];
     if (value == null) return;
-    _handleManualEntry(d, value);
+    _handleManualEntry(servicePeriodId, value);
   }
 
-  void _handleApplySeed(Map<String, Map<Daypart, int>> seed) {
+  void _handleApplySeed(Map<String, Map<String, int>> seed) {
     setState(() {
       seed.forEach((dateIso, dayMap) {
         final existing = _manualEntries.putIfAbsent(
           dateIso,
           () => <String, int>{},
         );
-        dayMap.forEach((d, covers) {
-          existing[d.wire] = covers;
+        dayMap.forEach((servicePeriodId, covers) {
+          existing[servicePeriodId] = covers;
         });
       });
     });
@@ -699,10 +745,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   bool get _showHistoricalSeedCard => !_posExposesCovers;
 
-  bool get _anyDaypartManual =>
-      _coversSourceLunch == CoversSource.manual ||
-      _coversSourceDinner == CoversSource.manual ||
-      _coversSourceLateNight == CoversSource.manual;
+  bool get _anyDaypartManual => _servicePeriods.any(
+        (p) =>
+            (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
+            CoversSource.manual,
+      );
 
   bool get _showAnyFallbackCard =>
       _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
@@ -830,6 +877,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           const SizedBox(height: 14),
           CoversSourceToggle(
             settings: settings,
+            servicePeriods: _servicePeriods,
             onChanged: _handleCoversSourceChanged,
             bundle: _bundle,
           ),
@@ -846,6 +894,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               businessDateIso: widget.businessDateIso,
               yesterdayBusinessDateIso: _yesterdayIso(widget.businessDateIso),
               settings: settings,
+              servicePeriods: _servicePeriods,
               onEnterCovers: _handleManualEntry,
               onCopyYesterday: _handleCopyYesterday,
             ),
@@ -865,7 +914,11 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             CoversHistoricalSeedCard(
               endDateIso: _yesterdayIso(widget.businessDateIso),
               dayCount: 60,
-              initialEntries: _seedToDaypartMap(_manualEntries),
+              servicePeriods: _servicePeriods,
+              initialEntries: <String, Map<String, int>>{
+                for (final e in _manualEntries.entries)
+                  e.key: Map<String, int>.from(e.value),
+              },
               onApplySeed: _handleApplySeed,
             ),
           ],
@@ -941,20 +994,6 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       return widget.session.primaryLocationName;
     }
     return 'this location';
-  }
-
-  static Map<String, Map<Daypart, int>> _seedToDaypartMap(
-    Map<String, Map<String, int>> source,
-  ) {
-    final out = <String, Map<Daypart, int>>{};
-    source.forEach((date, dayMap) {
-      final inner = <Daypart, int>{};
-      dayMap.forEach((wire, covers) {
-        inner[DaypartWire.fromWire(wire)] = covers;
-      });
-      out[date] = inner;
-    });
-    return out;
   }
 
   static WalkInHandlingMode _widgetWalkInModeFromDomain(
