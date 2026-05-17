@@ -274,7 +274,7 @@ class _CplhRangeBar extends StatelessWidget {
             : AppColors.borderSubtle);
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: AppSpacing.screenH,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(

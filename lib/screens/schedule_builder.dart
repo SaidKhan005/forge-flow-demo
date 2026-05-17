@@ -298,7 +298,7 @@ class _DerivedSummaryCards extends StatelessWidget {
     ];
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: AppSpacing.screenH,
       child: IntrinsicHeight(
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -402,8 +402,8 @@ class _CoverBarChart extends StatelessWidget {
     if (days.isEmpty) {
       final message = _emptySchedulePlanMessage(notifier);
       return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.all(16),
+        margin: AppSpacing.screenH,
+        padding: AppSpacing.card,
         decoration: BoxDecoration(
           color: AppColors.surface,
           border: Border.all(color: AppColors.rule, width: 1),
@@ -435,7 +435,7 @@ class _CoverBarChart extends StatelessWidget {
     }).toList();
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: AppSpacing.screenH,
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -548,8 +548,8 @@ class _DayTableState extends State<_DayTable> {
     if (days.isEmpty) {
       final message = _emptySchedulePlanMessage(widget.notifier);
       return Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16),
-        padding: const EdgeInsets.all(16),
+        margin: AppSpacing.screenH,
+        padding: AppSpacing.card,
         decoration: BoxDecoration(
           color: AppColors.surface,
           border: Border.all(color: AppColors.rule, width: 1),
@@ -572,7 +572,7 @@ class _DayTableState extends State<_DayTable> {
     // does not have today (Phase 10.5 daypart work).
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: AppSpacing.screenH,
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.rule, width: 1),
