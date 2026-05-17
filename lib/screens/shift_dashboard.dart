@@ -1500,7 +1500,7 @@ class _OutputsSection extends StatelessWidget {
     final wageProv = data.blendedWage;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: AppSpacing.screenH,
       child: Column(
         children: [
           // ── Sales + Labor side by side ──
@@ -1585,7 +1585,7 @@ class _InputsSection extends StatelessWidget {
     final splhProv = data.splh;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      padding: AppSpacing.screenH,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1700,20 +1700,13 @@ class _FohProductivitySection extends StatelessWidget {
     final opz = data.opz;
     if (opz == null) {
       return Padding(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+        padding: AppSpacing.screenH,
         child: Container(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [AppColors.backgroundMid, AppColors.cardGlow],
-            ),
-            border: Border.all(
-              color: AppColors.borderSubtle.withValues(alpha: 0.7),
-              width: 1,
-            ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
           ),
+          decoration: AppDecoration.gradientCard,
           child: Text(
             'No locked productivity zone for this period yet.',
             style: AppTextStyles.mono10(color: AppColors.textMuted),
@@ -1722,7 +1715,7 @@ class _FohProductivitySection extends StatelessWidget {
       );
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: AppSpacing.screenH,
       child: ZoneStatusCard(
         currentCPLH: opz.currentCPLH,
         opzFloorCPLH: opz.opzFloorCPLH,
@@ -1748,18 +1741,11 @@ class _TeachingTakeaway extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.backgroundMid, AppColors.cardGlow],
-        ),
-        border: Border.all(
-          color: AppColors.borderSubtle.withValues(alpha: 0.7),
-          width: 1,
-        ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
       ),
+      decoration: AppDecoration.gradientCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2004,18 +1990,11 @@ class _DaypartPeriodHeader extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Container(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [AppColors.backgroundMid, AppColors.cardGlow],
-                      ),
-                      border: Border.all(
-                        color: AppColors.borderSubtle.withValues(alpha: 0.7),
-                        width: 1,
-                      ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.md,
                     ),
+                    decoration: AppDecoration.gradientCard,
                     child: Text(
                       'Restaurant timezone is not configured. Per-period '
                       'metrics are unavailable until Settings is completed.',
@@ -2310,19 +2289,11 @@ class _LaborCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.backgroundMid, AppColors.cardGlow],
-        ),
-        border: Border.all(
-          color: AppColors.borderSubtle.withValues(alpha: 0.7),
-          width: 1,
-        ),
-        borderRadius: BorderRadius.circular(3),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
       ),
+      decoration: AppDecoration.gradientCard,
       child: _LaborVarianceSection(labor: labor),
     );
   }
@@ -2437,18 +2408,11 @@ class _CompactHoursColumn extends StatelessWidget {
     final deltaIcon = isOver ? Icons.arrow_upward : Icons.arrow_downward;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.backgroundMid, AppColors.cardGlow],
-        ),
-        border: Border.all(
-          color: AppColors.borderSubtle.withValues(alpha: 0.7),
-          width: 1,
-        ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
       ),
+      decoration: AppDecoration.gradientCard,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

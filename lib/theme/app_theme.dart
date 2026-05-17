@@ -129,6 +129,20 @@ class AppDecoration {
     borderRadius: AppRadius.cardR,
   );
 
+  /// The ONE intentional gradient card. Subtle warm cream top-left →
+  /// glow bottom-right + the same hairline border + the same card
+  /// radius. Replaces the per-screen hand-rolled gradient cards so the
+  /// effect is one deliberate treatment, not nine drifting ones.
+  static final BoxDecoration gradientCard = BoxDecoration(
+    gradient: const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [AppColors.backgroundMid, AppColors.cardGlow],
+    ),
+    border: hairline,
+    borderRadius: AppRadius.cardR,
+  );
+
   /// Tinted accent chip surface (badges/status). Pass the accent colour;
   /// fill + border opacities are fixed so every chip matches.
   static BoxDecoration accentChip(Color accent) => BoxDecoration(
