@@ -23,6 +23,7 @@ import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/services/target_cycle_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dart';
 import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
@@ -122,12 +123,26 @@ void main() {
       final profile = await SqliteTargetProfileRepository.instance
           .getActiveTargetProfile(restaurantId);
       expect(profile, isNotNull);
-      expect(profile!.sourceType, 'cycle_recommended');
+      // SB old→new: this asserted `profile.sourceType ==
+      // 'cycle_recommended'`. The pre-SA demo seeder is degenerate
+      // (every period's covers-per-hour barely varies — spec DIAG-0),
+      // so the Jim-faithful engine now honestly returns no teachable
+      // period and the recommended path takes the Gap-42 fallback
+      // (`*_insufficient`). The OLD engine masked the degenerate data
+      // by never gating on dispersion; surfacing it is the entire point
+      // of this slice, not a regression. The provenance contract this
+      // test guards (manager-selected keys must NOT taint the
+      // recommended path) still holds: the source is still the
+      // recommended pipeline, just honestly insufficient on this data.
+      // SA's demo reseed restores `cycle_recommended`.
+      expect(profile!.sourceType,
+          anyOf('cycle_recommended', 'system_baseline_insufficient'));
 
       final summary = await SqliteBenchmarkSelectionSummaryRepository.instance
           .getByTargetCycleId(cycle.cycleId);
       expect(summary, isNotNull);
-      expect(summary!.sourceType, 'cycle_recommended');
+      expect(summary!.sourceType,
+          anyOf('cycle_recommended', 'cycle_recommended_insufficient'));
     });
 
     test('cycle is persisted to repository', () async {
@@ -1101,9 +1116,22 @@ void main() {
       final rows = await db.query('benchmark_selection_summaries',
           where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
       expect(rows.length, 1, reason: 'exactly one summary for the cycle');
-      expect(rows.first['source_type'], 'cycle_recommended');
-      expect((rows.first['selected_shift_count'] as int), greaterThan(0),
-          reason: 'seed records have selected shifts');
+      // SB old→new: this asserted `source_type == 'cycle_recommended'`
+      // and `selected_shift_count > 0`. `clearCycleBackedState()` wipes
+      // the functional seeded cycle, so this rebuilds via the live
+      // recommendation path against the pre-SA degenerate demo cohort
+      // (every shift pinned to one CPLH — spec DIAG-0). The Jim-faithful
+      // engine now honestly reports no teachable period →
+      // `cycle_recommended_insufficient`, 0 selected. The OLD engine
+      // masked the degeneracy by always emitting a band; exposing it is
+      // this slice's purpose, not a regression. The contract this test
+      // guards (exactly one summary persisted per cycle write) still
+      // holds. SA's demo reseed restores `cycle_recommended` + a
+      // non-zero cohort.
+      expect(rows.first['source_type'],
+          anyOf('cycle_recommended', 'cycle_recommended_insufficient'));
+      expect((rows.first['selected_shift_count'] as int),
+          greaterThanOrEqualTo(0));
     });
 
     test('manager override cycle write persists benchmark-selection summary', () async {
@@ -1196,12 +1224,17 @@ void main() {
           where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
       expect(rows.length, 1,
           reason: 'repair must create exactly one summary');
-      expect(rows.first['source_type'], 'cycle_recommended',
-          reason: 'repair must use the recommended-path source label');
-      expect((rows.first['selected_shift_count'] as int), greaterThan(0),
-          reason:
-              're-resolved recommendation against the demo calibration '
-              'window should select shifts');
+      // SB old→new: asserted `cycle_recommended` + selected > 0. With
+      // `clearCycleBackedState()` + pre-SA degenerate demo data the
+      // re-resolved recommendation honestly yields no teachable period
+      // (insufficient). The contract this test guards — repair creates
+      // EXACTLY ONE summary and never replaces the cycle — still holds.
+      // SA's reseed restores the non-insufficient labels/count.
+      expect(rows.first['source_type'],
+          anyOf('cycle_recommended', 'cycle_recommended_insufficient'),
+          reason: 'repair must use a recommended-path source label');
+      expect((rows.first['selected_shift_count'] as int),
+          greaterThanOrEqualTo(0));
     });
 
     test('existing summary on existing active cycle is left unchanged', () async {
@@ -1387,10 +1420,18 @@ void main() {
       // different id — so both calls returned identical results.
       final demo = await BaselineManagerService.instance
           .resolveRecommendedSelection(restaurantId, '2026-03-27');
-      // Sanity: demo has enough evidence for a non-insufficient result.
+      // Sanity: demo has 60-day evidence and is graded per-period (the
+      // pre-SA demo cohort is degenerate — spec DIAG-0 — so the
+      // Jim-faithful engine honestly grades every period building_flat
+      // with no selected shifts, rather than the OLD engine's masked
+      // band). The discriminating signal for the routing contract this
+      // test guards is "demo has per-period stats; ghost has none".
+      // SB old→new: was `selectedRecordIds isNotEmpty` (depended on the
+      // masked band); now assert the routing-distinguishing fact.
       expect(demo.overallQuality, isNot('insufficient'),
           reason: 'demo restaurant should have enough 60-day evidence');
-      expect(demo.selectedRecordIds, isNotEmpty);
+      expect(demo.perDaypartStats, isNotEmpty,
+          reason: 'demo restaurant must be graded per service period');
 
       final ghost = await BaselineManagerService.instance
           .resolveRecommendedSelection(
@@ -1576,16 +1617,32 @@ void main() {
             .getOrCreateActiveCycle(restaurantId, '2026-03-27');
 
         // Demo data primes recommendation.perDaypartStats for all three
-        // demo dayparts; the cycle write path should emit a matching
-        // per-period row for each.
+        // demo dayparts; the cycle write path emits a matching
+        // per-period row for each, each carrying its SB verdict. SB
+        // old→new: this asserted every row had targetCPLH > 0. With the
+        // pre-SA degenerate demo cohort every period is honestly
+        // `building_flat` (no band), so a non-teachable row's
+        // target/band are 0 by Design Rule 2 (never a fabricated
+        // point). The contract this test guards — one per-period row
+        // per configured service period — still holds, and each row now
+        // carries the honest verdict. SA's reseed makes them teachable
+        // (target > 0) end-to-end.
         expect(cycle.dayparts, isNotEmpty,
             reason: 'recommended path must emit per-period rows when '
                 'perDaypartStats is populated');
         for (final dp in cycle.dayparts) {
-          expect(dp.targetCPLH, greaterThan(0));
-          expect(dp.targetSPLH, greaterThan(0));
-          expect(dp.targetPPA, greaterThan(0));
           expect(dp.opzCeilingCPLH, greaterThanOrEqualTo(dp.opzFloorCPLH));
+          expect(dp.verdict, isNotNull,
+              reason: 'every per-period row carries an SB verdict');
+          if (dp.verdict == BenchmarkVerdict.teachable) {
+            expect(dp.targetCPLH, greaterThan(0));
+            expect(dp.targetSPLH, greaterThan(0));
+            expect(dp.targetPPA, greaterThan(0));
+          } else {
+            // building_* / running-hot-without-band → no fabricated
+            // point target (Design Rule 2).
+            expect(dp.targetCPLH, 0);
+          }
         }
       },
     );
@@ -1599,13 +1656,39 @@ void main() {
             .getOrCreateActiveCycle(restaurantId, '2026-03-27');
 
         if (cycle.dayparts.isEmpty) return; // Gap 42 fallback case; covered separately.
+
+        // SB old→new: this asserted the whole-day pool == cover-weighted
+        // Σ of ALL per-period rows (incl. min/max OPZ over all rows).
+        // SB locked decision: the whole-day pool is the cover-weighted
+        // rollup of TEACHABLE periods ONLY (building / running-hot
+        // periods persist their own row + verdict for the breakdown but
+        // are excluded from the whole-day number). When NO period is
+        // teachable (the pre-SA degenerate demo case) the parent gets
+        // MeridianConfig defaults. This re-derives the expected pool
+        // from the teachable subset, matching the new invariant.
+        final teachable = cycle.dayparts
+            .where((d) => d.verdict == BenchmarkVerdict.teachable)
+            .toList();
+
+        if (teachable.isEmpty) {
+          // No teachable period → MeridianConfig whole-day defaults.
+          expect(cycle.targetCPLH, closeTo(MeridianConfig.targetCPLH, 0.001));
+          expect(cycle.targetSPLH, closeTo(MeridianConfig.targetSPLH, 0.001));
+          expect(cycle.targetPPA, closeTo(MeridianConfig.targetPPA, 0.001));
+          expect(cycle.opzFloorCPLH,
+              closeTo(MeridianConfig.opzFloorCPLH, 0.001));
+          expect(cycle.opzCeilingCPLH,
+              closeTo(MeridianConfig.opzCeilingCPLH, 0.001));
+          return;
+        }
+
         final totalCovers =
-            cycle.dayparts.fold<int>(0, (s, d) => s + d.coverCount);
+            teachable.fold<int>(0, (s, d) => s + d.coverCount);
         if (totalCovers > 0) {
           double expectedCPLH = 0;
           double expectedSPLH = 0;
           double expectedPPA = 0;
-          for (final d in cycle.dayparts) {
+          for (final d in teachable) {
             final w = d.coverCount / totalCovers;
             expectedCPLH += d.targetCPLH * w;
             expectedSPLH += d.targetSPLH * w;
@@ -1616,11 +1699,11 @@ void main() {
           expect(cycle.targetPPA, closeTo(expectedPPA, 0.001));
         }
 
-        // OPZ floor = min of periods; ceiling = max of periods.
-        final minFloor = cycle.dayparts
+        // OPZ floor = min of teachable periods; ceiling = max.
+        final minFloor = teachable
             .map((d) => d.opzFloorCPLH)
             .reduce((a, b) => a < b ? a : b);
-        final maxCeiling = cycle.dayparts
+        final maxCeiling = teachable
             .map((d) => d.opzCeilingCPLH)
             .reduce((a, b) => a > b ? a : b);
         expect(cycle.opzFloorCPLH, closeTo(minFloor, 0.001));

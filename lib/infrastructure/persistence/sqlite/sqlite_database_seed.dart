@@ -1377,6 +1377,71 @@ Future<TargetCycle> _ensureDemoSeedCycle(
   return cycle;
 }
 
+/// Per-Daypart V1 (SB consumer adaptation): builds the demo cycle's
+/// per-period rows from the (now Jim-faithful) recommendation output.
+///
+/// SB makes the recommendation engine honest: a degenerate per-period
+/// cohort (the pre-SA demo seed pins every shift to one CPLH value —
+/// spec DIAG-0) no longer fabricates a band; the period's stats carry a
+/// `building_*` verdict with zeroed band/target. The demo must still
+/// render a usable, differentiated per-period number, so a period whose
+/// recommendation did not produce a real teachable band falls back to
+/// the deterministic demo band constants (the same constants stamped
+/// onto the demo closed shifts) — exactly the existing insufficient
+/// fallback, now also covering the honest `building_*` case. The SB
+/// verdict + reason are carried through onto the row so the per-period
+/// breakdown can still tell the honest story. SA's demo reseed restores
+/// genuine variance so these periods become `teachable` end-to-end;
+/// this keeps the demo functional in the interim without touching the
+/// demo data shape (SA's territory).
+List<TargetCycleDaypart> _buildDemoSeedDayparts({
+  required RecommendedBenchmarkSelection recommendation,
+  required Map<String, int> coversByPeriod,
+}) {
+  final dayparts = <TargetCycleDaypart>[];
+  for (final periodId in MockIntegrationReplaySeed.demoServicePeriodIds) {
+    final stats = recommendation.isInsufficient
+        ? null
+        : recommendation.perDaypartStats[periodId];
+    final coverCount = coversByPeriod[periodId] ?? 0;
+    // A "real teachable band" is one the engine actually drew (positive
+    // band + target). building_* / running-hot-without-band yield zeros.
+    final hasRealBand = stats != null &&
+        stats.opzCeilingCPLH > 0 &&
+        stats.recommendedTargetCPLH > 0;
+    if (hasRealBand) {
+      dayparts.add(TargetCycleDaypart(
+        servicePeriodId: periodId,
+        targetCPLH: stats.recommendedTargetCPLH,
+        targetSPLH: stats.recommendedTargetSPLH,
+        targetPPA: stats.recommendedTargetPPA,
+        opzFloorCPLH: stats.opzFloorCPLH,
+        opzCeilingCPLH: stats.opzCeilingCPLH,
+        coverCount: coverCount,
+        verdict: stats.verdict,
+        verdictReason: stats.verdictReason,
+      ));
+    } else {
+      final band = MockIntegrationReplaySeed.demoDaypartTargetBand(periodId)!;
+      dayparts.add(TargetCycleDaypart(
+        servicePeriodId: periodId,
+        targetCPLH: band.targetCPLH,
+        targetSPLH: band.targetSPLH,
+        targetPPA: band.targetPPA,
+        opzFloorCPLH: band.opzFloorCPLH,
+        opzCeilingCPLH: band.opzCeilingCPLH,
+        coverCount: coverCount,
+        // Carry the honest verdict when the engine produced one (the
+        // pre-SA degenerate-data `building_*` case); null on the
+        // genuine insufficient path.
+        verdict: stats?.verdict,
+        verdictReason: stats?.verdictReason,
+      ));
+    }
+  }
+  return dayparts;
+}
+
 TargetCycle _buildDemoSeedCycle({
   required String businessDate,
   double? fohWageOverride,
@@ -1405,35 +1470,10 @@ TargetCycle _buildDemoSeedCycle({
   // constants stamped onto demo closed shifts). The whole-day scalars
   // are then the cover-weighted rollup of these rows — never the
   // deprecated pooled/union recommendation accessors.
-  final dayparts = <TargetCycleDaypart>[];
-  for (final periodId in MockIntegrationReplaySeed.demoServicePeriodIds) {
-    final stats = recommendation.isInsufficient
-        ? null
-        : recommendation.perDaypartStats[periodId];
-    final coverCount = coversByPeriod[periodId] ?? 0;
-    if (stats != null) {
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: stats.recommendedTargetCPLH,
-        targetSPLH: stats.recommendedTargetSPLH,
-        targetPPA: stats.recommendedTargetPPA,
-        opzFloorCPLH: stats.opzFloorCPLH,
-        opzCeilingCPLH: stats.opzCeilingCPLH,
-        coverCount: coverCount,
-      ));
-    } else {
-      final band = MockIntegrationReplaySeed.demoDaypartTargetBand(periodId)!;
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: band.targetCPLH,
-        targetSPLH: band.targetSPLH,
-        targetPPA: band.targetPPA,
-        opzFloorCPLH: band.opzFloorCPLH,
-        opzCeilingCPLH: band.opzCeilingCPLH,
-        coverCount: coverCount,
-      ));
-    }
-  }
+  final dayparts = _buildDemoSeedDayparts(
+    recommendation: recommendation,
+    coversByPeriod: coversByPeriod,
+  );
 
   final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
 
@@ -1812,36 +1852,10 @@ TargetCycle _buildLocationSeedCycle({
     coversByPeriod[c.daypart] = (coversByPeriod[c.daypart] ?? 0) + c.covers;
   }
 
-  final dayparts = <TargetCycleDaypart>[];
-  for (final periodId in MockIntegrationReplaySeed.demoServicePeriodIds) {
-    final stats = recommendation.isInsufficient
-        ? null
-        : recommendation.perDaypartStats[periodId];
-    final coverCount = coversByPeriod[periodId] ?? 0;
-    if (stats != null) {
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: stats.recommendedTargetCPLH,
-        targetSPLH: stats.recommendedTargetSPLH,
-        targetPPA: stats.recommendedTargetPPA,
-        opzFloorCPLH: stats.opzFloorCPLH,
-        opzCeilingCPLH: stats.opzCeilingCPLH,
-        coverCount: coverCount,
-      ));
-    } else {
-      final band =
-          MockIntegrationReplaySeed.demoDaypartTargetBand(periodId)!;
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: band.targetCPLH,
-        targetSPLH: band.targetSPLH,
-        targetPPA: band.targetPPA,
-        opzFloorCPLH: band.opzFloorCPLH,
-        opzCeilingCPLH: band.opzCeilingCPLH,
-        coverCount: coverCount,
-      ));
-    }
-  }
+  final dayparts = _buildDemoSeedDayparts(
+    recommendation: recommendation,
+    coversByPeriod: coversByPeriod,
+  );
 
   final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
 

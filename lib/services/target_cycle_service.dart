@@ -448,21 +448,28 @@ class TargetCycleService {
     return cycle;
   }
 
-  /// Per-Daypart V1 (Slice 1) — recommended-path profile + per-period
-  /// rows. Replaces the legacy `_buildRecommendedProfile` which read
-  /// from `recommendation.pooledRecommendedTargetCPLH` etc. Now:
+  /// Per-Daypart V1 (Slice 1 + SB) — recommended-path profile +
+  /// per-period rows. Replaces the legacy `_buildRecommendedProfile`
+  /// which read from `recommendation.pooledRecommendedTargetCPLH` etc.
+  /// Now:
   ///
   /// 1. For each daypart with stats in `recommendation.perDaypartStats`,
-  ///    emit a `TargetCycleDaypart` row.
+  ///    emit a `TargetCycleDaypart` row carrying the SB per-period
+  ///    verdict + reason and `coverCount = stats.selectedCoverSum`
+  ///    (real benchmark-set cover mass, not the selected-shift count).
   /// 2. Compute the parent's whole-day pool as a cover-weighted rollup
-  ///    of those rows (Design Rule 4).
-  /// 3. OPZ floor = min of period floors; ceiling = max of period
-  ///    ceilings.
+  ///    of the TEACHABLE periods only (Design Rule 4 + SB locked
+  ///    decision: building / running-hot periods are excluded from the
+  ///    whole-day number and shown only in the per-period breakdown).
+  /// 3. OPZ floor = min of teachable period floors; ceiling = max of
+  ///    teachable period ceilings.
   /// 4. Gap 42 fallback (binding operator decision 2026-05-15): when
-  ///    `recommendation.isInsufficient`, write the parent with
-  ///    `MeridianConfig` whole-day defaults and leave the per-period
-  ///    list empty. Read-layer consumers fall back to the parent pool
-  ///    when `daypartFor` returns null.
+  ///    `recommendation.isInsufficient` OR no period is teachable, write
+  ///    the parent with `MeridianConfig` whole-day defaults. Per-period
+  ///    rows still persist (each carries its own honest verdict for the
+  ///    breakdown) unless the recommendation was itself insufficient, in
+  ///    which case the per-period list is empty. Read-layer consumers
+  ///    fall back to the parent pool when `daypartFor` returns null.
   _RecommendedBuildResult _buildRecommendedProfileAndDayparts({
     required String restaurantId,
     required double? wageFoh,
@@ -494,9 +501,13 @@ class TargetCycleService {
     }
 
     // Build per-period rows from the recommendation's per-daypart stats.
-    // The recommendation service has already done the heavy lifting
-    // (eligibility gating, MAD-outlier filtering, CPLH-first top-N) per
-    // daypart; this just lifts the stats into persistence shape.
+    // The recommendation service (Slice SB, Jim-faithful) has already
+    // done the heavy lifting (eligibility gating, MAD-outlier filtering,
+    // joint CPLH/SPLH/PPA selection, robust band + per-period verdict);
+    // this lifts the stats into persistence shape, carrying the verdict
+    // + reason through and weighting the pool by the real benchmark-set
+    // cover mass (locked decision: weight by real covers, not the
+    // selected-shift count — `selectedCoverSum`, not `selectedCount`).
     final dayparts = <TargetCycleDaypart>[];
     for (final entry in recommendation.perDaypartStats.entries) {
       final stats = entry.value;
@@ -507,12 +518,43 @@ class TargetCycleService {
         targetPPA: stats.recommendedTargetPPA,
         opzFloorCPLH: stats.opzFloorCPLH,
         opzCeilingCPLH: stats.opzCeilingCPLH,
-        coverCount: stats.selectedCount,
+        coverCount: stats.selectedCoverSum,
+        verdict: stats.verdict,
+        verdictReason: stats.verdictReason,
       ));
     }
 
-    // Recompute pool from the per-period rows (Design Rule 4).
-    final pool = TargetCycleDaypartPool.fromDayparts(dayparts);
+    // Whole-day pool = cover-weighted rollup of TEACHABLE periods only
+    // (locked decision: building / running-hot periods are excluded
+    // from the whole-day number; they still persist their own
+    // per-period row + verdict for the breakdown). When NO period is
+    // teachable, fall back to the Gap-42 insufficient behaviour (parent
+    // gets MeridianConfig defaults; per-period rows still persist so the
+    // breakdown can render each period's own honest verdict).
+    final teachableDayparts = dayparts
+        .where((d) => d.verdict == BenchmarkVerdict.teachable)
+        .toList();
+
+    if (teachableDayparts.isEmpty) {
+      return _RecommendedBuildResult(
+        profile: ActiveTargetProfile.build(
+          restaurantId: restaurantId,
+          sourceType: 'system_baseline_insufficient',
+          targetCPLH: MeridianConfig.targetCPLH,
+          targetSPLH: MeridianConfig.targetSPLH,
+          targetPPA: MeridianConfig.targetPPA,
+          fohWage: resolvedFohWage,
+          bohWage: resolvedBohWage,
+          opzFloorCPLH: MeridianConfig.opzFloorCPLH,
+          opzCeilingCPLH: MeridianConfig.opzCeilingCPLH,
+        ),
+        dayparts: dayparts,
+        sourceLabel: 'cycle_recommended_insufficient',
+      );
+    }
+
+    // Recompute pool from the teachable per-period rows (Design Rule 4).
+    final pool = TargetCycleDaypartPool.fromDayparts(teachableDayparts);
 
     return _RecommendedBuildResult(
       profile: ActiveTargetProfile.build(
@@ -657,67 +699,82 @@ class TargetCycleService {
                 daypartTargetPPA: d.targetPPA,
                 daypartOpzFloorCPLH: d.opzFloorCPLH,
                 daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+                verdict: d.verdict,
+                verdictReason: d.verdictReason,
               ))
           .toList(),
     );
     await _profileRepo.upsertActiveTargetProfile(profileWithDayparts);
   }
 
-  // ── Per-daypart-aware spread quality (Per-Daypart Targets V1) ─────────
+  // ── Per-daypart-aware spread quality (Per-Daypart Targets V1 + SB) ────
   //
-  // `RecommendedBenchmarkSelectionService` already decides spread quality
-  // per service period: a cross-daypart union that only looks wide
-  // because lunch/dinner/late-night run at structurally different CPLH is
-  // reported as `adequate` (teachable), never `weak`. A genuinely sloppy
-  // or thin per-period cohort is what drives `weak`.
+  // `RecommendedBenchmarkSelectionService` (Slice SB, Jim-faithful) now
+  // emits a single per-operation verdict (`recommendation.
+  // operationVerdict`, rolled up from the per-period verdicts without
+  // cross-daypart poisoning). This derives the Learn-chip
+  // analytics label from THAT verdict — the single source of truth — so
+  // the Learn chip and the Benchmark-graph badge (which SC will render
+  // from the same verdict) never contradict each other. It deliberately
+  // does NOT recompute a label from the cross-daypart union
+  // floor/ceiling (the old path falsely read "TOO WIDE" for any
+  // operation with normal lunch/dinner/late-night variation).
   //
-  // The legacy summary path discarded that verdict and re-derived a label
-  // by feeding the union floor/ceiling back through `computeAnalytics`,
-  // which re-applied the single-cohort >1.25 CPLH width test to the
-  // union. For any operation with normal daypart variation (the demo
-  // included) that produced a false "OPZ RANGE TOO WIDE" → the
-  // "RANGE TOO WIDE TO TEACH / your service periods are behaving
-  // differently" badge, even when every period's own cohort was tight.
-  //
-  // This maps the engine's already-correct `overallQuality` straight onto
-  // the persisted label vocabulary. Schema-stable bleed-stop; superseded
-  // when the V1 plan's Slice 6 makes the summary itself per-period.
+  // Operator-facing copy is kept generic here; SC owns the final
+  // verdict-keyed operator strings (`docs/_audits/per_daypart_v1/
+  // benchmark_selection_rework_spec.md` §9). Schema-stable: the label
+  // vocabulary stays within the existing
+  // GOOD/TOO NARROW/TOO WIDE-free enum the persisted column accepts.
   static BaselineSelectionAnalytics _recommendationAnalytics(
     RecommendedBenchmarkSelection recommendation,
   ) {
     final selectedCount = recommendation.selectedRecordIds.length;
-    switch (recommendation.overallQuality) {
-      case 'strong':
-      case 'adequate':
+    // operationVerdict is the SB single source of truth. Fall back to
+    // overallQuality only for legacy/insufficient results that predate
+    // a verdict (e.g. the `.insufficient()` factory).
+    final verdict = recommendation.operationVerdict ??
+        (recommendation.isInsufficient
+            ? null
+            : recommendation.overallQuality);
+    switch (verdict) {
+      case BenchmarkVerdict.teachable:
         return BaselineSelectionAnalytics(
           selectedShiftCount: selectedCount,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
               'Team looks busy without getting stretched. Service should hold here.',
         );
-      case 'insufficient':
-        // `sourceLabel` routing also marks this `..._insufficient`; the
-        // read layer short-circuits on that before the label switch. The
-        // warning-toned label keeps the Learn chip honest regardless.
+      case BenchmarkVerdict.runningHot:
+        // A real, drawable band but not a healthy one. Keep the Learn
+        // chip honest without inventing a new persisted label value;
+        // SC renders the final OPERATION RUNNING HOT operator copy.
         return BaselineSelectionAnalytics(
           selectedShiftCount: selectedCount,
           rangeQualityLabel: 'OPZ RANGE TOO NARROW',
           rangeQualityMessage:
-              'Not enough recent shifts yet to set a reliable benchmark range.',
+              'Your strongest shifts are running hot. Stabilize the '
+              'staffing pressure before coaching to this number.',
         );
-      case 'weak':
-      default:
-        // Genuine "not teachable yet" — a service period's own cohort is
-        // thin or sloppy (or fewer than 5 shifts selected overall).
-        // Period-agnostic honest copy; deliberately NOT the cross-period
-        // "too wide" framing, which the union recompute produced even
-        // when no period was actually wide.
+      case BenchmarkVerdict.buildingEarly:
+      case BenchmarkVerdict.buildingFlat:
+      case BenchmarkVerdict.buildingFewStrong:
         return BaselineSelectionAnalytics(
           selectedShiftCount: selectedCount,
           rangeQualityLabel: 'OPZ RANGE TOO NARROW',
           rangeQualityMessage:
               'We do not have a clean operating range yet. '
               'Let more shifts close before coaching to this.',
+        );
+      default:
+        // No verdict → insufficient evidence. `sourceLabel` routing also
+        // marks this `..._insufficient`; the read layer short-circuits
+        // on that before the label switch. Warning-toned label keeps
+        // the Learn chip honest regardless.
+        return BaselineSelectionAnalytics(
+          selectedShiftCount: selectedCount,
+          rangeQualityLabel: 'OPZ RANGE TOO NARROW',
+          rangeQualityMessage:
+              'Not enough recent shifts yet to set a reliable benchmark range.',
         );
     }
   }
