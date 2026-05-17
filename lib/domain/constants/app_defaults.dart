@@ -102,17 +102,16 @@ class LeverCardData {
 class LeverCards {
   static const coversDown = LeverCardData(
     id: 'covers_down',
-    metric: 'COVERS CAME IN LIGHT',
+    metric: 'Covers came in light',
     causeCategory: 'VOLUME',
     side: LeverSide.both,
     direction: LeverDirection.unfavorable,
-    whatHappened: 'Guest volume came in below plan. FOH hours did not flex down to match.',
+    whatHappened:
+        'Fewer guests walked in than the schedule was built for, and the hours did not come down to meet the lighter volume. Both sides drift up because the sales side shrank while labor held. This is a forecast or scheduling gap, not a team problem.',
     whatToDo:
-        'Pull FOH hours from Fri, Sat, and Sun shifts before they open. '
-        'Volume is tracking below plan. Don\'t carry over-scheduled hours into the weekend.',
+        'Track covers mid-week against the forecast. When the pace is running light, cut hours in real time, do not wait for close. Build next week from covers divided by your CPLH target so the schedule starts where demand actually is.',
     teachingNote:
-        'Study forecast accuracy and hour flex by daypart. If this repeats in the same dayparts, '
-        'the leak is forecast and schedule discipline, not a one-week miss.',
+        'Covers down with hours that did not flex is the most common bleed. One light week is normal variation. The same daypart light week after week means the forecast is overstating demand there.',
     shortLabel: 'COVERS',
     isFavorable: false,
     weekActionLine: 'Schedule fewer FOH hours to match actual cover pace.',
@@ -120,19 +119,16 @@ class LeverCards {
 
   static const coversUp = LeverCardData(
     id: 'covers_up',
-    metric: 'VOLUME CAME IN ABOVE PLAN',
+    metric: 'Volume came in above plan',
     causeCategory: 'VOLUME',
     side: LeverSide.both,
     direction: LeverDirection.favorable,
     whatHappened:
-        'Volume came in above what you planned for, and both sides of the house improved. '
-        'More guests across the same hours -the sales denominator grew and labor landed better than model.',
+        'More guests showed up than you forecast, and the team carried them on the hours already scheduled. Both sides looked better because the extra covers grew the sales side. The rule before you celebrate a good number: check CPLH. If it held in the zone this was design. If it ran soft, the volume did work the schedule should have done.',
     whatToDo:
-        'If this is happening consistently, your weekly cover forecast is running conservative. '
-        'Adjust it upward for next week so your schedule matches what your restaurant is actually doing.',
+        'If CPLH held, write down the staffing setup that absorbed the covers, that is a benchmark. If CPLH ran below target, do not raise the forecast yet, first build the schedule from covers divided by your CPLH target.',
     teachingNote:
-        'Study whether forecast is consistently conservative. If this repeats, update the weekly forecast '
-        'and protect the staffing pattern that absorbed the volume.',
+        'A hot week can rescue a bloated schedule and still post a good number. That is luck, not a system. If covers keep beating forecast in the same dayparts and CPLH holds, recalibrate the forecast upward. If CPLH does not hold, the leak is the schedule.',
     shortLabel: 'COVERS',
     isFavorable: true,
     weekActionLine: 'Raise your weekly cover forecast for next week.',
@@ -140,20 +136,16 @@ class LeverCards {
 
   static const ppaDown = LeverCardData(
     id: 'ppa_down',
-    metric: 'PPA RUNNING BELOW TARGET',
+    metric: 'PPA running below target',
     causeCategory: 'GUEST EXPERIENCE',
     side: LeverSide.both,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'Guests spent less per head than your target. When check-backs stop happening and upsells die, '
-        'this is usually the first place it shows up. Check your CPLH for this shift -if the team was '
-        'above their ceiling, they were stretched too thin to take care of the guest properly.',
+        'Guests spent less per head. The first check is not the menu, it is CPLH. When the team is pushed above the OPZ ceiling, check-backs stop and upsells die. Look at productivity before you talk about training.',
     whatToDo:
-        'Cross-reference your CPLH. If it was above the OPZ ceiling, the fix is a staffing level '
-        'adjustment, not a training conversation. A team that is running too lean cannot sell. Give them the floor to do it.',
+        'Cross-reference CPLH. If it was above the ceiling, the fix is staffing level, not a coaching conversation. A team running too lean cannot sell. Give them the floor to do it.',
     teachingNote:
-        'Study whether this repeats when FOH productivity runs above the OPZ ceiling. '
-        'If PPA drops cluster in the same dayparts, guest attention is being lost there.',
+        'Upsells die above the OPZ ceiling. If PPA drops cluster in the same dayparts where CPLH runs hot, guest attention is being lost there. That is a staffing pattern, not a people problem.',
     shortLabel: 'PPA',
     isFavorable: false,
     weekActionLine: 'Cross-check CPLH. If above ceiling, fix staffing first.',
@@ -161,19 +153,16 @@ class LeverCards {
 
   static const ppaUp = LeverCardData(
     id: 'ppa_up',
-    metric: 'PPA ABOVE TARGET',
+    metric: 'PPA above target',
     causeCategory: 'GUEST EXPERIENCE',
     side: LeverSide.both,
     direction: LeverDirection.favorable,
     whatHappened:
-        'Guests spent more per head. Check-backs happened. Upsells landed. The team had enough '
-        'floor to take care of people, and people responded. This is exactly what the OPZ is designed to produce.',
+        'Guests spent more per head. Check-backs happened, upsells landed, service was not rushed. This is the OPZ working as designed: the team had enough floor to take care of people and people responded.',
     whatToDo:
-        'Write down what made this shift work -covers, daypart, who was on floor, how the team was deployed. '
-        'You cannot replicate what you do not understand. This is a benchmark shift.',
+        'Write down what made this shift work: covers, daypart, who was on the floor, how the team was deployed. You cannot replicate what you do not understand. This is a benchmark shift.',
     teachingNote:
-        'Treat this as a benchmark pattern. Study staffing level, deployment, and guest behavior '
-        'in these dayparts and look for repeats.',
+        'PPA rises when the team is inside the zone, busy but not overwhelmed. Study which dayparts produce it and protect the staffing level that left room to sell.',
     shortLabel: 'PPA',
     isFavorable: true,
     weekActionLine: 'Write down what made this week work. Replicate it.',
@@ -181,20 +170,16 @@ class LeverCards {
 
   static const cplhDown = LeverCardData(
     id: 'cplh_down',
-    metric: 'CPLH BELOW TARGET',
+    metric: 'CPLH below target',
     causeCategory: 'SCHEDULING',
     side: LeverSide.foh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'More front-of-house hours were scheduled than the covers required. Servers had too few tables. '
-        'Hours were paid that the volume did not need. Your BOH is holding fine -this is a front-of-house '
-        'scheduling decision, and the fix is straightforward.',
+        'More front-of-house hours were scheduled than the covers required. Servers had tables to spare and you paid for hours the volume never used. BOH is unaffected, this is a front-of-house scheduling decision.',
     whatToDo:
-        'Before you build next week\'s FOH schedule, start here: forecasted covers divided by your CPLH '
-        'target of 4.5. That number is your required FOH hours. Build from that, not from last week\'s sheet.',
+        'Build next week\'s FOH schedule from the math: forecast covers divided by your CPLH target. That number is your required FOH hours. Build from that, not from last week\'s sheet.',
     teachingNote:
-        'Study whether this repeats in the same FOH dayparts. If it does, hours are being built above '
-        'actual cover demand there.',
+        'Scheduling to last week or to revenue is why this repeats. If the same FOH dayparts run below target, hours are being built above actual cover demand there. Fix the schedule input, not the team.',
     shortLabel: 'CPLH',
     isFavorable: false,
     weekActionLine: 'Start next week\'s FOH schedule from covers ÷ 4.5.',
@@ -202,21 +187,16 @@ class LeverCards {
 
   static const cplhUp = LeverCardData(
     id: 'cplh_up',
-    metric: 'CPLH ABOVE TARGET',
+    metric: 'CPLH above target',
     causeCategory: 'SCHEDULING',
     side: LeverSide.foh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'Front-of-house hours were well-matched to the volume that came in. The team moved efficiently '
-        'and labor landed below model. As long as CPLH stayed inside the OPZ ceiling, this is what a '
-        'well-scheduled shift looks like.',
+        'Front-of-house covered the volume with fewer hours than model. The team moved efficiently and FOH labor landed below model. As long as CPLH stayed under the OPZ ceiling, this is what a well-scheduled shift looks like.',
     whatToDo:
-        'Check your OPZ position. If CPLH stayed below the ceiling, document this shift -staffing level, '
-        'cover count, daypart. That is your replicable setup. If CPLH pushed above the ceiling, the team '
-        'was stretched and service likely felt it.',
+        'Check OPZ position. Below the ceiling: document this shift, staffing level, cover count, daypart, that is your replicable setup. Above the ceiling: the team was stretched and service likely felt it even if the number looked good.',
     teachingNote:
-        'Treat this as a benchmark FOH productivity pattern if service held. Study which dayparts can '
-        'sustain it without pushing above the OPZ ceiling.',
+        'Efficient is only a win inside the zone. Study which dayparts can sustain this CPLH without pushing past the ceiling. That range is your real FOH target.',
     shortLabel: 'CPLH',
     isFavorable: true,
     weekActionLine: 'Document this shift. That is your replicable setup.',
@@ -224,21 +204,16 @@ class LeverCards {
 
   static const splhDown = LeverCardData(
     id: 'splh_down',
-    metric: 'SPLH BELOW TARGET',
+    metric: 'SPLH below target',
     causeCategory: 'KITCHEN PRODUCTIVITY',
     side: LeverSide.boh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'The kitchen is generating less sales per hour than your model requires. Your FOH is unaffected -'
-        'this is a back-of-house issue. It could be ticket times running slow, or it could be that BOH '
-        'was simply overstaffed for the sales volume that came in.',
+        'The kitchen produced fewer sales per labor hour than model. FOH is unaffected, the leak is back of house. It is either ticket times running slow or BOH simply overstaffed for the sales that came in.',
     whatToDo:
-        'Check two things: kitchen ticket time logs, and BOH hours against actual sales. If ticket times '
-        'were clean, you have an overstaffing issue. If ticket times were slow, you have a throughput issue. '
-        'They are different problems with different fixes.',
+        'Check two things: kitchen ticket-time logs and BOH hours against actual sales. Clean tickets mean overstaffing. Slow tickets mean throughput. Different problems, different fixes.',
     teachingNote:
-        'Study recurring kitchen leaks by daypart. If this repeats in the same BOH dayparts, inspect '
-        'throughput, deployment, and station load there.',
+        'A drop in SPLH with steady covers means the kitchen took longer per ticket or carried hours the volume did not need. If it repeats in the same BOH dayparts, inspect station load and throughput there.',
     shortLabel: 'SPLH',
     isFavorable: false,
     weekActionLine: 'Pull BOH ticket-time logs. Identify overstaffed positions.',
@@ -246,19 +221,16 @@ class LeverCards {
 
   static const splhUp = LeverCardData(
     id: 'splh_up',
-    metric: 'SPLH ABOVE TARGET',
+    metric: 'SPLH above target',
     causeCategory: 'KITCHEN PRODUCTIVITY',
     side: LeverSide.boh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'The kitchen is generating more sales per hour than your model. Ticket times are likely clean and '
-        'the BOH is right-sized for what came in. Your FOH is unaffected. This is a well-run kitchen shift.',
+        'The kitchen generated more sales per labor hour than model. Ticket times were likely clean and BOH was right-sized for what came in. FOH is unaffected, this is a well-run kitchen shift.',
     whatToDo:
-        'Note your BOH configuration for this shift -who was on which station, what the lineup looked like, '
-        'how prep was staged. That is your replicable kitchen setup. Write it down before the next roster goes out.',
+        'Note the BOH configuration: who was on which station, the lineup, how prep was staged. That is your replicable kitchen setup. Write it down before the next roster goes out.',
     teachingNote:
-        'Treat this as a benchmark kitchen pattern. Study ticket flow, prep readiness, and station setup '
-        'in these dayparts.',
+        'SPLH is the kitchen’s productivity read. Study ticket flow, prep readiness, and station setup in the dayparts where it holds, and protect that setup.',
     shortLabel: 'SPLH',
     isFavorable: true,
     weekActionLine: 'Document your BOH configuration. Use it as the baseline.',
@@ -266,20 +238,16 @@ class LeverCards {
 
   static const fohWageUp = LeverCardData(
     id: 'foh_wage_up',
-    metric: 'FOH BLENDED WAGE ABOVE MODEL',
+    metric: 'FOH blended wage above model',
     causeCategory: 'WAGE MIX',
     side: LeverSide.foh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'The hours were right. The cost attached to those hours was not. FOH blended wage ran above your '
-        'model rate, which usually means someone went into overtime, or a higher-cost role covered a position '
-        'they do not normally fill. Your BOH is unaffected.',
+        'The hours were right, the cost on those hours was not. FOH blended wage ran above model, usually overtime or a higher-cost role covering a position it does not normally fill. BOH is unaffected.',
     whatToDo:
-        'Pull FOH clock-out times and check role assignments for this shift. Identify who went over their '
-        'hours or who covered outside their normal classification. This is a deployment decision for next week, not a performance conversation.',
+        'Pull FOH clock-outs and role assignments for the shift. Find who went over hours or covered outside their classification. This is a deployment decision for next week, not a performance conversation.',
     teachingNote:
-        'Study which FOH dayparts repeatedly trigger overtime or expensive role mix. This is a deployment '
-        'pattern, not a generic labor problem.',
+        'Wage mix is largely outside the manager’s control, but deployment is not. If the same FOH dayparts keep triggering overtime or expensive coverage, that is a roster pattern to fix, not a labor problem to absorb.',
     shortLabel: 'WAGE',
     isFavorable: false,
     weekActionLine: 'Review FOH clock-outs and role assignments for overtime.',
@@ -287,21 +255,16 @@ class LeverCards {
 
   static const bohWageUp = LeverCardData(
     id: 'boh_wage_up',
-    metric: 'BOH BLENDED WAGE ABOVE MODEL',
+    metric: 'BOH blended wage above model',
     causeCategory: 'WAGE MIX',
     side: LeverSide.boh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'BOH blended wage ran above your model rate. FOH is unaffected. The most common cause is a kitchen '
-        'manager or sous chef dropping to a line position during a rush and logging hours at a higher rate. '
-        'The hours may have been necessary -the deployment around them may not have been.',
+        'BOH blended wage ran above model. FOH is unaffected. The usual cause is a kitchen manager or sous chef dropping to a line position during a rush and logging hours at a higher rate. The hours may have been necessary, the deployment around them may not have been.',
     whatToDo:
-        'Review BOH time cards and station assignments. Look for who was working outside their usual role '
-        'and what triggered it. The fix is smarter BOH deployment before the shift starts -knowing in advance '
-        'which positions need coverage and at what rate.',
+        'Review BOH time cards and station assignments. Find who worked outside their usual role and what triggered it. The fix is smarter pre-shift BOH deployment: know which positions need coverage and at what rate before the shift starts.',
     teachingNote:
-        'Study which BOH dayparts repeatedly trigger overtime or manager coverage. This is a deployment '
-        'pattern, not a general kitchen problem.',
+        'If the same BOH dayparts keep triggering overtime or manager coverage, that is a deployment pattern, not a general kitchen problem.',
     shortLabel: 'WAGE',
     isFavorable: false,
     weekActionLine: 'Review BOH time cards for off-classification coverage.',
@@ -309,18 +272,16 @@ class LeverCards {
 
   static const fohWageDown = LeverCardData(
     id: 'foh_wage_down',
-    metric: 'FOH BLENDED WAGE BELOW MODEL',
+    metric: 'FOH blended wage below model',
     causeCategory: 'WAGE MIX',
     side: LeverSide.foh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'FOH blended wage came in below your model rate. Right roles on right shifts: '
-        'lower-cost coverage was aligned with volume without sacrificing floor quality. Your BOH is unaffected.',
+        'FOH blended wage came in below model. The right roles were on the right shifts, lower-cost coverage aligned with volume without sacrificing floor quality. BOH is unaffected.',
     whatToDo:
-        'Document the FOH schedule configuration that produced this result. '
-        'Which roles were deployed, at what hours, and against what cover pace. Replicate the deployment pattern next week.',
+        'Document the FOH schedule configuration that produced this: which roles, at what hours, against what cover pace. Replicate the deployment pattern next week.',
     teachingNote:
-        'Treat this as a favorable FOH deployment pattern. Study which role mix produced it and where it repeats.',
+        'A favorable wage mix is a deployment pattern worth banking. Study which role mix produced it and where it repeats.',
     shortLabel: 'WAGE',
     isFavorable: true,
     weekActionLine: 'Note the FOH role mix that produced this result. Replicate it.',
@@ -328,18 +289,16 @@ class LeverCards {
 
   static const bohWageDown = LeverCardData(
     id: 'boh_wage_down',
-    metric: 'BOH BLENDED WAGE BELOW MODEL',
+    metric: 'BOH blended wage below model',
     causeCategory: 'WAGE MIX',
     side: LeverSide.boh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'BOH blended wage came in below your model rate. Kitchen deployment matched volume '
-        'without overtime or off-classification coverage. Your FOH is unaffected.',
+        'BOH blended wage came in below model. Kitchen deployment matched volume without overtime or off-classification coverage. FOH is unaffected.',
     whatToDo:
-        'Document the BOH station assignments and shift times that produced this result. '
-        'This is your benchmark kitchen configuration. Use it as the starting point for next week\'s lineup.',
+        'Document the BOH station assignments and shift times that produced this. It is your benchmark kitchen configuration, the starting point for next week\'s lineup.',
     teachingNote:
-        'Treat this as a favorable BOH deployment pattern. Study which kitchen setup produced it and where it repeats.',
+        'Bank the kitchen setup that produced the favorable mix and study where it repeats.',
     shortLabel: 'WAGE',
     isFavorable: true,
     weekActionLine: 'Note the kitchen deployment that produced this result.',
@@ -347,20 +306,16 @@ class LeverCards {
 
   static const fohHoursOver = LeverCardData(
     id: 'foh_hours_over',
-    metric: 'FOH HOURS DID NOT FLEX DOWN',
+    metric: 'FOH hours did not flex down',
     causeCategory: 'SCHEDULING',
     side: LeverSide.foh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'The floor carried more hours than the covers needed. The model says you needed fewer FOH hours '
-        'for what actually walked in, but the schedule didn\'t come down. Those excess hours are showing '
-        'up as labor cost above model. Your BOH is unaffected. This is a front-of-house flex issue.',
+        'The floor carried more hours than the covers needed. The model called for fewer FOH hours for what walked in, but the schedule never came down, so the excess shows up as labor above model. BOH is unaffected, this is a front-of-house flex issue.',
     whatToDo:
-        'Compare your published FOH schedule to the model hours for each daypart. Where the gap is widest, '
-        'that\'s where hours need to be pulled before the shift opens. Don\'t wait until close to find out.',
+        'Compare the published FOH schedule to model hours by daypart. Where the gap is widest, pull hours before the shift opens. The discipline is to cut before you open, not after you find out at close.',
     teachingNote:
-        'Study which FOH dayparts carry the most excess hours. If the same slots repeat, the schedule is '
-        'being built above what the forecast supports. The fix is pre-shift: cut before you open, not after.',
+        'This is the covers-down bleed seen from the hours side. If the same FOH slots carry excess week after week, the schedule is being built above what the forecast supports.',
     shortLabel: 'HOURS',
     isFavorable: false,
     weekActionLine: 'Pull FOH hours to match model before shifts open.',
@@ -368,20 +323,16 @@ class LeverCards {
 
   static const fohHoursUnder = LeverCardData(
     id: 'foh_hours_under',
-    metric: 'FOH RAN LEAN ON HOURS',
+    metric: 'FOH ran lean on hours',
     causeCategory: 'SCHEDULING',
     side: LeverSide.foh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'FOH hours came in below what the model needed for the volume. The floor ran lean: fewer servers '
-        'covered more guests. As long as PPA held and CPLH stayed inside the OPZ ceiling, this is exactly '
-        'what efficient scheduling looks like. Check your PPA. If it dropped, the team was stretched too thin.',
+        'FOH hours came in below model for the volume. The floor ran lean, fewer servers covered more guests. That is efficient only if PPA held and CPLH stayed under the OPZ ceiling, so check PPA before you call it a win.',
     whatToDo:
-        'Cross-check PPA and CPLH for this shift. If PPA held and CPLH stayed below the ceiling, document '
-        'this FOH configuration. It\'s your benchmark. If PPA dropped, the floor was too lean to sell.',
+        'Cross-check PPA and CPLH. PPA held and CPLH below the ceiling: document this FOH setup, it is your benchmark. PPA dropped: the floor was too lean to sell, you found the staffing floor, not the efficient setup.',
     teachingNote:
-        'Lean hours are favorable when service metrics hold. Study whether PPA dips when FOH hours run below '
-        'model. If it does, you found the staffing floor. If it doesn\'t, you found the efficient setup.',
+        'Lean is favorable until it crosses the ceiling. Study whether PPA dips when FOH hours run below model. That line is where efficiency turns into understaffing.',
     shortLabel: 'HOURS',
     isFavorable: true,
     weekActionLine: 'Document this FOH setup if PPA and service held.',
@@ -389,21 +340,16 @@ class LeverCards {
 
   static const bohHoursOver = LeverCardData(
     id: 'boh_hours_over',
-    metric: 'BOH HOURS DID NOT FLEX DOWN',
+    metric: 'BOH hours did not flex down',
     causeCategory: 'SCHEDULING',
     side: LeverSide.boh,
     direction: LeverDirection.unfavorable,
     whatHappened:
-        'The kitchen carried more hours than the sales volume required. The model says you needed fewer BOH '
-        'hours for what actually came through, but the schedule didn\'t flex. Those excess hours are driving '
-        'labor cost above theoretical. Your FOH is unaffected. This is a back-of-house scheduling issue.',
+        'The kitchen carried more hours than the sales volume required. The model called for fewer BOH hours for what came through, but the schedule did not flex, driving labor above theoretical. FOH is unaffected, this is a back-of-house scheduling issue.',
     whatToDo:
-        'Review your BOH lineup against actual sales by daypart. Where prep hours or line cooks exceeded what '
-        'the volume needed, that\'s where to tighten. Build next week\'s BOH schedule from sales forecast ÷ '
-        'target SPLH.',
+        'Review the BOH lineup against actual sales by daypart. Where prep hours or line cooks exceeded what the volume needed, tighten there. Build next week\'s BOH from forecast sales divided by target SPLH.',
     teachingNote:
-        'Study which BOH dayparts carry the most excess hours. If kitchen overstaffing repeats in the same '
-        'slots, the schedule is being built above what the sales forecast supports.',
+        'If kitchen overstaffing repeats in the same slots, the schedule is being built above what the sales forecast supports there.',
     shortLabel: 'HOURS',
     isFavorable: false,
     weekActionLine: 'Tighten BOH lineup to match model hours by daypart.',
@@ -411,21 +357,16 @@ class LeverCards {
 
   static const bohHoursUnder = LeverCardData(
     id: 'boh_hours_under',
-    metric: 'BOH RAN LEAN ON HOURS',
+    metric: 'BOH ran lean on hours',
     causeCategory: 'SCHEDULING',
     side: LeverSide.boh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'BOH hours came in below what the model needed for the sales volume. The kitchen ran lean: fewer '
-        'hours covered more output. If ticket times stayed clean and food quality held, this is a well-run '
-        'kitchen. Check your SPLH. If it\'s above target, the deployment worked.',
+        'BOH hours came in below model for the sales volume. The kitchen ran lean, fewer hours covered more output. That is a well-run kitchen only if ticket times stayed clean and quality held, so check SPLH and tickets.',
     whatToDo:
-        'Cross-check SPLH and ticket times. If both held, document this BOH configuration: station '
-        'assignments, prep staging, lineup. That is your replicable kitchen setup. If ticket times slipped, '
-        'the kitchen was stretched too thin.',
+        'Cross-check SPLH and ticket times. Both held: document the BOH configuration, station assignments, prep staging, lineup, that is your replicable setup. Tickets slipped: the kitchen was stretched too thin.',
     teachingNote:
-        'Lean kitchen hours are favorable when throughput holds. Study whether ticket times slip when BOH '
-        'hours run below model. If they do, you found the staffing floor. If they don\'t, you found efficiency.',
+        'Lean kitchen hours are favorable when throughput holds. Study whether ticket times slip when BOH runs below model. That is where efficiency turns into understaffing.',
     shortLabel: 'HOURS',
     isFavorable: true,
     weekActionLine: 'Document this BOH setup if ticket times and quality held.',
