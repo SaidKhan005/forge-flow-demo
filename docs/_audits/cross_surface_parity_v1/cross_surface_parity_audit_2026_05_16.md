@@ -57,10 +57,13 @@ Operator gave the go on the parked items (G7 re-spec + HP#11) and Round-2 §0b H
 - **X-G72 + MOB-G70** — mobile auth-ops idempotency + prod 401-refresh wiring shipped as `#877` then **REVERTED via `#880`** (`f8ca4a14`). WON'T-FIX (mobile out of operator scope). The §0b "register correction" re G61's mobile-auto-recovers claim stands as documentation only.
 - **MOB-G71** — mobile v1→v2 role staleness; folded into the dropped G7d-mobile. WON'T-FIX (no-mobile).
 
-**Still PARKED / next (operator-approved to proceed):**
-- **HP#11 S3** (operator-web Business-setup UI: real inherited/effective values, delete lossy local resolver) — depends on S1 (done); operator-web non-auth, no separate merge gate.
-- **HP#11 S2** (admin cross-tenant `withSystem` resolution route + data-accuracy/polling effective-source gateway) — RLS/proxy-touching → explicit operator merge approval required.
-- **HP#11 S4** (admin timing surfaces G41/G42) depends on S2; **S5** (admin data-accuracy/polling G40) — note G40 SOURCE-scoping is BY-DESIGN; S5 only does the timing-residual chrome.
+**HP#11 (Fix #4) — FULLY CLOSED 2026-05-17 (G13/G41/G42 fixed; G40 by-design):**
+- **S1 → `#872`** operator-web business-timing-resolution route + wire contracts.
+- **S3 (G13) → `#895`** (`065826ed`) operator-web Business-setup: real inherited/effective values; lossy `business_business_timing_resolver_local.dart` deleted; G45/Gap28 day-restricted periods round-trip. Audited clean, behavior-neutral, merged.
+- **S2 → `#893`** (`0dcb4bf5`) admin cross-tenant `withSystem` read route + admin client gateway. RLS/proxy-touching → **explicit operator merge approval given**. Isolation verified: operator-scoped path byte-identical (SQL-equality test), sanctioned `runAsSystem` bypass only, admin-gated 403 for operators, read-only, no RLS policy/migration/wrapper changed.
+- **S4 (G41+G42) → `#906`** (`e5aa032d`) admin timing surfaces: deleted hardcoded/synthetic candidate fabrication on `admin_timing_setup_screen.dart` + `operator_location_admin_screen.dart`; both resolve via S2 gateway → canonical resolver; read-only-accurate (no write affordance); Gap 31 honored. Audited clean, merged.
+- **S5 (G40) → DROPPED** — operator ruled data-accuracy/polling covers/wage SOURCE-scoping INTENDED, not a gap (BY-DESIGN). No timing residual remained after S4.
+- Net: G13/G41/G42 TRUE-GAP → FIXED; G40 → BY-DESIGN. HP#11 timing-faking fully eliminated across operator-web + admin.
 - **Round-2 §0b MED/standalone (non-mobile, recorded, not started):** G71 (admin token-refresh-retry), G72 (admin demo-tell), X-G70 (demo-tell harmonization — admin leg only, mobile out), X-G71 (notification-prefs surface gap admin vs op-web), OW-G73 (dead wage route), OW-G74 (init stack-trace exposure), G73 (admin demo Roles v1 catalog — doc line).
 
 **Doc loose ends (tracked, low-priority):** register §0 now current as of `40cc12df`; pre-existing `admin_shell_widget_test` IA-drift to log in `docs/KNOWN_FAILING_TESTS.md`; stale `stash@{0}` (redundant post-#840) to drop.

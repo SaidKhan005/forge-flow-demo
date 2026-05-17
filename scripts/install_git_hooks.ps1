@@ -42,5 +42,9 @@ if ($configured -ne '.githooks') {
 }
 
 Write-Host 'Forge & Flow git hooks enabled for this clone.'
-Write-Host 'Active hooks: pre-commit, pre-push.'
+Write-Host 'Active hooks: pre-commit, pre-push, post-merge.'
+Write-Host 'post-merge runs tool/repo_janitor.sh in the background, DRY-RUN by'
+Write-Host 'default (logs to .git/repo_janitor.log, deletes nothing). Enable'
+Write-Host 'real cleanup with: touch .git/repo_janitor_apply (or env'
+Write-Host 'REPO_JANITOR_APPLY=1).'
 Write-Host 'Graphify remains manual-only; no hook refreshes the graph.'
