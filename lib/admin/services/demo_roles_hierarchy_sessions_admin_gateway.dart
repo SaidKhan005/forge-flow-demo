@@ -1037,6 +1037,17 @@ const String kDemoDinerOrgUnitEast = '00000000-0000-4000-8000-000000000d02';
 const String kDemoDinerOrgUnitWest = '00000000-0000-4000-8000-000000000d03';
 const String kDemoSunsetOrgUnitRoot = '00000000-0000-4000-8000-000000000s01';
 
+// Cross-surface parity register G73 (BY-DESIGN-UNDOCUMENTED, now
+// documented): this demo fixture intentionally seeds the legacy v1
+// 6-role catalog (operator_owner / operator_manager /
+// operator_supervisor / operator_staff, plus a custom Floor Captain
+// and the trimmed Sunset set) for demo-walkthrough continuity.
+// Production role seeding is the v2 10-role default-role catalog in
+// `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`;
+// this in-memory demo gateway never feeds production seeding, so the
+// v1 shape here is a demo-only carve-out with no production analogue.
+// Keep this list stable so the Roles walkthrough stays deterministic;
+// do not "upgrade" it to v2 without a paired walkthrough refresh.
 Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
   const dinerRoles = <RoleAdminRow>[
     RoleAdminRow(

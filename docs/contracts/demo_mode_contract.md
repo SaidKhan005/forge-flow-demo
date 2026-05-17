@@ -266,6 +266,14 @@ boundary:
   builds NEVER ship `ADMIN_DEMO_AUTH=true` /
   `OPERATOR_WEB_DEMO_AUTH=true`. Both `main_*.dart` files also
   `assert(!kDebugMode || !demoFlag)` at startup as belt-and-suspenders.
+- Cross-surface parity register G73 (BY-DESIGN-UNDOCUMENTED, now
+  recorded): the Admin Console demo gateway `kDemoRolesByOperator()`
+  in `lib/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart`
+  intentionally seeds the legacy v1 6-role catalog for walkthrough
+  continuity. Production role seeding is the v2 10-role default-role
+  catalog (`db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`);
+  the in-memory demo gateway never feeds production seeding, so this is
+  a demo-only fixture carve-out with no production analogue.
 
 ---
 
