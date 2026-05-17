@@ -81,11 +81,17 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   // R1: active lens. Default "Whole day" (cover-weighted rollup).
   String _selectedLensId = kWholeDayLensId;
 
-  // R3: last applied band, or null when none applied / the operator has
-  // hand-tweaked since. Pure UI sugar: it only drives a one-shot draft
-  // derivation; nothing about it is persisted and it never reaches the
-  // write path.
-  StarBand? _selectedBand;
+  // R10: per-service-period band map keyed by service-period id (from
+  // the resolved operator defs via ServicePeriodDefinitionResolver).
+  // Every configured period defaults to StarBand.balanced on init
+  // (preserving the R8 "opens populated" behaviour). This is EPHEMERAL
+  // UI state: it only drives the in-memory draft derivation. Nothing
+  // about it is persisted, there is no new column / table / field, and
+  // it never reaches the write path. The selected record keys remain
+  // the sole persisted source of truth (saveSelection, on DONE only).
+  // null entry / hand-tweak drops the highlight for that period (the
+  // selection itself stays).
+  Map<String, StarBand?> _bandByPeriod = {};
 
   // R1: pre-commit once-per-60-day override gate. Null until resolved;
   // false means the override is used / out of window and commit is
@@ -142,34 +148,79 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     });
   }
 
-  /// R8: the screen OPENS POPULATED. On load the band defaults to
-  /// [StarBand.balanced] and its derived selection is applied to the
-  /// in-memory draft, so SELECTED count / targets / OPZ floor+ceiling /
-  /// preview render populated on entry (matching the committed
-  /// prototype, which calls `applyBand('bal')` on reset).
+  /// R10: the default per-period band map. EVERY operator-configured
+  /// service period (from the resolved defs, never a hardcoded daypart
+  /// list) starts at [StarBand.balanced]. Ephemeral UI state only; not
+  /// persisted, no new column / table / field.
+  Map<String, StarBand?> _defaultBandByPeriod() {
+    return {
+      for (final d in ServicePeriodDefinitionResolver.ordered(_defs))
+        d.id: StarBand.balanced,
+    };
+  }
+
+  /// R8/R10: the screen OPENS POPULATED. On load every operator-
+  /// configured service period defaults to [StarBand.balanced] in the
+  /// per-period band map and the union of each period's strongest N is
+  /// applied to the in-memory draft, so SELECTED count / targets / OPZ
+  /// floor+ceiling / preview render populated on entry (matching the
+  /// committed prototype, which calls `applyBand('bal')` on reset).
   ///
   /// This is a CLIENT-SIDE DRAFT DEFAULT ONLY. It mutates nothing but
-  /// the in-memory `Set<String>` draft and the `_selectedBand` highlight.
-  /// Nothing is persisted: `BaselineManagerService.saveSelection` is
-  /// still only called from [_done] when the operator taps the action.
-  /// The operator can still switch band, hand-tweak, or Clear (which
-  /// empties the draft).
+  /// the in-memory `Set<String>` draft and the ephemeral per-period
+  /// `_bandByPeriod` highlight map. Nothing is persisted:
+  /// `BaselineManagerService.saveSelection` is still only called from
+  /// [_done] when the operator taps the action. The operator can still
+  /// switch band per daypart, hand-tweak, or Clear (which empties the
+  /// draft).
   ///
   /// Falls back to the previously-selected candidate keys when no
   /// candidate has a service period the band can rank (defensive: keeps
   /// the screen honest rather than silently empty).
   Set<String> _initialDraftKeys() {
-    const defaultBand = StarBand.balanced;
-    final derived = deriveBandSelection(_candidates, _defs, defaultBand);
+    _bandByPeriod = _defaultBandByPeriod();
+    final derived = derivePerPeriodBandSelection(
+      _candidates,
+      _defs,
+      _resolvedBandByPeriod(),
+    );
     if (derived.isEmpty) {
-      _selectedBand = null;
+      // Defensive: no candidate has a period the band can rank. Keep the
+      // screen honest with the previously-selected keys rather than
+      // silently empty, and drop the per-period highlights.
+      _bandByPeriod = {
+        for (final id in _bandByPeriod.keys) id: null,
+      };
       return _candidates
           .where((c) => c.isSelected)
           .map((c) => c.recordKey)
           .toSet();
     }
-    _selectedBand = defaultBand;
     return derived;
+  }
+
+  /// R10: the band map narrowed to non-null entries, ready for the pure
+  /// per-period derivation. A null entry (period hand-tweaked or never
+  /// banded) defaults to Balanced for derivation purposes only; the
+  /// highlight stays off because the stored value is null.
+  Map<String, StarBand> _resolvedBandByPeriod() {
+    return {
+      for (final entry in _bandByPeriod.entries)
+        if (entry.value != null) entry.key: entry.value!,
+    };
+  }
+
+  /// R10: the band the Lean / Balanced / Generous control highlights for
+  /// the active lens. A specific daypart shows THAT daypart's own band.
+  /// Whole day shows the common band only when every configured period
+  /// shares it (so a uniform state still highlights), else null.
+  StarBand? _activeLensBand() {
+    if (_selectedLensId != kWholeDayLensId) {
+      return _bandByPeriod[_selectedLensId];
+    }
+    final values = _bandByPeriod.values.toSet();
+    if (values.length == 1) return values.first;
+    return null;
   }
 
   // ── Calendar data ──────────────────────────────────────────────────────────
@@ -222,15 +273,29 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
         _draftKeys.add(recordKey);
       }
       // A hand-tweak means the selection no longer exactly matches a
-      // band, so drop the band highlight (the selection itself stays).
-      _selectedBand = null;
+      // band. Drop the highlight for the affected period (the selection
+      // itself stays). On the whole-day lens a tweak can touch any
+      // period, so drop every highlight.
+      _dropBandHighlight();
     });
+  }
+
+  /// R10: clears the per-period band highlight(s) without changing the
+  /// draft selection. Scoped to the active lens: a daypart lens clears
+  /// only that daypart's highlight; whole day clears them all.
+  void _dropBandHighlight() {
+    if (_selectedLensId != kWholeDayLensId &&
+        _bandByPeriod.containsKey(_selectedLensId)) {
+      _bandByPeriod[_selectedLensId] = null;
+    } else {
+      _bandByPeriod = {for (final id in _bandByPeriod.keys) id: null};
+    }
   }
 
   void _clearAll() {
     setState(() {
       _draftKeys.clear();
-      _selectedBand = null;
+      _bandByPeriod = {for (final id in _bandByPeriod.keys) id: null};
     });
   }
 
@@ -246,17 +311,33 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     });
   }
 
-  /// R3: applying a band DERIVES a draft selection. For every
-  /// operator-configured period it keeps the top-N strongest candidate
-  /// shifts by CPLH (N per tier). This ONLY mutates the draft set; the
+  /// R10: applying a band updates the PER-PERIOD band map then RE-DERIVES
+  /// the draft from the union over every configured period of that
+  /// period's strongest N (N per that period's own tier). Behaviour
+  /// depends on the active lens:
+  ///
+  ///  - A specific daypart lens: set ONLY that daypart's band. Each
+  ///    daypart remembers its own, so the operator can mix and match.
+  ///  - The whole-day lens: a BULK OVERRIDE that sets EVERY configured
+  ///    period's band to the chosen value (operator-confirmed: whole day
+  ///    sets all, then they can open individual dayparts to mix).
+  ///
+  /// This ONLY mutates the in-memory draft + the ephemeral band map; the
   /// operator can still hand-tweak afterwards and commit still flows
-  /// through the unchanged `BaselineManagerService.saveSelection`. No
-  /// persistence, no parallel target stack.
+  /// through the unchanged `BaselineManagerService.saveSelection` on
+  /// DONE. No persistence, no parallel target stack, no new column.
   void _applyBand(StarBand band) {
-    final derived = deriveBandSelection(_candidates, _defs, band);
     setState(() {
-      _draftKeys = derived;
-      _selectedBand = band;
+      if (_selectedLensId == kWholeDayLensId) {
+        _bandByPeriod = {for (final id in _bandByPeriod.keys) id: band};
+      } else {
+        _bandByPeriod[_selectedLensId] = band;
+      }
+      _draftKeys = derivePerPeriodBandSelection(
+        _candidates,
+        _defs,
+        _resolvedBandByPeriod(),
+      );
     });
   }
 
@@ -459,8 +540,13 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                           historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
                           selectedLensId: _selectedLensId,
                         ),
+                        // R10: the control reflects/sets the band for the
+                        // ACTIVE lens. A daypart lens shows + sets only
+                        // that daypart's band; whole day shows the common
+                        // band (when uniform) and a pick is a bulk
+                        // override across every configured period.
                         BaselineManagerBandSelector(
-                          selectedBand: _selectedBand,
+                          selectedBand: _activeLensBand(),
                           onBandSelected: _applyBand,
                         ),
                         if (_draftKeys.isNotEmpty)
