@@ -322,7 +322,13 @@ class CplhOpzBandCard extends StatelessWidget {
           'to meet it.';
     }
 
-    final base = AppTextStyles.body14(color: AppColors.textPrimary);
+    // `AppTextStyles.body14` defaults to FontWeight.w600 (semibold), which
+    // would render the WHOLE teaching paragraph heavy. Mockup `.teach`
+    // (docs/f&f Coaching/variance_tab_v2_mockup.html) is regular-weight
+    // body with bold ONLY on the lead-in and the colored stat spans. Pin
+    // the plain weight explicitly to w400 so plain segments are regular.
+    final base = AppTextStyles.body14(color: AppColors.textPrimary)
+        .copyWith(fontWeight: FontWeight.w400);
     return Text.rich(
       TextSpan(
         children: [

@@ -430,6 +430,16 @@ void main() {
     bool _isBold(TextStyle? s) =>
         s != null && (s.fontWeight?.index ?? 0) >= FontWeight.w700.index;
 
+    // Regression guard for the all-bold paragraph defect: a plain body
+    // run must render at REGULAR weight (strictly below w700). The base
+    // style is pinned to w400 in the card so this holds even though
+    // AppTextStyles.body14 itself defaults to w600.
+    bool _isRegular(TextStyle? s) =>
+        s != null &&
+        s.fontWeight != FontWeight.w700 &&
+        (s.fontWeight?.index ?? FontWeight.w700.index) <
+            FontWeight.w700.index;
+
     Future<List<(String, TextStyle?)>> _pump(
       WidgetTester tester,
       CplhOpzBandData d,
@@ -467,6 +477,19 @@ void main() {
       expect(lead.$2?.color, isNot(AppColors.negative));
       expect(lead.$2?.color, isNot(AppColors.positive));
 
+      // (a2) a PLAIN body run renders at REGULAR weight (not w700) — the
+      // whole-paragraph-bold defect would fail this. The intro run "The
+      // green band is where ..." is always plain.
+      final plain = runs.firstWhere(
+        (r) => r.$1.contains('The green band is where'),
+        orElse: () => ('', null),
+      );
+      expect(plain.$1, isNotEmpty, reason: 'plain intro run must exist');
+      expect(_isBold(plain.$2), isFalse,
+          reason: 'plain body must NOT be bold');
+      expect(_isRegular(plain.$2), isTrue,
+          reason: 'plain body must be regular weight (w400)');
+
       // (b) the key stat span is red (unfavourable) and carries the REAL
       // numbers (5 / 6), not the mockup "5 of 6" literal by coincidence —
       // assert the run text is built from data.weeksBelowFloor/weekCount.
@@ -478,6 +501,11 @@ void main() {
         badRun.$1,
         'below it ${d.weeksBelowFloor} of the last ${d.weekCount} weeks',
       );
+      // (c) the coloured emphasis span is BOTH red AND bold (mockup
+      // `.em-bad {color:red; font-weight:700}`).
+      expect(badRun.$2?.color, AppColors.negative);
+      expect(_isBold(badRun.$2), isTrue,
+          reason: 'red emphasis stat must be bold+coloured');
       // No green span in an unfavourable message.
       expect(
         runs.any((r) => r.$2?.color == AppColors.positive),
@@ -558,6 +586,18 @@ void main() {
       expect(lead.$2?.color, isNot(AppColors.positive));
       expect(lead.$2?.color, isNot(AppColors.negative));
 
+      // (a2) a PLAIN body run renders at REGULAR weight (not w700). The
+      // "Hold the line: ..." tail is always plain in the favourable copy.
+      final plain = runs.firstWhere(
+        (r) => r.$1.contains('Hold the line'),
+        orElse: () => ('', null),
+      );
+      expect(plain.$1, isNotEmpty, reason: 'plain tail run must exist');
+      expect(_isBold(plain.$2), isFalse,
+          reason: 'plain body must NOT be bold');
+      expect(_isRegular(plain.$2), isTrue,
+          reason: 'plain body must be regular weight (w400)');
+
       // (b) the positive stat clause is GREEN and carries the REAL count.
       final goodRun = runs.firstWhere(
         (r) => r.$2?.color == AppColors.positive,
@@ -567,6 +607,11 @@ void main() {
         goodRun.$1,
         'stayed in or above it every one of the last ${d.weekCount} weeks',
       );
+      // (c) the coloured emphasis span is BOTH green AND bold (mockup
+      // `.em-good {color:green; font-weight:700}`).
+      expect(goodRun.$2?.color, AppColors.positive);
+      expect(_isBold(goodRun.$2), isTrue,
+          reason: 'green emphasis stat must be bold+coloured');
       // No red span in a favourable message.
       expect(
         runs.any((r) => r.$2?.color == AppColors.negative),
