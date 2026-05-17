@@ -3541,7 +3541,8 @@ final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway = () {
         operatorId: dinerOperatorId,
         locationId: yorkvilleLocationId,
         diff: const <String, Object?>{
-          'covers_source_lunch': <String, Object?>{
+          'service_period_key': 'lunch',
+          'covers_source': <String, Object?>{
             'from': 'vendor',
             'to': 'manual',
           },

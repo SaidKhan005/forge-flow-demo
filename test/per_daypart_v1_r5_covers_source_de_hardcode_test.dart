@@ -138,14 +138,16 @@ void main() {
     );
 
     test(
-      'legacy columns are still ingested when present and no keyed map '
-      'is supplied (backward-compat reader during the deprecation '
-      'window)',
+      'R7c: legacy covers_source_* columns are no longer consulted by '
+      'fromRow (the keyed/jsonb path is the sole source); a row with '
+      'only the deprecated columns resolves to the vendor default',
       () {
         final settings = DataAccuracySettings.fromRow(<String, Object?>{
           'setting_id': 'set-1',
           'operator_id': 'op-1',
           'location_id': 'loc-1',
+          // Deprecated columns still physically exist in SQL (dropped
+          // in a later slice, R7d) but fromRow no longer ingests them.
           'covers_source_lunch': 'manual',
           'covers_source_dinner': 'forecast',
           'covers_source_late_night': 'vendor',
@@ -157,8 +159,10 @@ void main() {
           'updated_at': DateTime.utc(2026, 5, 17),
         });
 
-        expect(settings.coversSourceFor('lunch'), CoversSource.manual);
-        expect(settings.coversSourceFor('dinner'), CoversSource.forecast);
+        // No keyed map supplied -> every period falls through to the
+        // vendor default; the legacy column values are NOT read.
+        expect(settings.coversSourceFor('lunch'), CoversSource.vendor);
+        expect(settings.coversSourceFor('dinner'), CoversSource.vendor);
         expect(settings.coversSourceFor('late_night'), CoversSource.vendor);
       },
     );
@@ -341,4 +345,82 @@ void main() {
       },
     );
   });
+
+  group(
+    'R7c — fromRow with keyed/jsonb input is behavior-neutral after '
+    'removing the dead legacy-column fallback',
+    () {
+      // The keyed/jsonb path is the sole source post-R7b. For any
+      // input where the keyed map is present (now always the case),
+      // resolution must be byte-identical to before the
+      // _ingestLegacyColumn helper was removed. Proof: the same keyed
+      // input resolves the same way regardless of whether deprecated
+      // legacy columns are also present (they must be ignored).
+      Map<String, Object?> baseRow(Map<String, Object?> extra) =>
+          <String, Object?>{
+            'setting_id': 'set-1',
+            'operator_id': 'op-1',
+            'location_id': 'loc-1',
+            'covers_source_per_service_period': <String, Object?>{
+              'breakfast': 'manual',
+              'lunch': 'vendor',
+              'dinner': 'forecast',
+              'late_night': 'manual',
+            },
+            'covers_manual_entries': <String, Object?>{},
+            'wage_source': 'vendor',
+            'walk_in_handling_mode': 'reservations_only',
+            'walk_in_manual_entries': <String, Object?>{},
+            'created_at': DateTime.utc(2026, 5, 17),
+            'updated_at': DateTime.utc(2026, 5, 17),
+            ...extra,
+          };
+
+      test(
+        'keyed resolution is identical with vs without legacy columns '
+        'in the row (legacy columns ignored, not a tie-breaker)',
+        () {
+          final keyedOnly = DataAccuracySettings.fromRow(
+            baseRow(const <String, Object?>{}),
+          );
+          // Same keyed input, but legacy columns set to contradictory
+          // values. If the dead fallback were still wired these would
+          // perturb the result; post-R7c they are inert.
+          final keyedPlusLegacy = DataAccuracySettings.fromRow(
+            baseRow(const <String, Object?>{
+              'covers_source_lunch': 'manual',
+              'covers_source_dinner': 'manual',
+              'covers_source_late_night': 'vendor',
+            }),
+          );
+
+          for (final period in const <String>[
+            'breakfast',
+            'lunch',
+            'dinner',
+            'late_night',
+            'happy_hour', // unconfigured -> vendor default both ways
+          ]) {
+            expect(
+              keyedPlusLegacy.coversSourceFor(period),
+              equals(keyedOnly.coversSourceFor(period)),
+              reason: 'period "$period" must resolve identically; '
+                  'legacy columns must not influence the keyed path',
+            );
+          }
+          expect(keyedOnly.coversSourceFor('breakfast'), CoversSource.manual);
+          expect(keyedOnly.coversSourceFor('lunch'), CoversSource.vendor);
+          expect(keyedOnly.coversSourceFor('dinner'), CoversSource.forecast);
+          expect(
+            keyedOnly.coversSourceFor('late_night'),
+            CoversSource.manual,
+          );
+          expect(
+            keyedOnly.coversSourceFor('happy_hour'),
+            kDefaultCoversSource,
+          );
+        },
+      );
+    },
+  );
 }

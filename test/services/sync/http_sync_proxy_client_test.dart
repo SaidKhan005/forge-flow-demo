@@ -413,8 +413,12 @@ void main() {
     expect(timing.servicePeriodDefinitions.single.startLocalTime, '09:00');
     expect(timing.servicePeriodDefinitions.single.applicableDays, <int>[6, 7]);
     expect(demo.single.isDemo, isFalse);
-    expect(accuracy!.coversSourceDinner, 'manual');
-    expect(accuracy.coversManualEntries['2026-05-05']!['dinner'], 120);
+    // R7c: the vestigial covers_source_{lunch,dinner,late_night}
+    // snapshot fields were removed (no downstream resolver consumed
+    // them). Any such keys still present in the wire payload are
+    // ignored on parse. Per-period covers source flows via the keyed
+    // service-period settings, asserted below as `keyedAccuracy`.
+    expect(accuracy!.coversManualEntries['2026-05-05']!['dinner'], 120);
     expect(accuracy.walkInHandlingMode, 'walk_ins_added_to_reservations');
     expect(accuracy.walkInManualEntries['2026-05-05'], 14);
     expect(keyedAccuracy.single.servicePeriodKey, 'brunch');

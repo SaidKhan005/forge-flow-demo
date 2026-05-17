@@ -937,10 +937,6 @@ class HttpSyncProxyClient
     return DataAccuracySettingsSnapshot(
       operatorId: _requiredString(json, 'operator_id'),
       locationId: _requiredString(json, 'location_id'),
-      coversSourceLunch: _readString(json['covers_source_lunch']) ?? 'vendor',
-      coversSourceDinner: _readString(json['covers_source_dinner']) ?? 'vendor',
-      coversSourceLateNight:
-          _readString(json['covers_source_late_night']) ?? 'vendor',
       coversManualEntries: _readManualEntries(json['covers_manual_entries']),
       wageSource: _readString(json['wage_source']) ?? 'vendor',
       walkInHandlingMode:

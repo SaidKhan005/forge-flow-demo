@@ -275,12 +275,24 @@ class _AuditRow extends StatelessWidget {
 
   static String _fieldLabel(String key) {
     switch (key) {
+      // Legacy 3-daypart keys: historical audit rows persisted with
+      // these keys must still render after per-period migration. Keep
+      // alongside the per-period keys below (additive, not a swap).
       case 'covers_source_lunch':
         return 'Covers source - lunch';
       case 'covers_source_dinner':
         return 'Covers source - dinner';
       case 'covers_source_late_night':
         return 'Covers source - late night';
+      // Per-period (keyed) audit entries: a service_period_override
+      // event carries the period key plus the changed covers/wage
+      // source and the effective business date.
+      case 'service_period_key':
+        return 'Service period';
+      case 'covers_source':
+        return 'Covers source';
+      case 'effective_at_business_date':
+        return 'Effective business date';
       case 'wage_source':
         return 'Wage source';
       case 'tier_key':

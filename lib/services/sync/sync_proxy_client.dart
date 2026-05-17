@@ -82,9 +82,6 @@ class DataAccuracySettingsSnapshot {
   const DataAccuracySettingsSnapshot({
     required this.operatorId,
     required this.locationId,
-    required this.coversSourceLunch,
-    required this.coversSourceDinner,
-    required this.coversSourceLateNight,
     required this.coversManualEntries,
     required this.wageSource,
     required this.updatedAt,
@@ -95,12 +92,11 @@ class DataAccuracySettingsSnapshot {
   final String operatorId;
   final String locationId;
 
-  /// One of `'vendor'` (default), `'forecast'`, `'manual'`. Mirrors
-  /// the `covers_source_<daypart>` column on
-  /// `public.data_accuracy_settings`.
-  final String coversSourceLunch;
-  final String coversSourceDinner;
-  final String coversSourceLateNight;
+  // Per-period covers source is not carried on this in-memory
+  // snapshot. Covers resolution uses the keyed
+  // `_latestDataAccuracyServicePeriodSettings` (plus the SQLite cache
+  // hydration path); the legacy 3-daypart fields were vestigial and
+  // had no downstream resolver, so they were removed (slice R7c).
 
   /// Sparse map keyed by ISO `business_date`; each value is an
   /// inner map `{ "lunch": int, "dinner": int, "late_night": int }`.

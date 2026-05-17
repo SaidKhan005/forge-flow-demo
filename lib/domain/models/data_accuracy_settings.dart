@@ -217,13 +217,11 @@ class DataAccuracySettings {
   /// `data_accuracy_service_period_settings` table. Callers SELECT the
   /// effective keyed rows and pass them as a
   /// `covers_source_per_service_period` map (`{service_period_id:
-  /// covers_source_wire}`). For backward compatibility during the
-  /// legacy-column deprecation window, the legacy
-  /// `covers_source_lunch` / `_dinner` / `_late_night` columns are
-  /// still ingested when present and no keyed map was supplied, so a
-  /// reader that has not yet been migrated keeps working. Once a row's
-  /// keyed rows exist they win; absence resolves to
-  /// [kDefaultCoversSource] via [coversSourceFor].
+  /// covers_source_wire}`). The keyed/jsonb path is the sole source;
+  /// a period absent from the map resolves to [kDefaultCoversSource]
+  /// via [coversSourceFor]. (The deprecated
+  /// `covers_source_lunch` / `_dinner` / `_late_night` columns are no
+  /// longer consulted here — the keyed path is authoritative.)
   factory DataAccuracySettings.fromRow(Map<String, Object?> row) {
     final settingId = row['setting_id'];
     final operatorId = row['operator_id'];
@@ -249,19 +247,6 @@ class DataAccuracySettings {
     final perPeriod = _parseCoversSourcePerServicePeriod(
       row['covers_source_per_service_period'],
     );
-    // Legacy-column compatibility: only consult the deprecated columns
-    // when the caller did not supply keyed rows AND the columns are
-    // still present (pre-drop readers). Post-drop the keyed map is the
-    // sole source and absence falls through to the vendor default.
-    if (perPeriod.isEmpty) {
-      _ingestLegacyColumn(perPeriod, row['covers_source_lunch'], 'lunch');
-      _ingestLegacyColumn(perPeriod, row['covers_source_dinner'], 'dinner');
-      _ingestLegacyColumn(
-        perPeriod,
-        row['covers_source_late_night'],
-        'late_night',
-      );
-    }
 
     final manualEntries = _parseManualEntries(manualEntriesRaw);
     final walkInMode = walkInModeRaw is String
@@ -307,20 +292,6 @@ class DataAccuracySettings {
       }
     });
     return out;
-  }
-
-  static void _ingestLegacyColumn(
-    Map<String, CoversSource> into,
-    Object? raw,
-    String servicePeriodId,
-  ) {
-    if (raw is! String || raw.isEmpty) return;
-    try {
-      into[servicePeriodId] = CoversSourceWire.fromWire(raw);
-    } on ArgumentError {
-      // Defensive: a malformed legacy value falls through to the
-      // vendor default instead of failing the whole settings load.
-    }
   }
 
   static Map<String, Map<String, int>> _parseManualEntries(Object? raw) {
