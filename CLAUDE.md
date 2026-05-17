@@ -96,6 +96,35 @@ The doctrine "the monolith MUST shrink, not grow" only holds if raises
 are gated. Detail: `docs/POST_HARDENING_FOLLOWUPS.md` "Refactor phase
 scope" R-2.
 
+## Shared Checkout Safety (binding — prevents silent work loss)
+
+Origin: 2026-05-16 repo-health pass. Two WIP losses in one day
+(`admin_security_gateway`, near-loss of `7.58.0a` mock-replay delta) traced
+to the same root cause: uncommitted work left in the shared main checkout
+while another session ran `reset --hard origin/master` / `pull --rebase
+--autostash`. These rules are non-negotiable for every session (Claude or
+Codex, orchestrator or executor):
+
+1. **Own-worktree-only.** A session NEVER edits the shared main checkout
+   working tree. All work happens in that session's own
+   `.claude/worktrees/<lane>/` (or `.codex/worktrees/<lane>/`). The main
+   checkout is for ref/tracker/coordination commits by the orchestrator
+   only — never feature/code WIP.
+2. **Push before you reset.** Only *pushed* commits are safe. Before any
+   `reset`, rebase, branch switch, or autostash-triggering pull, commit and
+   push. Uncommitted or local-only work in a shared checkout is considered
+   already lost.
+3. **"MERGED" ≠ landed.** GitHub merged status and branch ancestry are
+   unreliable here (squash merges orphan branch tips; resets churn master).
+   Confirm content is actually on `origin/master` with
+   `tool/verify_pr_landed.sh <PR> [symbol ...]` before trusting a PR landed
+   or relying on its code.
+4. **Rescue, don't discard, found WIP.** If you find uncommitted changes in
+   a shared checkout that aren't yours: do NOT reset/stash-drop them.
+   Non-destructively snapshot via `git stash create`, point a
+   `rescue/<topic>` branch at the result, and `git push origin
+   rescue/<topic>` — then report. Never destroy another session's work.
+
 ## Review Loop (user pastes an Execution Report)
 
 1. Review changed files + nearby runtime seams.
