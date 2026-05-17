@@ -143,7 +143,7 @@ class BaselineManagerBandSelector extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'STARTING POINT',
+            'STAR SHIFT SELECTION',
             style: AppTextStyles.mono7(color: AppColors.textMuted),
           ),
           const SizedBox(height: 6),
