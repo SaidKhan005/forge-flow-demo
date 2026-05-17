@@ -128,6 +128,42 @@ class DataAlignmentAuditReadService {
           .getActiveCycle(restaurantId));
     }
 
+    // Per-Daypart V1 / Slice 6 wiring fix (2026-05-16).
+    //
+    // `getActiveTargetProfile` reads ONLY the `active_target_profiles`
+    // parent row; `ActiveTargetProfile.fromMap` never rehydrates the
+    // per-period `dayparts` list (it is not persisted on the parent
+    // row). Every runtime consumer that needs per-period targets
+    // (Shift card, Variance seam) gets them re-attached from the locked
+    // cycle by `WageStandardContextService._reattachCycleDayparts`
+    // (wage_standard_context_service.dart:217-234). The audit
+    // deliberately bypasses the wage-aware bootstrap, so without the
+    // same re-attach `profile.dayparts` is ALWAYS empty here — which
+    // made every per-period benchmark/Shift/Variance check degrade to
+    // "unavailable" or mislabel a fully-populated cycle as the Gap-42
+    // whole-day fallback, even though the cycle carries correct
+    // per-period rows. Mirror the runtime re-attach so the per-period
+    // checks reconcile against the real per-period targets. When the
+    // cycle genuinely has no per-period rows (true Gap-42 fallback)
+    // this is a no-op and honest degradation still applies.
+    if (profile != null &&
+        targetCycle != null &&
+        targetCycle.dayparts.isNotEmpty &&
+        profile.dayparts.isEmpty) {
+      profile = profile.withDayparts(
+        targetCycle.dayparts
+            .map((d) => ActiveTargetProfileDaypart(
+                  servicePeriodId: d.servicePeriodId,
+                  daypartTargetCPLH: d.targetCPLH,
+                  daypartTargetSPLH: d.targetSPLH,
+                  daypartTargetPPA: d.targetPPA,
+                  daypartOpzFloorCPLH: d.opzFloorCPLH,
+                  daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+                ))
+            .toList(),
+      );
+    }
+
     final provenance = _buildProvenance(
       snapshot: snapshot,
       targetCycle: targetCycle,

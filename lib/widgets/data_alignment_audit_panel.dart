@@ -39,6 +39,12 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   bool _isExpanded = false;
   bool _isLoading = false;
 
+  /// When true, only drifted / unavailable rows are shown and the
+  /// purely-informational provenance readouts are collapsed — so a
+  /// developer can jump straight to "what is wrong" without scrolling
+  /// past the green noise.
+  bool _issuesOnly = false;
+
   /// Complete diagnostic snapshot assembled by
   /// [DataAlignmentAuditReadService].
   DataAlignmentAuditSnapshot? _snapshot;
@@ -79,8 +85,8 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
                       style: AppTextStyles.mono12(color: AppColors.textPrimary),
                     ),
                   ),
-                  // Inline drift summary in the header when loaded.
-                  if (_snapshot != null) _headerDriftSummary(_snapshot!),
+                  // Inline verdict chip in the header when loaded.
+                  if (_snapshot != null) _headerVerdictChip(_snapshot!),
                   Icon(
                     _isExpanded ? Icons.expand_less : Icons.expand_more,
                     size: 18,
@@ -98,40 +104,55 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
                 child: Text('Loading...',
                     style: AppTextStyles.mono11(color: AppColors.textMuted)),
               )
+            else if (_snapshot == null)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text('Audit could not be loaded.',
+                    style: AppTextStyles.mono11(color: AppColors.textMuted)),
+              )
             else ...[
+              // Plain-language verdict + legend + filter, so the first
+              // thing the eye lands on is the answer, not a wall of rows.
+              _verdictBanner(_snapshot!),
+              _legendAndFilterRow(),
+
               // ── INTEGRITY ─────────────────────────────────────────
               _categoryHeader('INTEGRITY', Icons.rule_rounded),
               _buildDriftChecksSection(),
               const SizedBox(height: 8),
               _buildAuditChecksSections(),
 
-              // ── PROVENANCE ────────────────────────────────────────
-              _categoryHeader('PROVENANCE', Icons.history_rounded),
-              _buildLockedWeekProvenanceSection(),
+              // The provenance / readout categories are reference
+              // context, not pass/fail — hide them in issues-only mode.
+              if (!_issuesOnly) ...[
+                // ── PROVENANCE ──────────────────────────────────────
+                _categoryHeader('PROVENANCE', Icons.history_rounded),
+                _buildLockedWeekProvenanceSection(),
 
-              // ── TARGETS ───────────────────────────────────────────
-              _categoryHeader('TARGETS', Icons.track_changes_rounded),
-              _buildProfileSection(),
-              const SizedBox(height: 8),
-              _buildWageAuthoritySection(),
+                // ── TARGETS ─────────────────────────────────────────
+                _categoryHeader('TARGETS', Icons.track_changes_rounded),
+                _buildProfileSection(),
+                const SizedBox(height: 8),
+                _buildWageAuthoritySection(),
 
-              // ── FORECAST ──────────────────────────────────────────
-              _categoryHeader('FORECAST', Icons.query_stats_rounded),
-              _buildDemandContextSection(),
-              const SizedBox(height: 8),
-              _buildScheduleSection(),
-              const SizedBox(height: 8),
-              _buildSchedulePlanSection(),
+                // ── FORECAST ────────────────────────────────────────
+                _categoryHeader('FORECAST', Icons.query_stats_rounded),
+                _buildDemandContextSection(),
+                const SizedBox(height: 8),
+                _buildScheduleSection(),
+                const SizedBox(height: 8),
+                _buildSchedulePlanSection(),
 
-              // ── LIVE ──────────────────────────────────────────────
-              _categoryHeader('LIVE', Icons.bolt_rounded),
-              _buildShiftSection(),
-              const SizedBox(height: 8),
-              _buildVarianceSection(),
+                // ── LIVE ────────────────────────────────────────────
+                _categoryHeader('LIVE', Icons.bolt_rounded),
+                _buildShiftSection(),
+                const SizedBox(height: 8),
+                _buildVarianceSection(),
 
-              // ── REFERENCE ─────────────────────────────────────────
-              _categoryHeader('REFERENCE', Icons.bookmark_border_rounded),
-              _buildDemoSeedSection(),
+                // ── REFERENCE ───────────────────────────────────────
+                _categoryHeader('REFERENCE', Icons.bookmark_border_rounded),
+                _buildDemoSeedSection(),
+              ],
               const SizedBox(height: 16),
             ],
           ],
@@ -140,52 +161,195 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     );
   }
 
-  // ─── Drift summary (header) ───────────────────────────────────────────────
+  // ─── Verdict, legend, filter ──────────────────────────────────────────────
 
-  /// Compact drift badge shown in the panel header when loaded.
-  ///
-  /// Combines q-lane drift checks plus 7.56c.1 audit checks so a single
-  /// header glance covers both regression detectors. Drift dominates
-  /// over alignment for color so any unflagged regression turns the
-  /// header red.
-  Widget _headerDriftSummary(DataAlignmentAuditSnapshot s) {
-    final drifted = s.driftedCount + s.auditDriftedCount;
-    final aligned = s.alignedCount + s.auditAlignedCount;
-    final unavailable = s.auditUnavailableCount;
-    if (aligned == 0 && drifted == 0 && unavailable == 0) {
+  /// (aligned, drifted, unavailable) across BOTH the q-lane drift
+  /// checks and the 7.56c.1 audit checks — one combined tally so the
+  /// verdict speaks for the whole panel.
+  ({int aligned, int drifted, int unavailable}) _tally(
+      DataAlignmentAuditSnapshot s) {
+    int aligned = 0, drifted = 0, unavailable = 0;
+    for (final c in [...s.driftChecks]) {
+      switch (c.status) {
+        case DriftCheckStatus.aligned:
+          aligned++;
+          break;
+        case DriftCheckStatus.drifted:
+          drifted++;
+          break;
+        case DriftCheckStatus.unavailable:
+          unavailable++;
+          break;
+      }
+    }
+    aligned += s.auditAlignedCount;
+    drifted += s.auditDriftedCount;
+    unavailable += s.auditUnavailableCount;
+    return (aligned: aligned, drifted: drifted, unavailable: unavailable);
+  }
+
+  /// Compact verdict chip shown in the collapsed header.
+  Widget _headerVerdictChip(DataAlignmentAuditSnapshot s) {
+    final t = _tally(s);
+    if (t.aligned == 0 && t.drifted == 0 && t.unavailable == 0) {
       return const SizedBox.shrink();
     }
-    final color = drifted > 0 ? AppColors.negative : AppColors.positive;
-    final text = drifted > 0
-        ? '$drifted drifted'
-        : 'all $aligned aligned';
+    final color = t.drifted > 0
+        ? AppColors.negative
+        : (t.unavailable > 0 ? AppColors.textMuted : AppColors.positive);
+    final text = t.drifted > 0
+        ? '${t.drifted} drifted'
+        : (t.unavailable > 0
+            ? '${t.aligned} ok · ${t.unavailable} n/a'
+            : 'all ${t.aligned} aligned');
     return Padding(
       padding: const EdgeInsets.only(right: 8),
       child: Text(text, style: AppTextStyles.mono10(color: color)),
     );
   }
 
+  /// Full-width plain-language verdict at the top of the expanded body.
+  /// One glance answers "is anything actually wrong?".
+  Widget _verdictBanner(DataAlignmentAuditSnapshot s) {
+    final t = _tally(s);
+    final bool ok = t.drifted == 0;
+    final Color color = ok ? AppColors.positive : AppColors.negative;
+    final String headline = t.drifted > 0
+        ? '${t.drifted} value${t.drifted == 1 ? '' : 's'} drifted — needs attention'
+        : 'All ${t.aligned} checked values aligned';
+    final String sub = t.unavailable > 0
+        ? '${t.unavailable} unavailable — expected when that data is not present yet (not a failure)'
+        : 'Benchmark and Plan targets flow through Shift and Variance with no mismatch.';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.10),
+          border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(ok ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+                size: 18, color: color),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    headline,
+                    style: AppTextStyles.mono12(color: color)
+                        .copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    sub,
+                    style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Legend (what the icons mean) + the issues-only filter toggle.
+  Widget _legendAndFilterRow() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 2,
+              children: [
+                _legendItem('✓', 'aligned', AppColors.positive),
+                _legendItem('⚠', 'drifted', AppColors.negative),
+                _legendItem('—', 'unavailable', AppColors.textMuted),
+              ],
+            ),
+          ),
+          InkWell(
+            onTap: () => setState(() => _issuesOnly = !_issuesOnly),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: _issuesOnly
+                    ? AppColors.sunset.withValues(alpha: 0.18)
+                    : Colors.transparent,
+                border: Border.all(
+                    color: AppColors.sunset.withValues(alpha: 0.5),
+                    width: 1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _issuesOnly
+                        ? Icons.filter_alt_rounded
+                        : Icons.filter_alt_outlined,
+                    size: 13,
+                    color: AppColors.sunset,
+                  ),
+                  const SizedBox(width: 6),
+                  Text('Issues only',
+                      style: AppTextStyles.mono10(color: AppColors.sunset)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendItem(String glyph, String label, Color color) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(glyph, style: AppTextStyles.mono10(color: color)),
+        const SizedBox(width: 4),
+        Text(label,
+            style: AppTextStyles.mono10(color: AppColors.textMuted)),
+      ],
+    );
+  }
+
   // ─── Sections ──────────────────────────────────────────────────────────────
 
   Widget _buildDriftChecksSection() {
-    final checks = _snapshot?.driftChecks ?? const <DataAlignmentDriftCheck>[];
-    if (checks.isEmpty) {
+    final all = _snapshot?.driftChecks ?? const <DataAlignmentDriftCheck>[];
+    if (all.isEmpty) {
       return _emptySection('DRIFT CHECKS',
           'No checks available yet (missing authority data)',
           icon: Icons.rule_folder_outlined);
     }
     final drifted = _snapshot!.driftedCount;
     final aligned = _snapshot!.alignedCount;
+    final accent = drifted > 0 ? AppColors.negative : AppColors.positive;
+    final visible = _issuesOnly
+        ? all.where((c) => c.status != DriftCheckStatus.aligned).toList()
+        : all;
+    // In issues-only mode a clean section collapses out entirely.
+    if (_issuesOnly && visible.isEmpty) return const SizedBox.shrink();
     final subtitle = drifted > 0
         ? '$drifted drifted, $aligned aligned'
         : 'all $aligned aligned';
-    final accent = drifted > 0 ? AppColors.negative : AppColors.positive;
     return _tile(
       icon: Icons.rule_folder_outlined,
       title: 'DRIFT CHECKS',
       subtitle: subtitle,
       accentColor: accent,
-      children: checks.map(_driftRow).toList(),
+      children: visible.map(_driftRow).toList(),
     );
   }
 
@@ -260,6 +424,13 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     final overall = _overallAuditSummary();
     final drifted = _snapshot?.auditDriftedCount ?? 0;
     final accent = drifted > 0 ? AppColors.negative : AppColors.positive;
+    // In issues-only mode keep only groups that still have something
+    // to flag (a drifted or unavailable row).
+    final visibleGroups = _issuesOnly
+        ? groups
+            .where((g) => g.driftedCount > 0 || g.unavailableCount > 0)
+            .toList()
+        : groups;
     // Summary is embedded in the title (with the em-dash) rather than
     // the subtitle chip so it lives inside a single Text widget —
     // matches the tests that look for `textContaining('AUDIT CHECKS —')`.
@@ -267,12 +438,22 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       icon: Icons.fact_check_outlined,
       title: 'AUDIT CHECKS — $overall',
       accentColor: accent,
-      children: [
-        for (int i = 0; i < groups.length; i++) ...[
-          if (i > 0) const SizedBox(height: 10),
-          _buildAuditGroupSection(groups[i]),
-        ],
-      ],
+      children: visibleGroups.isEmpty
+          ? [
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text(
+                  'No issues — every audit check is aligned.',
+                  style: AppTextStyles.mono11(color: AppColors.positive),
+                ),
+              ),
+            ]
+          : [
+              for (int i = 0; i < visibleGroups.length; i++) ...[
+                if (i > 0) const SizedBox(height: 10),
+                _buildAuditGroupSection(visibleGroups[i]),
+              ],
+            ],
     );
   }
 
@@ -292,7 +473,12 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   Widget _buildAuditGroupSection(DataAlignmentAuditGroupSummary group) {
     final s = _snapshot;
     if (s == null) return const SizedBox.shrink();
-    final checks = s.auditChecksFor(group.groupId);
+    final allChecks = s.auditChecksFor(group.groupId);
+    final checks = _issuesOnly
+        ? allChecks
+            .where((c) => c.status != DriftCheckStatus.aligned)
+            .toList()
+        : allChecks;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
