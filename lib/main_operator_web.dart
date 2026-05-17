@@ -139,6 +139,21 @@ Future<void> main() async {
     final source = await _resolveAuthSource();
     runApp(OperatorWebApp(authSource: source));
   } catch (error, stack) {
+    // OW-G74 — record the full error + stack for our engineers BEFORE
+    // we render the operator-facing surface. The init-failed screen no
+    // longer shows the raw stack trace (engineering noise an operator
+    // should never read); this is the engineering log path that keeps
+    // the technical detail available. `FlutterError.reportError` routes
+    // to the Flutter error console / any registered error reporter and
+    // is never shown in the user UI.
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: error,
+        stack: stack,
+        library: 'operator_web',
+        context: ErrorDescription('during operator-web startup'),
+      ),
+    );
     // Fail-closed: any wiring error (Firebase init failure, missing
     // proxy URI, etc.) lands on the calm "wiring failed" surface
     // rather than silently falling back to demo.

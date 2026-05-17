@@ -874,40 +874,17 @@ void main() {
       },
     );
 
-    testWidgets(
-      'OW-G70 — demo source: Wage authority deep-link still serves '
-      'fixtures (no false fail-loud), demo banner shown',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = DemoOperatorWebAuthSource.completed();
-        addTearDown(source.dispose);
-
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavWageAuthority,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('wage_authority_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_wage_authority'),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsOneWidget,
-        );
-      },
-    );
+    // OW-G73 — removed three OW-G70 tests that injected the deleted
+    // `kOperatorWebNavWageAuthority` constant directly to exercise the
+    // standalone Wage authority router case. That case + constant were
+    // dead (Wave 2 S-2 folded Wage authority under Data accuracy;
+    // `_navIdFromRaw` redirects `wage_authority` deep links to Data
+    // accuracy, so no production entry point could select it). The
+    // legacy `/wage-authority` handoff redirect is covered by the
+    // "/handoff ... Wave 2 S-2" test above (Data accuracy mounts with
+    // the embedded `operator_web_data_accuracy_wage_authority_section`),
+    // and the live fail-loud guard is covered by the Data accuracy
+    // wiring-error tests below.
 
     testWidgets(
       'live source missing the team-users mixin: honest wiring-error '
@@ -1244,77 +1221,14 @@ void main() {
       },
     );
 
-    testWidgets(
-      'OW-G70 — live source missing the wage-authority mixin: honest '
-      'wiring-error surface, NOT fixtures, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveUnwiredOperatorWebSource();
-        addTearDown(source.dispose);
-
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavWageAuthority,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_wage_authority'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('wage_authority_screen')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets(
-      'OW-G70 — fully-wired live source: real Wage authority screen, '
-      'NO wiring error, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveWageAuthorityWiredOperatorWebSource(
-          OperatorWebDemoWageAuthorityGateway(),
-        );
-        addTearDown(source.dispose);
-
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavWageAuthority,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('wage_authority_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_wage_authority'),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+    // OW-G73 — removed the two remaining OW-G70 tests that injected the
+    // deleted `kOperatorWebNavWageAuthority` constant to exercise the
+    // standalone Wage authority router case (live-unwired wiring error
+    // and fully-wired screen mount). The case + constant were dead;
+    // the live fail-loud guard now lives on the Data accuracy case and
+    // is covered by the Data accuracy wiring-error tests above. The
+    // now-unused `_LiveWageAuthorityWiredOperatorWebSource` helper was
+    // removed with them.
 
     testWidgets(
       'OW-G70 — live source missing the schedule mixin: honest '
@@ -1631,38 +1545,6 @@ class _LiveDataAccuracyWiredOperatorWebSource extends OperatorWebAuthSource
 
   @override
   final WebVendorApplicabilityGateway vendorApplicabilityGateway;
-
-  @override
-  Stream<OperatorWebAuthState> get stream => _controller.stream;
-
-  @override
-  OperatorWebAuthState get current => _state;
-
-  @override
-  Future<void> signOut() async {}
-
-  @override
-  void dispose() {
-    _controller.close();
-  }
-}
-
-/// Fully-wired live source for the Wage authority route — mixes
-/// `OperatorWebWageAuthorityGatewayProvider`, exactly as the
-/// production `FirebaseOperatorWebAuthSource` does.
-class _LiveWageAuthorityWiredOperatorWebSource extends OperatorWebAuthSource
-    implements OperatorWebWageAuthorityGatewayProvider {
-  _LiveWageAuthorityWiredOperatorWebSource(this.wageAuthorityGateway) {
-    _controller.add(_state);
-  }
-
-  final _controller = StreamController<OperatorWebAuthState>.broadcast();
-  final OperatorWebAuthState _state = const OperatorWebCompleted(
-    session: kDemoOperatorWebSession,
-  );
-
-  @override
-  final OperatorWebWageAuthorityGateway wageAuthorityGateway;
 
   @override
   Stream<OperatorWebAuthState> get stream => _controller.stream;
