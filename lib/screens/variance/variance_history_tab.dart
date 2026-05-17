@@ -19,6 +19,7 @@ import 'package:provider/provider.dart';
 
 import '../../domain/constants/app_defaults.dart';
 import '../../state/active_target_profile_notifier.dart';
+import '../../services/baseline_authority_service.dart' show BaselineData;
 import '../../services/shift_data_source.dart';
 import '../../models/history_pattern_record.dart';
 import '../../models/shift_record.dart';
@@ -274,14 +275,26 @@ class _HistoryTabState extends State<HistoryTab>
 
         final historyRangeLabel = _historyRangeLabel(weeks);
 
-        // ── CPLH vs OPZ 60-day band (Variance V2 Lane HIST, #922) ─────────
-        // Mockup `#hist` first card. Geometry is sourced ONLY from data
-        // the History tab already loaded (per-week `WeekRecord.avgCPLH`)
-        // plus the active target profile's CPLH OPZ floor/ceiling. NO new
-        // math, no engine change (`lib/services/labor_model.dart` FROZEN).
-        // The active-target notifier is read nullably so surfaces / tests
-        // that do not provide it degrade honestly rather than crash
-        // (same pattern as `variance_this_week_tab.dart`).
+        // ── CPLH vs OPZ 60-day band (Variance V2 Lane HIST) ───────────────
+        // Mockup `#hist` first card. OPERATOR DECISION (History OPZ band
+        // re-model): the outer rail REUSES the proven model + data source
+        // of the baseline_tracker "CPLH RANGE & TARGET" band. Its outer
+        // axis = `BaselineData.historicalContextRecords` min/max CPLH —
+        // the lowest / highest CPLH over the last 60 days. We pass those
+        // through the proven accessors `BaselineData.cplhSixtyDayLow` /
+        // `cplhSixtyDayHigh` (the SAME list `rangeGraphModel` reads for
+        // its `histMin`/`histMax`); the band does NOT recompute them.
+        // Because that rail is the widest real observed bound, the OPZ
+        // range always sits naturally inside it — no clamp/cap kludge.
+        //
+        // OPZ floor/ceiling come from the active target profile. The
+        // per-week `WeekRecord.avgCPLH` series + most-recent week now
+        // drive ONLY the History-specific teaching numbers (weeks below
+        // floor) and the red "now" marker. NO new math, no engine change
+        // (`lib/services/labor_model.dart` FROZEN). The active-target
+        // notifier is read nullably so surfaces / tests that do not
+        // provide it degrade honestly rather than crash (same pattern as
+        // `variance_this_week_tab.dart`).
         final activeProfile =
             context.watch<ActiveTargetProfileNotifier?>()?.profile;
         final cplhSeries = weeks
@@ -299,6 +312,10 @@ class _HistoryTabState extends State<HistoryTab>
         }
         final opzBandData = CplhOpzBandData.fromInputs(
           weeklyCplhSeries: cplhSeries,
+          // Reuse the proven baseline_tracker outer-axis source — no
+          // duplicated min/max computation.
+          sixtyDayLowCplh: BaselineData.cplhSixtyDayLow,
+          sixtyDayHighCplh: BaselineData.cplhSixtyDayHigh,
           opzFloor: activeProfile?.opzFloorCPLH,
           opzCeiling: activeProfile?.opzCeilingCPLH,
           nowCplh: nowCplh,

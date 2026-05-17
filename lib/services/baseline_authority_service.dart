@@ -350,6 +350,30 @@ class BaselineData {
   static int get historicalWeeklyAvgCovers =>
       (historicalTotalCoversTracked / (60 / 7)).round();
 
+  /// Lowest CPLH over the last 60 days. The SAME quantity the proven
+  /// "CPLH RANGE & TARGET" band's `rangeGraphModel` reads as `histMin`
+  /// (this file, `final histMin = histCplh.reduce(math.min);`) and draws
+  /// as its `LOWEST CPLH LAST 60 DAYS` outer-axis end. Exposed so the
+  /// Variance > History OPZ band can REUSE this proven source for its
+  /// outer rail instead of inventing a bespoke scale (operator decision).
+  /// Returns null only when there is no 60-day context to read (honest
+  /// degraded signal for the caller — never a fabricated zero).
+  static double? get cplhSixtyDayLow {
+    final cplh = historicalContextRecords.map((r) => r.cplh).toList();
+    if (cplh.isEmpty) return null;
+    return cplh.reduce(math.min);
+  }
+
+  /// Highest CPLH over the last 60 days. The SAME quantity the proven
+  /// band's `rangeGraphModel` reads as `histMax`
+  /// (`final histMax = histCplh.reduce(math.max);`) and draws as its
+  /// `HIGHEST CPLH LAST 60 DAYS` outer-axis end. See [cplhSixtyDayLow].
+  static double? get cplhSixtyDayHigh {
+    final cplh = historicalContextRecords.map((r) => r.cplh).toList();
+    if (cplh.isEmpty) return null;
+    return cplh.reduce(math.max);
+  }
+
   // ── Derived targets — from selected records, replace hardcoded config ─────
 
   static double get derivedTargetCPLH =>
