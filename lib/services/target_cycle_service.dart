@@ -837,6 +837,11 @@ class TargetCycleService {
           rangeFloorCPLH: cycle.opzFloorCPLH,
           rangeCeilingCPLH: cycle.opzCeilingCPLH,
           targetCPLH: cycle.targetCPLH,
+          // SC: carry SB's single-source operation verdict onto the
+          // signal so the Benchmark-graph honest copy and the Learn-chip
+          // label (`_recommendationAnalytics`, same verdict) cannot
+          // contradict each other. Not re-derived in the UI.
+          verdict: fromRecommendation.operationVerdict,
         ),
       );
     } else {
@@ -1005,6 +1010,9 @@ class TargetCycleService {
         rangeFloorCPLH: cycle.opzFloorCPLH,
         rangeCeilingCPLH: cycle.opzCeilingCPLH,
         targetCPLH: cycle.targetCPLH,
+        // SC: same single-source verdict on the bootstrap rehydrate path
+        // so honesty survives a fresh launch with the same copy.
+        verdict: recommendation.operationVerdict,
       ),
     );
   }
