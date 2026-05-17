@@ -116,9 +116,13 @@ class _LensChip extends StatelessWidget {
   }
 }
 
-/// Small scope tag shown above the summary/preview region, e.g.
-/// "Dinner targets" or "Whole day targets". The label comes from the
-/// resolved operator defs (or the whole-day sentinel), never a
+/// R10: scope label rendered as a plain SECTION HEADER for the summary
+/// table beneath it, e.g. "Dinner targets" or "Whole day targets". It is
+/// NOT interactive (the lens bar above is the control): no border, no
+/// chip/pill background, no tap handler, no button affordance. The
+/// uppercase mono caption styling matches the other section headers on
+/// this screen (e.g. STAR SHIFT SELECTION). The label text still comes
+/// from the resolved operator defs (or the whole-day sentinel), never a
 /// hardcoded daypart name.
 class BaselineManagerScopeTag extends StatelessWidget {
   final List<ServicePeriodDefinition> defs;
@@ -136,20 +140,12 @@ class BaselineManagerScopeTag extends StatelessWidget {
         ? kWholeDayLensLabel
         : ServicePeriodDefinitionResolver.labelForId(defs, selectedLensId);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       child: Align(
         alignment: Alignment.centerLeft,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundMid,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Text(
-            '$scopeLabel targets',
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
-          ),
+        child: Text(
+          '$scopeLabel targets'.toUpperCase(),
+          style: AppTextStyles.mono7(color: AppColors.textMuted),
         ),
       ),
     );

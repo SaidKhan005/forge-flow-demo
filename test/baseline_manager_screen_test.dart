@@ -2880,7 +2880,9 @@ void main() {
         final lensDy = topOf(
           find.byKey(const ValueKey<String>('lens_$kWholeDayLensId')),
         );
-        final scopeTagDy = topOf(find.text('Whole day targets'));
+        // R10: the scope label is now an uppercase section header (no
+        // pill / button), so the rendered text is upper-cased.
+        final scopeTagDy = topOf(find.text('WHOLE DAY TARGETS'));
         final summaryDy = topOf(find.text('SELECTED SHIFTS'));
         final bandLabelDy = topOf(find.text('STAR SHIFT SELECTION'));
         final bandChipDy = topOf(
@@ -3157,7 +3159,8 @@ void main() {
         final lensDy = topOf(
           find.byKey(const ValueKey<String>('lens_$kWholeDayLensId')),
         );
-        final scopeTagDy = topOf(find.text('Whole day targets'));
+        // R10: the scope label renders as an uppercase section header.
+        final scopeTagDy = topOf(find.text('WHOLE DAY TARGETS'));
         final summaryDy = topOf(find.text('SELECTED SHIFTS'));
         final bandLabelDy = topOf(find.text('STAR SHIFT SELECTION'));
         final calendarDy = topOf(find.text('LAST 60 DAYS'));
@@ -3176,6 +3179,425 @@ void main() {
         // current draft keys (saveSelection unchanged, called on Done).
         final stored = await _commitDoneAndReadKeys(tester);
         expect(stored.toSet(), equals(expected));
+      },
+    );
+  });
+
+  // ── R10 - per-daypart mix-and-match band + scope label as header ─────────
+  //
+  // (a) the per-period band map defaults EVERY configured period to
+  //     Balanced and opens populated, with NO persistence call on open;
+  // (b) on a daypart lens the control sets only that daypart's band; on
+  //     the Whole day lens the control bulk-sets ALL periods' bands; both
+  //     verified by the derived draft for a 4-period config;
+  // (c) RESET restores all-Balanced (client-side only);
+  // (d) saveSelection is still only called on DONE;
+  // (e) the scope label renders as a non-interactive section header (no
+  //     button / pill / tap handler).
+
+  group('R10 - per-daypart mix-and-match band + scope label as header', () {
+    const fourPeriodDefs = <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '11:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      ),
+    ];
+
+    // Window-valid pool: two shifts per configured period on two valid
+    // business dates, so the band's top-N-per-period ranking is exercised
+    // and saveSelection -> TargetCycleService resolves keys against the
+    // seeded demo 60-day window for the Done assertion.
+    BaselineCandidateShift winShift(
+      String week,
+      String day,
+      String date,
+      String period,
+      double cplh,
+    ) {
+      return BaselineCandidateShift(
+        recordKey: '$week|$day|$period',
+        weekId: week,
+        weekLabel: 'Week of Mar',
+        dayLabel: day,
+        daypart: period,
+        covers: 150,
+        cplh: cplh,
+        splh: 180.0,
+        ppa: 42.0,
+        primaryLeverId: 'cplh_up',
+        isSelected: false,
+        businessDate: date,
+        actualLaborPct: 24.0,
+      );
+    }
+
+    final windowValidPool = <BaselineCandidateShift>[
+      for (final period in const [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'late_night',
+      ]) ...[
+        winShift('2026-W12', 'Fri', '2026-03-20', period, 5.0),
+        winShift('2026-W12', 'Mon', '2026-03-16', period, 4.0),
+      ],
+    ];
+
+    // The R10 expectation helper: union over each configured period of
+    // that period's strongest N (N per THAT period's own band).
+    Set<String> expectedFor(Map<String, StarBand> bandByPeriod) {
+      return derivePerPeriodBandSelection(
+        windowValidPool,
+        fourPeriodDefs,
+        bandByPeriod,
+      );
+    }
+
+    // Band-distinction pool: SIX shifts per configured period with
+    // strictly distinct CPLH so Lean (N=2), Balanced (N=4), and Generous
+    // (N=6) each keep a different count. Used only by the lens-scoped
+    // band test (b), which does not commit, so window validity is moot.
+    final bandDistinctPool = <BaselineCandidateShift>[
+      for (final period in const [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'late_night',
+      ])
+        for (var i = 0; i < 6; i++)
+          BaselineCandidateShift(
+            recordKey: '$period|d$i',
+            weekId: 'W',
+            weekLabel: 'W',
+            dayLabel: 'Fri',
+            daypart: period,
+            covers: 100 + i,
+            cplh: 3.0 + i, // i=5 strongest, i=0 weakest
+            splh: 150.0 + i,
+            ppa: 40.0 + i,
+            primaryLeverId: 'cplh_up',
+            isSelected: false,
+            businessDate: '2026-03-2$i',
+            actualLaborPct: 22.0,
+          ),
+    ];
+
+    Set<String> expectedDistinctFor(Map<String, StarBand> bandByPeriod) {
+      return derivePerPeriodBandSelection(
+        bandDistinctPool,
+        fourPeriodDefs,
+        bandByPeriod,
+      );
+    }
+
+    const allBalanced = <String, StarBand>{
+      'breakfast': StarBand.balanced,
+      'lunch': StarBand.balanced,
+      'dinner': StarBand.balanced,
+      'late_night': StarBand.balanced,
+    };
+
+    testWidgets(
+      'a) per-period band map defaults all 4 configured periods to '
+      'Balanced and opens populated with NO persistence call on open',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              windowValidPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // The on-open draft is exactly the union over all four periods
+        // of each period's Balanced strongest-N (the default map).
+        final expected = expectedFor(allBalanced);
+        expect(expected, isNotEmpty);
+        _expectSelectedShiftsCount(tester, '${expected.length}');
+        expect(find.text('--'), findsNothing);
+
+        // On the default Whole day lens every period shares Balanced, so
+        // the control highlights Balanced.
+        expect(
+          find.byKey(const ValueKey<String>('band_balanced')),
+          findsOneWidget,
+        );
+
+        // CRITICAL: opening must NOT persist anything. The per-period
+        // band map is ephemeral UI state; only Done writes.
+        final stored = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(
+          stored,
+          isEmpty,
+          reason: 'opening must not persist; band map is ephemeral',
+        );
+      },
+    );
+
+    testWidgets(
+      'b) a daypart lens sets ONLY that daypart\'s band; the Whole day '
+      'lens bulk-sets ALL periods\' bands (verified by the derived draft)',
+      (tester) async {
+        // 6 distinct-CPLH shifts per period so Lean (2) != Balanced (4)
+        // != Generous (6): the draft count is unambiguous proof of which
+        // periods' bands moved.
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              bandDistinctPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Open state: every period Balanced. Whole-day draft count is
+        // the all-Balanced union (4 periods * 4 = 16).
+        final allBalancedSet = expectedDistinctFor(allBalanced);
+        expect(find.text('Done · ${allBalancedSet.length}'), findsOneWidget);
+
+        // Scope to the Dinner daypart lens and pick Lean. ONLY Dinner's
+        // band changes; the other three stay Balanced. The full derived
+        // draft must equal the mixed map (dinner Lean, rest Balanced):
+        // 3*4 + 1*2 = 14, strictly fewer than the all-Balanced 16.
+        await _tapLensChip(tester, 'dinner');
+        final leanChip = find.byKey(const ValueKey<String>('band_lean'));
+        await tester.ensureVisible(leanChip);
+        await tester.pumpAndSettle();
+        await tester.tap(leanChip);
+        await tester.pumpAndSettle();
+
+        final mixed = <String, StarBand>{
+          'breakfast': StarBand.balanced,
+          'lunch': StarBand.balanced,
+          'dinner': StarBand.lean,
+          'late_night': StarBand.balanced,
+        };
+        final expectedMixed = expectedDistinctFor(mixed);
+        // Assert the FULL draft via the Done count (the summary
+        // re-scopes to the active Dinner lens).
+        expect(find.text('Done · ${expectedMixed.length}'), findsOneWidget);
+        // Only Dinner moved: the mixed draft is strictly smaller than
+        // the all-Balanced default, proving it was not a global change.
+        expect(expectedMixed.length, lessThan(allBalancedSet.length));
+        expect(expectedMixed, isNot(equals(allBalancedSet)));
+
+        // Now the Whole day lens + Generous: a BULK OVERRIDE that sets
+        // EVERY period's band to Generous, replacing the prior mixed
+        // state. Derived draft == all-Generous union (4*6 = 24).
+        await _tapLensChip(tester, kWholeDayLensId);
+        final generousChip =
+            find.byKey(const ValueKey<String>('band_generous'));
+        await tester.ensureVisible(generousChip);
+        await tester.pumpAndSettle();
+        await tester.tap(generousChip);
+        await tester.pumpAndSettle();
+
+        const allGenerous = <String, StarBand>{
+          'breakfast': StarBand.generous,
+          'lunch': StarBand.generous,
+          'dinner': StarBand.generous,
+          'late_night': StarBand.generous,
+        };
+        final expectedGenerous = expectedDistinctFor(allGenerous);
+        _expectSelectedShiftsCount(tester, '${expectedGenerous.length}');
+        expect(
+          find.text('Done · ${expectedGenerous.length}'),
+          findsOneWidget,
+        );
+        // Bulk override touched ALL periods: strictly more than the
+        // prior mixed state.
+        expect(
+          expectedGenerous.length,
+          greaterThan(expectedMixed.length),
+        );
+      },
+    );
+
+    testWidgets(
+      'c) RESET restores all-Balanced (client-side only, no persistence)',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              windowValidPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Mix the state: Lunch lens -> Lean.
+        await _tapLensChip(tester, 'lunch');
+        final leanChip = find.byKey(const ValueKey<String>('band_lean'));
+        await tester.ensureVisible(leanChip);
+        await tester.pumpAndSettle();
+        await tester.tap(leanChip);
+        await tester.pumpAndSettle();
+
+        // RESET pill restores the default Balanced map and whole-day
+        // lens. The draft returns to the all-Balanced union.
+        await tester.tap(find.byKey(const ValueKey<String>('reset_pill')));
+        await tester.pumpAndSettle();
+
+        final expected = expectedFor(allBalanced);
+        _expectSelectedShiftsCount(tester, '${expected.length}');
+        expect(
+          find.byKey(const ValueKey<String>('band_balanced')),
+          findsOneWidget,
+        );
+
+        // RESET is client-side only: nothing persisted.
+        final stored = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(stored, isEmpty);
+      },
+    );
+
+    testWidgets(
+      'd) saveSelection is still only called on DONE: the mixed '
+      'per-period draft lands via the unchanged write path',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              windowValidPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // Mix: Breakfast lens -> Lean. No persistence until Done.
+        await _tapLensChip(tester, 'breakfast');
+        final leanChip = find.byKey(const ValueKey<String>('band_lean'));
+        await tester.ensureVisible(leanChip);
+        await tester.pumpAndSettle();
+        await tester.tap(leanChip);
+        await tester.pumpAndSettle();
+
+        final preDone = await tester.runAsync(
+          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+        );
+        expect(
+          preDone,
+          isEmpty,
+          reason: 'band changes never persist before Done',
+        );
+
+        // Done writes exactly the per-period mixed draft via the
+        // unchanged saveSelection path.
+        final mixed = <String, StarBand>{
+          'breakfast': StarBand.lean,
+          'lunch': StarBand.balanced,
+          'dinner': StarBand.balanced,
+          'late_night': StarBand.balanced,
+        };
+        final stored = await _commitDoneAndReadKeys(tester);
+        expect(stored, equals(expectedFor(mixed)));
+      },
+    );
+
+    testWidgets(
+      'e) the scope label is a non-interactive section header: no '
+      'button, no pill, no tap handler',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              windowValidPool,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // The scope label renders as an uppercase section header (the
+        // text content is still driven by the resolved defs / whole-day
+        // sentinel: "Whole day targets" upper-cased).
+        final headerFinder = find.text('WHOLE DAY TARGETS');
+        expect(headerFinder, findsOneWidget);
+
+        // It is NOT wrapped in any tap/button affordance: no ancestor
+        // GestureDetector, InkWell, or button widget.
+        expect(
+          find.ancestor(
+            of: headerFinder,
+            matching: find.byType(GestureDetector),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.ancestor(
+            of: headerFinder,
+            matching: find.byType(InkWell),
+          ),
+          findsNothing,
+        );
+        expect(
+          find.ancestor(
+            of: headerFinder,
+            matching: find.byType(ButtonStyleButton),
+          ),
+          findsNothing,
+        );
+
+        // It also re-scopes with the lens (text driven by resolved defs,
+        // never hardcoded): a daypart lens shows that period's label.
+        await _tapLensChip(tester, 'late_night');
+        expect(find.text('LATE NIGHT TARGETS'), findsOneWidget);
+        expect(find.text('WHOLE DAY TARGETS'), findsNothing);
       },
     );
   });

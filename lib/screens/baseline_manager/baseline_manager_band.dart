@@ -115,6 +115,52 @@ Set<String> deriveBandSelection(
   return keys;
 }
 
+/// R10: derives the draft from a PER-PERIOD band map. For every
+/// operator-configured period (iterating the resolved [defs], never a
+/// hardcoded daypart list) it keeps that period's strongest N candidate
+/// shifts by CPLH, where N comes from THAT period's own band tier in
+/// [bandByPeriod]. Periods absent from the map (defensive) fall back to
+/// [fallbackBand]. Candidate periods absent from the configured defs are
+/// still ranked under their own id so nothing is silently dropped, again
+/// using [fallbackBand]. Returns ONLY the chosen recordKeys; the caller
+/// assigns these to the draft set. Same record-key Set shape as
+/// [deriveBandSelection]. No persistence, no second pooling formula, no
+/// write-path contact: each period's keep count is exactly the existing
+/// per-tier N applied to that period's own shifts.
+Set<String> derivePerPeriodBandSelection(
+  List<BaselineCandidateShift> candidates,
+  List<ServicePeriodDefinition> defs,
+  Map<String, StarBand> bandByPeriod, {
+  StarBand fallbackBand = StarBand.balanced,
+}) {
+  final byPeriod = <String, List<BaselineCandidateShift>>{};
+  for (final c in candidates) {
+    byPeriod.putIfAbsent(c.daypart, () => []).add(c);
+  }
+
+  final orderedIds =
+      ServicePeriodDefinitionResolver.ordered(defs).map((d) => d.id).toList();
+  final periodIds = <String>[
+    ...orderedIds.where(byPeriod.containsKey),
+    ...byPeriod.keys.where((k) => !orderedIds.contains(k)),
+  ];
+
+  final keys = <String>{};
+  for (final periodId in periodIds) {
+    final band = bandByPeriod[periodId] ?? fallbackBand;
+    final list = [...byPeriod[periodId]!];
+    // Strongest first: highest CPLH wins; stable tie-break on recordKey.
+    list.sort((a, b) {
+      final cmp = b.cplh.compareTo(a.cplh);
+      return cmp != 0 ? cmp : a.recordKey.compareTo(b.recordKey);
+    });
+    for (final c in list.take(band.nPerPeriod)) {
+      keys.add(c.recordKey);
+    }
+  }
+  return keys;
+}
+
 /// Three-option band selector. Selecting a band asks the screen to
 /// replace its draft set with [deriveBandSelection]'s output. No band is
 /// pre-selected: the band is an optional starting point, not state the
