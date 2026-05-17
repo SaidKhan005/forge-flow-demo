@@ -656,6 +656,31 @@ void main() {
             weighted_hours  REAL NOT NULL,
             UNIQUE(restaurant_id, role_name))
         ''');
+        // Per-Daypart V1 (Slice 1) per-(cycle, service_period) child rows.
+        // target_cycle_dao.saveCycle() now issues
+        // `DELETE FROM target_cycle_dayparts`; pre-create it so the seed
+        // path's cycle write doesn't crash on "no such table". Schema
+        // pinned to migration 202605160000 (its SQLite mirror in
+        // lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart).
+        await db.execute('''
+          CREATE TABLE target_cycle_dayparts (
+            cycle_id           TEXT NOT NULL,
+            service_period_id  TEXT NOT NULL,
+            target_cplh        REAL NOT NULL,
+            target_splh        REAL NOT NULL,
+            target_ppa         REAL NOT NULL,
+            opz_floor_cplh     REAL NOT NULL,
+            opz_ceiling_cplh   REAL NOT NULL,
+            cover_count        INTEGER NOT NULL,
+            verdict            TEXT,
+            verdict_reason     TEXT,
+            created_at         TEXT NOT NULL,
+            PRIMARY KEY (cycle_id, service_period_id))
+        ''');
+        await db.execute('''
+          CREATE INDEX ix_target_cycle_dayparts_cycle
+          ON target_cycle_dayparts(cycle_id)
+        ''');
 
         // Seed demo restaurant
         final now = DateTime.now().toIso8601String();
@@ -905,6 +930,31 @@ void main() {
             hourly_rate     REAL NOT NULL,
             weighted_hours  REAL NOT NULL,
             UNIQUE(restaurant_id, role_name))
+        ''');
+        // Per-Daypart V1 (Slice 1) per-(cycle, service_period) child rows.
+        // target_cycle_dao.saveCycle() now issues
+        // `DELETE FROM target_cycle_dayparts`; pre-create it so the seed
+        // path's cycle write doesn't crash on "no such table". Schema
+        // pinned to migration 202605160000 (its SQLite mirror in
+        // lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart).
+        await db.execute('''
+          CREATE TABLE target_cycle_dayparts (
+            cycle_id           TEXT NOT NULL,
+            service_period_id  TEXT NOT NULL,
+            target_cplh        REAL NOT NULL,
+            target_splh        REAL NOT NULL,
+            target_ppa         REAL NOT NULL,
+            opz_floor_cplh     REAL NOT NULL,
+            opz_ceiling_cplh   REAL NOT NULL,
+            cover_count        INTEGER NOT NULL,
+            verdict            TEXT,
+            verdict_reason     TEXT,
+            created_at         TEXT NOT NULL,
+            PRIMARY KEY (cycle_id, service_period_id))
+        ''');
+        await db.execute('''
+          CREATE INDEX ix_target_cycle_dayparts_cycle
+          ON target_cycle_dayparts(cycle_id)
         ''');
 
         final now = DateTime.now().toIso8601String();
