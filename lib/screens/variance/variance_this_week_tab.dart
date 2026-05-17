@@ -174,7 +174,66 @@ class _ThisWeekContent extends StatelessWidget {
         // math (raw actuals only) and duplicated Shift's daypart
         // cards. Shift remains the per-period surface.
 
-        // WTD Variance Table
+        // GAP 1: section order is hero → Primary Driver → WTD → Dollar
+        // Impact → Full Week Projection (the Primary Driver group is
+        // emitted immediately after the hero and before the WTD table).
+        // Pure reordering; each group is byte-preserved below.
+
+        // Primary Driver
+        SliverMainAxisGroup(
+          slivers: [
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: StickySectionDelegate('PRIMARY DRIVER'),
+            ),
+            SliverToBoxAdapter(
+              child: lever == null
+                  ? const LeverCardNotYetAvailable()
+                  // Variance Coaching V2 (Lane D / sub-step 4) — the
+                  // arrow chain (V2-3) renders INSIDE the single
+                  // bordered driver card, fused between the serif
+                  // headline and the `whatHappened` sentence (no
+                  // chart-then-paragraph gap, no sibling-above-the-card
+                  // layout). It consumes the SAME
+                  // `primaryDriverDollarImpactByAxis` map the card
+                  // already computes — no new math. The degraded
+                  // (`lever == null`) branch above is untouched: it
+                  // still renders `LeverCardNotYetAvailable` with NO
+                  // chain. See
+                  // docs/contracts/phase_7_58_primary_driver_contract.md
+                  // V2-3 / V2-2.
+                  : LeverCardWidget(
+                      data: lever,
+                      dollarImpactByAxis: primaryDriverDollarImpactByAxis,
+                      chainAboveWhatHappened: DriverArrowChain(
+                        lever: lever,
+                        dollarImpactByAxis: primaryDriverDollarImpactByAxis,
+                      ),
+                      // 7.58.UX.8 — OPZ-aware row annotation. CPLH
+                      // ceiling comes from the active target profile;
+                      // SPLH ceiling is not modeled in
+                      // `ActiveTargetProfile` today, so the splh
+                      // annotation stays gated on null. When the
+                      // notifier is out of scope (legacy widget tests),
+                      // both actual + ceiling read null and the row
+                      // renders unchanged.
+                      actualCPLH:
+                          activeProfile != null ? weekData.avgCPLH : null,
+                      opzCeilingCPLH: activeProfile?.opzCeilingCPLH,
+                      actualSPLH: null,
+                      opzCeilingSPLH: null,
+                    ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          ],
+        ),
+
+        // WTD Variance Table — GAP 2. Operator decision: KEEP the
+        // existing `StickySectionDelegate` + `StickyColumnHeaderDelegate`
+        // pinned headers AND add a default-collapsed disclosure UNDER
+        // the retained sticky header. `_WtdTable` is byte-preserved
+        // (same ComparisonGroupBand / ComparisonMetricRow widgets, same
+        // numbers, same Fmt.var* sentiment); only the wrapping changes.
         SliverMainAxisGroup(
           slivers: [
             SliverPersistentHeader(
@@ -185,12 +244,21 @@ class _ThisWeekContent extends StatelessWidget {
               pinned: true,
               delegate: const StickyColumnHeaderDelegate(),
             ),
-            SliverToBoxAdapter(child: _WtdTable(data: weekData)),
+            SliverToBoxAdapter(
+              child: _CollapsibleSection(
+                summary: 'Week to date vs plan',
+                child: _WtdTable(data: weekData),
+              ),
+            ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
 
-        // Dollar Impact Card
+        // Dollar Impact Card — GAP 3. Same default-collapsed disclosure
+        // pattern UNDER the retained sticky header. `DollarImpactCard`
+        // content is byte-preserved (FROZEN math V2-6). The
+        // sentiment-driven title expression is verbatim — it must not
+        // hardcode "Loss" (an at-or-under best-possible week is a win).
         SliverMainAxisGroup(
           slivers: [
             SliverPersistentHeader(
@@ -217,70 +285,24 @@ class _ThisWeekContent extends StatelessWidget {
               ),
             ),
             SliverToBoxAdapter(
-              child: DollarImpactCard(
-                weekImpact: weekData.dollarGap,
-                monthImpact: weekData.monthDollarImpact,
-                sixtyDayImpact: weekData.sixtyDayDollarImpact,
-                annualizedImpact: weekData.annualizedDollarImpact,
-                footerText: 'Through ${weekData.lastClosedDay}',
-                theoreticalLaborPct: weekData.theoreticalLaborPct,
-                actualLaborPct: weekData.actualLaborPct,
+              child: _CollapsibleSection(
+                // Same sentiment-driven summary as the sticky header
+                // title (NOT hardcoded "Loss") so the disclosure label
+                // and the pinned header agree.
+                summary: MoneySentiment.fromDollarGap(weekData.dollarGap)
+                        .favorable
+                    ? 'Win if this continues'
+                    : 'Loss if this continues',
+                child: DollarImpactCard(
+                  weekImpact: weekData.dollarGap,
+                  monthImpact: weekData.monthDollarImpact,
+                  sixtyDayImpact: weekData.sixtyDayDollarImpact,
+                  annualizedImpact: weekData.annualizedDollarImpact,
+                  footerText: 'Through ${weekData.lastClosedDay}',
+                  theoreticalLaborPct: weekData.theoreticalLaborPct,
+                  actualLaborPct: weekData.actualLaborPct,
+                ),
               ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ],
-        ),
-
-        // Primary Lever
-        SliverMainAxisGroup(
-          slivers: [
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: StickySectionDelegate('PRIMARY DRIVER'),
-            ),
-            SliverToBoxAdapter(
-              child: lever == null
-                  ? const LeverCardNotYetAvailable()
-                  // Variance Coaching V2 (Lane D) — the arrow chain
-                  // (V2-3) renders fused directly above the card's
-                  // `whatHappened` sentence (no chart-then-paragraph
-                  // gap). It consumes the SAME
-                  // `primaryDriverDollarImpactByAxis` map the card
-                  // already computes — no new math. The degraded
-                  // (`lever == null`) branch above is untouched: it
-                  // still renders `LeverCardNotYetAvailable` with NO
-                  // chain. See
-                  // docs/contracts/phase_7_58_primary_driver_contract.md
-                  // V2-3 / V2-2.
-                  : Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        DriverArrowChain(
-                          lever: lever,
-                          dollarImpactByAxis:
-                              primaryDriverDollarImpactByAxis,
-                        ),
-                        LeverCardWidget(
-                          data: lever,
-                          dollarImpactByAxis:
-                              primaryDriverDollarImpactByAxis,
-                          // 7.58.UX.8 — OPZ-aware row annotation. CPLH
-                          // ceiling comes from the active target
-                          // profile; SPLH ceiling is not modeled in
-                          // `ActiveTargetProfile` today, so the splh
-                          // annotation stays gated on null. When the
-                          // notifier is out of scope (legacy widget
-                          // tests), both actual + ceiling read null
-                          // and the row renders unchanged.
-                          actualCPLH: activeProfile != null
-                              ? weekData.avgCPLH
-                              : null,
-                          opzCeilingCPLH: activeProfile?.opzCeilingCPLH,
-                          actualSPLH: null,
-                          opzCeilingSPLH: null,
-                        ),
-                      ],
-                    ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
@@ -300,6 +322,70 @@ class _ThisWeekContent extends StatelessWidget {
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
+      ],
+    );
+  }
+}
+
+/// GAP 2 / GAP 3 — a default-collapsed disclosure (mockup `<details>`
+/// / `<summary>`). It is placed UNDER the retained
+/// `StickySectionDelegate` / `StickyColumnHeaderDelegate` pinned
+/// headers (operator decision: keep the sticky delegates, ADD the
+/// collapsible underneath). The wrapped child ([_WtdTable] /
+/// [DollarImpactCard]) is byte-preserved — this widget only shows/hides
+/// it; it never alters the content, the numbers, or their sentiment.
+///
+/// Mirrors the mockup `summary` row: a mono label + a trailing chevron
+/// that rotates when expanded. Collapsed by default (`_expanded = false`).
+class _CollapsibleSection extends StatefulWidget {
+  final String summary;
+  final Widget child;
+  const _CollapsibleSection({required this.summary, required this.child});
+
+  @override
+  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+}
+
+class _CollapsibleSectionState extends State<_CollapsibleSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        InkWell(
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.summary,
+                    style: AppTextStyles.mono14(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                // Chevron (mockup `summary .ch` "›"): right when
+                // collapsed, down when expanded.
+                Icon(
+                  _expanded
+                      ? Icons.keyboard_arrow_down
+                      : Icons.chevron_right,
+                  size: 20,
+                  color: AppColors.textMuted,
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Default collapsed: the byte-preserved child is only built
+        // when expanded.
+        if (_expanded) widget.child,
       ],
     );
   }
