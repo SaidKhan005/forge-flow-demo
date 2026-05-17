@@ -395,14 +395,21 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
-          Text(
-            c.ruleReference,
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              c.ruleReference,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
           ),
           const SizedBox(width: 8),
-          Text(
-            valueStr,
-            style: AppTextStyles.mono12(color: color),
+          Flexible(
+            child: Text(
+              valueStr,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono12(color: color),
+            ),
           ),
         ],
       ),
@@ -497,9 +504,13 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
                 ),
               ),
             ),
-            Text(
-              group.summaryLine,
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                group.summaryLine,
+                textAlign: TextAlign.right,
+                style: AppTextStyles.mono8(color: AppColors.textMuted),
+              ),
             ),
           ],
         ),
@@ -543,9 +554,12 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            c.detail,
-            style: AppTextStyles.mono12(color: color),
+          Flexible(
+            child: Text(
+              c.detail,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono12(color: color),
+            ),
           ),
         ],
       ),
@@ -971,11 +985,13 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            value,
-            textAlign: TextAlign.right,
-            style: AppTextStyles.mono12(
-                color: AppColors.textPrimary, weight: FontWeight.w700),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono12(
+                  color: AppColors.textPrimary, weight: FontWeight.w700),
+            ),
           ),
         ],
       ),
