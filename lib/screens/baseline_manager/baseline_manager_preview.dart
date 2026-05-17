@@ -322,7 +322,15 @@ class PreviewPanel extends StatelessWidget {
 
 /// Shows downstream SchedulePlan impact from the draft target profile.
 /// When no shifts are selected all cells show "--".
-class _PlanImpactSection extends StatelessWidget {
+///
+/// R9: this is a tap-to-expand dropdown (accordion) matching the
+/// committed prototype's `.pi` element. It is COLLAPSED by default and
+/// shows a `PLAN IMPACT ›` header row; tapping the header expands the
+/// six plan-impact metrics inline (the chevron rotates 90 degrees) and
+/// tapping again collapses it. It is never a section the operator has
+/// to scroll to reach. The metrics and their formulas are unchanged;
+/// only their disclosure (show/hide) changed.
+class _PlanImpactSection extends StatefulWidget {
   final List<BaselineCandidateShift> selected;
   final int? historicalWeeklyAvgCovers;
   final String selectedLensId;
@@ -334,7 +342,19 @@ class _PlanImpactSection extends StatelessWidget {
   });
 
   @override
+  State<_PlanImpactSection> createState() => _PlanImpactSectionState();
+}
+
+class _PlanImpactSectionState extends State<_PlanImpactSection> {
+  // R9: collapsed by default (matches the prototype, which renders the
+  // `.pi` element without the `.open` class until tapped).
+  bool _open = false;
+
+  @override
   Widget build(BuildContext context) {
+    final selected = widget.selected;
+    final historicalWeeklyAvgCovers = widget.historicalWeeklyAvgCovers;
+    final selectedLensId = widget.selectedLensId;
     final profile = context.watch<ActiveTargetProfileNotifier?>()?.profile;
     final hasWageAuthority = profile != null;
     final isWholeDay = selectedLensId == kWholeDayLensId;
@@ -375,47 +395,75 @@ class _PlanImpactSection extends StatelessWidget {
         const SizedBox(height: 12),
         Container(height: 1, color: AppColors.borderSubtle),
         const SizedBox(height: 10),
-        Text('PLAN IMPACT',
-            style: AppTextStyles.mono7(color: AppColors.textMuted)),
-        const SizedBox(height: 8),
-        // Row 4: FORECAST COVERS · FORECAST SALES
-        Row(
-          children: [
-            Expanded(
-              child: _PreviewCell(label: 'FORECAST COVERS', value: fcCovers),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PreviewCell(label: 'FORECAST SALES', value: fcSales),
-            ),
-          ],
+        // R9: tappable header row (the prototype's `.pi-h`). Always
+        // visible; tapping it toggles the metric grid. The chevron
+        // rotates 90 degrees when open (prototype: `.pi.open .cv`).
+        GestureDetector(
+          key: const ValueKey<String>('plan_impact_toggle'),
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _open = !_open),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('PLAN IMPACT',
+                  style: AppTextStyles.mono7(color: AppColors.textMuted)),
+              AnimatedRotation(
+                key: const ValueKey<String>('plan_impact_chevron'),
+                turns: _open ? 0.25 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: Text('>',
+                    style:
+                        AppTextStyles.mono8(color: AppColors.textMuted)),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 10),
-        // Row 5: FOH HRS · BOH HRS
-        Row(
-          children: [
-            Expanded(
-              child: _PreviewCell(label: 'FOH HRS', value: fohHrs),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PreviewCell(label: 'BOH HRS', value: bohHrs),
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        // Row 6: LABOR % · BLENDED WAGE
-        Row(
-          children: [
-            Expanded(
-              child: _PreviewCell(label: 'LABOR %', value: laborPct),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _PreviewCell(label: 'BLENDED WAGE', value: wage),
-            ),
-          ],
-        ),
+        // R9: the six plan-impact metrics render INLINE only when the
+        // dropdown is open. Collapsed by default so this is never a
+        // section the operator scrolls to reach.
+        if (_open) ...[
+          const SizedBox(height: 8),
+          // Row 4: FORECAST COVERS · FORECAST SALES
+          Row(
+            children: [
+              Expanded(
+                child: _PreviewCell(
+                    label: 'FORECAST COVERS', value: fcCovers),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PreviewCell(
+                    label: 'FORECAST SALES', value: fcSales),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Row 5: FOH HRS · BOH HRS
+          Row(
+            children: [
+              Expanded(
+                child: _PreviewCell(label: 'FOH HRS', value: fohHrs),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PreviewCell(label: 'BOH HRS', value: bohHrs),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          // Row 6: LABOR % · BLENDED WAGE
+          Row(
+            children: [
+              Expanded(
+                child: _PreviewCell(label: 'LABOR %', value: laborPct),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _PreviewCell(label: 'BLENDED WAGE', value: wage),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

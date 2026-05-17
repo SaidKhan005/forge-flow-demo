@@ -419,14 +419,20 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
             )
           : Column(
               children: [
-                // R1: the lens selector re-scopes the calendar AND the
-                // summary/preview region together. The lens, gate
-                // notice, scope tag, summary, and clear-all share one
-                // compact scroll-tolerant band (capped flex) so the
-                // calendar below stays the dominant hero element and the
-                // body never overflows on short viewports.
-                Flexible(
-                  flex: 2,
+                // R9: ONE single continuous scroll region, matching the
+                // committed prototype's `.scl` element. The fixed app bar
+                // (title + RESET) stays above and the fixed bottom action
+                // bar (CANCEL / DONE + the once-per-cycle caption) stays
+                // below; EVERYTHING between them (lens, gate notice,
+                // scope tag, summary card with the collapsible PLAN
+                // IMPACT dropdown, STAR SHIFT SELECTION band, the LAST 60
+                // DAYS header + legend + count caption + calendar grid)
+                // lives in ONE scroll and scrolls as a single page. The
+                // calendar is no longer its own scroller and is no longer
+                // wrapped in Expanded/Flexible: it lays out at intrinsic
+                // height inside this one scroll so the page owns all
+                // scrolling and there are no nested scroll conflicts.
+                Expanded(
                   child: SingleChildScrollView(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -459,23 +465,21 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                         ),
                         if (_draftKeys.isNotEmpty)
                           ClearAllBar(onClearAll: _clearAll),
+                        // R9: calendar renders at its full natural
+                        // height inside the single page scroll (it is
+                        // NOT its own scrollable and NOT in
+                        // Expanded/Flexible). R2: tapping a day opens an
+                        // in-place bottom sheet.
+                        CalendarGrid(
+                          windowDates: _windowDates,
+                          shiftsByDate: _shiftsByDate,
+                          draftKeys: _draftKeys,
+                          activeLensId: _selectedLensId,
+                          defs: _defs,
+                          onDateTap: _openDaySheet,
+                        ),
                       ],
                     ),
-                  ),
-                ),
-                // Calendar is the dominant hero element of the screen:
-                // it gets the larger flex share of the body. R2: tapping
-                // a day opens an in-place bottom sheet rather than
-                // swapping the body for a full-screen day detail.
-                Expanded(
-                  flex: 3,
-                  child: CalendarGrid(
-                    windowDates: _windowDates,
-                    shiftsByDate: _shiftsByDate,
-                    draftKeys: _draftKeys,
-                    activeLensId: _selectedLensId,
-                    defs: _defs,
-                    onDateTap: _openDaySheet,
                   ),
                 ),
                 BottomBar(
