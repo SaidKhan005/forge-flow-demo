@@ -181,7 +181,10 @@ class _OverrideBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       decoration: BoxDecoration(
         color: AppColors.sunset.withValues(alpha: 0.12),
         border: Border.all(color: AppColors.sunset, width: 1),
@@ -227,7 +230,12 @@ class _PerPeriodRollupLine extends StatelessWidget {
   Widget build(BuildContext context) {
     if (text.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       child: Text(
         text,
         style: AppTextStyles.body13(color: AppColors.textMuted),
@@ -275,7 +283,7 @@ class _CplhRangeBar extends StatelessWidget {
 
     return Container(
       margin: AppSpacing.screenH,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
+      padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -532,7 +540,10 @@ class _CplhRangeBar extends StatelessWidget {
               child: Container(
                 width: double.infinity,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                    const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.lg,
+                      vertical: AppSpacing.lg,
+                    ),
                 decoration: BoxDecoration(
                   color: ghost ? Colors.transparent : AppColors.sunset,
                   border: Border.all(
@@ -600,7 +611,7 @@ class _OperatingStrip extends StatelessWidget {
     if (profile == null && !useBridgeFallbacks) {
       return Container(
         margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: AppColors.backgroundMid,
           border: Border.all(color: AppColors.borderSubtle, width: 1),
@@ -735,7 +746,10 @@ class _StripHalf extends StatelessWidget {
         // the full text visible at phone/narrow width while
         // guaranteeing the band can never grow past two lines.
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.lg,
+          ),
           child: SizedBox(
             height: _kHeaderFontSize * _kHeaderLineHeight * _kHeaderLines,
             child: Align(
