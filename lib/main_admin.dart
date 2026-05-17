@@ -46,6 +46,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/admin_http_timeout.dart';
 import 'admin/services/admin_security_gateway.dart';
 import 'admin/services/admin_sessions_gateway.dart';
 import 'admin/services/admin_vendor_connections_gateway.dart';
@@ -253,6 +254,25 @@ Future<void> main() async {
   try {
     final authBinding = await _resolveAuthSource();
     final source = authBinding.source;
+    // G71 (cross-surface parity §0b) — admin parallel of the
+    // mobile/op-web G61 "401 → force-refresh-ID-token → retry-once"
+    // recovery. Register the live Firebase auth client's force-refresh
+    // as the process-wide hook so a clock-skewed / mid-rotation bearer
+    // no longer hard-fails destructive admin actions; every admin
+    // gateway funnels through `sendAdminHttpRequest`, which consumes
+    // this hook. Gated on a non-null live auth client EXACTLY like the
+    // sibling `_resolve*Gateway` resolvers — demo / share-preview leave
+    // it unset so the first 401 throws as before (no behaviour change
+    // off the 401-recovery path). Mirrors the existing process-global
+    // `AdminHttpFreshnessRedirectDispatcher` wiring shape.
+    final liveAuthClient = authBinding.authClient;
+    if (liveAuthClient != null) {
+      AdminHttpTokenRefreshDispatcher.refreshIdToken = () async {
+        final credential = await liveAuthClient.refreshIdToken();
+        if (credential == null) return null;
+        return liveAuthClient.currentIdToken();
+      };
+    }
     final gateway = _resolveOperatorLocationGateway(authBinding.authClient);
     final pricingGateway = gateway == null
         ? null
