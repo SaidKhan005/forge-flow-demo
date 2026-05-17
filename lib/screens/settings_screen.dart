@@ -218,8 +218,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
         !showAccount ||
         effectiveTeamActor == null ||
         _isAdminTier(effectiveTeamActor);
+    // The Data-alignment diagnostics section is reached only from
+    // inside the Data tab, which `_shouldShowDataTab` already F&F-gates
+    // (super_admin / ff_support, or a null-actor demo / unauth shell).
+    // Mirror that resolution here — a null actor keeps the section
+    // visible, matching `showAdminTabs` / `_shouldShowDataTab`'s
+    // documented null-actor-open posture for legacy demo / unauth
+    // shells. The previous `effectiveTeamActor != null` clause made
+    // this one section null-actor-CLOSED, so it silently vanished from
+    // the demo shell even though its container tab still rendered.
+    // Operator-tier actors (non-null, non-FF) are still excluded by
+    // `_shouldShowDataTab`, so they never reach this branch.
     final showFFSupport =
-        effectiveTeamActor != null && _isFFAccount(effectiveTeamActor);
+        effectiveTeamActor == null || _isFFAccount(effectiveTeamActor);
     // MO-1 (Wave 2) — the Data tab carries F&F-internal diagnostic
     // surfaces (Sync status, Demo→Live switch, data freshness, demo
     // reset, data alignment). Per debug.md:260 the tab is privileged
