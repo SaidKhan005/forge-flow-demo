@@ -28,8 +28,10 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scop
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../models/baseline_candidate_shift.dart';
+import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import 'business_date_authority_service.dart';
+import 'restaurant_timing_config_read_service.dart';
 import 'baseline_authority_service.dart';
 import '../domain/services/recommended_benchmark_selection_service.dart';
 import 'star_target_selection_write_service.dart';
@@ -123,12 +125,25 @@ class BaselineManagerService {
       );
     }).toList();
 
-    _sortCandidates(candidates);
+    // Period set + labels + ordering come from the operator's persisted
+    // timing config, never a hardcoded `['lunch','dinner','late_night']`
+    // list. Falls back to the canonical fixture-era definitions only
+    // when no timing config is persisted yet (same pattern as
+    // `benchmark_tracker_read_service.dart:86-90`).
+    final timingConfig = await RestaurantTimingConfigReadService.instance
+        .getTimingConfig(scopedId);
+    final defs = (timingConfig?.servicePeriodDefinitions.isNotEmpty ?? false)
+        ? timingConfig!.servicePeriodDefinitions
+        : ServicePeriodDefinitionResolver.demoDefinitions;
+
+    _sortCandidates(candidates, defs);
     return candidates;
   }
 
-  static void _sortCandidates(List<BaselineCandidateShift> candidates) {
-    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
+  static void _sortCandidates(
+    List<BaselineCandidateShift> candidates,
+    List<ServicePeriodDefinition> defs,
+  ) {
     // Canonical day ordering from BusinessDateAuthorityService.
     const dayOrder = BusinessDateAuthorityService.canonicalDayOrder;
 

@@ -100,6 +100,25 @@ class DemoScope {
   static const String riversideRestaurantId = 'demo_restaurant_riverside';
   static const String harbourRestaurantId = 'demo_restaurant_harbour';
 
+  /// R6 "Choose Star Shifts" demo operator/location: a standalone demo
+  /// restaurant whose `restaurant_timing_configs` row defines EXACTLY
+  /// FOUR service periods (Breakfast, Lunch, Dinner, Late night). It
+  /// exists to prove the per-daypart de-hardcode end to end: nothing in
+  /// the pipeline may assume the fixed 3-element lunch/dinner/late_night
+  /// shape, so a 4-period operator must seed and resolve to 4 ordered
+  /// periods via `ServicePeriodDefinitionResolver`.
+  ///
+  /// Deliberately NOT a member of [locations]: that list is the §2c
+  /// scope-drawer set (pinned to four, index-aligned with the
+  /// per-location replay profiles + the team fixture). This operator is
+  /// a SEPARATE single-location demo operator, not a scope-drawer
+  /// sibling, so it does not perturb any of those invariants.
+  static const String fourPeriodRestaurantId =
+      'demo_restaurant_four_period';
+
+  /// Display name for [fourPeriodRestaurantId].
+  static const String fourPeriodDisplayName = 'Barrio Legado: Four Period';
+
   /// The full §2c demo location set. Seeded into `restaurant_locations`
   /// by `_seedDemoRestaurant`; surfaced by `RestaurantScopeNotifier`
   /// so the scope drawer becomes a real switcher. Downtown is first so
@@ -501,6 +520,14 @@ class SqliteDatabase {
     // Runs LAST so it reads the fully-seeded cycles + shift set + the
     // existing Downtown in-force snapshot.
     await _seedOperationalEnvelopeFromReplay(db, replay);
+    // R6 "Choose Star Shifts": the standalone 4-service-period demo
+    // operator. Independent of the §2c replay cohort (its own
+    // restaurant_id / tables), so order is free; seeded in BOTH the
+    // cold-boot and reseed/advance paths (mirrors the
+    // `_seedDemoScopeOverride*` pattern) so it is present after any
+    // (re)seed. Anchored to the same cold-boot business date so its
+    // 60-day window lines up with the rest of the demo timeline.
+    await _seedDemoFourPeriodOperator(db, coldBootBusinessDate);
   }
 
   /// Test seam: runs `onCreate`'s schema-only step against [db] so the
@@ -870,6 +897,13 @@ class SqliteDatabase {
     // rewritten; notifications dedupe on UNIQUE(restaurant_id,
     // event_key).
     await _seedOperationalEnvelopeFromReplay(db, replay);
+    // R6 "Choose Star Shifts": re-seed the standalone 4-service-period
+    // demo operator. The table-wide `shift_records` / `import_runs` /
+    // `raw_import_records` deletes at the top of this method clear this
+    // operator too, so it MUST be rebuilt here for it to survive a
+    // reseed/advance. Anchored to `isoDate` so its 60-day window tracks
+    // the reseed business date (same pattern as the cold-boot path).
+    await _seedDemoFourPeriodOperator(db, isoDate);
   }
 
   /// Clears all operational data while preserving restaurant scope and

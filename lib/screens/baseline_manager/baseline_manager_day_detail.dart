@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
 import '../../models/baseline_candidate_shift.dart';
 import '../../theme/app_theme.dart';
@@ -20,6 +21,11 @@ class DayDetail extends StatelessWidget {
   final ValueChanged<String> onToggle;
   final VoidCallback onBack;
 
+  /// Resolved, operator-configured service-period definitions (already
+  /// ordered by the caller). Period grouping order comes from this,
+  /// never a hardcoded `['lunch','dinner','late_night']`.
+  final List<ServicePeriodDefinition> defs;
+
   const DayDetail({
     super.key,
     required this.date,
@@ -27,6 +33,7 @@ class DayDetail extends StatelessWidget {
     required this.draftKeys,
     required this.onToggle,
     required this.onBack,
+    required this.defs,
   });
 
   @override
@@ -87,7 +94,7 @@ class DayDetail extends StatelessWidget {
     }
 
     final order = ServicePeriodDefinitionResolver.ordered(
-      ServicePeriodDefinitionResolver.demoDefinitions,
+      defs,
     ).map((d) => d.id).toList();
     final items = <Widget>[];
 

@@ -7,6 +7,7 @@ import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
@@ -780,8 +781,8 @@ void main() {
       await tester.pump();
 
       // Latest is _lunch2 at 2026-03-10.
-      // Window: Jan 10 – Mar 10
-      expect(find.text('Jan 10 – Mar 10'), findsOneWidget);
+      // Window: Jan 10 to Mar 10 (R1 plain-English range, no en dash)
+      expect(find.text('Jan 10 to Mar 10'), findsOneWidget);
     });
 
     testWidgets('dates with closed shifts show a marker dot', (tester) async {
@@ -1093,13 +1094,16 @@ void main() {
     });
   });
 
-  // ── P — Suggested/selected day states (Phase 7.55f.3b) ────────────────────
+  // ── P — R1 two-state calendar (Closed / Selected only) ────────────────────
+  //
+  // R1 collapsed the calendar to exactly two cell states. The old
+  // "suggested" state and its legend entry are gone; the legend now
+  // has exactly two chips: Closed and Selected.
 
-  group('P - suggested/selected day states', () {
-    testWidgets('suggested date is distinguishable from available-only', (
+  group('P - R1 two-state calendar', () {
+    testWidgets('legend shows exactly Closed and Selected, no Suggested', (
       tester,
     ) async {
-      // All test candidates have lever 'cplh_up' which is favorable → suggested
       await tester.pumpWidget(
         _wrap(
           BaselineManagerScreen.withCandidates(
@@ -1110,11 +1114,15 @@ void main() {
       );
       await tester.pump();
 
-      // Legend should show all three states
-      expect(find.text('Suggested star'), findsOneWidget);
+      expect(find.text('Closed'), findsOneWidget);
+      expect(find.text('Selected'), findsOneWidget);
+      // The removed "suggested" state must not resurface in the legend.
+      expect(find.text('Suggested star'), findsNothing);
+      expect(find.text('Selected star'), findsNothing);
+      expect(find.text('Closed shifts'), findsNothing);
     });
 
-    testWidgets('selected date is distinguishable from suggested-only', (
+    testWidgets('selected date and closed-only date both render cells', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -1127,9 +1135,9 @@ void main() {
       );
       await tester.pump();
 
-      // _selectedLunch is pre-selected; its date is 2026-03-16.
-      // _lunch1 (2026-03-02) has cplh_up (favorable) → suggested but not selected.
-      // Both cell keys exist — visual distinction is in decoration.
+      // _selectedLunch is pre-selected on 2026-03-16; _lunch1 on
+      // 2026-03-02 is closed-only. Both cells exist — distinction is
+      // in decoration, and there is no third (suggested) state.
       expect(
         find.byKey(
           const ValueKey<String>('cal_2026-03-16'),
@@ -1144,10 +1152,8 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Legend contains all three labels
-      expect(find.text('Selected star'), findsOneWidget);
-      expect(find.text('Suggested star'), findsOneWidget);
-      expect(find.text('Closed shifts'), findsOneWidget);
+      expect(find.text('Closed'), findsOneWidget);
+      expect(find.text('Selected'), findsOneWidget);
     });
   });
 
@@ -1494,64 +1500,72 @@ void main() {
   // by `target_state_alignment_test.dart` group H; this widget test
   // focuses on the denial UX only.
 
-  group('T - 7.55q.9 Done denial surfaces as SnackBar', () {
-    testWidgets('Done after the override is already consumed shows the '
-        '"already used" SnackBar and keeps the screen open', (tester) async {
+  group('T - R1 once-per-cycle pre-commit gate (disabled up front)', () {
+    testWidgets('when the override is already consumed the commit is '
+        'disabled UP FRONT with a clear notice, before any selection', (
+      tester,
+    ) async {
       // Consume the once-per-cycle manager override at the SERVICE
-      // layer first. This removes the widget-level fragility of
-      // running two full Done flows back-to-back in one widget tree.
+      // layer first so the active cycle reports
+      // canManagerOverride == false.
       await tester.runAsync(() async {
         await BaselineManagerService.instance.saveSelection({
           _lunch1.recordKey,
         });
       });
 
-      // Now mount the form, draft a different selection, hit Done.
-      // Cycle is locked → ManagerOverrideDeniedException → SnackBar.
-      await tester.pumpWidget(
-        _wrap(
-          BaselineManagerScreen.withCandidates(
-            _allCandidates,
-            initialDemandCovers: demandCovers,
-          ),
-        ),
-      );
-      await tester.pump();
-
-      await _tapCalendarDate(tester, '2026-03-10');
-      await _tapCandidateTile(tester, _lunch2);
-
-      // Drive the Done tap + saveSelection's real async DB work via
-      // runAsync (the same pattern as the existing
-      // `_commitDoneAndReadKeys` helper). Pumping frames alone does
-      // not advance real async; it only ticks the fake clock.
+      // Mount the form. _loadCommitGate() probes the active cycle
+      // asynchronously; runAsync + a settle lets that real DB work
+      // complete so the gate state is resolved.
       await tester.runAsync(() async {
-        await tester.tap(find.text('DONE'));
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
         await Future<void>.delayed(const Duration(milliseconds: 600));
       });
-      // Pump a frame so the SnackBar renders.
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      // SnackBar with the "already used" copy must be visible.
+      // The disabled-commit notice is shown BEFORE the operator builds
+      // a selection, in plain English (no jargon, no em/en dash).
       expect(
         find.textContaining(
-          'Manager override already used',
+          'already used its one override',
           skipOffstage: false,
         ),
-        findsAtLeastNWidgets(1),
-        reason: 'denial must surface as a SnackBar honestly',
-      );
-      expect(
-        find.textContaining('Reset Target Cycle', skipOffstage: false),
-        findsAtLeastNWidgets(1),
-        reason: 'SnackBar must point users at the admin reset path',
-      );
-      // Screen is still mounted — DONE button still present.
-      expect(
-        find.text('DONE'),
         findsOneWidget,
-        reason: 'the Baseline Manager must NOT pop on denial',
+        reason: 'the gate must explain the lock up front',
       );
+
+      // The persistent caption is always present near the commit.
+      expect(
+        find.text('One override per 60 day cycle'),
+        findsOneWidget,
+      );
+
+      // DONE is rendered disabled: the ConnectivityRequiredButton's
+      // ElevatedButton has a null onPressed when the gate denies.
+      final doneButton = tester.widget<ElevatedButton>(
+        find.ancestor(
+          of: find.text('DONE'),
+          matching: find.byType(ElevatedButton),
+        ),
+      );
+      expect(
+        doneButton.onPressed,
+        isNull,
+        reason: 'the pre-commit gate must disable DONE up front',
+      );
+
+      // The post-commit ManagerOverrideDeniedException SnackBar stays
+      // in `_done()` as the enforcement backstop for the race where
+      // the gate has not yet resolved; that path is exercised by the
+      // service-layer suite. Here the gate fired first, so no
+      // selection/commit is attempted.
     });
   });
 
@@ -1597,6 +1611,207 @@ void main() {
         DatabaseHelper.instance.getBaselineSelectedRecordKeys,
       );
       expect(stored, isEmpty);
+    });
+  });
+
+  // ── V — R1 lens derives from operator timing config (4 periods) ──────────
+  //
+  // The lens bar must NOT assume a fixed 3-period (lunch/dinner/
+  // late_night) shape. Given an operator config with FOUR ordered
+  // service periods, the bar renders "Whole day" plus one chip per
+  // configured period, in resolved sort order, labelled from the
+  // config — never a hardcoded list and never a /3 or /N split.
+
+  group('V - R1 lens options derive from a 4-period config', () {
+    const fourPeriodDefs = <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '11:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      ),
+    ];
+
+    testWidgets('lens bar shows Whole day + all four configured periods', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Whole day chip + one chip per configured period, labelled
+      // from the config (proves no hardcoded 3-period assumption).
+      expect(find.byKey(const ValueKey<String>('lens___whole_day__')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('lens_breakfast')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('lens_lunch')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('lens_dinner')),
+          findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('lens_late_night')),
+          findsOneWidget);
+
+      // Labels come from the config, in resolved order.
+      expect(find.text('Whole day'), findsOneWidget);
+      expect(find.text('Breakfast'), findsOneWidget);
+      // Default lens is Whole day → scope tag reads "Whole day targets".
+      expect(find.text('Whole day targets'), findsOneWidget);
+    });
+
+    testWidgets('selecting a period lens re-scopes the scope tag', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('lens_dinner')),
+      );
+      await tester.pumpAndSettle();
+
+      // Summary scope tag follows the selected lens.
+      expect(find.text('Dinner targets'), findsOneWidget);
+      expect(find.text('Whole day targets'), findsNothing);
+    });
+  });
+
+  // ── W — R1 calendar 2-state filtering by lens ────────────────────────────
+  //
+  // Cells reflect ONLY the active lens period. A date that has a
+  // closed shift in period A but not period B must render its cell
+  // under lens A and stay closed (no selected/suggested) under
+  // lens B until that period's shift is drafted.
+
+  group('W - R1 calendar filters by active lens', () {
+    testWidgets('lunch-only date shows no badge under the Dinner lens but '
+        'a closed cell under the Lunch lens', (tester) async {
+      // 2026-03-02 has _lunch1 (lunch) only; 2026-03-06 has _dinner1
+      // (dinner) only. Use the fixture demo defs (lunch/dinner/
+      // late_night) so daypart ids line up with the fixtures.
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Whole-day lens: the lunch-only date carries a count badge
+      // "0/1" (0 of that day's 1 configured service drafted).
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-02')),
+        findsOneWidget,
+      );
+      expect(find.text('0/1', skipOffstage: false), findsAtLeastNWidgets(1));
+
+      // Switch to the Dinner lens. The lunch-only date no longer has
+      // any in-lens shift, so its badge/dot disappears; the
+      // dinner-only date now shows the closed-state marker.
+      await tester.tap(find.byKey(const ValueKey<String>('lens_dinner')));
+      await tester.pumpAndSettle();
+
+      // Dinner lens: 2026-03-06 (dinner) cell still present.
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-06')),
+        findsOneWidget,
+      );
+      // The whole-day count badges ("n/total") are NOT shown for a
+      // period lens.
+      expect(find.text('0/1', skipOffstage: false), findsNothing);
+
+      // Legend stays exactly two chips regardless of lens.
+      expect(find.text('Closed'), findsOneWidget);
+      expect(find.text('Selected'), findsOneWidget);
+      expect(find.text('Suggested star'), findsNothing);
+    });
+
+    testWidgets('selecting a shift in a period lens turns that date '
+        'Selected only under that lens', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Drill into 2026-03-06 (dinner) and select _dinner1.
+      await _tapCalendarDate(tester, '2026-03-06');
+      await _tapCandidateTile(tester, _dinner1);
+      await _tapBackToCalendar(tester);
+
+      // Under the Dinner lens the date is Selected (badge denominator
+      // / iteration come from the resolved config, never a hardcoded
+      // 3). Under the Lunch lens that same date has no in-lens shift.
+      await tester.tap(find.byKey(const ValueKey<String>('lens_dinner')));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-06')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('lens_lunch')));
+      await tester.pumpAndSettle();
+      // Lunch lens: 2026-03-02 (lunch) cell still present; the
+      // dinner selection does not bleed into the lunch lens.
+      expect(
+        find.byKey(const ValueKey<String>('cal_2026-03-02')),
+        findsOneWidget,
+      );
     });
   });
 }

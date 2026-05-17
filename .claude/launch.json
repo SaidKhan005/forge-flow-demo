@@ -31,6 +31,12 @@
         "8182"
       ],
       "port": 8182
+    },
+    {
+      "name": "star-shifts-proto",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5599", "--directory", "prototypes/choose_star_shifts"],
+      "port": 5599
     }
   ]
 }
