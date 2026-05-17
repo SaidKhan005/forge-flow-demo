@@ -141,7 +141,7 @@ void main() {
           EmailTemplateIds.operatorInviteFirstAdmin,
           data,
         ),
-        'Welcome to Forge & Flow — set up your account',
+        'Welcome to Forge & Flow: set up your account',
       );
       expect(
         renderer.subjectFor(

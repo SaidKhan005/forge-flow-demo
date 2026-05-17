@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../domain/models/active_target_profile.dart';
+import '../domain/models/recommended_benchmark_selection.dart'
+    show BenchmarkVerdict;
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../theme/app_theme.dart';
@@ -96,6 +98,27 @@ class DaypartTable extends StatelessWidget {
   /// profile — never a sentinel `0`). The string formatting is byte-for-
   /// byte the prior contract: CPLH 2dp, SPLH `$`+0dp, PPA `$`+2dp, OPZ
   /// `floor – ceiling` via [_opzRange].
+  /// Per-Daypart Targets V1 (SC): the muted "no coachable number yet"
+  /// string used in place of a `0` whenever a period's verdict says the
+  /// band is not teachable (Design Rule 2 — never a sentinel `0`).
+  static const String _notSet = 'not set';
+
+  /// True when [verdict] is a verdict that produced no real band, so the
+  /// persisted per-period target is a structural `0`. Rendering that `0`
+  /// would be a lie (Design Rule 2 / Metric Honesty Doctrine); the card
+  /// shows `not set` instead. `teachable` and `running_hot` both produce
+  /// a real, drawable band so their numbers are honest and shown.
+  static bool _verdictHasNoBand(String? verdict) {
+    switch (verdict) {
+      case BenchmarkVerdict.buildingEarly:
+      case BenchmarkVerdict.buildingFlat:
+      case BenchmarkVerdict.buildingFewStrong:
+        return true;
+      default:
+        return false;
+    }
+  }
+
   _DaypartTargets _targetsFor(DaypartRange range) {
     // Empty period — no historical evidence this range. Any target here
     // would be a profile pool stand-in or a sentinel zero; neither is an
@@ -110,6 +133,24 @@ class DaypartTable extends StatelessWidget {
     }
     final period = p.daypartFor(range.id);
     if (period != null) {
+      // SC: a per-period verdict that produced no band has a structural
+      // `0` target. Render `not set` (muted) and draw no bar instead of
+      // a misleading `0.00` (Design Rule 2). `teachable`/`running_hot`
+      // produced a real band → show the persisted numbers.
+      final noBand = _verdictHasNoBand(period.verdict);
+      if (noBand) {
+        return _DaypartTargets(
+          cplh: _notSet,
+          splh: _notSet,
+          ppa: _notSet,
+          opz: _notSet,
+          cplhVal: null,
+          opzFloor: null,
+          opzCeiling: null,
+          badge: _PeriodVerdictBadgeSpec.forVerdict(period.verdict),
+          mutedValues: true,
+        );
+      }
       return _DaypartTargets(
         cplh: period.daypartTargetCPLH.toStringAsFixed(2),
         splh: '\$${period.daypartTargetSPLH.toStringAsFixed(0)}',
@@ -119,9 +160,14 @@ class DaypartTable extends StatelessWidget {
         cplhVal: period.daypartTargetCPLH,
         opzFloor: period.daypartOpzFloorCPLH,
         opzCeiling: period.daypartOpzCeilingCPLH,
+        badge: _PeriodVerdictBadgeSpec.forVerdict(period.verdict),
       );
     }
     // Gap 42: no per-period child row — fall back to the whole-day pool.
+    // There is NO per-period verdict here, so do NOT fabricate a badge
+    // (spec hazard 4 / Design Rule 2); the pooled stand-in marker the
+    // table already renders covers the honest "this is the whole-day
+    // estimate" story.
     return _DaypartTargets(
       cplh: p.targetCPLH.toStringAsFixed(2),
       splh: '\$${p.targetSPLH.toStringAsFixed(0)}',
@@ -130,11 +176,13 @@ class DaypartTable extends StatelessWidget {
       cplhVal: p.targetCPLH,
       opzFloor: p.opzFloorCPLH,
       opzCeiling: p.opzCeilingCPLH,
+      badge: null,
     );
   }
 
   /// Whole Day rollup targets — cover-weighted pool, identical to the
-  /// prior contract (honest dash, never `0`, when no profile).
+  /// prior contract (honest dash, never `0`, when no profile). No
+  /// per-period verdict badge — the rollup is not a service period.
   _DaypartTargets _rollupTargets() {
     final p = profile;
     if (p == null) return const _DaypartTargets.missing();
@@ -146,6 +194,7 @@ class DaypartTable extends StatelessWidget {
       cplhVal: p.targetCPLH,
       opzFloor: p.opzFloorCPLH,
       opzCeiling: p.opzCeilingCPLH,
+      badge: null,
     );
   }
 
@@ -221,6 +270,17 @@ class _DaypartTargets {
   final double? opzFloor;
   final double? opzCeiling;
 
+  /// Per-Daypart Targets V1 (SC): the per-period verdict badge, sourced
+  /// from the persisted `ActiveTargetProfileDaypart.verdict`. Null when
+  /// there is no per-period row (Gap 42 whole-day fallback) or no
+  /// verdict — never fabricated.
+  final _PeriodVerdictBadgeSpec? badge;
+
+  /// True when the target strings are the muted `not set` placeholder
+  /// (a not-teachable verdict) rather than honest numbers or the `—`
+  /// dash. Drives the dimmed value styling.
+  final bool mutedValues;
+
   const _DaypartTargets({
     required this.cplh,
     required this.splh,
@@ -229,6 +289,8 @@ class _DaypartTargets {
     required this.cplhVal,
     required this.opzFloor,
     required this.opzCeiling,
+    required this.badge,
+    this.mutedValues = false,
   });
 
   const _DaypartTargets.missing()
@@ -238,10 +300,70 @@ class _DaypartTargets {
         opz = DaypartTable._missing,
         cplhVal = null,
         opzFloor = null,
-        opzCeiling = null;
+        opzCeiling = null,
+        badge = null,
+        mutedValues = false;
 
   bool get hasBar =>
       cplhVal != null && opzFloor != null && opzCeiling != null;
+}
+
+/// Per-Daypart Targets V1 (SC): the verbatim badge label + theme colour
+/// for a per-period verdict. Labels match the approved copy table
+/// (`benchmark_selection_rework_spec.md` §9) exactly — no em-dashes.
+/// Mirrors the `_CplhRangeBar` badge construction so a period badge and
+/// the whole-operation badge read with the same grammar/colour.
+class _PeriodVerdictBadgeSpec {
+  final String label;
+  final Color color;
+  const _PeriodVerdictBadgeSpec({required this.label, required this.color});
+
+  /// Maps a persisted per-period verdict to its badge. Returns `null`
+  /// for an unknown / absent verdict so the caller renders the honest
+  /// whole-day fallback instead of a fabricated badge.
+  static _PeriodVerdictBadgeSpec? forVerdict(String? verdict) {
+    switch (verdict) {
+      case BenchmarkVerdict.teachable:
+        return const _PeriodVerdictBadgeSpec(
+            label: 'GOOD OPZ RANGE', color: AppColors.positive);
+      case BenchmarkVerdict.buildingEarly:
+        return const _PeriodVerdictBadgeSpec(
+            label: 'NOT ENOUGH SHIFTS YET', color: AppColors.warning);
+      case BenchmarkVerdict.buildingFlat:
+        return const _PeriodVerdictBadgeSpec(
+            label: 'RANGE BUILDING', color: AppColors.warning);
+      case BenchmarkVerdict.buildingFewStrong:
+        return const _PeriodVerdictBadgeSpec(
+            label: 'NOT ENOUGH STRONG SHIFTS', color: AppColors.warning);
+      case BenchmarkVerdict.runningHot:
+        return const _PeriodVerdictBadgeSpec(
+            label: 'OPERATION RUNNING HOT', color: AppColors.negative);
+      default:
+        return null;
+    }
+  }
+}
+
+/// One per-period verdict badge — same chrome as the `_CplhRangeBar`
+/// status badge (12% tint fill, 1px solid border, mono caption).
+class _PeriodVerdictBadge extends StatelessWidget {
+  final _PeriodVerdictBadgeSpec spec;
+  const _PeriodVerdictBadge({required this.spec});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: spec.color.withValues(alpha: 0.12),
+        border: Border.all(color: spec.color, width: 1),
+      ),
+      child: Text(
+        spec.label,
+        style: AppTextStyles.mono8(color: spec.color),
+      ),
+    );
+  }
 }
 
 /// One daypart's card: a header band (period name + Avg covers + share
@@ -332,6 +454,18 @@ class _DaypartCard extends StatelessWidget {
                             AppTextStyles.mono8(color: AppColors.textMuted),
                       ),
                     ],
+                    // Per-Daypart Targets V1 (SC): per-period verdict
+                    // badge under the period name. Only present when the
+                    // period has its own persisted verdict — the Gap 42
+                    // whole-day fallback carries no badge (honest, not
+                    // fabricated).
+                    if (targets.badge != null) ...[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: _PeriodVerdictBadge(spec: targets.badge!),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -384,7 +518,9 @@ class _DaypartCard extends StatelessWidget {
                   Text(
                     targets.cplh,
                     style: AppTextStyles.mono22(
-                        color: AppColors.primaryText),
+                        color: targets.mutedValues
+                            ? AppColors.textMuted
+                            : AppColors.primaryText),
                   ),
                   const SizedBox(height: 3),
                   Text(
@@ -431,14 +567,22 @@ class _DaypartCard extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: _FooterStat(label: 'SPLH', value: targets.splh)),
+              Expanded(
+                  child: _FooterStat(
+                      label: 'SPLH',
+                      value: targets.splh,
+                      muted: targets.mutedValues)),
               Container(
                 width: 1,
                 height: 30,
                 color: AppColors.rule,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
               ),
-              Expanded(child: _FooterStat(label: 'PPA', value: targets.ppa)),
+              Expanded(
+                  child: _FooterStat(
+                      label: 'PPA',
+                      value: targets.ppa,
+                      muted: targets.mutedValues)),
             ],
           ),
         ],
@@ -447,11 +591,18 @@ class _DaypartCard extends StatelessWidget {
   }
 }
 
-/// One footer metric — muted label over its full-size value.
+/// One footer metric — muted label over its value. The value itself is
+/// also muted when it is the `not set` placeholder (SC) so a
+/// not-teachable period never shows a value at full prominence.
 class _FooterStat extends StatelessWidget {
   final String label;
   final String value;
-  const _FooterStat({required this.label, required this.value});
+  final bool muted;
+  const _FooterStat({
+    required this.label,
+    required this.value,
+    this.muted = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -463,7 +614,10 @@ class _FooterStat extends StatelessWidget {
             style: AppTextStyles.mono8(color: AppColors.textMuted)),
         const SizedBox(height: 4),
         Text(value,
-            style: AppTextStyles.mono14(color: AppColors.primaryText)),
+            style: AppTextStyles.mono14(
+                color: muted
+                    ? AppColors.textMuted
+                    : AppColors.primaryText)),
       ],
     );
   }

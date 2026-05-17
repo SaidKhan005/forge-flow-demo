@@ -26,6 +26,8 @@ import '../../widgets/comparison_group_band.dart';
 import '../../widgets/comparison_metric_row.dart';
 import '../../widgets/dollar_impact_card.dart';
 import '../../widgets/lever_card.dart';
+import '../../widgets/money_sentiment.dart';
+import '../../widgets/variance/driver_arrow_chain.dart';
 import '../../widgets/sticky_section_delegate.dart';
 
 class ThisWeekTab extends StatelessWidget {
@@ -159,6 +161,13 @@ class _ThisWeekContent extends StatelessWidget {
           ),
         ),
 
+        // This week vs best-possible hero (Variance Coaching V2, V2-2).
+        // Presentation only: reuses `weekData.dollarGap` /
+        // `theoreticalLaborPct` / `actualLaborPct` (FROZEN math). The
+        // sign glyph + color are decided together from one sentiment
+        // source via MoneySentiment, never from `value > 0`.
+        SliverToBoxAdapter(child: _ThisWeekHero(data: weekData)),
+
         // The earlier `Whole Week | Daypart` scope toggle was cut V1
         // (operator decision 2026-05-15). Variance now renders only
         // the whole-week truth — the daypart lens shipped no variance
@@ -213,23 +222,45 @@ class _ThisWeekContent extends StatelessWidget {
             SliverToBoxAdapter(
               child: lever == null
                   ? const LeverCardNotYetAvailable()
-                  : LeverCardWidget(
-                      data: lever,
-                      dollarImpactByAxis:
-                          primaryDriverDollarImpactByAxis,
-                      // 7.58.UX.8 — OPZ-aware row annotation. CPLH ceiling
-                      // comes from the active target profile; SPLH ceiling
-                      // is not modeled in `ActiveTargetProfile` today, so
-                      // the splh annotation stays gated on null. When the
-                      // notifier is out of scope (legacy widget tests),
-                      // both actual + ceiling read null and the row
-                      // renders unchanged.
-                      actualCPLH: activeProfile != null
-                          ? weekData.avgCPLH
-                          : null,
-                      opzCeilingCPLH: activeProfile?.opzCeilingCPLH,
-                      actualSPLH: null,
-                      opzCeilingSPLH: null,
+                  // Variance Coaching V2 (Lane D) — the arrow chain
+                  // (V2-3) renders fused directly above the card's
+                  // `whatHappened` sentence (no chart-then-paragraph
+                  // gap). It consumes the SAME
+                  // `primaryDriverDollarImpactByAxis` map the card
+                  // already computes — no new math. The degraded
+                  // (`lever == null`) branch above is untouched: it
+                  // still renders `LeverCardNotYetAvailable` with NO
+                  // chain. See
+                  // docs/contracts/phase_7_58_primary_driver_contract.md
+                  // V2-3 / V2-2.
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        DriverArrowChain(
+                          lever: lever,
+                          dollarImpactByAxis:
+                              primaryDriverDollarImpactByAxis,
+                        ),
+                        LeverCardWidget(
+                          data: lever,
+                          dollarImpactByAxis:
+                              primaryDriverDollarImpactByAxis,
+                          // 7.58.UX.8 — OPZ-aware row annotation. CPLH
+                          // ceiling comes from the active target
+                          // profile; SPLH ceiling is not modeled in
+                          // `ActiveTargetProfile` today, so the splh
+                          // annotation stays gated on null. When the
+                          // notifier is out of scope (legacy widget
+                          // tests), both actual + ceiling read null
+                          // and the row renders unchanged.
+                          actualCPLH: activeProfile != null
+                              ? weekData.avgCPLH
+                              : null,
+                          opzCeilingCPLH: activeProfile?.opzCeilingCPLH,
+                          actualSPLH: null,
+                          opzCeilingSPLH: null,
+                        ),
+                      ],
                     ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -251,6 +282,70 @@ class _ThisWeekContent extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+/// This week vs best-possible hero (Variance Coaching V2, V2-2).
+///
+/// Presentation only. Reuses the FROZEN math: `weekData.dollarGap`,
+/// `theoreticalLaborPct` (best possible), `actualLaborPct`. The sign
+/// glyph + the color are decided together from ONE sentiment source
+/// (`MoneySentiment.fromDollarGap`) so a red number is always `−` and a
+/// green number is always `+`; color is never read off `value > 0`.
+/// Mirrors `docs/f&f Coaching/variance_tab_v2_mockup.html` `.hero`.
+class _ThisWeekHero extends StatelessWidget {
+  final WeekData data;
+  const _ThisWeekHero({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final gap = data.dollarGap;
+    // Single sentiment source: a positive gap is dollars LOST above the
+    // best-possible floor (unfavorable / red / "below"); a non-positive
+    // gap is at-or-under best possible (favorable / green / "above").
+    final sentiment = MoneySentiment.fromDollarGap(gap);
+    final amount = Fmt.dollars(gap.abs());
+    final verdictWord = sentiment.favorable ? 'GAINED' : 'LOST';
+    final verdictPlace =
+        sentiment.favorable ? 'above best possible' : 'below best possible';
+    final verdictArrow = sentiment.favorable ? '▲' : '▼';
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Text(
+            'This week vs best possible',
+            style: AppTextStyles.mono11(),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '${sentiment.sign}\$$amount',
+            style: AppTextStyles.display36(color: sentiment.color),
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: sentiment.color.withValues(alpha: 0.10),
+              border: Border.all(
+                  color: sentiment.color.withValues(alpha: 0.40), width: 1),
+              borderRadius: BorderRadius.circular(3),
+            ),
+            child: Text(
+              '$verdictArrow \$$amount $verdictWord · $verdictPlace',
+              style: AppTextStyles.mono11(color: sentiment.color),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'actual labor ${data.actualLaborPct.toStringAsFixed(1)}% '
+            'vs best possible ${data.theoreticalLaborPct.toStringAsFixed(1)}%',
+            style: AppTextStyles.mono12(color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }

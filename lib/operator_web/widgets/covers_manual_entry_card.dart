@@ -170,7 +170,7 @@ class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
           const SizedBox(height: 6),
           Text(
             'You set this daypart to manual. Type how many guests you '
-            "served. Leave blank if you don't have the count yet — F&F "
+            "served. Leave blank if you don't have the count yet. F&F "
             "will show \"not yet available\" rather than make up a number.",
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),

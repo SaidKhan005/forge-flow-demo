@@ -58,7 +58,7 @@ class WageSourceToggle extends StatelessWidget {
           'Either Forge & Flow reads them straight from your scheduling '
           'system, or it multiplies the wage rates you set in Settings by '
           'the hours your staff actually worked. Pick the path that '
-          'matches the system you trust today — you can switch back '
+          'matches the system you trust today. You can switch back '
           'any time without losing past numbers.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

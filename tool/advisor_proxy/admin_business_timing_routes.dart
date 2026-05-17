@@ -39,6 +39,43 @@ const String adminBusinessTimingProfilesPathPrefix = '/v1/admin/operators/';
 /// Format: `<operatorId>/business-timing-profiles[/<profileId>]`.
 const String _kProfilesSegment = 'business-timing-profiles';
 
+/// Fix #4 / S2 — admin/cross-tenant analogue of S1's
+/// `GET /v1/operator/locations/:locationId/business-timing-resolution`.
+/// Format:
+/// `/v1/admin/operators/<operatorId>/locations/<locationId>/business-timing-resolution`.
+/// GET only, read-only, `/v1/` versioned, no Idempotency-Key. Unlike
+/// the operator-web route the `operatorId` is taken from the URL (not
+/// a JWT) — that is the established admin cross-tenant convention
+/// (same as the existing admin business-timing profile routes); the
+/// dispatcher gates it to super_admin / ff_support before the handler
+/// runs. Returns the FULL canonical candidate chain in `scope_depth`
+/// order with scope ancestry + location timezone + full service-period
+/// fields so the admin Flutter client runs the ONE pure
+/// `BusinessTimingProfileResolver` (no server-side resolver fork —
+/// identical to S1).
+const String _kLocationsSegment = 'locations';
+const String _kBusinessTimingResolutionSegment = 'business-timing-resolution';
+
+/// Parsed `(operatorId, locationId)` for the admin business-timing
+/// resolution route, or null when [path] is not that route.
+({String operatorId, String locationId})?
+    adminBusinessTimingResolutionScopeOf(String path) {
+  if (!path.startsWith(adminBusinessTimingProfilesPathPrefix)) return null;
+  final tail = path.substring(adminBusinessTimingProfilesPathPrefix.length);
+  final parts = tail.split('/');
+  // <operatorId>/locations/<locationId>/business-timing-resolution
+  if (parts.length != 4) return null;
+  if (parts[1] != _kLocationsSegment) return null;
+  if (parts[3] != _kBusinessTimingResolutionSegment) return null;
+  final operatorId = Uri.decodeComponent(parts[0]);
+  final locationId = Uri.decodeComponent(parts[2]);
+  if (operatorId.trim().isEmpty || locationId.trim().isEmpty) return null;
+  return (operatorId: operatorId, locationId: locationId);
+}
+
+bool isAdminBusinessTimingResolutionPath(String path) =>
+    adminBusinessTimingResolutionScopeOf(path) != null;
+
 /// Roles permitted to mutate timing on behalf of an operator.
 const Set<String> kAdminBusinessTimingRoles = <String>{
   'super_admin',
@@ -156,6 +193,51 @@ class AdminBusinessTimingRouter {
         },
       );
     }
+  }
+
+  /// Fix #4 / S2 — handles
+  /// `GET /v1/admin/operators/:operatorId/locations/:locationId/business-timing-resolution`.
+  /// [operatorId] and [locationId] come from the URL (the established
+  /// admin cross-tenant convention); the dispatcher has already
+  /// verified the actor holds a super_admin / ff_support role before
+  /// this runs. Read-only: delegates straight to the gateway's
+  /// `resolveForLocationAsSystem`, which calls the canonical
+  /// `listCandidateProfilesForSystemLocation` over the sanctioned
+  /// `runAsSystem` admin bypass. No resolver fork, no write, no
+  /// idempotency surface. [reason] is the audit-attribution string
+  /// stamped on the system-scope transaction.
+  Future<({int statusCode, Map<String, Object?> body})>
+      handleResolution({
+    required String operatorId,
+    required String locationId,
+    String? businessDate,
+  }) async {
+    final effectiveDate = businessDate ?? _todayUtcDate();
+    try {
+      final result = await businessTimingGateway.resolveForLocationAsSystem(
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDate: effectiveDate,
+        reason: 'admin.business_timing.resolution_read',
+      );
+      return (statusCode: 200, body: result.toJson());
+    } on OperatorWriteRejected catch (rejected) {
+      return (
+        statusCode: rejected.statusCode,
+        body: <String, Object?>{
+          'error': rejected.code,
+          'message': rejected.message,
+          ...rejected.extras,
+        },
+      );
+    }
+  }
+
+  static String _todayUtcDate() {
+    final now = DateTime.now().toUtc();
+    final mm = now.month.toString().padLeft(2, '0');
+    final dd = now.day.toString().padLeft(2, '0');
+    return '${now.year}-$mm-$dd';
   }
 
   Future<({int statusCode, Map<String, Object?> body})> _list({

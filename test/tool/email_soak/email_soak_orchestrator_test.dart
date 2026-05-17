@@ -279,7 +279,7 @@ void main() {
                 templateId: 'operator_invite_first_admin',
                 triggerKind: EmailSoakTriggerKind.adminTestRoute,
                 expectedSubjectSubstring:
-                    'Welcome to Forge & Flow — set up your account',
+                    'Welcome to Forge & Flow: set up your account',
               ),
             ],
           );

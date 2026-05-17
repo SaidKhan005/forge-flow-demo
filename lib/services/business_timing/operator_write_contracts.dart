@@ -306,6 +306,25 @@ abstract class OperatorBusinessTimingWriteGateway {
     String? actorUserId,
   });
 
+  /// Fix #4 / S2 — the admin/cross-tenant analogue of
+  /// [resolveForLocation]. Returns the SAME shape
+  /// ([OperatorBusinessTimingResolutionResult]) for an admin actor
+  /// reading ANY operator's location chain, by delegating to the
+  /// canonical
+  /// `BusinessTimingProfilesRepository.listCandidateProfilesForSystemLocation`
+  /// (the sanctioned `runAsSystem` admin cross-operator bypass). NO
+  /// server-side resolver fork; the admin client runs the one pure
+  /// `BusinessTimingProfileResolver` over these candidates exactly
+  /// like S1. READ-ONLY. [reason] is the required audit-attribution
+  /// string for the system-scope transaction. MUST only be reached
+  /// from the admin/super_admin-gated proxy route.
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocationAsSystem({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String reason,
+  });
+
   /// 11W.7 ops-debt — lists every business-timing profile owned by
   /// [operatorId] in resolver-precedence order (operator default, org
   /// units, locations) with full service-period sets so the operator-

@@ -160,7 +160,7 @@ class HierarchyScopeNotice extends StatelessWidget {
           _NoticeRow(
             keyName: '${keyName}_selected_row',
             label: 'Selected scope',
-            value: '${selectedScope.label} — $scopeName',
+            value: '${selectedScope.label}: $scopeName',
           ),
           const SizedBox(height: 6),
           _NoticeRow(

@@ -248,8 +248,8 @@ class _CategoryStatusRow extends StatelessWidget {
                     Text(
                       hasError
                           ? '${status.description(category)} '
-                                'Couldn’t refresh status — '
-                                'showing last-known.'
+                                'Couldn’t refresh status. '
+                                'Showing last-known.'
                           : status.description(category),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,

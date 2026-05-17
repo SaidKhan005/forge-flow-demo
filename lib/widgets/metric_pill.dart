@@ -84,7 +84,7 @@ class MetricPill extends StatelessWidget {
   }) : assert(
          !(state == MetricState.live && value == null),
          'MetricPill: value must not be null when state == live. '
-         'Metric "$label" has state=live but value=null — check the producer.',
+         'Metric "$label" has state=live but value=null. Check the producer.',
        );
 
   /// Metric data state. Controls which render branch is used.

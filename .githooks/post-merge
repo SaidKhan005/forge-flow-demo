@@ -1,0 +1,44 @@
+#!/usr/bin/env sh
+# Forge & Flow post-merge hook — hands-free repo hygiene.
+#
+# Fires tool/repo_janitor.sh in the BACKGROUND after every merge/pull so it
+# never blocks git. DRY-RUN by default: it logs what it WOULD prune/rescue to
+# .git/repo_janitor.log and deletes NOTHING. Flip to real cleanup with ONE of:
+#   - export REPO_JANITOR_APPLY=1            (per shell), or
+#   - touch .git/repo_janitor_apply          (persistent for this clone)
+#
+# Safety:
+#   - runs only from the MAIN working tree (linked worktrees skip — no
+#     N-concurrent janitors)
+#   - single-flight lock; stale lock (>30 min) auto-cleared
+#   - the janitor itself rescues dirty WIP to a pushed rescue/ branch before
+#     pruning and only removes worktrees that are landed AND clean
+set -e
+
+gd=$(git rev-parse --git-dir 2>/dev/null || echo x)
+gcd=$(git rev-parse --git-common-dir 2>/dev/null || echo y)
+[ "$gd" = "$gcd" ] || exit 0          # linked worktree -> skip
+
+root=$(git rev-parse --show-toplevel 2>/dev/null || echo)
+[ -n "$root" ] || exit 0
+[ -f "$root/tool/repo_janitor.sh" ] || exit 0
+
+lock="$root/.git/.repo_janitor.lock"
+if [ -f "$lock" ]; then
+  if find "$lock" -mmin +30 >/dev/null 2>&1; then rm -f "$lock"; else exit 0; fi
+fi
+
+apply=""
+if [ "${REPO_JANITOR_APPLY:-}" = "1" ] || [ -f "$root/.git/repo_janitor_apply" ]; then
+  apply="--apply"
+fi
+log="$root/.git/repo_janitor.log"
+
+(
+  : > "$lock"
+  echo "=== post-merge janitor $(date -u +%Y-%m-%dT%H:%M:%SZ) mode=${apply:-dry-run} ===" >> "$log"
+  bash "$root/tool/repo_janitor.sh" $apply >> "$log" 2>&1 || true
+  rm -f "$lock"
+) >/dev/null 2>&1 &
+
+exit 0

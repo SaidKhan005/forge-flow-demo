@@ -69,7 +69,7 @@ class OperatorWebDemoBanner extends StatelessWidget {
             SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Demo data — this is a sample walkthrough, not your real '
+                'Demo data. This is a sample walkthrough, not your real '
                 'business. Sign in with your live account to manage real '
                 'data.',
                 style: TextStyle(

@@ -116,8 +116,8 @@ class _OperatorWebInitFailedBodyState
                 const SizedBox(height: 12),
                 Text(
                   'Something on our side is preventing the console from '
-                  'starting. Please contact support@forgeflow.app — '
-                  'we’ll get this fixed quickly.',
+                  'starting. Please contact support@forgeflow.app. '
+                  'We’ll get this fixed quickly.',
                   key: const Key('init_failed_body'),
                   style: AppTextStyles.body13(
                     color: AppColors.textSecondary,

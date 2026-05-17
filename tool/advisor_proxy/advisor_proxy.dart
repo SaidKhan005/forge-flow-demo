@@ -150,6 +150,8 @@ export 'admin_business_timing_routes.dart'
     show
         AdminBusinessTimingRouter,
         adminBusinessTimingProfilesPathPrefix,
+        adminBusinessTimingResolutionScopeOf,
+        isAdminBusinessTimingResolutionPath,
         kAdminBusinessTimingRoles;
 export 'notification_preferences_routes.dart'
     show
@@ -15378,6 +15380,96 @@ Future<void> routeRequest(
             _writeJson(response, 503, <String, Object?>{
               'error': 'operator_write_unavailable',
               'message': 'operator write is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Fix #4 / S2 — admin/cross-tenant business-timing resolution
+        // route (the admin analogue of S1's operator-web
+        // `/v1/operator/locations/:locationId/business-timing-resolution`).
+        // GET only, read-only, no Idempotency-Key. operatorId AND
+        // locationId come from the URL (the established admin
+        // cross-tenant convention) — gated to super_admin / ff_support
+        // ONLY, the same read gate as the existing admin
+        // business-timing list route. The gateway reaches the
+        // sanctioned `runAsSystem` admin bypass; an operator-scoped
+        // token can NEVER reach this branch (operator routes never
+        // match `/v1/admin/*`). Checked before the admin profile
+        // router so the disjoint `/locations/.../resolution` path is
+        // never mis-parsed as a profile path.
+        if (request.method == 'GET' &&
+            isAdminBusinessTimingResolutionPath(path)) {
+          if (adminBusinessTimingRouter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_router_not_configured',
+              'message':
+                  'route requires an AdminBusinessTimingRouter to be installed',
+            });
+            return;
+          }
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+          if (!actor.roles.any(kAdminBusinessTimingRoles.contains)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message':
+                  'admin business-timing read requires super_admin or '
+                  'ff_support role',
+              'required_roles': kAdminBusinessTimingRoles.toList(),
+            });
+            return;
+          }
+          final scope = adminBusinessTimingResolutionScopeOf(path)!;
+          final businessDateParam = _nonBlankString(
+            request.uri.queryParameters['business_date'],
+          );
+          if (businessDateParam != null &&
+              !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(businessDateParam)) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'invalid_business_date',
+              'message':
+                  'business_date must be an ISO calendar date (YYYY-MM-DD)',
+            });
+            return;
+          }
+          try {
+            final result =
+                await adminBusinessTimingRouter.handleResolution(
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              businessDate: businessDateParam,
+            );
+            // Stamp the URL-derived scope on a 200 so the response
+            // cannot be confused with another operator's chain
+            // (defense in depth alongside the operator filter baked
+            // into the canonical SQL itself).
+            final outgoing = <String, Object?>{
+              ...result.body,
+              if (result.statusCode == 200) ...<String, Object?>{
+                'operatorId': scope.operatorId,
+                'locationId': scope.locationId,
+              },
+            };
+            _writeJson(response, result.statusCode, outgoing);
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'admin_business_timing_resolution',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'admin_business_timing_resolution_unavailable',
+              'message':
+                  'admin business-timing resolution is unavailable; '
+                  'please retry',
             });
           }
           return;

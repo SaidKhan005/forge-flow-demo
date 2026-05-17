@@ -9,6 +9,10 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dart'
+    show BenchmarkVerdict;
+import 'package:forge_and_flow/services/baseline_authority_service.dart'
+    show BaselineGraphButtonEmphasis;
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
@@ -459,81 +463,21 @@ void main() {
       expect(m.degenerateFallbackMessage, isNull);
     });
 
-    test('insufficient signals → RANGE UNCONFIRMED + honest fallback copy',
-        () {
-      BaselineData.applyRecommendationSignals(
-        const BaselineRecommendationSignals(
-          sourceType: 'cycle_recommended_insufficient',
-          overallQuality: 'insufficient',
-          unionBandWidth: 0,
-          selectedShiftCount: 0,
-          // MeridianConfig placeholder values (what the insufficient-
-          // fallback cycle actually persists).
-          rangeFloorCPLH: 3.5,
-          rangeCeilingCPLH: 5.8,
-          targetCPLH: 4.5,
-        ),
-      );
+    // ── SC: verdict-driven honest copy (verbatim, no em-dashes) ───────
+    //
+    // Behaviour change (spec §6/§8/§9, NOT a regression): the Benchmark
+    // graph copy is now keyed off the single-source `verdict` SB carried
+    // onto `BaselineRecommendationSignals` (the no-poisoning rollup of
+    // the persisted per-period verdicts), NOT `overallQuality` or the
+    // cross-daypart union. The vestigial "RANGE TOO WIDE TO TEACH" /
+    // "RANGE UNCERTAIN" / "let more shifts close … will settle" states
+    // are removed (spec §8 Decision 1 → 1b). Every string below is
+    // asserted verbatim and must contain no em-dash.
 
-      final m = BaselineData.rangeGraphModel;
-      expect(m.qualityTier, 'insufficient');
-      expect(m.isDegenerate, isTrue);
-      expect(m.statusBadgeLabel, 'RANGE UNCONFIRMED');
-      expect(m.recommendedExplanation,
-          contains('Not enough recent shifts yet'));
-      expect(m.degenerateFallbackMessage,
-          contains('placeholder range until more shift history builds'));
-    });
+    void expectNoEmDash(String s) =>
+        expect(s.contains('—'), isFalse, reason: 'no em-dash in: $s');
 
-    test('weak + wide union band → RANGE TOO WIDE TO TEACH', () {
-      BaselineData.applyRecommendationSignals(
-        const BaselineRecommendationSignals(
-          sourceType: 'cycle_recommended',
-          overallQuality: 'weak',
-          unionBandWidth: 1.40, // > 1.25 → wide
-          selectedShiftCount: 12,
-          rangeFloorCPLH: 3.8,
-          rangeCeilingCPLH: 5.2,
-          targetCPLH: 4.5,
-        ),
-      );
-
-      final m = BaselineData.rangeGraphModel;
-      expect(m.qualityTier, 'weak');
-      expect(m.isDegenerate, isTrue);
-      expect(m.statusBadgeLabel, 'RANGE TOO WIDE TO TEACH');
-      expect(m.recommendedExplanation,
-          contains('Lunch, dinner, and late night'));
-      expect(m.recommendedExplanation,
-          contains('daypart-specific coaching'));
-      expect(m.degenerateFallbackMessage,
-          contains('Use this as a broad guide for now'));
-    });
-
-    test('weak + narrow union band → RANGE UNCERTAIN', () {
-      BaselineData.applyRecommendationSignals(
-        const BaselineRecommendationSignals(
-          sourceType: 'cycle_recommended',
-          overallQuality: 'weak',
-          unionBandWidth: 0.40, // < 1.25 → not wide
-          selectedShiftCount: 4,
-          rangeFloorCPLH: 4.4,
-          rangeCeilingCPLH: 4.8,
-          targetCPLH: 4.6,
-        ),
-      );
-
-      final m = BaselineData.rangeGraphModel;
-      expect(m.qualityTier, 'weak');
-      expect(m.isDegenerate, isTrue);
-      expect(m.statusBadgeLabel, 'RANGE UNCERTAIN');
-      expect(m.recommendedExplanation,
-          contains('We do not have a clean operating range yet'));
-      expect(m.degenerateFallbackMessage,
-          contains('benchmark will settle into a clearer working range'));
-    });
-
-    test('strong signals → GOOD OPZ RANGE, not degenerate', () {
+    test('teachable verdict → GOOD OPZ RANGE verbatim copy', () {
       BaselineData.applyRecommendationSignals(
         const BaselineRecommendationSignals(
           sourceType: 'cycle_recommended',
@@ -543,6 +487,7 @@ void main() {
           rangeFloorCPLH: 4.3,
           rangeCeilingCPLH: 4.9,
           targetCPLH: 4.6,
+          verdict: BenchmarkVerdict.teachable,
         ),
       );
 
@@ -550,26 +495,190 @@ void main() {
       expect(m.qualityTier, 'good');
       expect(m.isDegenerate, isFalse);
       expect(m.statusBadgeLabel, 'GOOD OPZ RANGE');
-      expect(m.degenerateFallbackMessage, isNull);
+      expect(
+          m.recommendedExplanation,
+          'Covers, sales per hour and spend were all strong together on '
+          'this range.');
+      expect(m.degenerateFallbackMessage, 'Coach the team to this number.');
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.solid);
+      expectNoEmDash(m.recommendedExplanation);
+      expectNoEmDash(m.degenerateFallbackMessage!);
     });
 
-    test('adequate signals → GOOD OPZ RANGE, not degenerate', () {
+    test('building_early verdict → NOT ENOUGH SHIFTS YET + ghost button',
+        () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 0,
+          selectedShiftCount: 1,
+          rangeFloorCPLH: 0,
+          rangeCeilingCPLH: 0,
+          targetCPLH: 0,
+          verdict: BenchmarkVerdict.buildingEarly,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'building');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'NOT ENOUGH SHIFTS YET');
+      expect(
+          m.recommendedExplanation,
+          'We need more closed shifts before we can set a number you can '
+          'coach to.');
+      expect(
+          m.degenerateFallbackMessage,
+          'Keep running the period as usual. We are just watching for '
+          'now.');
+      // building_early de-emphasizes the CHOOSE STAR SHIFTS button.
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.deemphasized);
+      expectNoEmDash(m.recommendedExplanation);
+      expectNoEmDash(m.degenerateFallbackMessage!);
+    });
+
+    test('building_flat verdict → RANGE BUILDING + solid button', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 0,
+          selectedShiftCount: 6,
+          rangeFloorCPLH: 0,
+          rangeCeilingCPLH: 0,
+          targetCPLH: 0,
+          verdict: BenchmarkVerdict.buildingFlat,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'building');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'RANGE BUILDING');
+      expect(
+          m.recommendedExplanation,
+          'There is not enough real variation between shifts yet to '
+          'define a band.');
+      expect(
+          m.degenerateFallbackMessage,
+          'For now, pick the shifts that felt best for team productivity '
+          'by hand while we keep building.');
+      // copy steers to manual pick → keep the button solid.
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.solid);
+      expectNoEmDash(m.recommendedExplanation);
+      expectNoEmDash(m.degenerateFallbackMessage!);
+    });
+
+    test('building_few_strong verdict → NOT ENOUGH STRONG SHIFTS', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 0,
+          selectedShiftCount: 3,
+          rangeFloorCPLH: 0,
+          rangeCeilingCPLH: 0,
+          targetCPLH: 0,
+          verdict: BenchmarkVerdict.buildingFewStrong,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'building');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'NOT ENOUGH STRONG SHIFTS');
+      expect(
+          m.recommendedExplanation,
+          'Only a handful of shifts had covers, sales per hour and spend '
+          'all strong together. We need more before coaching to a '
+          'number.');
+      expect(
+          m.degenerateFallbackMessage,
+          'For now, pick the shifts where the floor felt good, ticket '
+          'times stayed clean and checks held. Those are the ones we '
+          'need more of.');
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.solid);
+      expectNoEmDash(m.recommendedExplanation);
+      expectNoEmDash(m.degenerateFallbackMessage!);
+    });
+
+    test('running_hot verdict → OPERATION RUNNING HOT, no sub-line', () {
       BaselineData.applyRecommendationSignals(
         const BaselineRecommendationSignals(
           sourceType: 'cycle_recommended',
           overallQuality: 'adequate',
-          unionBandWidth: 1.00,
-          selectedShiftCount: 7,
+          unionBandWidth: 0.50,
+          selectedShiftCount: 8,
           rangeFloorCPLH: 4.2,
-          rangeCeilingCPLH: 5.2,
-          targetCPLH: 4.7,
+          rangeCeilingCPLH: 4.7,
+          targetCPLH: 4.5,
+          verdict: BenchmarkVerdict.runningHot,
         ),
       );
 
       final m = BaselineData.rangeGraphModel;
-      expect(m.qualityTier, 'good');
-      expect(m.isDegenerate, isFalse);
-      expect(m.statusBadgeLabel, 'GOOD OPZ RANGE');
+      expect(m.qualityTier, 'running_hot');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'OPERATION RUNNING HOT');
+      expect(
+          m.recommendedExplanation,
+          'Your best shifts show the team running hot: high covers per '
+          'hour, weaker spend and labor. Fix the staffing pressure '
+          'before holding the team to this.');
+      expect(m.degenerateFallbackMessage, isNull);
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.solid);
+      expectNoEmDash(m.recommendedExplanation);
+    });
+
+    test('no verdict (legacy/insufficient) → honest NOT ENOUGH SHIFTS '
+        'YET, never the old "will settle" copy', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+          // verdict intentionally null (pre-verdict / insufficient).
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'building');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'NOT ENOUGH SHIFTS YET');
+      // The misleading remedy lines are gone entirely.
+      expect(m.recommendedExplanation.contains('let more shifts close'),
+          isFalse);
+      expect(m.recommendedExplanation.contains('will settle'), isFalse);
+      expect((m.degenerateFallbackMessage ?? '').contains('will settle'),
+          isFalse);
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.deemphasized);
+    });
+
+    test('per-period rollup line is the approved Scenario 7 copy', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'strong',
+          unionBandWidth: 0.60,
+          selectedShiftCount: 10,
+          rangeFloorCPLH: 4.3,
+          rangeCeilingCPLH: 4.9,
+          targetCPLH: 4.6,
+          verdict: BenchmarkVerdict.teachable,
+        ),
+      );
+      final m = BaselineData.rangeGraphModel;
+      expect(
+          m.perPeriodRollupLine,
+          'Each period is graded on its own. Coach to the periods marked '
+          'ready; leave the others until they settle. One period not '
+          'being ready does not hold back the others.');
+      expectNoEmDash(m.perPeriodRollupLine);
     });
 
     test('manager override wins even when signals say insufficient', () {
@@ -604,13 +713,20 @@ void main() {
       final m = BaselineData.rangeGraphModel;
 
       // Manager override takes precedence — we route through
-      // baselineRangeValidation (healthy here), not the insufficient
-      // recommendation signals.
+      // baselineRangeValidation (healthy here, drives tier/geometry),
+      // not the insufficient recommendation signals. SC: the
+      // operator-facing copy is the approved hand-picked string.
       expect(v.status, 'healthy');
       expect(m.qualityTier, 'healthy');
-      expect(m.statusBadgeLabel, 'GOOD OPZ RANGE');
+      expect(m.statusBadgeLabel, 'YOUR CHOSEN SHIFTS');
+      expect(
+          m.recommendedExplanation,
+          'You are coaching to a hand-picked set of shifts. Make sure '
+          'they represent good shifts.');
+      expect(m.recommendedExplanation.contains('—'), isFalse);
       expect(m.isDegenerate, isFalse);
       expect(m.degenerateFallbackMessage, isNull);
+      expect(m.buttonEmphasis, BaselineGraphButtonEmphasis.solid);
       // Inner range label reflects manager override.
       expect(m.rangeLabel, 'STAR SHIFT RANGE');
       // Geometry comes from the selected override records (4.2 / 4.9 /

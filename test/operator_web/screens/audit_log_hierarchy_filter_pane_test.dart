@@ -365,6 +365,14 @@ class _StaticWebTeamHierarchyGateway implements WebTeamHierarchyGateway {
   }
 
   @override
+  Future<TeamOrgUnitRenamed> renameOrgUnit(
+    TeamOrgUnitRenameCommand command, {
+    required String idempotencyKey,
+  }) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command, {
     required String idempotencyKey,

@@ -245,7 +245,7 @@ class _CurrentlyEditingPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        'Editing ${current.level.label} — ${current.name}',
+        'Editing ${current.level.label}: ${current.name}',
         style: AppTextStyles.mono8(color: AppColors.sunsetDark),
       ),
     );
@@ -301,7 +301,7 @@ class _TreeNodeAndConnector extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Text(
-                      '${node.level.label} — ${node.name}',
+                      '${node.level.label}: ${node.name}',
                       style: AppTextStyles.body14(
                         color: isCurrent
                             ? AppColors.textPrimary

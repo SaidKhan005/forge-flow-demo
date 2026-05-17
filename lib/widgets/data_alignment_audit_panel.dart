@@ -215,10 +215,10 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     final bool ok = t.drifted == 0;
     final Color color = ok ? AppColors.positive : AppColors.negative;
     final String headline = t.drifted > 0
-        ? '${t.drifted} value${t.drifted == 1 ? '' : 's'} drifted — needs attention'
+        ? 'Needs attention: ${t.drifted} value${t.drifted == 1 ? '' : 's'} drifted'
         : 'All ${t.aligned} checked values aligned';
     final String sub = t.unavailable > 0
-        ? '${t.unavailable} unavailable — expected when that data is not present yet (not a failure)'
+        ? '${t.unavailable} unavailable. Expected when that data is not present yet (not a failure).'
         : 'Benchmark and Plan targets flow through Shift and Variance with no mismatch.';
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -431,19 +431,19 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
             .where((g) => g.driftedCount > 0 || g.unavailableCount > 0)
             .toList()
         : groups;
-    // Summary is embedded in the title (with the em-dash) rather than
-    // the subtitle chip so it lives inside a single Text widget —
-    // matches the tests that look for `textContaining('AUDIT CHECKS —')`.
+    // Summary is embedded in the title (with a colon separator) rather
+    // than the subtitle chip so it lives inside a single Text widget.
+    // UX no-em-dash law: label/value separators use a colon.
     return _tile(
       icon: Icons.fact_check_outlined,
-      title: 'AUDIT CHECKS — $overall',
+      title: 'AUDIT CHECKS: $overall',
       accentColor: accent,
       children: visibleGroups.isEmpty
           ? [
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 2),
                 child: Text(
-                  'No issues — every audit check is aligned.',
+                  'No issues. Every audit check is aligned.',
                   style: AppTextStyles.mono11(color: AppColors.positive),
                 ),
               ),
