@@ -94,6 +94,61 @@ class DriverArrowChain extends StatelessWidget {
     return null;
   }
 
+  // The natural counter-axis for a detected driver lever, used ONLY as
+  // the last-resort node-2 source when the attribution map carries no
+  // other meaningful contributor (so the mockup's THREE-node chain
+  // `cause → counter-axis → result` always renders for a detected
+  // lever — V2-3 "Three nodes, left to right"). This is a fixed
+  // cause→effect pairing off the lever id, NOT new math: it never reads
+  // or derives a dollar value. The mockup pairs COVERS↑ with CPLH (the
+  // efficiency axis volume masks); each driver maps to the axis its own
+  // movement most directly stresses, mirroring the catalog cross-axis
+  // story.
+  static String _naturalCounterId(String driverId) {
+    switch (driverId) {
+      // Volume masks / is masked by the efficiency axis (mockup pairing).
+      case 'covers_up':
+        return 'cplh_down';
+      case 'covers_down':
+        return 'cplh_up';
+      // PPA (sales-mix) reads against CPLH (the staffing it needs to sell).
+      case 'ppa_up':
+        return 'cplh_down';
+      case 'ppa_down':
+        return 'cplh_up';
+      // CPLH (FOH efficiency) reads against COVERS (the volume that set it).
+      case 'cplh_up':
+        return 'covers_down';
+      case 'cplh_down':
+        return 'covers_up';
+      // SPLH (BOH throughput) reads against BOH HOURS (the hours behind it).
+      case 'splh_up':
+        return 'boh_hours_over';
+      case 'splh_down':
+        return 'boh_hours_under';
+      // Wage axes read against their own hours axis (rate vs hours split).
+      case 'foh_wage_up':
+        return 'foh_hours_under';
+      case 'foh_wage_down':
+        return 'foh_hours_over';
+      case 'boh_wage_up':
+        return 'boh_hours_under';
+      case 'boh_wage_down':
+        return 'boh_hours_over';
+      // Hours axes read against their own wage axis.
+      case 'foh_hours_over':
+        return 'foh_wage_down';
+      case 'foh_hours_under':
+        return 'foh_wage_up';
+      case 'boh_hours_over':
+        return 'boh_wage_down';
+      case 'boh_hours_under':
+        return 'boh_wage_up';
+      default:
+        return 'cplh_down';
+    }
+  }
+
   // Direction token for node 1 (mockup `↑ over plan` / `↓ soft`).
   // Derived from the catalog id suffix (raw metric movement) — NOT new
   // math, just a label off the lever id. Mirrors the mockup wording.
@@ -177,19 +232,62 @@ class DriverArrowChain extends StatelessWidget {
     // the sentiment source.
     final node1Color = MoneySentiment.fromFavorable(lever.isFavorable).color;
 
-    // ── Node 2 — dominant counter-axis ──────────────────────────────
-    // Every axis whose sentiment is OPPOSITE the net result; pick
-    // max(|contribution|); ties resolve by `_priorityOrder`. Pure
-    // selection over the existing map — no new math.
+    // ── Node 2 — dominant counter-axis (ALWAYS rendered) ────────────
+    // V2-3 "Three nodes, left to right": the chain is ALWAYS a 3-node
+    // `cause → counter-axis → result` row for a detected lever (the
+    // mockup `.chain` is never a 2-node degenerate). The middle node is
+    // resolved by a deterministic 3-tier search, no new math (pure
+    // selection over the existing attribution map plus a fixed
+    // cause→effect pairing off the lever id):
+    //
+    //   1. PRIMARY (contract V2-3): the axis with the largest absolute
+    //      OPPOSING-sentiment contribution (opposite the net result).
+    //   2. FALLBACK: if no opposing axis carries ≥ $1, the dominant
+    //      non-driver axis by max(|contribution|) regardless of
+    //      direction — it still tells the operator what else moved.
+    //   3. LAST RESORT: if the map has no other meaningful contributor
+    //      at all, the driver lever's natural counter-axis
+    //      (`_naturalCounterId`) so a middle node still renders.
+    //
+    // Tiers 1 + 2 are pure selection over the existing map; ties resolve
+    // by `_priorityOrder` (lower index wins) so the visual is
+    // deterministic. The previously-shipped bug dropped node 2 whenever
+    // tier 1 found nothing — the chain then collapsed to 2 nodes,
+    // diverging from the mockup. Tiers 2 + 3 close that gap.
     _Axis? counterAxis;
     double counterValue = 0;
+    // Tier 2 bookkeeping: dominant non-driver axis irrespective of
+    // sentiment direction (only used if tier 1 finds nothing).
+    _Axis? fallbackAxis;
+    double fallbackValue = 0;
     for (final a in _axes) {
       if (a == driverAxis) continue; // node 2 is the OPPOSING axis, not self
       final v = (map[a.unfavorableId] ?? 0) + (map[a.favorableId] ?? 0);
       if (v.abs() < 1.0) continue; // ignore noise below $1 (matches UX.1)
-      // "Opposite sentiment to the net": when the net is a loss, the
-      // counter-axis is one that pushed favorable (v < 0); when the net
-      // is a profit, the counter-axis is one that pushed adverse
+
+      // Tier 2 candidate — dominant non-driver axis by |contribution|.
+      {
+        final cur = fallbackAxis;
+        final bool better;
+        if (cur == null) {
+          better = true;
+        } else if (v.abs() > fallbackValue.abs()) {
+          better = true;
+        } else if (v.abs() == fallbackValue.abs()) {
+          better = _priorityOrder.indexOf(_signedId(a, v)) <
+              _priorityOrder.indexOf(_signedId(cur, fallbackValue));
+        } else {
+          better = false;
+        }
+        if (better) {
+          fallbackAxis = a;
+          fallbackValue = v;
+        }
+      }
+
+      // Tier 1 candidate — "opposite sentiment to the net": when the net
+      // is a loss, the counter-axis is one that pushed favorable
+      // (v < 0); when the net is a profit, one that pushed adverse
       // (v > 0).
       final isOpposite = netIsLoss ? v < 0 : v > 0;
       if (!isOpposite) continue;
@@ -212,44 +310,52 @@ class DriverArrowChain extends StatelessWidget {
       }
     }
 
+    // Resolve the node-2 lever id from the 3-tier search. ALWAYS
+    // non-null for a detected lever, so the chain is ALWAYS 3 nodes.
+    final String counterId;
+    if (counterAxis != null) {
+      counterId = _signedId(counterAxis, counterValue); // tier 1
+    } else if (fallbackAxis != null) {
+      counterId = _signedId(fallbackAxis, fallbackValue); // tier 2
+    } else {
+      counterId = _naturalCounterId(lever.id); // tier 3
+    }
+
+    // GAP-5 / V2-2: node 2 color is the COUNTER LEVER'S CATALOG
+    // SENTIMENT, never the arithmetic sign of its dollar contribution
+    // (`fromAxisImpact` was the value-sign-coloring bug V2-2 forbids:
+    // an axis whose contribution sign disagrees with its catalog
+    // sentiment was mis-colored). Bind color via
+    // `LaborModel.isFavorableLever` off the resolved 3-tier counter id.
+    // The direction TOKEN TEXT (`↓ soft` / `↑ over`) still derives from
+    // the lever id suffix (raw metric movement) — only the COLOR
+    // binding changes. Node 2 is ALWAYS present (V2-3 3-node rule);
+    // `_axisForId` resolves its label from the same axis table.
+    final counterNodeAxis = _axisForId(counterId);
+    final counterLabel =
+        counterNodeAxis?.label ?? counterId.toUpperCase();
+    final counterSentiment =
+        MoneySentiment.fromFavorable(LaborModel.isFavorableLever(counterId));
+
     final List<Widget> nodes = [
       _ChainNode(
         title: node1Label,
         value: node1Dir,
         color: node1Color,
       ),
-    ];
-
-    if (counterAxis != null) {
-      // GAP-5 / V2-2: node 2 color is the COUNTER LEVER'S CATALOG
-      // SENTIMENT, never the arithmetic sign of its dollar contribution
-      // (`fromAxisImpact` was the value-sign-coloring bug V2-2 forbids:
-      // an axis whose contribution sign disagrees with its catalog
-      // sentiment was mis-colored). Resolve the populated signed counter
-      // lever id (the same `_signedId(counterAxis, counterValue)` already
-      // used for the priority tiebreak) and bind color via
-      // `LaborModel.isFavorableLever`. The direction TOKEN TEXT
-      // (`↓ soft` / `↑ over`) still derives from the lever id suffix
-      // (raw metric movement) — only the COLOR binding changes.
-      final counterId = _signedId(counterAxis, counterValue);
-      final counterSentiment =
-          MoneySentiment.fromFavorable(LaborModel.isFavorableLever(counterId));
-      nodes
-        ..add(const _ChainArrow())
-        ..add(_ChainNode(
-          title: counterAxis.label,
-          value: _directionToken(counterId),
-          color: counterSentiment.color,
-        ));
-    }
-
-    nodes
-      ..add(const _ChainArrow())
-      ..add(_ChainNode(
+      const _ChainArrow(),
+      _ChainNode(
+        title: counterLabel,
+        value: _directionToken(counterId),
+        color: counterSentiment.color,
+      ),
+      const _ChainArrow(),
+      _ChainNode(
         title: 'RESULT',
         value: netText,
         color: netColor,
-      ));
+      ),
+    ];
 
     // The chain sits directly above the fused `whatHappened` sentence
     // (the caller renders the sentence immediately beneath with no

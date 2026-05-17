@@ -198,6 +198,70 @@ void main() {
     });
   });
 
+  group('DriverArrowChain — 3-node guarantee (drift fix B)', () {
+    // The previously-shipped bug DROPPED the middle counter-axis node
+    // whenever no axis carried an OPPOSING-sentiment contribution — the
+    // chain then collapsed to a 2-node `cause → result`, diverging from
+    // the mockup `.chain` which is ALWAYS 3 nodes
+    // (cause → counter-axis → result). These fixtures reproduce the
+    // exact 2-node-collapse conditions and assert the middle node now
+    // ALWAYS renders (2 arrows ⇒ 3 nodes).
+
+    testWidgets(
+        'no opposite-sentiment axis → middle node still renders '
+        '(tier-2 dominant non-driver axis)', (tester) async {
+      // driver = cplh_down (unfavorable). net = +500 (a loss). The only
+      // other axis (splh_down +200) is ALSO adverse — SAME sentiment as
+      // the loss net, so the old tier-1-only rule found NO counter-axis
+      // and dropped node 2. Tier 2 now picks the dominant non-driver
+      // axis (splh) so the chain stays 3 nodes.
+      const map = <String, double>{
+        'cplh_down': 500.0,
+        'splh_down': 200.0,
+      };
+      await tester.pumpWidget(_wrap(
+        const DriverArrowChain(
+          lever: LeverCards.cplhDown,
+          dollarImpactByAxis: map,
+        ),
+      ));
+      await tester.pump();
+
+      // 3 nodes ⇒ exactly 2 connector arrows.
+      expect(find.text('→'), findsNWidgets(2));
+      expect(find.text('CPLH'), findsOneWidget); // node 1 (driver)
+      expect(find.text('SPLH'), findsOneWidget); // node 2 (counter-axis)
+      expect(find.text('RESULT'), findsOneWidget); // node 3 (net)
+      // net = 500 + 200 = 700 → loss.
+      expect(find.text('−\$700 lost'), findsOneWidget);
+    });
+
+    testWidgets(
+        'single-axis map (no other contributor) → middle node still '
+        'renders (tier-3 natural counter-axis)', (tester) async {
+      // driver = covers_up (favorable), the ONLY populated axis. No
+      // other axis carries ≥ $1, so tiers 1 + 2 find nothing; tier 3
+      // falls back to the lever's natural counter-axis so the chain is
+      // STILL 3 nodes (mockup `COVERS → CPLH → RESULT`).
+      const map = <String, double>{'covers_up': -300.0};
+      await tester.pumpWidget(_wrap(
+        const DriverArrowChain(
+          lever: LeverCards.coversUp,
+          dollarImpactByAxis: map,
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('→'), findsNWidgets(2)); // 2 arrows ⇒ 3 nodes
+      expect(find.text('COVERS'), findsOneWidget); // node 1
+      // covers_up's natural counter-axis is CPLH (mockup pairing).
+      expect(find.text('CPLH'), findsOneWidget); // node 2
+      expect(find.text('RESULT'), findsOneWidget); // node 3
+      // net = -300 → a profit (gained).
+      expect(find.text('+\$300 gained'), findsOneWidget);
+    });
+  });
+
   group('DriverArrowChain — degraded (suppressed)', () {
     testWidgets('lever == null → NO chain (SizedBox.shrink)',
         (tester) async {

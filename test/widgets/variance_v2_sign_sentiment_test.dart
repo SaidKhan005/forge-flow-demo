@@ -37,8 +37,22 @@ import 'package:forge_and_flow/widgets/money_sentiment.dart';
 const _minus = '−'; // U+2212 - the only legal loss glyph (V2-2).
 
 Color _colorOfText(WidgetTester tester, String text) {
-  final w = tester.widget<Text>(find.text(text));
+  final w = tester.widget<Text>(find.text(text).first);
   return (w.style?.color)!;
+}
+
+/// Every `Text` whose data is exactly [text] must carry [expected].
+/// Drift fix (C)(b): the same real attribution dollar now renders both
+/// on its `.abar` row and as a read-line chip; both must share the V2-2
+/// sentiment colour, so this asserts the invariant across ALL matches
+/// rather than assuming a single occurrence.
+void _expectAllTextColor(
+    WidgetTester tester, String text, Color expected) {
+  final widgets = tester.widgetList<Text>(find.text(text));
+  expect(widgets, isNotEmpty);
+  for (final w in widgets) {
+    expect(w.style?.color, expected, reason: 'text "$text" colour');
+  }
 }
 
 Widget _wrap(Widget child) => MaterialApp(
@@ -202,12 +216,20 @@ void main() {
       )));
       await tester.pump();
 
-      expect(find.text('+\$686'), findsOneWidget);
-      expect(_colorOfText(tester, '+\$686'), AppColors.positive);
-      expect(find.text('$_minus\$462'), findsOneWidget);
-      expect(_colorOfText(tester, '$_minus\$462'), AppColors.negative);
-      expect(find.text('$_minus\$406'), findsOneWidget);
-      expect(_colorOfText(tester, '$_minus\$406'), AppColors.negative);
+      // Drift fix (C)(b) — DELIBERATE SPEC CHANGE: this is the exact
+      // approved-mockup case. The read-line now carries the inline
+      // colored dollar chips fed the REAL per-axis attribution
+      // (favourable covers green `+$686`, adverse cplh / splh red
+      // `−$462` / `−$406`) plus the net clause, exactly like the mockup
+      // `.readline`. Each amount therefore appears TWICE: once on its
+      // `.abar` row, once as the read-line chip — same real value, no
+      // hardcode. The V2-2 sentiment colour must hold on BOTH.
+      expect(find.text('+\$686'), findsNWidgets(2)); // bar + readline chip
+      _expectAllTextColor(tester, '+\$686', AppColors.positive);
+      expect(find.text('$_minus\$462'), findsNWidgets(2));
+      _expectAllTextColor(tester, '$_minus\$462', AppColors.negative);
+      expect(find.text('$_minus\$406'), findsNWidgets(2));
+      _expectAllTextColor(tester, '$_minus\$406', AppColors.negative);
 
       // Proof color is NOT `value > 0`: the favorable row's underlying
       // value (−686) and an adverse row's value (+462) have OPPOSITE

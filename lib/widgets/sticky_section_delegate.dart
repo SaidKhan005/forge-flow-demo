@@ -155,6 +155,123 @@ class StickySectionDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.label != label;
 }
 
+/// A sticky section header that IS the disclosure toggle: a single
+/// title element carrying both the section label AND the expand/collapse
+/// chevron (mockup `<summary>Week to date vs plan ›</summary>`).
+///
+/// Drift fix (E): the WTD + Loss/Win sections previously rendered the
+/// section title TWICE — once in a pinned [StickySectionDelegate] and
+/// again in the collapsible's own `summary` row. This delegate replaces
+/// BOTH with ONE title: it uses the exact same teal-accent visual as
+/// [StickySectionDelegate] (so it still reads as a pinned section
+/// header while collapsed) and appends a chevron that rotates when
+/// expanded. Tapping anywhere on the header toggles the section.
+class StickyDisclosureHeaderDelegate extends SliverPersistentHeaderDelegate {
+  final String label;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  static const double extent = StickySectionDelegate.extent;
+
+  const StickyDisclosureHeaderDelegate({
+    required this.label,
+    required this.expanded,
+    required this.onTap,
+  });
+
+  @override
+  double get maxExtent => extent;
+
+  @override
+  double get minExtent => extent;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          height: extent,
+          decoration: BoxDecoration(
+            color: AppColors.backgroundDeep,
+            boxShadow: overlapsContent
+                ? [
+                    BoxShadow(
+                      color: AppColors.backgroundDeep.withValues(alpha: 0.8),
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 4,
+                      height: 18,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [AppColors.sunset, AppColors.sunsetDark],
+                        ),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: AppTextStyles.mono14(
+                            color: AppColors.textPrimary,
+                            weight: FontWeight.w700),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    // Single chevron on the one title element: right
+                    // when collapsed, down when expanded (mockup
+                    // `<summary> .ch` "›").
+                    Icon(
+                      expanded
+                          ? Icons.keyboard_arrow_down
+                          : Icons.chevron_right,
+                      size: 20,
+                      color: AppColors.textMuted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 2,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [AppColors.sunset, AppColors.sunsetDark],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant StickyDisclosureHeaderDelegate oldDelegate) =>
+      oldDelegate.label != label || oldDelegate.expanded != expanded;
+}
+
 /// Sticky column header for variance tables (TARGET | ACTUAL | VAR).
 ///
 /// Pins at the top of a `SliverMainAxisGroup` so it stays visible while
