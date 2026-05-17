@@ -481,8 +481,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 tabId: 'account',
                 onRefresh: _handlePullToRefresh,
                 slivers: [
-                  // U-7 MO-5d — subtitle "Review the authenticator..."
-                  // dropped per debug.md:295.
+                  // Mobile-native two-factor (operator-directed
+                  // 2026-05-17): reverses the Wave 2 W3.A "read-only
+                  // mirror + Manage on Ops Web pointer" posture for this
+                  // section. The enrollment flow (dynamic enroll/remove
+                  // button + QR code + 6-digit verify) and removal now
+                  // run inline on mobile. The production auth runtime
+                  // (`firebase_auth_runtime_bindings.dart`) wires a real
+                  // `mfaOperationsGateway`; demo/preview shells fall back
+                  // to `DemoMfaOperationsGateway` so the walkthrough
+                  // shows a working QR (mirrors the active-sessions
+                  // `allowDemoGatewayFallback` posture below).
                   _settingsSection(
                     title: 'Two-factor sign-in',
                     child: SettingsMfaSection(
@@ -494,22 +503,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             restaurant?.restaurantId,
                           ),
                       refreshGeneration: _manualRefreshGeneration,
-                      viewOnly: true,
+                      allowDemoGatewayFallback:
+                          widget.mfaOperationsGateway == null,
+                      viewOnly: false,
                     ),
                   ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SettingsPointerRow(
-                        label: 'Manage two-factor sign-in on Ops Web',
-                        opWebPath: 'my-account#security',
-                        navId: 'my_account',
-                        handoffCodeGateway: widget.handoffCodeGateway,
-                      ),
-                    ),
-                  ),
-                  // U-7 MO-6b — subtitle "Review your sign-in details."
-                  // dropped per debug.md:295.
+                  // Mobile-native Account actions (operator-directed
+                  // 2026-05-17): reverses Wave 2 W3.A read-only for this
+                  // section so the full actions card (Change password,
+                  // Sign out on this device, Sign out of all devices)
+                  // runs inline on mobile instead of deep-linking to
+                  // Operator Web. Sign-out drives `AuthSessionNotifier`,
+                  // which works in demo and production alike.
                   _settingsSection(
                     title: 'Account',
                     child: SettingsAccountSection(
@@ -518,18 +523,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       allowDemoAccountInfoFallback:
                           widget.allowDemoAccountInfoFallback,
                       refreshGeneration: _manualRefreshGeneration,
-                      viewOnly: true,
-                    ),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: SettingsPointerRow(
-                        label: 'Manage Account on Ops Web',
-                        opWebPath: 'my-account',
-                        navId: 'my_account',
-                        handoffCodeGateway: widget.handoffCodeGateway,
-                      ),
+                      viewOnly: false,
                     ),
                   ),
                   // U-7 MO-7c — subtitle "See where your account..."
