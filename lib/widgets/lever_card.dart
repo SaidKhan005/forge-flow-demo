@@ -3,6 +3,8 @@ import '../theme/app_theme.dart';
 import '../domain/constants/app_defaults.dart';
 import '../utils/formatters.dart';
 import 'money_sentiment.dart';
+import 'variance/inline_emphasis_text.dart';
+import 'variance/lever_emphasis_map.dart';
 
 /// Renders the deep Primary Driver card. Pass a non-null [data] for one of
 /// the 16 known levers; for the `on_model` sentinel or any unknown id,
@@ -29,6 +31,14 @@ class LeverCardWidget extends StatelessWidget {
   final double? actualSPLH;
   final double? opzCeilingSPLH;
 
+  /// GAP-4 / sub-step 4 + V2-3: the derived `DriverArrowChain` rendered
+  /// INSIDE this single bordered driver card, fused between the serif
+  /// headline and the WHAT HAPPENED sentence (no chart-then-paragraph
+  /// split). Null on surfaces that do not show the chain (Shift
+  /// whole-day, Week Detail) — the card then renders headline →
+  /// WHAT HAPPENED with no intervening block, exactly as before.
+  final Widget? chainAboveWhatHappened;
+
   const LeverCardWidget({
     super.key,
     required this.data,
@@ -37,6 +47,7 @@ class LeverCardWidget extends StatelessWidget {
     this.opzCeilingCPLH,
     this.actualSPLH,
     this.opzCeilingSPLH,
+    this.chainAboveWhatHappened,
   });
 
   @override
@@ -50,8 +61,16 @@ class LeverCardWidget extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [AppColors.backgroundMid, AppColors.cardGlow],
         ),
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(3),
+        // GAP-4 / sub-step 4: the single bordered driver card. Mockup
+        // `.driver` uses a sunset-tinted 1.5px border
+        // (`rgba(194,90,42,.38)`) so the Primary Driver card reads as
+        // one emphasised container holding the chain + attribution +
+        // read-line, not a plain section card.
+        border: Border.all(
+          color: AppColors.sunset.withValues(alpha: 0.38),
+          width: 1.5,
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -68,15 +87,14 @@ class LeverCardWidget extends StatelessWidget {
               ],
             ),
           ),
-          // Metric title
+          // Metric title — serif display (mockup `.driver h3`: Georgia
+          // 19px serif). GAP-4(a): was `mono15`; the headline is the
+          // card's display voice, not a mono caption.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               data.metric,
-              style: AppTextStyles.mono15(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
+              style: AppTextStyles.display20(color: AppColors.textPrimary),
             ),
           ),
           const SizedBox(height: 14),
@@ -89,11 +107,22 @@ class LeverCardWidget extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          // The chain renders fused between the headline and this
+          // sentence (sub-step 4 / V2-3 "no chart-then-paragraph
+          // split") — the caller injects it via [chainAboveWhatHappened].
+          if (chainAboveWhatHappened != null) ...[
+            chainAboveWhatHappened!,
+            const SizedBox(height: 12),
+          ],
+          // GAP-4(d): WHAT HAPPENED rendered through InlineEmphasisText
+          // with the per-lever V2-4 emphasis map. Catalog string stays
+          // plain; markup is applied at render only.
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              data.whatHappened,
-              style: AppTextStyles.body15(color: AppColors.textPrimary),
+            child: InlineEmphasisText(
+              LeverEmphasisMap.emphasizeWhatHappened(
+                  data.id, data.whatHappened),
+              baseStyle: AppTextStyles.body15(color: AppColors.textPrimary),
             ),
           ),
           if (dollarImpactByAxis != null) ...[
@@ -105,6 +134,28 @@ class LeverCardWidget extends StatelessWidget {
               opzCeilingCPLH: opzCeilingCPLH,
               actualSPLH: actualSPLH,
               opzCeilingSPLH: opzCeilingSPLH,
+            ),
+          ],
+          // GAP-4(c): `.readline` narrative after the bars + a divider,
+          // rendered through InlineEmphasisText. Render-time copy from
+          // the emphasis map (NOT catalog); omitted when the lever has
+          // no read-line.
+          if (LeverEmphasisMap.readlineFor(data.id) != null) ...[
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(height: 1, color: AppColors.borderSubtle),
+                  const SizedBox(height: 13),
+                  InlineEmphasisText(
+                    LeverEmphasisMap.readlineFor(data.id)!,
+                    baseStyle:
+                        AppTextStyles.body15(color: AppColors.textPrimary),
+                  ),
+                ],
+              ),
             ),
           ],
           const SizedBox(height: 16),
@@ -120,11 +171,14 @@ class LeverCardWidget extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
+          // GAP-4(d): WHAT TO STUDY through InlineEmphasisText with the
+          // same per-lever V2-4 emphasis map.
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Text(
-              data.teachingNote,
-              style: AppTextStyles.body15(color: AppColors.textPrimary),
+            child: InlineEmphasisText(
+              LeverEmphasisMap.emphasizeTeachingNote(
+                  data.id, data.teachingNote),
+              baseStyle: AppTextStyles.body15(color: AppColors.textPrimary),
             ),
           ),
         ],
@@ -255,7 +309,18 @@ class _DollarAttributionSection extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final row in perAxis) _AttributionRow(row: row),
+                // GAP-4(b): diverging bar rows (mockup `.abar`). Row
+                // order is the existing descending-|value| sort (the
+                // largest contributor anchors the scale at the full
+                // half-track); `total` / `dominantId` math above is
+                // unchanged. The bar is presentation only.
+                for (final row in perAxis)
+                  _AttributionRow(
+                    row: row,
+                    // Largest |value| is the first row after the sort;
+                    // every bar fills proportionally against it.
+                    maxAbs: perAxis.first.value.abs(),
+                  ),
               ],
             ),
           ),
@@ -303,9 +368,17 @@ class _AxisRow {
   });
 }
 
+/// GAP-4(b): one diverging bar row (mockup `.abar`): a left label, a
+/// centered zero-axis track, a signed fill, and the signed value. Color
+/// AND the fill SIDE both follow the row's V2-2 sentiment flag
+/// (`MoneySentiment.fromFavorable(row.favorable)`) — never the raw
+/// arithmetic sign of `row.value`. The fill length is `|value|`
+/// proportional to the largest |value| in the section ([maxAbs]); the
+/// number itself is unchanged (presentation only).
 class _AttributionRow extends StatelessWidget {
   final _AxisRow row;
-  const _AttributionRow({required this.row});
+  final double maxAbs;
+  const _AttributionRow({required this.row, required this.maxAbs});
 
   @override
   Widget build(BuildContext context) {
@@ -314,22 +387,73 @@ class _AttributionRow extends StatelessWidget {
     final sentiment = MoneySentiment.fromFavorable(row.favorable);
     final color = sentiment.color;
     final sign = sentiment.sign;
+    // Favorable rows fill to the RIGHT of the zero axis (a gain);
+    // unfavorable rows fill to the LEFT (a loss). Side follows the
+    // SAME sentiment flag as the color so they can never disagree.
+    final favorable = row.favorable;
+    // Proportion of the half-track. Guard a degenerate maxAbs (all
+    // rows < $1 are filtered upstream, so maxAbs >= 1 in practice).
+    final frac = maxAbs <= 0
+        ? 0.0
+        : (row.value.abs() / maxAbs).clamp(0.0, 1.0);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.baseline,
-        textBaseline: TextBaseline.alphabetic,
         children: [
           SizedBox(
-            width: 80,
+            width: 64,
             child: Text(
-              '$sign\$${Fmt.dollars(row.value.abs())}',
-              style: AppTextStyles.mono12(color: color, weight: FontWeight.w600),
+              row.stretched ? '${row.label} : team was stretched' : row.label,
+              style: AppTextStyles.mono12(color: AppColors.textSecondary),
             ),
           ),
-          Text(
-            row.stretched ? '${row.label} : team was stretched' : row.label,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final half = c.maxWidth / 2;
+                return SizedBox(
+                  height: 14,
+                  child: Stack(
+                    children: [
+                      // Centered zero axis (mockup `.atrack::before`).
+                      Positioned(
+                        left: half,
+                        top: 0,
+                        bottom: 0,
+                        child: Container(
+                          width: 1,
+                          color: AppColors.borderSubtle,
+                        ),
+                      ),
+                      // Signed fill (mockup `.afill.pos` / `.afill.neg`).
+                      Positioned(
+                        left: favorable ? half : half - half * frac,
+                        top: 2,
+                        child: Container(
+                          width: half * frac,
+                          height: 10,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(3),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 54,
+            child: Text(
+              '$sign\$${Fmt.dollars(row.value.abs())}',
+              textAlign: TextAlign.right,
+              style:
+                  AppTextStyles.mono12(color: color, weight: FontWeight.w700),
+            ),
           ),
         ],
       ),

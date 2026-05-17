@@ -52,6 +52,36 @@ Future<void> _pumpVarianceFrames(WidgetTester tester) async {
   }
 }
 
+/// Variance Coaching V2 (Lane TW, GAP 2 / GAP 3): the WTD table and the
+/// Dollar Impact card now render inside a default-collapsed disclosure
+/// UNDER their retained sticky headers (operator decision: keep the
+/// sticky delegates, ADD the collapsible underneath). Tests that assert
+/// the disclosed CONTENT must first expand the disclosure. This taps
+/// every collapsed `_CollapsibleSection` summary (the WTD `Week to date
+/// vs plan` row and the sentiment-titled Dollar Impact row) so the
+/// byte-preserved child builds, then pumps to settle.
+Future<void> _expandCollapsibleSections(WidgetTester tester) async {
+  for (final label in const [
+    'Week to date vs plan',
+    'Win if this continues',
+    'Loss if this continues',
+  ]) {
+    final summary = find.text(label, skipOffstage: false);
+    for (final element in summary.evaluate().toList()) {
+      final tappable = find.ancestor(
+        of: find.byWidget(element.widget),
+        matching: find.byType(InkWell),
+      );
+      if (tappable.evaluate().isEmpty) continue;
+      await tester.ensureVisible(tappable.first);
+      await tester.pump();
+      await tester.tap(tappable.first, warnIfMissed: false);
+      await tester.pump();
+      await tester.pump();
+    }
+  }
+}
+
 bool _includePrunedLabelGroups() => false;
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
@@ -76,12 +106,23 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsOneWidget);
-      expect(find.text('CONDITIONS'), findsAtLeastNWidgets(1));
-      expect(find.text('EXECUTION'), findsAtLeastNWidgets(1));
-      expect(find.text('OUTCOMES'), findsAtLeastNWidgets(1));
-      expect(find.text('Covers'), findsAtLeastNWidgets(1));
-      expect(find.text('PPA'), findsAtLeastNWidgets(1));
-      expect(find.text('Total Labor %'), findsAtLeastNWidgets(1));
+
+      // GAP 2: the WTD table is collapsed by default under its retained
+      // sticky header — expand the disclosure before asserting its
+      // byte-preserved content (CONDITIONS / EXECUTION / OUTCOMES rows).
+      await _expandCollapsibleSections(tester);
+
+      expect(find.text('CONDITIONS', skipOffstage: false),
+          findsAtLeastNWidgets(1));
+      expect(find.text('EXECUTION', skipOffstage: false),
+          findsAtLeastNWidgets(1));
+      expect(find.text('OUTCOMES', skipOffstage: false),
+          findsAtLeastNWidgets(1));
+      expect(find.text('Covers', skipOffstage: false),
+          findsAtLeastNWidgets(1));
+      expect(find.text('PPA', skipOffstage: false), findsAtLeastNWidgets(1));
+      expect(find.text('Total Labor %', skipOffstage: false),
+          findsAtLeastNWidgets(1));
     });
   });
 
@@ -565,6 +606,10 @@ void main() {
     testWidgets('Dollar Impact renders current-week framing without legacy copy',
         (tester) async {
       await _pumpVarianceFrames(tester);
+      // GAP 3: the Dollar Impact card is collapsed by default under its
+      // retained sticky header — expand the disclosure before asserting
+      // its byte-preserved (FROZEN math V2-6) content.
+      await _expandCollapsibleSections(tester);
 
       // Variance Coaching V2 (V2-2:578 / V2-6:712): the dollar-impact
       // disclosure is retitled from the pre-V2 `DOLLAR IMPACT` literal
@@ -572,11 +617,14 @@ void main() {
       // unfavourable-only; the StaticShiftDataSource fixture is an
       // at-or-under-best-possible (favourable) week (dollarGap < 0), so
       // it renders the favourable counterpart `Win if this continues`.
-      // The legacy literal must be gone.
+      // The legacy literal must be gone. The title now appears on BOTH
+      // the retained sticky header AND the collapsible summary (operator
+      // decision: keep the sticky delegate, ADD the disclosure), so it
+      // is asserted with findsAtLeastNWidgets, never findsNothing.
       expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsNothing);
       expect(
         find.text('Win if this continues', skipOffstage: false),
-        findsOneWidget,
+        findsAtLeastNWidgets(1),
       );
       expect(find.text('this week', skipOffstage: false), findsOneWidget);
       // 7.58.UX.6: the footer now names the math floor as
@@ -659,6 +707,11 @@ void main() {
       'projected row shows FOH Hours, BOH Hours, Blended Wage labels',
       (tester) async {
         await _pumpVarianceFrames(tester);
+        // GAP 2: the WTD table (the canonical plan-target package source
+        // for FOH/BOH Hours + Blended Wage) is collapsed by default under
+        // its retained sticky header — expand it so its byte-preserved
+        // rows are present alongside any projected-detail expansion.
+        await _expandCollapsibleSections(tester);
 
         await tester.ensureVisible(
           find.text('FULL WEEK PROJECTION', skipOffstage: false),
@@ -674,12 +727,17 @@ void main() {
           await tester.tap(dayFinder.first);
           await tester.pump();
           await tester.pump();
-
-          // Plan target package: covers, FOH/BOH hours, blended wage, labor %
-          expect(find.text('FOH Hours', skipOffstage: false), findsWidgets);
-          expect(find.text('BOH Hours', skipOffstage: false), findsWidgets);
-          expect(find.text('Blended Wage', skipOffstage: false), findsWidgets);
         }
+
+        // Plan target package: covers, FOH/BOH hours, blended wage,
+        // labor % — present in the disclosed WTD table (byte-preserved)
+        // and/or the projected-detail expansion.
+        expect(
+            find.text('FOH Hours', skipOffstage: false), findsWidgets);
+        expect(
+            find.text('BOH Hours', skipOffstage: false), findsWidgets);
+        expect(find.text('Blended Wage', skipOffstage: false),
+            findsWidgets);
       },
     );
 

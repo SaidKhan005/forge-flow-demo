@@ -135,6 +135,69 @@ void main() {
     });
   });
 
+  group('DriverArrowChain — GAP-5 node 2 colour regression', () {
+    // The prior code coloured node 2 from
+    // `MoneySentiment.fromAxisImpact(counterValue)` — the raw arithmetic
+    // sign of the counter axis's dollar contribution. V2-2 forbids
+    // value-sign colouring: node 2 colour MUST be the counter LEVER'S
+    // catalog sentiment (`LaborModel.isFavorableLever`).
+    //
+    // This fixture is deliberately chosen so the two derivations
+    // DISAGREE (the existing cplh_down/covers_up cases above mask the
+    // bug by choosing agreement):
+    //
+    //   driver  = cplh_down (unfavorable headline)
+    //   net     = 500 + (-200) = +$300 → a loss (fromDollarGap)
+    //   counter = COVERS axis, v = map['covers_down'] = -200 (opposite
+    //             sentiment to the loss net → selected as node 2)
+    //   counterId = _signedId(COVERS, -200) → 'covers_down'
+    //
+    //   OLD (buggy): fromAxisImpact(-200) → -200 <= 0 → favorable →
+    //                GREEN.  Wrong: covers_down is catalog-UNFAVORABLE.
+    //   NEW (fixed): isFavorableLever('covers_down') == false →
+    //                RED (AppColors.negative). Correct.
+    const map = <String, double>{
+      'cplh_down': 500.0,
+      'covers_down': -200.0,
+    };
+
+    testWidgets('node 2 colours by counter lever catalog sentiment, '
+        'not the contribution arithmetic sign', (tester) async {
+      await tester.pumpWidget(_wrap(
+        const DriverArrowChain(
+          lever: LeverCards.cplhDown,
+          dollarImpactByAxis: map,
+        ),
+      ));
+      await tester.pump();
+
+      // Node 2 is the COVERS counter-axis, direction token from the
+      // resolved 'covers_down' id suffix (raw metric movement).
+      expect(find.text('COVERS'), findsOneWidget);
+      expect(find.text('↓ under plan'), findsOneWidget);
+
+      // The colour binding is the regression assertion: covers_down is
+      // catalog-unfavorable, so node 2 MUST be red. The pre-GAP-5
+      // value-sign path (fromAxisImpact on −$200) would have made it
+      // green — this asserts that bug is gone.
+      expect(
+        _textWidget(tester, '↓ under plan').style!.color,
+        AppColors.negative,
+      );
+      expect(
+        _textWidget(tester, '↓ under plan').style!.color,
+        isNot(AppColors.positive),
+      );
+
+      // Net +$300 → loss → red, glyph U+2212 minus (sanity on node 3).
+      expect(find.text('−\$300 lost'), findsOneWidget);
+      expect(
+        _textWidget(tester, '−\$300 lost').style!.color,
+        AppColors.negative,
+      );
+    });
+  });
+
   group('DriverArrowChain — degraded (suppressed)', () {
     testWidgets('lever == null → NO chain (SizedBox.shrink)',
         (tester) async {
