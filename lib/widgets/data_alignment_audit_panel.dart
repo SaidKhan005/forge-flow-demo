@@ -260,12 +260,12 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     final overall = _overallAuditSummary();
     final drifted = _snapshot?.auditDriftedCount ?? 0;
     final accent = drifted > 0 ? AppColors.negative : AppColors.positive;
-    // Summary is embedded in the title (with the em-dash) rather than
-    // the subtitle chip so it lives inside a single Text widget —
-    // matches the tests that look for `textContaining('AUDIT CHECKS —')`.
+    // Summary is embedded in the title (with a colon separator) rather
+    // than the subtitle chip so it lives inside a single Text widget.
+    // UX no-em-dash law: label/value separators use a colon.
     return _tile(
       icon: Icons.fact_check_outlined,
-      title: 'AUDIT CHECKS — $overall',
+      title: 'AUDIT CHECKS: $overall',
       accentColor: accent,
       children: [
         for (int i = 0; i < groups.length; i++) ...[

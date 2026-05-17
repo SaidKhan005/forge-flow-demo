@@ -234,7 +234,7 @@ class EmailTemplateIds {
 /// as the body.
 const Map<String, String> _subjectByTemplate = <String, String>{
   EmailTemplateIds.operatorInviteFirstAdmin:
-      'Welcome to Forge & Flow — set up your account',
+      'Welcome to Forge & Flow: set up your account',
   EmailTemplateIds.mfaFactorChangedNotice:
       'Your Forge & Flow MFA has been updated',
   EmailTemplateIds.vendorSyncErrorAlert:

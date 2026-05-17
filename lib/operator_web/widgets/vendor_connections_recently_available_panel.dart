@@ -218,7 +218,7 @@ class _VendorConnectionsRecentlyAvailablePanelState
               ),
               const SizedBox(height: 6),
               Text(
-                'New connectors are now available — connect them to '
+                'New connectors are now available. Connect them to '
                 'start syncing data.',
                 key: const Key(
                   'vendor_connections_recently_available_subtitle',

@@ -262,11 +262,11 @@ class _ThinHistoryBanner extends StatelessWidget {
           Text(
             historyDays > 0
                 ? 'Need 60 days of history before we can explain this '
-                    "forecast — currently have $historyDays days. Keep "
+                    "forecast. Currently have $historyDays days. Keep "
                     "closing shifts and we'll surface the math here as "
                     "soon as the baseline window fills."
                 : 'Need 60 days of history before we can explain this '
-                    'forecast. Close a few shifts and check back — we '
+                    'forecast. Close a few shifts and check back. We '
                     'never show zeroes for missing data.',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),

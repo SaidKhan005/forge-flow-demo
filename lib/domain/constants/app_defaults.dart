@@ -109,7 +109,7 @@ class LeverCards {
     whatHappened: 'Guest volume came in below plan. FOH hours did not flex down to match.',
     whatToDo:
         'Pull FOH hours from Fri, Sat, and Sun shifts before they open. '
-        'Volume is tracking below plan — don\'t carry over-scheduled hours into the weekend.',
+        'Volume is tracking below plan. Don\'t carry over-scheduled hours into the weekend.',
     teachingNote:
         'Study forecast accuracy and hour flex by daypart. If this repeats in the same dayparts, '
         'the leak is forecast and schedule discipline, not a one-week miss.',
@@ -219,7 +219,7 @@ class LeverCards {
         'sustain it without pushing above the OPZ ceiling.',
     shortLabel: 'CPLH',
     isFavorable: true,
-    weekActionLine: 'Document this shift — that is your replicable setup.',
+    weekActionLine: 'Document this shift. That is your replicable setup.',
   );
 
   static const splhDown = LeverCardData(
@@ -314,7 +314,7 @@ class LeverCards {
     side: LeverSide.foh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'FOH blended wage came in below your model rate. Right roles on right shifts — '
+        'FOH blended wage came in below your model rate. Right roles on right shifts: '
         'lower-cost coverage was aligned with volume without sacrificing floor quality. Your BOH is unaffected.',
     whatToDo:
         'Document the FOH schedule configuration that produced this result. '
@@ -353,14 +353,14 @@ class LeverCards {
     direction: LeverDirection.unfavorable,
     whatHappened:
         'The floor carried more hours than the covers needed. The model says you needed fewer FOH hours '
-        'for what actually walked in — but the schedule didn\'t come down. Those excess hours are showing '
-        'up as labor cost above model. Your BOH is unaffected — this is a front-of-house flex issue.',
+        'for what actually walked in, but the schedule didn\'t come down. Those excess hours are showing '
+        'up as labor cost above model. Your BOH is unaffected. This is a front-of-house flex issue.',
     whatToDo:
         'Compare your published FOH schedule to the model hours for each daypart. Where the gap is widest, '
         'that\'s where hours need to be pulled before the shift opens. Don\'t wait until close to find out.',
     teachingNote:
         'Study which FOH dayparts carry the most excess hours. If the same slots repeat, the schedule is '
-        'being built above what the forecast supports. The fix is pre-shift — cut before you open, not after.',
+        'being built above what the forecast supports. The fix is pre-shift: cut before you open, not after.',
     shortLabel: 'HOURS',
     isFavorable: false,
     weekActionLine: 'Pull FOH hours to match model before shifts open.',
@@ -373,15 +373,15 @@ class LeverCards {
     side: LeverSide.foh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'FOH hours came in below what the model needed for the volume. The floor ran lean — fewer servers '
+        'FOH hours came in below what the model needed for the volume. The floor ran lean: fewer servers '
         'covered more guests. As long as PPA held and CPLH stayed inside the OPZ ceiling, this is exactly '
-        'what efficient scheduling looks like. Check your PPA — if it dropped, the team was stretched too thin.',
+        'what efficient scheduling looks like. Check your PPA. If it dropped, the team was stretched too thin.',
     whatToDo:
         'Cross-check PPA and CPLH for this shift. If PPA held and CPLH stayed below the ceiling, document '
-        'this FOH configuration — it\'s your benchmark. If PPA dropped, the floor was too lean to sell.',
+        'this FOH configuration. It\'s your benchmark. If PPA dropped, the floor was too lean to sell.',
     teachingNote:
         'Lean hours are favorable when service metrics hold. Study whether PPA dips when FOH hours run below '
-        'model — if it does, you found the staffing floor. If it doesn\'t, you found the efficient setup.',
+        'model. If it does, you found the staffing floor. If it doesn\'t, you found the efficient setup.',
     shortLabel: 'HOURS',
     isFavorable: true,
     weekActionLine: 'Document this FOH setup if PPA and service held.',
@@ -395,8 +395,8 @@ class LeverCards {
     direction: LeverDirection.unfavorable,
     whatHappened:
         'The kitchen carried more hours than the sales volume required. The model says you needed fewer BOH '
-        'hours for what actually came through — but the schedule didn\'t flex. Those excess hours are driving '
-        'labor cost above theoretical. Your FOH is unaffected — this is a back-of-house scheduling issue.',
+        'hours for what actually came through, but the schedule didn\'t flex. Those excess hours are driving '
+        'labor cost above theoretical. Your FOH is unaffected. This is a back-of-house scheduling issue.',
     whatToDo:
         'Review your BOH lineup against actual sales by daypart. Where prep hours or line cooks exceeded what '
         'the volume needed, that\'s where to tighten. Build next week\'s BOH schedule from sales forecast ÷ '
@@ -416,16 +416,16 @@ class LeverCards {
     side: LeverSide.boh,
     direction: LeverDirection.favorable,
     whatHappened:
-        'BOH hours came in below what the model needed for the sales volume. The kitchen ran lean — fewer '
+        'BOH hours came in below what the model needed for the sales volume. The kitchen ran lean: fewer '
         'hours covered more output. If ticket times stayed clean and food quality held, this is a well-run '
-        'kitchen. Check your SPLH — if it\'s above target, the deployment worked.',
+        'kitchen. Check your SPLH. If it\'s above target, the deployment worked.',
     whatToDo:
-        'Cross-check SPLH and ticket times. If both held, document this BOH configuration — station '
+        'Cross-check SPLH and ticket times. If both held, document this BOH configuration: station '
         'assignments, prep staging, lineup. That is your replicable kitchen setup. If ticket times slipped, '
         'the kitchen was stretched too thin.',
     teachingNote:
         'Lean kitchen hours are favorable when throughput holds. Study whether ticket times slip when BOH '
-        'hours run below model — if they do, you found the staffing floor. If they don\'t, you found efficiency.',
+        'hours run below model. If they do, you found the staffing floor. If they don\'t, you found efficiency.',
     shortLabel: 'HOURS',
     isFavorable: true,
     weekActionLine: 'Document this BOH setup if ticket times and quality held.',

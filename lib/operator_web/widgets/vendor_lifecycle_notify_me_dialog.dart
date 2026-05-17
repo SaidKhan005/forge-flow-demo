@@ -223,14 +223,14 @@ class _VendorLifecycleNotifyMeDialogState
       case VendorLifecycle.sandboxVerified:
         return "We've verified the integration end-to-end against "
             "${widget.vendorDisplayName}'s sandbox. Production "
-            "access is pending partnership clearance — we'll email "
+            "access is pending partnership clearance. We'll email "
             "you the moment it lands.";
       case VendorLifecycle.productionCredentialed:
       case VendorLifecycle.liveWithOperators:
         // Defensive: the dialog should not open for these
         // lifecycles (the picker shows a live Connect button
         // instead). Render a neutral subline if it does.
-        return "${widget.vendorDisplayName} is ready to connect — "
+        return "${widget.vendorDisplayName} is ready to connect. "
             "you do not need to subscribe to a notification.";
     }
   }

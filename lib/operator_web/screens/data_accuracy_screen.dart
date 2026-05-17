@@ -1144,7 +1144,7 @@ class _ForbiddenSurface extends StatelessWidget {
                       'covers from is a business-wide decision. Only '
                       'operator admins and owners can change it. '
                       'Location managers can keep reading dashboards '
-                      'and shift views in the mobile app — most '
+                      'and shift views in the mobile app. Most '
                       'day-to-day actions live there.',
                       style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),

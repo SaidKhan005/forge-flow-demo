@@ -84,7 +84,7 @@ class DemoScope {
   static const String restaurantId = 'demo_restaurant_001';
 
   /// Downtown's display name. Kept exactly `'Barrio Legado'` (not the
-  /// §2c label `'Barrio Legado — Downtown'`) because
+  /// §2c label `'Barrio Legado: Downtown'`) because
   /// `persistence_scope_alignment_test.dart` and
   /// `getOrCreateActiveRestaurant` assert this id resolves to this
   /// exact string. Authority order: this prompt's backward-compat
@@ -114,20 +114,20 @@ class DemoScope {
     ),
     DemoLocation(
       restaurantId: northLoopRestaurantId,
-      displayName: 'Barrio Legado — North Loop',
+      displayName: 'Barrio Legado: North Loop',
       businessTimezone: businessTimezone,
       region: 'East Region',
       district: 'Metro District',
     ),
     DemoLocation(
       restaurantId: riversideRestaurantId,
-      displayName: 'Barrio Legado — Riverside',
+      displayName: 'Barrio Legado: Riverside',
       businessTimezone: businessTimezone,
       region: 'West Region',
     ),
     DemoLocation(
       restaurantId: harbourRestaurantId,
-      displayName: 'Barrio Legado — Harbour',
+      displayName: 'Barrio Legado: Harbour',
       businessTimezone: businessTimezone,
       region: 'West Region',
     ),

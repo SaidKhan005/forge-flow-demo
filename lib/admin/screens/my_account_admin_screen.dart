@@ -378,7 +378,7 @@ class _AdminIdentityCard extends StatelessWidget {
     final email = resolvedEmail.isEmpty ? 'Not on file' : resolvedEmail;
     final explainer = onEditIdentity == null
         ? 'Your sign-in details for the Forge & Flow admin console. '
-              'These are read-only here — to update them, contact your '
+              'These are read-only here. To update them, contact your '
               'Forge & Flow ecosystem admin.'
         : 'Your sign-in details for the Forge & Flow admin console. '
               'Use Edit identity to change your display name or sign-in '
@@ -405,7 +405,7 @@ class _AdminIdentityCard extends StatelessWidget {
           ),
           _AdminAccountField(
             label: 'Scope',
-            value: 'Global — cross-operator',
+            value: 'Global: cross-operator',
             helper:
                 'Admin console access is global. You can see and support '
                 'every business on Forge & Flow.',
@@ -706,7 +706,7 @@ class _AdminSecurityCardState extends State<_AdminSecurityCard> {
       headerExplainer:
           'Two-factor sign-in is required for every Forge & Flow admin. '
           'Set up your authenticator app, change your password, or '
-          'recover access — all from here.',
+          'recover access, all from here.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

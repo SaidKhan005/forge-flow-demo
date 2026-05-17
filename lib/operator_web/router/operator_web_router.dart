@@ -1900,7 +1900,7 @@ class _SurfaceWiringError extends StatelessWidget {
               Text(
                 'This Operator Web build could not connect $surfaceTitle to '
                 'the live service (wiring error). To protect your data we '
-                'are not showing or saving anything here — what you would '
+                'are not showing or saving anything here. What you would '
                 'see would not be real. Sign out and back in; if this keeps '
                 'happening, contact Forge & Flow support so we can fix the '
                 'connection.',
@@ -2105,7 +2105,7 @@ class _ForbiddenScreen extends StatelessWidget {
                         'but the Forge & Flow Operator Web Console is for '
                         'operator owners, operator admins, and location '
                         'managers. Floor staff and other roles can keep '
-                        'using the Forge & Flow mobile app — most '
+                        'using the Forge & Flow mobile app. Most '
                         'day-to-day actions live there.',
                         style: AppTextStyles.body13(
                           color: AppColors.textSecondary,

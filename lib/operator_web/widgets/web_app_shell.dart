@@ -244,7 +244,7 @@ class _HeaderBar extends StatelessWidget {
               const SizedBox(width: 8),
               Tooltip(
                 message:
-                    'Sign out — ends this browser session and returns '
+                    'Sign out: ends this browser session and returns '
                     'you to the welcome screen.',
                 child: TextButton.icon(
                   key: const Key('operator_web_header_signout'),

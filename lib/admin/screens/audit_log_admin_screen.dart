@@ -303,7 +303,7 @@ class _AuditLogAdminScreenState extends State<AuditLogAdminScreen> {
       decoration: const InputDecoration(
         labelText: 'Reason for reading the audit log',
         hintText:
-            'e.g. "Support ticket #4821 — verifying password change history"',
+            'e.g. "Support ticket #4821: verifying password change history"',
       ),
     );
   }

@@ -576,7 +576,7 @@ class _PollingAndPricingAdminScreenState
               AdminPageHeader(
                 title: 'Polling Setup',
                 subtitle:
-                    'This surface is for F&F admins only — operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
+                    'This surface is for F&F admins only. Operators cannot see it. Set vendor polling tiers, cost basis, and margin.',
                 leading: widget.onBackToBusinessAccounts == null
                     ? null
                     : AdminBusinessAccountsBackButton(
@@ -666,7 +666,7 @@ class _PollingAndPricingAdminScreenState
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'This scope only covers $_singleCoveredLocationName. Adjusting polling setup here is equivalent to a per-location change — there are no other locations under this scope to inherit from.',
+                  'This scope only covers $_singleCoveredLocationName. Adjusting polling setup here is equivalent to a per-location change. There are no other locations under this scope to inherit from.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),
@@ -1253,7 +1253,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'This surface is for F&F admins only — operators cannot see it.',
+              'This surface is for F&F admins only. Operators cannot see it.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),

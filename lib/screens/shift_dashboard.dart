@@ -898,8 +898,8 @@ class _ShiftSectionViewData {
     // doc §4.2 / §6.4). Demo governed locations behave exactly as
     // before.
     if (fixtureGoverned && connected && periodNotStartedYet) {
-      return "This service period hasn't started yet today — "
-          'numbers appear here once service begins.';
+      return "This service period hasn't started yet today. "
+          'Numbers appear here once service begins.';
     }
     return 'Connect a ${isLabor ? 'labor' : 'POS'} vendor to see '
         '$metricPhrase.';
@@ -2363,7 +2363,7 @@ class _ShiftDashboardHealthPill extends StatelessWidget {
           summary = '$label: partial sync';
           break;
         case MetricState.stale:
-          summary = '$label: stale — sync lapsed';
+          summary = '$label: stale, sync lapsed';
           break;
         case MetricState.empty:
           summary = '$label: no data yet';

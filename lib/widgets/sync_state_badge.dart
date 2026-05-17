@@ -280,7 +280,7 @@ SyncStateBadgeVisual? syncStateBadgeVisualFor(
     case RealtimeConnectionState.reconnecting:
       return const SyncStateBadgeVisual(
         label: 'Reconnecting…',
-        tooltip: 'Realtime channel dropped — reconnecting',
+        tooltip: 'Realtime channel dropped, reconnecting',
         dot: AppColors.warning,
         text: AppColors.warning,
         background: AppColors.warningBadgeBg,

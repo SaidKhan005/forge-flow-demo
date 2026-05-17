@@ -175,7 +175,7 @@ class _TimingSummaryCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  'Showing timing from ${location.name}. Other locations under this scope may have local overrides — review each location individually for accuracy.',
+                  'Showing timing from ${location.name}. Other locations under this scope may have local overrides. Review each location individually for accuracy.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ),
