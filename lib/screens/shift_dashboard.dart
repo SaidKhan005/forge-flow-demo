@@ -728,7 +728,10 @@ class _SectionHeaderWithIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(top: 32, bottom: 10),
+      padding: const EdgeInsets.only(
+        top: AppSpacing.xxl,
+        bottom: AppSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1829,9 +1832,14 @@ class _ShiftPeriodSelector extends StatelessWidget {
               );
 
         return Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 6),
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.md,
+            AppSpacing.sm,
+          ),
           child: Container(
-            padding: const EdgeInsets.all(6),
+            padding: const EdgeInsets.all(AppSpacing.sm),
             decoration: BoxDecoration(
               color: AppColors.backgroundDeep.withValues(alpha: 0.45),
               border: Border.all(
@@ -1910,7 +1918,10 @@ class _PeriodPill extends StatelessWidget {
         child: Container(
           key: activeNow ? const Key('shift_period_pill_active') : null,
           constraints: const BoxConstraints(minWidth: 92, minHeight: 44),
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+          padding: const EdgeInsets.symmetric(
+            vertical: AppSpacing.md,
+            horizontal: AppSpacing.lg,
+          ),
           decoration: BoxDecoration(
             color: bgColor,
             border: Border.all(color: borderColor, width: borderWidth),
@@ -2351,7 +2362,10 @@ class _LaborVarianceSection extends StatelessWidget {
         if (variancePts != null) ...[
           const SizedBox(height: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
             decoration: BoxDecoration(
               color: accentColor.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(2),
@@ -2431,7 +2445,10 @@ class _CompactHoursColumn extends StatelessWidget {
             const SizedBox(height: 8),
             // Delta pill
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.sm,
+              vertical: AppSpacing.xs,
+            ),
               decoration: BoxDecoration(
                 color: deltaColor.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(2),
