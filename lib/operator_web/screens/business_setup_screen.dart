@@ -247,103 +247,109 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
   }
 }
 
-/// Wave 2 H-2 — adapter from `BusinessTimingBundle.inheritanceChain` to
-/// the visual tree's node shape. The bundle exposes a flat list of
-/// scope rungs (operator default, optional regional rollup, location);
-/// each row's `active` flag tells us whether that scope contributes a
-/// value, and the location is always the "currently editing" scope on
-/// the Business setup surface.
+/// Fix #4 / S3 (G13) — adapter from `BusinessTimingBundle
+/// .inheritanceChain` to the visual tree's node shape.
 ///
-/// Today the timing bundle does not expose intermediate brand rungs
-/// or the full hierarchy ltree, so the tree shows what IS reachable
-/// — Business → optional Region (when active) → Location — and the
-/// host screen emits a [dataGapExplainer] note that the full chain
-/// will light up once the hierarchy backbone is wired through to this
-/// surface (TODO(wave-N): wire full tree once hierarchy reachable).
+/// REWRITTEN 2026-05-16: the chain now carries one rung per REAL
+/// resolved candidate scope (operator default -> each org-unit
+/// ancestor -> location) from the canonical resolver via the S1
+/// route, in top-down precedence order. Previously the bundle only
+/// exposed a 2-3 rung approximation and every intermediate org-unit
+/// rung was discarded; the old "wire full tree once hierarchy
+/// reachable" TODO is now closed because the resolver chain IS the
+/// real hierarchy chain for timing.
+///
+/// Each `scopeKind` ("Operator default" / "Org unit" / "Location")
+/// maps to a tree level; the last rung is always the location the
+/// operator is editing on this surface. The business root is always
+/// rendered even if the operator default rung is absent, because the
+/// operator-facing IA always has a business at the top.
 List<HierarchyTreeNodeView> _hierarchyTreeNodesFromBundle(
   BusinessTimingBundle bundle,
 ) {
+  final chain = bundle.inheritanceChain;
   final nodes = <HierarchyTreeNodeView>[];
 
-  // Locate the relevant rungs in the bundle's inheritance chain. The
-  // bundle's chain is ordered top-down (business → org unit → location)
-  // by `DemoBusinessTimingGateway` and the live gateway follows the
-  // same convention.
-  BusinessTimingScopeSummary? businessScope;
-  BusinessTimingScopeSummary? regionScope;
-  BusinessTimingScopeSummary? locationScope;
-  for (final scope in bundle.inheritanceChain) {
-    final kind = scope.scopeKind.toLowerCase();
+  HierarchyTreeLevel levelFor(String scopeKind) {
+    final kind = scopeKind.toLowerCase();
     if (kind.contains('operator') || kind.contains('business')) {
-      businessScope ??= scope;
-    } else if (kind.contains('location')) {
-      locationScope ??= scope;
-    } else {
-      regionScope ??= scope;
+      return HierarchyTreeLevel.business;
     }
+    if (kind.contains('location')) {
+      return HierarchyTreeLevel.location;
+    }
+    // Org-unit ancestors render as the intermediate "region" rung —
+    // the visual tree's middle tier. Brand is reserved for a future
+    // typed org-unit kind; until the resolver carries org-unit
+    // sub-kinds, every org-unit ancestor is a region-tier rung.
+    return HierarchyTreeLevel.region;
   }
 
-  // Business root — always render, even if the bundle skipped it,
-  // because the operator-facing IA always has a business at the top.
-  nodes.add(HierarchyTreeNodeView(
-    level: HierarchyTreeLevel.business,
-    name: businessScope?.label.isNotEmpty == true
-        ? businessScope!.label
-        : bundle.operatorName,
-    subtitle: businessScope?.summary,
-    // The business contributes the inherited value whenever any of
-    // the bundle's effective fields are marked inherited.
-    inheritsFromHere: bundle.effectiveFields.any((f) => f.inherited),
-  ));
-
-  // Region rung — only when the bundle carries an active regional
-  // override. If the regional rung is present but inactive ("No
-  // timing override set."), we skip it to avoid implying the operator
-  // has a region layer when they do not.
-  if (regionScope != null && regionScope.active) {
+  // The business root: the first operator-scope rung when present,
+  // else a synthetic root so the IA always shows a business at top.
+  final hasOperatorRung = chain.any(
+    (s) =>
+        s.scopeKind.toLowerCase().contains('operator') ||
+        s.scopeKind.toLowerCase().contains('business'),
+  );
+  if (!hasOperatorRung) {
     nodes.add(HierarchyTreeNodeView(
-      level: HierarchyTreeLevel.region,
-      name: regionScope.label,
-      subtitle: regionScope.summary,
+      level: HierarchyTreeLevel.business,
+      name: bundle.operatorName,
+      subtitle: 'No operator default saved yet.',
+      inheritsFromHere: bundle.effectiveFields.any((f) => f.inherited),
     ));
   }
 
-  // Location leaf — the scope the operator is currently editing on
-  // the Business setup screen.
-  nodes.add(HierarchyTreeNodeView(
-    level: HierarchyTreeLevel.location,
-    name: locationScope?.label.isNotEmpty == true
-        ? locationScope!.label
-        : bundle.locationName,
-    isCurrentScope: true,
-    subtitle: bundle.hasLocationOverride
-        ? 'Local override is set here.'
-        : 'No local override. Uses business defaults.',
-  ));
+  // Render every REAL rung. The S1-backed live path returns only
+  // rungs the canonical CTE actually found (each is real and
+  // `active`). The demo gateway emits an inactive placeholder
+  // org-unit rung ("No timing override set."); skip inactive
+  // non-anchor rungs so the tree does not imply a region layer the
+  // operator never configured. Operator + location anchor rungs
+  // always render even if marked inactive (empty-profile state).
+  final renderable = <BusinessTimingScopeSummary>[
+    for (final scope in chain)
+      if (scope.active ||
+          levelFor(scope.scopeKind) == HierarchyTreeLevel.business ||
+          levelFor(scope.scopeKind) == HierarchyTreeLevel.location)
+        scope,
+  ];
+
+  for (var i = 0; i < renderable.length; i++) {
+    final scope = renderable[i];
+    final isLast = i == renderable.length - 1;
+    final level = levelFor(scope.scopeKind);
+    nodes.add(HierarchyTreeNodeView(
+      level: level,
+      name: scope.label.isNotEmpty
+          ? scope.label
+          : (level == HierarchyTreeLevel.location
+              ? bundle.locationName
+              : bundle.operatorName),
+      subtitle: scope.summary,
+      // The location rung is the scope the operator is editing here.
+      isCurrentScope: isLast && level == HierarchyTreeLevel.location,
+      // A rung "inherits from here" when a deeper rung in the chain
+      // does NOT override the effective value — i.e. at least one
+      // effective field is inherited from an ancestor and this is
+      // not the deepest rung.
+      inheritsFromHere:
+          !isLast && bundle.effectiveFields.any((f) => f.inherited),
+    ));
+  }
 
   return nodes;
 }
 
-/// Wave 2 H-2 — plain-English note when the timing bundle does not
-/// expose every rung of the org hierarchy. Returns `null` when the
-/// bundle carries a regional override (we already render every rung
-/// we have data for); otherwise points the operator at the data gap
-/// without using engineering jargon.
+/// Fix #4 / S3 (G13) — the timing inheritance chain now comes from
+/// the canonical resolver via the S1 route, so every rung the
+/// resolver saw (operator default + each org-unit ancestor +
+/// location) is rendered. There is no longer a hidden data gap to
+/// explain: return `null` so the tree stands on its own. (Retained
+/// as a hook in case a future surface needs a gap note again.)
 String? _treeDataGapForBundle(BusinessTimingBundle bundle) {
-  final hasRegion = bundle.inheritanceChain.any(
-    (scope) =>
-        scope.active &&
-        !scope.scopeKind.toLowerCase().contains('operator') &&
-        !scope.scopeKind.toLowerCase().contains('business') &&
-        !scope.scopeKind.toLowerCase().contains('location'),
-  );
-  if (hasRegion) return null;
-  // TODO(wave-N): wire full tree once hierarchy reachable — the timing
-  // bundle does not expose brand / district rungs yet, so we show the
-  // anchor levels we have and document the gap below the tree.
-  return 'Regions and brands will appear here once your hierarchy is '
-      'connected. Today the tree shows the business and the location '
-      'you are editing.';
+  return null;
 }
 
 class _TimingEditControls extends StatelessWidget {
@@ -697,9 +703,27 @@ class _ServicePeriodRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              period.name,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  period.name,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+                if (period.daysLabel != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      // G45 / Gap 28 — day-restricted period is shown
+                      // explicitly so the operator sees it does not
+                      // run every day.
+                      period.daysLabel!,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
           Text(

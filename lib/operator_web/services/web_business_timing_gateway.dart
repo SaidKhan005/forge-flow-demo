@@ -29,6 +29,24 @@ abstract class WebBusinessTimingGateway {
   /// caller's operator with full service-period sets.
   Future<List<BusinessTimingProfileWriteResult>> listProfiles();
 
+  /// Fix #4 / S3 (G13) — the location-scoped, org-unit-ancestor
+  /// resolved candidate chain for [locationId], in canonical resolver
+  /// precedence order (operator default first, location override
+  /// last), as returned by the S1 backend route
+  /// `GET /v1/operator/locations/:locationId/business-timing-resolution`
+  /// (PR #872). The client runs the ONE canonical pure
+  /// `BusinessTimingProfileResolver` over these candidates — the proxy
+  /// does NOT fork the resolver. Read-only.
+  ///
+  /// [businessDate] (optional, `YYYY-MM-DD`) selects which
+  /// effective-dated rows are evaluated; when omitted the proxy
+  /// defaults to UTC today, matching the existing resolved-timing
+  /// caller's default.
+  Future<BusinessTimingResolutionResult> resolveForLocation({
+    required String locationId,
+    String? businessDate,
+  });
+
   Future<BusinessTimingProfileWriteResult> createProfile(
     BusinessTimingProfileCreate request,
   );
@@ -74,6 +92,16 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
   static String operatorServicePeriodPath(String profileId, String key) =>
       '${operatorServicePeriodsPath(profileId)}/${Uri.encodeComponent(key)}';
 
+  /// Fix #4 / S3 — the S1 location-scoped resolution route
+  /// (PR #872, `operator_routes.dart`
+  /// `operatorLocationBusinessTimingResolutionPrefix` +
+  /// `...Suffix`). Operator-scoped (NOT `/admin/`); the proxy takes
+  /// the operator from the JWT and rejects a path location that does
+  /// not match the signed-in tenant scope.
+  static String operatorBusinessTimingResolutionPath(String locationId) =>
+      '/v1/operator/locations/${Uri.encodeComponent(locationId)}'
+      '/business-timing-resolution';
+
   @override
   Future<List<BusinessTimingProfileWriteResult>> listProfiles() async {
     _assertOperatorPath(operatorProfilesPath);
@@ -103,6 +131,29 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
                 'The proxy returned a malformed business-timing profile.',
           ),
     ];
+  }
+
+  @override
+  Future<BusinessTimingResolutionResult> resolveForLocation({
+    required String locationId,
+    String? businessDate,
+  }) async {
+    final path = operatorBusinessTimingResolutionPath(locationId);
+    // The S1 route is operator-scoped, NOT a business-timing-profiles
+    // collection path, so use the looser non-admin assertion: the
+    // gateway must still never produce an /admin/ URL (no silent
+    // permission escalation), but it is allowed to leave the
+    // /v1/operator/business-timing-profiles prefix.
+    _assertNonAdminOperatorPath(path);
+    final token = await _requireToken();
+    final response = await _client.getJson(
+      path,
+      idToken: token,
+      queryParameters: (businessDate != null && businessDate.trim().isNotEmpty)
+          ? <String, String>{'business_date': businessDate.trim()}
+          : null,
+    );
+    return BusinessTimingResolutionResult.fromJson(response.body);
   }
 
   @override
@@ -233,6 +284,20 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
       throw _OperatorPathViolation(path);
     }
     if (!path.startsWith('/v1/operator/business-timing-profiles')) {
+      throw _OperatorPathViolation(path);
+    }
+  }
+
+  /// Fix #4 / S3 — looser guard for the operator-scoped resolution
+  /// route, which is `/v1/operator/locations/:id/...` and therefore
+  /// outside the business-timing-profiles collection prefix. Still
+  /// loudly rejects any `/admin/` path so a misconfigured route can
+  /// never escalate to the F&F Ops Console surface.
+  static void _assertNonAdminOperatorPath(String path) {
+    if (path.contains('/admin/')) {
+      throw _OperatorPathViolation(path);
+    }
+    if (!path.startsWith('/v1/operator/')) {
       throw _OperatorPathViolation(path);
     }
   }
@@ -521,6 +586,160 @@ class BusinessTimingProfileWriteResult {
           .toList(),
       createdAt: DateTime.parse(createdAtRaw).toUtc(),
       updatedAt: DateTime.parse(updatedAtRaw).toUtc(),
+    );
+  }
+}
+
+/// Fix #4 / S3 (G13) — one rung of the canonical business-timing
+/// resolution chain as returned by the S1 route. Carries the raw
+/// candidate fields plus the scope ancestry the wire previously
+/// dropped (`scopeType` / `scopeId` / a non-blank `scopeLabel`) so the
+/// client can run the one canonical pure resolver AND derive real
+/// per-field provenance from the resolver's `inheritanceChain` — no
+/// `:56` same-value heuristic.
+@immutable
+class BusinessTimingResolutionCandidate {
+  const BusinessTimingResolutionCandidate({
+    required this.profileId,
+    required this.scopeType,
+    required this.scopeId,
+    required this.scopeLabel,
+    required this.scopeDepthRank,
+    required this.ianaTimezone,
+    required this.effectiveAtBusinessDate,
+    required this.weekStartDay,
+    required this.businessDayStartLocal,
+    required this.servicePeriods,
+  });
+
+  final String profileId;
+
+  /// `operator` | `org_unit` | `location` — the canonical
+  /// `business_timing_profiles.scope_type`.
+  final String scopeType;
+  final String scopeId;
+
+  /// Human label for the rung (operator `display_name` when set, else
+  /// a scope-kind fallback). Never blank — the inheritance chrome
+  /// renders this verbatim instead of faking a string.
+  final String scopeLabel;
+  final int scopeDepthRank;
+
+  final String ianaTimezone;
+  final String effectiveAtBusinessDate;
+  final String weekStartDay;
+  final String businessDayStartLocal;
+  final List<ServicePeriod> servicePeriods;
+
+  static BusinessTimingResolutionCandidate fromJson(
+    Map<String, Object?> json,
+  ) {
+    final profileId = _readString(json['profileId']);
+    // The S1 record emits both `scopeType` and a back-compat
+    // `scopeKind` alias; accept either so the consumer is decoupled
+    // from which key the wire chose.
+    final scopeType =
+        _readString(json['scopeType']) ?? _readString(json['scopeKind']);
+    final scopeId = _readString(json['scopeId']);
+    final scopeLabel = _readString(json['scopeLabel']);
+    final ianaTimezone = _readString(json['ianaTimezone']);
+    final effectiveAtBusinessDate =
+        _readString(json['effectiveAtBusinessDate']);
+    final weekStartDay = _readString(json['weekStartDay']);
+    final businessDayStartLocal =
+        _readString(json['businessDayStartLocal']);
+    final periodsRaw = json['servicePeriods'];
+    if (profileId == null ||
+        scopeType == null ||
+        scopeId == null ||
+        scopeLabel == null ||
+        ianaTimezone == null ||
+        effectiveAtBusinessDate == null ||
+        weekStartDay == null ||
+        businessDayStartLocal == null ||
+        periodsRaw is! List) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_business_timing_candidate',
+        message:
+            'The proxy returned an incomplete business-timing resolution '
+            'candidate.',
+      );
+    }
+    final rank = json['scopeDepthRank'];
+    return BusinessTimingResolutionCandidate(
+      profileId: profileId,
+      scopeType: scopeType,
+      scopeId: scopeId,
+      scopeLabel: scopeLabel,
+      scopeDepthRank: rank is int
+          ? rank
+          : (rank is num ? rank.toInt() : 0),
+      ianaTimezone: ianaTimezone,
+      effectiveAtBusinessDate: effectiveAtBusinessDate,
+      weekStartDay: weekStartDay,
+      businessDayStartLocal: businessDayStartLocal,
+      servicePeriods: periodsRaw
+          .whereType<Map<Object?, Object?>>()
+          .map((p) => ServicePeriod.fromJson(Map<String, Object?>.from(p)))
+          .toList(),
+    );
+  }
+}
+
+/// Fix #4 / S3 (G13) — wire response of the S1 route
+/// `GET /v1/operator/locations/:locationId/business-timing-resolution`.
+/// The candidate list is already in canonical resolver precedence
+/// order (operator default first, location override last).
+@immutable
+class BusinessTimingResolutionResult {
+  const BusinessTimingResolutionResult({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDate,
+    required this.ianaTimezone,
+    required this.candidates,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDate;
+
+  /// `locations.timezone` for the resolved location, surfaced once at
+  /// the top level (the resolver needs a timezone even when no
+  /// candidate overrides it). Null only when the location row is
+  /// missing.
+  final String? ianaTimezone;
+  final List<BusinessTimingResolutionCandidate> candidates;
+
+  static BusinessTimingResolutionResult fromJson(Map<String, Object?> json) {
+    final operatorId = _readString(json['operatorId']);
+    final locationId = _readString(json['locationId']);
+    final businessDate = _readString(json['businessDate']);
+    final candidatesRaw = json['candidates'];
+    if (operatorId == null ||
+        locationId == null ||
+        businessDate == null ||
+        candidatesRaw is! List) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_business_timing_resolution',
+        message:
+            'The proxy returned an incomplete business-timing resolution '
+            'response.',
+      );
+    }
+    return BusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: _readString(json['ianaTimezone']),
+      candidates: candidatesRaw
+          .whereType<Map<Object?, Object?>>()
+          .map(
+            (c) => BusinessTimingResolutionCandidate.fromJson(
+              Map<String, Object?>.from(c),
+            ),
+          )
+          .toList(),
     );
   }
 }

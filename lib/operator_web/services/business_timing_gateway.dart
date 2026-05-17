@@ -81,6 +81,7 @@ class BusinessTimingServicePeriod {
     required this.endsAt,
     required this.sourceLabel,
     this.rollsPastMidnight = false,
+    this.daysLabel,
   });
 
   final String name;
@@ -88,6 +89,13 @@ class BusinessTimingServicePeriod {
   final String endsAt;
   final String sourceLabel;
   final bool rollsPastMidnight;
+
+  /// Fix #4 / S3 (G45 / Gap 28) — a plain-English list of the
+  /// weekdays this period runs on (e.g. "Sat, Sun") when it is
+  /// day-restricted, or `null` when it runs every day. Surfaced so a
+  /// day-restricted period (e.g. "Weekend Brunch") is visible on the
+  /// read surface instead of silently implying all-week.
+  final String? daysLabel;
 }
 
 class DemoBusinessTimingGateway implements BusinessTimingGateway {
