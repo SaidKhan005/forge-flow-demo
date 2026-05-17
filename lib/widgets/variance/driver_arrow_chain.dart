@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../domain/constants/app_defaults.dart';
+import '../../services/labor_model.dart';
 import '../../utils/formatters.dart';
 import '../money_sentiment.dart';
 
@@ -22,6 +23,16 @@ import '../money_sentiment.dart';
 /// adverse / loss, negative = favorable / profit — the same polarity
 /// `_DollarAttributionSection` already renders). It never calls the
 /// labor model and never re-derives a dollar value.
+///
+/// GAP-5 (V2-2 colour binding): node 1 colour is the detected lever's
+/// catalog `isFavorable`; node 2 colour is the COUNTER lever's catalog
+/// sentiment via `LaborModel.isFavorableLever`; node 3 (RESULT/net) is
+/// the same loss-vs-gain predicate the hero uses
+/// (`MoneySentiment.fromDollarGap`). NONE of the three nodes colour by
+/// the raw arithmetic sign of a dollar contribution — that value-sign
+/// colouring is the V2-2-forbidden bug this widget no longer commits.
+/// The direction token TEXT still derives from the lever id suffix
+/// (raw metric movement); only the colour follows sentiment.
 ///
 /// Degraded id (`on_model` / unknown / null lookup) is handled by the
 /// caller passing a null [lever]; this widget then renders
@@ -141,13 +152,15 @@ class DriverArrowChain extends StatelessWidget {
     for (final a in _axes) {
       net += (map[a.unfavorableId] ?? 0) + (map[a.favorableId] ?? 0);
     }
-    // V2-2: a loss is unfavorable (red, −$, "lost"); a profit is
-    // favorable (green, +$, "gained"). Sentiment drives sign + color
-    // together — never the raw arithmetic sign in isolation. Reuse the
-    // merged Lane C `MoneySentiment` (single (color, glyph) source);
-    // `fromAxisImpact` reads the engine's already-signed net (positive =
-    // adverse). No new math: same `net` value, same polarity.
-    final netSentiment = MoneySentiment.fromAxisImpact(net);
+    // V2-2 / GAP-5: node 3 (RESULT/net) sentiment is the SAME loss-vs-gain
+    // predicate the hero uses (`MoneySentiment.fromDollarGap`), NOT the
+    // value-sign `fromAxisImpact`. The chain net carries the same polarity
+    // as the hero's `dollarGap` (positive = an over-best-possible amount
+    // the operator LOST = unfavorable / red / "lost"; non-positive = at or
+    // under best possible = favorable / green / "gained"). Driving node 3
+    // from the same predicate as the hero keeps the chain's result node
+    // and the hero number in lockstep. No new math: same `net` value.
+    final netSentiment = MoneySentiment.fromDollarGap(net);
     final netIsLoss = !netSentiment.favorable;
     final netColor = netSentiment.color;
     final netGlyph = netSentiment.sign; // U+2212 minus / plus, from C
@@ -208,14 +221,19 @@ class DriverArrowChain extends StatelessWidget {
     ];
 
     if (counterAxis != null) {
-      // counter contribution sign → its raw metric direction. A
-      // favorable counter (v < 0) reads "↓ soft" (eased the gap); an
-      // adverse counter (v > 0) reads "↑ over". Color follows
-      // sentiment (favorable = green, adverse = red) per V2-2 via the
-      // same Lane C `MoneySentiment.fromAxisImpact` source as the net
-      // node (the engine's signed contribution is the sentiment).
-      final counterSentiment = MoneySentiment.fromAxisImpact(counterValue);
+      // GAP-5 / V2-2: node 2 color is the COUNTER LEVER'S CATALOG
+      // SENTIMENT, never the arithmetic sign of its dollar contribution
+      // (`fromAxisImpact` was the value-sign-coloring bug V2-2 forbids:
+      // an axis whose contribution sign disagrees with its catalog
+      // sentiment was mis-colored). Resolve the populated signed counter
+      // lever id (the same `_signedId(counterAxis, counterValue)` already
+      // used for the priority tiebreak) and bind color via
+      // `LaborModel.isFavorableLever`. The direction TOKEN TEXT
+      // (`↓ soft` / `↑ over`) still derives from the lever id suffix
+      // (raw metric movement) — only the COLOR binding changes.
       final counterId = _signedId(counterAxis, counterValue);
+      final counterSentiment =
+          MoneySentiment.fromFavorable(LaborModel.isFavorableLever(counterId));
       nodes
         ..add(const _ChainArrow())
         ..add(_ChainNode(
