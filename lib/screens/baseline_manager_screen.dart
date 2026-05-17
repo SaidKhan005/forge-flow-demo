@@ -5,18 +5,20 @@
 // write path, candidate truth, and preview formulas are unchanged.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import '../services/demand_forecast_context_service.dart';
 import '../services/star_target_selection_write_service.dart';
 import '../services/target_cycle_service.dart' show ManagerOverrideDeniedException;
+import '../state/active_target_profile_notifier.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../models/baseline_candidate_shift.dart';
 import '../theme/app_theme.dart';
 import 'baseline_manager/baseline_manager_actions.dart';
 import 'baseline_manager/baseline_manager_calendar.dart';
-import 'baseline_manager/baseline_manager_day_detail.dart';
+import 'baseline_manager/baseline_manager_day_sheet.dart';
 import 'baseline_manager/baseline_manager_helpers.dart';
 import 'baseline_manager/baseline_manager_lens.dart';
 import 'baseline_manager/baseline_manager_preview.dart';
@@ -66,7 +68,6 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   List<BaselineCandidateShift> _candidates = [];
   late Set<String> _draftKeys;
   int? _demandWeeklyAvgCovers; // from canonical demand context
-  String? _selectedDate; // null = calendar grid, non-null = day detail
   Map<String, List<BaselineCandidateShift>> _shiftsByDate = {};
   List<String> _windowDates = [];
 
@@ -145,7 +146,6 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   void _buildCalendarData() {
     _shiftsByDate = {};
     _windowDates = [];
-    _selectedDate = null;
 
     for (final c in _candidates) {
       if (c.businessDate == null) continue;
@@ -195,6 +195,28 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
 
   void _clearAll() {
     setState(() => _draftKeys.clear());
+  }
+
+  /// R2: tapping a calendar day opens an in-place bottom sheet (no
+  /// route push). The sheet toggles selections through [_toggle] only;
+  /// nothing is persisted or recomputed here. The wage authority passed
+  /// in is the WHOLE-DAY profile wage pair (one pair, never per-period),
+  /// read from the same `ActiveTargetProfileNotifier` the preview uses;
+  /// when no profile is in scope the rollup labor % degrades to an
+  /// honest unknown instead of a config-default guess.
+  Future<void> _openDaySheet(String date) async {
+    final profile = context.read<ActiveTargetProfileNotifier?>()?.profile;
+    await showBaselineDayBottomSheet(
+      context: context,
+      date: date,
+      dayShifts: _shiftsByDate[date] ?? const <BaselineCandidateShift>[],
+      selectedLensId: _selectedLensId,
+      defs: _defs,
+      isSelected: (recordKey) => _draftKeys.contains(recordKey),
+      onToggle: _toggle,
+      fohWage: profile?.fohWage,
+      bohWage: profile?.bohWage,
+    );
   }
 
   List<BaselineCandidateShift> get _draftSelected =>
@@ -342,26 +364,19 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                   ),
                 ),
                 // Calendar is the dominant hero element of the screen:
-                // it gets the larger flex share of the body.
+                // it gets the larger flex share of the body. R2: tapping
+                // a day opens an in-place bottom sheet rather than
+                // swapping the body for a full-screen day detail.
                 Expanded(
                   flex: 3,
-                  child: _selectedDate != null
-                      ? DayDetail(
-                          date: _selectedDate!,
-                          candidates: _shiftsByDate[_selectedDate!] ?? [],
-                          draftKeys: _draftKeys,
-                          onToggle: _toggle,
-                          onBack: () => setState(() => _selectedDate = null),
-                          defs: _defs,
-                        )
-                      : CalendarGrid(
-                          windowDates: _windowDates,
-                          shiftsByDate: _shiftsByDate,
-                          draftKeys: _draftKeys,
-                          activeLensId: _selectedLensId,
-                          onDateTap: (date) =>
-                              setState(() => _selectedDate = date),
-                        ),
+                  child: CalendarGrid(
+                    windowDates: _windowDates,
+                    shiftsByDate: _shiftsByDate,
+                    draftKeys: _draftKeys,
+                    activeLensId: _selectedLensId,
+                    defs: _defs,
+                    onDateTap: _openDaySheet,
+                  ),
                 ),
                 BottomBar(
                   onCancel: _cancel,

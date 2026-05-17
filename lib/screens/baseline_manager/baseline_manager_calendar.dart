@@ -12,6 +12,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/service_period_definition.dart';
 import '../../models/baseline_candidate_shift.dart';
 import '../../theme/app_theme.dart';
 import 'baseline_manager_helpers.dart';
@@ -29,6 +30,11 @@ class CalendarGrid extends StatelessWidget {
   /// restricts each day's state to that period's shifts only.
   final String activeLensId;
 
+  /// Operator-configured service-period definitions. Drives the
+  /// whole-day count badge denominator (services that day), never a
+  /// hardcoded daypart count.
+  final List<ServicePeriodDefinition> defs;
+
   const CalendarGrid({
     super.key,
     required this.windowDates,
@@ -36,6 +42,7 @@ class CalendarGrid extends StatelessWidget {
     required this.draftKeys,
     required this.onDateTap,
     required this.activeLensId,
+    required this.defs,
   });
 
   /// Returns the candidates for [dateStr] that match the active lens.
@@ -131,6 +138,30 @@ class CalendarGrid extends StatelessWidget {
         final hasSelected =
             shifts.any((c) => draftKeys.contains(c.recordKey));
 
+        // Whole-day lens only: subtle "selected/total" badge where the
+        // denominator is the number of distinct configured service
+        // periods that have a shift this day (from `defs`, never a
+        // hardcoded daypart count). Skipped under a period lens and on
+        // days with no shifts so the existing 2-state layout is intact.
+        String? countBadge;
+        if (activeLensId == kWholeDayLensId && hasShifts) {
+          final configuredIds = defs.map((d) => d.id).toSet();
+          final periodsWithShift = <String>{
+            for (final c in shifts)
+              if (configuredIds.contains(c.daypart)) c.daypart,
+          };
+          if (periodsWithShift.isNotEmpty) {
+            final selectedPeriods = <String>{
+              for (final c in shifts)
+                if (configuredIds.contains(c.daypart) &&
+                    draftKeys.contains(c.recordKey))
+                  c.daypart,
+            };
+            countBadge =
+                '${selectedPeriods.length}/${periodsWithShift.length}';
+          }
+        }
+
         // TWO states only: selected > closed. No "suggested".
         final Color cellBg;
         final Color cellBorder;
@@ -173,7 +204,16 @@ class CalendarGrid extends StatelessWidget {
                       weight: hasShifts ? FontWeight.w600 : FontWeight.w400,
                     ),
                   ),
-                  if (hasShifts)
+                  if (hasShifts && countBadge != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        countBadge,
+                        key: ValueKey<String>('cal_badge_$dateStr'),
+                        style: AppTextStyles.mono7(color: dotColor),
+                      ),
+                    )
+                  else if (hasShifts)
                     Container(
                       width: 5,
                       height: 5,
