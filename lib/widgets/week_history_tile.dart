@@ -22,9 +22,6 @@ class WeekHistoryTile extends StatelessWidget {
     final gapSign = isOver ? '−' : '+';
     final gapFormatted = Fmt.dollars(week.dollarGap.abs());
 
-    final varSign = isOver ? '−' : '+';
-    final varAbs = week.laborPctVariance.abs().toStringAsFixed(1);
-
     // 7.58.UX.5 (F-1): explicit lookup; null → degraded "—" badge.
     final leverCard = LeverCards.lookup(week.primaryLeverId);
     final lever = leverCard?.shortLabel ?? '—';
@@ -62,18 +59,6 @@ class WeekHistoryTile extends StatelessWidget {
                         color: AppColors.textPrimary,
                         weight: FontWeight.w600)),
               ),
-
-              // ── Variance pts ─────────────────────────────────────────────
-              Expanded(
-                flex: 2,
-                child: Text(
-                  '$varSign$varAbs pts',
-                  style: AppTextStyles.mono12(color: gapColor),
-                  textAlign: TextAlign.right,
-                ),
-              ),
-
-              const SizedBox(width: 10),
 
               // ── Dollar gap ────────────────────────────────────────────────
               Expanded(
