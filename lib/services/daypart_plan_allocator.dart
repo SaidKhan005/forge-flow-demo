@@ -62,20 +62,24 @@ class DaypartAllocation {
 ///     read), and the locked-snapshot empty-`dayDayparts` fallback
 ///     (legacy snapshots / Gap 42 insufficient-recommendation), both in
 ///     `ScheduleForecastNotifier`;
-///   - `ShiftService.getFullWeekShifts` (Variance Full Week non-closed
-///     row construction — its persisted-row swap is plan Slice 5);
+///   - `ShiftService.getFullWeekShifts` Variance Full Week non-closed
+///     rows are now LOCKED-READ (Slice 5): they read the persisted
+///     per-(business_date, service_period) rows and reconcile the hour
+///     doubles to integers via `reconcileLockedDaypartIntHours`. This
+///     allocator is invoked there ONLY on the empty-`dayDayparts`
+///     fallback (legacy snapshot / Gap-42), same as Schedule;
 ///   - `data_alignment_audit_read_service.dart` (audit scorer — plan
 ///     Slice 6).
 ///
 /// New code MUST NOT call this for any path that has a persisted locked
 /// snapshot available — read `WeeklyPlanSnapshot.dayDayparts` instead.
 @Deprecated(
-  'Per-Daypart V1 Slice 3: read locked sub-rows from '
+  'Per-Daypart V1 Slice 3/5: read locked sub-rows from '
   'WeeklyPlanSnapshot.dayDayparts (weekly_plan_snapshot_day_dayparts) '
   'instead of regenerating per-period values at render time. This '
   'allocator survives only as the live/preview + legacy/Gap-42 '
-  'fallback and for the not-yet-swapped Variance (Slice 5) / audit '
-  '(Slice 6) consumers.',
+  'empty-dayDayparts fallback (Schedule + Variance) and for the '
+  'not-yet-swapped audit (Slice 6) scorer.',
 )
 class DaypartPlanAllocator {
   const DaypartPlanAllocator._();
