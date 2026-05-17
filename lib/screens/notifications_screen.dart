@@ -245,7 +245,10 @@ class _NotificationTile extends StatelessWidget {
                           children: [
                             if (isUnread) ...[
                               const Padding(
-                                padding: EdgeInsets.only(top: 6, right: 8),
+                                padding: EdgeInsets.only(
+                                  top: AppSpacing.sm,
+                                  right: AppSpacing.sm,
+                                ),
                                 child: CircleAvatar(
                                   radius: 4,
                                   backgroundColor: AppColors.sunsetDark,
