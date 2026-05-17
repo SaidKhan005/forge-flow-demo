@@ -557,6 +557,26 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     cycle: cycle,
     dayRows: dayRows,
   );
+
+  // Per-Daypart V1 (bottom-up locked snapshot, PR #917 parity): the
+  // demo seed used to be a THIRD divergent writer — it constructed the
+  // snapshot from raw `plan.*` week totals and raw `dayRows`, so
+  // Σ(per-period) ≠ day ≠ week and the Data Alignment Audit panel
+  // showed covers/sales drift. The runtime lock path
+  // (`WeeklyPlanSnapshotService._generateAndPersistSnapshot`) reconciles
+  // through the SHARED `WeeklyPlanSnapshotBottomUpReconciler.reconcile`;
+  // the seed now calls the SAME shared reconciler so demo mirrors
+  // production (HP #2) with exactly one implementation of the math.
+  // Per-period rows (`dayDayparts`) keep per-period rate fidelity
+  // unchanged — `_buildSeedDayDaypartRows` is untouched. The Gap-42
+  // honest fallback (no per-period rows → keep pooled `plan.*`, never
+  // zero) is preserved by the shared reconciler.
+  final reconciled = WeeklyPlanSnapshotBottomUpReconciler.reconcile(
+    plan: plan,
+    dayRows: dayRows,
+    dayDayparts: dayDayparts,
+  );
+
   // Design Rule 8 — the locked-plan wage stamp. Pull wages from the
   // cycle in force at lock time (not "current" wages); blended wage
   // uses the canonical cover-independent formula on the shared
@@ -581,17 +601,17 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     weekStartDate: weekStart,
     weekEndDate: weekEnd,
     targetCycleId: cycle.cycleId,
-    forecastCovers: plan.forecastCovers,
-    forecastSales: plan.forecastSales,
-    requiredFohHours: plan.requiredFohHours,
-    requiredBohHours: plan.requiredBohHours,
-    theoreticalFohLaborDollars: plan.theoreticalFohLaborDollars,
-    theoreticalBohLaborDollars: plan.theoreticalBohLaborDollars,
+    forecastCovers: reconciled.weekCovers,
+    forecastSales: reconciled.weekSales,
+    requiredFohHours: reconciled.weekFohHours,
+    requiredBohHours: reconciled.weekBohHours,
+    theoreticalFohLaborDollars: reconciled.weekFohDollars,
+    theoreticalBohLaborDollars: reconciled.weekBohDollars,
     coversSource: plan.coversSource,
     salesSource: plan.salesSource,
     generatedAt: now,
     lockedAt: now,
-    dayRows: dayRows,
+    dayRows: reconciled.dayRows,
     dayDayparts: dayDayparts,
     wageAtLockTime: wageStamp,
   );
@@ -3050,18 +3070,57 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
           ),
       ];
 
-      final totalCovers =
-          dayAgg.values.fold<int>(0, (a, v) => a + v.covers);
-      final totalSales =
-          dayAgg.values.fold<double>(0, (a, v) => a + v.sales);
-      final totalFoh =
-          dayAgg.values.fold<double>(0, (a, v) => a + v.foh);
-      final totalBoh =
-          dayAgg.values.fold<double>(0, (a, v) => a + v.boh);
-      final totalFohDollars =
-          children.fold<double>(0, (a, c) => a + c.theoreticalFohDollars);
-      final totalBohDollars =
+      // Per-Daypart V1 (bottom-up locked snapshot, PR #917 parity):
+      // reconcile through the SHARED
+      // `WeeklyPlanSnapshotBottomUpReconciler.reconcile` instead of
+      // hand-rolling Σ(per-period) here. This historical seeder was
+      // another divergent writer — its week hours were
+      // `Σ(all per-period hrs).round()` (sum-then-round) while the
+      // runtime lock path is `Σ(per-day rounded hrs)` (round-then-sum);
+      // the shared reconciler is the single canonical implementation so
+      // all three writers (runtime + both seed sites) agree by
+      // construction (HP #2). Per-period rows (`children`) keep their
+      // per-period rate fidelity unchanged. `children` is guaranteed
+      // non-empty here (`if (children.isEmpty) continue;` above), so the
+      // synthetic plan below is only the never-hit Gap-42 empty
+      // fallback; it still carries honest pre-reconcile totals.
+      final fallbackTheoreticalTotal = children.fold<double>(
+            0, (a, c) => a + c.theoreticalFohDollars,
+          ) +
           children.fold<double>(0, (a, c) => a + c.theoreticalBohDollars);
+      final fallbackCovers =
+          dayAgg.values.fold<int>(0, (a, v) => a + v.covers);
+      final fallbackSales =
+          dayAgg.values.fold<double>(0, (a, v) => a + v.sales);
+      final fallbackPlan = SchedulePlan(
+        forecastCovers: fallbackCovers,
+        forecastSales: fallbackSales,
+        requiredFohHours:
+            dayAgg.values.fold<double>(0, (a, v) => a + v.foh).round(),
+        requiredBohHours:
+            dayAgg.values.fold<double>(0, (a, v) => a + v.boh).round(),
+        theoreticalFohLaborDollars:
+            children.fold<double>(0, (a, c) => a + c.theoreticalFohDollars),
+        theoreticalBohLaborDollars:
+            children.fold<double>(0, (a, c) => a + c.theoreticalBohDollars),
+        theoreticalLaborPct: fallbackSales > 0
+            ? fallbackTheoreticalTotal / fallbackSales * 100
+            : 0.0,
+        targetBlendedWage: ActiveTargetProfile.computeTargetBlendedWage(
+          targetCPLH: cycle.targetCPLH,
+          targetSPLH: cycle.targetSPLH,
+          targetPPA: cycle.targetPPA,
+          fohWage: cycle.fohWage,
+          bohWage: cycle.bohWage,
+        ),
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
+      );
+      final reconciled = WeeklyPlanSnapshotBottomUpReconciler.reconcile(
+        plan: fallbackPlan,
+        dayRows: dayRows,
+        dayDayparts: children,
+      );
 
       final isInForce = scenario.currentBusinessDate.compareTo(weekStart) >=
               0 &&
@@ -3077,18 +3136,18 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
         weekStartDate: weekStart,
         weekEndDate: weekEnd,
         targetCycleId: cycle.cycleId,
-        forecastCovers: totalCovers,
-        forecastSales: totalSales,
-        requiredFohHours: totalFoh.round(),
-        requiredBohHours: totalBoh.round(),
-        theoreticalFohLaborDollars: totalFohDollars,
-        theoreticalBohLaborDollars: totalBohDollars,
+        forecastCovers: reconciled.weekCovers,
+        forecastSales: reconciled.weekSales,
+        requiredFohHours: reconciled.weekFohHours,
+        requiredBohHours: reconciled.weekBohHours,
+        theoreticalFohLaborDollars: reconciled.weekFohDollars,
+        theoreticalBohLaborDollars: reconciled.weekBohDollars,
         coversSource:
             ForecastDemandSource.appDerivedFromHistoricalAverage,
         salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
         generatedAt: lockTs,
         lockedAt: lockTs,
-        dayRows: dayRows,
+        dayRows: reconciled.dayRows,
         dayDayparts: children,
         wageAtLockTime: WeeklyPlanSnapshotWagesAtLockTime(
           fohWage: cycle.fohWage,

@@ -116,8 +116,17 @@ void main() {
 
   // ── D: Snapshot stores weekly totals and day rows matching SchedulePlan ──
 
-  group('D — snapshot matches generated SchedulePlan', () {
-    test('weekly totals match SchedulePlan', () async {
+  group('D — bottom-up locked snapshot (PR #917 + seed parity)', () {
+    // Per-Daypart V1: the locked snapshot (runtime AND demo-seed) is now
+    // bottom-up by construction via the SHARED
+    // `WeeklyPlanSnapshotBottomUpReconciler`. Day rows = Σ(per-period
+    // rows); week totals = Σ(day rows); week theoretical FOH/BOH $ =
+    // Σ(per-period $). The snapshot therefore intentionally NO LONGER
+    // equals the raw pooled `SchedulePlan` (which is independently
+    // largest-remainder allocated and pool-rounded). The contract that
+    // matters is internal consistency: Σ(per-period) == day == week.
+    test('week totals == Σ(day rows) and structurally consistent',
+        () async {
       final snapshot =
           await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
       final plan =
@@ -125,19 +134,75 @@ void main() {
 
       expect(snapshot, isNotNull);
       expect(plan, isNotNull);
-      expect(snapshot!.forecastCovers, plan!.forecastCovers);
-      expect(snapshot.forecastSales, plan.forecastSales);
-      expect(snapshot.requiredFohHours, plan.requiredFohHours);
-      expect(snapshot.requiredBohHours, plan.requiredBohHours);
-      expect(snapshot.theoreticalFohLaborDollars,
-          plan.theoreticalFohLaborDollars);
-      expect(snapshot.theoreticalBohLaborDollars,
-          plan.theoreticalBohLaborDollars);
-      expect(snapshot.coversSource, plan.coversSource);
+
+      final dayCovers = snapshot!.dayRows
+          .fold<int>(0, (s, d) => s + d.forecastCovers);
+      final daySales = snapshot.dayRows
+          .fold<double>(0, (s, d) => s + d.forecastSales);
+      final dayFoh = snapshot.dayRows
+          .fold<int>(0, (s, d) => s + d.requiredFohHours);
+      final dayBoh = snapshot.dayRows
+          .fold<int>(0, (s, d) => s + d.requiredBohHours);
+
+      // Week totals are the SUM of the day rows (bottom-up).
+      expect(snapshot.forecastCovers, dayCovers);
+      expect(snapshot.forecastSales, closeTo(daySales, 1e-6));
+      expect(snapshot.requiredFohHours, dayFoh);
+      expect(snapshot.requiredBohHours, dayBoh);
+
+      // Source enums still passthrough from the resolved plan.
+      expect(snapshot.coversSource, plan!.coversSource);
       expect(snapshot.salesSource, plan.salesSource);
     });
 
-    test('day rows match SchedulePlan dayPlans', () async {
+    test('Σ(per-period) == day == week for covers and sales', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(snapshot, isNotNull);
+      // Seeded demo cycle carries per-period rows (not the Gap-42
+      // empty fallback) — the locked snapshot is genuinely bottom-up.
+      expect(snapshot!.dayDayparts.isNotEmpty, isTrue,
+          reason: 'seeded demo cycle should have per-period rows so the '
+              'bottom-up reconciliation is exercised');
+
+      final byDate = <String, List<dynamic>>{};
+      for (final dp in snapshot.dayDayparts) {
+        (byDate[dp.businessDate] ??= <dynamic>[]).add(dp);
+      }
+
+      var weekPeriodCovers = 0;
+      var weekPeriodSales = 0.0;
+      for (final dayRow in snapshot.dayRows) {
+        final periods = byDate[dayRow.businessDate];
+        if (periods == null || periods.isEmpty) {
+          // Gap-42 per-day fallback day — pooled values kept verbatim.
+          weekPeriodCovers += dayRow.forecastCovers;
+          weekPeriodSales += dayRow.forecastSales;
+          continue;
+        }
+        final pCovers =
+            periods.fold<int>(0, (s, p) => s + (p.forecastCovers as int));
+        final pSales = periods.fold<double>(
+            0, (s, p) => s + (p.forecastSales as double));
+        // Σ(per-period) == day row.
+        expect(dayRow.forecastCovers, pCovers,
+            reason: 'day ${dayRow.businessDate} covers must equal '
+                'Σ(per-period covers)');
+        expect(dayRow.forecastSales, closeTo(pSales, 1e-6),
+            reason: 'day ${dayRow.businessDate} sales must equal '
+                'Σ(per-period sales)');
+        weekPeriodCovers += pCovers;
+        weekPeriodSales += pSales;
+      }
+
+      // Σ(per-period) == week total.
+      expect(snapshot.forecastCovers, weekPeriodCovers);
+      expect(snapshot.forecastSales, closeTo(weekPeriodSales, 1e-6));
+    });
+
+    test('day rows align 1:1 with SchedulePlan dayPlans by label/date',
+        () async {
       final snapshot =
           await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
       final plan =
@@ -145,16 +210,11 @@ void main() {
 
       expect(snapshot, isNotNull);
       expect(plan, isNotNull);
+      // Structural shape is unchanged (same count + day labels); only
+      // the magnitudes are now bottom-up reconciled.
       expect(snapshot!.dayRows.length, plan!.dayPlans.length);
-
       for (var i = 0; i < snapshot.dayRows.length; i++) {
-        final dayRow = snapshot.dayRows[i];
-        final dayPlan = plan.dayPlans[i];
-        expect(dayRow.day, dayPlan.day);
-        expect(dayRow.forecastCovers, dayPlan.forecastCovers);
-        expect(dayRow.forecastSales, dayPlan.forecastSales);
-        expect(dayRow.requiredFohHours, dayPlan.requiredFohHours);
-        expect(dayRow.requiredBohHours, dayPlan.requiredBohHours);
+        expect(snapshot.dayRows[i].day, plan.dayPlans[i].day);
       }
     });
 
