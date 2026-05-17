@@ -340,6 +340,24 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
   int createCalls = 0;
   int updateCalls = 0;
   int replaceCalls = 0;
+
+  // Fix #4 / S2 — admin cross-tenant resolution recording. The handler
+  // must only ever pass the URL operator/location through; these let
+  // the route tests assert the gateway received exactly the URL scope
+  // and the audit `reason`.
+  int resolveAsSystemCalls = 0;
+  String? lastResolveAsSystemOperatorId;
+  String? lastResolveAsSystemLocationId;
+  String? lastResolveAsSystemBusinessDate;
+  String? lastResolveAsSystemReason;
+  List<OperatorBusinessTimingResolutionCandidate>? _systemChain;
+
+  void seedSystemChain(
+    List<OperatorBusinessTimingResolutionCandidate> chain,
+  ) {
+    _systemChain = chain;
+  }
+
   final Map<String, OperatorBusinessTimingProfileRecord> _seeded =
       <String, OperatorBusinessTimingProfileRecord>{};
 
@@ -428,6 +446,29 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
       businessDate: businessDate,
       ianaTimezone: null,
       candidates: const <OperatorBusinessTimingResolutionCandidate>[],
+    );
+  }
+
+  @override
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocationAsSystem({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String reason,
+  }) async {
+    resolveAsSystemCalls += 1;
+    lastResolveAsSystemOperatorId = operatorId;
+    lastResolveAsSystemLocationId = locationId;
+    lastResolveAsSystemBusinessDate = businessDate;
+    lastResolveAsSystemReason = reason;
+    final chain = _systemChain ??
+        const <OperatorBusinessTimingResolutionCandidate>[];
+    return OperatorBusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: chain.isEmpty ? null : chain.first.ianaTimezone,
+      candidates: chain,
     );
   }
 
