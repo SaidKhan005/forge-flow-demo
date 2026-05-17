@@ -1,6 +1,7 @@
-// Phase 8 spine-bridge Lane .B — Covers source per-daypart toggle.
+// Phase 8 spine-bridge Lane .B — Covers source per-service-period
+// toggle.
 //
-// Three states per daypart (lunch / dinner / late_night):
+// Three states per service period:
 //
 //   * vendor   — read covers from POS (default).
 //   * forecast — substitute the F&F-computed forecast covers value.
@@ -9,14 +10,22 @@
 // Authority: docs/contracts/data_accuracy_settings_contract.md
 // "Covers source card" + "Covers source resolution" sections.
 //
-// When the operator picks `manual` for a daypart, the parent screen
-// is responsible for rendering the manual-entry sub-card; this
-// widget only owns the per-daypart 3-way picker plus the dynamic
-// vendor relativity label.
+// Per-Daypart V1 Slice R5 (Gap 27/36): the hardcoded 3-daypart
+// `Daypart.values` iteration is replaced by the operator-configured
+// service periods (resolver-ordered via
+// `ServicePeriodDefinitionResolver.ordered`). An operator with any
+// number of periods (e.g. breakfast/lunch/dinner/late_night) gets one
+// row per period.
+//
+// When the operator picks `manual` for a period, the parent screen is
+// responsible for rendering the manual-entry sub-card; this widget
+// only owns the per-period 3-way picker plus the dynamic vendor
+// relativity label.
 
 import 'package:flutter/material.dart';
 
 import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/service_period_definition.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
 import 'vendor_relativity_label.dart';
@@ -25,12 +34,19 @@ class CoversSourceToggle extends StatelessWidget {
   const CoversSourceToggle({
     super.key,
     required this.settings,
+    required this.servicePeriods,
     required this.onChanged,
     required this.bundle,
   });
 
   final DataAccuracySettings settings;
-  final void Function(Daypart daypart, CoversSource source) onChanged;
+
+  /// Operator-configured service periods, resolver-ordered by the
+  /// screen (`ServicePeriodDefinitionResolver.ordered`). One picker row
+  /// renders per period; never a hardcoded daypart list.
+  final List<ServicePeriodDefinition> servicePeriods;
+
+  final void Function(String servicePeriodId, CoversSource source) onChanged;
   final VendorConnectionsBundle? bundle;
 
   @override
@@ -56,7 +72,7 @@ class CoversSourceToggle extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Where covers come from, per daypart',
+                  'Where covers come from, per service period',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -69,20 +85,29 @@ class CoversSourceToggle extends StatelessWidget {
           Text(
             'Covers (number of guests served) drive the per-cover '
             'metrics on your dashboard. Pick where Forge & Flow should read '
-            'covers from for each daypart. Different dayparts can use '
-            'different sources - for example, vendor at lunch and manual at '
+            'covers from for each service period. Different periods can use '
+            'different sources, for example vendor at lunch and manual at '
             'dinner.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
-          for (final daypart in Daypart.values) ...[
-            _DaypartRow(
-              daypart: daypart,
-              source: settings.coversSourceFor(daypart),
-              onChanged: (source) => onChanged(daypart, source),
-            ),
-            if (daypart != Daypart.values.last) const SizedBox(height: 10),
-          ],
+          if (servicePeriods.isEmpty)
+            Text(
+              'No service periods are configured yet. Set up your service '
+              'periods under Business timing and they will appear here.',
+              key: const Key('covers_source_no_periods'),
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            )
+          else
+            for (final period in servicePeriods) ...[
+              _PeriodRow(
+                period: period,
+                source: settings.coversSourceFor(period.id),
+                onChanged: (source) => onChanged(period.id, source),
+              ),
+              if (period != servicePeriods.last)
+                const SizedBox(height: 10),
+            ],
           const SizedBox(height: 14),
           VendorRelativityLabel(
             setting: VendorRelativitySetting.covers,
@@ -94,21 +119,21 @@ class CoversSourceToggle extends StatelessWidget {
   }
 }
 
-class _DaypartRow extends StatelessWidget {
-  const _DaypartRow({
-    required this.daypart,
+class _PeriodRow extends StatelessWidget {
+  const _PeriodRow({
+    required this.period,
     required this.source,
     required this.onChanged,
   });
 
-  final Daypart daypart;
+  final ServicePeriodDefinition period;
   final CoversSource source;
   final ValueChanged<CoversSource> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: Key('covers_source_daypart_${daypart.wire}'),
+      key: Key('covers_source_daypart_${period.id}'),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: AppColors.cardGlow,
@@ -121,7 +146,7 @@ class _DaypartRow extends StatelessWidget {
           SizedBox(
             width: 96,
             child: Text(
-              _daypartLabel(daypart),
+              period.label,
               style: AppTextStyles.body14(color: AppColors.textPrimary),
             ),
           ),
@@ -133,7 +158,7 @@ class _DaypartRow extends StatelessWidget {
                 for (final option in CoversSource.values)
                   _ChoiceChip(
                     chipKey: Key(
-                      'covers_source_chip_${daypart.wire}_${option.wire}',
+                      'covers_source_chip_${period.id}_${option.wire}',
                     ),
                     label: _sourceLabel(option),
                     selected: option == source,
@@ -145,17 +170,6 @@ class _DaypartRow extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _daypartLabel(Daypart d) {
-    switch (d) {
-      case Daypart.lunch:
-        return 'Lunch';
-      case Daypart.dinner:
-        return 'Dinner';
-      case Daypart.lateNight:
-        return 'Late night';
-    }
   }
 
   String _sourceLabel(CoversSource s) {

@@ -29,34 +29,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/service_period_definition_resolver.dart';
 import '../../infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../services/integration/pos_covers_capability.dart';
+import '../../services/restaurant_timing_config_read_service.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
 
-/// Daypart wire values mirrored from
-/// `lib/domain/models/data_accuracy_settings.dart` `Daypart`. Mobile
-/// keeps a string list here so this widget doesn't pull the heavier
-/// Postgres-bound DataAccuracySettings model into the Setup tab.
-const List<String> kSettingsCoversDayparts = <String>[
-  'lunch',
-  'dinner',
-  'late_night',
-];
-
-String _daypartDisplayLabel(String daypart) {
-  switch (daypart) {
-    case 'lunch':
-      return 'Lunch';
-    case 'dinner':
-      return 'Dinner';
-    case 'late_night':
-      return 'Late night';
-    default:
-      return daypart;
-  }
-}
+/// Resolver-driven service-period loader. Production reads the
+/// operator's persisted timing config (Gap 27/36 — never a hardcoded
+/// `['lunch','dinner','late_night']` list); widget tests inject a fake
+/// to skip the SQLite read. Falls back to the canonical fixture-era
+/// definitions only when no timing config is persisted yet, matching
+/// the canonical pattern in
+/// `lib/services/benchmark_tracker_read_service.dart`.
+typedef ServicePeriodDefinitionsLoader = Future<List<ServicePeriodDefinition>>
+    Function(String restaurantId);
 
 /// Loader abstraction. Production reads from SQLite; widget tests
 /// inject a fake to skip database setup.
@@ -75,6 +65,7 @@ class SettingsCoversSetupSection extends StatefulWidget {
     this.posVendorId,
     this.loader,
     this.writer,
+    this.servicePeriodsLoader,
     this.initialBusinessDate,
     this.initialDaypart = 'dinner',
     this.onAfterSave,
@@ -101,6 +92,11 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// Writer hook. Production passes a SQLite-backed closure; tests
   /// pass a fake.
   final ManualCoverEntryWriter? writer;
+
+  /// Service-period loader hook. Production resolves the operator's
+  /// persisted timing config; tests pass a fake. Falls back to the
+  /// canonical fixture-era definitions only when no config exists.
+  final ServicePeriodDefinitionsLoader? servicePeriodsLoader;
 
   /// Optional initial date for the picker. When null, falls back to
   /// today (restaurant-local approximation = device-local date).
@@ -129,6 +125,8 @@ class _SettingsCoversSetupSectionState
   bool _saving = false;
   bool _loadingRecent = true;
   List<ManualCoverEntry> _recentEntries = const <ManualCoverEntry>[];
+  List<ServicePeriodDefinition> _servicePeriods =
+      const <ServicePeriodDefinition>[];
 
   @override
   void initState() {
@@ -137,6 +135,7 @@ class _SettingsCoversSetupSectionState
     _selectedDate = widget.initialBusinessDate ?? _todayLocal();
     _selectedDaypart = widget.initialDaypart;
     _loadRecent();
+    _loadServicePeriods();
   }
 
   @override
@@ -144,7 +143,56 @@ class _SettingsCoversSetupSectionState
     super.didUpdateWidget(oldWidget);
     if (oldWidget.restaurantId != widget.restaurantId) {
       _loadRecent();
+      _loadServicePeriods();
     }
+  }
+
+  String _periodLabel(String servicePeriodId) {
+    for (final p in _servicePeriods) {
+      if (p.id == servicePeriodId) return p.label;
+    }
+    return servicePeriodId;
+  }
+
+  Future<void> _loadServicePeriods() async {
+    final loader = widget.servicePeriodsLoader ?? _defaultServicePeriodsLoader;
+    try {
+      final periods = await loader(widget.restaurantId);
+      if (!mounted) return;
+      setState(() {
+        _servicePeriods = periods;
+        // Keep the selection valid if the operator's configured set
+        // does not include the previous (or default) selection.
+        if (periods.isNotEmpty &&
+            !periods.any((p) => p.id == _selectedDaypart)) {
+          _selectedDaypart = periods.first.id;
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _servicePeriods = ServicePeriodDefinitionResolver.demoDefinitions;
+        if (!_servicePeriods.any((p) => p.id == _selectedDaypart)) {
+          _selectedDaypart = _servicePeriods.first.id;
+        }
+      });
+    }
+  }
+
+  static Future<List<ServicePeriodDefinition>> _defaultServicePeriodsLoader(
+    String restaurantId,
+  ) async {
+    // Canonical pattern (benchmark_tracker_read_service.dart): period
+    // set + labels + ordering come from the operator's persisted timing
+    // config, never a hardcoded daypart list. Falls back to the
+    // canonical fixture-era definitions only when no config is
+    // persisted yet.
+    final config = await RestaurantTimingConfigReadService.instance
+        .getTimingConfig(restaurantId);
+    final defs = (config?.servicePeriodDefinitions.isNotEmpty ?? false)
+        ? config!.servicePeriodDefinitions
+        : ServicePeriodDefinitionResolver.demoDefinitions;
+    return ServicePeriodDefinitionResolver.ordered(defs);
   }
 
   @override
@@ -250,7 +298,7 @@ class _SettingsCoversSetupSectionState
       _coversController.clear();
       setState(() {
         _confirmation =
-            "Saved ${entry.covers} covers for ${_daypartDisplayLabel(entry.daypart)} on ${entry.businessDate}.";
+            "Saved ${entry.covers} covers for ${_periodLabel(entry.daypart)} on ${entry.businessDate}.";
         _saving = false;
       });
       await _loadRecent();
@@ -296,9 +344,10 @@ class _SettingsCoversSetupSectionState
                 ),
                 const SizedBox(height: 10),
                 _FormRow(
-                  label: 'Daypart',
-                  child: _DaypartDropdown(
+                  label: 'Service period',
+                  child: _ServicePeriodDropdown(
                     selected: _selectedDaypart,
+                    periods: _servicePeriods,
                     onChanged: (next) {
                       if (next == null) return;
                       setState(() {
@@ -369,7 +418,7 @@ class _SettingsCoversSetupSectionState
                           'settings_covers_setup_recent_${e.businessDate}_${e.daypart}'),
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
-                        '${e.businessDate} • ${_daypartDisplayLabel(e.daypart)} • '
+                        '${e.businessDate} • ${_periodLabel(e.daypart)} • '
                         '${e.covers} covers',
                         style: AppTextStyles.body13(
                           color: AppColors.textPrimary,
@@ -545,17 +594,28 @@ class _DatePill extends StatelessWidget {
   }
 }
 
-class _DaypartDropdown extends StatelessWidget {
-  const _DaypartDropdown({
+class _ServicePeriodDropdown extends StatelessWidget {
+  const _ServicePeriodDropdown({
     required this.selected,
+    required this.periods,
     required this.onChanged,
   });
 
   final String selected;
+  final List<ServicePeriodDefinition> periods;
   final ValueChanged<String?> onChanged;
 
   @override
   Widget build(BuildContext context) {
+    if (periods.isEmpty) {
+      return Text(
+        'No service periods configured yet. Set them up under Business '
+        'timing.',
+        key: const Key('settings_covers_setup_no_periods'),
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      );
+    }
+    final hasSelection = periods.any((p) => p.id == selected);
     return InputDecorator(
       decoration: const InputDecoration(
         isDense: true,
@@ -565,15 +625,15 @@ class _DaypartDropdown extends StatelessWidget {
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           key: const Key('settings_covers_setup_daypart_dropdown'),
-          value: selected,
+          value: hasSelection ? selected : periods.first.id,
           isExpanded: true,
           onChanged: onChanged,
           items: [
-            for (final d in kSettingsCoversDayparts)
+            for (final p in periods)
               DropdownMenuItem<String>(
-                value: d,
+                value: p.id,
                 child: Text(
-                  _daypartDisplayLabel(d),
+                  p.label,
                   style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
               ),

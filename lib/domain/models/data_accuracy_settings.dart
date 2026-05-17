@@ -124,49 +124,20 @@ extension DataAccuracyWalkInHandlingModeWire on DataAccuracyWalkInHandlingMode {
   }
 }
 
-/// Daypart key. Matches the per-daypart column suffix on the SQL row
-/// (`covers_source_lunch` / `covers_source_dinner` /
-/// `covers_source_late_night`) and the manual-entry jsonb shape.
-enum Daypart { lunch, dinner, lateNight }
-
-extension DaypartWire on Daypart {
-  String get wire {
-    switch (this) {
-      case Daypart.lunch:
-        return 'lunch';
-      case Daypart.dinner:
-        return 'dinner';
-      case Daypart.lateNight:
-        return 'late_night';
-    }
-  }
-
-  static Daypart fromWire(String value) {
-    switch (value) {
-      case 'lunch':
-        return Daypart.lunch;
-      case 'dinner':
-        return Daypart.dinner;
-      case 'late_night':
-        return Daypart.lateNight;
-      default:
-        throw ArgumentError.value(
-          value,
-          'daypart',
-          'must be one of lunch / dinner / late_night',
-        );
-    }
-  }
-}
+/// Service-period key default when an operator has no per-period
+/// covers-source row configured. The keyed
+/// `data_accuracy_service_period_settings` table is the source of
+/// truth for per-period covers source; absence resolves to `vendor`
+/// (the SQL default), so a brand-new operator behaves exactly as the
+/// pre-de-hardcode 'vendor' default did.
+const CoversSource kDefaultCoversSource = CoversSource.vendor;
 
 class DataAccuracySettings {
   DataAccuracySettings({
     required this.settingId,
     required this.operatorId,
     required this.locationId,
-    required this.coversSourceLunch,
-    required this.coversSourceDinner,
-    required this.coversSourceLateNight,
+    required this.coversSourcePerServicePeriod,
     required this.coversManualEntries,
     required this.wageSource,
     required this.createdAt,
@@ -179,14 +150,22 @@ class DataAccuracySettings {
   final String settingId;
   final String operatorId;
   final String locationId;
-  final CoversSource coversSourceLunch;
-  final CoversSource coversSourceDinner;
-  final CoversSource coversSourceLateNight;
+
+  /// Covers source keyed by the operator-configured service-period id
+  /// (the same stable `service_period_key` the keyed
+  /// `data_accuracy_service_period_settings` table and the timing
+  /// config use: `lunch`, `dinner`, `late_night`, `breakfast`,
+  /// `brunch`, or any custom period the kitchen runs). Replaces the
+  /// hardcoded 3-daypart `coversSourceLunch` / `_Dinner` / `_LateNight`
+  /// fields so an operator with any number of periods works end to end
+  /// (Gap 27/36). Periods absent from this map resolve to
+  /// [kDefaultCoversSource] via [coversSourceFor].
+  final Map<String, CoversSource> coversSourcePerServicePeriod;
 
   /// Sparse map keyed by ISO `YYYY-MM-DD` business_date string ->
-  /// `{daypart_wire: covers_int}`. Only populated dates need entries;
-  /// missing date + manual setting = aggregator returns null for that
-  /// daypart (no ShiftRecord written).
+  /// `{service_period_id: covers_int}`. Only populated dates need
+  /// entries; missing date + manual setting = aggregator returns null
+  /// for that period (no ShiftRecord written).
   final Map<String, Map<String, int>> coversManualEntries;
 
   final WageSource wageSource;
@@ -204,26 +183,26 @@ class DataAccuracySettings {
   final DateTime updatedAt;
   final String? updatedBy;
 
-  CoversSource coversSourceFor(Daypart daypart) {
-    switch (daypart) {
-      case Daypart.lunch:
-        return coversSourceLunch;
-      case Daypart.dinner:
-        return coversSourceDinner;
-      case Daypart.lateNight:
-        return coversSourceLateNight;
-    }
+  /// Resolve the covers source for an operator-configured service
+  /// period id. Periods the operator has not explicitly configured
+  /// resolve to [kDefaultCoversSource] (`vendor`), matching the SQL
+  /// keyed-table default — so an operator with 4 periods who has only
+  /// touched 2 still gets honest `vendor` defaults for the other 2.
+  CoversSource coversSourceFor(String servicePeriodId) {
+    return coversSourcePerServicePeriod[servicePeriodId] ??
+        kDefaultCoversSource;
   }
 
-  /// Resolve the manual covers entry for a (business_date, daypart)
-  /// pair. Returns null when the operator has not entered a value for
-  /// that date+daypart — the aggregator interprets null as "do not
-  /// write a ShiftRecord for this daypart" so the dashboard renders
-  /// `MetricCardNotYetAvailable` instead of phantom zeroes.
-  int? manualCoversFor(String businessDateIso, Daypart daypart) {
+  /// Resolve the manual covers entry for a (business_date,
+  /// service_period_id) pair. Returns null when the operator has not
+  /// entered a value for that date+period — the aggregator interprets
+  /// null as "do not write a ShiftRecord for this period" so the
+  /// dashboard renders `MetricCardNotYetAvailable` instead of phantom
+  /// zeroes.
+  int? manualCoversFor(String businessDateIso, String servicePeriodId) {
     final dayMap = coversManualEntries[businessDateIso];
     if (dayMap == null) return null;
-    return dayMap[daypart.wire];
+    return dayMap[servicePeriodId];
   }
 
   int? walkInCountFor(String businessDateIso) {
@@ -233,13 +212,22 @@ class DataAccuracySettings {
   /// Project from a `data_accuracy_settings` row produced by the
   /// PostgresExecutor (UUIDs cast to text in SELECT, jsonb returned
   /// as a map).
+  ///
+  /// Per-period covers source is sourced from the keyed
+  /// `data_accuracy_service_period_settings` table. Callers SELECT the
+  /// effective keyed rows and pass them as a
+  /// `covers_source_per_service_period` map (`{service_period_id:
+  /// covers_source_wire}`). For backward compatibility during the
+  /// legacy-column deprecation window, the legacy
+  /// `covers_source_lunch` / `_dinner` / `_late_night` columns are
+  /// still ingested when present and no keyed map was supplied, so a
+  /// reader that has not yet been migrated keeps working. Once a row's
+  /// keyed rows exist they win; absence resolves to
+  /// [kDefaultCoversSource] via [coversSourceFor].
   factory DataAccuracySettings.fromRow(Map<String, Object?> row) {
     final settingId = row['setting_id'];
     final operatorId = row['operator_id'];
     final locationId = row['location_id'];
-    final coversLunch = row['covers_source_lunch'];
-    final coversDinner = row['covers_source_dinner'];
-    final coversLateNight = row['covers_source_late_night'];
     final manualEntriesRaw = row['covers_manual_entries'];
     final wageSourceRaw = row['wage_source'];
     final walkInModeRaw = row['walk_in_handling_mode'];
@@ -250,14 +238,28 @@ class DataAccuracySettings {
     if (settingId is! String ||
         operatorId is! String ||
         locationId is! String ||
-        coversLunch is! String ||
-        coversDinner is! String ||
-        coversLateNight is! String ||
         wageSourceRaw is! String ||
         createdAt is! DateTime ||
         updatedAt is! DateTime) {
       throw StateError(
         'data_accuracy_settings row malformed: missing required fields',
+      );
+    }
+
+    final perPeriod = _parseCoversSourcePerServicePeriod(
+      row['covers_source_per_service_period'],
+    );
+    // Legacy-column compatibility: only consult the deprecated columns
+    // when the caller did not supply keyed rows AND the columns are
+    // still present (pre-drop readers). Post-drop the keyed map is the
+    // sole source and absence falls through to the vendor default.
+    if (perPeriod.isEmpty) {
+      _ingestLegacyColumn(perPeriod, row['covers_source_lunch'], 'lunch');
+      _ingestLegacyColumn(perPeriod, row['covers_source_dinner'], 'dinner');
+      _ingestLegacyColumn(
+        perPeriod,
+        row['covers_source_late_night'],
+        'late_night',
       );
     }
 
@@ -272,9 +274,7 @@ class DataAccuracySettings {
       settingId: settingId,
       operatorId: operatorId,
       locationId: locationId,
-      coversSourceLunch: CoversSourceWire.fromWire(coversLunch),
-      coversSourceDinner: CoversSourceWire.fromWire(coversDinner),
-      coversSourceLateNight: CoversSourceWire.fromWire(coversLateNight),
+      coversSourcePerServicePeriod: perPeriod,
       coversManualEntries: manualEntries,
       wageSource: WageSourceWire.fromWire(wageSourceRaw),
       walkInHandlingMode: walkInMode,
@@ -283,6 +283,44 @@ class DataAccuracySettings {
       updatedAt: updatedAt,
       updatedBy: updatedBy is String && updatedBy.isNotEmpty ? updatedBy : null,
     );
+  }
+
+  /// Parse the keyed `{service_period_id: covers_source_wire}` map a
+  /// caller projects from `data_accuracy_service_period_settings`.
+  /// Unknown / malformed values are skipped (they fall through to the
+  /// vendor default rather than throwing, so one bad row never blocks
+  /// a whole settings load).
+  static Map<String, CoversSource> _parseCoversSourcePerServicePeriod(
+    Object? raw,
+  ) {
+    final out = <String, CoversSource>{};
+    if (raw is! Map) return out;
+    raw.forEach((key, value) {
+      if (key is! String || key.isEmpty) return;
+      if (value is! String || value.isEmpty) return;
+      try {
+        out[key] = CoversSourceWire.fromWire(value);
+      } on ArgumentError {
+        // Keyed table admits `reservation_plus_walkin`, which the
+        // operator-facing 3-way enum has no slot for; skip it so the
+        // period falls back to the vendor default rather than crash.
+      }
+    });
+    return out;
+  }
+
+  static void _ingestLegacyColumn(
+    Map<String, CoversSource> into,
+    Object? raw,
+    String servicePeriodId,
+  ) {
+    if (raw is! String || raw.isEmpty) return;
+    try {
+      into[servicePeriodId] = CoversSourceWire.fromWire(raw);
+    } on ArgumentError {
+      // Defensive: a malformed legacy value falls through to the
+      // vendor default instead of failing the whole settings load.
+    }
   }
 
   static Map<String, Map<String, int>> _parseManualEntries(Object? raw) {
