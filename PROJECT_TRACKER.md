@@ -1,22 +1,27 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-13. **Post-Codex wave CLOSED** (PR #638 closeout + 6
-follow-up PRs: #639/#640/#641/#642/#643/#644 + Phase 2 archive in this
-PR). Wave artifacts archived to `docs/archive/_audits/post_codex_wave_2026-05-13/`.
-Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md` (the demo → tag →
-refactor → re-test → mutate pipeline). Next wave is all-Claude
-(Codex out of quota); workflow is executor-agnostic per CLAUDE.md
-"Workflow" section.
+Updated: 2026-05-16. Routing map only — shows **only what is left**.
+Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
+Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
+is history; ignore unless explicitly named.
 
-Phases retired to `docs/archive/phases/` 2026-05-13: `phase_10b`,
-`phase_11b`, `phase_12_workflow_platform`, `phase_8_5_external_integrations`
-(all paused per V1 lean cut — no V1 launch dependency).
+**Active work:** Per-Daypart Targets V1 (forward plan
+`docs/_indices/NEXT_WAVE_PLAN.md`; plan
+`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`).
+Workflow is executor-agnostic per CLAUDE.md "Workflow". CI is intentionally
+dark until 2026-06-01 (workflow_dispatch only) — verify high-risk slices
+with disclosed local `dart analyze`/`flutter test`.
 
 Owner: You · Execution: We think, agents code (orchestrator-audited).
 
-Routing map only. This file shows **only what is left**. Completed phases /
-slices live in `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`. Stale
-sprint-execution docs live in `docs/archive/_execution/`.
+**Index:** Authority Order · Indices · Hard Product Rule
+(Hierarchy-Scoped Settings) · Open Work (operator-blocked · cutover ·
+engineering) · Vendor live rollout · Paused · Prompt Fetch Map ·
+North Star · Active Lanes · Hard Gates · Notes.
+
+Phases retired to `docs/archive/phases/` 2026-05-13: `phase_10b`,
+`phase_11b`, `phase_12_workflow_platform`, `phase_8_5_external_integrations`
+(paused per V1 lean cut — no V1 launch dependency).
 
 ## Authority Order (Active Read Order)
 
@@ -216,14 +221,9 @@ arrive.
 
 ## Notes
 
-- **2026-05-08 — GitHub Actions billing block.** Recent CI runs show
-  "The job was not started because recent account payments have failed
-  or your spending limit needs to be increased." All 3 master CI jobs
-  (postgres-tests, repo-lints, analyze-and-test) plus the
-  Apple-platform-verification workflow stop in <15s without starting.
-  This blocks automated validation of the remediation wave merged
-  2026-05-08 (PRs #417–#426). Action: resolve the GitHub billing /
-  spending-limit issue, then re-run CI on master.
+- CI is intentionally dark until 2026-06-01 (see header). Verify
+  high-risk slices with disclosed local `dart analyze` / `flutter test`;
+  use `tool/pre_merge_gate.sh` and `tool/verify_pr_landed.sh`.
 - Mobile architecture (canonical-fact dicts → operator-scoped Postgres
   `shift_records` → mobile SQLite via proxy sync) bound by
   `integration_spine_architecture_contract.md`.
@@ -240,45 +240,10 @@ arrive.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
-## Recently archived (see `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`)
+## Recently archived
 
-2026-05-08 post-audit remediation wave (PRs #417–#426 merged):
-
-- 2026-05-08 audit closeout (#417) — Carve-out #3 blessed, 5 closed-phase plan docs retired to `docs/archive/phases/`, audit findings recorded.
-- POST_HARDENING wage-authority line drift fix + 2026-05-12 _execution sweep reminder (#418).
-- Lane A — `audit_logs_repository` defense-in-depth GUC probe (#424); chose Option B over base-class extension to preserve atomic-with-business-write contract.
-- Lane B — 4 admin integration write routes wired to `admin_request_idempotency` (#425).
-- Lane C — `RestaurantScopeService` extraction; `notifications_screen` + `schedule_forecast_notifier` no longer import SQLite repo directly (#419).
-- Lane D — typed catch arms in `auth_session_notifier` + `tenant_transaction` + `package_postgres_executor` (PR #364 pattern; advisor_proxy 16 sites still open) (#420).
-- Lane E — `8.demo-mode-banner` slice: runtime per-(O, L, C) banner, AppShell mount, walkthrough, 5 widget tests (#426).
-- Lane G — `hardening_rls_and_repository_pattern_contract.md` drift fixes (lint state past-tense, 4 wrapper function names corrected) (#421); subsequently revised post-Lane-A merge to reflect the sanctioned defense-in-depth exception.
-- Lane H — 9 vendor docs in `docs/integrations/<vendor>/` updated to point at archived phase plan paths (#422).
-- Lane I — `docs/phases/phase_9/` folder triage: 1 of 11 moved (the closed `admin_console_mfa_challenge_parity_plan.md`); 10 kept with documented reason (durable authority refs / evergreen runbooks / not-yet-shipped specs) (#423).
-
-CI did NOT validate this wave — GitHub Actions billing block still
-in effect at merge time. Re-run CI once billing is resolved.
-
-2026-05-07 closeout pass moved the following accepted/closed phase rows out
-of the active board:
-
-- Phase `9` framework + `9.0Σ.b-l` + `9.UX.*` ACCEPT
-- Phase `9.5.0` ACCEPT
-- Phase `11A` foundation `0`–`7`/`UX.health` + cross-op parity `.12`/`.13`/`.14` ACCEPT 2026-05-06
-- Phase `11W.0`–`.8` ACCEPT 2026-05-06 + 11W.7 live-wire fix
-- Phase `8` / `8R` / `8.S` engineering-complete (PASS 2026-05-05 via `mobile-proof.v2`)
-- `8.spine-bridge-sink-fanout` 14/14 lanes + `.7S.upgrade` ACCEPT
-- `8.business_date_denorm` ACCEPT 2026-05-06
-- `8.first-connect-backfill-wire-in` ACCEPT 2026-05-06 (PR #195)
-- `business-timing-live` foundation + UI shell ACCEPT 2026-05-06
-- `8.star-target-server-truth` ACCEPT 2026-05-06
-- `8.weekly-plan-server-truth` MERGED 2026-05-07 (PR #226)
-- `8.business-scope-selector` mobile foundation MERGED 2026-05-07 (PR #236)
-- Claude V1 closure dispatch — all 7 lanes (V1.A–G) MERGED via PRs #198–202, #226, #236
-- Phase `10a` real-time infra `.0`–`.5` + `UX.0`/`UX.1` ACCEPT 2026-05-06
-- Phase `7.58` depth wave ACCEPT 2026-05-05
-- `9.8.email` ACCEPT (PR #88)
-- CODE_HEALTH remediation closed 2026-05-08 across 5 waves (52 findings closed across 41 PRs; archived at `docs/archive/code_health/CODE_HEALTH_2026-05-06_remediation.md`; residuals consolidated into `docs/POST_HARDENING_FOLLOWUPS.md`, phase 11a decision register, phase 8 spine bridge plan, and the auth permission key catalog)
-- Production1 runtime live 2026-05-06 (Cloud Run + Firebase + Postgres-CMK + production DNS for `app.forgeflow.app` + `mail.forgeflow.app`)
-- Phase 8 plug-and-play V1 onboarding engineering-complete 2026-05-07 (PRs #280-#301 across operator-self-service descriptors / validators / route alignment / test-connection / disconnect / api-key paste / location integrations list / OAuth refresh closures / backfill adapter factory / analyzer sweep). Detail: `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-07_phase_8_plug_and_play.md`. Operations work (Production1 migration apply + Cloud Run vendor app creds + partner-portal redirect URIs) gates each Wave D `*.live.*` slice firing.
-
-Detail in `PROJECT_TRACKER_ARCHIVE.md`.
+Full closed-phase / closed-wave history (2026-05-07 closeout pass,
+2026-05-08 post-audit remediation wave PRs #417–#426, Phase 8/9/10a/11A/11W
+accepts, CODE_HEALTH remediation, Production1 go-live) lives verbatim in
+`docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`. Not duplicated here —
+this file shows only what is left.

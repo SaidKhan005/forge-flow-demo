@@ -248,27 +248,34 @@ Update `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_han
 
 ## Demo Mode
 
-HP #2: `kDemoMode` is a writer-side switch — same tables, same reads, same UI either way. Audited end-to-end 2026-05-07. Detail: `docs/contracts/demo_mode_contract.md`.
+HP #2: `kDemoMode` is a writer-side switch — same tables, same reads, same
+UI either way. Audited 2026-05-07. **Full architecture + rationale:
+`docs/contracts/demo_mode_contract.md` (authoritative — do not duplicate
+its prose here).**
 
-Architecture:
-- Demo data lives in standard SQLite tables (`shift_records`, `week_records`, `restaurant_locations`, `target_cycles`, `import_runs`, `raw_import_records`, `active_target_profiles`, etc.) under `DemoScope.restaurantId = 'demo_restaurant_001'`. There are no `demo_*` SQLite tables.
-- The writer is `MockReplayDataSourceProvider` (a `DataSourceProvider<MockReplayOutput>` impl) feeding `_seedDemoDataFromReplay` in `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart`. Phase 8 vendor connectors (`*_pos_postgres_sink.dart`) implement the same `DataSourceProvider` interface, so flipping demo→live changes only the writer.
-- Per-(operator, location, category) demo state lives in the Postgres `demo_mode_state` table; `DemoModeFlipPolicy.evaluateFlip` flips `is_demo = false` after the first vendor connection backfills ≥1 record. Disconnect does NOT auto-revert.
-- Reader paths (services, repositories, widgets) do NOT branch on `kDemoMode`. They read whatever the active scope's tables hold.
-- The demo **auth session** is also writer-side: the mobile demo flavor (`lib/main_forgeflow.dart`, gated on `kDemoMode`/`FORGE_FLOW_DEMO_MODE` and NOT `FORGE_FLOW_USE_FIREBASE_AUTH`) mounts `ForgeFlowApp(requireAuth: true)` with `DemoAuthLoginService` (`lib/services/auth/demo_auth_login_service.dart`) instead of `FirebaseAuthLoginService`. The demo operator (`demo.operator@forgeflow.test`) is minted as a F&F admin (`ff_support`) so the full Settings surface (Account, Setup, Integrations, Data tab + Data-alignment panel) is testable in demo. This is a bootstrap SOURCE swap — the demo analogue of `MockReplayDataSourceProvider` — mirroring the contract-endorsed Operator Web/Admin `*_DEMO_AUTH` pattern; NOT a `kDemoMode` reader branch. Every reader (`SettingsScreen`, role/permission gates) consumes the resulting `AuthSession` identically in demo and prod. Production auth (`FORGE_FLOW_USE_FIREBASE_AUTH`) is byte-unchanged.
+Binding essentials:
+- Demo data = standard SQLite tables under
+  `DemoScope.restaurantId = 'demo_restaurant_001'`. **No `demo_*` tables.**
+- Writer = `MockReplayDataSourceProvider` → `_seedDemoDataFromReplay`
+  (`sqlite_database_seed.dart`); Phase 8 vendor sinks implement the same
+  `DataSourceProvider`, so demo→live changes only the writer. Per-(O,L,C)
+  flip state in Postgres `demo_mode_state`; disconnect does NOT auto-revert.
+- Readers (services/repos/widgets) NEVER branch on `kDemoMode`. Demo auth
+  is a writer-side bootstrap SOURCE swap (`DemoAuthLoginService`), not a
+  reader branch; production auth is byte-unchanged.
 
-Intentional reader-side carve-outs (do not remove without an explicit replacement plan):
-1. `lib/screens/auth/login_screen.dart` — `_demoOperatorSignInEnabled` adds an additive "Use demo operator" button below the regular sign-in. Strictly UX; the button drives the same `signInWithEmailPassword` path.
-2. `lib/services/app_data_status_service.dart` — the data-status badge renders `DEMO` instead of `CURRENT` when `--dart-define=kDemoMode=true`. Label-only; same read math.
-3. `lib/screens/settings_screen.dart` — `_kDemoMode` const gates two demo-only management sections in the Settings tab: "Data reset" (clears local demo data) and "Demo date" (advance demo restaurant through sample business days). Production builds hide both sections; the rest of the Settings tab (Account, MFA, Active Sessions, Data freshness, Wage authority, Team, Permissions, FF Support) renders identically in demo and prod. Operator sign-off 2026-05-08 — these are demo-only operator affordances that have no production analogue, so the carve-out is the lower-risk option compared to rendering disabled UI in prod.
-
-4. `lib/screens/settings/settings_demo_live_switch.dart` - runtime `demo_mode_state` UI fold for the operator-approved master Demo -> Live switch. It reads `DemoModeStateNotifier.snapshot.hasDemoCategories`, calls the proxy/repository path to flip existing rows from `is_demo=true` to `false`, and refuses Live -> Demo. No `kDemoMode` branch, no `demo_*` table, and no reader repository fork.
+Sanctioned reader-side carve-outs — do NOT remove without an explicit
+replacement plan (rationale in the contract):
+1. `lib/screens/auth/login_screen.dart` — additive "Use demo operator" button (UX only).
+2. `lib/services/app_data_status_service.dart` — `DEMO` vs `CURRENT` badge (label only).
+3. `lib/screens/settings_screen.dart` — `_kDemoMode` gates demo-only "Data reset" + "Demo date" sections (operator sign-off 2026-05-08).
+4. `lib/screens/settings/settings_demo_live_switch.dart` — `demo_mode_state` UI fold for the master Demo→Live switch (no `kDemoMode` branch / no `demo_*` / no reader fork).
 
 Rules for new demo-aware code:
-- Default = NO branch. Demo and prod read from the same code path.
-- If a UX-only label/badge needs the flag, mark the site `// kDemoMode carve-out: <reason>` and append the rationale to the contract doc + this section.
-- Any new SQLite or Postgres table named `demo_*` is a violation of HP #2; use the existing tables with `restaurant_id = DemoScope.restaurantId` (or the per-(operator, location, category) `demo_mode_state` row).
-- Demo seeders MUST write to the same DAOs / tables as production. Adding a parallel `demo_*` table or a `kDemoMode`-gated reader requires explicit operator sign-off.
+- Default = NO branch; demo and prod read the same path.
+- UX-only flag use: mark `// kDemoMode carve-out: <reason>` and append rationale to the contract + this list.
+- Any `demo_*` SQLite/Postgres table violates HP #2 — use existing tables with `restaurant_id = DemoScope.restaurantId` (or the `demo_mode_state` row).
+- Demo seeders write the same DAOs/tables as production. A parallel `demo_*` table or a `kDemoMode`-gated reader requires explicit operator sign-off.
 
 ## Flavors
 
