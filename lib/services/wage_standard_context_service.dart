@@ -228,6 +228,8 @@ class WageStandardContextService {
                 daypartTargetPPA: d.targetPPA,
                 daypartOpzFloorCPLH: d.opzFloorCPLH,
                 daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+                verdict: d.verdict,
+                verdictReason: d.verdictReason,
               ))
           .toList(),
     );
