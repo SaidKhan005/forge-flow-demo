@@ -1,7 +1,7 @@
 # Cross-Surface Parity Audit — Admin / Operator-Web / Mobile
 
-**Date:** 2026-05-16
-**Branch / HEAD:** master @ `5c3fc74c`
+**Date:** 2026-05-16 (status ledger refreshed 2026-05-17)
+**Branch / HEAD:** master @ `40cc12df` (audit pass ran at `5c3fc74c`; see §0 ledger for what merged since)
 **Method:** 11 read-only deep-research agents (6 inventory/parity + 5 line-level verification),
 whole-file reads, control-flow traced, every claim file:line cited.
 **Surfaces:**
@@ -43,6 +43,27 @@ This doc is the canonical register. IDs are stable; reference them as G1, D1, U1
 **Audit trail:** this register + all PR audits + specs committed via **PR #845** (`977795e0`, `claude/cross-surface-parity-audit-docs`), which also fixed the dead doc-pointer left in merged #838. Two doc deltas pushed to that branch after the #845 squash (D1/G65 won't-fix + active-wave sequencing; the operator_admin verdict block) were subsequently re-landed on master via later doc merges and are reflected above.
 
 **Net state (2026-05-16):** FIXED/MERGED — G1/G2/G5 (#831 + `19eed29d`), G66 (#838), G4 (#840), G24/G3 (#851; #832 reverted via #853), G60 (#855), G19/G62 (#857), G30 (#859), audit docs (#845). PARKED awaiting operator go — G41/G42/G13 (HP#11 timing) + G7 re-spec. WON'T-FIX/BY-DESIGN (confirmed) — D1/G65, G10/G40 SOURCE-scoping.
+
+### Wave-2 ledger — updated 2026-05-17 (G7 unparked + executed; HP#11 unparked; Round-2 HIGH closed; mobile dropped)
+
+Operator gave the go on the parked items (G7 re-spec + HP#11) and Round-2 §0b HIGH cluster. **Standing scope rule: NO mobile** — every mobile leg is dropped/reverted, not deferred.
+
+**Merged & live on master (`40cc12df`):**
+- **G7 re-spec → fully executed** (supersedes the "G7 PARKED" line above). Sequence: G7c (`#870`, contract reconciled to v2 + phantom `operator_admin` struck) → G7-pre (`#871`, v2 role constants added to `permission_keys.dart`, soft-deleted v1 deprecated, `baselineRoleKeys` redefined) → G7a (`#885`, shared `_isAdminSuperAdmin` helper, 14 admin gates DRY'd) → G7b (`#887`, admin consumes `PermissionKeys` role constants, behavior-preserving) → **G7d-main** (`#889`, operator-web fallback role sets → v2 constants, phantom `operator_admin` dropped, `integrations.configure` inflation removed). Spec: `g7_permission_convergence_spec.md`. **G7d-mobile DROPPED (no-mobile)** — the `team_scope_visibility_policy.dart:71` GM Team-nav fix + MOB-G71 are not pursued.
+- **HP#11 S1 → `#872`** (`7468d6f6`, operator-web `business-timing-resolution` route + wire contracts; the backend prerequisite for S3). FIXED. Spec: `fix4_hp11_effective_value_spec.md`. S1 locked operator decisions: new dedicated endpoint, covers-only, tolerate legacy 3-daypart, admin read-only-accurate.
+- **Round-2 §0b HIGH cluster (non-mobile) closed:** G70 → `#874` (admin identity-PATCH caller-stable idempotency); OW-G72 → `#876` (op-web data-accuracy + vendor-connections stable idempotency); OW-G70 → `#881` (fail-loud guard extended to the 4 commerce-critical op-web routes).
+
+**Reverted / dropped under the no-mobile rule (NOT deferred — closed):**
+- **X-G72 + MOB-G70** — mobile auth-ops idempotency + prod 401-refresh wiring shipped as `#877` then **REVERTED via `#880`** (`f8ca4a14`). WON'T-FIX (mobile out of operator scope). The §0b "register correction" re G61's mobile-auto-recovers claim stands as documentation only.
+- **MOB-G71** — mobile v1→v2 role staleness; folded into the dropped G7d-mobile. WON'T-FIX (no-mobile).
+
+**Still PARKED / next (operator-approved to proceed):**
+- **HP#11 S3** (operator-web Business-setup UI: real inherited/effective values, delete lossy local resolver) — depends on S1 (done); operator-web non-auth, no separate merge gate.
+- **HP#11 S2** (admin cross-tenant `withSystem` resolution route + data-accuracy/polling effective-source gateway) — RLS/proxy-touching → explicit operator merge approval required.
+- **HP#11 S4** (admin timing surfaces G41/G42) depends on S2; **S5** (admin data-accuracy/polling G40) — note G40 SOURCE-scoping is BY-DESIGN; S5 only does the timing-residual chrome.
+- **Round-2 §0b MED/standalone (non-mobile, recorded, not started):** G71 (admin token-refresh-retry), G72 (admin demo-tell), X-G70 (demo-tell harmonization — admin leg only, mobile out), X-G71 (notification-prefs surface gap admin vs op-web), OW-G73 (dead wage route), OW-G74 (init stack-trace exposure), G73 (admin demo Roles v1 catalog — doc line).
+
+**Doc loose ends (tracked, low-priority):** register §0 now current as of `40cc12df`; pre-existing `admin_shell_widget_test` IA-drift to log in `docs/KNOWN_FAILING_TESTS.md`; stale `stash@{0}` (redundant post-#840) to drop.
 
 ---
 
@@ -93,6 +114,12 @@ Method: 4 read-only agents applied `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_
 - **Fold into in-flight G7:** MOB-G71 → G7d-mobile scope; OW-G71 → G7 re-spec (flag-only).
 - **MED/standalone:** X-G70 demo-tell harmonization, G71/G72 admin auth-resilience + demo-tell, X-G71 notification-prefs surface gap.
 - **Register correction:** the G61 row's "mobile auto-recovers once" is FALSE in prod (MOB-G70) — annotate when triaged.
+
+### §0b disposition update — 2026-05-17 (the §0b tables above are the Round-2 backlog; this is their live status)
+- **CLOSED/MERGED:** G70 (`#874`), OW-G72 (`#876`), OW-G70 (`#881`).
+- **WON'T-FIX (no-mobile rule):** X-G72 + MOB-G70 (shipped `#877`, reverted `#880`); MOB-G71 (folded into dropped G7d-mobile). The G61-correction note is documentation only.
+- **OPEN, recorded, not started (non-mobile MED/standalone):** G71, G72, X-G70 (admin leg only), X-G71, OW-G73, OW-G74, G73.
+- The §0b rows are NOT a separate backlog file — this register §0b *is* the Round-2 backlog of record.
 
 ---
 
