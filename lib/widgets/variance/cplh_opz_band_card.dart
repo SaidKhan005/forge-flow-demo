@@ -260,58 +260,117 @@ class CplhOpzBandCard extends StatelessWidget {
   String _weekWord(int m) => m == 1 ? 'week' : 'weeks';
 }
 
+/// Pure, unit-testable render geometry for the `.opzscale` band.
+///
+/// Every horizontal position is a fraction in [0, 1] of the rail width,
+/// mapped through the UNION scale domain the data layer already chose
+/// ([CplhOpzBandData.scaleMin]/[CplhOpzBandData.scaleMax], which contain
+/// the lived range, the OPZ box AND the now marker: see
+/// [CplhOpzBandData.fromInputs]). Using the union domain (not
+/// `[livedMin, livedMax]`) is what keeps the green OPZ box a proper
+/// proportional sub-segment even when the OPZ range is wider than the
+/// lived range: with the lived-only domain a wider OPZ overflowed the
+/// rail and clamped to full width.
+///
+/// This is a presentation transform of values the data layer already
+/// derived. It does NOT touch [CplhOpzBandData.fromInputs] math or any
+/// data source. Exposed so the geometry is verifiable without eyeballing
+/// the rendered widget.
+@immutable
+class OpzScaleGeometry {
+  const OpzScaleGeometry._({
+    required this.livedMinPct,
+    required this.livedMaxPct,
+    required this.opzLeftPct,
+    required this.opzRightPct,
+    required this.nowPct,
+  });
+
+  /// Builds the band geometry from the (already real) values on [data].
+  /// All fractions use the union scale domain via
+  /// [CplhOpzBandData.fractionFor], so the OPZ box is always a strict
+  /// sub-segment of the rail (never full-width) unless OPZ literally
+  /// spans the entire domain.
+  factory OpzScaleGeometry.fromData(CplhOpzBandData data) {
+    final floor = data.fractionFor(data.opzFloor);
+    final ceil = data.fractionFor(data.opzCeiling);
+    return OpzScaleGeometry._(
+      livedMinPct: data.fractionFor(data.livedMin),
+      livedMaxPct: data.fractionFor(data.livedMax),
+      opzLeftPct: floor,
+      // CSS `right:` inset (mockup `.opzbox{...;right:21%}`): the gap from
+      // the rail's right edge to the OPZ ceiling position.
+      opzRightPct: (1.0 - ceil).clamp(0.0, 1.0),
+      nowPct: data.fractionFor(data.now),
+    );
+  }
+
+  /// Lived-range min/max rail fractions. When the lived range is the
+  /// widest input these are ~0.0 / ~1.0 (rail ends, like the mockup);
+  /// when the OPZ range is wider they sit inset, which is correct.
+  final double livedMinPct;
+  final double livedMaxPct;
+
+  /// OPZ box left edge fraction (== `pct(opzFloor)`).
+  final double opzLeftPct;
+
+  /// OPZ box right INSET fraction (== `1 - pct(opzCeiling)`), mirroring
+  /// the mockup's CSS `right:` value so the box spans floor->ceiling.
+  final double opzRightPct;
+
+  /// OPZ ceiling rail fraction (the box's right edge position).
+  double get opzCeilingPct => (1.0 - opzRightPct).clamp(0.0, 1.0);
+
+  /// Width of the OPZ box as a fraction of the rail. Always < 1 unless
+  /// OPZ literally equals the whole domain (proves "no longer
+  /// full-width" deterministically in tests).
+  double get opzWidthPct => (opzCeilingPct - opzLeftPct).clamp(0.0, 1.0);
+
+  /// Now-marker rail fraction (dot + label share this position).
+  final double nowPct;
+}
+
 /// The `.opzscale` band, laid out 1:1 with the approved mockup
 /// (docs/f&f Coaching/variance_tab_v2_mockup.html `#hist .opzscale`,
 /// CSS lines 153-159, DOM lines 277-285):
 ///
-///   - `.lived` : a single full-width rail (`left:0; right:0`). Its two
-///     ends ARE the real lived 60-day CPLH min (far left) and max (far
-///     right); the rail spans the whole card, not just a sub-segment.
-///   - `.tickm` : the lived-min label pinned to the FAR LEFT end and the
-///     lived-max label pinned to the FAR RIGHT end of the rail. These are
-///     the real lived-range bounds, not the OPZ bounds.
-///   - `.opzbox`: the green OPZ zone, spanning opzFloor->opzCeiling,
-///     positioned along the rail by VALUE within the lived range.
-///   - `.opzlab`: `OPZ {floor}` and `{ceiling}` ABOVE the green box,
-///     over the box span.
-///   - `.nowdot`: the red current-CPLH dot on the rail, centred on its
-///     value position.
-///   - `.nowlab`: `now {value}` DIRECTLY BELOW the dot, horizontally
-///     tracking the dot's position.
+///   - `.lived` : a single full-width rail (`left:0; right:0`). It spans
+///     the whole card; the lived 60-day CPLH min/max are POSITIONED BY
+///     VALUE on it via the union domain (they land at the ends only when
+///     the lived range is the widest input, exactly like the mockup).
+///   - `.tickm` : the lived-min / lived-max labels anchored at the rail
+///     positions for `livedMin` / `livedMax` (not hard-pinned to the
+///     ends). Real lived-range bounds, not the OPZ bounds.
+///   - `.opzbox`: the green OPZ zone, a proportional sub-segment from
+///     `pct(opzFloor)` to `pct(opzCeiling)` on the union domain.
+///   - `.opzlab`: `OPZ {floor}` anchored at the box's left edge and
+///     `{ceiling}` near its right edge, ABOVE the green box.
+///   - `.nowdot`: the red current-CPLH dot, centred on `pct(now)`.
+///   - `.nowlab`: `now {value}` DIRECTLY BELOW the dot, sharing
+///     `pct(now)` so it tracks under the dot.
 ///
 /// Positions are derived ONLY from the real values already on [data]
-/// ([CplhOpzBandData.livedMin]/[CplhOpzBandData.livedMax] from the real
-/// `weeklyCplhSeries`, [CplhOpzBandData.opzFloor]/[CplhOpzBandData.opzCeiling]
-/// from the active target profile, [CplhOpzBandData.now] from the latest
-/// real week). No mockup constant is ever drawn. The mockup's `46% / 21%
-/// / 36%` percentages are an illustrative example, not literals: the
-/// horizontal mapping is the real lived range, so the rail ends always
-/// coincide with the real lived min/max and the box/dot fall where the
-/// real values land within that range.
+/// (lived bounds from the real `weeklyCplhSeries`, OPZ bounds from the
+/// active target profile, now from the latest real week), mapped through
+/// the union scale domain. No mockup constant is ever drawn. The mockup's
+/// `46% / 21% / 36%` percentages are an illustrative example, not
+/// literals.
 class _OpzScale extends StatelessWidget {
   const _OpzScale({required this.data});
 
   final CplhOpzBandData data;
-
-  /// Render-only horizontal mapping: a value's position along the rail,
-  /// where the rail's left end (0) is the real lived min and its right
-  /// end (1) is the real lived max. This is a presentation transform of
-  /// the already-derived real bounds; it does NOT touch
-  /// [CplhOpzBandData.fromInputs] math or any data source.
-  double _railFraction(double value) {
-    final span = data.livedMax - data.livedMin;
-    if (span <= 0) return 0;
-    return ((value - data.livedMin) / span).clamp(0.0, 1.0);
-  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
-        final floorX = _railFraction(data.opzFloor) * w;
-        final ceilX = _railFraction(data.opzCeiling) * w;
-        final nowX = _railFraction(data.now) * w;
+        final g = OpzScaleGeometry.fromData(data);
+        final floorX = g.opzLeftPct * w;
+        final ceilX = g.opzCeilingPct * w;
+        final nowX = g.nowPct * w;
+        final livedMinX = g.livedMinPct * w;
+        final livedMaxX = g.livedMaxPct * w;
         final hasNow = data.now > 0;
 
         // Vertical geometry mirrors the mockup `.opzscale` (54px tall;
@@ -330,8 +389,9 @@ class _OpzScale extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              // .lived: full-width rail (mockup `left:0; right:0`). The
-              // rail's ends ARE the real lived min/max.
+              // .lived: full-width rail (mockup `left:0; right:0`).
+              // Values are positioned ON it by the union domain; the
+              // rail itself always spans the whole card.
               Positioned(
                 top: 26,
                 left: 0,
@@ -345,8 +405,9 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .opzbox: the green healthy zone, by value over the
-              // real lived range.
+              // .opzbox: the green healthy zone, a proportional
+              // sub-segment from pct(opzFloor) to pct(opzCeiling) on the
+              // union domain (never the full rail unless OPZ == domain).
               Positioned(
                 top: 18,
                 left: floorX,
@@ -389,25 +450,32 @@ class _OpzScale extends StatelessWidget {
                 ),
               ),
 
-              // .tickm: lived MIN at the FAR LEFT end of the rail
-              // (mockup `left:0`). Real lived-range lower bound.
+              // .tickm: lived MIN anchored at the rail position for
+              // `livedMin` (mockup `left:0` when lived is widest, inset
+              // otherwise). Real lived-range lower bound.
               Positioned(
                 top: 32,
-                left: 0,
+                left: livedMinX,
                 child: Text(
                   data.livedMin.toStringAsFixed(1),
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ),
 
-              // .tickm: lived MAX at the FAR RIGHT end of the rail
-              // (mockup `right:0`). Real lived-range upper bound.
+              // .tickm: lived MAX anchored at the rail position for
+              // `livedMax` (mockup `right:0` when lived is widest, inset
+              // otherwise). Right-aligned so the label reads up to that
+              // position rather than spilling past it. Real lived-range
+              // upper bound.
               Positioned(
                 top: 32,
-                right: 0,
-                child: Text(
-                  data.livedMax.toStringAsFixed(1),
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                left: livedMaxX,
+                child: FractionalTranslation(
+                  translation: const Offset(-1.0, 0),
+                  child: Text(
+                    data.livedMax.toStringAsFixed(1),
+                    style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  ),
                 ),
               ),
 
