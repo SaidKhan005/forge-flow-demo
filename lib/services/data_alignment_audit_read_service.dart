@@ -66,6 +66,12 @@ class DataAlignmentAuditReadService {
   static const double _pctTolerance = 0.01; // theoretical labor %
   static const double _dollarTolerance = 0.01; // wages, PPA, blended wage
   static const double _bigDollarTolerance = 0.50; // sales, labor dollars
+  // Float-accumulation epsilon. When a check reconciles a value against
+  // its exact bottom-up basis (same operands, same order), the only
+  // residual is IEEE-754 accumulation noise — not a few cents of honest
+  // rounding. A tight epsilon keeps the check exact while tolerating
+  // that noise (used by the reframed wage-at-lock-time bottom-up basis).
+  static const double _floatEpsilon = 1e-6;
 
   /// Loads a complete audit snapshot across all authority sections.
   ///
@@ -667,6 +673,36 @@ class DataAlignmentAuditReadService {
   // Missing snapshot, or a legacy snapshot with no stamp (written
   // before Slice 1), degrades to `unavailable` (honest absence — never
   // false drift, never a sentinel `0`).
+  //
+  // ── Bottom-up reference reframe (mirrors PR #917) ───────────────────
+  //
+  // Integer-hours is a MODEL constraint, not a data bug:
+  // `WeeklyPlanSnapshot.requiredFohHours/requiredBohHours` (and the
+  // day-row fields) are `int`, while the per-period
+  // `WeeklyPlanSnapshotDayDaypart.requiredFohHours/requiredBohHours`
+  // are `double` (unrounded). Post-#917/#941 the locked snapshot is
+  // bottom-up by construction: `theoreticalFohLaborDollars`
+  // == Σ(per-period theoretical FOH $) == fohWage × Σ(per-period
+  // UNROUNDED required FOH hours). Comparing the locked dollars against
+  // `wage × snapshot.requiredFohHours(int)` reconciles to the WRONG
+  // reference: the int-rounded locked-hours field differs from the true
+  // unrounded basis by the per-day largest-remainder rounding deltas,
+  // so the check drifts by `wage × Σ(rounding deltas)` (a few dollars)
+  // even when the locked dollars are perfectly honest.
+  //
+  // The honest invariant under the integer-hours model is therefore
+  // "$ == Σ per-period $ == wage × Σ per-period unrounded hours". When
+  // per-period rows are present we reconcile against that exact basis
+  // with only a float-accumulation epsilon (no large fudge factor).
+  // When per-period rows are ABSENT (Gap-42 fallback / legacy
+  // pre-Slice-1 snapshot, `dayDayparts` empty) there is no unrounded
+  // basis to reconcile against, so we preserve the prior whole-day
+  // pooled behavior exactly (int locked hours × stamp wage) — a legacy
+  // whole-day snapshot is self-consistent at that scale, so this stays
+  // honest and never falsely passes a genuinely tampered value. This
+  // mirrors how #917 reframed the day-row and snapshot-sum checks to
+  // the bottom-up `Σ(per-period)` basis with empty-`dayDayparts`
+  // honest degradation.
 
   static List<DataAlignmentAuditCheck> _wageAtLockTimeChecks({
     required WeeklyPlanSnapshot? snapshot,
@@ -709,6 +745,71 @@ class DataAlignmentAuditReadService {
 
     // Locked dollars are reconciled against the LOCK-TIME stamp, never
     // the live ActiveTargetProfile wages (Design Rule 8).
+    //
+    // Bottom-up reframe (see group header): the locked dollars were
+    // produced as `stamp wage × Σ(per-period UNROUNDED required hours)`,
+    // which equals `Σ(per-period theoretical $)`. Reconcile against
+    // THAT exact basis when per-period rows exist; the int-rounded
+    // `snapshot.requiredFohHours` field is the wrong reference and would
+    // drift by `wage × Σ(per-day rounding deltas)`.
+    final bool hasPeriodRows = snapshot.dayDayparts.isNotEmpty;
+
+    if (hasPeriodRows) {
+      // Exact bottom-up basis: unrounded per-period hours sum. This is
+      // the same accumulation that produced theoreticalFohLaborDollars
+      // (== Σ per-period theoretical FOH $), so only float-accumulation
+      // noise remains — a tight epsilon, not a several-dollar fudge.
+      final sumPeriodFohHours = snapshot.dayDayparts
+          .fold<double>(0, (s, d) => s + d.requiredFohHours);
+      final sumPeriodBohHours = snapshot.dayDayparts
+          .fold<double>(0, (s, d) => s + d.requiredBohHours);
+      final expectedFohDollars = sumPeriodFohHours * wages.fohWage;
+      final expectedBohDollars = sumPeriodBohHours * wages.bohWage;
+      final unroundedTotalHours = sumPeriodFohHours + sumPeriodBohHours;
+
+      out.addAll([
+        DataAlignmentAuditCheck.numeric(
+          groupId: DataAlignmentAuditGroup.wageAtLockTime,
+          label: fohLabel,
+          expectedValue: expectedFohDollars,
+          comparedValue: snapshot.theoreticalFohLaborDollars,
+          tolerance: _floatEpsilon,
+        ),
+        DataAlignmentAuditCheck.numeric(
+          groupId: DataAlignmentAuditGroup.wageAtLockTime,
+          label: bohLabel,
+          expectedValue: expectedBohDollars,
+          comparedValue: snapshot.theoreticalBohLaborDollars,
+          tolerance: _floatEpsilon,
+        ),
+      ]);
+
+      // Blended wage cross-check against the SAME unrounded per-period
+      // basis so it reconciles exactly (within float epsilon). Using
+      // the int-rounded total hours here is the wrong reference for the
+      // same reason as the FOH/BOH lines above. Degenerate zero-hours
+      // plans degrade to unavailable rather than dividing by zero
+      // (Design Rule 2 — zero hours is "no plan", not a false drift).
+      final double? observedBlended = unroundedTotalHours > 0
+          ? snapshot.theoreticalTotalLaborDollars / unroundedTotalHours
+          : null;
+      out.add(DataAlignmentAuditCheck.numeric(
+        groupId: DataAlignmentAuditGroup.wageAtLockTime,
+        label: blendedLabel,
+        expectedValue: unroundedTotalHours > 0 ? wages.blendedWage : null,
+        comparedValue: observedBlended,
+        tolerance: _dollarTolerance,
+      ));
+
+      return out;
+    }
+
+    // No per-period rows (Gap-42 fallback / legacy pre-Slice-1
+    // snapshot). There is no unrounded basis to reconcile against, so
+    // preserve the prior whole-day pooled behavior EXACTLY: a legacy
+    // whole-day snapshot is self-consistent at the int-locked-hours
+    // scale, so this stays honest and a genuinely tampered value still
+    // surfaces as drift.
     final expectedFohDollars = snapshot.requiredFohHours * wages.fohWage;
     final expectedBohDollars = snapshot.requiredBohHours * wages.bohWage;
 
