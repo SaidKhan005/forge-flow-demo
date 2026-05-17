@@ -1,15 +1,17 @@
 // Phase 8 spine-bridge Lane .B — CoversSourceToggle widget tests.
 //
-// Covers walkthrough acceptance item B — tapping manual for dinner
-// emits onChanged(Daypart.dinner, CoversSource.manual). The widget
-// itself does NOT render the manual-entry sub-card; that surface is
-// owned by the parent screen. This file validates the per-daypart
-// chip wiring + the relativity label below it.
+// Per-Daypart V1 Slice R5 (Gap 27/36): the toggle iterates the
+// operator-configured service periods passed in by the screen
+// (resolver-ordered), NOT a hardcoded `Daypart.values` triplet. These
+// tests prove an operator with 4 configured periods gets 4 rows and
+// that taps emit the period id.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/operator_web/widgets/covers_source_toggle.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -29,18 +31,60 @@ void main() {
     });
   }
 
+  // A 4-period operator: breakfast / lunch / dinner / late_night.
+  // Deliberately out of sort order so we also prove the screen-side
+  // resolver ordering is what the widget renders.
+  final fourPeriods = ServicePeriodDefinitionResolver.ordered(const [
+    ServicePeriodDefinition(
+      id: 'dinner',
+      label: 'Dinner',
+      shortLabel: 'D',
+      sortOrder: 3,
+      startLocalTime: '17:00',
+      endLocalTime: '23:00',
+      rollsPastMidnight: false,
+      applicableDays: [1, 2, 3, 4, 5, 6, 7],
+    ),
+    ServicePeriodDefinition(
+      id: 'breakfast',
+      label: 'Breakfast',
+      shortLabel: 'B',
+      sortOrder: 1,
+      startLocalTime: '07:00',
+      endLocalTime: '11:00',
+      rollsPastMidnight: false,
+      applicableDays: [1, 2, 3, 4, 5, 6, 7],
+    ),
+    ServicePeriodDefinition(
+      id: 'late_night',
+      label: 'Late Night',
+      shortLabel: 'LN',
+      sortOrder: 4,
+      startLocalTime: '23:00',
+      endLocalTime: '02:00',
+      rollsPastMidnight: true,
+      applicableDays: [5, 6],
+    ),
+    ServicePeriodDefinition(
+      id: 'lunch',
+      label: 'Lunch',
+      shortLabel: 'L',
+      sortOrder: 2,
+      startLocalTime: '11:00',
+      endLocalTime: '15:00',
+      rollsPastMidnight: false,
+      applicableDays: [1, 2, 3, 4, 5],
+    ),
+  ]);
+
   DataAccuracySettings settingsWith({
-    CoversSource lunch = CoversSource.vendor,
-    CoversSource dinner = CoversSource.vendor,
-    CoversSource lateNight = CoversSource.vendor,
+    Map<String, CoversSource> perPeriod = const <String, CoversSource>{},
   }) {
     return DataAccuracySettings(
       settingId: 'test-setting',
       operatorId: 'brio-operator',
       locationId: 'brio-chicago-loop',
-      coversSourceLunch: lunch,
-      coversSourceDinner: dinner,
-      coversSourceLateNight: lateNight,
+      coversSourcePerServicePeriod: perPeriod,
       coversManualEntries: const <String, Map<String, int>>{},
       wageSource: WageSource.vendor,
       createdAt: DateTime.utc(2026, 5, 5),
@@ -49,14 +93,16 @@ void main() {
   }
 
   testWidgets(
-    'CoversSourceToggle renders 3 daypart rows with 3 chips each',
+    'CoversSourceToggle renders one row per configured period (4 periods) '
+    'in resolver order, not a hardcoded 3-daypart triplet',
     (tester) async {
-      await sizeViewport(tester, const Size(1280, 800));
+      await sizeViewport(tester, const Size(1280, 1000));
 
       await tester.pumpWidget(
         wrap(
           CoversSourceToggle(
             settings: settingsWith(),
+            servicePeriods: fourPeriods,
             onChanged: (_, __) {},
             bundle: null,
           ),
@@ -64,58 +110,50 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Card key.
       expect(
         find.byKey(const Key('data_accuracy_covers_source_card')),
         findsOneWidget,
       );
 
-      // Daypart rows.
-      expect(
-        find.byKey(const Key('covers_source_daypart_lunch')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('covers_source_daypart_dinner')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('covers_source_daypart_late_night')),
-        findsOneWidget,
-      );
-
-      // Each row has 3 chips: vendor / forecast / manual.
-      for (final daypart in <String>['lunch', 'dinner', 'late_night']) {
+      // All four configured periods render — including the 4th
+      // (breakfast) the old hardcoded `Daypart` enum could not express.
+      for (final id in <String>[
+        'breakfast',
+        'lunch',
+        'dinner',
+        'late_night',
+      ]) {
         expect(
-          find.byKey(Key('covers_source_chip_${daypart}_vendor')),
+          find.byKey(Key('covers_source_daypart_$id')),
           findsOneWidget,
+          reason: '$id row must render from the resolver-supplied set',
         );
-        expect(
-          find.byKey(Key('covers_source_chip_${daypart}_forecast')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(Key('covers_source_chip_${daypart}_manual')),
-          findsOneWidget,
-        );
+        for (final src in <String>['vendor', 'forecast', 'manual']) {
+          expect(
+            find.byKey(Key('covers_source_chip_${id}_$src')),
+            findsOneWidget,
+          );
+        }
       }
     },
   );
 
   testWidgets(
-    'tapping manual chip for dinner emits onChanged(dinner, manual)',
+    'tapping manual chip for breakfast (the 4th period) emits '
+    'onChanged("breakfast", manual)',
     (tester) async {
-      await sizeViewport(tester, const Size(1280, 800));
+      await sizeViewport(tester, const Size(1280, 1000));
 
-      Daypart? capturedDaypart;
+      String? capturedPeriodId;
       CoversSource? capturedSource;
 
       await tester.pumpWidget(
         wrap(
           CoversSourceToggle(
             settings: settingsWith(),
-            onChanged: (daypart, source) {
-              capturedDaypart = daypart;
+            servicePeriods: fourPeriods,
+            onChanged: (periodId, source) {
+              capturedPeriodId = periodId;
               capturedSource = source;
             },
             bundle: null,
@@ -125,25 +163,25 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.tap(
-        find.byKey(const Key('covers_source_chip_dinner_manual')),
+        find.byKey(const Key('covers_source_chip_breakfast_manual')),
       );
       await tester.pumpAndSettle();
 
-      expect(capturedDaypart, equals(Daypart.dinner));
+      expect(capturedPeriodId, equals('breakfast'));
       expect(capturedSource, equals(CoversSource.manual));
     },
   );
 
   testWidgets(
-    'selected chip flip after re-pump',
+    'empty period set renders the honest no-periods hint, no rows',
     (tester) async {
       await sizeViewport(tester, const Size(1280, 800));
 
-      // Initial: dinner = vendor.
       await tester.pumpWidget(
         wrap(
           CoversSourceToggle(
-            settings: settingsWith(dinner: CoversSource.vendor),
+            settings: settingsWith(),
+            servicePeriods: const <ServicePeriodDefinition>[],
             onChanged: (_, __) {},
             bundle: null,
           ),
@@ -152,36 +190,24 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('covers_source_chip_dinner_vendor')),
+        find.byKey(const Key('covers_source_no_periods')),
         findsOneWidget,
       );
-
-      // Re-pump with dinner = manual.
-      await tester.pumpWidget(
-        wrap(
-          CoversSourceToggle(
-            settings: settingsWith(dinner: CoversSource.manual),
-            onChanged: (_, __) {},
-            bundle: null,
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
       expect(
-        find.byKey(const Key('covers_source_chip_dinner_manual')),
-        findsOneWidget,
+        find.byKey(const Key('covers_source_daypart_lunch')),
+        findsNothing,
       );
     },
   );
 
   testWidgets('vendor relativity label is present', (tester) async {
-    await sizeViewport(tester, const Size(1280, 800));
+    await sizeViewport(tester, const Size(1280, 1000));
 
     await tester.pumpWidget(
       wrap(
         CoversSourceToggle(
           settings: settingsWith(),
+          servicePeriods: fourPeriods,
           onChanged: (_, __) {},
           bundle: null,
         ),

@@ -7,10 +7,16 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605161501_per_daypart_v1_s0_verdict_persistence.sql`
-(two additive, nullable, no-default TEXT columns — `verdict`,
-`verdict_reason` — on `target_cycle_dayparts`; landed by
-Per-Daypart V1 / Slice S0). This
+`202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
+(Per-Daypart V1 / R5 covers-source de-hardcode: data-preserving
+backfill of legacy `covers_source_{lunch,dinner,late_night}` into the
+keyed `data_accuracy_service_period_settings` table, legacy columns
+DEPRECATED via `COMMENT ON COLUMN`, additive + comment-only with no
+down migration; hard column drop deferred to follow-up R7). The prior
+cutoff `202605161501_per_daypart_v1_s0_verdict_persistence.sql` (two
+additive nullable no-default TEXT columns `verdict`, `verdict_reason`
+on `target_cycle_dayparts`; Per-Daypart V1 / Slice S0) remains in the
+queue. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -110,6 +116,7 @@ Pending follow-up scope (49 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605160000_per_daypart_v1_per_period_target_persistence.sql`
 - `db/migrations/202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
 - `db/migrations/202605161501_per_daypart_v1_s0_verdict_persistence.sql`
+- `db/migrations/202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
 
 Out of scope:
 
@@ -120,7 +127,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605161501_per_daypart_v1_s0_verdict_persistence.sql`
+  `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
