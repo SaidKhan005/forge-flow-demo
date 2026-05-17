@@ -7,13 +7,17 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
-`202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
-(Per-Daypart V1 / R5 covers-source de-hardcode: data-preserving
-backfill of legacy `covers_source_{lunch,dinner,late_night}` into the
-keyed `data_accuracy_service_period_settings` table, legacy columns
-DEPRECATED via `COMMENT ON COLUMN`, additive + comment-only with no
-down migration; hard column drop deferred to follow-up R7). The prior
-cutoff `202605161501_per_daypart_v1_s0_verdict_persistence.sql` (two
+`202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
+(Per-Daypart V1 / R7a per-period covers-source hierarchy: additive,
+`effective_data_accuracy_settings_v` gains a
+`covers_source_per_service_period` jsonb output and
+`data_accuracy_scoped_overrides` gains a per-period jsonb column;
+existing scalar outputs byte-unchanged, HP #11 precedence preserved,
+no column dropped or altered, no down migration). The prior cutoff
+`202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql` (R5
+covers-source keyed backfill, additive + comment-only; hard column
+drop deferred to follow-up R7d). The earlier
+`202605161501_per_daypart_v1_s0_verdict_persistence.sql` (two
 additive nullable no-default TEXT columns `verdict`, `verdict_reason`
 on `target_cycle_dayparts`; Per-Daypart V1 / Slice S0) remains in the
 queue. This
@@ -117,6 +121,7 @@ Pending follow-up scope (49 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605161500_per_daypart_v1_deprecate_locations_rollover_hour.sql`
 - `db/migrations/202605161501_per_daypart_v1_s0_verdict_persistence.sql`
 - `db/migrations/202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
+- `db/migrations/202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
 
 Out of scope:
 
@@ -127,7 +132,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
+  `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

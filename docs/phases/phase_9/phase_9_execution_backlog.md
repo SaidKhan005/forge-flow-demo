@@ -176,14 +176,17 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
+  (Per-Daypart V1 / R7a per-period covers-source hierarchy: additive,
+  `effective_data_accuracy_settings_v` gains a
+  `covers_source_per_service_period` jsonb output and
+  `data_accuracy_scoped_overrides` gains a per-period jsonb column;
+  existing scalar outputs byte-unchanged, HP #11 precedence preserved,
+  no column dropped or altered, no down migration; hard column drop
+  deferred to follow-up R7d). The prior cutoff
   `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
-  (Per-Daypart V1 / R5 covers-source de-hardcode: data-preserving
-  backfill of legacy `covers_source_{lunch,dinner,late_night}` into
-  the keyed `data_accuracy_service_period_settings` table; legacy
-  columns marked DEPRECATED via `COMMENT ON COLUMN`; additive +
-  comment-only, no down migration; hard column drop deferred to
-  follow-up R7). The prior cutoff
-  `202605161501_per_daypart_v1_s0_verdict_persistence.sql`
+  (R5 covers-source keyed backfill, additive + comment-only). The
+  earlier `202605161501_per_daypart_v1_s0_verdict_persistence.sql`
   (two additive, nullable, no-default TEXT columns `verdict`,
   `verdict_reason` on `target_cycle_dayparts`; Per-Daypart V1 / Slice
   S0) and the earlier
