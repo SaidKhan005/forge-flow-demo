@@ -228,10 +228,11 @@ void main() {
       expect(PermissionKeys.requiresMfa, contains('admin.audit_privacy.read'));
     });
 
-    test('PermissionKeys.all has 99 entries after the 11A.14 '
-        'admin.users.reset_mfa_factors and 11W.5 '
-        'team.audit_log.export catalog additions', () {
-      expect(PermissionKeys.all.length, equals(99));
+    test('PermissionKeys.all has 106 entries after the 11A.14 '
+        'admin.users.reset_mfa_factors, 11W.5 '
+        'team.audit_log.export, and Wave 2 RP-9 v2 catalog additions', () {
+      // re-pinned to v2 catalog (PR #870/#871)
+      expect(PermissionKeys.all.length, equals(106));
     });
 
     test('the new key is NOT in the 9.0 foundation seed (it lives in '

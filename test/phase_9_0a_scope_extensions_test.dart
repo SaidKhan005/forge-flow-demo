@@ -18,8 +18,8 @@
 //   * The audit-fix migration grants the post-9.0 team.* keys to
 //     super_admin so "super_admin has every key" stays true.
 //   * `lib/auth/permission_keys.dart` exposes 14 team.* constants
-//     and PermissionKeys.all has grown to 103 after later additive
-//     catalog slices.
+//     and PermissionKeys.all has grown to 106 after later additive
+//     catalog slices (re-pinned to v2 catalog, PR #870/#871).
 //   * No timestamp without time zone is used (CLAUDE.md storage rule).
 
 import 'dart:io';
@@ -218,7 +218,7 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 103 entries after additive catalog slices',
+    test('PermissionKeys.all has 106 entries after additive catalog slices',
         () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
@@ -234,11 +234,15 @@ void main() {
       // back the Operator Web Audit Log CSV export gate, bringing
       // the catalog to 99. Later hierarchy lifecycle additions brought
       // the catalog to 101. B5.b added account.configure and
-      // business_timing.configure, bringing the catalog to 103. This
+      // business_timing.configure, bringing the catalog to 103. The
+      // Wave 2 RP-9 default-role-catalog reconcile (PR #870/#871) then
+      // added team.roles.default_catalog.{view,edit} (+1 more later
+      // additive key), bringing the catalog to 106. This
       // test tracks the running total so a
       // future catalog addition that forgets to grow the count is
       // caught here.
-      expect(PermissionKeys.all.length, equals(103));
+      // re-pinned to v2 catalog (PR #870/#871)
+      expect(PermissionKeys.all.length, equals(106));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '
