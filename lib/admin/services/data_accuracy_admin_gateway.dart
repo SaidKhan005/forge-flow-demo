@@ -1385,9 +1385,13 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         settingId: 'demo-setting-$key',
         operatorId: operatorId,
         locationId: locationId,
-        coversSourceLunch: CoversSource.vendor,
-        coversSourceDinner: CoversSource.vendor,
-        coversSourceLateNight: CoversSource.vendor,
+        // Per-Daypart V1 Slice R5 (Gap 27/36): covers source is keyed
+        // by service period. This admin in-memory double still speaks
+        // the legacy 3-daypart vocabulary on its proxy wire (the
+        // hierarchy/proxy migration is a scoped follow-up), but the
+        // model it builds uses the keyed map. An empty map resolves
+        // every period to the vendor default via coversSourceFor.
+        coversSourcePerServicePeriod: const <String, CoversSource>{},
         coversManualEntries: const <String, Map<String, int>>{},
         wageSource: WageSource.vendor,
         createdAt: _clock(),
@@ -1468,14 +1472,24 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       ),
     );
     final prev = _readSettings(operatorId, locationId);
+    // Per-Daypart V1 Slice R5 (Gap 27/36): merge the legacy 3-daypart
+    // admin override onto the keyed per-period map. The admin wire
+    // vocabulary stays 3-daypart (hierarchy/proxy migration deferred);
+    // only the in-memory model shape changed.
+    final prevLunch = prev.coversSourceFor('lunch');
+    final prevDinner = prev.coversSourceFor('dinner');
+    final prevLateNight = prev.coversSourceFor('late_night');
+    final nextPerPeriod = <String, CoversSource>{
+      ...prev.coversSourcePerServicePeriod,
+      'lunch': coversSourceLunch ?? prevLunch,
+      'dinner': coversSourceDinner ?? prevDinner,
+      'late_night': coversSourceLateNight ?? prevLateNight,
+    };
     final next = DataAccuracySettings(
       settingId: prev.settingId,
       operatorId: prev.operatorId,
       locationId: prev.locationId,
-      coversSourceLunch: coversSourceLunch ?? prev.coversSourceLunch,
-      coversSourceDinner: coversSourceDinner ?? prev.coversSourceDinner,
-      coversSourceLateNight:
-          coversSourceLateNight ?? prev.coversSourceLateNight,
+      coversSourcePerServicePeriod: nextPerPeriod,
       coversManualEntries: prev.coversManualEntries,
       wageSource: wageSource ?? prev.wageSource,
       walkInHandlingMode: walkInHandlingMode ?? prev.walkInHandlingMode,
@@ -1486,24 +1500,22 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     );
     _settings[_key(operatorId, locationId)] = next;
     final diff = <String, Object?>{};
-    if (coversSourceLunch != null &&
-        coversSourceLunch != prev.coversSourceLunch) {
+    if (coversSourceLunch != null && coversSourceLunch != prevLunch) {
       diff['covers_source_lunch'] = <String, String>{
-        'from': prev.coversSourceLunch.wire,
+        'from': prevLunch.wire,
         'to': coversSourceLunch.wire,
       };
     }
-    if (coversSourceDinner != null &&
-        coversSourceDinner != prev.coversSourceDinner) {
+    if (coversSourceDinner != null && coversSourceDinner != prevDinner) {
       diff['covers_source_dinner'] = <String, String>{
-        'from': prev.coversSourceDinner.wire,
+        'from': prevDinner.wire,
         'to': coversSourceDinner.wire,
       };
     }
     if (coversSourceLateNight != null &&
-        coversSourceLateNight != prev.coversSourceLateNight) {
+        coversSourceLateNight != prevLateNight) {
       diff['covers_source_late_night'] = <String, String>{
-        'from': prev.coversSourceLateNight.wire,
+        'from': prevLateNight.wire,
         'to': coversSourceLateNight.wire,
       };
     }

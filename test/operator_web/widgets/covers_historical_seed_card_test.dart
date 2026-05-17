@@ -1,14 +1,18 @@
 // Phase 8 spine-bridge Lane .B — CoversHistoricalSeedCard tests.
 //
+// Per-Daypart V1 Slice R5 (Gap 27/36): the matrix columns are the
+// operator-configured service periods (resolver-ordered), keyed by
+// service_period_id, NOT a hardcoded `Daypart` enum.
+//
 // Cover acceptance item F: 60-day matrix entry + bulk paste shortcut.
-// Spot-checks the matrix surface (one row per date × 3 daypart cells),
-// the apply-button enable rules, the apply payload, and the bulk paste
-// dialog opening.
+// Spot-checks the matrix surface (one row per date x configured-period
+// cell), the apply-button enable rules, the apply payload, and the
+// bulk paste dialog opening.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/operator_web/widgets/covers_historical_seed_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -28,8 +32,10 @@ void main() {
     });
   }
 
+  final periods = ServicePeriodDefinitionResolver.demoDefinitions;
+
   group('CoversHistoricalSeedCard', () {
-    testWidgets('card renders 60 date rows x 3 daypart cells',
+    testWidgets('card renders 60 date rows x configured-period cells',
         (tester) async {
       await sizeViewport(tester);
 
@@ -37,7 +43,8 @@ void main() {
         CoversHistoricalSeedCard(
           endDateIso: '2026-05-04',
           dayCount: 60,
-          initialEntries: const <String, Map<Daypart, int>>{},
+          servicePeriods: periods,
+          initialEntries: const <String, Map<String, int>>{},
           onApplySeed: (_) {},
         ),
       ));
@@ -60,8 +67,9 @@ void main() {
         CoversHistoricalSeedCard(
           endDateIso: '2026-05-04',
           dayCount: 60,
-          initialEntries: <String, Map<Daypart, int>>{
-            '2026-05-04': <Daypart, int>{Daypart.dinner: 220},
+          servicePeriods: periods,
+          initialEntries: <String, Map<String, int>>{
+            '2026-05-04': <String, int>{'dinner': 220},
           },
           onApplySeed: (_) {},
         ),
@@ -81,7 +89,8 @@ void main() {
         CoversHistoricalSeedCard(
           endDateIso: '2026-05-04',
           dayCount: 60,
-          initialEntries: const <String, Map<Daypart, int>>{},
+          servicePeriods: periods,
+          initialEntries: const <String, Map<String, int>>{},
           onApplySeed: (_) {},
         ),
       ));
@@ -101,7 +110,8 @@ void main() {
         CoversHistoricalSeedCard(
           endDateIso: '2026-05-04',
           dayCount: 60,
-          initialEntries: const <String, Map<Daypart, int>>{},
+          servicePeriods: periods,
+          initialEntries: const <String, Map<String, int>>{},
           onApplySeed: (_) {},
         ),
       ));
@@ -122,13 +132,14 @@ void main() {
     testWidgets('apply button calls onApplySeed with the draft',
         (tester) async {
       await sizeViewport(tester);
-      final captured = <Map<String, Map<Daypart, int>>>[];
+      final captured = <Map<String, Map<String, int>>>[];
 
       await tester.pumpWidget(wrap(
         CoversHistoricalSeedCard(
           endDateIso: '2026-05-04',
           dayCount: 60,
-          initialEntries: const <String, Map<Daypart, int>>{},
+          servicePeriods: periods,
+          initialEntries: const <String, Map<String, int>>{},
           onApplySeed: captured.add,
         ),
       ));
@@ -148,8 +159,8 @@ void main() {
       expect(captured, hasLength(1));
       expect(
         captured.single,
-        equals(<String, Map<Daypart, int>>{
-          '2026-05-04': <Daypart, int>{Daypart.lunch: 95},
+        equals(<String, Map<String, int>>{
+          '2026-05-04': <String, int>{'lunch': 95},
         }),
       );
     });
@@ -161,7 +172,8 @@ void main() {
         CoversHistoricalSeedCard(
           endDateIso: '2026-05-04',
           dayCount: 60,
-          initialEntries: const <String, Map<Daypart, int>>{},
+          servicePeriods: periods,
+          initialEntries: const <String, Map<String, int>>{},
           onApplySeed: (_) {},
         ),
       ));
