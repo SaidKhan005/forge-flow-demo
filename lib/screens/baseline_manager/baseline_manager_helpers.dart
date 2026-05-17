@@ -51,7 +51,7 @@ bool isSuggestedStar(BaselineCandidateShift c) {
 
 // ─── Lever label formatter ───────────────────────────────────────────────────
 // Reuses canonical LeverCardData.metric for full natural-language lever meaning.
-// This preserves direction (e.g. 'CPLH ABOVE TARGET' vs 'CPLH BELOW TARGET')
+// This preserves direction (e.g. 'CPLH above target' vs 'CPLH below target')
 // instead of collapsing to a generic metric bucket ('CPLH').
 // Falls back to title-casing the raw id if no match is found.
 

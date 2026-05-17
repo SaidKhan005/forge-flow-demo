@@ -380,9 +380,12 @@ void main() {
       expect(find.text('SPLH ', skipOffstage: false), findsNWidgets(1));
       expect(find.text('PPA ', skipOffstage: false), findsNWidgets(1));
       expect(find.text('LEVER ', skipOffstage: false), findsNWidgets(1));
-      // Lever label shows full natural-language meaning (metric from LeverCards)
+      // Lever label shows full natural-language meaning (metric from
+      // LeverCards). V2-1 catalog moved metric copy from ALL-CAPS to
+      // sentence case ('CPLH ABOVE TARGET' -> 'CPLH above target');
+      // leverLabel() returns LeverCardData.metric verbatim.
       expect(
-        find.text('CPLH ABOVE TARGET', skipOffstage: false),
+        find.text('CPLH above target', skipOffstage: false),
         findsAtLeastNWidgets(1),
       );
     });
@@ -1168,9 +1171,10 @@ void main() {
 
         // Should NOT find raw snake_case lever id
         expect(find.text('cplh_up', skipOffstage: false), findsNothing);
-        // Should find full natural-language meaning, not just the metric bucket
+        // Should find full natural-language meaning, not just the metric
+        // bucket. V2-1 catalog moved metric copy to sentence case.
         expect(
-          find.text('CPLH ABOVE TARGET', skipOffstage: false),
+          find.text('CPLH above target', skipOffstage: false),
           findsAtLeastNWidgets(1),
         );
       },
@@ -1194,13 +1198,14 @@ void main() {
         // _dinnerSplhDown (splh_down)
         await _tapCalendarDate(tester, '2026-03-02');
 
-        // Each should show its full distinct meaning
+        // Each should show its full distinct meaning. V2-1 catalog moved
+        // metric copy from ALL-CAPS to sentence case.
         expect(
-          find.text('CPLH ABOVE TARGET', skipOffstage: false),
+          find.text('CPLH above target', skipOffstage: false),
           findsAtLeastNWidgets(1),
         );
         expect(
-          find.text('SPLH BELOW TARGET', skipOffstage: false),
+          find.text('SPLH below target', skipOffstage: false),
           findsAtLeastNWidgets(1),
         );
 
