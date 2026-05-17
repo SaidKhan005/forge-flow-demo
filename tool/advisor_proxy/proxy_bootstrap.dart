@@ -3172,6 +3172,24 @@ class RepositoryMobileOperationalSyncProxyGateway
     });
   }
 
+  // Slice R7b: the per-service-period covers source no longer lives in
+  // the legacy data_accuracy_settings.covers_source_{lunch,dinner,
+  // late_night} scalar columns. It is sourced from the keyed table
+  // public.data_accuracy_service_period_settings, resolved through the
+  // HP #11 hierarchy by public.effective_data_accuracy_settings_v's
+  // covers_source_per_service_period jsonb output (R7a). This shared
+  // correlated subquery projects that jsonb for the row's
+  // (operator_id, location_id) so reads never touch a legacy scalar
+  // covers column. The legacy covers_source_{lunch,dinner,late_night}
+  // JSON wire keys are still emitted (derived from this map) so no
+  // existing mobile/admin client breaks.
+  static const String _coversPerPeriodSubquery =
+      '(select v.covers_source_per_service_period '
+      'from public.effective_data_accuracy_settings_v v '
+      'where v.operator_id = @operator_id::uuid '
+      'and v.location_id = @location_id::uuid) '
+      'as covers_source_per_service_period';
+
   @override
   Future<Map<String, Object?>> fetchDataAccuracySettings({
     required OperatorContext scope,
@@ -3182,8 +3200,8 @@ class RepositoryMobileOperationalSyncProxyGateway
       final rows = await exec.query(
         'select setting_id::text as setting_id, '
         'operator_id::text as operator_id, '
-        'location_id::text as location_id, covers_source_lunch, '
-        'covers_source_dinner, covers_source_late_night, '
+        'location_id::text as location_id, '
+        '$_coversPerPeriodSubquery, '
         'covers_manual_entries, wage_source, '
         'walk_in_handling_mode, walk_in_manual_entries, '
         'created_at, updated_at, updated_by '
@@ -3238,22 +3256,23 @@ class RepositoryMobileOperationalSyncProxyGateway
     final walkInEntries = _bodyIntMap(body, 'walk_in_manual_entries');
 
     return _tenantRead(scope, operatorId, locationId, (exec) async {
+      // Slice R7b: covers source is no longer written to the legacy
+      // data_accuracy_settings.covers_source_{lunch,dinner,late_night}
+      // scalar columns. The non-covers fields still upsert here; the
+      // three legacy covers keys are routed (below) into the keyed
+      // table public.data_accuracy_service_period_settings — same
+      // transaction, same idempotency envelope.
       final rows = await exec.query(
         'insert into public.data_accuracy_settings ('
-        'operator_id, location_id, covers_source_lunch, '
-        'covers_source_dinner, covers_source_late_night, '
+        'operator_id, location_id, '
         'covers_manual_entries, wage_source, '
         'walk_in_handling_mode, walk_in_manual_entries, updated_by) '
         'values ('
         '@operator_id::uuid, @location_id::uuid, '
-        '@covers_lunch, @covers_dinner, @covers_late_night, '
         '@manual_entries::jsonb, @wage_source, '
         '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
         '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
-        'covers_source_lunch = excluded.covers_source_lunch, '
-        'covers_source_dinner = excluded.covers_source_dinner, '
-        'covers_source_late_night = excluded.covers_source_late_night, '
         'covers_manual_entries = excluded.covers_manual_entries, '
         'wage_source = excluded.wage_source, '
         'walk_in_handling_mode = excluded.walk_in_handling_mode, '
@@ -3263,16 +3282,12 @@ class RepositoryMobileOperationalSyncProxyGateway
         'returning setting_id::text as setting_id, '
         'operator_id::text as operator_id, '
         'location_id::text as location_id, '
-        'covers_source_lunch, covers_source_dinner, '
-        'covers_source_late_night, covers_manual_entries, wage_source, '
+        'covers_manual_entries, wage_source, '
         'walk_in_handling_mode, walk_in_manual_entries, '
         'created_at, updated_at, updated_by',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
-          'covers_lunch': coversLunch,
-          'covers_dinner': coversDinner,
-          'covers_late_night': coversLateNight,
           'manual_entries': jsonEncode(manualEntries),
           'wage_source': wageSource,
           'walk_in_handling_mode': walkInHandlingMode,
@@ -3287,7 +3302,41 @@ class RepositoryMobileOperationalSyncProxyGateway
           message: 'data accuracy settings write returned no row',
         );
       }
-      return <String, Object?>{'data': _dataAccuracyJson(rows.single)};
+      // Route the three legacy covers keys into the keyed table. The
+      // service_period_key for each hardcoded daypart is identical to
+      // the legacy column suffix; effective_at_business_date is the
+      // 1970-01-01 sentinel (matching the R5 backfill row identity) so
+      // this lands on the operator's per-location baseline keyed row
+      // and stays idempotent via the keyed UNIQUE
+      // (operator_id, location_id, service_period_key,
+      // effective_at_business_date) ON CONFLICT — only covers_source is
+      // touched so an operator-set keyed wage_source is never clobbered.
+      await _writeLegacyCoversToKeyed(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        covers: <String, String>{
+          'lunch': coversLunch,
+          'dinner': coversDinner,
+          'late_night': coversLateNight,
+        },
+        updatedBy: scope.userId,
+      );
+      final coversRow = await exec.query(
+        'select $_coversPerPeriodSubquery',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      final merged = <String, Object?>{
+        ...rows.single,
+        'covers_source_per_service_period':
+            coversRow.isEmpty
+                ? null
+                : coversRow.single['covers_source_per_service_period'],
+      };
+      return <String, Object?>{'data': _dataAccuracyJson(merged)};
     });
   }
 
@@ -3663,9 +3712,7 @@ class RepositoryMobileOperationalSyncProxyGateway
       'setting_id': row['setting_id'],
       'operator_id': row['operator_id'],
       'location_id': row['location_id'],
-      'covers_source_lunch': row['covers_source_lunch'] ?? 'vendor',
-      'covers_source_dinner': row['covers_source_dinner'] ?? 'vendor',
-      'covers_source_late_night': row['covers_source_late_night'] ?? 'vendor',
+      ..._coversWireKeys(row['covers_source_per_service_period']),
       'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
       'wage_source': row['wage_source'] ?? 'vendor',
       'walk_in_handling_mode':
@@ -4828,8 +4875,7 @@ class RepositoryDataAccuracyAdminProxyGateway
         'l.location_id::text as location_id, '
         'l.name as location_name, '
         's.setting_id::text as setting_id, '
-        's.covers_source_lunch, s.covers_source_dinner, '
-        's.covers_source_late_night, s.covers_manual_entries, '
+        's.covers_source_per_service_period, s.covers_manual_entries, '
         's.wage_source, s.walk_in_handling_mode, '
         's.walk_in_manual_entries, '
         's.created_at, s.updated_at, s.updated_by '
@@ -4936,26 +4982,21 @@ class RepositoryDataAccuracyAdminProxyGateway
         operatorId: operatorId,
         locationId: locationId,
       );
+      // Slice R7b: covers source is no longer written to the legacy
+      // data_accuracy_settings.covers_source_{lunch,dinner,late_night}
+      // scalar columns. The non-covers fields still upsert here
+      // (keep-existing-on-null admin semantics preserved); each
+      // supplied legacy covers key is routed (below) into the keyed
+      // table public.data_accuracy_service_period_settings.
       final rows = await exec.query(
         'insert into data_accuracy_settings ('
-        'operator_id, location_id, covers_source_lunch, '
-        'covers_source_dinner, covers_source_late_night, wage_source, '
+        'operator_id, location_id, wage_source, '
         'walk_in_handling_mode, updated_by) values ('
         '@operator_id::uuid, @location_id::uuid, '
-        "coalesce(@covers_lunch, 'vendor'), "
-        "coalesce(@covers_dinner, 'vendor'), "
-        "coalesce(@covers_late_night, 'vendor'), "
         "coalesce(@wage_source, 'vendor'), "
         "coalesce(@walk_in_handling_mode, 'reservations_only'), "
         '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
-        'covers_source_lunch = coalesce('
-        '@covers_lunch, data_accuracy_settings.covers_source_lunch), '
-        'covers_source_dinner = coalesce('
-        '@covers_dinner, data_accuracy_settings.covers_source_dinner), '
-        'covers_source_late_night = coalesce('
-        '@covers_late_night, '
-        'data_accuracy_settings.covers_source_late_night), '
         'wage_source = coalesce('
         '@wage_source, data_accuracy_settings.wage_source), '
         'walk_in_handling_mode = coalesce('
@@ -4966,23 +5007,42 @@ class RepositoryDataAccuracyAdminProxyGateway
         'setting_id::text as setting_id, '
         'operator_id::text as operator_id, '
         'location_id::text as location_id, '
-        'covers_source_lunch, covers_source_dinner, '
-        'covers_source_late_night, covers_manual_entries, wage_source, '
+        'covers_manual_entries, wage_source, '
         'walk_in_handling_mode, walk_in_manual_entries, '
         'created_at, updated_at, updated_by',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
-          'covers_lunch': coversSourceLunch,
-          'covers_dinner': coversSourceDinner,
-          'covers_late_night': coversSourceLateNight,
           'wage_source': wageSource,
           'walk_in_handling_mode': walkInHandlingMode,
           'updated_by': actorUserId,
         },
       );
       if (rows.isEmpty) return null;
-      final after = _settingsJson(rows.single);
+      // Route each supplied legacy covers key to the keyed table. A
+      // null param keeps the existing keyed value untouched (matching
+      // the prior coalesce(@covers_x, existing) admin semantics).
+      final suppliedCovers = <String, String>{
+        if (coversSourceLunch != null) 'lunch': coversSourceLunch,
+        if (coversSourceDinner != null) 'dinner': coversSourceDinner,
+        if (coversSourceLateNight != null)
+          'late_night': coversSourceLateNight,
+      };
+      if (suppliedCovers.isNotEmpty) {
+        await _writeLegacyCoversToKeyed(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          covers: suppliedCovers,
+          updatedBy: actorUserId,
+        );
+      }
+      final after = await _currentDataAccuracySettings(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (after == null) return null;
       await _auditOn(
         exec,
         actorUserId: actorUserId,
@@ -5033,16 +5093,28 @@ class RepositoryDataAccuracyAdminProxyGateway
         orgUnitId: orgUnitId,
         locationId: locationId,
       );
+      // Slice R7b: the per-period covers source for this admin scope is
+      // written to the R7a covers_source_per_service_period jsonb on
+      // data_accuracy_scoped_overrides (NOT the legacy
+      // covers_source_{lunch,dinner,late_night} scalar columns). Each
+      // supplied legacy covers key maps to its service_period_key
+      // ('lunch'/'dinner'/'late_night'). On conflict the supplied keys
+      // are merged into the existing map (`existing || @new`), so a
+      // null param keeps that period's existing scoped value untouched,
+      // matching the prior per-column coalesce(@x, existing) semantics.
+      final scopedCovers = <String, String>{
+        if (coversSourceLunch != null) 'lunch': coversSourceLunch,
+        if (coversSourceDinner != null) 'dinner': coversSourceDinner,
+        if (coversSourceLateNight != null) 'late_night': coversSourceLateNight,
+      };
       final rows = await exec.query(
         'insert into data_accuracy_scoped_overrides ('
         'operator_id, scope_type, org_unit_id, location_id, '
-        'covers_source_lunch, covers_source_dinner, '
-        'covers_source_late_night, wage_source, '
+        'covers_source_per_service_period, wage_source, '
         'walk_in_handling_mode, updated_by) values ('
         '@operator_id::uuid, @scope_type, @org_unit_id::uuid, '
-        '@location_id::uuid, @covers_lunch, @covers_dinner, '
-        '@covers_late_night, @wage_source, @walk_in_handling_mode, '
-        '@updated_by) '
+        '@location_id::uuid, @covers_per_period::jsonb, @wage_source, '
+        '@walk_in_handling_mode, @updated_by) '
         'on conflict ('
         'operator_id, scope_type, '
         'coalesce(org_unit_id, '
@@ -5050,13 +5122,9 @@ class RepositoryDataAccuracyAdminProxyGateway
         'coalesce(location_id, '
         "'00000000-0000-0000-0000-000000000000'::uuid)) "
         'do update set '
-        'covers_source_lunch = coalesce('
-        '@covers_lunch, data_accuracy_scoped_overrides.covers_source_lunch), '
-        'covers_source_dinner = coalesce('
-        '@covers_dinner, data_accuracy_scoped_overrides.covers_source_dinner), '
-        'covers_source_late_night = coalesce('
-        '@covers_late_night, '
-        'data_accuracy_scoped_overrides.covers_source_late_night), '
+        'covers_source_per_service_period = coalesce('
+        'data_accuracy_scoped_overrides.covers_source_per_service_period, '
+        "'{}'::jsonb) || @covers_per_period::jsonb, "
         'wage_source = coalesce('
         '@wage_source, data_accuracy_scoped_overrides.wage_source), '
         'walk_in_handling_mode = coalesce('
@@ -5069,9 +5137,7 @@ class RepositoryDataAccuracyAdminProxyGateway
           'scope_type': scopeType,
           'org_unit_id': orgUnitId,
           'location_id': locationId,
-          'covers_lunch': coversSourceLunch,
-          'covers_dinner': coversSourceDinner,
-          'covers_late_night': coversSourceLateNight,
+          'covers_per_period': jsonEncode(scopedCovers),
           'wage_source': wageSource,
           'walk_in_handling_mode': walkInHandlingMode,
           'updated_by': actorUserId,
@@ -5560,7 +5626,7 @@ class RepositoryDataAccuracyAdminProxyGateway
     final rows = await exec.query(
       'select setting_id::text as setting_id, '
       'operator_id::text as operator_id, location_id::text as location_id, '
-      'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
+      'covers_source_per_service_period, '
       'covers_manual_entries, wage_source, '
       'walk_in_handling_mode, walk_in_manual_entries, '
       'created_at, updated_at, updated_by '
@@ -5693,8 +5759,7 @@ class RepositoryDataAccuracyAdminProxyGateway
       'l.location_id::text as location_id, '
       'l.name as location_name, '
       's.setting_id::text as setting_id, '
-      's.covers_source_lunch, s.covers_source_dinner, '
-      's.covers_source_late_night, s.covers_manual_entries, '
+      's.covers_source_per_service_period, s.covers_manual_entries, '
       's.wage_source, s.walk_in_handling_mode, '
       's.walk_in_manual_entries, '
       's.created_at, s.updated_at, s.updated_by '
@@ -5816,11 +5881,12 @@ class RepositoryDataAccuracyAdminProxyGateway
           row['setting_id'] as String? ?? 'default:$operatorId:$locationId',
       'operator_id': operatorId,
       'location_id': locationId,
-      'covers_source_lunch': row['covers_source_lunch'] as String? ?? 'vendor',
-      'covers_source_dinner':
-          row['covers_source_dinner'] as String? ?? 'vendor',
-      'covers_source_late_night':
-          row['covers_source_late_night'] as String? ?? 'vendor',
+      // Slice R7b: covers source comes from the view's
+      // covers_source_per_service_period jsonb (keyed table resolved
+      // through the HP #11 hierarchy). The legacy
+      // covers_source_{lunch,dinner,late_night} wire keys are still
+      // emitted, derived from this map (no breaking wire change).
+      ..._coversWireKeys(row['covers_source_per_service_period']),
       'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
       'wage_source': row['wage_source'] as String? ?? 'vendor',
       'walk_in_handling_mode':
@@ -8544,6 +8610,75 @@ Map<String, Object?> _adminJsonObject(Object? value) {
     if (decoded is Map) return decoded.cast<String, Object?>();
   }
   return const <String, Object?>{};
+}
+
+// Slice R7b: write per-service-period covers keys into the keyed table
+// public.data_accuracy_service_period_settings. This replaces every
+// write to the legacy data_accuracy_settings.covers_source_{lunch,
+// dinner,late_night} scalar columns from the proxy. The
+// service_period_key for the three hardcoded dayparts is identical to
+// the legacy column suffix ('lunch' / 'dinner' / 'late_night').
+// effective_at_business_date is the 1970-01-01 sentinel (matching the
+// R5 backfill row identity) so legacy-shaped writes land on the
+// operator's per-location baseline keyed row. Only covers_source is
+// set/updated: wage_source keeps its NOT NULL default on insert and is
+// left untouched on conflict so an operator-set per-period wage_source
+// is never clobbered. Idempotent via the keyed UNIQUE
+// (operator_id, location_id, service_period_key,
+// effective_at_business_date) ON CONFLICT — re-applying the same write
+// is a no-op, preserving the proxy's idempotency contract.
+// Slice R7b: covers source is keyed by service_period_key in
+// public.data_accuracy_service_period_settings and resolved through
+// the HP #11 hierarchy by effective_data_accuracy_settings_v's
+// covers_source_per_service_period jsonb. No legacy scalar covers
+// column is read. The legacy covers_source_{lunch,dinner,late_night}
+// JSON wire keys are still emitted, derived from this map (the
+// service_period_key for the three hardcoded dayparts is identical to
+// the legacy column suffix: 'lunch' / 'dinner' / 'late_night'), each
+// defaulting to 'vendor' exactly as the legacy columns did. The full
+// per-period map is also emitted as covers_source_per_service_period
+// so per-period-aware clients (incl. 4+ period operators) see every
+// configured period. Shared by the mobile and admin read paths so the
+// legacy-wire-key derivation is single-sourced.
+Map<String, Object?> _coversWireKeys(Object? perPeriodRaw) {
+  final perPeriod = _adminJsonObject(perPeriodRaw);
+  return <String, Object?>{
+    'covers_source_lunch': perPeriod['lunch'] ?? 'vendor',
+    'covers_source_dinner': perPeriod['dinner'] ?? 'vendor',
+    'covers_source_late_night': perPeriod['late_night'] ?? 'vendor',
+    'covers_source_per_service_period': perPeriod,
+  };
+}
+
+Future<void> _writeLegacyCoversToKeyed(
+  PostgresExecutor exec, {
+  required String operatorId,
+  required String locationId,
+  required Map<String, String> covers,
+  required String? updatedBy,
+}) async {
+  for (final entry in covers.entries) {
+    await exec.query(
+      'insert into public.data_accuracy_service_period_settings ('
+      'operator_id, location_id, service_period_key, covers_source, '
+      'effective_at_business_date, updated_by) '
+      'values (@operator_id::uuid, @location_id::uuid, '
+      "@service_period_key, @covers_source, date '1970-01-01', "
+      '@updated_by) '
+      'on conflict (operator_id, location_id, service_period_key, '
+      'effective_at_business_date) do update set '
+      'covers_source = excluded.covers_source, '
+      'updated_at = now(), '
+      'updated_by = excluded.updated_by',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'service_period_key': entry.key,
+        'covers_source': entry.value,
+        'updated_by': updatedBy,
+      },
+    );
+  }
 }
 
 /// In-memory dedup for HARD-D. See the comment on
