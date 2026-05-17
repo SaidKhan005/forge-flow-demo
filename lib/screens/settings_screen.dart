@@ -30,10 +30,14 @@ import 'settings/settings_pointer_row.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
 
-/// W3.A â€” mobile Settings is a 3-tab read-only mirror of the operator
-/// web console. `kDemoMode` toggles demo-only rows (Data reset + Demo
-/// date) without changing the production layout. Defined as a top-
-/// level const so widget tests can flip it via `--dart-define`.
+/// W3.A (amended 2026-05-17, operator-directed) â€” mobile Settings is a
+/// 3-tab mirror of the operator web console, read-only EXCEPT the
+/// Account tab's "Two-factor sign-in" and "Account" sections, which run
+/// interactively on mobile (native sign-out + 2FA enroll/QR); see the
+/// section-level comments in the Account tab build below. `kDemoMode`
+/// toggles demo-only rows (Data reset + Demo date) without changing the
+/// production layout. Defined as a top-level const so widget tests can
+/// flip it via `--dart-define`.
 //
 // kDemoMode carve-out #3 (blessed 2026-05-08): the two demo-only
 // management sections gated below ("Data reset" at line 374, "Demo
