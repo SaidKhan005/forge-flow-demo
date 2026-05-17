@@ -535,28 +535,135 @@ class MockIntegrationReplaySeed {
   // Net mix ≈ 50% good / 14% stretched / 36% soft across the cohort
   // (6-slot periods 3/1/2; the 2-slot late_night contributes 1 good /
   // 1 soft) — good is the plurality, soft is the remainder.
+  //
+  // ── Slice SA.1 recalibration (closes SD §5.7) ──────────────────────────
+  // SA's original ±2–5% perturbation passed SA's own unfiltered
+  // dispersion test but the kept-cohort all-three-strong band collapsed
+  // after SB's Phase-1 eligibility gates + Phase-3 MAD filter + the joint
+  // at/above-kept-median selection: the good-core CPLH offsets were three
+  // near-identical values (+1.4/+1.8/+2.2%) that, after the seeded
+  // `toStringAsFixed(2)` CPLH storage rounding, collapsed the
+  // benchmark-set P25–P75 width below SB's principled
+  // `minTeachableWidthCPLH` floor — `building_flat` for lunch — and
+  // late_night's 2-slot symmetric pair put all "good" shifts on ONE CPLH
+  // value (band width 0, only 4 all-three-strong < `minBenchmark`).
+  // Operator decision (SD gate): TUNE SA UP, keep SB's floor unchanged —
+  // real shift-to-shift variation is far larger than ±2–5%
+  // (cf. `_realisticCandidates` in the validated pressure harness:
+  // correlated good core +4–16%, stretched +18–28%, soft −8–20%).
+  //
+  // The recalibration keeps SA's structure (deterministic, zero-sum per
+  // (week, period), owned-axis & week-tilt-axis excluded) but the SPREAD
+  // now comes from multiplying the whole zero-sum cluster vector by a
+  // per-week CONTINUOUS scalar [_realismWeekScale] (range ≈ 0.74…1.26)
+  // so the good core fans across a CONTINUUM of CPLH over the 12 weeks
+  // instead of landing on 3 discrete (post-`toStringAsFixed(2)` ≈1)
+  // values — giving the all-three-strong cohort a real P25–P75 band
+  // well above SB's `minTeachableWidthCPLH`. Scaling a zero-sum vector
+  // by a per-week scalar is still exactly zero-sum per (week, period),
+  // so the week aggregate `determineLever` result and the 12 distinct
+  // week-driver families are unchanged (`replay_week_driver_rotation_
+  // test`). The base offsets stay deliberately SMALL (max 0.037) so that
+  // even at the 1.26 max scalar the largest scaled offset (≈0.0466)
+  // never crosses any rate axis's own `determineLever` firing threshold
+  // (cplh/splh 0.05, ppa 0.03) — a perturbed non-owned axis is therefore
+  // never even a lever CANDIDATE on a driver slot, so per-shift levers,
+  // the 8-family span, the covers_down share, and the recurring
+  // Fri-dinner `ppa_down` / Tue-lunch `ppa_up` pins are all preserved
+  // unconditionally (`demo_slice_b_driver_variance_test`, plus the SA.1
+  // exhaustive lever-safety sweep: 0 violations across 16 slots ×
+  // 12 weeks).
+  //
+  // Magnitude sizing (SA.1): every scaled offset (base × the per-week
+  // scalar, max scalar 1.26) stays STRICTLY below 0.047 — well under the
+  // smallest co-occurring owned-axis `determineLever` magnitude on any
+  // realism-eligible slot. Empirically (SA.1 exhaustive lever-safety
+  // sweep over all 16 slots × 12 weeks) the largest scaled realism
+  // offset never even crosses its OWN `determineLever` firing threshold
+  // (cplh/splh 0.05, ppa 0.03) on a driver slot, so a perturbed
+  // non-owned axis is never a lever CANDIDATE there — the owned-axis
+  // lever wins unconditionally and the per-shift driver pins
+  // (Fri-dinner `ppa_down`, Tue-lunch `ppa_up`, 8-family span,
+  // covers_down share) are preserved with margin. The band/teachable
+  // spread instead comes from the per-week continuous scalar fanning the
+  // good core across the 12 weeks (a scalar × zero-sum vector is still
+  // zero-sum, so the week aggregate is unchanged).
   static const List<double> _realismCPLH6 = [
-    0.014, 0.018, 0.022, 0.026, -0.038, -0.042,
+    0.014, 0.020, 0.026, 0.014, -0.037, -0.037,
   ];
   static const List<double> _realismSPLH6 = [
-    0.014, 0.018, 0.022, -0.030, -0.013, -0.011,
+    0.014, 0.020, 0.026, -0.030, -0.015, -0.015,
   ];
   static const List<double> _realismPPA6 = [
-    0.009, 0.012, 0.016, -0.020, -0.009, -0.008,
+    0.009, 0.013, 0.018, -0.022, -0.009, -0.009,
   ];
-  // late_night has only two slots/week (Fri + Sat); a symmetric
-  // zero-sum pair keeps the same mean while still breaking the old
-  // 100%-identical-CPLH degeneracy.
-  static const List<double> _realismCPLH2 = [0.026, -0.026];
-  static const List<double> _realismSPLH2 = [0.020, -0.020];
-  static const List<double> _realismPPA2 = [0.013, -0.013];
+  // late_night has only two slots/week (Fri + Sat). The 2-slot zero-sum
+  // constraint forces `offset(Fri) = -offset(Sat)` every week, so ANY
+  // per-week magnitude keeps the (week, period) sum exactly zero. SA.1
+  // therefore gives late_night its OWN per-week magnitude
+  // ([_lateNightMag]) rather than the shared [_realismWeekScale] ×
+  // small-constant path: late_night is sparse and the recommendation
+  // engine only sees the shifts inside the cycle's 60-day calibration
+  // window — i.e. a CONTIGUOUS ~8-week slice of the 12, not all 12. A
+  // monotone ramp over 0..11 would put the windowed weeks on a narrow
+  // sub-segment of the ramp (band collapse → `building_flat`). A
+  // deterministic mixing spread instead fans the magnitude across the
+  // full 0.022…0.048 range within ANY contiguous window, so the ≥5
+  // Fri-good shifts the windowed cohort feeds to the all-three-strong
+  // set have a P25–P75 CPLH width above SB's `minTeachableWidthCPLH`.
+  // The 0.048 ceiling stays below 0.05 (late_night's own cplh/splh
+  // `determineLever` threshold) and below the Sat slot's splh-owned
+  // magnitude (~0.0675 at the most-negative week amplitude × the 1.4
+  // late_night volatility), so the per-shift owned levers (Fri
+  // `covers_up`, Sat `splh_down`) are preserved. SPLH/PPA poles track
+  // CPLH at the same correlated ratios SA used. Pure / no RNG.
+  static double _lateNightMag(int weekIndex) {
+    // Deterministic mixing (a coprime stride mod 7) so any contiguous
+    // window of weeks still spans the full 0.022…0.048 magnitude range.
+    final phase = ((weekIndex * 5 + 2) % 7) / 6.0; // 0 … 1
+    return 0.022 + 0.026 * phase; // 0.022 … 0.048
+  }
+
+  /// Per-week continuous scalar applied to the whole zero-sum realism
+  /// vector. A scalar × zero-sum vector is still exactly zero-sum, so the
+  /// per-(week, period) mean — and therefore the week aggregate
+  /// `determineLever` result — is unchanged. The ramp spreads the
+  /// good-core CPLH across a CONTINUUM over the 12 historical weeks so
+  /// the all-three-strong benchmark set has a real P25–P75 band (the
+  /// pre-SA.1 three-discrete-values collapse is what tripped SB's
+  /// `minTeachableWidthCPLH`). Range ≈ [0.74, 1.26]; combined with the
+  /// widest base magnitude (0.037, the SOFT CPLH position) the largest
+  /// possible scaled offset is 0.037 × 1.26 ≈ 0.0466. That is below every
+  /// rate axis's own `determineLever` firing threshold (cplh/splh 0.05),
+  /// so on a driver slot a perturbed non-owned rate axis is never even a
+  /// lever CANDIDATE — the owned-axis lever wins unconditionally,
+  /// independent of how small the owned magnitude breathes (the
+  /// SA.1 exhaustive lever-safety sweep confirms 0 violations / realism
+  /// never crosses threshold on any of the 16 slots × 12 weeks). The
+  /// good-core spread that produces the teachable band is therefore
+  /// entirely the per-week scalar fanning the small good offsets
+  /// (0.014…0.026) across a 0.74…1.26 continuum.
+  static double _realismWeekScale(int weekIndex) {
+    // Deterministic continuous ramp across the 12 historical weeks
+    // (index 0 oldest … 11 newest); the current week (index ==
+    // historicalWeekCount) is never realism-perturbed by the caller.
+    final span = (historicalWeekCount - 1).clamp(1, 1 << 30);
+    return 0.74 + 0.52 * (weekIndex / span);
+  }
 
   /// Multiplicative realism factors `(cplh, splh, ppa)` for one closed
   /// shift, applied to the NON-owned rate axes only (the caller skips
-  /// the owned axis). `weekIndex` rotates the role assignment so a given
-  /// slot is not stuck in one cluster across history (realistic
-  /// week-to-week movement) while the per-(week, period) sum stays
-  /// exactly the pre-Slice-SA mean (rotation preserves the zero sum).
+  /// the owned axis). For the 6-slot periods (lunch / dinner)
+  /// `weekIndex` rotates the cluster-role assignment so a given slot is
+  /// not stuck in one cluster across history (realistic week-to-week
+  /// movement); for the 2-slot late_night the role is FIXED by
+  /// `periodMemberIndex` (Fri good / Sat soft — see the inline note).
+  /// In BOTH cases `weekIndex` also scales the zero-sum vector by the
+  /// continuous [_realismWeekScale] so the good core spreads across a
+  /// real CPLH band. The rotation (a pure permutation), the fixed 2-slot
+  /// assignment, and the per-week scalar each preserve the
+  /// per-(week, period) zero sum exactly, so the week aggregate mean is
+  /// unchanged from pre-Slice-SA.
   ///
   /// `periodMemberIndex` is the slot's 0-based position within its
   /// period's ordered slot list for the week (lunch/dinner have six,
@@ -566,23 +673,48 @@ class MockIntegrationReplaySeed {
     required int periodMemberIndex,
     required int weekIndex,
   }) {
+    final scale = _realismWeekScale(weekIndex);
     if (daypart == 'late_night') {
-      final r = (periodMemberIndex + weekIndex) % 2;
+      // SA.1: late_night has only TWO slots/week (Fri + Sat) and the
+      // 2-slot zero-sum constraint forces `offset(Fri) = -offset(Sat)`
+      // every week — a per-week-rotating role would alternate which of
+      // the two is the "good" one, but Sat late_night OWNS the `splh`
+      // driver (weekSlots idx 13 → splh,-1) so its SPLH is pushed ~12%
+      // BELOW the cohort median and Sat can essentially never enter the
+      // all-three-strong (CPLH∧SPLH∧PPA ≥ kept-median) set. With the
+      // rotation, only the few even weeks where Fri was "good" AND no
+      // rate axis was the week-tilt produced an all-three-strong shift
+      // (≈4 < `minBenchmark`=5, collapsed band → `building_few_strong`).
+      //
+      // Fix (operator-sanctioned "raise the good-core share for sparse
+      // periods"): pin Fri (periodMemberIndex 0, owns `covers` so ALL
+      // three rate axes are realism-eligible) to the GOOD pole and Sat
+      // (periodMemberIndex 1) to the SOFT pole EVERY week. This is still
+      // exactly zero-sum per (week, period) — Fri offset + Sat offset =
+      // +x + (−x) = 0 on every axis — so the late_night week aggregate
+      // mean (and `replay_week_driver_rotation_test`) is unchanged. The
+      // teachable band spread comes from the per-week ramped
+      // [_lateNightMag] fanning Fri's good CPLH across the 12 weeks; ≥5
+      // of those Fri-good shifts land all-three-strong with a P25–P75
+      // width above SB's `minTeachableWidthCPLH`.
+      final sign = periodMemberIndex % 2 == 0 ? 1.0 : -1.0; // Fri + / Sat −
+      final mag = _lateNightMag(weekIndex);
       return (
-        cplh: 1 + _realismCPLH2[r],
-        splh: 1 + _realismSPLH2[r],
-        ppa: 1 + _realismPPA2[r],
+        cplh: 1 + sign * mag,
+        splh: 1 + sign * mag * 0.76, // SA's 0.026/0.034 SPLH:CPLH ratio
+        ppa: 1 + sign * mag * 0.50, //  SA's 0.017/0.034 PPA:CPLH ratio
       );
     }
     // 6-slot period (lunch / dinner). Rotate the role by the week so
     // each membership position cycles through all six cluster roles
     // across history; the rotation is a pure permutation so the
-    // per-(week, period) sum on every axis stays exactly zero.
+    // per-(week, period) sum on every axis stays exactly zero. The
+    // per-week scalar multiplies that zero-sum vector → still zero-sum.
     final role = (periodMemberIndex + weekIndex) % 6;
     return (
-      cplh: 1 + _realismCPLH6[role],
-      splh: 1 + _realismSPLH6[role],
-      ppa: 1 + _realismPPA6[role],
+      cplh: 1 + _realismCPLH6[role] * scale,
+      splh: 1 + _realismSPLH6[role] * scale,
+      ppa: 1 + _realismPPA6[role] * scale,
     );
   }
 
