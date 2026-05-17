@@ -228,84 +228,49 @@ class _ThisWeekContent extends StatelessWidget {
           ],
         ),
 
-        // WTD Variance Table — GAP 2. Operator decision: KEEP the
-        // existing `StickySectionDelegate` + `StickyColumnHeaderDelegate`
-        // pinned headers AND add a default-collapsed disclosure UNDER
-        // the retained sticky header. `_WtdTable` is byte-preserved
-        // (same ComparisonGroupBand / ComparisonMetricRow widgets, same
-        // numbers, same Fmt.var* sentiment); only the wrapping changes.
-        SliverMainAxisGroup(
-          slivers: [
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: StickySectionDelegate('WEEK-TO-DATE vs PLAN'),
-            ),
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: const StickyColumnHeaderDelegate(),
-            ),
-            SliverToBoxAdapter(
-              child: _CollapsibleSection(
-                summary: 'Week to date vs plan',
-                child: _WtdTable(data: weekData),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ],
+        // WTD Variance Table — GAP 2 + drift fix (E). The section title
+        // is now the disclosure's OWN header (one title element that is
+        // both the label and the expand toggle, like the mockup
+        // `<summary>Week to date vs plan ›</summary>`). The separate
+        // duplicate pinned `StickySectionDelegate` title is removed —
+        // the collapsible's own header (pinned-while-collapsed via
+        // `StickyDisclosureHeaderDelegate`) carries the SINGLE title +
+        // chevron, no repetition. `_WtdTable` is byte-preserved (same
+        // ComparisonGroupBand / ComparisonMetricRow widgets, same
+        // numbers, same Fmt.var* sentiment) and the TARGET/ACTUAL/VAR
+        // column header still pins above it when expanded.
+        _StickyDisclosureSection(
+          title: 'Week to date vs plan',
+          showColumnHeader: true,
+          child: _WtdTable(data: weekData),
         ),
 
-        // Dollar Impact Card — GAP 3. Same default-collapsed disclosure
-        // pattern UNDER the retained sticky header. `DollarImpactCard`
-        // content is byte-preserved (FROZEN math V2-6). The
-        // sentiment-driven title expression is verbatim — it must not
-        // hardcode "Loss" (an at-or-under best-possible week is a win).
-        SliverMainAxisGroup(
-          slivers: [
-            SliverPersistentHeader(
-              pinned: true,
-              // Variance Coaching V2 (V2-2:578 / V2-6:712): the
-              // dollar-impact disclosure is titled exactly
-              // `Loss if this continues`. The loss framing is
-              // UNFAVOURABLE-only — it must not call an at-or-under
-              // best-possible week a "loss". The favourable / loss
-              // decision comes from the SAME single sentiment source
-              // the hero and the impact rows already read
-              // (`MoneySentiment.fromDollarGap(weekData.dollarGap)`),
-              // never from `value > 0`. Favourable mirrors the hero's
-              // win framing (`GAINED` / `above best possible`).
-              // Presentation only: no math, table, or attribution
-              // change. Spec:
-              // docs/contracts/phase_7_58_primary_driver_contract.md
-              // V2-2 / V2-6 and docs/f&f Coaching/
-              // variance_tab_v2_mockup.html `<summary>`.
-              delegate: StickySectionDelegate(
-                MoneySentiment.fromDollarGap(weekData.dollarGap).favorable
-                    ? 'Win if this continues'
-                    : 'Loss if this continues',
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: _CollapsibleSection(
-                // Same sentiment-driven summary as the sticky header
-                // title (NOT hardcoded "Loss") so the disclosure label
-                // and the pinned header agree.
-                summary: MoneySentiment.fromDollarGap(weekData.dollarGap)
-                        .favorable
-                    ? 'Win if this continues'
-                    : 'Loss if this continues',
-                child: DollarImpactCard(
-                  weekImpact: weekData.dollarGap,
-                  monthImpact: weekData.monthDollarImpact,
-                  sixtyDayImpact: weekData.sixtyDayDollarImpact,
-                  annualizedImpact: weekData.annualizedDollarImpact,
-                  footerText: 'Through ${weekData.lastClosedDay}',
-                  theoreticalLaborPct: weekData.theoreticalLaborPct,
-                  actualLaborPct: weekData.actualLaborPct,
-                ),
-              ),
-            ),
-            const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          ],
+        // Dollar Impact Card — GAP 3 + drift fix (E). Same single-title
+        // disclosure: the section title IS the dropdown's own header
+        // (no duplicate pinned `StickySectionDelegate`). The verbatim
+        // sentiment-driven title expression is preserved exactly — it
+        // must NOT hardcode "Loss" (an at-or-under best-possible week
+        // is a win). The favourable / loss decision comes from the SAME
+        // single sentiment source the hero + impact rows already read
+        // (`MoneySentiment.fromDollarGap(weekData.dollarGap)`), never
+        // from `value > 0`; favourable mirrors the hero's win framing.
+        // `DollarImpactCard` content is byte-preserved (FROZEN math
+        // V2-6). Spec: docs/contracts/phase_7_58_primary_driver_contract
+        // .md V2-2 / V2-6 and docs/f&f Coaching/
+        // variance_tab_v2_mockup.html `<summary>`.
+        _StickyDisclosureSection(
+          title: MoneySentiment.fromDollarGap(weekData.dollarGap).favorable
+              ? 'Win if this continues'
+              : 'Loss if this continues',
+          child: DollarImpactCard(
+            weekImpact: weekData.dollarGap,
+            monthImpact: weekData.monthDollarImpact,
+            sixtyDayImpact: weekData.sixtyDayDollarImpact,
+            annualizedImpact: weekData.annualizedDollarImpact,
+            footerText: 'Through ${weekData.lastClosedDay}',
+            theoreticalLaborPct: weekData.theoreticalLaborPct,
+            actualLaborPct: weekData.actualLaborPct,
+          ),
         ),
 
         // Full Week Projection
@@ -327,65 +292,67 @@ class _ThisWeekContent extends StatelessWidget {
   }
 }
 
-/// GAP 2 / GAP 3 — a default-collapsed disclosure (mockup `<details>`
-/// / `<summary>`). It is placed UNDER the retained
-/// `StickySectionDelegate` / `StickyColumnHeaderDelegate` pinned
-/// headers (operator decision: keep the sticky delegates, ADD the
-/// collapsible underneath). The wrapped child ([_WtdTable] /
-/// [DollarImpactCard]) is byte-preserved — this widget only shows/hides
-/// it; it never alters the content, the numbers, or their sentiment.
+/// GAP 2 / GAP 3 + drift fix (E) — a default-collapsed disclosure
+/// section whose SINGLE header IS the section title + the expand
+/// toggle (mockup `<summary>Week to date vs plan ›</summary>`). It
+/// emits a [SliverMainAxisGroup] so it drops straight into the tab's
+/// flat sliver list.
 ///
-/// Mirrors the mockup `summary` row: a mono label + a trailing chevron
-/// that rotates when expanded. Collapsed by default (`_expanded = false`).
-class _CollapsibleSection extends StatefulWidget {
-  final String summary;
+/// There is exactly ONE title element: the pinned
+/// [StickyDisclosureHeaderDelegate]. While collapsed it still behaves
+/// like a pinned section header you can expand; the separate duplicate
+/// pinned `StickySectionDelegate` title (and the old inner `summary`
+/// row) are gone — no repetition.
+///
+/// The wrapped child ([_WtdTable] / [DollarImpactCard]) is
+/// byte-preserved — this widget only shows/hides it; it never alters
+/// the content, the numbers, or their sentiment. When
+/// [showColumnHeader] is true (the WTD table) the
+/// TARGET/ACTUAL/VAR [StickyColumnHeaderDelegate] pins directly under
+/// the title while expanded, exactly as before.
+class _StickyDisclosureSection extends StatefulWidget {
+  final String title;
   final Widget child;
-  const _CollapsibleSection({required this.summary, required this.child});
+  final bool showColumnHeader;
+  const _StickyDisclosureSection({
+    required this.title,
+    required this.child,
+    this.showColumnHeader = false,
+  });
 
   @override
-  State<_CollapsibleSection> createState() => _CollapsibleSectionState();
+  State<_StickyDisclosureSection> createState() =>
+      _StickyDisclosureSectionState();
 }
 
-class _CollapsibleSectionState extends State<_CollapsibleSection> {
+class _StickyDisclosureSectionState extends State<_StickyDisclosureSection> {
   bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        InkWell(
-          onTap: () => setState(() => _expanded = !_expanded),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Text(
-                    widget.summary,
-                    style: AppTextStyles.mono14(
-                      color: AppColors.textPrimary,
-                      weight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                // Chevron (mockup `summary .ch` "›"): right when
-                // collapsed, down when expanded.
-                Icon(
-                  _expanded
-                      ? Icons.keyboard_arrow_down
-                      : Icons.chevron_right,
-                  size: 20,
-                  color: AppColors.textMuted,
-                ),
-              ],
-            ),
+    return SliverMainAxisGroup(
+      slivers: [
+        // The ONE title element: pinned while collapsed (reads as a
+        // sticky section header), and is itself the expand toggle.
+        SliverPersistentHeader(
+          pinned: true,
+          delegate: StickyDisclosureHeaderDelegate(
+            label: widget.title,
+            expanded: _expanded,
+            onTap: () => setState(() => _expanded = !_expanded),
           ),
         ),
+        // TARGET/ACTUAL/VAR column header pins under the title while
+        // the WTD table is expanded (unchanged behaviour).
+        if (_expanded && widget.showColumnHeader)
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: const StickyColumnHeaderDelegate(),
+          ),
         // Default collapsed: the byte-preserved child is only built
         // when expanded.
-        if (_expanded) widget.child,
+        if (_expanded) SliverToBoxAdapter(child: widget.child),
+        const SliverToBoxAdapter(child: SizedBox(height: 24)),
       ],
     );
   }

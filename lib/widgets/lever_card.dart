@@ -128,7 +128,6 @@ class LeverCardWidget extends StatelessWidget {
           if (dollarImpactByAxis != null) ...[
             const SizedBox(height: 16),
             _DollarAttributionSection(
-              dominantId: data.id,
               dollarImpactByAxis: dollarImpactByAxis!,
               actualCPLH: actualCPLH,
               opzCeilingCPLH: opzCeilingCPLH,
@@ -136,11 +135,21 @@ class LeverCardWidget extends StatelessWidget {
               opzCeilingSPLH: opzCeilingSPLH,
             ),
           ],
-          // GAP-4(c): `.readline` narrative after the bars + a divider,
-          // rendered through InlineEmphasisText. Render-time copy from
-          // the emphasis map (NOT catalog); omitted when the lever has
-          // no read-line.
-          if (LeverEmphasisMap.readlineFor(data.id) != null) ...[
+          // GAP-4(c) + drift fix (C): `.readline` narrative after the
+          // bars + a divider, rendered through InlineEmphasisText.
+          // Render-time copy from the emphasis map (NOT catalog). When
+          // the card has the attribution map (the live This Week
+          // Primary Driver always does), the read-line is the FULL
+          // mockup sentence with the inline colored dollar chips fed
+          // the REAL per-axis attribution (favourable axis green,
+          // unfavourable red) + the signed net clause — see
+          // `LeverEmphasisMap.readlineFor`. Omitted only when the lever
+          // has no read-line.
+          if (LeverEmphasisMap.readlineFor(
+                data.id,
+                dollarImpactByAxis: dollarImpactByAxis,
+              ) !=
+              null) ...[
             const SizedBox(height: 14),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -150,7 +159,10 @@ class LeverCardWidget extends StatelessWidget {
                   Container(height: 1, color: AppColors.borderSubtle),
                   const SizedBox(height: 13),
                   InlineEmphasisText(
-                    LeverEmphasisMap.readlineFor(data.id)!,
+                    LeverEmphasisMap.readlineFor(
+                      data.id,
+                      dollarImpactByAxis: dollarImpactByAxis,
+                    )!,
                     baseStyle:
                         AppTextStyles.body15(color: AppColors.textPrimary),
                   ),
@@ -189,15 +201,21 @@ class LeverCardWidget extends StatelessWidget {
 
 /// 7.58.UX.1 — DOLLAR ATTRIBUTION section. Sums each lever-id pair into a
 /// signed per-axis contribution, then renders:
-///   - a primary sentence naming the dominant axis and its slice of the gap
-///   - one row per axis whose absolute contribution is at least $1 (rounding
-///     noise filtered)
+///   - the mono section label
+///   - one diverging `.abar` row per axis whose absolute contribution is
+///     at least $1 (rounding noise filtered)
+///
+/// Drift fix (C): the prior `<axis> explained $X of the $Y gap.` summary
+/// sentence is removed — it is NOT in the approved mockup `.driver`
+/// block, which goes DOLLAR ATTRIBUTION label → `.abar` rows →
+/// `.readline` with no intervening summary line. The narrative now lives
+/// only in the card's `.readline` (per-lever copy via
+/// `LeverEmphasisMap`).
 ///
 /// Sign convention follows `DollarImpactCard`: positive value (over-model)
 /// renders as `−$X` in negative color; negative value (under-model) renders
 /// as `+$X` in positive color.
 class _DollarAttributionSection extends StatelessWidget {
-  final String dominantId;
   final Map<String, double> dollarImpactByAxis;
   final double? actualCPLH;
   final double? opzCeilingCPLH;
@@ -205,7 +223,6 @@ class _DollarAttributionSection extends StatelessWidget {
   final double? opzCeilingSPLH;
 
   const _DollarAttributionSection({
-    required this.dominantId,
     required this.dollarImpactByAxis,
     this.actualCPLH,
     this.opzCeilingCPLH,
@@ -246,22 +263,13 @@ class _DollarAttributionSection extends StatelessWidget {
     _AxisDef('boh hours', 'boh_hours_under', 'boh_hours_over'),
   ];
 
-  static String _axisLabelForId(String id) {
-    for (final a in _axes) {
-      if (a.idA == id || a.idB == id) return a.label;
-    }
-    return id;
-  }
-
   @override
   Widget build(BuildContext context) {
     final perAxis = <_AxisRow>[];
-    double total = 0;
     for (final a in _axes) {
       final aVal = dollarImpactByAxis[a.idA] ?? 0;
       final bVal = dollarImpactByAxis[a.idB] ?? 0;
       final v = aVal + bVal;
-      total += v;
       if (v.abs() >= 1.0) {
         // Sentiment source: the model's own signed contribution.
         // `attributeDollarImpactByAxis` pre-encodes sentiment in the
@@ -280,9 +288,12 @@ class _DollarAttributionSection extends StatelessWidget {
     }
     perAxis.sort((a, b) => b.value.abs().compareTo(a.value.abs()));
 
-    final dominantValue = dollarImpactByAxis[dominantId] ?? 0;
-    final dominantLabel = _axisLabelForId(dominantId);
-
+    // V2-3 / drift fix (C): the awkward `<axis> explained $X of the $Y
+    // gap.` summary sentence is NOT in the approved mockup `.driver`
+    // block (DOLLAR ATTRIBUTION goes label → `.abar` rows → `.readline`
+    // with no intervening summary line). It is removed. The full mockup
+    // narrative lives in the `.readline` (rendered by the card via
+    // `LeverEmphasisMap`), so this section is now exactly: label + bars.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -291,15 +302,6 @@ class _DollarAttributionSection extends StatelessWidget {
           child: Text(
             'DOLLAR ATTRIBUTION',
             style: AppTextStyles.mono11(),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            '$dominantLabel explained \$${Fmt.dollars(dominantValue.abs())} '
-            'of the \$${Fmt.dollars(total.abs())} gap.',
-            style: AppTextStyles.body15(color: AppColors.textPrimary),
           ),
         ),
         if (perAxis.isNotEmpty) ...[
@@ -312,8 +314,8 @@ class _DollarAttributionSection extends StatelessWidget {
                 // GAP-4(b): diverging bar rows (mockup `.abar`). Row
                 // order is the existing descending-|value| sort (the
                 // largest contributor anchors the scale at the full
-                // half-track); `total` / `dominantId` math above is
-                // unchanged. The bar is presentation only.
+                // half-track). The bar is presentation only; no math
+                // changed (drift fix C only removed the summary line).
                 for (final row in perAxis)
                   _AttributionRow(
                     row: row,

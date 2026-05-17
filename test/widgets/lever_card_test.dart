@@ -75,10 +75,19 @@ void main() {
       await tester.pump();
 
       expect(find.text('DOLLAR ATTRIBUTION'), findsOneWidget);
-      // Total = 112 + 24 + 32 - 12 = 156. Dominant axis = covers_down ($112).
+      // Drift fix (C)(a) — DELIBERATE SPEC CHANGE, not a regression. The
+      // awkward `<axis> explained $X of the $Y gap.` summary line is NOT
+      // in the approved mockup `.driver` block and has been removed. The
+      // section is now exactly label + `.abar` rows; the narrative lives
+      // in the `.readline` (asserted below). This test previously
+      // required that summary sentence; it now asserts it is GONE.
       expect(
-        find.text('covers explained \$112 of the \$156 gap.'),
-        findsOneWidget,
+        find.textContaining('explained \$'),
+        findsNothing,
+      );
+      expect(
+        find.textContaining('of the \$'),
+        findsNothing,
       );
     });
 
@@ -111,10 +120,20 @@ void main() {
 
       // Unfavorable rows render with `−$X` sign (covers, ppa, cplh).
       // Favorable row renders with `+$X` sign (splh under-model).
-      expect(find.text('−\$112'), findsOneWidget);
-      expect(find.text('−\$32'), findsOneWidget);
-      expect(find.text('−\$24'), findsOneWidget);
-      expect(find.text('+\$12'), findsOneWidget);
+      //
+      // Drift fix (C)(b) — DELIBERATE SPEC CHANGE: the read-line now
+      // injects the REAL per-axis dollars as inline chips (dominant
+      // favourable axis as a green `+$` chip + the two dominant adverse
+      // axes as red `−$` chips). So the dominant adverse `−$112`
+      // (covers) + `−$32` (cplh) and the favourable `+$12` (splh) each
+      // appear TWICE: once on their `.abar` row, once as a read-line
+      // chip. The non-dominant `−$24` (ppa) appears once (bar only). The
+      // chip value comes from the same attribution map (no hardcoded
+      // amount), so the bar and the chip agree by construction.
+      expect(find.text('−\$112'), findsNWidgets(2)); // bar + readline chip
+      expect(find.text('−\$32'), findsNWidgets(2)); // bar + readline chip
+      expect(find.text('−\$24'), findsOneWidget); // bar only (not top-2)
+      expect(find.text('+\$12'), findsNWidgets(2)); // bar + readline chip
 
       // Axis labels accompany each row.
       expect(find.text('covers'), findsOneWidget);
@@ -191,13 +210,14 @@ void main() {
       ));
       await tester.pump();
 
-      // Primary sentence uses absolute dollars; row carries the favorable
-      // `+$` sign.
-      expect(
-        find.text('covers explained \$100 of the \$100 gap.'),
-        findsOneWidget,
-      );
-      expect(find.text('+\$100'), findsOneWidget);
+      // Drift fix (C)(a) — DELIBERATE SPEC CHANGE: the removed
+      // `<axis> explained $X of the $Y gap.` summary line is gone.
+      expect(find.textContaining('explained \$'), findsNothing);
+      // Drift fix (C)(b): the lone favourable axis (covers_up −$100,
+      // model-negative = favorable = a +$ gain) appears as the `.abar`
+      // row value AND as the read-line green chip — same real amount,
+      // no hardcode. So `+$100` matches twice.
+      expect(find.text('+\$100'), findsNWidgets(2)); // bar + readline chip
     });
   });
 
@@ -352,7 +372,12 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.text('+\$32'), findsOneWidget);
+      // Drift fix (C)(b) — DELIBERATE SPEC CHANGE: the favourable cplh
+      // axis (−$32 model-negative = favorable = a +$ gain) now appears
+      // both on its `.abar` row AND as the read-line green chip (same
+      // real attribution amount, no hardcode), so `+$32` matches twice.
+      // The OPZ "team was stretched" annotation is unaffected.
+      expect(find.text('+\$32'), findsNWidgets(2)); // bar + readline chip
       expect(find.text('cplh : team was stretched'), findsOneWidget);
     });
 

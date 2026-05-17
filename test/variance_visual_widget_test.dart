@@ -109,8 +109,19 @@ void main() {
       expect(find.text('History'), findsAtLeastNWidgets(1));
       expect(find.text('Learn'), findsAtLeastNWidgets(1));
 
+      // Drift fix (E) — DELIBERATE SPEC CHANGE, not a regression. The
+      // WTD section's separate duplicate pinned `StickySectionDelegate`
+      // title (`WEEK-TO-DATE vs PLAN`) is removed: the section title is
+      // now the disclosure's OWN single header (`Week to date vs plan`,
+      // mockup `<summary>`), pinned-while-collapsed, no repetition. The
+      // old uppercase delegate title must NOT appear; the single title
+      // must.
       expect(
         find.text('WEEK-TO-DATE vs PLAN', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text('Week to date vs plan', skipOffstage: false),
         findsOneWidget,
       );
       expect(
@@ -179,10 +190,18 @@ void main() {
       }
     }
 
-    testWidgets('WEEK-TO-DATE vs PLAN section is present', (tester) async {
+    testWidgets('Week to date vs plan section is present', (tester) async {
       await pumpAndSettle(tester);
+      // Drift fix (E) — DELIBERATE SPEC CHANGE: the WTD section title is
+      // now the disclosure's own single header (`Week to date vs plan`),
+      // replacing the removed duplicate pinned `WEEK-TO-DATE vs PLAN`
+      // delegate title. One title element, no repetition.
       expect(
         find.text('WEEK-TO-DATE vs PLAN', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text('Week to date vs plan', skipOffstage: false),
         findsOneWidget,
       );
     });
