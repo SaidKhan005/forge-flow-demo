@@ -55,9 +55,12 @@ class BusinessTimingEditorScreen extends StatefulWidget {
   final BusinessTimingProfileWriteResult? existingProfile;
   final VoidCallback? onClose;
 
+  // G7d (spec §2.B/§3): v2 catalog constant; phantom
+  // `'operator_admin'` role check dropped (folded into
+  // `operator_owner`). Live-path neutral — the permission-key
+  // clause is authoritative for real (snapshot-hydrated) sessions.
   bool get canEdit =>
-      session.roles.contains('operator_owner') ||
-      session.roles.contains('operator_admin') ||
+      session.roles.contains(PermissionKeys.roleOperatorOwner) ||
       session.permissions.contains(_kBusinessTimingEditPermission);
 
   @override

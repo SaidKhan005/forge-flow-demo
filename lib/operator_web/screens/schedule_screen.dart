@@ -32,11 +32,14 @@ import '../widgets/schedule_forecast_explainer_panel.dart';
 /// Roles admitted to read the locked weekly plan from op-web. Mirrors the
 /// existing operator-web read role gate (`kOperatorWebAdmittedRoles`)
 /// rather than introducing a new permission key.
+// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+// `'operator_admin'` dropped (folded into `operator_owner`); v1
+// soft-deleted `'operator_manager'` → `roleOperatorGeneralManager`
+// (map, don't drop). `location_manager` kept (REAL v2 role).
 const Set<String> _kScheduleReadRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleLocationManager,
 };
 
 class ScheduleScreen extends StatefulWidget {

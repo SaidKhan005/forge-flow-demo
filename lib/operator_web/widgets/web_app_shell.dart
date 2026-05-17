@@ -11,6 +11,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../../theme/app_theme.dart';
 import 'hierarchy_map_picker.dart';
@@ -544,11 +545,34 @@ class _RolePill extends StatelessWidget {
     );
   }
 
+  // G7d (spec §2.B/§3): display pill re-based on the v2 default role
+  // catalog. Phantom `'operator_admin'` dropped (folded into
+  // `operator_owner` — `_inferRoles` no longer synthesizes it); v1
+  // soft-deleted `'operator_manager'` → `roleOperatorGeneralManager`
+  // (mapped, not dropped). The four new v2 roles (`finance_analyst`,
+  // `auditor_compliance`, `training_lead`, `team_admin`) and the
+  // carry-over `ff_support` are now labelled too, since `_inferRoles`
+  // can emit them.
   String _roleLabel(List<String> roles) {
-    if (roles.contains('operator_owner')) return 'Owner';
-    if (roles.contains('operator_admin')) return 'Admin';
-    if (roles.contains('operator_manager')) return 'Manager';
-    if (roles.contains('location_manager')) return 'Location manager';
+    if (roles.contains(PermissionKeys.roleOperatorOwner)) return 'Owner';
+    if (roles.contains(PermissionKeys.roleOperatorGeneralManager)) {
+      return 'General manager';
+    }
+    if (roles.contains(PermissionKeys.roleLocationManager)) {
+      return 'Location manager';
+    }
+    if (roles.contains(PermissionKeys.roleSupervisor)) return 'Supervisor';
+    if (roles.contains(PermissionKeys.roleFinanceAnalyst)) {
+      return 'Finance analyst';
+    }
+    if (roles.contains(PermissionKeys.roleAuditorCompliance)) {
+      return 'Auditor / Compliance';
+    }
+    if (roles.contains(PermissionKeys.roleTrainingLead)) {
+      return 'Training lead';
+    }
+    if (roles.contains(PermissionKeys.roleTeamAdmin)) return 'Team admin';
+    if (roles.contains(PermissionKeys.roleFfSupport)) return 'F&F Support';
     if (roles.isEmpty) return 'Unknown role';
     return roles.first.replaceAll('_', ' ');
   }

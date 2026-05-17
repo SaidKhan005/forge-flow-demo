@@ -6,9 +6,12 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
 import '../widgets/hierarchy_tree_visualization.dart';
 
+// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+// `'operator_admin'` dropped (folded into `operator_owner`).
+// Live-path neutral — authoritative gate is
+// `kOperatorWebBusinessTimingEditPermission`.
 const Set<String> kOperatorWebBusinessTimingEditRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 const String kOperatorWebBusinessTimingEditPermission =

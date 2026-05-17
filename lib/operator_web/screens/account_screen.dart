@@ -55,9 +55,13 @@ import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
 import '../widgets/web_app_shell.dart';
 
+// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+// `'operator_admin'` dropped (folded into `operator_owner`).
+// Live-path neutral — authoritative gate is
+// `_kAccountEditPermission`; this set is the empty-snapshot
+// (demo + boot) fallback only.
 const Set<String> _kAccountEditRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 const String _kAccountEditPermission = PermissionKeys.accountConfigure;

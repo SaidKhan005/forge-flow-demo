@@ -70,18 +70,24 @@ const String kAuditLogExportPermissionKey = PermissionKeys.teamAuditLogExport;
 /// Roles admitted to the Audit Log read surface when the proxy
 /// permission snapshot is not yet hydrated. Authoritative gate is the
 /// permission key.
+///
+/// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+/// `'operator_admin'` dropped (folded into `operator_owner`); v1
+/// soft-deleted `'operator_manager'` mapped to its v2 constant
+/// `roleOperatorGeneralManager` (map, don't drop — migration-window
+/// robustness). `location_manager` kept (REAL v2 role).
 const Set<String> kAuditLogViewAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleLocationManager,
 };
 
 /// Roles admitted to the CSV export action when the snapshot is
 /// empty. Authoritative gate is `team.audit_log.export`.
+///
+/// G7d (spec §2.B/§3): phantom `'operator_admin'` dropped.
 const Set<String> kAuditLogExportAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Per-page size pinned by the parity contract (Performance Framework).

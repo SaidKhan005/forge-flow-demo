@@ -115,10 +115,13 @@ void main() {
       );
     });
 
-    testWidgets('operator_supervisor without team.session.force_logout sees '
+    testWidgets('supervisor without team.session.force_logout sees '
         'only Your sessions', (tester) async {
+      // G7d (spec §3): v1 operator_supervisor → v2 `supervisor`.
+      // `kSessionsOwnAdmittedRoles` now carries `roleSupervisor`; the
+      // own-only intent (no team.session.force_logout) is preserved.
       await sizeViewport(tester, const Size(1280, 1200));
-      await pumpScreen(tester, session: sessionWithRole('operator_supervisor'));
+      await pumpScreen(tester, session: sessionWithRole('supervisor'));
 
       expect(
         find.byKey(const Key('operator_web_sessions_own_section')),

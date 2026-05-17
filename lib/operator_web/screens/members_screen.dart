@@ -62,19 +62,24 @@ import 'invite_member_dialog.dart';
 /// the parity contract § Permission gate cheat sheet; this role set
 /// is the friendly fallback so the screen renders something useful
 /// before the live snapshot lands.
+///
+/// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+/// `'operator_admin'` dropped (folded into `operator_owner`); v1
+/// soft-deleted `'operator_manager'` → `roleOperatorGeneralManager`
+/// (map, don't drop). `location_manager` kept (REAL v2 role).
 const Set<String> kOperatorWebMembersAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleLocationManager,
 };
 
 /// Role-tier fallback for the destructive row actions. Authoritative
 /// gate is the `team.users.*` permission key set; this set kicks in
 /// only when `OperatorWebSession.permissions` is empty (demo + boot).
+///
+/// G7d (spec §2.B/§3): phantom `'operator_admin'` dropped.
 const Set<String> kOperatorWebMembersWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Permission-key bound for the Members read surface. Live source

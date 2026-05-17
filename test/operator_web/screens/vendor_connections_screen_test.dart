@@ -1,8 +1,9 @@
 // Phase 11W.8 — Vendor Connections screen widget tests.
 //
 // Covers what 11W.8 ships under the operator-web shell: the screen
-// mount, permission gate (operator_admin / operator_owner allow;
-// location_manager 403), responsive breakpoints, and the standalone
+// mount, permission gate (operator_owner allow — G7d folded the
+// phantom operator_admin into operator_owner; location_manager 403),
+// responsive breakpoints, and the standalone
 // Notify-me dialog (open / submit / cancel / pre-fill / duplicate
 // resubmit).
 //
@@ -26,6 +27,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 void main() {
   // ─── Test fixtures ───────────────────────────────────────────────
 
+  // G7d (spec §3): the phantom `operator_admin` folds into
+  // `operator_owner` (never seeded in v1/v2). This fixture now drives
+  // the fold target — the elevated tier that, post-v2, the Vendor
+  // Connections admit set (`{roleOperatorOwner}`) recognizes.
   const adminSession = OperatorWebSession(
     uid: 'brio-admin',
     email: 'alex@brio-restaurants.com',
@@ -34,7 +39,7 @@ void main() {
     businessName: 'Brio Restaurants',
     primaryLocationId: 'brio-chicago-loop',
     primaryLocationName: 'Brio - Chicago Loop',
-    roles: <String>['operator_admin'],
+    roles: <String>['operator_owner'],
   );
 
   const ownerSession = OperatorWebSession(
@@ -82,7 +87,8 @@ void main() {
   // ─── Permission gate ─────────────────────────────────────────────
 
   group('VendorConnectionsScreen permission gate', () {
-    testWidgets('operator_admin renders the screen body', (tester) async {
+    testWidgets('operator_admin fold target (owner) renders the screen '
+        'body', (tester) async {
       await sizeViewport(tester, const Size(1280, 800));
       await tester.pumpWidget(
         wrap(

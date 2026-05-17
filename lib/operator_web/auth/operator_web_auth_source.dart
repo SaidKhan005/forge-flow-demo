@@ -35,6 +35,8 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../auth/permission_keys.dart';
+
 // Per-Daypart Targets V1 / Slice 2 (Gap 35): operator-web Benchmarks
 // override gateway import removed; surface cut entirely.
 
@@ -284,15 +286,24 @@ class OperatorWebSignedOut extends OperatorWebAuthState {
   final String? lastErrorMessage;
 }
 
-/// Roles admitted to the operator-web console. Mirrors the Phase 9
-/// auth catalog: `operator_admin` and `operator_owner` get full
-/// access, `location_manager` gets read-only. All other roles
-/// fail-close.
+/// Roles admitted to the operator-web console. Mirrors the v2 default
+/// role catalog (`202605150000_phase_r2l_default_role_catalog_v2.sql`):
+/// `operator_owner` gets full access, `operator_general_manager`
+/// (v1 soft-deleted `operator_manager` → mapped per spec §3) and
+/// `location_manager` (REAL v2 role) get read-only console access.
+/// All other roles fail-close.
+///
+/// G7d (spec §2.B/§3): the phantom `'operator_admin'` literal is
+/// dropped (folded into `operator_owner` — never seeded in v1/v2);
+/// the soft-deleted v1 `'operator_manager'` literal is mapped to its
+/// v2 constant rather than silently deleted (migration-window
+/// robustness). Live-path neutral — real users carry the hydrated
+/// permission snapshot and the per-screen `PermissionKeys.*` gates
+/// (+ `_hasConsoleAccess` permission fallback) decide.
 const Set<String> kOperatorWebAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleLocationManager,
 };
 
 /// Source of the operator-web auth state machine. Both demo and live

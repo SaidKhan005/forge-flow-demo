@@ -58,21 +58,27 @@ const String kSessionsTeamForceLogoutPermissionKey =
 /// Roles admitted to the Team sessions section when the proxy
 /// permission snapshot is not yet hydrated. Authoritative gate is
 /// the permission key.
+///
+/// G7d (spec §2.B/§3): phantom `'operator_admin'` dropped (folded
+/// into `operator_owner`).
 const Set<String> kSessionsTeamForceLogoutAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Roles admitted to the own-sessions surface when the proxy
 /// permission snapshot is not yet hydrated. Every authenticated
 /// operator-web role sees their own ledger.
+///
+/// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+/// `'operator_admin'` dropped; v1 soft-deleted `'operator_manager'`
+/// → `roleOperatorGeneralManager`; `'operator_supervisor'` and
+/// `'operator_staff'` both → `roleSupervisor` (dedup). Map, don't
+/// drop — migration-window robustness. `location_manager` kept.
 const Set<String> kSessionsOwnAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'operator_supervisor',
-  'operator_staff',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleSupervisor,
+  PermissionKeys.roleLocationManager,
 };
 
 /// Operator Web Sessions screen.

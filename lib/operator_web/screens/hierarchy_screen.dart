@@ -47,21 +47,27 @@ import '../../theme/app_theme.dart';
 /// snapshot is not yet hydrated (demo flavor + bootstrap). The
 /// authoritative gate is the `team.users.view` permission key per the
 /// parity contract § Permission gate cheat sheet (Hierarchy row).
+///
+/// G7d (spec §2.B/§3): v2 catalog constants. Phantom
+/// `'operator_admin'` dropped (folded into `operator_owner`); v1
+/// soft-deleted `'operator_manager'` → `roleOperatorGeneralManager`
+/// and `'operator_supervisor'` → `roleSupervisor` (map, don't drop —
+/// migration-window robustness). `location_manager` kept (REAL v2).
 const Set<String> kOperatorWebHierarchyAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-  'operator_manager',
-  'operator_supervisor',
-  'location_manager',
+  PermissionKeys.roleOperatorOwner,
+  PermissionKeys.roleOperatorGeneralManager,
+  PermissionKeys.roleSupervisor,
+  PermissionKeys.roleLocationManager,
 };
 
 /// Role-tier fallback for the mutate actions (create org unit, move
 /// location). Authoritative gate is the `team.roles.assign`
 /// permission key; this set kicks in only when
 /// `OperatorWebSession.permissions` is empty (demo + boot).
+///
+/// G7d (spec §2.B/§3): phantom `'operator_admin'` dropped.
 const Set<String> kOperatorWebHierarchyWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Permission-key bound for the Hierarchy read surface. Live source

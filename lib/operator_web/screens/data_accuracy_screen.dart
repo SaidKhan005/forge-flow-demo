@@ -34,6 +34,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_keys.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_data_accuracy_gateway.dart';
 import '../services/operator_web_tier_email_gateway.dart';
@@ -61,9 +62,13 @@ import '../../theme/app_theme.dart';
 /// console. Mirrors the Vendor connections gate — operator owners +
 /// admins read+write; location managers see a friendly forbidden
 /// surface (read-mostly role).
+// G7d (spec §2.B/§3): v2 catalog constant. Phantom
+// `'operator_admin'` dropped (folded into `operator_owner`).
+// Live-path neutral — the snapshot permission key is
+// authoritative for real sessions; this is the empty-snapshot
+// (demo + boot) fallback only.
 const Set<String> kOperatorWebDataAccuracyAdmittedRoles = <String>{
-  'operator_owner',
-  'operator_admin',
+  PermissionKeys.roleOperatorOwner,
 };
 
 /// Default polling tier surfaced when nothing else is wired in. Lane

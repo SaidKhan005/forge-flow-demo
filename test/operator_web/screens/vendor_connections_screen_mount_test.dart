@@ -145,7 +145,9 @@ void main() {
           businessName: 'Brio Restaurants',
           primaryLocationId: 'brio-chicago-loop',
           primaryLocationName: 'Brio - Chicago Loop',
-          roles: <String>['operator_admin'],
+          // G7d (spec §3): phantom operator_admin folds into
+          // operator_owner; fixture drives the fold target.
+          roles: <String>['operator_owner'],
         );
 
         await tester.pumpWidget(
@@ -189,7 +191,9 @@ void main() {
           businessName: 'Brio Restaurants',
           primaryLocationId: 'brio-chicago-loop',
           primaryLocationName: 'Brio - Chicago Loop',
-          roles: <String>['operator_admin'],
+          // G7d (spec §3): phantom operator_admin folds into
+          // operator_owner; fixture drives the fold target.
+          roles: <String>['operator_owner'],
         );
 
         await tester.pumpWidget(
