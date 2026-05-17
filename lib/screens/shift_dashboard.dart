@@ -9,6 +9,7 @@ import '../theme/app_theme.dart';
 import '../domain/constants/app_defaults.dart';
 import '../domain/models/restaurant_location.dart';
 import '../domain/models/service_period_definition.dart';
+import '../domain/services/next_service_period_open_resolver.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../services/integration/shift_vendor_source_resolver.dart';
 import '../services/shift_service_period_read_service.dart';
@@ -136,11 +137,23 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             ),
           );
         }
+        // Closed-state Shift dashboard (Per-Daypart V1 — closed-state
+        // screen): when there is no open shift but the operator has
+        // prior history, the notifier binds the last completed business
+        // day's already-saved final values and the SAME layout renders,
+        // visually marked Closed. Presentation only — same widgets, same
+        // read model, no logic/data change. Revisits the prior
+        // "show nothing when nothing is live" QA stance: a closed day
+        // shows FINAL, settled values clearly marked Closed (not a
+        // frozen in-progress moment), so the operator is never staring
+        // at a bare empty screen before/after service.
+        final bool closed = notifier.isClosedDay;
         return FadingHeaderShell(
           header: _ShiftHeader(
             readModel: rm,
             freshness: notifier.freshness,
             ticker: _ticker,
+            closed: closed,
           ),
           child: RefreshIndicator(
             color: AppColors.sunset,
@@ -148,6 +161,10 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
+                if (closed)
+                  SliverToBoxAdapter(
+                    child: _ClosedDayBanner(nextOpen: notifier.nextOpen),
+                  ),
                 SliverToBoxAdapter(
                   child: _ShiftPeriodSelector(
                     selectedPeriodId: _selectedServicePeriodId,
@@ -353,10 +370,17 @@ class _ShiftHeader extends StatelessWidget {
   final ShiftDashboardReadModel readModel;
   final CurrentStateFreshness? freshness;
   final ValueListenable<DateTime> ticker;
+
+  /// Closed-state Shift dashboard: when true the header swaps the green
+  /// "Live" status dot + freshness chip for a neutral grey "Closed"
+  /// marker. Same layout, label-only change (no reader fork on
+  /// kDemoMode — demo and production identical).
+  final bool closed;
   const _ShiftHeader({
     required this.readModel,
     required this.ticker,
     this.freshness,
+    this.closed = false,
   });
 
   @override
@@ -372,6 +396,7 @@ class _ShiftHeader extends StatelessWidget {
         daypart: readModel.daypart,
         ticker: ticker,
         freshness: freshness,
+        closed: closed,
       ),
     );
   }
@@ -414,12 +439,14 @@ class _ShiftHeaderMeta extends StatelessWidget {
   final String daypart;
   final ValueListenable<DateTime> ticker;
   final CurrentStateFreshness? freshness;
+  final bool closed;
   const _ShiftHeaderMeta({
     required this.day,
     required this.businessDate,
     required this.daypart,
     required this.ticker,
     this.freshness,
+    this.closed = false,
   });
 
   @override
@@ -443,8 +470,10 @@ class _ShiftHeaderMeta extends StatelessWidget {
                 Container(
                   width: 6,
                   height: 6,
-                  decoration: const BoxDecoration(
-                    color: AppColors.sunset,
+                  decoration: BoxDecoration(
+                    // Closed-state: neutral grey dot where the live
+                    // screen shows the warm "live" accent.
+                    color: closed ? AppColors.textMuted : AppColors.sunset,
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -470,12 +499,46 @@ class _ShiftHeaderMeta extends StatelessWidget {
               ],
             ),
           ),
-          if (freshness != null) ...[
+          if (closed) ...[
+            const SizedBox(width: 12),
+            const _ClosedStatusLabel(),
+          ] else if (freshness != null) ...[
             const SizedBox(width: 12),
             _FreshnessLabel(freshness: freshness!),
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Closed-state status marker shown where the live screen shows the
+/// green "Live" freshness chip. Neutral grey dot + "Closed" label —
+/// the same compact shape as [_FreshnessLabel] so the header geometry
+/// is unchanged. Label-only; no kDemoMode fork (demo and production
+/// identical).
+class _ClosedStatusLabel extends StatelessWidget {
+  const _ClosedStatusLabel();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(
+            color: AppColors.textMuted,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          'Closed',
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+      ],
     );
   }
 }
@@ -2086,6 +2149,52 @@ DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
 // per operator instruction — the daypart header is plain (clock window
 // + driver chip only). The period pill's border-only active affordance
 // is the sole live-state signal.
+
+// ─── Closed-state reopen banner ──────────────────────────────────────────────
+
+/// One slim line under the title for the closed-state Shift dashboard:
+/// `Final results for this day. Live shift reopens {Weekday},
+/// {h:MM AM/PM}.` The reopen moment is resolved from the operator's
+/// configured service periods (timezone + applicable-days + past-
+/// midnight aware) by `NextServicePeriodOpenResolver`. When the next
+/// open cannot be resolved (no usable timing config) the reopen
+/// sentence is omitted rather than printing a phantom time (Metric
+/// Honesty Doctrine) — the "Final results for this day." lead-in still
+/// shows so the operator knows the screen is settled history.
+///
+/// UX copy law: plain English, no em dash. A full stop joins the two
+/// clauses; a comma separates weekday and time.
+class _ClosedDayBanner extends StatelessWidget {
+  final NextServicePeriodOpen? nextOpen;
+  const _ClosedDayBanner({required this.nextOpen});
+
+  static String _formatTime(DateTime t) {
+    final hour = t.hour % 12 == 0 ? 12 : t.hour % 12;
+    final minute = t.minute.toString().padLeft(2, '0');
+    final amPm = t.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $amPm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final n = nextOpen;
+    final String text;
+    if (n != null && n.weekdayName.isNotEmpty) {
+      text =
+          'Final results for this day. Live shift reopens '
+          '${n.weekdayName}, ${_formatTime(n.localOpen)}.';
+    } else {
+      text = 'Final results for this day.';
+    }
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Text(
+        text,
+        style: AppTextStyles.mono10(color: AppColors.textMuted),
+      ),
+    );
+  }
+}
 
 // ─── Empty state ────────────────────────────────────────────────────────────
 

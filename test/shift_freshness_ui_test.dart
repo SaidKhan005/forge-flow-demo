@@ -20,6 +20,8 @@ import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/models/current_state_freshness.dart';
 import 'package:forge_and_flow/models/shift_dashboard_read_model.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/next_service_period_open_resolver.dart';
 import 'package:forge_and_flow/screens/shift_dashboard.dart';
 
 // ── Fixture helpers ─────────────────────────────────────────────────────
@@ -81,6 +83,35 @@ Widget _buildWithFreshness(CurrentStateFreshness? freshness) {
       ChangeNotifierProvider<ShiftDashboardNotifier>(
         create: (_) =>
             ShiftDashboardNotifier.fromReadModel(rm, freshness: freshness),
+      ),
+    ],
+    child: const MaterialApp(
+      home: Scaffold(body: ShiftDashboard()),
+    ),
+  );
+}
+
+Widget _buildClosedState({NextServicePeriodOpen? nextOpen}) {
+  final rm = _fixtureReadModel();
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<RestaurantScopeNotifier>(
+        create: (_) => RestaurantScopeNotifier.fromRestaurant(
+          const RestaurantLocation(
+            restaurantId: 'demo_restaurant_001',
+            displayName: 'Test Restaurant',
+            businessTimezone: 'America/St_Johns',
+            createdAt: '2026-03-30T10:00:00',
+            updatedAt: '2026-03-30T10:00:00',
+          ),
+        ),
+      ),
+      ChangeNotifierProvider<ShiftDashboardNotifier>(
+        create: (_) => ShiftDashboardNotifier.fromReadModel(
+          rm,
+          isClosedDay: true,
+          nextOpen: nextOpen,
+        ),
       ),
     ],
     child: const MaterialApp(
@@ -238,6 +269,75 @@ void main() {
 
       expect(find.text('NO DATA'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsNothing);
+    });
+  });
+
+  // ── G: closed-state Shift dashboard ───────────────────────────────────
+  // Per-Daypart V1 — closed-state screen. The SAME Shift layout renders
+  // bound to the last completed day's final values, marked Closed: a
+  // grey "Closed" marker replaces the green "Live" chip and a slim
+  // reopen line shows under the title. Same widgets, presentation only.
+
+  group('G -- closed-state dashboard', () {
+    testWidgets('renders grey "Closed" marker, never "Live"',
+        (tester) async {
+      await tester.pumpWidget(_buildClosedState());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Closed', skipOffstage: false), findsOneWidget);
+      expect(find.text('Live', skipOffstage: false), findsNothing);
+      // Same layout: the normal data view (RefreshIndicator) renders,
+      // NOT the bare empty state.
+      expect(find.byType(RefreshIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows the reopen line with weekday + time', (tester) async {
+      const lateNight = ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 3,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      );
+      // Friday 2026-05-15 23:00 local.
+      final nextOpen = NextServicePeriodOpen(
+        localOpen: DateTime(2026, 5, 15, 23, 0),
+        definition: lateNight,
+        isoWeekday: DateTime.friday,
+      );
+      await tester.pumpWidget(_buildClosedState(nextOpen: nextOpen));
+      await tester.pump();
+      await tester.pump();
+
+      expect(
+        find.text(
+          'Final results for this day. Live shift reopens '
+          'Friday, 11:00 PM.',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('omits the reopen sentence when next open is unresolved',
+        (tester) async {
+      await tester.pumpWidget(_buildClosedState(nextOpen: null));
+      await tester.pump();
+      await tester.pump();
+
+      // Lead-in still shows (settled history), but no phantom time.
+      expect(
+        find.text('Final results for this day.', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('reopens', skipOffstage: false),
+        findsNothing,
+      );
     });
   });
 }

@@ -48,6 +48,27 @@ class OpenShiftSnapshotDao {
     return rows.map(OpenShiftSnapshot.fromMap).toList();
   }
 
+  /// Returns the most recent `business_date` (ISO `YYYY-MM-DD`, so
+  /// lexicographic ordering is chronological) that has ANY snapshot row
+  /// for [restaurantId], regardless of `status`. Used by the
+  /// closed-state Shift dashboard to bind the last completed business
+  /// day's already-persisted final values when no `status='open'` shift
+  /// exists. Read-only — no recompute, no write. Null when the operator
+  /// has no shift history at all (brand-new operator → simple empty
+  /// state).
+  Future<String?> getMostRecentBusinessDate(String restaurantId) async {
+    final rows = await _db.query(
+      'open_shift_snapshots',
+      columns: ['business_date'],
+      where: 'restaurant_id = ?',
+      whereArgs: [restaurantId],
+      orderBy: 'business_date DESC',
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['business_date'] as String;
+  }
+
   Future<void> replaceOpenShiftSnapshot(OpenShiftSnapshot snapshot) async {
     await _db.transaction((txn) async {
       await txn.delete(

@@ -1,5 +1,8 @@
 import 'package:flutter/foundation.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 import '../domain/models/active_target_profile.dart';
+import '../domain/services/next_service_period_open_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
@@ -9,8 +12,10 @@ import '../models/shift_dashboard_read_model.dart';
 import '../services/current_state_freshness_service.dart';
 import '../services/integration/shift_vendor_source_resolver.dart';
 import '../services/app_data_status_service.dart';
+import '../services/restaurant_timing_config_read_service.dart';
 import '../services/schedule_plan_read_service.dart';
 import '../services/wage_standard_context_service.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 
 /// Reads the active restaurant id; injected so tests can simulate a
 /// scope flip mid-fetch.
@@ -30,6 +35,28 @@ class ShiftDashboardNotifier extends ChangeNotifier {
   /// in-flight revalidation.
   CurrentStateFreshness? _freshness;
 
+  /// Closed-state Shift dashboard (Per-Daypart V1 — closed-state screen).
+  ///
+  /// True when there is NO `status='open'` shift but the operator HAS
+  /// prior shift history, so the dashboard binds the last completed
+  /// business day's already-persisted final values and renders the
+  /// SAME Shift layout marked Closed. The read path is presentation
+  /// only: it reuses `ShiftDashboardReadModel.buildWholeDay` verbatim
+  /// over the persisted closed snapshots + the locked plan day row —
+  /// no recompute, no new persistence, no formula change.
+  ///
+  /// False on the live path (an open shift exists) and false for a
+  /// brand-new operator with no shift history (the simple empty state
+  /// is preserved — nothing to show yet).
+  bool _isClosedDay = false;
+
+  /// The next moment a live shift opens, resolved from the operator's
+  /// configured service periods relative to the close moment. Null when
+  /// not on the closed-day path or when no usable timing config exists
+  /// (the reopen line is then omitted rather than printed with a
+  /// phantom time — Metric Honesty Doctrine).
+  NextServicePeriodOpen? _nextOpen;
+
   /// Per-operator isolation seam (Launch Blocker #1).
   ///
   /// `_load` captures the active restaurant id at fetch-start and re-reads
@@ -45,6 +72,16 @@ class ShiftDashboardNotifier extends ChangeNotifier {
   CurrentStateFreshness? get freshness => _freshness;
   bool get lockedPlanUnavailable => _lockedPlanUnavailable;
 
+  /// True when the dashboard is showing the last completed business
+  /// day's final, settled values marked Closed (no open shift, but
+  /// shift history exists). The widget swaps the green "Live" indicator
+  /// for a neutral grey "Closed" and shows a slim reopen line.
+  bool get isClosedDay => _isClosedDay;
+
+  /// The resolved next service-period open (closed-day path only), or
+  /// null when not applicable / not resolvable.
+  NextServicePeriodOpen? get nextOpen => _nextOpen;
+
   ShiftDashboardNotifier({
     ActiveRestaurantIdReader? activeRestaurantIdReader,
   }) : _activeRestaurantIdReader = activeRestaurantIdReader ??
@@ -56,9 +93,13 @@ class ShiftDashboardNotifier extends ChangeNotifier {
   ShiftDashboardNotifier.fromReadModel(
     ShiftDashboardReadModel model, {
     CurrentStateFreshness? freshness,
+    bool isClosedDay = false,
+    NextServicePeriodOpen? nextOpen,
   })  : _readModel = model,
         _status = null,
         _freshness = freshness,
+        _isClosedDay = isClosedDay,
+        _nextOpen = nextOpen,
         _isLoading = false,
         _activeRestaurantIdReader =
             SqliteRestaurantScopeRepository.instance.getActiveRestaurantId;
@@ -107,86 +148,60 @@ class ShiftDashboardNotifier extends ChangeNotifier {
 
     ShiftDashboardReadModel? loadedReadModel;
     CurrentStateFreshness? loadedFreshness;
+    var isClosedDay = false;
+    NextServicePeriodOpen? nextOpen;
 
     if (businessDate != null) {
-      // Load ALL daypart snapshots for this business day
-      final snapshots = await SqliteOpenShiftSnapshotRepository.instance
-          .getSnapshotsForDay(restaurantId, businessDate);
-
-      // Evaluate per-surface freshness from the latest snapshot timestamp.
-      // Same maxUpdatedAt pattern as AppDataStatusService.evaluate().
-      final maxUpdatedAt = snapshots
-          .map((s) => DateTime.tryParse(s.updatedAt))
-          .whereType<DateTime>()
-          .fold<DateTime?>(
-              null, (a, b) => a == null || b.isAfter(a) ? b : a);
-
-      if (snapshots.isNotEmpty) {
-        loadedFreshness = const CurrentStateFreshnessService().evaluate(
-          updatedAt: maxUpdatedAt,
-          now: DateTime.now().toUtc(),
+      // ── Live path: an open shift exists for `businessDate`. ──────────
+      final built = await _buildDayReadModel(
+        restaurantId: restaurantId,
+        businessDate: businessDate,
+        profile: profile,
+      );
+      loadedReadModel = built.readModel;
+      loadedFreshness = built.freshness;
+      lockedPlanUnavailable = built.lockedPlanUnavailable;
+    } else {
+      // ── No open shift. Closed-state Shift dashboard (Per-Daypart V1
+      // — closed-state screen): if the operator HAS prior shift
+      // history, bind the last completed business day's already-
+      // persisted final values and render the SAME Shift layout marked
+      // Closed. Brand-new operator (no history at all) keeps the
+      // simple empty state — nothing to show yet. This is presentation
+      // only: it reuses `_buildDayReadModel` (the same wiring the live
+      // path uses) verbatim — no recompute, no new persistence, no
+      // formula change. ───────────────────────────────────────────────
+      final mostRecentDate = await SqliteOpenShiftSnapshotRepository.instance
+          .getMostRecentBusinessDate(restaurantId);
+      if (mostRecentDate != null) {
+        final built = await _buildDayReadModel(
+          restaurantId: restaurantId,
+          businessDate: mostRecentDate,
+          profile: profile,
         );
-
-        // Read the persisted locked weekly plan only. If it is missing,
-        // degrade honestly instead of silently falling back to the live plan.
-        final plan = await SchedulePlanReadService.instance
-            .getExistingCurrentLockedWeeklyPlan();
-
-        // Find the open snapshot's day label to pick the right day row
-        final openSnap = snapshots
-            .where((s) => s.status == 'open')
-            .firstOrNull ?? snapshots.first;
-        final dayLabel = openSnap.dayLabel;
-
-        // Pick the matching day row from SchedulePlan
-        final dayPlan = plan?.dayPlans
-            .where((d) => d.day == dayLabel)
-            .firstOrNull;
-
-        // Sum reservation book unseated covers across all dayparts for the day
-        final resSnapshots = await SqliteReservationBookSnapshotRepository
-            .instance
-            .getForDay(restaurantId, businessDate);
-        final totalUnseated = resSnapshots.fold<int>(
-            0, (s, r) => s + r.unseatedCovers);
-
-        if (dayPlan != null) {
-          // Per-location vendor provenance (Defect 1): feed the EXISTING
-          // read-model honest-degrade gate the connected vendor ids for
-          // THIS scope, resolved off the same per-(operator, location,
-          // category) demo vendor fixture the DemoModeBanner uses. The
-          // gate bodies are unchanged — a location whose Labor category
-          // is disconnected still resolves `null` and keeps the honest
-          // "Connect a labor vendor" copy (HP #2: no kDemoMode fork).
-          final vendorSource =
-              ShiftVendorSourceResolver.forLocation(restaurantId);
-          loadedReadModel = ShiftDashboardReadModel.buildWholeDay(
-            snapshots: snapshots,
-            profile: profile,
-            forecastCovers: dayPlan.forecastCovers,
-            forecastSales: dayPlan.forecastSales,
-            planFohHours: dayPlan.requiredFohHours,
-            planBohHours: dayPlan.requiredBohHours,
-            inTheBooksCovers: totalUnseated > 0 ? totalUnseated : null,
-            posSourceVendorId: vendorSource.posSourceVendorId,
-            laborSourceVendorId: vendorSource.laborSourceVendorId,
-          );
-        } else {
-          // No persisted locked plan or no matching day row.
-          // Do not fabricate plan values from a single daypart snapshot or
-          // from the live plan path.
-          loadedReadModel = null;
-          lockedPlanUnavailable = true;
+        loadedReadModel = built.readModel;
+        // Closed-day freshness is intentionally NOT surfaced as a
+        // live/updated/stale chip — the closed indicator + reopen line
+        // carry the state instead. Keep it null so the header's
+        // freshness slot is replaced by the "Closed" marker.
+        loadedFreshness = null;
+        lockedPlanUnavailable = built.lockedPlanUnavailable;
+        // Only mark the screen Closed when a real read model was
+        // produced (locked plan present for the day). If the locked
+        // plan is missing, fall through to the honest
+        // lockedPlanUnavailable empty state exactly as the live path
+        // does — do NOT show a Closed screen with no data.
+        if (loadedReadModel != null) {
+          isClosedDay = true;
+          nextOpen = await _resolveNextOpen();
         }
       } else {
+        // Brand-new operator / no shift history at all → simple empty
+        // state (nothing to show yet).
         loadedReadModel = null;
         loadedFreshness = null;
         lockedPlanUnavailable = false;
       }
-    } else {
-      loadedReadModel = null;
-      loadedFreshness = null;
-      lockedPlanUnavailable = false;
     }
 
     // Per-operator isolation re-check (Launch Blocker #1): if the active
@@ -202,7 +217,174 @@ class ShiftDashboardNotifier extends ChangeNotifier {
     _lockedPlanUnavailable = lockedPlanUnavailable;
     _readModel = loadedReadModel;
     _freshness = loadedFreshness;
+    _isClosedDay = isClosedDay;
+    _nextOpen = nextOpen;
     _isLoading = false;
     notifyListeners();
   }
+
+  /// Builds the whole-day read model for [businessDate] using the SAME
+  /// wiring the live path uses (`ShiftDashboardReadModel.buildWholeDay`
+  /// over the persisted snapshots + the locked plan day row + the same
+  /// reservation-book / vendor-source provenance). Presentation only:
+  /// no recompute, no write, no formula change. Both the live path and
+  /// the closed-state path call this so the closed day renders exactly
+  /// like a live day, just bound to the already-saved final values.
+  ///
+  /// Returns a null read model + `lockedPlanUnavailable: true` when the
+  /// persisted locked plan has no matching day row (honest degrade —
+  /// never fabricate plan values), exactly as the live path does.
+  Future<_DayReadModelResult> _buildDayReadModel({
+    required String restaurantId,
+    required String businessDate,
+    required ActiveTargetProfile profile,
+  }) async {
+    final snapshots = await SqliteOpenShiftSnapshotRepository.instance
+        .getSnapshotsForDay(restaurantId, businessDate);
+
+    if (snapshots.isEmpty) {
+      return const _DayReadModelResult(
+        readModel: null,
+        freshness: null,
+        lockedPlanUnavailable: false,
+      );
+    }
+
+    // Evaluate per-surface freshness from the latest snapshot timestamp.
+    // Same maxUpdatedAt pattern as AppDataStatusService.evaluate().
+    final maxUpdatedAt = snapshots
+        .map((s) => DateTime.tryParse(s.updatedAt))
+        .whereType<DateTime>()
+        .fold<DateTime?>(
+            null, (a, b) => a == null || b.isAfter(a) ? b : a);
+    final freshness = const CurrentStateFreshnessService().evaluate(
+      updatedAt: maxUpdatedAt,
+      now: DateTime.now().toUtc(),
+    );
+
+    // Read the persisted locked weekly plan only. If it is missing,
+    // degrade honestly instead of silently falling back to the live plan.
+    final plan = await SchedulePlanReadService.instance
+        .getExistingCurrentLockedWeeklyPlan();
+
+    // Day label: prefer the open snapshot (live path); otherwise the
+    // first snapshot's label (closed path — every snapshot for a fully
+    // closed day shares the same day label).
+    final daySnap = snapshots
+            .where((s) => s.status == 'open')
+            .firstOrNull ??
+        snapshots.first;
+    final dayLabel = daySnap.dayLabel;
+
+    final dayPlan = plan?.dayPlans
+        .where((d) => d.day == dayLabel)
+        .firstOrNull;
+
+    // Sum reservation book unseated covers across all dayparts for the day
+    final resSnapshots = await SqliteReservationBookSnapshotRepository
+        .instance
+        .getForDay(restaurantId, businessDate);
+    final totalUnseated = resSnapshots.fold<int>(
+        0, (s, r) => s + r.unseatedCovers);
+
+    if (dayPlan == null) {
+      // No persisted locked plan or no matching day row. Do not
+      // fabricate plan values from a single daypart snapshot or from
+      // the live plan path.
+      return const _DayReadModelResult(
+        readModel: null,
+        freshness: null,
+        lockedPlanUnavailable: true,
+      );
+    }
+
+    // Per-location vendor provenance (Defect 1): feed the EXISTING
+    // read-model honest-degrade gate the connected vendor ids for THIS
+    // scope, resolved off the same per-(operator, location, category)
+    // demo vendor fixture the DemoModeBanner uses. The gate bodies are
+    // unchanged (HP #2: no kDemoMode fork).
+    final vendorSource = ShiftVendorSourceResolver.forLocation(restaurantId);
+    final readModel = ShiftDashboardReadModel.buildWholeDay(
+      snapshots: snapshots,
+      profile: profile,
+      forecastCovers: dayPlan.forecastCovers,
+      forecastSales: dayPlan.forecastSales,
+      planFohHours: dayPlan.requiredFohHours,
+      planBohHours: dayPlan.requiredBohHours,
+      inTheBooksCovers: totalUnseated > 0 ? totalUnseated : null,
+      posSourceVendorId: vendorSource.posSourceVendorId,
+      laborSourceVendorId: vendorSource.laborSourceVendorId,
+    );
+    return _DayReadModelResult(
+      readModel: readModel,
+      freshness: freshness,
+      lockedPlanUnavailable: false,
+    );
+  }
+
+  /// Resolves the next live-shift open for the closed-state header line
+  /// using the operator's persisted service-period definitions
+  /// (timezone-correct restaurant-local "now"). Returns null when no
+  /// usable timing config / timezone exists — the widget then omits the
+  /// reopen line rather than printing a phantom time (Metric Honesty
+  /// Doctrine). Pure presentation: no recompute, no write.
+  Future<NextServicePeriodOpen?> _resolveNextOpen() async {
+    try {
+      final timing = await RestaurantTimingConfigReadService.instance
+          .getActiveTimingConfig();
+      final scope = await SqliteRestaurantScopeRepository.instance
+          .getOrCreateActiveRestaurant();
+      final iana = scope.businessTimezone.trim();
+      if (iana.isEmpty) return null;
+
+      final definitions =
+          (timing?.servicePeriodDefinitions.isNotEmpty ?? false)
+              ? timing!.servicePeriodDefinitions
+              : ServicePeriodDefinitionResolver.demoDefinitions;
+
+      // Restaurant-local "now". The Shift dashboard's clock test seam
+      // (`ShiftDashboard.clockOverride`) is widget-layer; the notifier
+      // resolves the local instant from the scope timezone the same way
+      // ShiftServicePeriodNotifier does, so demo and production share
+      // one path (no kDemoMode fork).
+      final localNow = _restaurantLocalNow(iana);
+      if (localNow == null) return null;
+
+      return NextServicePeriodOpenResolver.resolve(
+        localNow: localNow,
+        definitions: definitions,
+      );
+    } catch (_) {
+      // A read failure degrades to "no reopen line" rather than
+      // throwing the whole notifier load.
+      return null;
+    }
+  }
+
+  /// Restaurant-local now from an IANA timezone, or null when the zone
+  /// is unrecognized. Mirrors the Shift dashboard's
+  /// `_restaurantLocalNow` (refuses to fall back to the device clock on
+  /// an unknown zone).
+  DateTime? _restaurantLocalNow(String iana) {
+    try {
+      tzdata.initializeTimeZones();
+      final loc = tz.getLocation(iana);
+      return tz.TZDateTime.now(loc);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// Internal carrier for [ShiftDashboardNotifier._buildDayReadModel] —
+/// keeps the live path and the closed-state path on one code path.
+class _DayReadModelResult {
+  final ShiftDashboardReadModel? readModel;
+  final CurrentStateFreshness? freshness;
+  final bool lockedPlanUnavailable;
+  const _DayReadModelResult({
+    required this.readModel,
+    required this.freshness,
+    required this.lockedPlanUnavailable,
+  });
 }

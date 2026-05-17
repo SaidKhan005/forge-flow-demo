@@ -55,6 +55,65 @@ void main() {
     notifier.dispose();
   });
 
+  test(
+      'no open shift but history exists → closed-day read model, isClosedDay',
+      () async {
+    // Closed-state Shift dashboard (Per-Daypart V1 — closed-state
+    // screen). Delete ONLY the open snapshot rows so the prior days'
+    // closed/projected history remains. The notifier must bind the
+    // most recent business day's already-persisted final values
+    // (reusing the same buildWholeDay wiring) and mark the screen
+    // Closed — NOT show the bare empty state.
+    final db = await SqliteDatabase.instance.database;
+    final deleted =
+        await db.delete('open_shift_snapshots', where: "status = 'open'");
+    expect(deleted, greaterThan(0),
+        reason: 'demo seed should have at least one open snapshot');
+    final remaining = await db.rawQuery(
+        "SELECT COUNT(*) c FROM open_shift_snapshots WHERE status != 'open'");
+    expect(remaining.first['c'], greaterThan(0),
+        reason: 'closed/projected history must remain after the delete');
+
+    final notifier = ShiftDashboardNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect(notifier.isLoading, isFalse);
+    expect(notifier.readModel, isNotNull,
+        reason:
+            'closed-state path must bind the last completed day final values');
+    expect(notifier.isClosedDay, isTrue,
+        reason: 'no open shift + history → screen marked Closed');
+    // Freshness is intentionally null on the closed path — the Closed
+    // marker + reopen line carry the state, not a live/stale chip.
+    expect(notifier.freshness, isNull);
+    expect(notifier.status, isNotNull);
+
+    notifier.dispose();
+  });
+
+  test(
+      'closed-day path stays empty when no locked plan day row matches',
+      () async {
+    // If the locked weekly plan has no matching day row, the closed
+    // path must degrade honestly to the empty state exactly like the
+    // live path (lockedPlanUnavailable) — never a Closed screen with
+    // no data.
+    final db = await SqliteDatabase.instance.database;
+    await db.delete('open_shift_snapshots', where: "status = 'open'");
+    await db.delete('weekly_plan_snapshots');
+
+    final notifier = ShiftDashboardNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect(notifier.isLoading, isFalse);
+    expect(notifier.readModel, isNull,
+        reason: 'no locked plan row → honest empty, not a Closed screen');
+    expect(notifier.isClosedDay, isFalse);
+    expect(notifier.lockedPlanUnavailable, isTrue);
+
+    notifier.dispose();
+  });
+
   test('after clearAllData notifier shows no-data status', () async {
     await SqliteDatabase.instance.clearAllData();
 
