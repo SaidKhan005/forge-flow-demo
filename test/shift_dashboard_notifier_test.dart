@@ -32,9 +32,50 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 500));
 
     expect(notifier.readModel, isNotNull);
-    expect(notifier.readModel!.inTheBooksCovers, 72);
+    // Whole-day "in the books" must be the day's unseated covers counted
+    // exactly ONCE. The demo seed's 72 / 220 baseline is a whole-day
+    // figure; before the double-count fix the forward envelope wrote the
+    // whole-day figure into every served daypart row, so summing the
+    // day's rows in _buildDayReadModel reported 2x (72 -> 144). 72 was
+    // always the correct intended whole-day value.
+    expect(notifier.readModel!.inTheBooksCovers, 72,
+        reason: 'day unseated covers single-counted, not summed per period');
 
     notifier.dispose();
+  });
+
+  test('reservation book day rows sum once — no per-period double-count',
+      () async {
+    // Focused regression guard for the inTheBooks double-count: the
+    // per-daypart reservation rows for the open business day must SUM to
+    // the whole-day baseline (72), and no single period may carry the
+    // whole-day figure (the regression was every row == 72).
+    final db = await SqliteDatabase.instance.database;
+    final openRows = await db.rawQuery(
+      "SELECT business_date FROM open_shift_snapshots "
+      "WHERE status = 'open' LIMIT 1",
+    );
+    expect(openRows, isNotEmpty,
+        reason: 'demo seed must have one open shift');
+    final businessDate = openRows.first['business_date'] as String;
+
+    final resRows = await db.query(
+      'reservation_book_snapshots',
+      where: 'restaurant_id = ? AND business_date = ?',
+      whereArgs: ['demo_restaurant_001', businessDate],
+    );
+    expect(resRows, isNotEmpty,
+        reason: 'open day must have a forward reservation book');
+    final daySum = resRows.fold<int>(
+        0, (s, r) => s + (r['unseated_covers'] as int));
+    expect(daySum, 72,
+        reason: 'open day unseated covers sum exactly to the whole-day '
+            'baseline (single-counted)');
+    for (final r in resRows) {
+      expect(r['unseated_covers'] as int, lessThan(72),
+          reason: 'no single period carries the whole-day figure '
+              '(double-count regression guard)');
+    }
   });
 
   test('notifier finishes loading with null readModel when no snapshot exists',

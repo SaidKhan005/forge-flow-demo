@@ -799,6 +799,16 @@ class MockIntegrationReplaySeed {
   static OpenPeriodResolution get legacyDefaultResolution =>
       _legacyDefaultResolution;
 
+  /// Fraction of [dayLabel]'s whole-day cover volume that belongs to
+  /// [daypart] (the SAME split the closed-shift generator uses for cover
+  /// distribution). Returns `0.0` for a (day, daypart) the scenario does
+  /// not serve. Consumers that hold a whole-day figure (e.g. the demo
+  /// reservation book's whole-day unseated-covers baseline) multiply by
+  /// this so the per-daypart rows sum back to the intended whole-day
+  /// total instead of replicating the whole-day figure per period.
+  static double daypartCoverShare(String dayLabel, String daypart) =>
+      _daypartRatios[dayLabel]?[daypart] ?? 0.0;
+
   /// Source shift ID for the default scenario's open shift (backward compat).
   static const String openShiftSourceShiftId = 'w13-fri-dinner-open';
 

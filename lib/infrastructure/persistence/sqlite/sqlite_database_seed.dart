@@ -887,7 +887,16 @@ Future<ScheduleDistributionWeights?> _buildSeedDistributionWeights(
 
 /// Seeds a reservation book snapshot for the scenario's open shift.
 ///
-/// Unseated covers scale deterministically with the day's base cover volume.
+/// Unseated covers scale deterministically with the day's base cover
+/// volume. The 72 / 18 Friday baseline is a WHOLE-DAY figure (72
+/// unseated per 220 *day* covers), so the open period's row carries only
+/// that period's cover-share slice of the whole-day total — NOT the
+/// whole-day figure replicated onto one period. This keeps the row
+/// consistent with `_seedForwardReservationEnvelopeFromReplay` (which
+/// runs AFTER this and authoritatively re-seeds the whole forward book
+/// with the same per-period apportionment, so the Shift dashboard
+/// whole-day read model — which sums every daypart row for the day —
+/// sees the day's unseated covers exactly once, never doubled).
 Future<void> _seedReservationBookSnapshotsFromReplay(
     Database db, MockReplayOutput replay) async {
   final now = nowIsoUtc();
@@ -903,7 +912,8 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
   final scenarioDaypart = scenario.openShiftDaypart;
   if (scenarioDaypart == null) return;
 
-  // Scale unseated covers from Friday baseline (72) by day-volume ratio.
+  // Scale unseated covers from Friday WHOLE-DAY baseline (72) by
+  // day-volume ratio, then take only this period's cover-share slice.
   const fridayBaseCovers = 220;
   const fridayUnseatedCovers = 72;
   const fridayUnseatedParties = 18;
@@ -911,10 +921,18 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
     'Mon': 140, 'Tue': 150, 'Wed': 160, 'Thu': 190,
     'Fri': 220, 'Sat': 230, 'Sun': 110,
   };
-  final dayCovers = dayBaseCovers[scenario.openShiftDayLabel] ?? fridayBaseCovers;
+  final dayLabel = scenario.openShiftDayLabel;
+  final dayCovers = dayBaseCovers[dayLabel] ?? fridayBaseCovers;
   final coverRatio = dayCovers / fridayBaseCovers;
-  final unseatedCovers = (fridayUnseatedCovers * coverRatio).round();
-  final unseatedParties = (fridayUnseatedParties * coverRatio).round();
+  final dayUnseatedCovers = fridayUnseatedCovers * coverRatio;
+  final dayUnseatedParties = fridayUnseatedParties * coverRatio;
+  final share =
+      MockIntegrationReplaySeed.daypartCoverShare(dayLabel, scenarioDaypart);
+  final unseatedCovers = (dayUnseatedCovers * share).round();
+  final unseatedParties = (dayUnseatedParties * share).round();
+  // Honest-degrade: a period the scenario does not serve (zero share)
+  // gets no row. The forward envelope still covers every served cell.
+  if (unseatedCovers <= 0) return;
 
   final snapshot = ReservationBookSnapshot(
     restaurantId: DemoScope.restaurantId,
@@ -924,7 +942,7 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
     unseatedPartyCount: unseatedParties,
     sourceSystem: 'demo_reservations',
     sourceServiceId:
-        'demo_res_${scenario.openShiftDayLabel.toLowerCase()}_$scenarioDaypart',
+        'demo_res_${dayLabel.toLowerCase()}_$scenarioDaypart',
     updatedAt: now,
   );
   await db.insert('reservation_book_snapshots', snapshot.toMap(),
@@ -2839,13 +2857,25 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
 ///
 /// Reuses the EXISTING covers→unseated ratio from
 /// `_seedReservationBookSnapshotsFromReplay` (Friday baseline 72
-/// unseated covers / 18 parties per 220 day covers) verbatim, applied to
+/// unseated covers / 18 parties per 220 *whole-day* covers), applied to
 /// every current-week projected/open cell, scaled by each location's
-/// volume profile. Downtown's identity profile reproduces the existing
-/// scenario open-shift row byte-for-byte (72 / 18 /
-/// `demo_res_fri_dinner`), so the value the repository test pins is
-/// preserved while the book now spans the whole forward week × 4
-/// locations.
+/// volume profile.
+///
+/// Double-count fix: 72 / 18 is a WHOLE-DAY figure (the comment + the
+/// `fridayUnseatedCovers / fridayBaseCovers` ratio are both day-level —
+/// 72 unseated per 220 *day* covers). Writing it into every served
+/// daypart row at full value made the Shift dashboard whole-day read
+/// model (`SqliteReservationBookSnapshotRepository.getForDay` summed
+/// across all dayparts in `ShiftDashboardNotifier._buildDayReadModel`)
+/// count it once per daypart — a day with two open/projected periods
+/// reported 2x (72 → 144). The day's unseated covers are now apportioned
+/// across that day's served periods by the SAME `_daypartRatios` split
+/// the closed-shift generator uses for cover distribution, so the
+/// per-daypart rows sum back to exactly the intended whole-day total
+/// (Downtown Friday = 72) instead of replicating it per period. Parties
+/// are apportioned the same way. The largest-share period absorbs any
+/// integer-rounding remainder so the day still sums exactly to the
+/// whole-day baseline.
 ///
 /// Honest-degrade (Metric Honesty / Design Rule 2): CLOSED/past cells
 /// get NO row — a service that already closed has no live unseated
@@ -2878,34 +2908,91 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
                 : _demoLocationProfiles.length - 1]
             .volume;
 
+    // Group the forward (non-closed) cells by day so the WHOLE-DAY
+    // unseated baseline is computed once per day and then apportioned
+    // across that day's served periods — never replicated per period.
+    final byDay = <String, List<ShiftRecord>>{};
     for (final s in replay.currentWeekShifts) {
       // Forward book only — closed/past cells have no live reservations.
       if (s.status == 'closed') continue;
-      final bd = _businessDateFromWeekDay(s.weekId, s.dayLabel)!;
-      final dayCovers =
-          dayBaseCovers[s.dayLabel] ?? fridayBaseCovers;
+      byDay.putIfAbsent(s.dayLabel, () => <ShiftRecord>[]).add(s);
+    }
+
+    for (final entry in byDay.entries) {
+      final dayLabel = entry.key;
+      final dayCovers = dayBaseCovers[dayLabel] ?? fridayBaseCovers;
       final coverRatio = dayCovers / fridayBaseCovers;
-      final unseatedCovers =
+      // WHOLE-DAY unseated covers/parties for this location-day.
+      final dayUnseatedCovers =
           (fridayUnseatedCovers * coverRatio * volume).round();
-      final unseatedParties =
+      final dayUnseatedParties =
           (fridayUnseatedParties * coverRatio * volume).round();
-      if (unseatedCovers <= 0) continue; // honest-degrade
-      batch.insert(
-        'reservation_book_snapshots',
-        ReservationBookSnapshot(
-          restaurantId: rid,
-          businessDate: bd,
-          daypart: s.daypart,
-          unseatedCovers: unseatedCovers,
-          unseatedPartyCount: unseatedParties,
-          sourceSystem: 'demo_reservations',
-          sourceServiceId:
-              'demo_res_${s.dayLabel.toLowerCase()}_${s.daypart}',
-          // Deterministic — never DateTime.now() (idempotent reseed).
-          updatedAt: '${bd}T00:00:00.000Z',
-        ).toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace,
-      );
+      if (dayUnseatedCovers <= 0) continue; // honest-degrade
+
+      // Cover-share weight per served period (same split the rest of
+      // the demo uses). Drop zero-share periods so they get no row.
+      final served = entry.value
+          .where((s) =>
+              MockIntegrationReplaySeed.daypartCoverShare(
+                  dayLabel, s.daypart) >
+              0.0)
+          .toList();
+      if (served.isEmpty) continue;
+      // Largest-share period FIRST. Every other period gets its rounded
+      // share; the largest-share period (index 0) absorbs whatever
+      // remainder is left, so the day's rows sum EXACTLY to the
+      // whole-day baseline with no rounding drift and the remainder
+      // always lands on a comfortably-positive row (deterministic —
+      // replay is pure, no RNG).
+      served.sort((a, b) => MockIntegrationReplaySeed.daypartCoverShare(
+              dayLabel, b.daypart)
+          .compareTo(MockIntegrationReplaySeed.daypartCoverShare(
+              dayLabel, a.daypart)));
+
+      // Pre-compute the non-largest periods' rounded shares; the largest
+      // takes the remainder.
+      final partCoversByIdx = List<int>.filled(served.length, 0);
+      final partPartiesByIdx = List<int>.filled(served.length, 0);
+      var coversRemainder = dayUnseatedCovers;
+      var partiesRemainder = dayUnseatedParties;
+      for (var idx = served.length - 1; idx >= 1; idx--) {
+        final share = MockIntegrationReplaySeed.daypartCoverShare(
+            dayLabel, served[idx].daypart);
+        final c = (dayUnseatedCovers * share).round();
+        final p = (dayUnseatedParties * share).round();
+        partCoversByIdx[idx] = c;
+        partPartiesByIdx[idx] = p;
+        coversRemainder -= c;
+        partiesRemainder -= p;
+      }
+      // Largest-share period (idx 0) takes the remainder. Clamp to >= 0
+      // (defensive — with these ratios the remainder is always the
+      // dominant positive share).
+      partCoversByIdx[0] = coversRemainder < 0 ? 0 : coversRemainder;
+      partPartiesByIdx[0] = partiesRemainder < 0 ? 0 : partiesRemainder;
+
+      for (var idx = 0; idx < served.length; idx++) {
+        final s = served[idx];
+        final partCovers = partCoversByIdx[idx];
+        if (partCovers <= 0) continue; // honest-degrade (no phantom row)
+        final bd = _businessDateFromWeekDay(s.weekId, s.dayLabel)!;
+        batch.insert(
+          'reservation_book_snapshots',
+          ReservationBookSnapshot(
+            restaurantId: rid,
+            businessDate: bd,
+            daypart: s.daypart,
+            unseatedCovers: partCovers,
+            unseatedPartyCount: partPartiesByIdx[idx],
+            sourceSystem: 'demo_reservations',
+            sourceServiceId:
+                'demo_res_${s.dayLabel.toLowerCase()}_${s.daypart}',
+            // Deterministic — never DateTime.now() (idempotent reseed).
+            updatedAt: '${bd}T00:00:00.000Z',
+          ).toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
     }
   }
 
