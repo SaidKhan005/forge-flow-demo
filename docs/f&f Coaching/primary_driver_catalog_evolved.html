@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Primary Driver evolved language</title>
+<style>
+  :root{
+    --bg:#f2eadd; --card1:#f8f2e8; --card2:#efe6d6;
+    --line:#e4d9c6; --line2:#ece2d1;
+    --ink:#2c2722; --txt:#4c463d; --txt2:#776e60; --muted:#9a907e;
+    --sunset:#c25a2a; --good:#4f8a52; --bad:#b5402a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#cdbfa6;color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;padding:0 0 60px}
+  .serif{font-family:Georgia,"Times New Roman",serif}
+  .wrap{max-width:580px;margin:0 auto;padding:0 16px}
+
+  .top{position:sticky;top:0;background:var(--bg);border-bottom:1px solid var(--line);
+    z-index:10;padding:18px 0 14px;margin-bottom:18px}
+  .top .inner{max-width:580px;margin:0 auto;padding:0 16px}
+  .top h1{font-family:Georgia,serif;font-size:23px;color:var(--ink);font-weight:700}
+  .top .desc{font-size:12.5px;color:var(--txt2);margin-top:5px;line-height:1.5}
+  .filters{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .filters button{border:1px solid var(--line);background:var(--card1);color:var(--txt2);
+    font-family:"Courier New",monospace;font-size:12px;font-weight:700;padding:7px 13px;
+    border-radius:99px;cursor:pointer}
+  .filters button.on{border-color:var(--sunset);background:rgba(194,90,42,.12);color:var(--sunset)}
+
+  .axis{font-family:"Courier New",monospace;font-size:12px;font-weight:700;letter-spacing:2px;
+    color:var(--muted);text-transform:uppercase;margin:26px 0 10px;display:flex;align-items:center;gap:8px}
+  .axis::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .card{background:linear-gradient(165deg,var(--card1),var(--card2));border:1px solid var(--line);
+    border-radius:14px;padding:18px;margin-bottom:14px;border-left:4px solid var(--muted)}
+  .card.fav{border-left-color:var(--good)}
+  .card.unf{border-left-color:var(--bad)}
+  .card.deg{border-left-color:var(--muted);background:var(--card1)}
+
+  .meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+  .badge{font-family:"Courier New",monospace;font-size:10px;font-weight:700;letter-spacing:1px;
+    border:1px solid var(--sunset);color:var(--sunset);padding:3px 8px;border-radius:6px}
+  .tagcat,.tagside{font-family:"Courier New",monospace;font-size:10px;letter-spacing:1px;color:var(--txt2)}
+  .tagside{color:var(--muted)}
+  .dir{font-family:"Courier New",monospace;font-size:10px;font-weight:700;letter-spacing:1px;
+    padding:3px 8px;border-radius:6px;margin-left:auto}
+  .dir.fav{background:rgba(79,138,82,.15);color:var(--good)}
+  .dir.unf{background:rgba(181,64,42,.13);color:var(--bad)}
+  .dir.deg{background:rgba(154,144,126,.18);color:var(--muted)}
+  .idtag{font-family:"Courier New",monospace;font-size:10px;color:var(--muted)}
+  .card h3{font-family:Georgia,serif;font-size:19px;color:var(--ink);margin:4px 0 6px}
+  .lbl{font-family:"Courier New",monospace;font-size:10px;font-weight:700;letter-spacing:1.5px;
+    color:var(--muted);margin:16px 0 6px}
+  .card p{font-size:14px;line-height:1.62;color:var(--txt)}
+  .empty{text-align:center;color:var(--muted);font-family:"Courier New",monospace;font-size:13px;padding:40px 0}
+  .note{font-size:12px;color:var(--muted);text-align:center;margin-top:30px;line-height:1.6}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="inner">
+    <h1 class="serif">Primary Driver scenarios</h1>
+    <div class="desc">All <b id="ct"></b> states the app can render, in the app's own
+      teaching voice. Taxonomy and ids are the app's real ones. Filter, then cherry-pick by id.</div>
+    <div class="filters">
+      <button class="on" data-f="all">All</button>
+      <button data-f="unf">Unfavorable</button>
+      <button data-f="fav">Favorable</button>
+      <button data-f="cross">Cross-Axis</button>
+      <button data-f="deg">Degraded</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap" id="list"></div>
+
+<div class="wrap"><div class="note">
+  Degraded state is shown verbatim from the real widget on purpose: it is a system
+  status, not teaching, so it is not evolved.
+</div></div>
+
+<script>
+const CARDS=[
+{ax:'COVERS · VOLUME',id:'covers_up',badge:'COVERS',cat:'VOLUME',side:'BOTH SIDES',fav:true,
+ metric:'Volume came in above plan',
+ wh:"More guests showed up than you forecast, and the team carried them on the hours already scheduled. Both sides looked better because the extra covers grew the sales side. The rule before you celebrate a good number: check CPLH. If it held in the zone this was design. If it ran soft, the volume did work the schedule should have done.",
+ wd:'If CPLH held, write down the staffing setup that absorbed the covers, that is a benchmark. If CPLH ran below target, do not raise the forecast yet, first build the schedule from covers divided by your CPLH target.',
+ ws:'A hot week can rescue a bloated schedule and still post a good number. That is luck, not a system. If covers keep beating forecast in the same dayparts and CPLH holds, recalibrate the forecast upward. If CPLH does not hold, the leak is the schedule.'},
+{ax:'COVERS · VOLUME',id:'covers_down',badge:'COVERS',cat:'VOLUME',side:'BOTH SIDES',fav:false,
+ metric:'Covers came in light',
+ wh:'Fewer guests walked in than the schedule was built for, and the hours did not come down to meet the lighter volume. Both sides drift up because the sales side shrank while labor held. This is a forecast or scheduling gap, not a team problem.',
+ wd:'Track covers mid-week against the forecast. When the pace is running light, cut hours in real time, do not wait for close. Build next week from covers divided by your CPLH target so the schedule starts where demand actually is.',
+ ws:'Covers down with hours that did not flex is the most common bleed. One light week is normal variation. The same daypart light week after week means the forecast is overstating demand there.'},
+
+{ax:'PPA · GUEST EXPERIENCE',id:'ppa_up',badge:'PPA',cat:'GUEST EXPERIENCE',side:'BOTH SIDES',fav:true,
+ metric:'PPA above target',
+ wh:'Guests spent more per head. Check-backs happened, upsells landed, service was not rushed. This is the OPZ working as designed: the team had enough floor to take care of people and people responded.',
+ wd:'Write down what made this shift work: covers, daypart, who was on the floor, how the team was deployed. You cannot replicate what you do not understand. This is a benchmark shift.',
+ ws:'PPA rises when the team is inside the zone, busy but not overwhelmed. Study which dayparts produce it and protect the staffing level that left room to sell.'},
+{ax:'PPA · GUEST EXPERIENCE',id:'ppa_down',badge:'PPA',cat:'GUEST EXPERIENCE',side:'BOTH SIDES',fav:false,
+ metric:'PPA running below target',
+ wh:'Guests spent less per head. The first check is not the menu, it is CPLH. When the team is pushed above the OPZ ceiling, check-backs stop and upsells die. Look at productivity before you talk about training.',
+ wd:'Cross-reference CPLH. If it was above the ceiling, the fix is staffing level, not a coaching conversation. A team running too lean cannot sell. Give them the floor to do it.',
+ ws:'Upsells die above the OPZ ceiling. If PPA drops cluster in the same dayparts where CPLH runs hot, guest attention is being lost there. That is a staffing pattern, not a people problem.'},
+
+{ax:'CPLH · SCHEDULING',id:'cplh_up',badge:'CPLH',cat:'SCHEDULING',side:'FOH ONLY',fav:true,
+ metric:'CPLH above target',
+ wh:'Front-of-house covered the volume with fewer hours than model. The team moved efficiently and FOH labor landed below model. As long as CPLH stayed under the OPZ ceiling, this is what a well-scheduled shift looks like.',
+ wd:'Check OPZ position. Below the ceiling: document this shift, staffing level, cover count, daypart, that is your replicable setup. Above the ceiling: the team was stretched and service likely felt it even if the number looked good.',
+ ws:'Efficient is only a win inside the zone. Study which dayparts can sustain this CPLH without pushing past the ceiling. That range is your real FOH target.'},
+{ax:'CPLH · SCHEDULING',id:'cplh_down',badge:'CPLH',cat:'SCHEDULING',side:'FOH ONLY',fav:false,
+ metric:'CPLH below target',
+ wh:'More front-of-house hours were scheduled than the covers required. Servers had tables to spare and you paid for hours the volume never used. BOH is unaffected, this is a front-of-house scheduling decision.',
+ wd:"Build next week's FOH schedule from the math: forecast covers divided by your CPLH target. That number is your required FOH hours. Build from that, not from last week's sheet.",
+ ws:'Scheduling to last week or to revenue is why this repeats. If the same FOH dayparts run below target, hours are being built above actual cover demand there. Fix the schedule input, not the team.'},
+
+{ax:'SPLH · KITCHEN PRODUCTIVITY',id:'splh_up',badge:'SPLH',cat:'KITCHEN PRODUCTIVITY',side:'BOH ONLY',fav:true,
+ metric:'SPLH above target',
+ wh:'The kitchen generated more sales per labor hour than model. Ticket times were likely clean and BOH was right-sized for what came in. FOH is unaffected, this is a well-run kitchen shift.',
+ wd:'Note the BOH configuration: who was on which station, the lineup, how prep was staged. That is your replicable kitchen setup. Write it down before the next roster goes out.',
+ ws:'SPLH is the kitchen’s productivity read. Study ticket flow, prep readiness, and station setup in the dayparts where it holds, and protect that setup.'},
+{ax:'SPLH · KITCHEN PRODUCTIVITY',id:'splh_down',badge:'SPLH',cat:'KITCHEN PRODUCTIVITY',side:'BOH ONLY',fav:false,
+ metric:'SPLH below target',
+ wh:'The kitchen produced fewer sales per labor hour than model. FOH is unaffected, the leak is back of house. It is either ticket times running slow or BOH simply overstaffed for the sales that came in.',
+ wd:'Check two things: kitchen ticket-time logs and BOH hours against actual sales. Clean tickets mean overstaffing. Slow tickets mean throughput. Different problems, different fixes.',
+ ws:'A drop in SPLH with steady covers means the kitchen took longer per ticket or carried hours the volume did not need. If it repeats in the same BOH dayparts, inspect station load and throughput there.'},
+
+{ax:'WAGE MIX',id:'foh_wage_up',badge:'WAGE',cat:'WAGE MIX',side:'FOH ONLY',fav:false,
+ metric:'FOH blended wage above model',
+ wh:'The hours were right, the cost on those hours was not. FOH blended wage ran above model, usually overtime or a higher-cost role covering a position it does not normally fill. BOH is unaffected.',
+ wd:'Pull FOH clock-outs and role assignments for the shift. Find who went over hours or covered outside their classification. This is a deployment decision for next week, not a performance conversation.',
+ ws:'Wage mix is largely outside the manager’s control, but deployment is not. If the same FOH dayparts keep triggering overtime or expensive coverage, that is a roster pattern to fix, not a labor problem to absorb.'},
+{ax:'WAGE MIX',id:'foh_wage_down',badge:'WAGE',cat:'WAGE MIX',side:'FOH ONLY',fav:true,
+ metric:'FOH blended wage below model',
+ wh:'FOH blended wage came in below model. The right roles were on the right shifts, lower-cost coverage aligned with volume without sacrificing floor quality. BOH is unaffected.',
+ wd:'Document the FOH schedule configuration that produced this: which roles, at what hours, against what cover pace. Replicate the deployment pattern next week.',
+ ws:'A favorable wage mix is a deployment pattern worth banking. Study which role mix produced it and where it repeats.'},
+{ax:'WAGE MIX',id:'boh_wage_up',badge:'WAGE',cat:'WAGE MIX',side:'BOH ONLY',fav:false,
+ metric:'BOH blended wage above model',
+ wh:'BOH blended wage ran above model. FOH is unaffected. The usual cause is a kitchen manager or sous chef dropping to a line position during a rush and logging hours at a higher rate. The hours may have been necessary, the deployment around them may not have been.',
+ wd:'Review BOH time cards and station assignments. Find who worked outside their usual role and what triggered it. The fix is smarter pre-shift BOH deployment: know which positions need coverage and at what rate before the shift starts.',
+ ws:'If the same BOH dayparts keep triggering overtime or manager coverage, that is a deployment pattern, not a general kitchen problem.'},
+{ax:'WAGE MIX',id:'boh_wage_down',badge:'WAGE',cat:'WAGE MIX',side:'BOH ONLY',fav:true,
+ metric:'BOH blended wage below model',
+ wh:'BOH blended wage came in below model. Kitchen deployment matched volume without overtime or off-classification coverage. FOH is unaffected.',
+ wd:"Document the BOH station assignments and shift times that produced this. It is your benchmark kitchen configuration, the starting point for next week's lineup.",
+ ws:'Bank the kitchen setup that produced the favorable mix and study where it repeats.'},
+
+{ax:'HOURS FLEX · SCHEDULING',id:'foh_hours_over',badge:'HOURS',cat:'SCHEDULING',side:'FOH ONLY',fav:false,
+ metric:'FOH hours did not flex down',
+ wh:'The floor carried more hours than the covers needed. The model called for fewer FOH hours for what walked in, but the schedule never came down, so the excess shows up as labor above model. BOH is unaffected, this is a front-of-house flex issue.',
+ wd:"Compare the published FOH schedule to model hours by daypart. Where the gap is widest, pull hours before the shift opens. The discipline is to cut before you open, not after you find out at close.",
+ ws:'This is the covers-down bleed seen from the hours side. If the same FOH slots carry excess week after week, the schedule is being built above what the forecast supports.'},
+{ax:'HOURS FLEX · SCHEDULING',id:'foh_hours_under',badge:'HOURS',cat:'SCHEDULING',side:'FOH ONLY',fav:true,
+ metric:'FOH ran lean on hours',
+ wh:'FOH hours came in below model for the volume. The floor ran lean, fewer servers covered more guests. That is efficient only if PPA held and CPLH stayed under the OPZ ceiling, so check PPA before you call it a win.',
+ wd:'Cross-check PPA and CPLH. PPA held and CPLH below the ceiling: document this FOH setup, it is your benchmark. PPA dropped: the floor was too lean to sell, you found the staffing floor, not the efficient setup.',
+ ws:'Lean is favorable until it crosses the ceiling. Study whether PPA dips when FOH hours run below model. That line is where efficiency turns into understaffing.'},
+{ax:'HOURS FLEX · SCHEDULING',id:'boh_hours_over',badge:'HOURS',cat:'SCHEDULING',side:'BOH ONLY',fav:false,
+ metric:'BOH hours did not flex down',
+ wh:'The kitchen carried more hours than the sales volume required. The model called for fewer BOH hours for what came through, but the schedule did not flex, driving labor above theoretical. FOH is unaffected, this is a back-of-house scheduling issue.',
+ wd:"Review the BOH lineup against actual sales by daypart. Where prep hours or line cooks exceeded what the volume needed, tighten there. Build next week's BOH from forecast sales divided by target SPLH.",
+ ws:'If kitchen overstaffing repeats in the same slots, the schedule is being built above what the sales forecast supports there.'},
+{ax:'HOURS FLEX · SCHEDULING',id:'boh_hours_under',badge:'HOURS',cat:'SCHEDULING',side:'BOH ONLY',fav:true,
+ metric:'BOH ran lean on hours',
+ wh:'BOH hours came in below model for the sales volume. The kitchen ran lean, fewer hours covered more output. That is a well-run kitchen only if ticket times stayed clean and quality held, so check SPLH and tickets.',
+ wd:'Cross-check SPLH and ticket times. Both held: document the BOH configuration, station assignments, prep staging, lineup, that is your replicable setup. Tickets slipped: the kitchen was stretched too thin.',
+ ws:'Lean kitchen hours are favorable when throughput holds. Study whether ticket times slip when BOH runs below model. That is where efficiency turns into understaffing.'},
+
+{ax:'CROSS-AXIS · CPLH x SPLH',id:'cplh_below_splh_above',badge:'CPLH ↓ SPLH ↑',cat:'FORECAST',side:'BOTH SIDES',fav:false,cross:true,
+ metric:'Forecast was low. The team executed.',
+ wh:'Fewer guests walked in than the schedule was built for, but everyone who came spent well and was served right. This is not an execution miss. The floor did its job on the volume that showed up.',
+ wd:'Fix the forecast, not the floor. Re-anchor next week’s covers to what the restaurant is actually doing, then build FOH hours from covers divided by your CPLH target. Leave the team that executed alone.',
+ ws:'CPLH below with SPLH above is a volume problem, not a people problem. If it repeats in the same dayparts, the forecast is running high and the schedule is built above real demand.'},
+{ax:'CROSS-AXIS · CPLH x SPLH',id:'cplh_on_splh_below',badge:'CPLH = SPLH ↓',cat:'KITCHEN PRODUCTIVITY',side:'BOH ONLY',fav:false,cross:true,
+ metric:'Kitchen slowed. Dining room held.',
+ wh:'Covers came in at forecast and FOH flexed to them. The kitchen did not keep pace: sales per BOH hour fell short. The leak is on the back of the house only.',
+ wd:'Pull kitchen ticket times and BOH hours against actual sales for this daypart. Clean tickets mean BOH was overstaffed for the volume. Slow tickets mean throughput is the constraint. Different problems, different fixes. FOH needs nothing this round.',
+ ws:'When only the kitchen axis moves, the diagnosis lives in BOH deployment or throughput. Watch station load and prep readiness in the dayparts where it repeats.'},
+{ax:'CROSS-AXIS · CPLH x SPLH',id:'cplh_above_splh_below',badge:'CPLH ↑ SPLH ↓',cat:'CROSS AXIS',side:'BOTH SIDES',fav:false,cross:true,
+ metric:'Floor ran lean. Kitchen slowed.',
+ wh:'The dining room covered more guests with fewer hours, which is efficient. The kitchen lagged on sales per BOH hour. Two different stories on the same shift, moving opposite ways.',
+ wd:'Check PPA before you call the floor a win. If PPA held, document the FOH deployment: it is a benchmark. Then look at the kitchen on its own: ticket times and station assignments. Fix the kitchen without breaking the FOH pattern that worked.',
+ ws:'Opposite-axis movement is two stories on one shift. Bank the lean FOH side as a benchmark. Treat the slow kitchen as its own root cause. Do not average them into one take.'},
+{ax:'CROSS-AXIS · CPLH x SPLH',id:'both_below',badge:'CPLH ↓ SPLH ↓',cat:'VOLUME',side:'BOTH SIDES',fav:false,cross:true,
+ metric:'Demand was soft.',
+ wh:'Fewer covers came in and the guests who did spent less. Both sides carried more hours than the volume needed. The leak is upstream of execution.',
+ wd:'Check the outside world first: weather, a nearby event, a day-of-week anomaly. If it was external, log the soft daypart and protect the schedule for the next normal week. If demand is softening for real, re-anchor the forecast and trim FOH and BOH hours together.',
+ ws:'Both axes down together is the one case you look outside the building first. A one-off external cause, tag it and move on. Repeats with no explanation mean the forecast is overstating demand.'},
+
+{ax:'DEGRADED STATE',id:'on_model / unknown id',badge:'PENDING',cat:'',side:'',deg:true,
+ metric:'NOT YET ON-MODEL',
+ body:'No driver has been detected for this row yet. The card will populate once the shift posts actuals through the engine.'}
+];
+
+const list=document.getElementById('list');
+document.getElementById('ct').textContent=CARDS.length;
+let filter='all';
+function render(){
+  const items=CARDS.filter(c=>{
+    if(filter==='all')return true;
+    if(filter==='deg')return !!c.deg;
+    if(filter==='cross')return !!c.cross;
+    if(filter==='fav')return c.fav===true && !c.cross;
+    if(filter==='unf')return c.fav===false && !c.cross && !c.deg;
+    return true;
+  });
+  let html='',lastAx='';
+  if(items.length===0){list.innerHTML='<div class="empty">Nothing in this filter.</div>';return;}
+  items.forEach(c=>{
+    if(c.ax!==lastAx){html+='<div class="axis">'+c.ax+'</div>';lastAx=c.ax;}
+    if(c.deg){
+      html+='<div class="card deg"><div class="meta"><span class="badge">'+c.badge
+        +'</span><span class="dir deg">DEGRADED</span></div><div class="idtag">'+c.id
+        +'</div><h3 class="serif">'+c.metric+'</h3><p>'+c.body+'</p>'
+        +'<div class="lbl" style="margin-top:14px">VERBATIM FROM</div>'
+        +'<p style="color:var(--muted);font-size:12.5px">lib/widgets/lever_card.dart. System state, not evolved.</p></div>';
+      return;
+    }
+    const cls=c.fav?'fav':'unf';
+    const dirTxt=c.cross?'CROSS-AXIS':(c.fav?'FAVORABLE':'UNFAVORABLE');
+    html+='<div class="card '+cls+'"><div class="meta">'
+      +'<span class="badge">'+c.badge+'</span>'
+      +(c.cat?'<span class="tagcat">'+c.cat+'</span>':'')
+      +(c.side?'<span class="tagside">'+c.side+'</span>':'')
+      +'<span class="dir '+cls+'">'+dirTxt+'</span></div>'
+      +'<div class="idtag">'+c.id+'</div>'
+      +'<h3 class="serif">'+c.metric+'</h3>'
+      +'<div class="lbl">WHAT HAPPENED</div><p>'+c.wh+'</p>'
+      +'<div class="lbl">WHAT TO DO</div><p>'+c.wd+'</p>'
+      +'<div class="lbl">WHAT TO STUDY</div><p>'+c.ws+'</p></div>';
+  });
+  list.innerHTML=html;
+}
+document.querySelectorAll('.filters button').forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll('.filters button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on');filter=b.dataset.f;render();
+  };
+});
+render();
+</script>
+</body>
+</html>
