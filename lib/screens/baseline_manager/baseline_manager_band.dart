@@ -183,7 +183,12 @@ class BaselineManagerBandSelector extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.xs,
+        AppSpacing.lg,
+        0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -192,7 +197,7 @@ class BaselineManagerBandSelector extends StatelessWidget {
             'STAR SHIFT SELECTION',
             style: AppTextStyles.mono7(color: AppColors.textMuted),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpacing.sm),
           Row(
             children: [
               for (final band in StarBand.values) ...[
@@ -205,12 +210,12 @@ class BaselineManagerBandSelector extends StatelessWidget {
                   ),
                 ),
                 if (band != StarBand.values.last)
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.sm),
               ],
             ],
           ),
           if (selectedBand != null) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: AppSpacing.sm),
             Text(
               selectedBand!.helperText,
               style: AppTextStyles.mono7(color: AppColors.textMuted),
@@ -239,7 +244,7 @@ class _BandChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 9),
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.sunset.withValues(alpha: 0.18)
@@ -248,7 +253,7 @@ class _BandChip extends StatelessWidget {
             color: selected ? AppColors.sunset : AppColors.borderSubtle,
             width: 1,
           ),
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: AppRadius.smallR,
         ),
         alignment: Alignment.center,
         child: Text(

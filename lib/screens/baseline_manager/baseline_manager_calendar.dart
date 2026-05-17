@@ -253,7 +253,10 @@ class CalendarGrid extends StatelessWidget {
     // scrolling and there are no nested scroll conflicts. This is a
     // plain Column of the header, legend, weekday labels, and week rows.
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -263,13 +266,13 @@ class CalendarGrid extends StatelessWidget {
                 color: AppColors.textPrimary,
                 weight: FontWeight.w600,
               )),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             '${formatDisplayDate(windowDates.first)} to '
             '${formatDisplayDate(windowDates.last)}',
             style: AppTextStyles.mono8(color: AppColors.textMuted),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.md),
           // Legend: two pills (Closed, Selected) plus a count caption on
           // the whole-day lens explaining the n/total badge. Plain
           // English, no dashes.
@@ -293,12 +296,14 @@ class CalendarGrid extends StatelessWidget {
                 Container(
                   key: const ValueKey<String>('cal_legend_count_caption'),
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 9, vertical: 5),
+                    horizontal: AppSpacing.sm,
+                    vertical: AppSpacing.xs,
+                  ),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundDeep,
                     border:
                         Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(999),
+                    borderRadius: AppRadius.pillR,
                   ),
                   child: Text(
                     'Count = services kept that day',
@@ -307,7 +312,7 @@ class CalendarGrid extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: AppSpacing.md),
           // Weekday labels
           Row(
             children: ['M', 'T', 'W', 'T', 'F', 'S', 'S']
@@ -320,7 +325,7 @@ class CalendarGrid extends StatelessWidget {
                     ))
                 .toList(),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AppSpacing.sm),
           // Calendar rows
           ...rows,
         ],
@@ -346,11 +351,14 @@ class _LegendPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
       decoration: BoxDecoration(
         color: AppColors.backgroundDeep,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppRadius.pillR,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -361,10 +369,10 @@ class _LegendPill extends StatelessWidget {
             decoration: BoxDecoration(
               color: swatchColor,
               border: Border.all(color: swatchBorder, width: 1),
-              borderRadius: BorderRadius.circular(3),
+              borderRadius: AppRadius.smallR,
             ),
           ),
-          const SizedBox(width: 6),
+          const SizedBox(width: AppSpacing.sm),
           Text(
             label,
             style: AppTextStyles.mono8(color: AppColors.textSecondary),

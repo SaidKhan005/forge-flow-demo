@@ -250,8 +250,16 @@ class PreviewPanel extends StatelessWidget {
         : '--';
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      margin: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        0,
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.md,
+      ),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -259,6 +267,7 @@ class PreviewPanel extends StatelessWidget {
           colors: [AppColors.backgroundMid, AppColors.backgroundDeep],
         ),
         border: Border.all(color: AppColors.borderStrong, width: 1),
+        borderRadius: AppRadius.cardR,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

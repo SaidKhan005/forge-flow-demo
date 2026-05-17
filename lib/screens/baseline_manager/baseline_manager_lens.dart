@@ -55,7 +55,7 @@ class BaselineManagerLensBar extends StatelessWidget {
     ];
 
     for (final d in ordered) {
-      chips.add(const SizedBox(width: 8));
+      chips.add(const SizedBox(width: AppSpacing.sm));
       chips.add(
         _LensChip(
           key: ValueKey<String>('lens_${d.id}'),
@@ -68,7 +68,10 @@ class BaselineManagerLensBar extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: Row(mainAxisSize: MainAxisSize.min, children: chips),
@@ -94,7 +97,10 @@ class _LensChip extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.sm,
+        ),
         decoration: BoxDecoration(
           color: selected
               ? AppColors.sunset.withValues(alpha: 0.18)
@@ -103,7 +109,7 @@ class _LensChip extends StatelessWidget {
             color: selected ? AppColors.sunset : AppColors.borderSubtle,
             width: 1,
           ),
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppRadius.pillR,
         ),
         child: Text(
           label.toUpperCase(),
@@ -140,7 +146,12 @@ class BaselineManagerScopeTag extends StatelessWidget {
         ? kWholeDayLensLabel
         : ServicePeriodDefinitionResolver.labelForId(defs, selectedLensId);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.sm,
+        AppSpacing.lg,
+        0,
+      ),
       child: Align(
         alignment: Alignment.centerLeft,
         child: Text(
