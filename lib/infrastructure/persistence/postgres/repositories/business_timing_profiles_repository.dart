@@ -53,24 +53,19 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
       "(where sp.service_period_id is not null), '[]'::jsonb) "
       'as service_periods';
 
-  /// Lists profiles that can affect [locationId] on [businessDate], ordered in
-  /// resolver precedence from operator default to org-unit ancestors to
-  /// location override. [BusinessTimingProfileRow.locationTimezone] comes from
-  /// `locations.timezone`; profiles intentionally do not duplicate timezone.
-  Future<List<BusinessTimingProfileRow>> listCandidateProfilesForLocation({
-    required String operatorId,
-    required String locationId,
-    required String businessDate,
-    String? userId,
-  }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-      userId: userId,
-    );
-    return withTenant<List<BusinessTimingProfileRow>>(ctx, (exec) async {
-      final rows = await exec.query(
-        'with selected_location as ('
+  /// Canonical location-scoped candidate-chain SQL. The ltree ancestor
+  /// CTE returns the operator default, every org-unit ancestor of the
+  /// location, and the location override — already ordered
+  /// `scope_depth asc` (operator default first, location override
+  /// last). Both the tenant-scoped read ([listCandidateProfilesForLocation],
+  /// the only operator-reachable entry point) and the admin
+  /// system-scoped read ([listCandidateProfilesForSystemLocation], the
+  /// admin-gated cross-tenant entry point) run this string verbatim so
+  /// there is exactly ONE canonical chain — no resolver fork, no
+  /// divergent SQL. Bind parameters `operator_id` / `location_id` /
+  /// `business_date`.
+  static const String _candidateChainSql =
+      'with selected_location as ('
         '  select '
         '    loc.location_id, '
         '    loc.timezone as location_timezone, '
@@ -124,7 +119,31 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
         '  scope.scope_depth '
         'order by scope.scope_depth asc, '
         '         p.effective_from_business_date asc, '
-        '         p.created_at asc',
+        '         p.created_at asc';
+
+  /// Lists profiles that can affect [locationId] on [businessDate], ordered in
+  /// resolver precedence from operator default to org-unit ancestors to
+  /// location override. [BusinessTimingProfileRow.locationTimezone] comes from
+  /// `locations.timezone`; profiles intentionally do not duplicate timezone.
+  ///
+  /// Operator-reachable, tenant-scoped path. RLS stays fully engaged via
+  /// the tenant `SET LOCAL` injected by [withTenant]; an operator can
+  /// only ever read its own chain here. Behaviourally unchanged by
+  /// Fix #4 / S2 — same SQL, same parameters, same `withTenant`.
+  Future<List<BusinessTimingProfileRow>> listCandidateProfilesForLocation({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<BusinessTimingProfileRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        _candidateChainSql,
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
@@ -135,6 +154,57 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
         for (final row in rows) _profileRowFromMap(row),
       ];
     });
+  }
+
+  /// Fix #4 / S2 — the admin/cross-tenant analogue of
+  /// [listCandidateProfilesForLocation]. Runs the SAME canonical
+  /// `_candidateChainSql` (byte-identical SQL + bind parameters) but
+  /// over the admin system-scope transaction ([withSystem]) so an
+  /// F&F admin can read ANY operator's location candidate chain. The
+  /// SQL still filters every table on `p.operator_id` /
+  /// `loc.operator_id` / `ou.operator_id = @operator_id::uuid`, so the
+  /// result is scoped to exactly the requested operator — the only
+  /// thing [withSystem] changes versus [withTenant] is that the
+  /// `forge_admin` `BYPASSRLS` role lets the row be returned even
+  /// though no tenant `SET LOCAL` matches it.
+  ///
+  /// This is the sanctioned admin cross-operator read mechanism
+  /// (`runAsSystem`, used by every `/v1/admin/*` cross-tenant path):
+  /// it stamps `app.bypass_rls_audit = 'system'` and requires a
+  /// non-blank [reason] for audit attribution. No RLS policy, wrapper
+  /// function, or migration is touched; no bare `current_setting()`
+  /// read; no bare cross-tenant SQL — the operator filter is in the
+  /// shared canonical SQL itself. READ-ONLY: no write path, no
+  /// `createProfileAsSystem`.
+  ///
+  /// MUST only be reached from the admin/super_admin-gated proxy
+  /// route. The operator-scoped path
+  /// ([listCandidateProfilesForLocation]) and
+  /// `business_timing_profile_resolver.dart` are byte-unchanged; the
+  /// admin client runs the ONE canonical pure resolver over these
+  /// candidates exactly like S1.
+  Future<List<BusinessTimingProfileRow>> listCandidateProfilesForSystemLocation({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String reason,
+  }) {
+    return withSystem<List<BusinessTimingProfileRow>>(
+      (exec) async {
+        final rows = await exec.query(
+          _candidateChainSql,
+          parameters: <String, Object?>{
+            'operator_id': operatorId,
+            'location_id': locationId,
+            'business_date': businessDate,
+          },
+        );
+        return <BusinessTimingProfileRow>[
+          for (final row in rows) _profileRowFromMap(row),
+        ];
+      },
+      reason: reason,
+    );
   }
 
   /// Creates one effective-dated profile plus its optional service-period

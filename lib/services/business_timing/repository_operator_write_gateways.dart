@@ -174,6 +174,43 @@ class RepositoryOperatorBusinessTimingWriteGateway
     );
   }
 
+  @override
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocationAsSystem({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String reason,
+  }) async {
+    // Fix #4 / S2 — admin/cross-tenant analogue of [resolveForLocation].
+    // Same canonical chain, same candidate mapping, same response
+    // shape; the ONLY difference is the repository entry point:
+    // `listCandidateProfilesForSystemLocation` runs the byte-identical
+    // canonical SQL over the sanctioned `runAsSystem` admin bypass so
+    // an F&F admin can read another operator's chain. No resolver
+    // fork — the admin client runs the one pure
+    // `BusinessTimingProfileResolver` exactly like S1. Read-only.
+    final rows = await _repository.listCandidateProfilesForSystemLocation(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      reason: reason,
+    );
+    final candidates = <OperatorBusinessTimingResolutionCandidate>[
+      for (var i = 0; i < rows.length; i++)
+        _toResolutionCandidate(rows[i], scopeDepthRank: i),
+    ];
+    final String? locationTimezone = rows.isEmpty
+        ? null
+        : rows.first.locationTimezone;
+    return OperatorBusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: locationTimezone,
+      candidates: candidates,
+    );
+  }
+
   OperatorBusinessTimingResolutionCandidate _toResolutionCandidate(
     BusinessTimingProfileRow row, {
     required int scopeDepthRank,

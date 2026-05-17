@@ -902,6 +902,27 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
     );
   }
 
+  // Fix #4 / S2 — the operator-web S1 route never calls the admin
+  // system-scope read; this stub only satisfies the interface so the
+  // op-web GET tests still compile.
+  @override
+  Future<OperatorBusinessTimingResolutionResult> resolveForLocationAsSystem({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String reason,
+  }) async {
+    final chain = _resolutionChain ??
+        const <OperatorBusinessTimingResolutionCandidate>[];
+    return OperatorBusinessTimingResolutionResult(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      ianaTimezone: chain.isEmpty ? null : chain.first.ianaTimezone,
+      candidates: chain,
+    );
+  }
+
   @override
   Future<OperatorBusinessTimingProfileRecord> createProfile({
     required String operatorId,
