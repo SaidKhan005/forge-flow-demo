@@ -14,10 +14,15 @@
 
 import 'package:flutter/material.dart';
 
-import '../../domain/models/business_timing_profile.dart';
-import '../../domain/models/restaurant_timing_config.dart';
-import '../../domain/models/service_period_definition.dart';
-import '../../domain/services/business_timing_profile_resolver.dart';
+// Fix #4 / S4 (G42): the synthetic candidate fabrication that
+// imported the raw timing domain models / resolver was deleted; the
+// REAL resolution is owned by
+// `admin_business_timing_resolution_projection.dart` (which runs the
+// ONE canonical `BusinessTimingProfileResolver`). Only the resolver's
+// exception type is referenced here, for the empty/invalid-chain
+// fallback copy.
+import '../../domain/services/business_timing_profile_resolver.dart'
+    show BusinessTimingProfileResolutionException;
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/iana_timezones.dart';
@@ -26,6 +31,8 @@ import '../admin_button_styles.dart';
 import '../admin_route_handoff.dart';
 import '../models/email_conflict_details.dart';
 import '../models/operator_location_admin_models.dart';
+import '../services/admin_business_timing_resolution_gateway.dart';
+import '../services/admin_business_timing_resolution_projection.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../services/roles_hierarchy_sessions_admin_gateway.dart';
 import '../widgets/admin_hierarchy_scope_prompt.dart';
@@ -41,6 +48,7 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     required this.gateway,
     this.hierarchyGateway,
     this.vendorConnectionsGateway,
+    this.timingResolutionGateway,
     this.idempotencyKeyFactory,
     this.onOpenSupportLogs,
     this.onOpenSupportLogsScope,
@@ -66,6 +74,15 @@ class OperatorLocationAdminScreen extends StatefulWidget {
   final OperatorLocationAdminGateway gateway;
   final RolesHierarchySessionsAdminGateway? hierarchyGateway;
   final VendorConnectionsGateway? vendorConnectionsGateway;
+
+  /// Fix #4 / S4 (G42): READ-ONLY S2 admin cross-tenant business-
+  /// timing resolution gateway, threaded into the per-location Timing
+  /// dialog. Production binds the HTTP-backed gateway (via
+  /// `AdminConsoleServicesScope.timingResolutionGatewayOf`); demo /
+  /// widget tests leave it null and the dialog falls back to a seeded
+  /// in-memory gateway. Admin NEVER writes timing cross-tenant
+  /// (operator decision Q3).
+  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
   final String? selectedParentOrgUnitId;
   final String? selectedParentOrgUnitLabel;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
@@ -352,6 +369,7 @@ class _OperatorLocationAdminScreenState
               bundle: _selected!,
               hierarchyGateway: widget.hierarchyGateway,
               vendorConnectionsGateway: widget.vendorConnectionsGateway,
+              timingResolutionGateway: widget.timingResolutionGateway,
               actorUserId: widget.actorUserId,
               idempotencyKeyFactory: _nextIdempotencyKey,
               selectedHierarchyScope:
@@ -954,6 +972,7 @@ class _OperatorDetail extends StatelessWidget {
     required this.bundle,
     required this.hierarchyGateway,
     required this.vendorConnectionsGateway,
+    this.timingResolutionGateway,
     required this.actorUserId,
     required this.idempotencyKeyFactory,
     required this.selectedHierarchyScope,
@@ -987,6 +1006,7 @@ class _OperatorDetail extends StatelessWidget {
   final OperatorAdminBundle bundle;
   final RolesHierarchySessionsAdminGateway? hierarchyGateway;
   final VendorConnectionsGateway? vendorConnectionsGateway;
+  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
   final String actorUserId;
   final String Function() idempotencyKeyFactory;
   final AdminHierarchyScopeIntent selectedHierarchyScope;
@@ -1216,6 +1236,7 @@ class _OperatorDetail extends StatelessWidget {
                       selectedScope: scope,
                       timingLocation: scopedTimingLocation,
                       editingEnabled: editingEnabled,
+                      timingResolutionGateway: timingResolutionGateway,
                     ),
                   );
                 },
@@ -3506,12 +3527,22 @@ class _ActionRowWrap extends StatelessWidget {
   }
 }
 
+/// Fix #4 / S4 (G42): shared seeded in-memory fallback so demo /
+/// share-preview / widget tests render without the Cloud Run admin
+/// proxy. Empty by default → the dialog shows its honest "no timing
+/// profile yet" state instead of fabricating values. Production
+/// passes a real [HttpAdminBusinessTimingResolutionGateway].
+final AdminBusinessTimingResolutionGateway
+    _fallbackAdminTimingResolutionGateway =
+    InMemoryAdminBusinessTimingResolutionGateway();
+
 class _AdminLocationTimingDialog extends StatelessWidget {
   const _AdminLocationTimingDialog({
     required this.operatorName,
     required this.selectedScope,
     required this.timingLocation,
     required this.editingEnabled,
+    this.timingResolutionGateway,
   });
 
   final String operatorName;
@@ -3519,14 +3550,21 @@ class _AdminLocationTimingDialog extends StatelessWidget {
   final LocationAdminRecord? timingLocation;
   final bool editingEnabled;
 
+  /// Fix #4 / S4 (G42): READ-ONLY S2 admin cross-tenant business-
+  /// timing resolution gateway. Null falls back to the seeded
+  /// in-memory demo gateway. Admin NEVER writes timing cross-tenant
+  /// (operator decision Q3).
+  final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
+
   @override
   Widget build(BuildContext context) {
-    final resolution = _AdminTimingResolution.forScope(
-      operatorName: operatorName,
-      selectedScope: selectedScope,
-      timingLocation: timingLocation,
-    );
-    final effective = resolution.effective;
+    final bannerScope = _timingBannerScope(selectedScope);
+    final scopeLabel =
+        selectedScope.isLocationScope && timingLocation != null
+            ? '$operatorName / ${timingLocation!.name}'
+            : selectedScope.displayLabel;
+    final gateway =
+        timingResolutionGateway ?? _fallbackAdminTimingResolutionGateway;
     return AlertDialog(
       key: const Key('admin_location_timing_dialog'),
       backgroundColor: AppColors.backgroundSurface,
@@ -3542,80 +3580,32 @@ class _AdminLocationTimingDialog extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               AdminHierarchyScopeBanner(
-                scope: resolution.bannerScope,
+                scope: bannerScope,
                 surfaceName: 'timing',
                 onChangeScope: () {},
               ),
               const SizedBox(height: 10),
-              _TimingDialogRow(label: 'Scope', value: resolution.scopeLabel),
-              if (effective == null) ...[
+              _TimingDialogRow(label: 'Scope', value: scopeLabel),
+              // Fix #4 / S4 (G42): the synthetic `_AdminTiming
+              // Resolution.forScope` candidate fabrication, the
+              // `_defaultAdminTimingServicePeriods` hardcoded set, and
+              // the `_rolloverToLocalTime` integer-column path are
+              // deleted. The values below are the REAL resolved
+              // `EffectiveBusinessTimingProfile` — the canonical S2
+              // admin candidate chain run through the ONE
+              // `BusinessTimingProfileResolver`, with provenance from
+              // the resolver's `resolvedScope` (NOT a scope flag).
+              if (timingLocation == null)
                 Text(
-                  'Timing cannot resolve without at least one location timezone. Add a location with an IANA timezone before reviewing effective timing.',
+                  'Timing cannot resolve without a selected location. Add a location with an IANA timezone before reviewing effective timing.',
                   key: const Key('admin_timing_unavailable_copy'),
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
-                ),
-              ] else ...[
-                _TimingDialogRow(
-                  label: 'Effective timezone',
-                  value: effective.businessTimezone,
-                ),
-                _TimingDialogRow(
-                  label: 'Timezone source',
-                  value: resolution.timezoneSource,
-                ),
-                _TimingDialogRow(
-                  label: 'Business day starts',
-                  value: effective.businessDayStartLocalTime,
-                ),
-                _TimingDialogRow(
-                  label: 'Day-start source',
-                  value: resolution.dayStartSource,
-                ),
-                _TimingDialogRow(
-                  label: 'Week starts',
-                  value: _weekdayLabel(effective.weekStartDay),
-                ),
-                // Per-Daypart V1 Slice 1.5: the "Shift close authority"
-                // row was removed (operator decision 2026-05-15 —
-                // close-authority is auto-derived per shift from the
-                // per-vendor capability lookup + business-day-start
-                // fallback). The admin candidate still seeds a default
-                // `ShiftCloseAuthority` value for the inheritance
-                // resolver, but there is no operator-facing display or
-                // edit any more.
-              ],
-              const SizedBox(height: 12),
-              if (effective != null)
-                Container(
-                  key: const Key('admin_timing_service_periods_panel'),
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardGlow,
-                    border: Border.all(color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Effective service periods',
-                        style: AppTextStyles.mono11(
-                          color: AppColors.sunsetDark,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      for (final period
-                          in effective.servicePeriodDefinitions.toList()..sort(
-                            (a, b) => a.sortOrder.compareTo(b.sortOrder),
-                          ))
-                        _TimingPeriodLine(
-                          name: period.label,
-                          range:
-                              '${period.startLocalTime} - ${period.endLocalTime}',
-                          source: resolution.servicePeriodSource,
-                        ),
-                    ],
-                  ),
+                )
+              else
+                _AdminLocationTimingResolvedBody(
+                  operatorId: selectedScope.operatorId,
+                  locationId: timingLocation!.locationId,
+                  gateway: gateway,
                 ),
               const SizedBox(height: 12),
               Text(
@@ -3671,191 +3661,187 @@ class _AdminLocationTimingDialog extends StatelessWidget {
   }
 }
 
-class _AdminTimingResolution {
-  const _AdminTimingResolution({
-    required this.bannerScope,
-    required this.scopeLabel,
-    required this.effective,
-    required this.timezoneSource,
-    required this.dayStartSource,
-    required this.servicePeriodSource,
+/// Fix #4 / S4 (G42): read-only banner scope intent for the timing
+/// dialog. This is purely the banner's "operator owns timing /
+/// read-only" chrome and is independent of the (now real) resolved
+/// values — it only mirrors the selected scope, so it is preserved
+/// verbatim from the deleted synthetic resolver. Admin still NEVER
+/// writes timing cross-tenant (operator decision Q3); the only S4
+/// change is that the displayed values become real.
+AdminHierarchyScopeIntent _timingBannerScope(
+  AdminHierarchyScopeIntent scope,
+) {
+  switch (scope.scopeType) {
+    case AdminHierarchyScopeType.business:
+      return AdminHierarchyScopeIntent.business(
+        operatorId: scope.operatorId,
+        operatorName: scope.operatorName,
+        valueState: AdminHierarchyScopeValueState.setAtScope,
+        effectiveValueLabel: 'Business timing default',
+        allowedActionsLabel: 'Read-only until write route exists',
+      );
+    case AdminHierarchyScopeType.orgUnit:
+      return AdminHierarchyScopeIntent.orgUnit(
+        operatorId: scope.operatorId,
+        orgUnitId: scope.orgUnitId!,
+        operatorName: scope.operatorName,
+        orgUnitName: scope.orgUnitName,
+        hierarchyPath: scope.hierarchyPath,
+        valueState: AdminHierarchyScopeValueState.inheritedFromBusiness,
+        inheritedFromLabel: 'business',
+        effectiveValueLabel: 'Inherited timing',
+        allowedActionsLabel: 'Read-only until write route exists',
+      );
+    case AdminHierarchyScopeType.location:
+      return AdminHierarchyScopeIntent.location(
+        operatorId: scope.operatorId,
+        locationId: scope.locationId!,
+        operatorName: scope.operatorName,
+        orgUnitId: scope.orgUnitId,
+        orgUnitName: scope.orgUnitName,
+        locationName: scope.locationName,
+        hierarchyPath: scope.hierarchyPath,
+        valueState: AdminHierarchyScopeValueState.locationOnly,
+        effectiveValueLabel: 'Location timezone and day start',
+        allowedActionsLabel: 'Read-only until write route exists',
+      );
+  }
+}
+
+/// Fix #4 / S4 (G42): resolves the REAL effective business-timing
+/// profile via the READ-ONLY S2 admin gateway → canonical resolver →
+/// real per-field provenance (from the resolver's `resolvedScope`,
+/// NOT a scope flag). Replaces the deleted synthetic
+/// `_AdminTimingResolution.forScope` candidate fabrication.
+class _AdminLocationTimingResolvedBody extends StatelessWidget {
+  const _AdminLocationTimingResolvedBody({
+    required this.operatorId,
+    required this.locationId,
+    required this.gateway,
   });
 
-  final AdminHierarchyScopeIntent bannerScope;
-  final String scopeLabel;
-  final EffectiveBusinessTimingProfile? effective;
-  final String timezoneSource;
-  final String dayStartSource;
-  final String servicePeriodSource;
+  final String operatorId;
+  final String locationId;
+  final AdminBusinessTimingResolutionGateway gateway;
 
-  static _AdminTimingResolution forScope({
-    required String operatorName,
-    required AdminHierarchyScopeIntent selectedScope,
-    required LocationAdminRecord? timingLocation,
-  }) {
-    final effectiveScope = _timingBannerScope(selectedScope);
-    final scopeLabel = selectedScope.isLocationScope && timingLocation != null
-        ? '$operatorName / ${timingLocation.name}'
-        : selectedScope.displayLabel;
-    if (timingLocation == null) {
-      return _AdminTimingResolution(
-        bannerScope: effectiveScope,
-        scopeLabel: scopeLabel,
-        effective: null,
-        timezoneSource: 'Unavailable',
-        dayStartSource: 'Unavailable',
-        servicePeriodSource: 'Unavailable',
-      );
-    }
-
-    final businessProfile = BusinessTimingProfile(
-      profileId: 'admin-${selectedScope.operatorId}-business-default',
-      scope: BusinessTimingScope.operatorDefault,
-      scopeId: selectedScope.operatorId,
-      businessTimezone: timingLocation.timezone,
-      businessDayStartLocalTime: _rolloverToLocalTime(
-        timingLocation.businessDayRolloverHour,
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AdminBusinessTimingResolution>(
+      future: gateway.resolve(
+        operatorId: operatorId,
+        locationId: locationId,
       ),
-      weekStartDay: DateTime.monday,
-      servicePeriodDefinitions: _defaultAdminTimingServicePeriods,
-      shiftCloseAuthority: ShiftCloseAuthority.appLocalCutoffFallback,
-      localCloseFallback: _rolloverToLocalTime(
-        timingLocation.businessDayRolloverHour,
-      ),
-    );
-    final candidates = <BusinessTimingProfile>[businessProfile];
-
-    if (selectedScope.isOrgUnitScope) {
-      candidates.add(
-        BusinessTimingProfile(
-          profileId: 'admin-${selectedScope.orgUnitId}-org-unit',
-          scope: BusinessTimingScope.orgUnit,
-          scopeId: selectedScope.orgUnitId ?? selectedScope.operatorId,
-        ),
-      );
-    }
-    if (selectedScope.isLocationScope) {
-      candidates.add(
-        BusinessTimingProfile(
-          profileId: 'admin-${timingLocation.locationId}-location',
-          scope: BusinessTimingScope.location,
-          scopeId: timingLocation.locationId,
-          businessTimezone: timingLocation.timezone,
-          businessDayStartLocalTime: _rolloverToLocalTime(
-            timingLocation.businessDayRolloverHour,
-          ),
-        ),
-      );
-    }
-
-    final effective = BusinessTimingProfileResolver.resolve(candidates);
-    return _AdminTimingResolution(
-      bannerScope: effectiveScope,
-      scopeLabel: scopeLabel,
-      effective: effective,
-      timezoneSource: selectedScope.isOrgUnitScope
-          ? 'Inherited from business'
-          : 'Set at this scope',
-      dayStartSource: selectedScope.isOrgUnitScope
-          ? 'Inherited from business'
-          : 'Set at this scope',
-      servicePeriodSource: selectedScope.isBusinessScope
-          ? 'Set at this scope'
-          : 'Inherited from business',
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return const Padding(
+            key: Key('admin_timing_resolution_loading'),
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: LinearProgressIndicator(minHeight: 2),
+          );
+        }
+        if (snapshot.hasError) {
+          return Text(
+            'Effective timing could not load. The operator owns these '
+            'values; try again after the operator has saved a timing '
+            'profile.',
+            key: const Key('admin_timing_unavailable_copy'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          );
+        }
+        final resolution = snapshot.data!;
+        if (resolution.candidates.isEmpty) {
+          return Text(
+            'No business timing profile has been saved by the operator '
+            'yet. Effective timezone, business day, and service periods '
+            'will appear here once the operator configures them.',
+            key: const Key('admin_timing_unavailable_copy'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          );
+        }
+        final AdminEffectiveTimingProjection projection;
+        try {
+          projection =
+              AdminBusinessTimingResolutionProjection.project(resolution);
+        } on BusinessTimingProfileResolutionException {
+          return Text(
+            'Effective timing could not load. The operator owns these '
+            'values; try again after the operator has saved a timing '
+            'profile.',
+            key: const Key('admin_timing_unavailable_copy'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          );
+        }
+        final effective = projection.effective;
+        final sourceLabel = projection.provenance.detailLabel;
+        final periods = effective.servicePeriodDefinitions.toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+        return Column(
+          key: const Key('admin_timing_resolved_fields'),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            _TimingDialogRow(
+              label: 'Effective from',
+              value: projection.effectiveDateLabel,
+            ),
+            _TimingDialogRow(
+              label: 'Effective timezone',
+              value: effective.businessTimezone,
+            ),
+            _TimingDialogRow(label: 'Timezone source', value: sourceLabel),
+            _TimingDialogRow(
+              label: 'Business day starts',
+              value: effective.businessDayStartLocalTime,
+            ),
+            _TimingDialogRow(label: 'Day-start source', value: sourceLabel),
+            _TimingDialogRow(
+              label: 'Week starts',
+              value: AdminBusinessTimingResolutionProjection.weekdayLabel(
+                effective.weekStartDay,
+              ),
+            ),
+            // Per-Daypart V1 Slice 1.5 / Gap 31: the "Shift close
+            // authority" row stays removed (operator decision
+            // 2026-05-15 — close-authority is auto-derived per shift).
+            // The projection seeds a default ShiftCloseAuthority for
+            // the resolver only; it is never displayed.
+            const SizedBox(height: 12),
+            Container(
+              key: const Key('admin_timing_service_periods_panel'),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+              decoration: BoxDecoration(
+                color: AppColors.cardGlow,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(
+                    'Effective service periods',
+                    style: AppTextStyles.mono11(
+                      color: AppColors.sunsetDark,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  for (final period in periods)
+                    _TimingPeriodLine(
+                      name: period.label,
+                      range:
+                          '${period.startLocalTime} - ${period.endLocalTime}',
+                      source: sourceLabel,
+                      daysLabel:
+                          AdminBusinessTimingResolutionProjection.daysLabel(
+                        period.applicableDays,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
-
-  static AdminHierarchyScopeIntent _timingBannerScope(
-    AdminHierarchyScopeIntent scope,
-  ) {
-    switch (scope.scopeType) {
-      case AdminHierarchyScopeType.business:
-        return AdminHierarchyScopeIntent.business(
-          operatorId: scope.operatorId,
-          operatorName: scope.operatorName,
-          valueState: AdminHierarchyScopeValueState.setAtScope,
-          effectiveValueLabel: 'Business timing default',
-          allowedActionsLabel: 'Read-only until write route exists',
-        );
-      case AdminHierarchyScopeType.orgUnit:
-        return AdminHierarchyScopeIntent.orgUnit(
-          operatorId: scope.operatorId,
-          orgUnitId: scope.orgUnitId!,
-          operatorName: scope.operatorName,
-          orgUnitName: scope.orgUnitName,
-          hierarchyPath: scope.hierarchyPath,
-          valueState: AdminHierarchyScopeValueState.inheritedFromBusiness,
-          inheritedFromLabel: 'business',
-          effectiveValueLabel: 'Inherited timing',
-          allowedActionsLabel: 'Read-only until write route exists',
-        );
-      case AdminHierarchyScopeType.location:
-        return AdminHierarchyScopeIntent.location(
-          operatorId: scope.operatorId,
-          locationId: scope.locationId!,
-          operatorName: scope.operatorName,
-          orgUnitId: scope.orgUnitId,
-          orgUnitName: scope.orgUnitName,
-          locationName: scope.locationName,
-          hierarchyPath: scope.hierarchyPath,
-          valueState: AdminHierarchyScopeValueState.locationOnly,
-          effectiveValueLabel: 'Location timezone and day start',
-          allowedActionsLabel: 'Read-only until write route exists',
-        );
-    }
-  }
-}
-
-const List<ServicePeriodDefinition> _defaultAdminTimingServicePeriods =
-    <ServicePeriodDefinition>[
-      ServicePeriodDefinition(
-        id: 'lunch',
-        label: 'Lunch',
-        shortLabel: 'L',
-        sortOrder: 10,
-        startLocalTime: '11:00',
-        endLocalTime: '15:00',
-        rollsPastMidnight: false,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      ),
-      ServicePeriodDefinition(
-        id: 'dinner',
-        label: 'Dinner',
-        shortLabel: 'D',
-        sortOrder: 20,
-        startLocalTime: '17:00',
-        endLocalTime: '22:00',
-        rollsPastMidnight: false,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      ),
-      ServicePeriodDefinition(
-        id: 'late_night',
-        label: 'Late night',
-        shortLabel: 'LN',
-        sortOrder: 30,
-        startLocalTime: '22:00',
-        endLocalTime: '01:00',
-        rollsPastMidnight: true,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      ),
-    ];
-
-String _rolloverToLocalTime(int? rolloverHour) {
-  final normalized = rolloverHour == null ? 0 : rolloverHour.clamp(0, 23);
-  return '${normalized.toString().padLeft(2, '0')}:00';
-}
-
-String _weekdayLabel(int weekStartDay) {
-  return switch (weekStartDay) {
-    DateTime.monday => 'Monday',
-    DateTime.tuesday => 'Tuesday',
-    DateTime.wednesday => 'Wednesday',
-    DateTime.thursday => 'Thursday',
-    DateTime.friday => 'Friday',
-    DateTime.saturday => 'Saturday',
-    DateTime.sunday => 'Sunday',
-    _ => 'Unknown',
-  };
 }
 
 class _TimingDialogRow extends StatelessWidget {
@@ -3894,11 +3880,16 @@ class _TimingPeriodLine extends StatelessWidget {
     required this.name,
     required this.range,
     required this.source,
+    this.daysLabel,
   });
 
   final String name;
   final String range;
   final String source;
+
+  /// G45 / Gap 28: plain-English day restriction (e.g. "Mon, Tue"),
+  /// or null when the period runs every day (the common case).
+  final String? daysLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -3907,9 +3898,19 @@ class _TimingPeriodLine extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(
-              name,
-              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Text(
+                  name,
+                  style: AppTextStyles.body13(color: AppColors.textPrimary),
+                ),
+                if (daysLabel != null)
+                  Text(
+                    daysLabel!,
+                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                  ),
+              ],
             ),
           ),
           Text(
