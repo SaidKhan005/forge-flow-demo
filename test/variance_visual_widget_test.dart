@@ -566,7 +566,18 @@ void main() {
         (tester) async {
       await _pumpVarianceFrames(tester);
 
-      expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsOneWidget);
+      // Variance Coaching V2 (V2-2:578 / V2-6:712): the dollar-impact
+      // disclosure is retitled from the pre-V2 `DOLLAR IMPACT` literal
+      // to a sentiment-aware projection title. The loss framing is
+      // unfavourable-only; the StaticShiftDataSource fixture is an
+      // at-or-under-best-possible (favourable) week (dollarGap < 0), so
+      // it renders the favourable counterpart `Gain if this continues`.
+      // The legacy literal must be gone.
+      expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsNothing);
+      expect(
+        find.text('Gain if this continues', skipOffstage: false),
+        findsOneWidget,
+      );
       expect(find.text('this week', skipOffstage: false), findsOneWidget);
       // 7.58.UX.6: the footer now names the math floor as
       // `Best Possible / Actual / Closable Gap` triplet instead of the
@@ -594,9 +605,18 @@ void main() {
       }
     }
 
-    testWidgets('DOLLAR IMPACT label is present', (tester) async {
+    testWidgets('dollar-impact disclosure title is the V2 projection '
+        'title (sentiment-aware, not the legacy literal)', (tester) async {
       await loadThisWeek(tester);
-      expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsOneWidget);
+      // V2-2:578 / V2-6:712 — pre-V2 `DOLLAR IMPACT` is retired. The
+      // favourable fixture week renders `Gain if this continues`; the
+      // unfavourable counterpart is the contract-verbatim
+      // `Loss if this continues`.
+      expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsNothing);
+      expect(
+        find.text('Gain if this continues', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('card shows "this week" label', (tester) async {

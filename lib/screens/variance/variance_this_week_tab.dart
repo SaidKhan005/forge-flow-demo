@@ -195,7 +195,26 @@ class _ThisWeekContent extends StatelessWidget {
           slivers: [
             SliverPersistentHeader(
               pinned: true,
-              delegate: StickySectionDelegate('DOLLAR IMPACT'),
+              // Variance Coaching V2 (V2-2:578 / V2-6:712): the
+              // dollar-impact disclosure is titled exactly
+              // `Loss if this continues`. The loss framing is
+              // UNFAVOURABLE-only — it must not call an at-or-under
+              // best-possible week a "loss". The favourable / loss
+              // decision comes from the SAME single sentiment source
+              // the hero and the impact rows already read
+              // (`MoneySentiment.fromDollarGap(weekData.dollarGap)`),
+              // never from `value > 0`. Favourable mirrors the hero's
+              // gain framing (`GAINED` / `above best possible`).
+              // Presentation only: no math, table, or attribution
+              // change. Spec:
+              // docs/contracts/phase_7_58_primary_driver_contract.md
+              // V2-2 / V2-6 and docs/f&f Coaching/
+              // variance_tab_v2_mockup.html `<summary>`.
+              delegate: StickySectionDelegate(
+                MoneySentiment.fromDollarGap(weekData.dollarGap).favorable
+                    ? 'Gain if this continues'
+                    : 'Loss if this continues',
+              ),
             ),
             SliverToBoxAdapter(
               child: DollarImpactCard(
