@@ -7,6 +7,7 @@ abstract class OpenShiftSnapshotRepository {
   Future<String?> getCurrentBusinessDate(String restaurantId);
   Future<List<OpenShiftSnapshot>> getSnapshotsForDay(
       String restaurantId, String businessDate);
+  Future<String?> getMostRecentBusinessDate(String restaurantId);
   Future<void> replaceOpenShiftSnapshot(OpenShiftSnapshot snapshot);
   Future<void> replaceOpenShiftSnapshotsForWeek(
       String restaurantId, String weekId, List<OpenShiftSnapshot> snapshots);
