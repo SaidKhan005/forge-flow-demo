@@ -323,7 +323,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.ai,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Review AI plans and usage limits.',
+        'This surface is for F&F admins only. Operators cannot see it. Review AI plans and usage limits.',
     builder: _buildPricing,
   ),
   AdminRoute(
@@ -334,7 +334,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.ai,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Publish advisor knowledge content.',
+        'This surface is for F&F admins only. Operators cannot see it. Publish advisor knowledge content.',
     builder: _buildCorpus,
   ),
   AdminRoute(
@@ -356,7 +356,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.systemMonitoring,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Run read-only system checks.',
+        'This surface is for F&F admins only. Operators cannot see it. Run read-only system checks.',
     builder: _buildHealth,
   ),
   AdminRoute(
@@ -367,7 +367,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.serviceSetup,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Control staged features.',
+        'This surface is for F&F admins only. Operators cannot see it. Control staged features.',
     builder: _buildFeatureFlags,
   ),
   AdminRoute(
@@ -378,7 +378,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.serviceSetup,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. '
+        'This surface is for F&F admins only. Operators cannot see it. '
         'Edit the starter role catalog every business begins with.',
     builder: _buildDefaultRoleCatalog,
   ),
@@ -390,7 +390,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.systemMonitoring,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Inspect support-safe request details.',
+        'This surface is for F&F admins only. Operators cannot see it. Inspect support-safe request details.',
     builder: _buildDebugConsole,
   ),
   AdminRoute(
@@ -401,7 +401,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.ai,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Review advisor usage, cost, and model activity.',
+        'This surface is for F&F admins only. Operators cannot see it. Review advisor usage, cost, and model activity.',
     builder: _buildObservability,
   ),
   AdminRoute(
@@ -436,7 +436,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     section: AdminRouteSection.operations,
     badge: 'Admin only',
     subtitle:
-        'This surface is for F&F admins only — operators cannot see it. Operator Web reads the published tier status.',
+        'This surface is for F&F admins only. Operators cannot see it. Operator Web reads the published tier status.',
     builder: _buildPollingPricing,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,

@@ -128,7 +128,7 @@ class PollingTierStatusCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Tap the button and tell us what you need — the F&F team '
+                  'Tap the button and tell us what you need. The F&F team '
                   'emails you back within one business day to discuss '
                   'options and walk you through the change.',
                   style: AppTextStyles.body12(color: AppColors.textMuted),
@@ -397,7 +397,7 @@ class _PollingTierChangeRequestDialogState
               decoration: InputDecoration(
                 hintText:
                     'For example: We are pushing to under-a-minute service '
-                    'awareness during dinner rush — would Premium fit?',
+                    'awareness during dinner rush. Would Premium fit?',
                 hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),

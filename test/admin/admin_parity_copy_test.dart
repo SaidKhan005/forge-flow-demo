@@ -14,7 +14,7 @@ void main() {
   const crossSurfaceCopy =
       'Operator edits live on Operator Web; this view is for F&F support.';
   const adminOnlyCopy =
-      'This surface is for F&F admins only — operators cannot see it.';
+      'This surface is for F&F admins only. Operators cannot see it.';
 
   AdminRoute routeById(String id) {
     return kAdminRoutes.singleWhere((route) => route.id == id);

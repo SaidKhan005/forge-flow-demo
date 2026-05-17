@@ -81,7 +81,7 @@ void main() {
       expect(find.text('Ecosystem admin'), findsOneWidget);
       // HP #11 scope degraded to global label (no business / region /
       // location triple).
-      expect(find.text('Global — cross-operator'), findsOneWidget);
+      expect(find.text('Global: cross-operator'), findsOneWidget);
     });
 
     testWidgets(

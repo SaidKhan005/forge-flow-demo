@@ -137,7 +137,7 @@ class DemoVendorIntegrationStateFixture {
   static const String _reservationVendorName = 'OpenTable';
 
   static const String _reservationReauthMessage =
-      'Reauthorize OpenTable — the saved access token expired. '
+      'Reauthorize OpenTable. The saved access token expired. '
       'Reconnect from this card to resume reservation sync.';
 
   /// The canonical state table. Order within each location follows

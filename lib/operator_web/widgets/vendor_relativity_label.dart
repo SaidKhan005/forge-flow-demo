@@ -170,12 +170,12 @@ List<String> _composeWageLines(VendorConnectionsBundle? bundle) {
     case LaborWageSourceClass.perPositionWithRates:
       return <String>[
         '${labor.displayName} reports per-position pay rates, not per-employee dollars. F&F multiplies those by scheduled hours when you choose "Use vendor".',
-        'This is what the wage model needs — your wage editor\'s role rows reflect what your scheduler reports.',
+        'This is what the wage model needs. Your wage editor\'s role rows reflect what your scheduler reports.',
       ];
     case LaborWageSourceClass.hoursOnly:
       return <String>[
         '${labor.displayName} does not expose dollars or rates. F&F substitutes target wage × hours from your TargetCycle when you choose "Use vendor".',
-        'Switch to "Use my manual wage mix" to use your wage editor mix instead — usually more accurate when you have not set targets yet.',
+        'Switch to "Use my manual wage mix" to use your wage editor mix instead. Usually more accurate when you have not set targets yet.',
       ];
   }
 }
@@ -215,7 +215,7 @@ List<String> _composePollingLines(VendorConnectionsBundle? bundle) {
 
   if (pollOnlyConnected.isEmpty && webhookConnected.isEmpty) {
     return <String>[
-      'Some vendors push new data to Forge & Flow the moment it happens — others only respond when we ask. Your tier controls how often we ask the ones that do not push.',
+      'Some vendors push new data to Forge & Flow the moment it happens. Others only respond when we ask. Your tier controls how often we ask the ones that do not push.',
       'Vendors that need to be asked: Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations.',
     ];
   }

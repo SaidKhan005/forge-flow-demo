@@ -116,6 +116,12 @@ if has_changed '^db/migrations/.*\.sql$|^tool/rls_policy_lint\.dart$|^tool/rls_p
   run_lint dart run tool/rls_policy_lint.dart
 fi
 
+# UX no-em-dash law: operator-facing copy never uses an em dash. Scoped
+# to the rendering/content layers ux_em_dash_lint.dart enforces.
+if has_changed '^lib/screens/|^lib/widgets/|^lib/operator_web/|^lib/admin/screens/|^lib/admin/widgets/|^lib/admin/admin_routes\.dart$|^lib/domain/constants/app_defaults\.dart$|^lib/services/email/|^lib/infrastructure/persistence/sqlite/sqlite_database\.dart$|^lib/dev/demo_vendor_integration_state_fixture\.dart$|^tool/ux_em_dash_lint\.dart$'; then
+  run_lint dart run tool/ux_em_dash_lint.dart
+fi
+
 if [ "$ran" -eq 0 ]; then
   echo "[forge-flow pre-push] Pushed files do not require scoped repo lints."
   exit 0

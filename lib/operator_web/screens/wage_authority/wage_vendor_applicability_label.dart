@@ -111,7 +111,7 @@ WageVendorApplicabilityLabel buildWageVendorApplicabilityLabel({
     // raw id — fall through to manual-only with a soft note.
     return const WageVendorApplicabilityLabel(
       tone: WageVendorApplicabilityTone.manualOnly,
-      text: 'Manual only — this row is not tied to a connected labor '
+      text: 'Manual only: this row is not tied to a connected labor '
           'vendor at this location yet.',
     );
   }
@@ -167,7 +167,7 @@ WageVendorApplicabilityLabel _manualOnlyLabel({
   if (connectedLaborVendorIds.isEmpty) {
     return const WageVendorApplicabilityLabel(
       tone: WageVendorApplicabilityTone.manualOnly,
-      text: 'Manual only — no labor vendor connected at this location.',
+      text: 'Manual only: no labor vendor connected at this location.',
     );
   }
   final names = connectedLaborVendorIds
@@ -181,7 +181,7 @@ WageVendorApplicabilityLabel _manualOnlyLabel({
           : '${names.take(names.length - 1).join(', ')}, and ${names.last}';
   return WageVendorApplicabilityLabel(
     tone: WageVendorApplicabilityTone.manualOnly,
-    text: 'Manual only — pick a vendor role for this row to sync with '
+    text: 'Manual only: pick a vendor role for this row to sync with '
         '$friendlyList.',
   );
 }

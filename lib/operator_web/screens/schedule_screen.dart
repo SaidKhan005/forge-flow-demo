@@ -295,7 +295,7 @@ class _Header extends StatelessWidget {
                   "Once your forecasts run you'll see $locationName's locked "
                   "plan here, plus a plain-English explainer for every "
                   "number that shaped it."
-              : "Week of $range — $locationName's locked plan and the "
+              : "Week of $range: $locationName's locked plan and the "
                   "forecast inputs that built it.",
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
@@ -306,12 +306,12 @@ class _Header extends StatelessWidget {
   static String _formatWeekRange(String startIso, String endIso) {
     final start = _parse(startIso);
     final end = _parse(endIso);
-    if (start == null || end == null) return '$startIso — $endIso';
+    if (start == null || end == null) return '$startIso to $endIso';
     final startLabel = _shortMonthDay(start);
     final endLabel = start.year == end.year && start.month == end.month
         ? end.day.toString()
         : _shortMonthDay(end);
-    return '$startLabel — $endLabel';
+    return '$startLabel to $endLabel';
   }
 
   static DateTime? _parse(String iso) {

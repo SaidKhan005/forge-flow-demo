@@ -130,7 +130,7 @@ class _InheritanceTreeState extends State<InheritanceTree> {
       ),
       child: Text(
         widget.emptyMessage ??
-            'No org units or locations yet — add your first location '
+            'No org units or locations yet. Add your first location '
                 'to populate the inheritance tree.',
         style: AppTextStyles.body13(color: AppColors.textMuted),
       ),

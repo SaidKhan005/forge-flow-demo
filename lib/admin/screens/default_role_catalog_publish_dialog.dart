@@ -438,7 +438,7 @@ class _AwarenessBody extends StatelessWidget {
                     child: Text(
                       'Blast-radius preview unavailable '
                       '(${blastRadius!.errorCode}). Showing plain-English '
-                      'consequences instead — publish still works.',
+                      'consequences instead. Publish still works.',
                       style: AppTextStyles.body12(
                         color: AppColors.textPrimary,
                       ),

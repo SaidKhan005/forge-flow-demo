@@ -70,6 +70,7 @@ quota on one and switch to the other; the workflow stays the same.
 ### House rules
 
 - After `db/migrations/*.sql` changes: `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
+- **UX no-em-dash law.** No operator-facing string anywhere may use an em dash (U+2014 `—`) as punctuation or a separator. Use a colon for label/value separators (`'Barrio Legado: North Loop'`), `to` for ranges, or a full stop / comma when it joins clauses. The standalone `'—'` glyph stays as the honest empty/missing-value sentinel (Metric Honesty Doctrine). `tool/ux_em_dash_lint.dart` enforces this over the rendering/content layers (pre-push hook + manual `dart run tool/ux_em_dash_lint.dart`); the doctrine binds all operator-facing copy, including any surface outside that lint scope. New UX surfaces get added to the lint's `kUxCopyRoots`.
 - Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (named for legacy reasons; applies to whichever executor exercises browser flows).
 - Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.

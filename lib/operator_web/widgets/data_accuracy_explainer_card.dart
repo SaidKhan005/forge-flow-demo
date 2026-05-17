@@ -79,7 +79,7 @@ class DataAccuracyExplainerCard extends StatelessWidget {
                 'Example: QuickBooks Time reports per-employee dollars, '
                 'so F&F uses them. If you switch to Humanity, F&F '
                 'multiplies Humanity\'s pay rates by scheduled hours '
-                'instead — same outcome, different path.',
+                'instead. Same outcome, different path.',
           ),
           const SizedBox(height: 12),
           const _ExplainerSection(

@@ -137,7 +137,7 @@ bool defaultRoleCatalogScreenCanEdit({
     // a live admin session.
     debugPrint(
       'default_role_catalog_admin_screen: permission-key vs role-tier '
-      'mismatch — actorHasEditKeyHint=$actorHasEditKeyHint but '
+      'mismatch: actorHasEditKeyHint=$actorHasEditKeyHint but '
       'canEditByRole=$canEditByRole for roles=$actorRoles. The role-tier '
       'check wins until the admin console threads a PermissionResolver.',
     );
