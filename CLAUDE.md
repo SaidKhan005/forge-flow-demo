@@ -142,6 +142,32 @@ Codex, orchestrator or executor):
    `rescue/<topic>` branch at the result, and `git push origin
    rescue/<topic>` — then report. Never destroy another session's work.
 
+## Cost & Convergence Discipline (binding — stops rework spend)
+
+Origin: 2026-05-16 workflow review. At ~95 PRs/day with CI dark and a
+moving base, the dominant cost is rework: work built then reverted,
+re-audited after every rebase, lost and redone. These rules cut that:
+
+1. **Decide before you dispatch.** Any product-direction, auth, or
+   architecture fork is decided by the operator BEFORE expensive agent
+   work starts — never build first and decide after. (#832 magic-link was
+   built, audited, merged, then reverted 30 min later: a whole wasted
+   cycle.) If the fork is unresolved, ask; do not speculatively build both.
+2. **Work in waves, not a firehose.** Dispatch a batch of
+   non-conflicting lanes against a pinned base, merge the batch, THEN
+   start the next wave. Do not keep an unbounded number of lanes branching
+   off a constantly-moving master — every one pays a rebase + re-audit tax.
+3. **Cap concurrency; serialize conflicts.** Lanes touching the same
+   high-contention surface (auth, `tool/advisor_proxy/**`, a single
+   screen, the same migration chain) run ONE at a time, not in parallel.
+   Parallel same-file lanes produce throwaway conflicting output.
+4. **Reuse, don't re-derive.** Before dispatching, check the work isn't
+   already landed/superseded (`tool/verify_pr_landed.sh`, `gh pr list`).
+   Do not spawn an agent to redo a merged PR.
+5. **Hygiene is automated, not interactive.** Worktree/branch pruning and
+   WIP rescue run via `tool/repo_janitor.sh` (scheduled/hook), not by
+   spending interactive orchestrator budget re-cleaning the same sprawl.
+
 ## Review Loop (user pastes an Execution Report)
 
 1. Review changed files + nearby runtime seams.
