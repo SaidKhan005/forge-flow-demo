@@ -7,15 +7,19 @@
 // What happened / What to do / What to study.
 //
 // All teaching prose is rendered through Lane E's `InlineEmphasisText`
-// (V2-4). Catalog strings carry no markup today, so this renders
-// identically to plain `Text`; the renderer is wired for forward-compat
-// without hand-adding markup to the locked catalog.
+// (V2-4). Each block's verbatim `CrossAxisPairs` string is routed
+// through `LearnEmphasisMap` first, which wraps exact catalog
+// substrings in the V2-4 causal tokens at RENDER time so the mockup
+// `.em-bad` / `.em-good` highlights show. The catalog stays
+// byte-for-byte plain; `InlineEmphasisMarkup.stripMarkup` of any block
+// this card renders equals the plain catalog string exactly.
 
 import 'package:flutter/material.dart';
 
 import '../../domain/constants/cross_axis_pair_catalog.dart';
 import '../../theme/app_theme.dart';
 import '../variance/inline_emphasis_text.dart';
+import 'learn_emphasis_map.dart';
 
 /// One Cross-Axis pair card (mockup `#crossTrack` `.lc`).
 ///
@@ -108,11 +112,33 @@ class LearnCrossAxisCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                _Block(label: 'What happened.', body: pair.whatHappened),
+                // V2-4: emphasis is applied at RENDER over the verbatim
+                // `CrossAxisPairs` catalog blocks. `stripMarkup` of each
+                // marked-up string equals the plain catalog string
+                // byte-for-byte (LearnEmphasisMap.crossRoundTrips).
+                _Block(
+                  label: 'What happened.',
+                  body: LearnEmphasisMap.emphasizeCrossWhatHappened(
+                    pair.id,
+                    pair.whatHappened,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                _Block(label: 'What to do.', body: pair.whatToDo),
+                _Block(
+                  label: 'What to do.',
+                  body: LearnEmphasisMap.emphasizeCrossWhatToDo(
+                    pair.id,
+                    pair.whatToDo,
+                  ),
+                ),
                 const SizedBox(height: 12),
-                _Block(label: 'What to study.', body: pair.teachingNote),
+                _Block(
+                  label: 'What to study.',
+                  body: LearnEmphasisMap.emphasizeCrossTeachingNote(
+                    pair.id,
+                    pair.teachingNote,
+                  ),
+                ),
               ],
             ),
           ),
