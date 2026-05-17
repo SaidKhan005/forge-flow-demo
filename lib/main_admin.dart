@@ -46,6 +46,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/admin_account_gateway.dart';
 import 'admin/services/admin_business_timing_resolution_gateway.dart';
 import 'admin/services/admin_http_timeout.dart';
 import 'admin/services/admin_notification_preferences_gateway.dart';
@@ -324,6 +325,14 @@ Future<void> main() async {
     final adminSecurityGateway = gateway == null
         ? null
         : _resolveAdminSecurityGateway(authBinding.authClient);
+    // Wave 2 W-3 / G70 — admin "My Account" self-service identity-edit
+    // gateway. Same admin proxy base URI + Firebase ID-token bearer the
+    // sibling admin gateways use; demo / share-preview leave it null so
+    // `admin_routes.dart` keeps `adminAccountGatewayOf` null and the
+    // edit-identity affordance stays disabled (byte-equivalent today).
+    final adminAccountGateway = gateway == null
+        ? null
+        : _resolveAdminAccountGateway(authBinding.authClient);
     // X-G71 — admin self-service notification-preferences gateway.
     // Same admin proxy base URI + Firebase ID-token bearer the sibling
     // admin gateways use; demo / share-preview leave it null so
@@ -370,6 +379,7 @@ Future<void> main() async {
         auditedSupportActionsAdminGateway: auditedSupportActionsAdminGateway,
         adminSessionsGateway: authBinding.sessionsGateway,
         adminSecurityGateway: adminSecurityGateway,
+        adminAccountGateway: adminAccountGateway,
         adminNotificationPreferencesGateway:
             adminNotificationPreferencesGateway,
         timingResolutionGateway: adminBusinessTimingResolutionGateway,
@@ -778,6 +788,34 @@ AdminSecurityGateway? _resolveAdminSecurityGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpAdminSecurityGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Wave 2 W-3 / G70 — admin "My Account" self-service identity-edit
+/// gateway. Lives on the SAME admin proxy base URI as the other admin
+/// surfaces with the Firebase ID-token bearer the sibling `_resolve*`
+/// resolvers use; demo / share-preview return null so
+/// `admin_routes.dart` leaves `adminAccountGatewayOf` null and
+/// `my_account_admin_screen.dart` keeps the edit-identity affordance
+/// disabled (byte-equivalent to today). Mirrors
+/// `_resolveAdminNotificationPreferencesGateway` exactly. The proxy
+/// resolves the actor from the verified bearer token, so this calls
+/// the SAME existing `PATCH /v1/auth/self/profile` route the
+/// operator-web side uses (no new backend route). Wiring this binding
+/// is the only missing hop that makes G70's caller-stable
+/// idempotency key actually run on the live PATCH.
+AdminAccountGateway? _resolveAdminAccountGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth || _kAdminSharePreview) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpAdminAccountGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
