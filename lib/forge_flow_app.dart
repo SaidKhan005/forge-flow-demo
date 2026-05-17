@@ -113,6 +113,20 @@ class ForgeFlowApp extends StatelessWidget {
         title: 'Forge & Flow',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
+        // Respect the OS font-size (accessibility) setting, but clamp the
+        // scale so a very large system setting cannot break dense metric
+        // layouts. 0.9–1.3 keeps text honest and readable both ways.
+        builder: (context, child) {
+          final media = MediaQuery.of(context);
+          final clamped = media.textScaler.clamp(
+            minScaleFactor: 0.9,
+            maxScaleFactor: 1.3,
+          );
+          return MediaQuery(
+            data: media.copyWith(textScaler: clamped),
+            child: child ?? const SizedBox.shrink(),
+          );
+        },
         // MP6 — French (Quebec) localization support.
         localizationsDelegates: const [
           GlobalMaterialLocalizations.delegate,

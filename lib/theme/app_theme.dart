@@ -49,6 +49,53 @@ class AppColors {
   static const Color rule = borderSubtle;
 }
 
+/// Spacing scale — single source of truth for padding / gaps / insets.
+///
+/// 4/8pt rhythm. Use these instead of ad-hoc literals so screens share a
+/// consistent vertical/horizontal cadence (readability + scannability).
+/// See `docs/contracts/mobile_typography_and_spacing_contract.md`.
+class AppSpacing {
+  AppSpacing._();
+
+  /// 4 — hairline gaps inside a control (icon↔label).
+  static const double xs = 4;
+
+  /// 8 — tight gap between closely-related rows.
+  static const double sm = 8;
+
+  /// 12 — default gap between items in a list/stack.
+  static const double md = 12;
+
+  /// 16 — standard screen edge padding + card inner padding.
+  static const double lg = 16;
+
+  /// 24 — separation between distinct sections.
+  static const double xl = 24;
+
+  /// 32 — major section / screen-block break.
+  static const double xxl = 32;
+
+  /// Standard horizontal screen gutter.
+  static const EdgeInsets screenH = EdgeInsets.symmetric(horizontal: lg);
+
+  /// Standard card inner padding.
+  static const EdgeInsets card = EdgeInsets.all(lg);
+
+  /// Standard list-row vertical rhythm.
+  static const EdgeInsets row = EdgeInsets.symmetric(
+    horizontal: lg,
+    vertical: md,
+  );
+}
+
+/// Text scale roles.
+///
+/// IMPORTANT: the legacy method names below (e.g. `body11`, `mono10`) name a
+/// HISTORICAL pixel size, not the current one. The `fontSize:` value in each
+/// body is authoritative. Prefer the semantic aliases at the bottom of this
+/// class (`bodyText`, `caption`, `sectionHeading`, …) in new code — the raw
+/// names are kept only so the existing call sites keep compiling. Full role
+/// map: `docs/contracts/mobile_typography_and_spacing_contract.md`.
 class AppTextStyles {
   static const String webFallbackFontFamily = 'Arial';
 
@@ -160,7 +207,7 @@ class AppTextStyles {
 
   static TextStyle mono12({Color? color, FontWeight? weight}) => _mono(
     TextStyle(
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: weight ?? FontWeight.w400,
       color: color ?? AppColors.textPrimary,
       height: 1.4,
@@ -169,16 +216,17 @@ class AppTextStyles {
 
   static TextStyle mono11({Color? color}) => _mono(
     TextStyle(
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: FontWeight.w500,
       letterSpacing: 0,
       color: color ?? AppColors.textMuted,
+      height: 1.35,
     ),
   );
 
   static TextStyle mono10({Color? color}) => _mono(
     TextStyle(
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: FontWeight.w400,
       color: color ?? AppColors.textSecondary,
       height: 1.4,
@@ -187,19 +235,21 @@ class AppTextStyles {
 
   static TextStyle mono8({Color? color}) => _mono(
     TextStyle(
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: FontWeight.w500,
       letterSpacing: 0,
       color: color ?? AppColors.textSecondary,
+      height: 1.3,
     ),
   );
 
   static TextStyle mono7({Color? color}) => _mono(
     TextStyle(
-      fontSize: 11,
+      fontSize: 12,
       fontWeight: FontWeight.w500,
       letterSpacing: 0,
       color: color ?? AppColors.textSecondary,
+      height: 1.3,
     ),
   );
 
@@ -216,38 +266,43 @@ class AppTextStyles {
 
   static TextStyle body14({Color? color, FontStyle? style}) => _sans(
     TextStyle(
-      fontSize: 14,
+      fontSize: 15,
       fontWeight: FontWeight.w600,
       color: color ?? AppColors.textPrimary,
+      height: 1.4,
       fontStyle: style,
     ),
   );
 
   static TextStyle body13({Color? color, FontStyle? style}) => _sans(
     TextStyle(
-      fontSize: 13,
+      fontSize: 15,
       fontWeight: FontWeight.w400,
       color: color ?? AppColors.textPrimary,
-      height: 1.6,
+      height: 1.5,
       fontStyle: style,
     ),
   );
 
+  // Secondary/caption text. Default upright (small italic hurts legibility);
+  // callers that want emphasis pass `style: FontStyle.italic` explicitly.
   static TextStyle body12({Color? color, FontStyle? style}) => _sans(
     TextStyle(
-      fontSize: 13,
+      fontSize: 14,
       fontWeight: FontWeight.w400,
       color: color ?? AppColors.textSecondary,
-      fontStyle: style ?? FontStyle.italic,
+      height: 1.45,
+      fontStyle: style,
     ),
   );
 
   static TextStyle body11({Color? color, FontStyle? style}) => _sans(
     TextStyle(
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: FontWeight.w400,
       color: color ?? AppColors.textSecondary,
-      fontStyle: style ?? FontStyle.italic,
+      height: 1.4,
+      fontStyle: style,
     ),
   );
 
@@ -262,7 +317,7 @@ class AppTextStyles {
 
   static TextStyle sectionTitle({Color? color}) => _sans(
     TextStyle(
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: FontWeight.w700,
       color: color ?? AppColors.textPrimary,
       height: 1.35,
@@ -291,6 +346,34 @@ class AppTextStyles {
       height: 1.2,
     ),
   );
+
+  // ── Semantic roles (preferred in new code) ────────────────────────────────
+  // Seven honest, named roles. These delegate to the primitives above so
+  // there is exactly one place each size/weight lives. Use these names so
+  // intent is obvious at the call site and the scale stays scannable.
+
+  /// Screen / page title. One per screen.
+  static TextStyle screenTitle({Color? color}) => pageTitle(color: color);
+
+  /// Section heading inside a screen.
+  static TextStyle sectionHeading({Color? color}) => sectionTitle(color: color);
+
+  /// Default reading text.
+  static TextStyle bodyText({Color? color}) => body13(color: color);
+
+  /// Emphasised reading text (same size, heavier).
+  static TextStyle bodyStrong({Color? color}) => body14(color: color);
+
+  /// Secondary / helper / caption text.
+  static TextStyle caption({Color? color}) => body11(color: color);
+
+  /// Large numeric metric (hero figures).
+  static TextStyle metricLarge({Color? color, FontWeight? weight}) =>
+      mono22(color: color);
+
+  /// Inline numeric metric (table cells, chips).
+  static TextStyle metricSmall({Color? color, FontWeight? weight}) =>
+      mono14(color: color, weight: weight);
 }
 
 class AppTheme {

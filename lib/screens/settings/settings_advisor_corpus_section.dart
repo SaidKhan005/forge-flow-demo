@@ -139,10 +139,7 @@ class _FileNameField extends StatelessWidget {
               hintText: 'example.md',
               isDense: true,
             ),
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
         ],
       ),
@@ -175,10 +172,7 @@ class _MarkdownField extends StatelessWidget {
               hintText: '# Heading\n\nMarkdown body...',
               isDense: true,
             ),
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
         ],
       ),
@@ -264,59 +258,35 @@ class _PreviewResultRow extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             'File: ${result.normalizedFileName}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Source: ${result.sourcePathPreview}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Title: ${result.titlePreview}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Headings: ${result.headingCount}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Lines: ${result.lineCount}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Estimated tokens: ${result.estimatedTokens}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Estimated content pieces: ${result.estimatedChunkCount}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
           Text(
             'Status: ${result.localStatus}',
-            style: const TextStyle(
-              color: AppColors.textPrimary,
-              fontFamily: 'monospace',
-            ),
+            style: AppTextStyles.mono12(),
           ),
         ],
       ),
