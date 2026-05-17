@@ -28,10 +28,13 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scop
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../models/baseline_candidate_shift.dart';
+import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
+import '../domain/services/target_cycle_policy.dart';
 import 'business_date_authority_service.dart';
 import 'baseline_authority_service.dart';
 import '../domain/services/recommended_benchmark_selection_service.dart';
+import 'restaurant_timing_config_read_service.dart';
 import 'star_target_selection_write_service.dart';
 import 'target_cycle_service.dart';
 
@@ -59,6 +62,35 @@ class BaselineManagerService {
   BaselineServerSelectionWriter? serverSelectionWriter;
 
   Future<String> _activeRestaurantId() => _scopeRepo.getActiveRestaurantId();
+
+  /// Resolves the operator-configured service-period definitions for the
+  /// active restaurant. Period set, labels, and ordering come from the
+  /// persisted timing config, never a hardcoded daypart list. Falls back
+  /// to the canonical fixture-era definitions only when no timing config
+  /// has been persisted yet (mirrors the canonical pattern in
+  /// `BenchmarkTrackerReadService`).
+  Future<List<ServicePeriodDefinition>> resolveOperatorDefs() async {
+    final timingConfig = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
+    return (timingConfig?.servicePeriodDefinitions.isNotEmpty ?? false)
+        ? timingConfig!.servicePeriodDefinitions
+        : ServicePeriodDefinitionResolver.demoDefinitions;
+  }
+
+  /// Pre-commit once-per-60-day override gate. Reads the active
+  /// [TargetCycle] for the active restaurant and returns whether the
+  /// manager may still land an override on the current planning anchor
+  /// date. Read-only: does not touch the selection write path. Returns
+  /// `false` when the anchor date cannot be resolved (no candidates yet).
+  Future<bool> canManagerOverrideNow() async {
+    final restaurantId = await _activeRestaurantId();
+    final businessDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
+    if (businessDate == null) return false;
+    final cycle = await TargetCycleService.instance
+        .getOrCreateActiveCycle(restaurantId, businessDate);
+    return TargetCyclePolicy.canManagerOverride(cycle, businessDate);
+  }
 
   // ── Candidate loading ──────────────────────────────────────────────────────
 
@@ -123,12 +155,15 @@ class BaselineManagerService {
       );
     }).toList();
 
-    _sortCandidates(candidates);
+    final defs = await resolveOperatorDefs();
+    _sortCandidates(candidates, defs);
     return candidates;
   }
 
-  static void _sortCandidates(List<BaselineCandidateShift> candidates) {
-    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
+  static void _sortCandidates(
+    List<BaselineCandidateShift> candidates,
+    List<ServicePeriodDefinition> defs,
+  ) {
     // Canonical day ordering from BusinessDateAuthorityService.
     const dayOrder = BusinessDateAuthorityService.canonicalDayOrder;
 

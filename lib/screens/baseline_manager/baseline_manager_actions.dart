@@ -51,10 +51,17 @@ class BottomBar extends StatelessWidget {
   final VoidCallback onCancel;
   final Future<void> Function() onDone;
 
+  /// R1 pre-commit gate: when false the Done action is disabled BEFORE
+  /// the operator builds a selection (once-per-60-day override already
+  /// used or out of window). The connectivity-gated path is only wired
+  /// when commit is enabled.
+  final bool commitEnabled;
+
   const BottomBar({
     super.key,
     required this.onCancel,
     required this.onDone,
+    this.commitEnabled = true,
   });
 
   @override
@@ -88,13 +95,30 @@ class BottomBar extends StatelessWidget {
           const SizedBox(width: 12),
           // Done — gated on connectivity (A9.SY1). Empty draft still
           // routes through _done() which clears the override server-side
-          // only when online; offline taps are blocked.
+          // only when online; offline taps are blocked. R1: when the
+          // once-per-60-day override is already used / out of window the
+          // button is a plainly disabled state instead of a live action.
           Expanded(
             flex: 2,
-            child: ConnectivityRequiredButton(
-              label: 'DONE',
-              onPressed: () => onDone(),
-            ),
+            child: commitEnabled
+                ? ConnectivityRequiredButton(
+                    label: 'DONE',
+                    onPressed: () => onDone(),
+                  )
+                : Container(
+                    key: const ValueKey<String>('done_disabled_gate'),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundMid,
+                      border: Border.all(
+                          color: AppColors.borderSubtle, width: 1),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      'OVERRIDE USED',
+                      style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    ),
+                  ),
           ),
         ],
       ),

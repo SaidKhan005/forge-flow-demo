@@ -9,7 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import '../services/demand_forecast_context_service.dart';
 import '../services/star_target_selection_write_service.dart';
-import '../services/target_cycle_service.dart';
+import '../services/target_cycle_service.dart' show ManagerOverrideDeniedException;
+import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../models/baseline_candidate_shift.dart';
 import '../theme/app_theme.dart';
@@ -17,6 +18,7 @@ import 'baseline_manager/baseline_manager_actions.dart';
 import 'baseline_manager/baseline_manager_calendar.dart';
 import 'baseline_manager/baseline_manager_day_detail.dart';
 import 'baseline_manager/baseline_manager_helpers.dart';
+import 'baseline_manager/baseline_manager_lens.dart';
 import 'baseline_manager/baseline_manager_preview.dart';
 
 // 7.55o.5: preserve the existing `import '.../baseline_manager_screen.dart'`
@@ -29,19 +31,29 @@ class BaselineManagerScreen extends StatefulWidget {
   /// Production constructor — loads candidates from DB on init.
   const BaselineManagerScreen({super.key})
     : initialCandidates = null,
-      initialDemandCovers = null;
+      initialDemandCovers = null,
+      initialDefs = null,
+      initialCanOverride = null;
 
   /// Test-only constructor: skips async DB load and uses the supplied list.
   /// [initialDemandCovers] bypasses the async demand context load for tests.
+  /// [initialDefs] injects the resolved operator service-period defs so
+  /// tests can exercise 4+ period configs without DB plumbing.
+  /// [initialCanOverride] injects the pre-commit once-per-cycle gate
+  /// result so tests can exercise the disabled-commit state.
   @visibleForTesting
   const BaselineManagerScreen.withCandidates(
     List<BaselineCandidateShift> candidates, {
     super.key,
     this.initialDemandCovers,
+    this.initialDefs,
+    this.initialCanOverride,
   }) : initialCandidates = candidates;
 
   final List<BaselineCandidateShift>? initialCandidates;
   final int? initialDemandCovers;
+  final List<ServicePeriodDefinition>? initialDefs;
+  final bool? initialCanOverride;
 
   @override
   State<BaselineManagerScreen> createState() => _BaselineManagerScreenState();
@@ -58,6 +70,20 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   Map<String, List<BaselineCandidateShift>> _shiftsByDate = {};
   List<String> _windowDates = [];
 
+  // R1: operator-configured service-period defs (period set, labels,
+  // order) resolved once on init. Demo-defs fallback applied in the
+  // service layer when no timing config is persisted yet.
+  List<ServicePeriodDefinition> _defs =
+      ServicePeriodDefinitionResolver.demoDefinitions;
+
+  // R1: active lens. Default "Whole day" (cover-weighted rollup).
+  String _selectedLensId = kWholeDayLensId;
+
+  // R1: pre-commit once-per-60-day override gate. Null until resolved;
+  // false means the override is used / out of window and commit is
+  // disabled BEFORE the operator builds a selection.
+  bool? _canOverride;
+
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   @override
@@ -69,6 +95,10 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
           .where((c) => c.isSelected)
           .map((c) => c.recordKey)
           .toSet();
+      if (widget.initialDefs != null) {
+        _defs = widget.initialDefs!;
+      }
+      _canOverride = widget.initialCanOverride;
       _loading = false;
       _buildCalendarData();
       if (widget.initialDemandCovers != null) {
@@ -82,11 +112,16 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   }
 
   Future<void> _loadCandidates() async {
+    final defs = await BaselineManagerService.instance.resolveOperatorDefs();
     final candidates = await BaselineManagerService.instance
         .getCandidateShifts();
+    final canOverride =
+        await BaselineManagerService.instance.canManagerOverrideNow();
     if (!mounted) return;
     setState(() {
+      _defs = defs;
       _candidates = candidates;
+      _canOverride = canOverride;
       _draftKeys = candidates
           .where((c) => c.isSelected)
           .map((c) => c.recordKey)
@@ -132,8 +167,10 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
       return formatIsoDate(DateTime(start.year, start.month, start.day + i));
     });
 
-    // Sort candidates within each date by service-period definition order
-    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
+    // Sort candidates within each date by the operator-configured
+    // service-period definition order (resolved on init), never a
+    // hardcoded daypart list.
+    final defs = _defs;
     for (final list in _shiftsByDate.values) {
       list.sort(
         (a, b) => ServicePeriodDefinitionResolver.sortIndex(
@@ -162,6 +199,19 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
 
   List<BaselineCandidateShift> get _draftSelected =>
       _candidates.where((c) => _draftKeys.contains(c.recordKey)).toList();
+
+  /// R1: the selected shifts the summary/preview region renders, scoped
+  /// to match the active lens so the summary re-scopes together with the
+  /// calendar. "Whole day" = every selected shift (the cover-weighted
+  /// rollup the existing preview plumbing already produces); a period
+  /// lens = only that period's selected shifts. No recomputation of
+  /// whole-day truth here. This only filters the input list the
+  /// existing preview already consumed.
+  List<BaselineCandidateShift> get _lensScopedSelected {
+    final selected = _draftSelected;
+    if (_selectedLensId == kWholeDayLensId) return selected;
+    return selected.where((c) => c.daypart == _selectedLensId).toList();
+  }
 
   // ── Navigation actions ─────────────────────────────────────────────────────
 
@@ -257,12 +307,44 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
             )
           : Column(
               children: [
-                PreviewPanel(
-                  selected: _draftSelected,
-                  historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
+                // R1: the lens selector re-scopes the calendar AND the
+                // summary/preview region together. The lens, gate
+                // notice, scope tag, summary, and clear-all share one
+                // compact scroll-tolerant band (capped flex) so the
+                // calendar below stays the dominant hero element and the
+                // body never overflows on short viewports.
+                Flexible(
+                  flex: 2,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        BaselineManagerLensBar(
+                          defs: _defs,
+                          selectedLensId: _selectedLensId,
+                          onLensSelected: (id) =>
+                              setState(() => _selectedLensId = id),
+                        ),
+                        if (_canOverride == false)
+                          const _OverrideUsedNotice(),
+                        BaselineManagerScopeTag(
+                          defs: _defs,
+                          selectedLensId: _selectedLensId,
+                        ),
+                        PreviewPanel(
+                          selected: _lensScopedSelected,
+                          historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
+                        ),
+                        if (_draftKeys.isNotEmpty)
+                          ClearAllBar(onClearAll: _clearAll),
+                      ],
+                    ),
+                  ),
                 ),
-                if (_draftKeys.isNotEmpty) ClearAllBar(onClearAll: _clearAll),
+                // Calendar is the dominant hero element of the screen:
+                // it gets the larger flex share of the body.
                 Expanded(
+                  flex: 3,
                   child: _selectedDate != null
                       ? DayDetail(
                           date: _selectedDate!,
@@ -270,18 +352,53 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                           draftKeys: _draftKeys,
                           onToggle: _toggle,
                           onBack: () => setState(() => _selectedDate = null),
+                          defs: _defs,
                         )
                       : CalendarGrid(
                           windowDates: _windowDates,
                           shiftsByDate: _shiftsByDate,
                           draftKeys: _draftKeys,
+                          activeLensId: _selectedLensId,
                           onDateTap: (date) =>
                               setState(() => _selectedDate = date),
                         ),
                 ),
-                BottomBar(onCancel: _cancel, onDone: _done),
+                BottomBar(
+                  onCancel: _cancel,
+                  onDone: _done,
+                  commitEnabled: _canOverride != false,
+                ),
               ],
             ),
+    );
+  }
+}
+
+/// R1 pre-commit gate notice. Shown BEFORE the operator builds a
+/// selection when the once-per-60-day override is already used or the
+/// active cycle is out of window, so nobody builds a selection that
+/// cannot land. Plain English, no dashes.
+class _OverrideUsedNotice extends StatelessWidget {
+  const _OverrideUsedNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey<String>('override_used_notice'),
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        border: Border.all(color: AppColors.borderStrong, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        'You get one override per 60 day cycle, and this cycle already '
+        'used it. You can look at past shifts, but you cannot change the '
+        'targets until the next cycle. An admin can reset it for testing.',
+        style: AppTextStyles.mono8(color: AppColors.textMuted),
+      ),
     );
   }
 }

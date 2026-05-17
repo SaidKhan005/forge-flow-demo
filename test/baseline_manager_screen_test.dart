@@ -7,8 +7,10 @@ import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
+import 'package:forge_and_flow/screens/baseline_manager/baseline_manager_day_detail.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:provider/provider.dart';
@@ -338,9 +340,17 @@ void main() {
       );
       await tester.pump();
 
-      // Navigate to date with lunch shift
+      // Navigate to date with lunch shift. R1 adds an always-visible
+      // lens chip also labelled "LUNCH", so scope the section-header
+      // assertion to the day-detail subtree.
       await _tapCalendarDate(tester, '2026-03-02');
-      expect(find.text('LUNCH'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('LUNCH'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('DINNER section header renders in day detail', (tester) async {
@@ -354,9 +364,17 @@ void main() {
       );
       await tester.pump();
 
-      // Navigate to date with dinner shift
+      // Navigate to date with dinner shift. R1 adds an always-visible
+      // lens chip also labelled "DINNER", so scope the section-header
+      // assertion to the day-detail subtree.
       await _tapCalendarDate(tester, '2026-03-06');
-      expect(find.text('DINNER'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('DINNER'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('each tile shows CPLH, COVERS, SPLH, PPA, and lever', (
@@ -471,10 +489,14 @@ void main() {
       );
       await tester.pump();
 
-      // Clear all selections via CLEAR ALL button
-      await tester.tap(find.text('CLEAR ALL'));
+      // Clear all selections via CLEAR ALL button. R1 moved CLEAR ALL
+      // into a scrollable band; ensure visible before tapping.
+      final clearAll = find.text('CLEAR ALL');
+      await tester.ensureVisible(clearAll);
       await tester.pumpAndSettle();
-      expect(find.text('0'), findsOneWidget);
+      await tester.tap(clearAll);
+      await tester.pumpAndSettle();
+      expect(find.text('0', skipOffstage: false), findsOneWidget);
 
       final stored = await _commitDoneAndReadKeys(tester);
 
@@ -780,8 +802,8 @@ void main() {
       await tester.pump();
 
       // Latest is _lunch2 at 2026-03-10.
-      // Window: Jan 10 – Mar 10
-      expect(find.text('Jan 10 – Mar 10'), findsOneWidget);
+      // R1: window range uses the word "to", no dash separator.
+      expect(find.text('Jan 10 to Mar 10'), findsOneWidget);
     });
 
     testWidgets('dates with closed shifts show a marker dot', (tester) async {
@@ -865,8 +887,16 @@ void main() {
 
       expect(find.text('BACK TO CALENDAR'), findsOneWidget);
       expect(find.text('Mon, Mar 2'), findsOneWidget);
-      // _lunch1 is on this date — its tile should render
-      expect(find.text('LUNCH'), findsOneWidget);
+      // _lunch1 is on this date: its day-detail section renders. R1
+      // adds an always-visible lens chip also labelled "LUNCH", so
+      // scope this to the day-detail subtree.
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('LUNCH'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('day detail shows only that date\'s shifts', (tester) async {
@@ -880,16 +910,42 @@ void main() {
       );
       await tester.pump();
 
-      // Mar 2 has _lunch1 only (lunch)
+      // Mar 2 has _lunch1 only (lunch). Scope to the day-detail subtree
+      // because R1 adds always-visible lens chips labelled "LUNCH" /
+      // "DINNER" outside the day detail.
       await _tapCalendarDate(tester, '2026-03-02');
-      expect(find.text('LUNCH'), findsOneWidget);
-      expect(find.text('DINNER'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('LUNCH'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('DINNER'),
+        ),
+        findsNothing,
+      );
 
       // Back, then navigate to Mar 6 which has _dinner1 only
       await _tapBackToCalendar(tester);
       await _tapCalendarDate(tester, '2026-03-06');
-      expect(find.text('DINNER'), findsOneWidget);
-      expect(find.text('LUNCH'), findsNothing);
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('DINNER'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('LUNCH'),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('back returns to calendar grid', (tester) async {
@@ -949,17 +1005,21 @@ void main() {
       );
       await tester.pump();
 
-      // Pre-selected state
-      expect(find.text('CLEAR ALL'), findsOneWidget);
+      // Pre-selected state. R1 moved CLEAR ALL + summary into a
+      // scrollable band; ensure visible before tapping.
+      final clearAll = find.text('CLEAR ALL');
+      expect(clearAll, findsOneWidget);
+      await tester.ensureVisible(clearAll);
+      await tester.pumpAndSettle();
 
       // Tap CLEAR ALL
-      await tester.tap(find.text('CLEAR ALL'));
+      await tester.tap(clearAll);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
       // Preview returns to no-selection state
-      expect(find.text('0'), findsOneWidget);
-      expect(find.text('--'), findsNWidgets(11));
+      expect(find.text('0', skipOffstage: false), findsOneWidget);
+      expect(find.text('--', skipOffstage: false), findsNWidgets(11));
       expect(find.text('CLEAR ALL'), findsNothing);
     });
 
@@ -1089,17 +1149,21 @@ void main() {
       await _tapCalendarDate(tester, '2026-03-10');
       expect(find.text('BACK TO CALENDAR'), findsOneWidget);
       expect(find.text('Tue, Mar 10'), findsOneWidget);
-      expect(find.text('LUNCH'), findsOneWidget);
+      // Scope to day-detail subtree (R1 lens chip also says "LUNCH").
+      expect(
+        find.descendant(
+          of: find.byType(DayDetail),
+          matching: find.text('LUNCH'),
+        ),
+        findsOneWidget,
+      );
     });
   });
 
-  // ── P — Suggested/selected day states (Phase 7.55f.3b) ────────────────────
+  // ── P - R1 2-state calendar (suggested state + legend removed) ────────────
 
-  group('P - suggested/selected day states', () {
-    testWidgets('suggested date is distinguishable from available-only', (
-      tester,
-    ) async {
-      // All test candidates have lever 'cplh_up' which is favorable → suggested
+  group('P - R1 2-state calendar', () {
+    testWidgets('the old suggested-state legend is gone', (tester) async {
       await tester.pumpWidget(
         _wrap(
           BaselineManagerScreen.withCandidates(
@@ -1110,11 +1174,14 @@ void main() {
       );
       await tester.pump();
 
-      // Legend should show all three states
-      expect(find.text('Suggested star'), findsOneWidget);
+      // R1 collapses to two cell states (closed, selected) and removes
+      // the suggested state plus its whole legend.
+      expect(find.text('Suggested star'), findsNothing);
+      expect(find.text('Selected star'), findsNothing);
+      expect(find.text('Closed shifts'), findsNothing);
     });
 
-    testWidgets('selected date is distinguishable from suggested-only', (
+    testWidgets('selected and closed-only day cells both render', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -1127,9 +1194,9 @@ void main() {
       );
       await tester.pump();
 
-      // _selectedLunch is pre-selected; its date is 2026-03-16.
-      // _lunch1 (2026-03-02) has cplh_up (favorable) → suggested but not selected.
-      // Both cell keys exist — visual distinction is in decoration.
+      // _selectedLunch is pre-selected (2026-03-16); _lunch1 (2026-03-02)
+      // is closed-only. Both cells exist; visual distinction is in
+      // decoration (selected vs closed), no third "suggested" state.
       expect(
         find.byKey(
           const ValueKey<String>('cal_2026-03-16'),
@@ -1144,10 +1211,6 @@ void main() {
         ),
         findsOneWidget,
       );
-      // Legend contains all three labels
-      expect(find.text('Selected star'), findsOneWidget);
-      expect(find.text('Suggested star'), findsOneWidget);
-      expect(find.text('Closed shifts'), findsOneWidget);
     });
   });
 
@@ -1290,12 +1353,17 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('CLEAR ALL'), findsOneWidget);
-      await tester.tap(find.text('CLEAR ALL'));
+      // R1 moved CLEAR ALL + the summary into a scrollable band, so
+      // ensure it is visible before tapping in the tight test viewport.
+      final clearAll = find.text('CLEAR ALL');
+      expect(clearAll, findsOneWidget);
+      await tester.ensureVisible(clearAll);
+      await tester.pumpAndSettle();
+      await tester.tap(clearAll);
       await tester.pumpAndSettle();
 
-      expect(find.text('0'), findsOneWidget);
-      expect(find.text('--'), findsNWidgets(11));
+      expect(find.text('0', skipOffstage: false), findsOneWidget);
+      expect(find.text('--', skipOffstage: false), findsNWidgets(11));
       expect(find.text('CLEAR ALL'), findsNothing);
     });
   });
@@ -1598,6 +1666,210 @@ void main() {
       );
       expect(stored, isEmpty);
     });
+  });
+
+  // ── R1 - operator-config lens, 2-state filter, pre-commit gate ────────────
+  //
+  // Proves the three R1 behaviors with the injectable test constructor
+  // params so no DB / timing-config plumbing is needed:
+  //   (a) lens options derive from a 4-period operator config (not a
+  //       hardcoded 3),
+  //   (b) the calendar 2-state cell filters by the active lens period,
+  //   (c) the pre-commit once-per-cycle gate renders a disabled commit
+  //       state BEFORE any selection when the override is already used.
+
+  group('R1 - lens / 2-state filter / pre-commit gate', () {
+    // A deliberately 4-period config (NOT the canonical demo 3) so the
+    // test fails if anything assumes a fixed 3-daypart shape.
+    const fourPeriodDefs = <ServicePeriodDefinition>[
+      ServicePeriodDefinition(
+        id: 'breakfast',
+        label: 'Breakfast',
+        shortLabel: 'B',
+        sortOrder: 1,
+        startLocalTime: '07:00',
+        endLocalTime: '11:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5],
+      ),
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 3,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late Night',
+        shortLabel: 'LN',
+        sortOrder: 4,
+        startLocalTime: '23:00',
+        endLocalTime: '02:00',
+        rollsPastMidnight: true,
+        applicableDays: [5, 6],
+      ),
+    ];
+
+    testWidgets(
+      'a) lens options derive from the configured 4-period config',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // "Whole day" plus exactly the 4 configured periods, in the
+        // operator's configured order. Labels and count come from the
+        // config, never a hardcoded 3-daypart list.
+        expect(find.text('WHOLE DAY'), findsOneWidget);
+        expect(find.text('BREAKFAST'), findsOneWidget);
+        expect(find.text('LUNCH'), findsOneWidget);
+        expect(find.text('DINNER'), findsOneWidget);
+        expect(find.text('LATE NIGHT'), findsOneWidget);
+        // The 4th period proves no /3 or fixed-3 assumption survived.
+        expect(
+          find.byKey(const ValueKey<String>('lens_late_night')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey<String>('lens_breakfast')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'b) calendar 2-state cell filters by the active lens period',
+      (tester) async {
+        // _withPreSelected = [_selectedLunch (lunch, 2026-03-16, selected),
+        // _lunch1 (lunch, 2026-03-02), _dinner1 (dinner, 2026-03-06)].
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _withPreSelected,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        BoxDecoration decoFor(String date) {
+          final container = tester.widget<Container>(
+            find
+                .descendant(
+                  of: find.byKey(ValueKey<String>('cal_$date')),
+                  matching: find.byType(Container),
+                )
+                .first,
+          );
+          return container.decoration! as BoxDecoration;
+        }
+
+        // Whole day: the dinner-only date 2026-03-06 has a closed cell
+        // (non-transparent border).
+        final wholeDayDinnerBorder =
+            (decoFor('2026-03-06').border! as Border).top.color;
+        expect(wholeDayDinnerBorder, isNot(Colors.transparent));
+
+        // Switch the lens to Lunch. The dinner-only date now has no
+        // lens-matching shift, so the cell collapses to the empty
+        // (transparent) state.
+        await tester.tap(
+          find.byKey(const ValueKey<String>('lens_lunch')),
+        );
+        await tester.pump();
+        final lunchLensDinnerBorder =
+            (decoFor('2026-03-06').border! as Border).top.color;
+        expect(lunchLensDinnerBorder, Colors.transparent);
+
+        // The pre-selected lunch date stays a (selected) non-empty cell
+        // under the Lunch lens.
+        final lunchLensSelected =
+            (decoFor('2026-03-16').border! as Border).top.color;
+        expect(lunchLensSelected, isNot(Colors.transparent));
+      },
+    );
+
+    testWidgets(
+      'c) pre-commit gate disables commit before any selection',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              // managerOverrideUsed -> gate closed.
+              initialCanOverride: false,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        // The disabled-commit state and plain-English notice render
+        // BEFORE the operator builds any selection.
+        expect(
+          find.byKey(const ValueKey<String>('override_used_notice')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const ValueKey<String>('done_disabled_gate')),
+          findsOneWidget,
+        );
+        expect(find.text('OVERRIDE USED'), findsOneWidget);
+        // The live DONE action is not present while the gate is closed.
+        expect(find.text('DONE'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'c) gate open: live commit, no disabled notice',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+              initialDefs: fourPeriodDefs,
+              initialCanOverride: true,
+            ),
+          ),
+        );
+        await tester.pump();
+        expect(
+          find.byKey(const ValueKey<String>('override_used_notice')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const ValueKey<String>('done_disabled_gate')),
+          findsNothing,
+        );
+        expect(find.text('DONE'), findsOneWidget);
+      },
+    );
   });
 }
 
