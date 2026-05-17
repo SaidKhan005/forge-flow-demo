@@ -435,6 +435,17 @@ class SqliteDatabase {
     await _seedDemoWageRoleRows(db);
     await _seedDemoScopeOverrideWageRows(db);
 
+    // R6 — Choose Star Shifts: the dedicated 4-period demo proof
+    // location. Additive, self-contained, `restaurant_id`-scoped (HP
+    // #4), idempotent + deterministic. Seeded here alongside the other
+    // demo scope rows so the 4-period `restaurant_timing_configs` + its
+    // 60-day closed cohort are present on the very first cold boot
+    // (the daypart de-hardcode can be proven against an N≠3 dataset).
+    // Closed cohort is anchored to the same cold-boot business date as
+    // the rest of the demo data so its 60-day window aligns with the
+    // baseline-candidate read window.
+    await _seedDemoFourPeriodTimingConfig(db);
+
     // Anchor the cold-boot demo seed to *today* (UTC ISO) instead of the
     // fixed `MockIntegrationReplaySeed.defaultBusinessDate`. See
     // [_coldBootAnchorIsoDate]. `generateForDate(today)` builds a
@@ -472,6 +483,15 @@ class SqliteDatabase {
     });
 
     await _seedDemoDataFromReplay(db, replay);
+    // R6 — 4-period proof location's 60-day closed cohort, anchored to
+    // the SAME cold-boot business date as the replay cohort so its
+    // window aligns with the baseline-candidate read window. Runs after
+    // `_seedDemoDataFromReplay` (which only wipes/seeds the
+    // `DemoScope.restaurantId` scope) so the two cohorts never collide.
+    await _seedDemoFourPeriodClosedShifts(
+      db,
+      anchorBusinessDate: coldBootBusinessDate,
+    );
     // Demo-data — cold-boot variance-breach alert. Mirrors the
     // reseed/advance path: emits ONE honest over-plan alert from the
     // freshly seeded `week_records` (no breach → no row). Cold-boot
@@ -811,6 +831,13 @@ class SqliteDatabase {
     await _seedDemoScopeOverrideWageRows(db);
     await _seedDemoScopeOverrideDataAccuracy(db);
 
+    // R6 — Choose Star Shifts: the 4-period demo proof location's
+    // location + timing-config rows (the 60-day closed cohort is
+    // seeded below, anchored to `isoDate`). Idempotent
+    // (skip-if-present) so the reseed/advance path preserves any
+    // operator-entered row and is byte-identical across reseeds.
+    await _seedDemoFourPeriodTimingConfig(db);
+
     // Persist mock replay date
     await setMockReplayBusinessDate(DemoScope.restaurantId, isoDate);
 
@@ -841,6 +868,13 @@ class SqliteDatabase {
       );
     }
     await _seedDemoDataFromReplay(db, replay);
+    // R6 — 4-period proof location's 60-day closed cohort, anchored to
+    // the reseed business date so its window stays aligned with the
+    // baseline-candidate read window. Runs after
+    // `_seedDemoDataFromReplay` (which only touches the
+    // `DemoScope.restaurantId` scope), so the two cohorts never
+    // collide and the dataset is byte-identical across reseeds.
+    await _seedDemoFourPeriodClosedShifts(db, anchorBusinessDate: isoDate);
     // Demo-data Slice F (§1.6 / Gap G9): emit ONE variance-breach
     // notification from the worst real over-plan week in the freshly
     // seeded `week_records` (Metric Honesty — no fabricated alert; no
