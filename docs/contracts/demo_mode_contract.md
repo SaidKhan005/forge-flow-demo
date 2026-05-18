@@ -287,8 +287,9 @@ Carve-out #4 is a runtime `demo_mode_state` UI fold with no
 
 ### Carve-out #1: Login screen "Use demo operator" button
 
-- **Location:** `lib/screens/auth/login_screen.dart:17-19`
-  (`_demoOperatorSignInEnabled` const).
+- **Location:** `lib/screens/auth/login_screen.dart:27` (the
+  `_demoOperatorSignInEnabled` const; `// kDemoMode carve-out:`
+  comment at `:17`, default-param wiring at `:36`).
 - **What it does:** Renders an additional `OutlinedButton` below the
   regular "Sign in" button when the binary was built with
   `--dart-define=kDemoMode=true` or
@@ -336,8 +337,8 @@ Carve-out #4 is a runtime `demo_mode_state` UI fold with no
 
 ### Carve-out #3: Settings screen demo-only management sections
 
-- **Location:** `lib/screens/settings_screen.dart:31` (the `_kDemoMode`
-  const), `:374` (gates the "Data reset" section), `:383` (gates the
+- **Location:** `lib/screens/settings_screen.dart:49` (the `_kDemoMode`
+  const), `:461` (gates the "Data reset" section), `:468` (gates the
   "Demo date" section). One const + two conditional renders, all
   behind the same flag, so this counts as one carve-out.
 - **What it does:** When the binary was built with

@@ -47,12 +47,22 @@ Out of scope: lever ids (covered by 7.58). Forecast cards on Schedule (covered b
 
 Every metric value carries two pieces of data alongside the number, populated in the read model:
 
-### `state` (closed cardinality)
+### `state` (bounded cardinality)
+
+`MetricState` is a bounded enum (`lib/domain/models/metric_provenance.dart:28-67`). Four core states populate the read-model metric triple; three additional states are used by the `MetricPill` widget surface. The honesty doctrine holds for every state: a metric always carries its real state and provenance, and a missing or degraded value is flagged, never silently rendered as a phantom zero.
+
+Core read-model states:
 
 - `live` — vendor data flowing, all required inputs present, computation is the real number.
 - `partial` — some inputs present, some missing or in-flight (e.g., 6 of 8 shifts pulled; webhook sync still running). Computation is the real number for the inputs we have.
 - `fallback` — required inputs not exposed by the vendor; we substituted from app forecast or target snapshot. Computation is an estimate, not a real measurement.
 - `unavailable` — no inputs present, computation is undefined. The renderer must NOT emit a number.
+
+Additional `MetricPill` widget-surface states:
+
+- `stale` — data was previously live but the vendor sync has lapsed (last successful pull older than threshold). The stale value is still shown but visually flagged; never silently treated as fresh.
+- `empty` — vendor is connected and healthy but has returned zero rows for this metric (e.g., a brand-new operator). Distinct from `unavailable`: the pipeline is wired; the data has not accumulated yet. Renders "No data yet", never a numeric zero.
+- `demo` — value comes from seeded demo data, not real operator operations. Renders the number with a visible "Demo" chip so provenance is never ambiguous.
 
 ### `provenance` (open enum)
 

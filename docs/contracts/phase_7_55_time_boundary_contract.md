@@ -498,13 +498,13 @@ Those changes must never silently rewrite already locked history.
 
 ### Business-date seam
 
-- `lib/data/business_date_authority_service.dart`
-- `lib/data/shift_service.dart`
-- `lib/data/weekly_plan_snapshot_service.dart`
+- `lib/services/business_date_authority_service.dart`
+- `lib/services/shift_service.dart`
+- `lib/services/weekly_plan_snapshot_service.dart`
 
 ### 60-day cycle seam
 
-- `lib/data/target_cycle_service.dart`
+- `lib/services/target_cycle_service.dart`
 - `lib/domain/services/target_cycle_policy.dart`
 
 ### Week boundary seam
@@ -514,10 +514,13 @@ Those changes must never silently rewrite already locked history.
 
 ### Service-period seam
 
-- `lib/data/legacy_fixture_data.dart`
 - `lib/screens/variance_report.dart`
 - `lib/screens/schedule_builder.dart`
-- `lib/data/baseline_manager_service.dart`
+- `lib/services/baseline_manager_service.dart`
+- (`lib/data/legacy_fixture_data.dart` removed under the
+  `CLAUDE.md` Service-Layer Split: `lib/data/` is frozen legacy,
+  delete-only. The service-period seam now lives entirely in the
+  screens + service files above.)
 
 ### Restaurant timing scope seam
 
