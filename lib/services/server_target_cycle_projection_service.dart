@@ -85,6 +85,7 @@ class ServerTargetCycleProjectionService {
 
     final now = _clock().toUtc();
     final managerOverrideAt = command.managerOverrideAt ?? now;
+    final standards = command.standards.rollupFromDayparts();
     final replacement = target_cycle_pg.TargetCyclePostgresWrite(
       operatorId: command.operatorId,
       locationId: command.locationId,
@@ -95,13 +96,13 @@ class ServerTargetCycleProjectionService {
       effectiveEnd: command.effectiveEnd,
       calibrationWindowStart: command.calibrationWindowStart,
       calibrationWindowEnd: command.calibrationWindowEnd,
-      targetCplh: command.standards.targetCplh,
-      targetSplh: command.standards.targetSplh,
-      targetPpa: command.standards.targetPpa,
-      fohWage: command.standards.fohWage,
-      bohWage: command.standards.bohWage,
-      opzFloorCplh: command.standards.opzFloorCplh,
-      opzCeilingCplh: command.standards.opzCeilingCplh,
+      targetCplh: standards.targetCplh,
+      targetSplh: standards.targetSplh,
+      targetPpa: standards.targetPpa,
+      fohWage: standards.fohWage,
+      bohWage: standards.bohWage,
+      opzFloorCplh: standards.opzFloorCplh,
+      opzCeilingCplh: standards.opzCeilingCplh,
       managerOverrideUsed: true,
       managerOverrideAt: managerOverrideAt,
       managerOverrideByUserId:
@@ -116,6 +117,10 @@ class ServerTargetCycleProjectionService {
       idempotencyKey: command.idempotencyKey,
       requestHash: command.requestHash,
       createdBy: command.actorUserId,
+      dayparts: <target_cycle_pg.TargetCyclePostgresDaypartWrite>[
+        for (final daypart in standards.dayparts)
+          daypart.toPostgresDaypartWrite(),
+      ],
     );
 
     final cycle = await _targetCycles.replaceActiveCycle(
@@ -124,8 +129,9 @@ class ServerTargetCycleProjectionService {
       actorKind: command.actorKind,
       reason: command.reason,
     );
+    final domainCycle = cycle.toDomainCycle();
     final projected = TargetCycleActiveTargetProfileProjector.project(
-      cycle.toDomainCycle(),
+      domainCycle,
     );
     final profileWrite = active_profile_pg.ActiveTargetProfileProjectionWrite(
       operatorId: cycle.operatorId,
@@ -146,6 +152,19 @@ class ServerTargetCycleProjectionService {
       theoreticalLaborPct: projected.theoreticalLaborPct,
       builtAt: cycle.createdAt.toUtc(),
       actorUserId: command.actorUserId,
+      dayparts: <active_profile_pg.ActiveTargetProfileDaypartRow>[
+        for (final daypart in domainCycle.dayparts)
+          active_profile_pg.ActiveTargetProfileDaypartRow(
+            servicePeriodId: daypart.servicePeriodId,
+            daypartTargetCplh: daypart.targetCPLH,
+            daypartTargetSplh: daypart.targetSPLH,
+            daypartTargetPpa: daypart.targetPPA,
+            daypartOpzFloorCplh: daypart.opzFloorCPLH,
+            daypartOpzCeilingCplh: daypart.opzCeilingCPLH,
+            verdict: daypart.verdict,
+            verdictReason: daypart.verdictReason,
+          ),
+      ],
     );
     final activeProfile = await _activeProfiles.upsertProjection(
       profile: profileWrite,
@@ -343,6 +362,7 @@ class ServerTargetStandards {
     required this.bohWage,
     required this.opzFloorCplh,
     required this.opzCeilingCplh,
+    this.dayparts = const <ServerTargetDaypartStandards>[],
   });
 
   final double targetCplh;
@@ -352,6 +372,7 @@ class ServerTargetStandards {
   final double bohWage;
   final double opzFloorCplh;
   final double opzCeilingCplh;
+  final List<ServerTargetDaypartStandards> dayparts;
 
   void validate() {
     _validateNonNegative(targetCplh, 'targetCplh');
@@ -368,7 +389,105 @@ class ServerTargetStandards {
         'must be greater than or equal to opzFloorCplh',
       );
     }
+    final seenPeriodIds = <String>{};
+    for (final daypart in dayparts) {
+      daypart.validate();
+      if (!seenPeriodIds.add(daypart.servicePeriodId)) {
+        throw ArgumentError.value(
+          daypart.servicePeriodId,
+          'dayparts',
+          'service_period_id values must be unique',
+        );
+      }
+    }
   }
+
+  ServerTargetStandards rollupFromDayparts() {
+    if (dayparts.isEmpty) return this;
+    final pool = TargetCycleDaypartPool.fromDayparts(
+      <TargetCycleDaypart>[
+        for (final daypart in dayparts) daypart.toDomainDaypart(),
+      ],
+    );
+    return ServerTargetStandards(
+      targetCplh: pool.targetCPLH,
+      targetSplh: pool.targetSPLH,
+      targetPpa: pool.targetPPA,
+      fohWage: fohWage,
+      bohWage: bohWage,
+      opzFloorCplh: pool.opzFloorCPLH,
+      opzCeilingCplh: pool.opzCeilingCPLH,
+      dayparts: dayparts,
+    );
+  }
+}
+
+class ServerTargetDaypartStandards {
+  const ServerTargetDaypartStandards({
+    required this.servicePeriodId,
+    required this.targetCplh,
+    required this.targetSplh,
+    required this.targetPpa,
+    required this.opzFloorCplh,
+    required this.opzCeilingCplh,
+    required this.coverCount,
+    this.verdict,
+    this.verdictReason,
+  });
+
+  final String servicePeriodId;
+  final double targetCplh;
+  final double targetSplh;
+  final double targetPpa;
+  final double opzFloorCplh;
+  final double opzCeilingCplh;
+  final int coverCount;
+  final String? verdict;
+  final String? verdictReason;
+
+  void validate() {
+    _validateNonBlank(servicePeriodId, 'servicePeriodId');
+    _validateNonNegative(targetCplh, 'targetCplh');
+    _validateNonNegative(targetSplh, 'targetSplh');
+    _validateNonNegative(targetPpa, 'targetPpa');
+    _validateNonNegative(opzFloorCplh, 'opzFloorCplh');
+    _validateNonNegative(opzCeilingCplh, 'opzCeilingCplh');
+    if (opzCeilingCplh < opzFloorCplh) {
+      throw ArgumentError.value(
+        opzCeilingCplh,
+        'opzCeilingCplh',
+        'must be greater than or equal to opzFloorCplh',
+      );
+    }
+    if (coverCount < 0) {
+      throw ArgumentError.value(coverCount, 'coverCount');
+    }
+  }
+
+  TargetCycleDaypart toDomainDaypart() => TargetCycleDaypart(
+    servicePeriodId: servicePeriodId,
+    targetCPLH: targetCplh,
+    targetSPLH: targetSplh,
+    targetPPA: targetPpa,
+    opzFloorCPLH: opzFloorCplh,
+    opzCeilingCPLH: opzCeilingCplh,
+    coverCount: coverCount,
+    verdict: verdict,
+    verdictReason: verdictReason,
+  );
+
+  target_cycle_pg.TargetCyclePostgresDaypartWrite toPostgresDaypartWrite() =>
+      target_cycle_pg.TargetCyclePostgresDaypartWrite(
+        servicePeriodId: servicePeriodId,
+        targetCplh: targetCplh,
+        targetSplh: targetSplh,
+        targetPpa: targetPpa,
+        opzFloorCplh: opzFloorCplh,
+        opzCeilingCplh: opzCeilingCplh,
+        coverCount: coverCount,
+        verdict: verdict,
+        verdictReason: verdictReason,
+      );
 }
 
 class ServerSelectedStarDecisionInput {
@@ -462,6 +581,20 @@ extension ServerTargetCyclePostgresRowProjection
       managerOverrideAt: managerOverrideAt?.toUtc().toIso8601String(),
       adminReplacedAt: adminReplacedAt?.toUtc().toIso8601String(),
       createdAt: createdAt.toUtc().toIso8601String(),
+      dayparts: <TargetCycleDaypart>[
+        for (final daypart in dayparts)
+          TargetCycleDaypart(
+            servicePeriodId: daypart.servicePeriodId,
+            targetCPLH: daypart.targetCplh,
+            targetSPLH: daypart.targetSplh,
+            targetPPA: daypart.targetPpa,
+            opzFloorCPLH: daypart.opzFloorCplh,
+            opzCeilingCPLH: daypart.opzCeilingCplh,
+            coverCount: daypart.coverCount,
+            verdict: daypart.verdict,
+            verdictReason: daypart.verdictReason,
+          ),
+      ],
     );
   }
 }

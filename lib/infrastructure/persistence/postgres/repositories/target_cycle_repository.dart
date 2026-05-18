@@ -81,6 +81,38 @@ class TargetCycleRepository extends OperatorScopedRepository {
       'c.updated_at, '
       'c.deactivated_at';
 
+  static const String _daypartColumns =
+      'cycle_id::text as cycle_id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'service_period_id, '
+      'target_cplh, '
+      'target_splh, '
+      'target_ppa, '
+      'opz_floor_cplh, '
+      'opz_ceiling_cplh, '
+      'cover_count, '
+      'verdict, '
+      'verdict_reason, '
+      'created_at, '
+      'updated_at';
+
+  static const String _daypartColumnsWithAlias =
+      'd.cycle_id::text as cycle_id, '
+      'd.operator_id::text as operator_id, '
+      'd.location_id::text as location_id, '
+      'd.service_period_id, '
+      'd.target_cplh, '
+      'd.target_splh, '
+      'd.target_ppa, '
+      'd.opz_floor_cplh, '
+      'd.opz_ceiling_cplh, '
+      'd.cover_count, '
+      'd.verdict, '
+      'd.verdict_reason, '
+      'd.created_at, '
+      'd.updated_at';
+
   Future<TargetCyclePostgresRow?> loadActiveCycle({
     required String operatorId,
     required String locationId,
@@ -305,9 +337,7 @@ class TargetCycleRepository extends OperatorScopedRepository {
           'limit': limit,
         },
       );
-      return <TargetCyclePostgresRow>[
-        for (final row in rows) _cycleRowFromMap(row),
-      ];
+      return _cycleRowsFromMapsWithDayparts(exec, rows);
     });
   }
 
@@ -333,7 +363,7 @@ class TargetCycleRepository extends OperatorScopedRepository {
       },
     );
     if (rows.isEmpty) return null;
-    return _cycleRowFromMap(rows.single);
+    return _cycleRowWithDaypartsFromMap(exec, rows.single);
   }
 
   Future<TargetCyclePostgresRow?> _fetchByIdempotency(
@@ -356,7 +386,7 @@ class TargetCycleRepository extends OperatorScopedRepository {
       },
     );
     if (rows.isEmpty) return null;
-    return _cycleRowFromMap(rows.single);
+    return _cycleRowWithDaypartsFromMap(exec, rows.single);
   }
 
   Future<TargetCyclePostgresRow> _insertCycleWithExecutor(
@@ -394,7 +424,131 @@ class TargetCycleRepository extends OperatorScopedRepository {
     if (rows.isEmpty) {
       throw StateError('target_cycles insert returned no rows');
     }
-    return _cycleRowFromMap(rows.single);
+    final parent = _cycleRowFromMap(rows.single);
+    final dayparts = await _replaceDaypartsForCycle(
+      exec,
+      parent: parent,
+      dayparts: cycle.dayparts,
+    );
+    return parent.withDayparts(dayparts);
+  }
+
+  Future<TargetCyclePostgresRow> _cycleRowWithDaypartsFromMap(
+    PostgresExecutor exec,
+    PostgresRow row,
+  ) async {
+    final parent = _cycleRowFromMap(row);
+    final dayparts = await _fetchDaypartsForCycleIds(
+      exec,
+      operatorId: parent.operatorId,
+      locationId: parent.locationId,
+      cycleIds: <String>[parent.cycleId],
+    );
+    return parent.withDayparts(dayparts[parent.cycleId] ?? const []);
+  }
+
+  Future<List<TargetCyclePostgresRow>> _cycleRowsFromMapsWithDayparts(
+    PostgresExecutor exec,
+    List<PostgresRow> rows,
+  ) async {
+    if (rows.isEmpty) return const <TargetCyclePostgresRow>[];
+    final parents = <TargetCyclePostgresRow>[
+      for (final row in rows) _cycleRowFromMap(row),
+    ];
+    final dayparts = await _fetchDaypartsForCycleIds(
+      exec,
+      operatorId: parents.first.operatorId,
+      locationId: parents.first.locationId,
+      cycleIds: <String>[for (final row in parents) row.cycleId],
+    );
+    return <TargetCyclePostgresRow>[
+      for (final parent in parents)
+        parent.withDayparts(dayparts[parent.cycleId] ?? const []),
+    ];
+  }
+
+  Future<Map<String, List<TargetCyclePostgresDaypartRow>>>
+  _fetchDaypartsForCycleIds(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required List<String> cycleIds,
+  }) async {
+    if (cycleIds.isEmpty) {
+      return const <String, List<TargetCyclePostgresDaypartRow>>{};
+    }
+    final rows = await exec.query(
+      'select $_daypartColumnsWithAlias '
+      'from public.target_cycle_dayparts d '
+      'where d.operator_id = @operator_id::uuid '
+      '  and d.location_id = @location_id::uuid '
+      '  and d.cycle_id = any(@cycle_ids::uuid[]) '
+      'order by d.cycle_id asc, d.service_period_id asc',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'cycle_ids': cycleIds,
+      },
+    );
+    final grouped = <String, List<TargetCyclePostgresDaypartRow>>{};
+    for (final row in rows) {
+      final daypart = _daypartRowFromMap(row);
+      grouped.putIfAbsent(daypart.cycleId, () => []).add(daypart);
+    }
+    return grouped;
+  }
+
+  Future<List<TargetCyclePostgresDaypartRow>> _replaceDaypartsForCycle(
+    PostgresExecutor exec, {
+    required TargetCyclePostgresRow parent,
+    required List<TargetCyclePostgresDaypartWrite> dayparts,
+  }) async {
+    await exec.execute(
+      'delete from public.target_cycle_dayparts '
+      'where operator_id = @operator_id::uuid '
+      '  and location_id = @location_id::uuid '
+      '  and cycle_id = @cycle_id::uuid',
+      parameters: <String, Object?>{
+        'operator_id': parent.operatorId,
+        'location_id': parent.locationId,
+        'cycle_id': parent.cycleId,
+      },
+    );
+    if (dayparts.isEmpty) return const <TargetCyclePostgresDaypartRow>[];
+
+    final inserted = <TargetCyclePostgresDaypartRow>[];
+    for (final daypart in dayparts) {
+      final rows = await exec.query(
+        'insert into public.target_cycle_dayparts ('
+        '  cycle_id, operator_id, location_id, service_period_id, '
+        '  target_cplh, target_splh, target_ppa, '
+        '  opz_floor_cplh, opz_ceiling_cplh, cover_count, '
+        '  verdict, verdict_reason'
+        ') values ('
+        '  @cycle_id::uuid, @operator_id::uuid, @location_id::uuid, '
+        '  @service_period_id, @target_cplh, @target_splh, @target_ppa, '
+        '  @opz_floor_cplh, @opz_ceiling_cplh, @cover_count, '
+        '  @verdict, @verdict_reason'
+        ') '
+        'on conflict (cycle_id, service_period_id) do update set '
+        '  target_cplh = excluded.target_cplh, '
+        '  target_splh = excluded.target_splh, '
+        '  target_ppa = excluded.target_ppa, '
+        '  opz_floor_cplh = excluded.opz_floor_cplh, '
+        '  opz_ceiling_cplh = excluded.opz_ceiling_cplh, '
+        '  cover_count = excluded.cover_count, '
+        '  verdict = excluded.verdict, '
+        '  verdict_reason = excluded.verdict_reason, '
+        '  updated_at = now() '
+        'returning $_daypartColumns',
+        parameters: daypart.toSqlParameters(parent: parent),
+      );
+      if (rows.isEmpty) {
+        throw StateError('target_cycle_dayparts insert returned no rows');
+      }
+      inserted.add(_daypartRowFromMap(rows.single));
+    }
+    return inserted;
   }
 
   Future<void> _insertAuditEvent(
@@ -474,6 +628,7 @@ class TargetCyclePostgresWrite {
     required this.idempotencyKey,
     required this.requestHash,
     this.createdBy,
+    this.dayparts = const <TargetCyclePostgresDaypartWrite>[],
   });
 
   final String operatorId;
@@ -505,6 +660,7 @@ class TargetCyclePostgresWrite {
   final String idempotencyKey;
   final String requestHash;
   final String? createdBy;
+  final List<TargetCyclePostgresDaypartWrite> dayparts;
 
   void validate() {
     _validateNonBlank(restaurantId, 'restaurantId');
@@ -531,6 +687,17 @@ class TargetCyclePostgresWrite {
         'source',
         'admin replacements must carry replacement provenance',
       );
+    }
+    final seenPeriodIds = <String>{};
+    for (final daypart in dayparts) {
+      daypart.validate();
+      if (!seenPeriodIds.add(daypart.servicePeriodId)) {
+        throw ArgumentError.value(
+          daypart.servicePeriodId,
+          'dayparts',
+          'service_period_id values must be unique within a cycle',
+        );
+      }
     }
   }
 
@@ -569,6 +736,121 @@ class TargetCyclePostgresWrite {
   }
 }
 
+class TargetCyclePostgresDaypartWrite {
+  const TargetCyclePostgresDaypartWrite({
+    required this.servicePeriodId,
+    required this.targetCplh,
+    required this.targetSplh,
+    required this.targetPpa,
+    required this.opzFloorCplh,
+    required this.opzCeilingCplh,
+    required this.coverCount,
+    this.verdict,
+    this.verdictReason,
+  });
+
+  final String servicePeriodId;
+  final double targetCplh;
+  final double targetSplh;
+  final double targetPpa;
+  final double opzFloorCplh;
+  final double opzCeilingCplh;
+  final int coverCount;
+  final String? verdict;
+  final String? verdictReason;
+
+  void validate() {
+    _validateNonBlank(servicePeriodId, 'servicePeriodId');
+    _validateNonNegativeDouble(targetCplh, 'targetCplh');
+    _validateNonNegativeDouble(targetSplh, 'targetSplh');
+    _validateNonNegativeDouble(targetPpa, 'targetPpa');
+    _validateNonNegativeDouble(opzFloorCplh, 'opzFloorCplh');
+    _validateNonNegativeDouble(opzCeilingCplh, 'opzCeilingCplh');
+    if (opzCeilingCplh < opzFloorCplh) {
+      throw ArgumentError.value(
+        opzCeilingCplh,
+        'opzCeilingCplh',
+        'must be greater than or equal to opzFloorCplh',
+      );
+    }
+    if (coverCount < 0) {
+      throw ArgumentError.value(
+        coverCount,
+        'coverCount',
+        'must be non-negative',
+      );
+    }
+  }
+
+  PostgresParameters toSqlParameters({
+    required TargetCyclePostgresRow parent,
+  }) => <String, Object?>{
+    'cycle_id': parent.cycleId,
+    'operator_id': parent.operatorId,
+    'location_id': parent.locationId,
+    'service_period_id': servicePeriodId,
+    'target_cplh': targetCplh,
+    'target_splh': targetSplh,
+    'target_ppa': targetPpa,
+    'opz_floor_cplh': opzFloorCplh,
+    'opz_ceiling_cplh': opzCeilingCplh,
+    'cover_count': coverCount,
+    'verdict': verdict,
+    'verdict_reason': verdictReason,
+  };
+}
+
+class TargetCyclePostgresDaypartRow {
+  const TargetCyclePostgresDaypartRow({
+    required this.cycleId,
+    required this.operatorId,
+    required this.locationId,
+    required this.servicePeriodId,
+    required this.targetCplh,
+    required this.targetSplh,
+    required this.targetPpa,
+    required this.opzFloorCplh,
+    required this.opzCeilingCplh,
+    required this.coverCount,
+    required this.verdict,
+    required this.verdictReason,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String cycleId;
+  final String operatorId;
+  final String locationId;
+  final String servicePeriodId;
+  final double targetCplh;
+  final double targetSplh;
+  final double targetPpa;
+  final double opzFloorCplh;
+  final double opzCeilingCplh;
+  final int coverCount;
+  final String? verdict;
+  final String? verdictReason;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'cycle_id': cycleId,
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'service_period_id': servicePeriodId,
+    'target_cplh': targetCplh,
+    'target_splh': targetSplh,
+    'target_ppa': targetPpa,
+    'opz_floor_cplh': opzFloorCplh,
+    'opz_ceiling_cplh': opzCeilingCplh,
+    'cover_count': coverCount,
+    'verdict': verdict,
+    'verdict_reason': verdictReason,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
+}
+
 class TargetCyclePostgresRow {
   const TargetCyclePostgresRow({
     required this.cycleId,
@@ -603,6 +885,7 @@ class TargetCyclePostgresRow {
     required this.createdAt,
     required this.updatedAt,
     required this.deactivatedAt,
+    this.dayparts = const <TargetCyclePostgresDaypartRow>[],
   });
 
   final String cycleId;
@@ -637,6 +920,7 @@ class TargetCyclePostgresRow {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? deactivatedAt;
+  final List<TargetCyclePostgresDaypartRow> dayparts;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'cycle_id': cycleId,
@@ -671,7 +955,52 @@ class TargetCyclePostgresRow {
     'created_at': createdAt.toUtc().toIso8601String(),
     'updated_at': updatedAt.toUtc().toIso8601String(),
     'deactivated_at': deactivatedAt?.toUtc().toIso8601String(),
+    'dayparts': <Map<String, Object?>>[
+      for (final daypart in dayparts) daypart.toJson(),
+    ],
+    'target_cycle_dayparts': <Map<String, Object?>>[
+      for (final daypart in dayparts) daypart.toJson(),
+    ],
   };
+
+  TargetCyclePostgresRow withDayparts(
+    List<TargetCyclePostgresDaypartRow> rows,
+  ) =>
+      TargetCyclePostgresRow(
+        cycleId: cycleId,
+        operatorId: operatorId,
+        locationId: locationId,
+        restaurantId: restaurantId,
+        source: source,
+        effectiveStart: effectiveStart,
+        effectiveEnd: effectiveEnd,
+        calibrationWindowStart: calibrationWindowStart,
+        calibrationWindowEnd: calibrationWindowEnd,
+        targetCplh: targetCplh,
+        targetSplh: targetSplh,
+        targetPpa: targetPpa,
+        fohWage: fohWage,
+        bohWage: bohWage,
+        opzFloorCplh: opzFloorCplh,
+        opzCeilingCplh: opzCeilingCplh,
+        managerOverrideUsed: managerOverrideUsed,
+        managerOverrideAt: managerOverrideAt,
+        managerOverrideByUserId: managerOverrideByUserId,
+        adminReplacedAt: adminReplacedAt,
+        adminReplacedByUserId: adminReplacedByUserId,
+        supersedesCycleId: supersedesCycleId,
+        selectedShiftCount: selectedShiftCount,
+        selectedRecordKeys: selectedRecordKeys,
+        selectionDecisionIds: selectionDecisionIds,
+        replacementReason: replacementReason,
+        idempotencyKey: idempotencyKey,
+        requestHash: requestHash,
+        createdBy: createdBy,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        deactivatedAt: deactivatedAt,
+        dayparts: List<TargetCyclePostgresDaypartRow>.unmodifiable(rows),
+      );
 }
 
 class TargetCycleManagerOverrideAlreadyUsed implements Exception {
@@ -727,6 +1056,25 @@ TargetCyclePostgresRow _cycleRowFromMap(PostgresRow row) {
   );
 }
 
+TargetCyclePostgresDaypartRow _daypartRowFromMap(PostgresRow row) {
+  return TargetCyclePostgresDaypartRow(
+    cycleId: row['cycle_id']! as String,
+    operatorId: row['operator_id']! as String,
+    locationId: row['location_id']! as String,
+    servicePeriodId: row['service_period_id']! as String,
+    targetCplh: _toDouble(row['target_cplh']),
+    targetSplh: _toDouble(row['target_splh']),
+    targetPpa: _toDouble(row['target_ppa']),
+    opzFloorCplh: _toDouble(row['opz_floor_cplh']),
+    opzCeilingCplh: _toDouble(row['opz_ceiling_cplh']),
+    coverCount: _toInt(row['cover_count']),
+    verdict: row['verdict'] as String?,
+    verdictReason: row['verdict_reason'] as String?,
+    createdAt: _toDateTime(row['created_at'])!,
+    updatedAt: _toDateTime(row['updated_at'])!,
+  );
+}
+
 void _validatePositiveLimit(int limit) {
   if (limit <= 0) {
     throw ArgumentError.value(limit, 'limit', 'must be positive');
@@ -736,6 +1084,12 @@ void _validatePositiveLimit(int limit) {
 void _validateNonBlank(String value, String name) {
   if (value.trim().isEmpty) {
     throw ArgumentError.value(value, name, 'must be non-blank');
+  }
+}
+
+void _validateNonNegativeDouble(double value, String name) {
+  if (value.isNaN || value < 0) {
+    throw ArgumentError.value(value, name, 'must be non-negative');
   }
 }
 
@@ -763,6 +1117,15 @@ double _toDouble(Object? value) {
   if (value is num) return value.toDouble();
   if (value is String) return double.parse(value);
   throw StateError('numeric value was not parseable');
+}
+
+int _toInt(Object? value) {
+  if (value is int) return value;
+  if (value is num && value.roundToDouble() == value.toDouble()) {
+    return value.toInt();
+  }
+  if (value is String) return int.parse(value);
+  throw StateError('integer value was not parseable');
 }
 
 DateTime? _toDateTime(Object? value) {
