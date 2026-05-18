@@ -213,10 +213,12 @@ sound equally final.
   carry explicit provenance — see `metric_card_honesty_contract.md`.
 
 Every metric carries `state` ∈ {`live`, `partial`, `fallback`,
-`unavailable`} plus a provenance string in the read model. The renderer
+`unavailable`, `stale`} plus a provenance string in the read model
+(`MetricState`, `lib/domain/models/metric_provenance.dart`). The renderer
 switches on state. `unavailable` triggers `MetricCardNotYetAvailable`;
-all other states render the number; the dashboard health pill summarizes
-non-live states.
+all other states (including `stale`, where data was previously live but
+the vendor sync has lapsed) render the number; the dashboard health pill
+summarizes non-live states.
 
 Live service-period rows are not UI slices of an already-rounded whole-day
 row. Live canonical POS/labor/reservation facts must be bucketed into the
@@ -287,13 +289,12 @@ PPA, OPZ bounds, source provenance.
   `lib/services/integration/labor_wage_source_class.dart` keyed by
   vendorId, **corrected against vendor docs 2026-05-05**):
   1. `perEmployeeWithDollars` (vendor exposes per-shift dollar totals
-     directly) — **NO Wave B vendor confirmed in this class today.**
-     7shifts qualifies IFF the adapter consumes
-     `/reports/hours_and_wages` (not in the current Wave B mapping;
-     follow-up).
+     directly). 7shifts resolves here today: the `/reports/hours_and_wages`
+     upgrade landed, so the Wave B mapping keys
+     `kSevenShiftsVendorId → LaborWageSourceClass.perEmployeeWithDollars`.
   2. `perEmployeeWithRates` (vendor exposes per-employee hourly rate;
      aggregator computes dollars = rate × duration) — QuickBooks
-     Time (`Users.pay_rate`), 7shifts default (`time_punches.hourly_wage`).
+     Time (`Users.pay_rate`).
   3. `perPositionWithRates` (vendor exposes per-position pay rate +
      scheduled hours; aggregator computes dollars via rate × hours
      per role) — Humanity, Agendrix. **Closer to model truth** because
@@ -468,7 +469,10 @@ through dedicated UI per
 2. **Covers source** — operator chooses: POS-vendor covers (when vendor
    exposes them), F&F-derived forecast fallback, or manual entry per
    (business_date, service_period). Per-(operator, location,
-   service_period). Legacy `daypart` labels are display aliases only.
+   service_period); keyed `covers_source_per_service_period` is the sole
+   source. "Service period" is the canonical term throughout this layer;
+   `daypart` survives only as a legacy display alias (and in code symbols
+   such as `DaypartPatternSummary`), never as a distinct scope.
 3. **Polling cadence + costing** - F&F controls polling cadence per
    (operator, location) through tier assignment. Operators see the effective
    tier and may request a tier change; they do not edit vendor polling
@@ -478,7 +482,8 @@ through dedicated UI per
 These overrides bind to Layer 2 (canonical facts) input resolution. The
 canonical fact rows still carry honest provenance: `vendor_<id>` /
 `vendor_<id>_covers_unavailable_app_forecast_substituted` /
-`operator_manual_entry` / `target_wage_fallback` / etc. Per
+`operator_manual_entry_per_daypart` (with `sourceSystem` =
+`operator_manual_entry`) / `target_wage_fallback` / etc. Per
 `metric_card_honesty_contract.md`, the dashboard pill surfaces non-live
 states; the data layer never quietly lies.
 
