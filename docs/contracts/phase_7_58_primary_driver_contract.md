@@ -201,15 +201,22 @@ For Primary Driver this means:
 ### What an open / projected row MUST NOT say
 
 - **A previous closed row's driver, inherited via daypart carry-forward.**
-  This is the `7.58.5` G.5 fold. Today
-  `lib/services/variance_week_projection_read_service.dart:60-78`
-  builds a `lastClosedLever[daypart]` map from earlier closed rows in
-  the same week and assigns that lever to subsequent open / projected
-  rows in the same daypart. This is overclaim: it asserts that the
-  Tuesday Lunch open row already has the same driver as Monday Lunch
-  before any Tuesday hours have been worked. The contract bans this.
-  Open / projected rows derive their driver from their own row inputs
-  or display "Not yet available" — they never inherit.
+  This was the `7.58.5` G.5 fold, and it has landed: the daypart
+  carry-forward is removed and the ban is enforced in code. The
+  earlier `lastClosedLever[daypart]` map (which assigned an earlier
+  closed row's lever to subsequent open / projected rows in the same
+  daypart) is gone. `_driverLabel` now returns the literal
+  `'Not yet available'` for every non-closed row
+  (`lib/services/variance_week_projection_read_service.dart:185-193`,
+  `:192`), with the rationale recorded in-code at
+  `variance_week_projection_read_service.dart:171-174`
+  ("7.58.5: open / projected rows return 'Not yet available' ... they
+  no longer inherit a closed daypart's lever via carry-forward").
+  The original overclaim (asserting the Tuesday Lunch open row
+  already has Monday Lunch's driver before any Tuesday hours are
+  worked) no longer occurs. Open / projected rows derive their driver
+  from their own row inputs or display "Not yet available"; they
+  never inherit.
 - **A whole-day driver as if it were a daypart driver, or vice versa.**
   Whole-day Shift (`ShiftDashboardReadModel.buildWholeDay`) and WTD
   Variance (`ShiftService.getWeekToDate`) operate on different
