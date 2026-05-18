@@ -72,6 +72,11 @@ while IFS=$'\t' read -r path branch; do
   # never prune main checkout or keep-list
   if [ "$path" = "$MAIN" ]; then continue; fi
   case " $KEEP_WORKTREES " in *" $base "*) echo "  KEEP(keeplist) $base"; kept=$((kept+1)); continue;; esac
+  # SAFETY (Shared Checkout Safety, binding): only one-shot `agent-*` dispatch
+  # worktrees are ever auto-pruned. Session/loop worktrees (any other basename,
+  # including the current session's own) are human/loop-driven and may sit
+  # idle landed+clean between turns -- never auto-remove them.
+  case "$base" in agent-*) ;; *) echo "  KEEP(session)  $base"; kept=$((kept+1)); continue;; esac
 
   sha=$(git -C "$path" rev-parse HEAD 2>/dev/null)
   if [ "$dirty" -gt 0 ]; then echo "  KEEP(dirty)    $base [$br]"; kept=$((kept+1)); continue; fi
