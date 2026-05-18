@@ -142,9 +142,14 @@ expect(content, contains('expected substring'));
 Or wrap in a helper `readMigrationLF(String path)` and use it everywhere
 migration content is asserted.
 
-After the fix, update `docs/KNOWN_FAILING_TESTS.md` to mark the CRLF
-entry as closed (do not delete the entry — strike through with a
-"resolved 2026-05-02 in HARD-H" annotation per existing doc convention).
+After the fix, update `docs/KNOWN_FAILING_TESTS.md` to close out the
+CRLF entry. NOTE: the `KNOWN_FAILING_TESTS.md` convention has since
+changed: that file now states "Removed entries live in git history;
+do not keep a 'resolved' section here." So the closeout is to REMOVE
+the CRLF entry (not strike it through). The earlier "strike through
+with a 'resolved 2026-05-02 in HARD-H' annotation" instruction
+reflected the prior convention and is superseded; the substantive
+CRLF fix itself is unchanged and done.
 
 ## Out of Scope
 

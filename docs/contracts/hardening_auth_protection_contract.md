@@ -38,7 +38,7 @@ actor-kind classification.
 | Audit event for failed login | yes | in-app notification on failure (Phase 10a) |
 | `claims_hash` on service-principal issuance audit | yes | claim payload encryption |
 | Optional `reason` field on feature-flag toggle audit | yes | rationale validation/AI scoring |
-| Comment at `lib/admin/admin_routes.dart:345` documenting compile-time gate | yes | code change to admin routes |
+| Comment at `lib/admin/admin_routes.dart:~2733` documenting compile-time gate | yes | code change to admin routes |
 
 Out of scope: SIM-swap detection, anomaly-based MFA challenges,
 risk-based authentication, tenant-level lockout, backup-code rotation
@@ -154,7 +154,7 @@ review uses `auth_events_audit` directly for these events.
 
 ## Compile-Time Gate Documentation (L-2)
 
-`lib/admin/admin_routes.dart` near line 345 must include a comment
+`lib/admin/admin_routes.dart` near line 2733 must include a comment
 block stating the demo fallback is reachable only when `_kAdminDemoAuth ==
 true` (a compile-time const evaluated from `--dart-define=ADMIN_DEMO_AUTH`),
 default `false`. Production builds **must** ship without this define or
@@ -191,6 +191,6 @@ side).
 - [ ] All four new audit events emit with full payload.
 - [ ] `auth.service_principal_issued` audit row contains `claims_hash`.
 - [ ] `admin.feature_flag_toggled` audit row carries optional `reason`.
-- [ ] `admin_routes.dart:345` documents compile-time gate.
+- [ ] `admin_routes.dart:~2733` documents compile-time gate.
 - [ ] No raw password / email / TOTP secret in any audit row (test asserts).
 - [ ] All tests pass; `dart analyze --fatal-infos` clean.

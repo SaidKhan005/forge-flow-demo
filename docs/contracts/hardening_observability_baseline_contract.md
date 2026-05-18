@@ -114,8 +114,9 @@ shape with `error: "dependency_timeout"`.
 
 ## Required — KMS Startup Behavior
 
-Replace the current silent stub fallback at
-`tool/advisor_proxy/proxy_bootstrap.dart:2650`:
+Replace the current silent stub fallback (KMS startup gating now
+implemented at `tool/advisor_proxy/proxy_bootstrap.dart:9360-9397`;
+the original `:2650` pointer is obsolete after proxy growth):
 
 When building `KmsProvider`, read `PROXY_ENVIRONMENT`:
 

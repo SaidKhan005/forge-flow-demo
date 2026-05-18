@@ -846,7 +846,19 @@ items" applies to every spine-bridge file. In particular:
 - No `parse_warnings` / `parse_partial` columns on canonical fact
   tables.
 - No 5-minute strict replay window.
-- No OAuth advisory locks.
+- OAuth advisory locks: SANCTIONED, narrowly, for the OAuth refresh
+  cron only. The original V1-lean-cut-2 ban is superseded by the
+  operator-approved J4 B2 race fix: two Cloud Run pods scanning the
+  same near-expiry token window both call the vendor token endpoint,
+  and some vendors auto-revoke the earlier token, 401-ing the first
+  pod. The fix wraps the per-`(operator_id, vendor_id)` refresh in a
+  transaction-scoped `pg_advisory_xact_lock` (lock id `8472002`,
+  seeded by `db/migrations/202605080900_oauth_refresh_advisory_lock.sql`;
+  acquired in `lib/services/integration/oauth_refresh_cron.dart`).
+  Scope is strict: advisory locks remain REJECTED everywhere else in
+  the spine-bridge sinks; only the OAuth refresh cron's per-vendor
+  serialization is allowed, and only as a transaction-scoped lock
+  (auto-released on commit or rollback, no explicit unlock).
 - No SIGTERM graceful drain handler.
 - No DLQ tile widget.
 - No raw-payload sibling tables / pg_partman registration.

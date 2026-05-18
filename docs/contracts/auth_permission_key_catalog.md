@@ -39,12 +39,17 @@ the constants without seeding it, the test catches that.
 ## Categories
 
 The catalog carries 84 keys across 7 categories in the core catalog
-(81 original + 2 admin keys added after baseline +
-`admin.users.reset_mfa_factors` added in 11A.14). The 14 `team.*` keys
-added across 9.0a, the MFA hardening slice, and 11W.5 live in their own
-section below; the Phase 8.0 single `integrations.configure` key adds a
-9th category. B5.b adds `account.*` and `business_timing.*` settings
-categories. The running total across all 11 categories is 103 keys.
+(`product` 2 + `forgeflow` 20 + `barrio` 12 + `admin` 28 + `billing` 5
++ `integration` 9 + `workflow` 8 = 84). The 19 `team.*` keys added
+across 9.0a, the MFA hardening slice, 11W.5, Wave 2 W-3, and Wave 2
+RP-9 live in their own section below; the Phase 8.0 single
+`integrations.configure` key adds a 9th category. B5.b adds the
+single-key `account.*` and `business_timing.*` settings categories.
+The running total across all 11 categories is 106 keys
+(84 core + 19 `team.*` + 1 `integrations.*` + 1 `account.*` +
+1 `business_timing.*`), matching `PermissionKeys.all` in
+`lib/auth/permission_keys.dart`; that constant and the seed migrations
+are canonical and this count must track them.
 
 ### `product.*` (2)
 
@@ -156,7 +161,7 @@ also not by the 9.0 foundation seed.
 | `admin.service_principal.issue_token` | Issue short-lived service-principal JWTs for automation identities. MFA required. | yes |
 | `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
 
-### `team.*` (17)
+### `team.*` (19)
 
 Operator self-service team management. Distinct from `admin.*` —
 `team.*` keys gate the operator-facing Settings → Team UX (lands in
