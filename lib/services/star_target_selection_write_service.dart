@@ -243,6 +243,7 @@ class AuthSessionStarTargetSelectionWriter
     required String businessDate,
     required StarTargetSelectionWriteAction action,
   }) {
+    final servicePeriodKey = candidate.stableServicePeriodKey;
     final base = <String, Object?>{
       'restaurant_id': restaurantId,
       'record_key': candidate.recordKey,
@@ -250,7 +251,7 @@ class AuthSessionStarTargetSelectionWriter
       'day_label': candidate.dayLabel,
       'daypart': candidate.daypart,
       'business_date': businessDate,
-      'service_period_key': candidate.daypart,
+      'service_period_key': servicePeriodKey,
       'reason': action == StarTargetSelectionWriteAction.clear
           ? 'manager cleared star on mobile'
           : 'manager selected star on mobile',
@@ -272,6 +273,8 @@ class AuthSessionStarTargetSelectionWriter
         'record_key': candidate.recordKey,
         'week_id': candidate.weekId,
         'business_date': businessDate,
+        'service_period_key': servicePeriodKey,
+        'daypart': candidate.daypart,
         'covers': candidate.covers,
         'cplh': candidate.cplh,
         'splh': candidate.splh,

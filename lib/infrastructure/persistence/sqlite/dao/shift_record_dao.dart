@@ -6,7 +6,9 @@ class ShiftRecordDao {
   const ShiftRecordDao(this._db);
 
   Future<List<ShiftRecord>> getShiftsForWeek(
-      String restaurantId, String weekId) async {
+    String restaurantId,
+    String weekId,
+  ) async {
     final rows = await _db.query(
       'shift_records',
       where: 'restaurant_id = ? AND week_id = ?',
@@ -16,7 +18,9 @@ class ShiftRecordDao {
   }
 
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-      String restaurantId, List<String> weekIds) async {
+    String restaurantId,
+    List<String> weekIds,
+  ) async {
     if (weekIds.isEmpty) return [];
     final placeholders = weekIds.map((_) => '?').join(', ');
     final rows = await _db.rawQuery(
@@ -33,7 +37,10 @@ class ShiftRecordDao {
   /// Rows with null business_date are excluded naturally by the WHERE clause.
   /// Results ordered by business_date DESC.
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-      String restaurantId, String startDate, String endDate) async {
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) async {
     final rows = await _db.rawQuery(
       'SELECT * FROM shift_records '
       "WHERE restaurant_id = ? AND status = 'closed' "
@@ -59,17 +66,38 @@ class ShiftRecordDao {
 
   Future<int> replaceShiftForSlot(ShiftRecord record) async {
     return _db.transaction<int>((txn) async {
-      await txn.delete(
-        'shift_records',
-        where:
-            'restaurant_id = ? AND week_id = ? AND day_label = ? AND daypart = ?',
-        whereArgs: [
-          record.restaurantId,
-          record.weekId,
-          record.dayLabel,
-          record.daypart,
-        ],
-      );
+      final businessDate = record.businessDate?.trim();
+      final servicePeriodKey = record.servicePeriodKey?.trim();
+      if (businessDate != null &&
+          businessDate.isNotEmpty &&
+          servicePeriodKey != null &&
+          servicePeriodKey.isNotEmpty) {
+        await txn.delete(
+          'shift_records',
+          where:
+              'restaurant_id = ? AND business_date = ? AND '
+              '(service_period_key = ? OR '
+              '(service_period_key IS NULL AND daypart = ?))',
+          whereArgs: [
+            record.restaurantId,
+            businessDate,
+            servicePeriodKey,
+            record.daypart,
+          ],
+        );
+      } else {
+        await txn.delete(
+          'shift_records',
+          where:
+              'restaurant_id = ? AND week_id = ? AND day_label = ? AND daypart = ?',
+          whereArgs: [
+            record.restaurantId,
+            record.weekId,
+            record.dayLabel,
+            record.daypart,
+          ],
+        );
+      }
       return txn.insert('shift_records', record.toMap()..remove('id'));
     });
   }

@@ -19,7 +19,7 @@ void main() {
       await writer.replaceSelection(
         restaurantId: 'restaurant-1',
         selectedCandidates: <BaselineCandidateShift>[
-          _candidate('new-key', selected: false),
+          _candidate('new-key', selected: false, servicePeriodKey: 'supper'),
           _candidate('kept-key', selected: true),
         ],
         previouslySelectedCandidates: <BaselineCandidateShift>[
@@ -34,12 +34,14 @@ void main() {
       expect(client.calls[0].body.containsKey('candidate_snapshot'), isFalse);
       expect(client.calls[1].action, StarTargetSelectionWriteAction.select);
       expect(client.calls[1].body['record_key'], 'new-key');
+      expect(client.calls[1].body['daypart'], 'dinner');
+      expect(client.calls[1].body['service_period_key'], 'supper');
       expect(client.calls[1].body['covers'], 120);
-      expect(
-        (client.calls[1].body['candidate_snapshot']
-            as Map<String, Object?>)['source'],
-        'mobile_closed_shift_candidate',
-      );
+      final snapshot =
+          client.calls[1].body['candidate_snapshot'] as Map<String, Object?>;
+      expect(snapshot['source'], 'mobile_closed_shift_candidate');
+      expect(snapshot['daypart'], 'dinner');
+      expect(snapshot['service_period_key'], 'supper');
       expect(client.calls.map((call) => call.operatorId), everyElement('op-1'));
       expect(
         client.calls.map((call) => call.locationId),
@@ -177,6 +179,7 @@ BaselineCandidateShift _candidate(
   String recordKey, {
   required bool selected,
   String? businessDate = '2026-05-06',
+  String? servicePeriodKey,
 }) {
   return BaselineCandidateShift(
     recordKey: recordKey,
@@ -184,6 +187,7 @@ BaselineCandidateShift _candidate(
     weekLabel: 'Week 19',
     dayLabel: 'Wednesday',
     daypart: 'dinner',
+    servicePeriodKey: servicePeriodKey,
     covers: 120,
     cplh: 12.4,
     splh: 152.0,

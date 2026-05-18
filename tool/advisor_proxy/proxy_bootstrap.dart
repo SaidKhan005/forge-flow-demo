@@ -3037,6 +3037,8 @@ class RepositoryMobileOperationalSyncProxyGateway
         'target_source_type, target_cplh, target_splh, target_ppa, '
         'target_foh_wage, target_boh_wage, '
         'opz_floor_cplh, opz_ceiling_cplh, '
+        'daypart_target_cplh, daypart_target_splh, daypart_target_ppa, '
+        'daypart_opz_floor_cplh, daypart_opz_ceiling_cplh, '
         'theoretical_foh_labor_pct, theoretical_boh_labor_pct, '
         'source_system, source_shift_id, updated_at '
         'from public.shift_records '
@@ -3604,6 +3606,15 @@ class RepositoryMobileOperationalSyncProxyGateway
       'target_boh_wage': _nullableDouble(row['target_boh_wage']),
       'opz_floor_cplh': _nullableDouble(row['opz_floor_cplh']),
       'opz_ceiling_cplh': _nullableDouble(row['opz_ceiling_cplh']),
+      'daypart_target_cplh': _nullableDouble(row['daypart_target_cplh']),
+      'daypart_target_splh': _nullableDouble(row['daypart_target_splh']),
+      'daypart_target_ppa': _nullableDouble(row['daypart_target_ppa']),
+      'daypart_opz_floor_cplh': _nullableDouble(
+        row['daypart_opz_floor_cplh'],
+      ),
+      'daypart_opz_ceiling_cplh': _nullableDouble(
+        row['daypart_opz_ceiling_cplh'],
+      ),
       'theoretical_foh_labor_pct': _nullableDouble(
         row['theoretical_foh_labor_pct'],
       ),

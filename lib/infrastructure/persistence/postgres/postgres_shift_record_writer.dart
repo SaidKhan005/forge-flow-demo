@@ -63,8 +63,9 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
     final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final resolvedTpv =
-          provenance.priorTargetProfileVersionId ??
-          shiftFact.targetSnapshot.targetProfileVersionId;
+          provenance.hasPriorShiftRecord
+          ? provenance.priorTargetProfileVersionId
+          : shiftFact.targetSnapshot.targetProfileVersionId;
       final resolvedTiming = _resolvedTimingProvenance(
         shiftFact: shiftFact,
         provenance: provenance,
@@ -154,36 +155,81 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
       'boh_hours = excluded.boh_hours, '
       'foh_labor_dollar = excluded.foh_labor_dollar, '
       'boh_labor_dollar = excluded.boh_labor_dollar, '
-      'theoretical_labor_pct = excluded.theoretical_labor_pct, '
+      'theoretical_labor_pct = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.theoretical_labor_pct '
+      'else excluded.theoretical_labor_pct end, '
       'primary_lever = excluded.primary_lever, '
-      // Concern A: target_profile_version_id stays the prior value
-      // when one exists. We pass the resolved value either way; on
-      // overwrite the bound value is the prior id (preserved) or the
-      // current id (first-time).
-      'target_profile_version_id = excluded.target_profile_version_id, '
-      'target_profile_id = excluded.target_profile_id, '
-      'target_source_type = excluded.target_source_type, '
-      'target_cplh = excluded.target_cplh, '
-      'target_splh = excluded.target_splh, '
-      'target_ppa = excluded.target_ppa, '
-      'target_foh_wage = excluded.target_foh_wage, '
-      'target_boh_wage = excluded.target_boh_wage, '
-      'opz_floor_cplh = excluded.opz_floor_cplh, '
-      'opz_ceiling_cplh = excluded.opz_ceiling_cplh, '
-      'theoretical_foh_labor_pct = excluded.theoretical_foh_labor_pct, '
-      'theoretical_boh_labor_pct = excluded.theoretical_boh_labor_pct, '
-      'business_timing_profile_id = excluded.business_timing_profile_id, '
-      'business_timing_profile_version_id = '
-      'excluded.business_timing_profile_version_id, '
-      'service_period_key = excluded.service_period_key, '
-      // Per-Daypart V1 (Slice 1) per-period stamps follow excluded
-      // semantics — re-aggregation rewrites them to match the cycle's
-      // current per-period row for the shift's service period.
-      'daypart_target_cplh = excluded.daypart_target_cplh, '
-      'daypart_target_splh = excluded.daypart_target_splh, '
-      'daypart_target_ppa = excluded.daypart_target_ppa, '
-      'daypart_opz_floor_cplh = excluded.daypart_opz_floor_cplh, '
-      'daypart_opz_ceiling_cplh = excluded.daypart_opz_ceiling_cplh, '
+      // Concern A: corrected facts may update actuals, but a prior
+      // closed row keeps its locked target/timing snapshot verbatim.
+      'target_profile_version_id = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.target_profile_version_id '
+      'else excluded.target_profile_version_id end, '
+      'target_profile_id = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_profile_id '
+      'else excluded.target_profile_id end, '
+      'target_source_type = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_source_type '
+      'else excluded.target_source_type end, '
+      'target_cplh = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_cplh else excluded.target_cplh end, '
+      'target_splh = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_splh else excluded.target_splh end, '
+      'target_ppa = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_ppa else excluded.target_ppa end, '
+      'target_foh_wage = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_foh_wage '
+      'else excluded.target_foh_wage end, '
+      'target_boh_wage = case when @has_prior_shift_record::boolean '
+      'then shift_records.target_boh_wage '
+      'else excluded.target_boh_wage end, '
+      'opz_floor_cplh = case when @has_prior_shift_record::boolean '
+      'then shift_records.opz_floor_cplh '
+      'else excluded.opz_floor_cplh end, '
+      'opz_ceiling_cplh = case when @has_prior_shift_record::boolean '
+      'then shift_records.opz_ceiling_cplh '
+      'else excluded.opz_ceiling_cplh end, '
+      'theoretical_foh_labor_pct = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.theoretical_foh_labor_pct '
+      'else excluded.theoretical_foh_labor_pct end, '
+      'theoretical_boh_labor_pct = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.theoretical_boh_labor_pct '
+      'else excluded.theoretical_boh_labor_pct end, '
+      'business_timing_profile_id = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.business_timing_profile_id '
+      'else excluded.business_timing_profile_id end, '
+      'business_timing_profile_version_id = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.business_timing_profile_version_id '
+      'else excluded.business_timing_profile_version_id end, '
+      'service_period_key = case when @has_prior_shift_record::boolean '
+      'then shift_records.service_period_key '
+      'else excluded.service_period_key end, '
+      // Per-period stamps are part of the locked target snapshot.
+      'daypart_target_cplh = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.daypart_target_cplh '
+      'else excluded.daypart_target_cplh end, '
+      'daypart_target_splh = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.daypart_target_splh '
+      'else excluded.daypart_target_splh end, '
+      'daypart_target_ppa = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.daypart_target_ppa '
+      'else excluded.daypart_target_ppa end, '
+      'daypart_opz_floor_cplh = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.daypart_opz_floor_cplh '
+      'else excluded.daypart_opz_floor_cplh end, '
+      'daypart_opz_ceiling_cplh = case '
+      'when @has_prior_shift_record::boolean '
+      'then shift_records.daypart_opz_ceiling_cplh '
+      'else excluded.daypart_opz_ceiling_cplh end, '
       'source_system = excluded.source_system, '
       'source_shift_id = excluded.source_shift_id, '
       'covers_provenance = excluded.covers_provenance, '
@@ -239,6 +285,7 @@ class PostgresShiftRecordWriter extends OperatorScopedRepository {
         'source_shift_id': shiftFact.sourceShiftId,
         'covers_provenance': provenance.coversProvenance,
         'labor_dollars_provenance': provenance.laborDollarsProvenance,
+        'has_prior_shift_record': provenance.hasPriorShiftRecord,
       },
     );
   }

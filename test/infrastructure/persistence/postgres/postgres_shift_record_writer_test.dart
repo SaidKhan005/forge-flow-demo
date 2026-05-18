@@ -53,6 +53,28 @@ const TargetSnapshot _targetSnapshotV1 = TargetSnapshot(
   theoreticalFohLaborPct: 12.5,
   theoreticalBohLaborPct: 12.5,
   theoreticalLaborPct: 25.0,
+  daypartTargetCPLH: 11.5,
+  daypartTargetSPLH: 49.0,
+  daypartTargetPPA: 39.0,
+  daypartOpzFloorCPLH: 9.5,
+  daypartOpzCeilingCPLH: 13.5,
+);
+
+const TargetSnapshot _legacyTargetSnapshotV1 = TargetSnapshot(
+  restaurantId: 'demo_restaurant_001',
+  targetProfileId: 'tp_demo_2026_q2',
+  targetProfileVersionId: 'tpv_X',
+  sourceType: 'cycle_recommended',
+  targetCPLH: 12.0,
+  targetSPLH: 50.0,
+  targetPPA: 40.0,
+  fohWage: 18.0,
+  bohWage: 20.0,
+  opzFloorCPLH: 10.0,
+  opzCeilingCPLH: 14.0,
+  theoreticalFohLaborPct: 12.5,
+  theoreticalBohLaborPct: 12.5,
+  theoreticalLaborPct: 25.0,
 );
 
 const TargetSnapshot _targetSnapshotV2 = TargetSnapshot(
@@ -70,6 +92,11 @@ const TargetSnapshot _targetSnapshotV2 = TargetSnapshot(
   theoreticalFohLaborPct: 12.0,
   theoreticalBohLaborPct: 12.0,
   theoreticalLaborPct: 24.0,
+  daypartTargetCPLH: 12.5,
+  daypartTargetSPLH: 51.0,
+  daypartTargetPPA: 41.0,
+  daypartOpzFloorCPLH: 10.5,
+  daypartOpzCeilingCPLH: 14.5,
 );
 
 ClosedShiftInput _trioInput({
@@ -253,7 +280,25 @@ void main() {
 
       final reread = pool.shiftRecords.values.single;
       expect(reread['covers'], 6);
+      expect((reread['actual_sales'] as num).toDouble(), closeTo(142.50, 0.001));
       expect(reread['target_profile_version_id'], 'tpv_X');
+      expect(reread['target_profile_id'], 'tp_demo_2026_q2');
+      expect(reread['target_source_type'], 'cycle_recommended');
+      expect(reread['target_cplh'], 12.0);
+      expect(reread['target_splh'], 50.0);
+      expect(reread['target_ppa'], 40.0);
+      expect(reread['target_foh_wage'], 18.0);
+      expect(reread['target_boh_wage'], 20.0);
+      expect(reread['opz_floor_cplh'], 10.0);
+      expect(reread['opz_ceiling_cplh'], 14.0);
+      expect(reread['theoretical_labor_pct'], 25.0);
+      expect(reread['theoretical_foh_labor_pct'], 12.5);
+      expect(reread['theoretical_boh_labor_pct'], 12.5);
+      expect(reread['daypart_target_cplh'], 11.5);
+      expect(reread['daypart_target_splh'], 49.0);
+      expect(reread['daypart_target_ppa'], 39.0);
+      expect(reread['daypart_opz_floor_cplh'], 9.5);
+      expect(reread['daypart_opz_ceiling_cplh'], 13.5);
       expect(reread['business_timing_profile_id'], _timingProfileA);
       expect(reread['business_timing_profile_version_id'], _timingProfileA);
       expect(reread['service_period_key'], 'dinner');
@@ -292,6 +337,67 @@ void main() {
       expect(row['business_timing_profile_id'], isNull);
       expect(row['business_timing_profile_version_id'], isNull);
       expect(row['service_period_key'], isNull);
+    });
+
+    test('keeps legacy null per-period target stamps on replay', () async {
+      final pool = _FakePool();
+      final writer = PostgresShiftRecordWriter(TenantTransactionWrapper(pool));
+
+      final firstFact = ShiftFactBuilder.fromClosedShiftInput(
+        _trioInput(),
+        _legacyTargetSnapshotV1,
+      );
+      await writer.writeShiftRecord(
+        operatorId: _opA,
+        locationId: _locA,
+        shiftFact: firstFact,
+        provenance: const AggregatorProvenanceContext(
+          coversProvenance: 'vendor_oracle_micros_simphony',
+          laborDollarsProvenance:
+              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+          priorTargetProfileVersionId: null,
+        ),
+      );
+
+      final correctedFact = ShiftFactBuilder.fromClosedShiftInput(
+        ClosedShiftInput(
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          daypart: 'dinner',
+          covers: 6,
+          forecastCovers: 10,
+          actualSales: 142.50,
+          actualFohHours: 5,
+          actualBohHours: 6,
+          actualFohLaborDollars: 5 * 18.0,
+          actualBohLaborDollars: 6 * 20.0,
+          sourceSystem: 'oracle_micros_simphony',
+        ),
+        _targetSnapshotV2,
+      );
+      await writer.writeShiftRecord(
+        operatorId: _opA,
+        locationId: _locA,
+        shiftFact: correctedFact,
+        provenance: const AggregatorProvenanceContext(
+          coversProvenance: 'vendor_oracle_micros_simphony',
+          laborDollarsProvenance:
+              'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
+          priorTargetProfileVersionId: 'tpv_X',
+          hasPriorShiftRecord: true,
+        ),
+      );
+
+      final row = pool.shiftRecords.values.single;
+      expect(row['covers'], 6);
+      expect(row['target_profile_version_id'], 'tpv_X');
+      expect(row['target_cplh'], 12.0);
+      expect(row['daypart_target_cplh'], isNull);
+      expect(row['daypart_target_splh'], isNull);
+      expect(row['daypart_target_ppa'], isNull);
+      expect(row['daypart_opz_floor_cplh'], isNull);
+      expect(row['daypart_opz_ceiling_cplh'], isNull);
     });
   });
 
@@ -398,6 +504,7 @@ void main() {
               'vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates',
           // The aggregator surfaces the prior tpv_X here.
           priorTargetProfileVersionId: 'tpv_X',
+          hasPriorShiftRecord: true,
         ),
       );
 
@@ -414,6 +521,16 @@ void main() {
             'Concern A: corrected fact does NOT re-grade closed history under '
             'a newer cycle; prior tpv_X preserved verbatim',
       );
+      expect(reread['target_cplh'], 12.0);
+      expect(reread['target_splh'], 50.0);
+      expect(reread['target_ppa'], 40.0);
+      expect(reread['opz_floor_cplh'], 10.0);
+      expect(reread['opz_ceiling_cplh'], 14.0);
+      expect(reread['daypart_target_cplh'], 11.5);
+      expect(reread['daypart_target_splh'], 49.0);
+      expect(reread['daypart_target_ppa'], 39.0);
+      expect(reread['daypart_opz_floor_cplh'], 9.5);
+      expect(reread['daypart_opz_ceiling_cplh'], 13.5);
       expect(
         reread['covers'],
         6,
@@ -609,6 +726,11 @@ class _FakeTransaction implements PostgresTransaction {
       final businessDate = parameters['business_date'] as String;
       final daypart = parameters['daypart'] as String;
       final key = '$operatorId|$locationId|$businessDate|$daypart';
+      final existing = pool.shiftRecords[key];
+      final preserveLocked =
+          existing != null && parameters['has_prior_shift_record'] == true;
+      Object? locked(String field, Object? value) =>
+          preserveLocked ? existing[field] : value;
       pool.shiftRecords[key] = <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
@@ -628,24 +750,83 @@ class _FakeTransaction implements PostgresTransaction {
         'boh_hours': parameters['boh_hours'],
         'foh_labor_dollar': parameters['foh_labor_dollar'],
         'boh_labor_dollar': parameters['boh_labor_dollar'],
-        'theoretical_labor_pct': parameters['theoretical_labor_pct'],
+        'theoretical_labor_pct': locked(
+          'theoretical_labor_pct',
+          parameters['theoretical_labor_pct'],
+        ),
         'primary_lever': parameters['primary_lever'],
-        'target_profile_id': parameters['target_profile_id'],
-        'target_profile_version_id': parameters['target_profile_version_id'],
-        'target_source_type': parameters['target_source_type'],
-        'target_cplh': parameters['target_cplh'],
-        'target_splh': parameters['target_splh'],
-        'target_ppa': parameters['target_ppa'],
-        'target_foh_wage': parameters['target_foh_wage'],
-        'target_boh_wage': parameters['target_boh_wage'],
-        'opz_floor_cplh': parameters['opz_floor_cplh'],
-        'opz_ceiling_cplh': parameters['opz_ceiling_cplh'],
-        'theoretical_foh_labor_pct': parameters['theoretical_foh_labor_pct'],
-        'theoretical_boh_labor_pct': parameters['theoretical_boh_labor_pct'],
-        'business_timing_profile_id': parameters['business_timing_profile_id'],
+        'target_profile_id': locked(
+          'target_profile_id',
+          parameters['target_profile_id'],
+        ),
+        'target_profile_version_id': locked(
+          'target_profile_version_id',
+          parameters['target_profile_version_id'],
+        ),
+        'target_source_type': locked(
+          'target_source_type',
+          parameters['target_source_type'],
+        ),
+        'target_cplh': locked('target_cplh', parameters['target_cplh']),
+        'target_splh': locked('target_splh', parameters['target_splh']),
+        'target_ppa': locked('target_ppa', parameters['target_ppa']),
+        'target_foh_wage': locked(
+          'target_foh_wage',
+          parameters['target_foh_wage'],
+        ),
+        'target_boh_wage': locked(
+          'target_boh_wage',
+          parameters['target_boh_wage'],
+        ),
+        'opz_floor_cplh': locked(
+          'opz_floor_cplh',
+          parameters['opz_floor_cplh'],
+        ),
+        'opz_ceiling_cplh': locked(
+          'opz_ceiling_cplh',
+          parameters['opz_ceiling_cplh'],
+        ),
+        'theoretical_foh_labor_pct': locked(
+          'theoretical_foh_labor_pct',
+          parameters['theoretical_foh_labor_pct'],
+        ),
+        'theoretical_boh_labor_pct': locked(
+          'theoretical_boh_labor_pct',
+          parameters['theoretical_boh_labor_pct'],
+        ),
+        'business_timing_profile_id': locked(
+          'business_timing_profile_id',
+          parameters['business_timing_profile_id'],
+        ),
         'business_timing_profile_version_id':
-            parameters['business_timing_profile_version_id'],
-        'service_period_key': parameters['service_period_key'],
+            locked(
+              'business_timing_profile_version_id',
+              parameters['business_timing_profile_version_id'],
+            ),
+        'service_period_key': locked(
+          'service_period_key',
+          parameters['service_period_key'],
+        ),
+        'daypart_target_cplh': locked(
+          'daypart_target_cplh',
+          parameters['daypart_target_cplh'],
+        ),
+        'daypart_target_splh': locked(
+          'daypart_target_splh',
+          parameters['daypart_target_splh'],
+        ),
+        'daypart_target_ppa': locked(
+          'daypart_target_ppa',
+          parameters['daypart_target_ppa'],
+        ),
+        'daypart_opz_floor_cplh': locked(
+          'daypart_opz_floor_cplh',
+          parameters['daypart_opz_floor_cplh'],
+        ),
+        'daypart_opz_ceiling_cplh': locked(
+          'daypart_opz_ceiling_cplh',
+          parameters['daypart_opz_ceiling_cplh'],
+        ),
         'source_system': parameters['source_system'],
         'source_shift_id': parameters['source_shift_id'],
         'covers_provenance': parameters['covers_provenance'],

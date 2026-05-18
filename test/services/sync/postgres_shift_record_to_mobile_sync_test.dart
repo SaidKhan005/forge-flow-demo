@@ -19,6 +19,7 @@
 // No live HTTP — `_FakeSyncProxyClient` answers every fetch from
 // scripted in-memory state.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';

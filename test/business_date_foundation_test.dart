@@ -144,10 +144,18 @@ void main() {
       expect(shifts, isNotEmpty);
 
       for (final s in shifts) {
-        expect(s.businessDate, isNotNull,
-            reason: '${s.weekId}/${s.dayLabel}/${s.daypart} should have businessDate');
-        expect(s.businessDate, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
-            reason: '${s.weekId}/${s.dayLabel}/${s.daypart} businessDate should be ISO format');
+        expect(
+          s.businessDate,
+          isNotNull,
+          reason:
+              '${s.weekId}/${s.dayLabel}/${s.daypart} should have businessDate',
+        );
+        expect(
+          s.businessDate,
+          matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+          reason:
+              '${s.weekId}/${s.dayLabel}/${s.daypart} businessDate should be ISO format',
+        );
       }
     });
 
@@ -156,10 +164,18 @@ void main() {
       expect(shifts, isNotEmpty);
 
       for (final s in shifts) {
-        expect(s.businessDate, isNotNull,
-            reason: '${s.weekId}/${s.dayLabel}/${s.daypart} should have businessDate');
-        expect(s.businessDate, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
-            reason: '${s.weekId}/${s.dayLabel}/${s.daypart} businessDate should be ISO format');
+        expect(
+          s.businessDate,
+          isNotNull,
+          reason:
+              '${s.weekId}/${s.dayLabel}/${s.daypart} should have businessDate',
+        );
+        expect(
+          s.businessDate,
+          matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+          reason:
+              '${s.weekId}/${s.dayLabel}/${s.daypart} businessDate should be ISO format',
+        );
       }
     });
 
@@ -195,10 +211,18 @@ void main() {
 
       for (final row in rows) {
         final bd = row['business_date'] as String?;
-        expect(bd, isNotNull,
-            reason: '${row['week_id']}/${row['day_label']}/${row['daypart']} should have business_date');
-        expect(bd, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
-            reason: '${row['week_id']}/${row['day_label']}/${row['daypart']} business_date should be ISO');
+        expect(
+          bd,
+          isNotNull,
+          reason:
+              '${row['week_id']}/${row['day_label']}/${row['daypart']} should have business_date',
+        );
+        expect(
+          bd,
+          matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')),
+          reason:
+              '${row['week_id']}/${row['day_label']}/${row['daypart']} business_date should be ISO',
+        );
       }
     });
 
@@ -223,7 +247,9 @@ void main() {
 
       // W13 Mon = 2026-03-23, query exactly one day
       final results = await dao.getClosedShiftsInDateRange(
-        'demo_restaurant_001', '2026-03-23', '2026-03-23',
+        'demo_restaurant_001',
+        '2026-03-23',
+        '2026-03-23',
       );
 
       // Should get all closed shifts for Monday (lunch + dinner)
@@ -240,12 +266,17 @@ void main() {
 
       // Wide range covering projected shifts too
       final results = await dao.getClosedShiftsInDateRange(
-        'demo_restaurant_001', '2026-03-23', '2026-03-29',
+        'demo_restaurant_001',
+        '2026-03-23',
+        '2026-03-29',
       );
 
       for (final r in results) {
-        expect(r.status, 'closed',
-            reason: 'date-range query must return only closed shifts');
+        expect(
+          r.status,
+          'closed',
+          reason: 'date-range query must return only closed shifts',
+        );
       }
     });
 
@@ -255,7 +286,9 @@ void main() {
 
       // Non-existent restaurant should return empty
       final results = await dao.getClosedShiftsInDateRange(
-        'nonexistent_restaurant', '2026-01-01', '2026-12-31',
+        'nonexistent_restaurant',
+        '2026-01-01',
+        '2026-12-31',
       );
 
       expect(results, isEmpty);
@@ -267,7 +300,9 @@ void main() {
 
       // Query a range that has no shifts (far future)
       final results = await dao.getClosedShiftsInDateRange(
-        'demo_restaurant_001', '2027-01-01', '2027-12-31',
+        'demo_restaurant_001',
+        '2027-01-01',
+        '2027-12-31',
       );
 
       expect(results, isEmpty);
@@ -279,7 +314,9 @@ void main() {
 
       // Multi-day range
       final results = await dao.getClosedShiftsInDateRange(
-        'demo_restaurant_001', '2026-01-26', '2026-03-27',
+        'demo_restaurant_001',
+        '2026-01-26',
+        '2026-03-27',
       );
 
       expect(results.length, greaterThan(1));
@@ -288,8 +325,11 @@ void main() {
       for (int i = 1; i < results.length; i++) {
         final prevDate = results[i - 1].businessDate!;
         final currDate = results[i].businessDate!;
-        expect(prevDate.compareTo(currDate), greaterThanOrEqualTo(0),
-            reason: 'results should be ordered by business_date DESC');
+        expect(
+          prevDate.compareTo(currDate),
+          greaterThanOrEqualTo(0),
+          reason: 'results should be ordered by business_date DESC',
+        );
       }
     });
 
@@ -301,13 +341,87 @@ void main() {
       // (2026-01-01 .. 2026-03-27) still covers well over 8 weeks ×
       // 14 shifts of closed history plus the current week's closed days.
       final results = await dao.getClosedShiftsInDateRange(
-        'demo_restaurant_001', '2026-01-01', '2026-03-27',
+        'demo_restaurant_001',
+        '2026-01-01',
+        '2026-03-27',
       );
 
       // At minimum we should get all historical weeks' closed shifts
       expect(results.length, greaterThanOrEqualTo(112));
       // All should be closed
       expect(results.every((r) => r.isClosed), isTrue);
+    });
+  });
+
+  group('D2 — replaceShiftForSlot stable slot identity', () {
+    setUp(() async {
+      await SqliteDatabase.instance.reseedDemo();
+    });
+
+    test(
+      'uses business_date + service_period_key across label changes',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        final dao = ShiftRecordDao(db);
+
+        await dao.replaceShiftForSlot(
+          _slotShift(daypart: 'dinner', servicePeriodKey: 'dinner', covers: 80),
+        );
+        await dao.replaceShiftForSlot(
+          _slotShift(
+            daypart: 'evening_service',
+            servicePeriodKey: 'dinner',
+            covers: 96,
+          ),
+        );
+
+        final rows = await db.query(
+          'shift_records',
+          where: 'restaurant_id = ? AND business_date = ?',
+          whereArgs: ['slot_identity_restaurant', '2026-05-06'],
+        );
+        expect(rows, hasLength(1));
+        expect(rows.single['daypart'], 'evening_service');
+        expect(rows.single['service_period_key'], 'dinner');
+        expect(rows.single['covers'], 96);
+      },
+    );
+
+    test('removes legacy null-service-period row for same daypart', () async {
+      final db = await SqliteDatabase.instance.database;
+      final dao = ShiftRecordDao(db);
+
+      await db.insert('shift_records', {
+        'restaurant_id': 'slot_identity_restaurant',
+        'week_id': '2026-W19',
+        'day_label': 'Wed',
+        'daypart': 'dinner',
+        'status': 'closed',
+        'business_date': '2026-05-06',
+        'service_period_key': null,
+        'covers': 80,
+        'forecast_covers': 80,
+        'ppa': 40.0,
+        'cplh': 10.0,
+        'splh': 150.0,
+        'foh_hours': 8,
+        'boh_hours': 9,
+        'theoretical_labor_pct': 20.0,
+        'primary_lever': 'ON_MODEL',
+      });
+
+      await dao.replaceShiftForSlot(
+        _slotShift(daypart: 'dinner', servicePeriodKey: 'dinner', covers: 96),
+      );
+
+      final rows = await db.query(
+        'shift_records',
+        where: 'restaurant_id = ? AND business_date = ?',
+        whereArgs: ['slot_identity_restaurant', '2026-05-06'],
+      );
+      expect(rows, hasLength(1));
+      expect(rows.single['service_period_key'], 'dinner');
+      expect(rows.single['covers'], 96);
     });
   });
 
@@ -381,8 +495,11 @@ void main() {
       );
       // At least one row should have the backfilled date
       final backfilled = rows.where((r) => r['business_date'] == '2026-03-27');
-      expect(backfilled, isNotEmpty,
-          reason: 'valid 2026-W13 + Fri should backfill to 2026-03-27');
+      expect(
+        backfilled,
+        isNotEmpty,
+        reason: 'valid 2026-W13 + Fri should backfill to 2026-03-27',
+      );
     });
 
     test('malformed weekId row remains business_date null', () async {
@@ -418,8 +535,11 @@ void main() {
         "SELECT business_date FROM shift_records WHERE week_id = 'garbage_week'",
       );
       expect(rows.length, 1);
-      expect(rows.first['business_date'], isNull,
-          reason: 'malformed weekId should remain business_date null');
+      expect(
+        rows.first['business_date'],
+        isNull,
+        reason: 'malformed weekId should remain business_date null',
+      );
     });
 
     test('unknown dayLabel row remains business_date null', () async {
@@ -455,8 +575,11 @@ void main() {
         "SELECT business_date FROM shift_records WHERE day_label = 'Xyz'",
       );
       expect(rows.length, 1);
-      expect(rows.first['business_date'], isNull,
-          reason: 'unknown dayLabel should remain business_date null');
+      expect(
+        rows.first['business_date'],
+        isNull,
+        reason: 'unknown dayLabel should remain business_date null',
+      );
     });
 
     test('date-range query excludes null business_date rows', () async {
@@ -489,17 +612,25 @@ void main() {
 
       // Wide range that would include everything
       final results = await dao.getClosedShiftsInDateRange(
-        'demo_restaurant_001', '1900-01-01', '2099-12-31',
+        'demo_restaurant_001',
+        '1900-01-01',
+        '2099-12-31',
       );
 
       // None of the returned rows should have null businessDate
       for (final r in results) {
-        expect(r.businessDate, isNotNull,
-            reason: 'date-range query must exclude null business_date rows');
+        expect(
+          r.businessDate,
+          isNotNull,
+          reason: 'date-range query must exclude null business_date rows',
+        );
       }
       // Confirm the null row is NOT in the results
-      expect(results.where((r) => r.weekId == 'not-a-week'), isEmpty,
-          reason: 'malformed row with null business_date must be excluded');
+      expect(
+        results.where((r) => r.weekId == 'not-a-week'),
+        isEmpty,
+        reason: 'malformed row with null business_date must be excluded',
+      );
     });
 
     test('no row ever gets 1970-01-01 sentinel value', () async {
@@ -541,50 +672,59 @@ void main() {
       final sentinelRows = await db.rawQuery(
         "SELECT * FROM shift_records WHERE business_date = '1970-01-01'",
       );
-      expect(sentinelRows, isEmpty,
-          reason: 'no row should ever get the 1970-01-01 sentinel value');
+      expect(
+        sentinelRows,
+        isEmpty,
+        reason: 'no row should ever get the 1970-01-01 sentinel value',
+      );
     });
 
-    test('non-strict single-digit week ids remain business_date null', () async {
-      final db = await SqliteDatabase.instance.database;
+    test(
+      'non-strict single-digit week ids remain business_date null',
+      () async {
+        final db = await SqliteDatabase.instance.database;
 
-      for (final weekId in ['2026-W1', '2026-W5', '2026-W9']) {
-        await db.insert('shift_records', {
-          'restaurant_id': 'demo_restaurant_001',
-          'week_id': weekId,
-          'day_label': 'Mon',
-          'daypart': 'lunch',
-          'status': 'closed',
-          'business_date': null,
-          'covers': 50,
-          'forecast_covers': 55,
-          'ppa': 40.0,
-          'cplh': 4.0,
-          'splh': 170.0,
-          'blended_wage': 17.0,
-          'foh_hours': 12,
-          'boh_hours': 13,
-          'foh_labor_pct': 8.0,
-          'boh_labor_pct': 12.0,
-          'total_labor_pct': 20.0,
-          'theoretical_labor_pct': 20.48,
-          'variance_pts': -0.48,
-          'primary_lever': 'ON_MODEL',
-        });
-      }
+        for (final weekId in ['2026-W1', '2026-W5', '2026-W9']) {
+          await db.insert('shift_records', {
+            'restaurant_id': 'demo_restaurant_001',
+            'week_id': weekId,
+            'day_label': 'Mon',
+            'daypart': 'lunch',
+            'status': 'closed',
+            'business_date': null,
+            'covers': 50,
+            'forecast_covers': 55,
+            'ppa': 40.0,
+            'cplh': 4.0,
+            'splh': 170.0,
+            'blended_wage': 17.0,
+            'foh_hours': 12,
+            'boh_hours': 13,
+            'foh_labor_pct': 8.0,
+            'boh_labor_pct': 12.0,
+            'total_labor_pct': 20.0,
+            'theoretical_labor_pct': 20.48,
+            'variance_pts': -0.48,
+            'primary_lever': 'ON_MODEL',
+          });
+        }
 
-      await SqliteDatabase.instance.migrateToV12ForTest(db);
+        await SqliteDatabase.instance.migrateToV12ForTest(db);
 
-      for (final weekId in ['2026-W1', '2026-W5', '2026-W9']) {
-        final rows = await db.rawQuery(
-          'SELECT business_date FROM shift_records WHERE week_id = ?',
-          [weekId],
-        );
-        expect(rows.length, 1);
-        expect(rows.first['business_date'], isNull,
-            reason: '$weekId is non-strict — should remain business_date null');
-      }
-    });
+        for (final weekId in ['2026-W1', '2026-W5', '2026-W9']) {
+          final rows = await db.rawQuery(
+            'SELECT business_date FROM shift_records WHERE week_id = ?',
+            [weekId],
+          );
+          expect(rows.length, 1);
+          expect(
+            rows.first['business_date'],
+            isNull,
+            reason: '$weekId is non-strict — should remain business_date null',
+          );
+        }
+      },
+    );
 
     test('no seeded shift_record has 1970-01-01 as business_date', () async {
       await SqliteDatabase.instance.reseedDemo();
@@ -593,8 +733,11 @@ void main() {
       final sentinelRows = await db.rawQuery(
         "SELECT * FROM shift_records WHERE business_date = '1970-01-01'",
       );
-      expect(sentinelRows, isEmpty,
-          reason: 'no seeded shift_record should have 1970-01-01');
+      expect(
+        sentinelRows,
+        isEmpty,
+        reason: 'no seeded shift_record should have 1970-01-01',
+      );
     });
   });
 
@@ -609,8 +752,9 @@ void main() {
       final db = await SqliteDatabase.instance.database;
       final dao = ShiftRecordDao(db);
 
-      final latest =
-          await dao.getLatestClosedBusinessDate('demo_restaurant_001');
+      final latest = await dao.getLatestClosedBusinessDate(
+        'demo_restaurant_001',
+      );
       expect(latest, isNotNull);
       // Should be a valid ISO date string
       expect(latest, matches(RegExp(r'^\d{4}-\d{2}-\d{2}$')));
@@ -620,8 +764,9 @@ void main() {
       final db = await SqliteDatabase.instance.database;
       final dao = ShiftRecordDao(db);
 
-      final latest =
-          await dao.getLatestClosedBusinessDate('nonexistent_restaurant');
+      final latest = await dao.getLatestClosedBusinessDate(
+        'nonexistent_restaurant',
+      );
       expect(latest, isNull);
     });
 
@@ -653,10 +798,36 @@ void main() {
         'primary_lever': 'ON_MODEL',
       });
 
-      final latest =
-          await dao.getLatestClosedBusinessDate('demo_restaurant_001');
+      final latest = await dao.getLatestClosedBusinessDate(
+        'demo_restaurant_001',
+      );
       // Should not return '2026-05-11' because that's a projected shift
       expect(latest, isNot('2026-05-11'));
     });
   });
+}
+
+ShiftRecord _slotShift({
+  required String daypart,
+  required String servicePeriodKey,
+  required int covers,
+}) {
+  return ShiftRecord(
+    restaurantId: 'slot_identity_restaurant',
+    weekId: '2026-W19',
+    dayLabel: 'Wed',
+    daypart: daypart,
+    status: 'closed',
+    businessDate: '2026-05-06',
+    servicePeriodKey: servicePeriodKey,
+    covers: covers,
+    forecastCovers: covers,
+    ppa: 40.0,
+    cplh: 10.0,
+    splh: 150.0,
+    fohHours: 8,
+    bohHours: 9,
+    theoreticalLaborPct: 20.0,
+    primaryLever: 'ON_MODEL',
+  );
 }
