@@ -54,6 +54,13 @@ const String wageRoleRowsPrefix = '$wageRoleRowsPath/';
 /// Labor-bucket values admitted by the migration's CHECK constraint.
 const Set<String> _kAdmittedLaborBuckets = <String>{'foh', 'boh', 'manager'};
 
+/// Hierarchy scope values admitted by the migration's CHECK constraint.
+const Set<String> _kAdmittedScopeTypes = <String>{
+  'operator_wide',
+  'org_unit',
+  'location',
+};
+
 /// Source values admitted by the migration's CHECK constraint.
 const Set<String> _kAdmittedSources = <String>{
   'operator_manual',
@@ -103,6 +110,8 @@ abstract class WageRoleRowsGateway {
     bool isActive,
     Map<String, Object?> metadata,
     String? actorUserId,
+    String scopeType = 'location',
+    String? orgUnitId,
   });
 
   Future<bool> softDelete({
@@ -135,6 +144,8 @@ class RepositoryWageRoleRowsGateway implements WageRoleRowsGateway {
     bool isActive = true,
     Map<String, Object?> metadata = const <String, Object?>{},
     String? actorUserId,
+    String scopeType = 'location',
+    String? orgUnitId,
   }) => repository.upsert(
     operatorId: operatorId,
     locationId: locationId,
@@ -150,6 +161,8 @@ class RepositoryWageRoleRowsGateway implements WageRoleRowsGateway {
     isActive: isActive,
     metadata: metadata,
     actorUserId: actorUserId,
+    scopeType: scopeType,
+    orgUnitId: orgUnitId,
   );
 
   @override
@@ -292,6 +305,8 @@ abstract class WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   });
 
@@ -325,6 +340,8 @@ class NoopWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   }) async {}
 
@@ -531,6 +548,40 @@ class WageRoleRowsRouter {
       metadata = Map<String, Object?>.from(metadataRaw);
     }
 
+    final scopeType =
+        _optionalString(body, 'scope_type', maxLength: 32) ?? 'location';
+    if (!_kAdmittedScopeTypes.contains(scopeType)) {
+      throw WageRoleRowsRouteRejected(
+        code: 'invalid_scope_type',
+        message:
+            'scope_type must be one of '
+            '${_kAdmittedScopeTypes.join(' / ')}',
+        statusCode: 400,
+      );
+    }
+    final orgUnitId = _optionalString(body, 'org_unit_id', maxLength: 36);
+    if (orgUnitId != null && !_kUuidPattern.hasMatch(orgUnitId)) {
+      throw const WageRoleRowsRouteRejected(
+        code: 'invalid_org_unit_id',
+        message: 'org_unit_id must be a UUID',
+        statusCode: 400,
+      );
+    }
+    if (scopeType == 'org_unit' && orgUnitId == null) {
+      throw const WageRoleRowsRouteRejected(
+        code: 'missing_org_unit_id',
+        message: 'org_unit_id is required when scope_type is org_unit',
+        statusCode: 400,
+      );
+    }
+    if (scopeType != 'org_unit' && orgUnitId != null) {
+      throw const WageRoleRowsRouteRejected(
+        code: 'invalid_org_unit_id',
+        message: 'org_unit_id is only used when scope_type is org_unit',
+        statusCode: 400,
+      );
+    }
+
     final record = await gateway.upsert(
       operatorId: operatorId,
       locationId: locationId,
@@ -545,6 +596,8 @@ class WageRoleRowsRouter {
       source: source,
       metadata: metadata,
       actorUserId: actorUserId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
     );
     // Hash-chained audit log (Hard Contract 7). The sink swallows
     // failures so a downstream observability outage cannot 5xx a
@@ -561,6 +614,8 @@ class WageRoleRowsRouter {
       hourlyRate: record.hourlyRate,
       weightedHours: record.weightedHours,
       source: record.source.wire,
+      scopeType: record.scopeType,
+      orgUnitId: record.orgUnitId,
       occurredAt: _now().toUtc(),
     );
     return (statusCode: 200, body: record.toJson());

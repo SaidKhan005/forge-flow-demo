@@ -219,7 +219,7 @@ void main() {
             'demo_mode_states:op-1:loc-1',
             'data_accuracy_settings:op-1:loc-1',
             'data_accuracy_service_period_settings:op-1:loc-1',
-            'wage_role_rows:op-1:loc-1:2026-05-06T12:00:00Z:1',
+            'wage_role_rows:op-1:loc-1:2026-05-06T12:00:00Z:1:false',
             'polling_tier_assignment:op-1:loc-1',
             'first_backfill_status:op-1:loc-1',
           ]);
@@ -1681,9 +1681,11 @@ class _FakeMobileOperationalSyncGateway
     required String locationId,
     required String? modifiedSince,
     required int pageSize,
+    required bool includeHierarchy,
   }) async {
     calls.add(
-      'wage_role_rows:$operatorId:$locationId:$modifiedSince:$pageSize',
+      'wage_role_rows:$operatorId:$locationId:$modifiedSince:$pageSize:'
+      '$includeHierarchy',
     );
     return const <String, Object?>{
       'wage_role_rows': <Map<String, Object?>>[
