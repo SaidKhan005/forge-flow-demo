@@ -38,9 +38,11 @@ import '../domain/services/distribution_weight_builder.dart';
 import '../domain/services/schedule_forecast_demand_resolver.dart';
 import '../domain/services/schedule_plan_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
 import 'business_date_authority_service.dart';
+import 'closed_truth_eligibility.dart';
 import 'demand_forecast_context_service.dart';
 import 'wage_standard_context_service.dart';
 import 'weekly_plan_snapshot_service.dart';
@@ -58,8 +60,8 @@ class SchedulePlanReadService {
         .getActiveRestaurantId();
 
     final profile = await _loadProfile(restaurantId);
-    final demandCtx =
-        await DemandForecastContextService.instance.getCurrentContext();
+    final demandCtx = await DemandForecastContextService.instance
+        .getCurrentContext();
     final demand = ScheduleForecastDemandResolver.resolveFromContext(
       targetPPA: profile.targetPPA,
       context: demandCtx,
@@ -97,8 +99,8 @@ class SchedulePlanReadService {
   /// want snapshot creation as a side effect — week-roll bootstrap,
   /// Audit/Shift initial generation, and similar.
   Future<SchedulePlan?> getCurrentLockedWeeklyPlan() async {
-    final snapshot =
-        await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+    final snapshot = await WeeklyPlanSnapshotService.instance
+        .getCurrentWeekSnapshot();
     if (snapshot == null) return null;
     return WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
   }
@@ -160,8 +162,8 @@ class SchedulePlanReadService {
     required double fohWage,
     required double bohWage,
   }) async {
-    final demandCtx =
-        await DemandForecastContextService.instance.getCurrentContext();
+    final demandCtx = await DemandForecastContextService.instance
+        .getCurrentContext();
     final demand = ScheduleForecastDemandResolver.resolveFromContext(
       targetPPA: targetPPA,
       context: demandCtx,
@@ -223,8 +225,9 @@ class SchedulePlanReadService {
   /// Loads the active target profile, bootstrapping with wage authority
   /// if no persisted profile exists.
   Future<ActiveTargetProfile> _loadProfile(String restaurantId) async {
-    return WageStandardContextService.instance
-        .loadOrBootstrapProfile(restaurantId);
+    return WageStandardContextService.instance.loadOrBootstrapProfile(
+      restaurantId,
+    );
   }
 
   /// Loads data-driven distribution weights using business-date-anchored
@@ -245,21 +248,29 @@ class SchedulePlanReadService {
 
       // 60-day baseline window (inclusive).
       final baselineStart = DemandForecastContextService.subtractDays(
-          anchorDate, 59);
+        anchorDate,
+        59,
+      );
       final baselineShifts = await SqliteShiftRecordRepository.instance
-          .getClosedShiftsInDateRange(
-              restaurantId, baselineStart, anchorDate);
+          .getClosedShiftsInDateRange(restaurantId, baselineStart, anchorDate);
 
       // 21-day recent window (inclusive).
       final recentStart = DemandForecastContextService.subtractDays(
-          anchorDate, 20);
+        anchorDate,
+        20,
+      );
       final recentShifts = await SqliteShiftRecordRepository.instance
-          .getClosedShiftsInDateRange(
-              restaurantId, recentStart, anchorDate);
+          .getClosedShiftsInDateRange(restaurantId, recentStart, anchorDate);
+      final operationalBusinessDate = await SqliteOpenShiftSnapshotRepository
+          .instance
+          .getCurrentBusinessDate(restaurantId);
 
       return DistributionWeightBuilder.fromDateWindowShifts(
         baselineShifts: baselineShifts,
         recentShifts: recentShifts,
+        currentOperationalBusinessDate: operationalBusinessDate,
+        shiftCloseAuthorityForRow:
+            ClosedTruthEligibility.closeAuthorityForShift,
       );
     } catch (_) {
       return null;

@@ -49,80 +49,101 @@ void main() {
   });
 
   group('bindPhase8IntegrationsForProduction', () {
-    test('installs Phase80IntegrationRoutes.globalBindings on first call',
-        () async {
-      final config = _buildConfig();
-      final bindings = _buildBindings();
+    test(
+      'installs Phase80IntegrationRoutes.globalBindings on first call',
+      () async {
+        final config = _buildConfig();
+        final bindings = _buildBindings();
 
-      expect(Phase80IntegrationRoutes.globalBindings, isNull);
+        expect(Phase80IntegrationRoutes.globalBindings, isNull);
 
-      await bindPhase8IntegrationsForProduction(
-        bindings,
-        config,
-        proxyJwtVerifier: _StubJwtVerifier(),
-      );
+        await bindPhase8IntegrationsForProduction(
+          bindings,
+          config,
+          proxyJwtVerifier: _StubJwtVerifier(),
+        );
 
-      expect(Phase80IntegrationRoutes.globalBindings, isNotNull);
-      final installed = Phase80IntegrationRoutes.globalBindings!;
-      // Smoke-check the holder. The webhook handler must have at
-      // least the Toast factory + verifier wired (Toast does not
-      // require any optional secrets so it is always on).
-      expect(installed.webhookHandler.posAdapterFactories,
-          contains('toast'));
-      expect(installed.webhookHandler.signatureVerifiers,
-          contains('toast'));
-      expect(installed.firstBackfillEnqueueGateway, isNotNull);
-    });
+        expect(Phase80IntegrationRoutes.globalBindings, isNotNull);
+        final installed = Phase80IntegrationRoutes.globalBindings!;
+        // Smoke-check the holder. The webhook handler must have at
+        // least the Toast factory + verifier wired (Toast does not
+        // require any optional secrets so it is always on).
+        expect(installed.webhookHandler.posAdapterFactories, contains('toast'));
+        expect(installed.webhookHandler.signatureVerifiers, contains('toast'));
+        expect(installed.firstBackfillEnqueueGateway, isNotNull);
+        expect(
+          phase8ProjectingSinksByVendor,
+          contains('toast'),
+          reason:
+              'production boot should create the default post-commit '
+              'projector wiring when no test override is supplied',
+        );
+      },
+    );
 
-    test('idempotent — second call is a no-op (no double-register, no throw)',
-        () async {
-      final config = _buildConfig();
-      final bindings = _buildBindings();
+    test(
+      'idempotent — second call is a no-op (no double-register, no throw)',
+      () async {
+        final config = _buildConfig();
+        final bindings = _buildBindings();
 
-      await bindPhase8IntegrationsForProduction(
-        bindings,
-        config,
-        proxyJwtVerifier: _StubJwtVerifier(),
-      );
-      final firstHolder = Phase80IntegrationRoutes.globalBindings;
-      await bindPhase8IntegrationsForProduction(
-        bindings,
-        config,
-        proxyJwtVerifier: _StubJwtVerifier(),
-      );
-      final secondHolder = Phase80IntegrationRoutes.globalBindings;
+        await bindPhase8IntegrationsForProduction(
+          bindings,
+          config,
+          proxyJwtVerifier: _StubJwtVerifier(),
+        );
+        final firstHolder = Phase80IntegrationRoutes.globalBindings;
+        await bindPhase8IntegrationsForProduction(
+          bindings,
+          config,
+          proxyJwtVerifier: _StubJwtVerifier(),
+        );
+        final secondHolder = Phase80IntegrationRoutes.globalBindings;
 
-      // Same instance (the second call short-circuits before
-      // overwriting).
-      expect(identical(firstHolder, secondHolder), isTrue);
-    });
+        // Same instance (the second call short-circuits before
+        // overwriting).
+        expect(identical(firstHolder, secondHolder), isTrue);
+      },
+    );
   });
 
   group('per-tenant factory routing', () {
-    test('Toast factory yields distinct adapters for (opA, locA) and (opB, locB)',
-        () async {
-      final config = _buildConfig();
-      final bindings = _buildBindings();
+    test(
+      'Toast factory yields distinct adapters for (opA, locA) and (opB, locB)',
+      () async {
+        final config = _buildConfig();
+        final bindings = _buildBindings();
 
-      await bindPhase8IntegrationsForProduction(
-        bindings,
-        config,
-        proxyJwtVerifier: _StubJwtVerifier(),
-      );
+        await bindPhase8IntegrationsForProduction(
+          bindings,
+          config,
+          proxyJwtVerifier: _StubJwtVerifier(),
+        );
 
-      final factory = Phase80IntegrationRoutes
-          .globalBindings!.webhookHandler.posAdapterFactories['toast']!;
+        final factory = Phase80IntegrationRoutes
+            .globalBindings!
+            .webhookHandler
+            .posAdapterFactories['toast']!;
 
-      final adapterA =
-          await factory(operatorId: _operatorA, locationId: _locationA);
-      final adapterB =
-          await factory(operatorId: _operatorB, locationId: _locationB);
+        final adapterA = await factory(
+          operatorId: _operatorA,
+          locationId: _locationA,
+        );
+        final adapterB = await factory(
+          operatorId: _operatorB,
+          locationId: _locationB,
+        );
 
-      expect(identical(adapterA, adapterB), isFalse,
-          reason: 'each factory invocation must build a fresh adapter so '
+        expect(
+          identical(adapterA, adapterB),
+          isFalse,
+          reason:
+              'each factory invocation must build a fresh adapter so '
               '(operator, location)-bound credential resolvers stay '
-              'isolated per tenant');
-    });
+              'isolated per tenant',
+        );
+      },
+    );
   });
 
   group('JWT adapter plumbing', () {
@@ -137,7 +158,7 @@ void main() {
             userId: 'fb-uid',
             operatorId: _operatorA,
             locationId: _locationA,
-            roles: <String>['operator_admin'],
+            roles: <String>['operator_owner'],
             firebaseUid: 'fb-uid',
           ),
         ),
@@ -148,8 +169,11 @@ void main() {
       // Build a request with no Authorization header.
       final request = _StubHttpRequest(headers: const <String, String>{});
       final ctx = await actorResolver(request);
-      expect(ctx, isNull,
-          reason: 'missing Authorization header → null context (route 401s)');
+      expect(
+        ctx,
+        isNull,
+        reason: 'missing Authorization header → null context (route 401s)',
+      );
     });
 
     test('lib-side JWT bridge passes claims through tool-side verifier', () {
@@ -163,54 +187,65 @@ void main() {
   });
 
   group('optional vendor app credentials missing', () {
-    test('Clover factory NOT registered when hasCloverAppCredentials is false',
-        () async {
-      final config = _buildConfig();
-      // Sanity: Clover credentials default to absent.
-      expect(config.hasCloverAppCredentials, isFalse);
+    test(
+      'Clover factory NOT registered when hasCloverAppCredentials is false',
+      () async {
+        final config = _buildConfig();
+        // Sanity: Clover credentials default to absent.
+        expect(config.hasCloverAppCredentials, isFalse);
 
-      final bindings = _buildBindings();
-      await bindPhase8IntegrationsForProduction(
-        bindings,
-        config,
-        proxyJwtVerifier: _StubJwtVerifier(),
-      );
+        final bindings = _buildBindings();
+        await bindPhase8IntegrationsForProduction(
+          bindings,
+          config,
+          proxyJwtVerifier: _StubJwtVerifier(),
+        );
 
-      final factories = Phase80IntegrationRoutes
-          .globalBindings!.webhookHandler.posAdapterFactories;
-      expect(factories.containsKey('clover'), isFalse,
-          reason: 'optional vendor with missing app credentials must '
-              'warn-and-disable, not throw at boot');
-      // Toast is NOT optional and must remain wired.
-      expect(factories.containsKey('toast'), isTrue);
-    });
+        final factories = Phase80IntegrationRoutes
+            .globalBindings!
+            .webhookHandler
+            .posAdapterFactories;
+        expect(
+          factories.containsKey('clover'),
+          isFalse,
+          reason:
+              'optional vendor with missing app credentials must '
+              'warn-and-disable, not throw at boot',
+        );
+        // Toast is NOT optional and must remain wired.
+        expect(factories.containsKey('toast'), isTrue);
+      },
+    );
 
-    test('Clover factory IS registered when hasCloverAppCredentials is true',
-        () async {
-      final config = _buildConfig(
-        extraEnv: <String, String>{
-          ProxySecretNames.cloverAppToken: 'placeholder-clover-app-token',
-          ProxySecretNames.cloverAppId: 'placeholder-clover-app-id',
-        },
-      );
-      expect(config.hasCloverAppCredentials, isTrue);
+    test(
+      'Clover factory IS registered when hasCloverAppCredentials is true',
+      () async {
+        final config = _buildConfig(
+          extraEnv: <String, String>{
+            ProxySecretNames.cloverAppToken: 'placeholder-clover-app-token',
+            ProxySecretNames.cloverAppId: 'placeholder-clover-app-id',
+          },
+        );
+        expect(config.hasCloverAppCredentials, isTrue);
 
-      final bindings = _buildBindings(config: config);
-      await bindPhase8IntegrationsForProduction(
-        bindings,
-        config,
-        proxyJwtVerifier: _StubJwtVerifier(),
-      );
+        final bindings = _buildBindings(config: config);
+        await bindPhase8IntegrationsForProduction(
+          bindings,
+          config,
+          proxyJwtVerifier: _StubJwtVerifier(),
+        );
 
-      final factories = Phase80IntegrationRoutes
-          .globalBindings!.webhookHandler.posAdapterFactories;
-      expect(factories.containsKey('clover'), isTrue);
-    });
+        final factories = Phase80IntegrationRoutes
+            .globalBindings!
+            .webhookHandler
+            .posAdapterFactories;
+        expect(factories.containsKey('clover'), isTrue);
+      },
+    );
   });
 
   group('async-factory vendors (Lightspeed LSK + SevenRooms)', () {
-    test(
-        'lightspeed_lsk is wired in posAdapterFactories (no longer '
+    test('lightspeed_lsk is wired in posAdapterFactories (no longer '
         'disabled-with-warn after async typedef)', () async {
       final config = _buildConfig();
       final bindings = _buildBindings();
@@ -225,22 +260,25 @@ void main() {
       // PR `8.framework.async-adapter-factories` because the sync
       // typedef could not await `PerTenantLocationConfigResolver`).
       expect(
-        installed.webhookHandler.posAdapterFactories.containsKey('lightspeed_lsk'),
+        installed.webhookHandler.posAdapterFactories.containsKey(
+          'lightspeed_lsk',
+        ),
         isTrue,
-        reason: 'lightspeed_lsk must move from disabled list to wired list '
+        reason:
+            'lightspeed_lsk must move from disabled list to wired list '
             'now that PosAdapterFactory returns Future<PosAdapter>',
       );
       // Signature verifier is also registered (was already on the
       // disabled-but-verifiable list pre-PR).
       expect(
-        installed.webhookHandler.signatureVerifiers
-            .containsKey('lightspeed_lsk'),
+        installed.webhookHandler.signatureVerifiers.containsKey(
+          'lightspeed_lsk',
+        ),
         isTrue,
       );
     });
 
-    test(
-        'sevenrooms is wired in reservationAdapterFactories (no longer '
+    test('sevenrooms is wired in reservationAdapterFactories (no longer '
         'disabled-with-warn after async typedef)', () async {
       final config = _buildConfig();
       final bindings = _buildBindings();
@@ -252,10 +290,12 @@ void main() {
 
       final installed = Phase80IntegrationRoutes.globalBindings!;
       expect(
-        installed.webhookHandler.reservationAdapterFactories
-            .containsKey('sevenrooms'),
+        installed.webhookHandler.reservationAdapterFactories.containsKey(
+          'sevenrooms',
+        ),
         isTrue,
-        reason: 'sevenrooms must move from disabled list to wired list now '
+        reason:
+            'sevenrooms must move from disabled list to wired list now '
             'that ReservationAdapterFactory returns Future<ReservationAdapter>',
       );
       expect(
@@ -329,7 +369,7 @@ class _StubJwtVerifier implements ProxyJwtVerifier {
 
 class _StubHttpRequest implements HttpRequest {
   _StubHttpRequest({required Map<String, String> headers})
-      : _headers = _StubHttpHeaders(headers);
+    : _headers = _StubHttpHeaders(headers);
 
   final HttpHeaders _headers;
 

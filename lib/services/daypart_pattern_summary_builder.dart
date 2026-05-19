@@ -14,10 +14,17 @@
 
 import '../domain/constants/app_defaults.dart';
 import '../domain/canonical_day_order.dart';
+import '../domain/models/restaurant_timing_config.dart';
+import '../domain/models/service_period_definition.dart';
+import '../domain/services/shift_boundary_resolver.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/shift_record.dart';
 import '../services/closed_timing_label_resolver.dart';
 import '../services/labor_model.dart';
+
+typedef DaypartPatternShiftCloseAuthorityResolver =
+    ShiftCloseAuthority Function(ShiftRecord shift);
 
 class DaypartPatternSummaryBuilder {
   DaypartPatternSummaryBuilder._();
@@ -61,7 +68,7 @@ class DaypartPatternSummaryBuilder {
 
   /// Builds aggregate summaries from closed [ShiftRecord]s.
   ///
-  /// - Only `status == 'closed'` rows are included.
+  /// - Only rows eligible for closed-truth surfaces are included.
   /// - Grouped by `restaurantId + dayLabel + daypart`.
   /// - [minSampleThreshold]: summaries with fewer closed shifts are
   ///   excluded from the output. Defaults to 1 (include all non-empty
@@ -71,13 +78,29 @@ class DaypartPatternSummaryBuilder {
     List<ShiftRecord> shifts, {
     int minSampleThreshold = 1,
     ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+    String? currentOperationalBusinessDate,
+    DaypartPatternShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
+    final configuredDefinitions = servicePeriodDefinitions?.isNotEmpty == true
+        ? servicePeriodDefinitions
+        : null;
+
     // ── 1. Group closed shifts by recurring bucket ────────────────────────
     final buckets = <String, List<ShiftRecord>>{};
     for (final shift in shifts) {
-      if (!shift.isClosed) continue;
-      final bucketKey =
-          timingLabelResolver?.bucketKeyFor(shift) ?? shift.daypart;
+      if (!_isEligibleClosedTruth(
+        shift,
+        currentOperationalBusinessDate: currentOperationalBusinessDate,
+        shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
+      )) {
+        continue;
+      }
+      final bucketKey = _bucketKeyFor(
+        shift,
+        timingLabelResolver: timingLabelResolver,
+        servicePeriodDefinitions: configuredDefinitions,
+      );
       final key = '${shift.restaurantId}|${shift.dayLabel}|$bucketKey';
       (buckets[key] ??= []).add(shift);
     }
@@ -93,8 +116,21 @@ class DaypartPatternSummaryBuilder {
         _buildSummary(
           restaurantId: first.restaurantId,
           dayLabel: first.dayLabel,
-          daypart: timingLabelResolver?.bucketKeyFor(first) ?? first.daypart,
-          servicePeriodLabel: timingLabelResolver?.labelFor(first),
+          daypart: _bucketKeyFor(
+            first,
+            timingLabelResolver: timingLabelResolver,
+            servicePeriodDefinitions: configuredDefinitions,
+          ),
+          servicePeriodLabel: _servicePeriodLabelFor(
+            first,
+            timingLabelResolver: timingLabelResolver,
+            servicePeriodDefinitions: configuredDefinitions,
+          ),
+          servicePeriodSortOrder: _servicePeriodSortOrderFor(
+            first,
+            timingLabelResolver: timingLabelResolver,
+            servicePeriodDefinitions: configuredDefinitions,
+          ),
           shifts: group,
         ),
       );
@@ -106,8 +142,10 @@ class DaypartPatternSummaryBuilder {
       final dayB = CanonicalDayOrder.index[b.dayLabel] ?? 99;
       if (dayA != dayB) return dayA.compareTo(dayB);
 
-      final dpA = _servicePeriodOrder[a.daypart] ?? 99;
-      final dpB = _servicePeriodOrder[b.daypart] ?? 99;
+      final dpA =
+          a.servicePeriodSortOrder ?? _servicePeriodOrder[a.daypart] ?? 99;
+      final dpB =
+          b.servicePeriodSortOrder ?? _servicePeriodOrder[b.daypart] ?? 99;
       if (dpA != dpB) return dpA.compareTo(dpB);
 
       // Final tiebreak on daypart string for unknown IDs.
@@ -124,6 +162,7 @@ class DaypartPatternSummaryBuilder {
     required String dayLabel,
     required String daypart,
     String? servicePeriodLabel,
+    int? servicePeriodSortOrder,
     required List<ShiftRecord> shifts,
   }) {
     final count = shifts.length;
@@ -211,6 +250,7 @@ class DaypartPatternSummaryBuilder {
       dayLabel: dayLabel,
       daypart: daypart,
       servicePeriodLabel: servicePeriodLabel,
+      servicePeriodSortOrder: servicePeriodSortOrder,
       closedShiftCount: count,
       benchmarkCount: benchmarkCount,
       leakCount: leakCount,
@@ -231,6 +271,97 @@ class DaypartPatternSummaryBuilder {
       avgVariancePts: count > 0 ? sumVariancePts / count : 0,
       exemplarSourceShiftIds: exemplarIds,
     );
+  }
+
+  static String _bucketKeyFor(
+    ShiftRecord shift, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+  }) {
+    if (timingLabelResolver?.hasSavedTimingIdentity(shift) ?? false) {
+      return timingLabelResolver!.bucketKeyFor(shift);
+    }
+    if (_hasSavedTimingIdentity(shift)) {
+      return shift.servicePeriodKey!.trim();
+    }
+    final servicePeriodKey = shift.servicePeriodKey?.trim();
+    if (servicePeriodDefinitions != null &&
+        servicePeriodKey != null &&
+        servicePeriodKey.isNotEmpty) {
+      return servicePeriodKey;
+    }
+    return shift.daypart;
+  }
+
+  static String? _servicePeriodLabelFor(
+    ShiftRecord shift, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+  }) {
+    final snapshot = timingLabelResolver?.snapshotFor(shift);
+    final snapshotLabel = snapshot?.label.trim();
+    if (snapshotLabel != null && snapshotLabel.isNotEmpty) {
+      return snapshot!.label;
+    }
+
+    final servicePeriodKey = shift.servicePeriodKey?.trim();
+    if (servicePeriodDefinitions != null &&
+        servicePeriodKey != null &&
+        servicePeriodKey.isNotEmpty) {
+      return ServicePeriodDefinitionResolver.labelForId(
+        servicePeriodDefinitions,
+        servicePeriodKey,
+      );
+    }
+    if (_hasSavedTimingIdentity(shift)) return null;
+    return null;
+  }
+
+  static int? _servicePeriodSortOrderFor(
+    ShiftRecord shift, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+  }) {
+    final savedSortOrder = timingLabelResolver?.sortOrderFor(shift);
+    if (savedSortOrder != null) return savedSortOrder;
+
+    final servicePeriodKey = shift.servicePeriodKey?.trim();
+    if (servicePeriodDefinitions != null &&
+        servicePeriodKey != null &&
+        servicePeriodKey.isNotEmpty) {
+      return ServicePeriodDefinitionResolver.sortIndex(
+        servicePeriodDefinitions,
+        servicePeriodKey,
+      );
+    }
+    if (_hasSavedTimingIdentity(shift)) return null;
+    return null;
+  }
+
+  static bool _isEligibleClosedTruth(
+    ShiftRecord shift, {
+    required String? currentOperationalBusinessDate,
+    required DaypartPatternShiftCloseAuthorityResolver?
+    shiftCloseAuthorityForRow,
+  }) {
+    if (currentOperationalBusinessDate == null) return shift.isClosed;
+    return ShiftBoundaryResolver.isEligibleForClosedTruth(
+      rowStatus: shift.status,
+      shiftCloseAuthority:
+          shiftCloseAuthorityForRow?.call(shift) ??
+          ShiftCloseAuthority.appLocalCutoffFallback,
+      rowBusinessDate: shift.businessDate,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+    );
+  }
+
+  static bool _hasSavedTimingIdentity(ShiftRecord shift) {
+    final versionId = shift.businessTimingProfileVersionId?.trim();
+    final periodKey = shift.servicePeriodKey?.trim();
+    return versionId != null &&
+        versionId.isNotEmpty &&
+        periodKey != null &&
+        periodKey.isNotEmpty;
   }
 
   /// Returns the most common lever ID in [freq], using [tieBreakOrder]

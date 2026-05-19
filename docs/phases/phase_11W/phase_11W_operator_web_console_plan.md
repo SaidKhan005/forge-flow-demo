@@ -15,8 +15,8 @@ Phase 11W fills the operator-side gap by shipping a desktop-first web back offic
 
 ## Audience and Boundary
 
-- **Audience.** Operator's senior roles only — `operator_admin` / `operator_owner` (GM / Owner level). Floor managers (`location_manager`) get read-only access to a subset; staff roles do not see this console at all.
-- **Boundary.** Single-operator scope. RLS via `OperatorScopedRepository` enforces — an operator_admin sees only their own operator's data. The console does not expose cross-operator views; that's the F&F Operations Console (Phase 11A).
+- **Audience.** Operator leadership roles only: `operator_owner`, `operator_general_manager`, and read-only `location_manager`. Other roles do not see this console.
+- **Boundary.** Single-operator scope. RLS via `OperatorScopedRepository` enforces that operator-web users see only their own operator's data. The console does not expose cross-operator views; that's the F&F Operations Console (Phase 11A).
 - **Auth.** Existing Phase 9 session + role gates. Same Firebase Auth login as mobile; web shell adds a "Continue on web" path from a logged-in mobile session via QR / magic link.
 - **Hosting.** Separate Cloud Run service from operator app proxy + F&F admin console. URL: `app.forgeflow.app` or `console.forgeflow.app` (decision deferred to Wave A).
 - **Tech stack.** Flutter for Web off the same codebase as the operator app (`lib/main_forgeflow.dart`). Reuses `lib/theme/app_theme.dart` for brand consistency. Operator-scoped routes only; admin/cross-operator routes deliberately absent.
@@ -59,7 +59,7 @@ V1 explicit non-goals on this screen: full billing UI, invoice viewer, audit log
 
 ### `11W.8` Vendor connections mount
 
-Hosts the shared Vendor Connections widget tree (built in Phase 8 `8.0`) under the operator-scoped path `/locations/:location_id/vendor-connections`. No new widget code. Permission gating with `integrations.configure` granted to `operator_admin` and `operator_owner`. Lights up as Phase 8 / 8R / 8.S adapter slices ship; each new vendor card appears here automatically because the widget tree is shared with the F&F Operations Console.
+Hosts the shared Vendor Connections widget tree (built in Phase 8 `8.0`) under the operator-scoped path `/locations/:location_id/vendor-connections`. No new widget code. Permission gating with `integrations.configure` granted to `operator_owner`. Lights up as Phase 8 / 8R / 8.S adapter slices ship; each new vendor card appears here automatically because the widget tree is shared with the F&F Operations Console.
 
 ### Self-Service Parity block (`11W.1`–`11W.6`, scheduled after Phase 7 + Phase 10 close)
 
@@ -73,7 +73,7 @@ Files this slice owns: `lib/operator_web/services/web_team_users_gateway.dart` (
 
 #### `11W.2` Roles + custom-role builder + Permission Explainer
 
-Web parity for mobile Settings → Roles. Lists seeded roles (`super_admin` / `ff_support` / `operator_owner` / `operator_manager` / `operator_supervisor` / `operator_staff`) plus operator custom roles. Custom-role builder lets `operator_owner` (gated by `team.roles.create_custom`) create new roles by selecting permissions from the frozen catalog (`docs/contracts/auth_permission_key_catalog.md`); seeded roles are read-only with `is_editable=false` enforced server-side. Permission Explainer renders the catalog grouped by category (`product.*` / `forgeflow.*` / `barrio.*` / `admin.*` / `team.*` / `billing.*` / `integration.*` / `integrations.*` / `workflow.*`) with the description text from the catalog. Reads/writes through `/v1/auth/team/roles` (operator self-service, gates on `team.roles.*`); seeded role views are catalog-only and do not touch the live `roles` table.
+Web parity for mobile Settings → Roles. Lists seeded v2 roles (`super_admin` / `ff_support` / `operator_owner` / `operator_general_manager` / `location_manager` / `supervisor` / `finance_analyst` / `auditor_compliance` / `training_lead` / `team_admin`) plus operator custom roles. Custom-role builder lets `operator_owner` (gated by `team.roles.create_custom`) create new roles by selecting permissions from the frozen catalog (`docs/contracts/auth_permission_key_catalog.md`); seeded roles are read-only with `is_editable=false` enforced server-side. Permission Explainer renders the catalog grouped by category (`product.*` / `forgeflow.*` / `barrio.*` / `admin.*` / `team.*` / `billing.*` / `integration.*` / `integrations.*` / `workflow.*`) with the description text from the catalog. Reads/writes through `/v1/auth/team/roles` (operator self-service, gates on `team.roles.*`); seeded role views are catalog-only and do not touch the live `roles` table.
 
 Files this slice owns: `lib/operator_web/services/web_team_roles_gateway.dart`, `lib/operator_web/screens/roles_screen.dart`, `lib/operator_web/screens/custom_role_editor_screen.dart`, `lib/operator_web/screens/permission_explainer_screen.dart`, route entries. Reuses `lib/screens/settings/settings_role_editor.dart` permission-picker widget IF the lift is additive; otherwise re-renders. Walkthrough at acceptance: log in → land on `/roles` → open Permission Explainer → create a custom role with a 3-permission subset → assign it to a fixture user from `/members` → revoke it → screenshot trace.
 
@@ -174,9 +174,9 @@ DNS + TLS provisioning is operator action before `11W.0` deploys to staging.
 
 Phase 11W relies entirely on existing Phase 9 permission keys. No new keys needed except:
 
-- `integrations.configure` — added by Phase 8 `8.0` (governs vendor-connections + outbound-integrations widget access). Granted to `operator_admin`, `operator_owner`, `forge_admin` per the Vendor Connections surface design doc.
+- `integrations.configure` — added by Phase 8 `8.0` (governs vendor-connections + outbound-integrations widget access). Granted to `operator_owner` and `forge_admin` per the Vendor Connections surface design doc.
 
-The console-level access gate is `console.web` — granted to `operator_admin`, `operator_owner`, and `location_manager` (read-only). All sub-screens further filter by their domain-specific keys (`team.*`, `roles.*`, `audit.*`, `integrations.*`, etc.).
+The console-level access gate is `console.web` — granted to `operator_owner`, `operator_general_manager`, and `location_manager` (read-only). All sub-screens further filter by their domain-specific keys (`team.*`, `roles.*`, `audit.*`, `integrations.*`, etc.).
 
 ## Frontend Exposure
 
@@ -184,7 +184,7 @@ Phase 11W IS frontend. Per Hard Promise #10:
 
 - **Operator-facing surfaces this phase ships:** see Sub-Slice Sequence above. Each `11W.x` slice IS a UX surface.
 - **Admin (11A) surfaces this phase requires:** none new. F&F Ops Console pre-exists.
-- **Demo-mode walkthrough (per slice):** log in to web console as a demo `operator_admin` → exercise the new surface end-to-end → screenshot trace.
+- **Demo-mode walkthrough (per slice):** log in to web console as a demo `operator_owner` → exercise the new surface end-to-end → screenshot trace.
 
 Walkthrough evidence required at slice acceptance per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 

@@ -39,9 +39,8 @@
 //     gate so the demo flavor and the live bootstrap stage can show
 //     the section before the permission snapshot hydrates.
 //   * Read of team sessions: `team.session.force_logout` permission
-//     key, with a role-tier fallback for `operator_owner` /
-//     `operator_admin` so the demo walkthrough can reach the team
-//     section without a hydrated snapshot.
+//     key, with a role-tier fallback for `operator_owner` so the demo
+//     walkthrough can reach the team section without a hydrated snapshot.
 
 import 'package:flutter/material.dart';
 

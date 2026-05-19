@@ -70,6 +70,7 @@ import 'dart:io';
 
 import 'package:http/http.dart' as http;
 
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/integrations/_common/admin_actor_resolver_bridge.dart'
     as bridge;
 import 'package:forge_and_flow/integrations/_common/vendor_credential_broker.dart';
@@ -83,6 +84,7 @@ import 'package:forge_and_flow/services/integration/repository_integration_route
 
 import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
+import 'phase_8_projector_wiring.dart';
 import 'phase_8_vendor_integration_factories.dart';
 import 'proxy_bootstrap.dart';
 
@@ -133,17 +135,16 @@ bool _alreadyBound = false;
 /// [canonicalFactPostCommitProjector] is the projector that drains
 /// `open_shift_snapshots` / `closed_shift_aggregates` from the
 /// just-written canonical facts after each successful sink commit.
-/// When provided alongside [canonicalFactPeriodResolver] +
-/// [canonicalRestaurantIdResolver], the factories build a
-/// [ProjectingCanonicalSink] wrapper for each vendor sink that
-/// directly implements [CanonicalSink] (the 13 of 17 with a uniform
+/// Tests may inject it alongside [canonicalFactPeriodResolver] +
+/// [canonicalRestaurantIdResolver]. Production boot builds the same
+/// triple from Postgres repository seams by default. The factories
+/// then build a [ProjectingCanonicalSink] wrapper for each vendor sink
+/// that directly implements [CanonicalSink] (the 13 of 17 with a uniform
 /// canonical surface; Libro / OpenTable / Tock / SevenRooms expose a
 /// view-based surface that requires per-tenant context). The wrapped
 /// sinks are surfaced through
 /// `factories.projectingSinksByVendor` for downstream `.spine-bridge`
-/// sync worker dispatch. When any of these three is null the
-/// wrapping is skipped — the upstream caller has not yet surfaced a
-/// production-wired projector.
+/// sync worker dispatch.
 ///
 /// Idempotent — a second call is a no-op. Demo mode (`kDemoMode=true`)
 /// skips the binder entirely with a single info line.
@@ -161,9 +162,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     log(
       LogSeverity.info,
       'startup.phase_8_binder.skipped',
-      fields: <String, Object?>{
-        'reason': 'already_bound',
-      },
+      fields: <String, Object?>{'reason': 'already_bound'},
     );
     return;
   }
@@ -171,9 +170,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     log(
       LogSeverity.info,
       'startup.phase_8_binder.skipped',
-      fields: <String, Object?>{
-        'reason': 'demo_mode',
-      },
+      fields: <String, Object?>{'reason': 'demo_mode'},
     );
     _alreadyBound = true;
     return;
@@ -216,6 +213,12 @@ Future<void> bindPhase8IntegrationsForProduction(
   // MockClient here so transport calls are intercepted without binding
   // the real HTTP stack.
   final sharedHttpClient = httpClient ?? http.Client();
+  final projectorWiring = _resolveProjectorWiring(
+    productionBindings.tenantTransactionWrapper,
+    canonicalFactPostCommitProjector: canonicalFactPostCommitProjector,
+    canonicalFactPeriodResolver: canonicalFactPeriodResolver,
+    canonicalRestaurantIdResolver: canonicalRestaurantIdResolver,
+  );
 
   // Step 4 — Per-vendor adapter factory closures, signature verifiers,
   // and the disable-warn list. Single source of truth for the per-
@@ -250,9 +253,10 @@ Future<void> bindPhase8IntegrationsForProduction(
     libroAppCredentials: proxyConfig.hasLibroAppCredentials
         ? proxyConfig.libroAppCredentials
         : null,
-    canonicalFactPostCommitProjector: canonicalFactPostCommitProjector,
-    canonicalFactPeriodResolver: canonicalFactPeriodResolver,
-    canonicalRestaurantIdResolver: canonicalRestaurantIdResolver,
+    canonicalFactPostCommitProjector: projectorWiring.projector,
+    canonicalFactPeriodResolver: projectorWiring.periodResolver,
+    canonicalRestaurantIdResolver: projectorWiring.restaurantIdResolver,
+    canonicalFactProjectionRetryRecorder: projectorWiring.retryRecorder,
   );
   final posAdapterFactories = factories.posAdapterFactories;
   final laborAdapterFactories = factories.laborAdapterFactories;
@@ -260,6 +264,12 @@ Future<void> bindPhase8IntegrationsForProduction(
   final signatureVerifiers = factories.signatureVerifiers;
   final disabledVendors = factories.disabledVendors;
   final projectingSinks = factories.projectingSinksByVendor;
+  final projectionTaps = factories.projectionTapsByVendor;
+  final projectionCommitDrainer = CanonicalFactProjectionCommitDrainer(
+    tapsByVendor: Map<String, CanonicalFactProjectionTap>.unmodifiable(
+      projectionTaps,
+    ),
+  );
 
   // Step 5 — InboundWebhookHandler.
   //
@@ -298,12 +308,14 @@ Future<void> bindPhase8IntegrationsForProduction(
     signatureVerifiers: signatureVerifiers,
     bindingExtractor: WebhookBindingExtractor(),
     signingSecretCache: signingSecretCache,
+    projectionCommitDrainer: projectionCommitDrainer,
   );
 
   // Step 6 — Adapt the tool-side admin actor types into the lib-side
   // bridge seam. Both adapters are private to this binder file.
-  final adminActorJwtVerifier =
-      _ToolToLibActorJwtVerifierAdapter(proxyJwtVerifier);
+  final adminActorJwtVerifier = _ToolToLibActorJwtVerifierAdapter(
+    proxyJwtVerifier,
+  );
   final adminActorUserResolver = _ToolToLibActorUserResolverAdapter(
     productionBindings.integrationAdminActorResolver,
   );
@@ -344,14 +356,14 @@ Future<void> bindPhase8IntegrationsForProduction(
       'webhook_public_base_uri': webhookPublicBaseUri.toString(),
       'pos_factories_wired': posAdapterFactories.keys.toList()..sort(),
       'labor_factories_wired': laborAdapterFactories.keys.toList()..sort(),
-      'reservation_factories_wired':
-          reservationAdapterFactories.keys.toList()..sort(),
+      'reservation_factories_wired': reservationAdapterFactories.keys.toList()
+        ..sort(),
       'signature_verifiers_wired': signatureVerifiers.keys.toList()..sort(),
       'disabled_vendors': disabledVendors,
-      'projector_wiring_active': canonicalFactPostCommitProjector != null &&
-          canonicalFactPeriodResolver != null &&
-          canonicalRestaurantIdResolver != null,
+      'projector_wiring_active': projectorWiring.isActive,
+      'projector_wiring_source': projectorWiring.source,
       'projecting_sinks_wired': projectingSinks.keys.toList()..sort(),
+      'projection_taps_wired': projectionTaps.keys.toList()..sort(),
     },
   );
 }
@@ -381,9 +393,48 @@ void resetPhase8BinderForTests() {
   _phase8ProjectingSinksByVendor.clear();
 }
 
+Phase8ProjectorWiring _resolveProjectorWiring(
+  TenantTransactionWrapper tenantWrapper, {
+  required CanonicalFactPostCommitProjector? canonicalFactPostCommitProjector,
+  required CanonicalFactPeriodResolver? canonicalFactPeriodResolver,
+  required CanonicalRestaurantIdResolver? canonicalRestaurantIdResolver,
+}) {
+  final anyExplicit =
+      canonicalFactPostCommitProjector != null ||
+      canonicalFactPeriodResolver != null ||
+      canonicalRestaurantIdResolver != null;
+  final allExplicit =
+      canonicalFactPostCommitProjector != null &&
+      canonicalFactPeriodResolver != null &&
+      canonicalRestaurantIdResolver != null;
+  if (allExplicit) {
+    return Phase8ProjectorWiring.active(
+      source: 'explicit',
+      projector: canonicalFactPostCommitProjector,
+      periodResolver: canonicalFactPeriodResolver,
+      restaurantIdResolver: canonicalRestaurantIdResolver,
+    );
+  }
+  if (anyExplicit) {
+    log(
+      LogSeverity.warning,
+      'startup.phase_8_projector_wiring.skipped',
+      fields: <String, Object?>{
+        'reason': 'partial_explicit_projector_dependencies',
+        'has_projector': canonicalFactPostCommitProjector != null,
+        'has_period_resolver': canonicalFactPeriodResolver != null,
+        'has_restaurant_id_resolver': canonicalRestaurantIdResolver != null,
+      },
+    );
+    return const Phase8ProjectorWiring.inactive(
+      source: 'partial_explicit_skipped',
+    );
+  }
+  return buildDefaultPhase8ProjectorWiring(tenantWrapper);
+}
+
 /// Internal bindings holder.
-class _Phase8BindingsHolder
-    implements Phase80IntegrationRoutesBindingsHolder {
+class _Phase8BindingsHolder implements Phase80IntegrationRoutesBindingsHolder {
   _Phase8BindingsHolder({
     required this.gateway,
     required this.actorResolver,
@@ -417,7 +468,8 @@ class _Phase8BindingsHolder
 // These adapters bridge the two without changing either side's
 // contracts.
 
-class _ToolToLibActorJwtVerifierAdapter implements bridge.AdminActorJwtVerifier {
+class _ToolToLibActorJwtVerifierAdapter
+    implements bridge.AdminActorJwtVerifier {
   _ToolToLibActorJwtVerifierAdapter(this._toolVerifier);
 
   final ProxyJwtVerifier _toolVerifier;
@@ -478,12 +530,11 @@ class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
     required String operatorId,
     required String locationId,
     required String actorUserId,
-  }) =>
-      _inner.listForLocation(
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-      );
+  }) => _inner.listForLocation(
+    operatorId: operatorId,
+    locationId: locationId,
+    actorUserId: actorUserId,
+  );
 
   @override
   Future<Map<String, Object?>> startOAuth({
@@ -492,24 +543,22 @@ class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
     required String actorUserId,
     required String vendorId,
     String? module,
-  }) =>
-      _inner.startOAuth(
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        vendorId: vendorId,
-        module: module,
-      );
+  }) => _inner.startOAuth(
+    operatorId: operatorId,
+    locationId: locationId,
+    actorUserId: actorUserId,
+    vendorId: vendorId,
+    module: module,
+  );
 
   @override
   Future<Map<String, Object?>> handleOAuthCallback({
     required String vendorId,
     required Map<String, String> queryParameters,
-  }) =>
-      _inner.handleOAuthCallback(
-        vendorId: vendorId,
-        queryParameters: queryParameters,
-      );
+  }) => _inner.handleOAuthCallback(
+    vendorId: vendorId,
+    queryParameters: queryParameters,
+  );
 
   @override
   Future<Map<String, Object?>> connectViaKeyPaste({
@@ -520,16 +569,15 @@ class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
     required String apiKey,
     String? username,
     String? module,
-  }) =>
-      _inner.connectViaKeyPaste(
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        vendorId: vendorId,
-        apiKey: apiKey,
-        username: username,
-        module: module,
-      );
+  }) => _inner.connectViaKeyPaste(
+    operatorId: operatorId,
+    locationId: locationId,
+    actorUserId: actorUserId,
+    vendorId: vendorId,
+    apiKey: apiKey,
+    username: username,
+    module: module,
+  );
 
   @override
   Future<Map<String, Object?>> testConnection({
@@ -537,13 +585,12 @@ class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
     required String locationId,
     required String actorUserId,
     required String vendorId,
-  }) =>
-      _inner.testConnection(
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        vendorId: vendorId,
-      );
+  }) => _inner.testConnection(
+    operatorId: operatorId,
+    locationId: locationId,
+    actorUserId: actorUserId,
+    vendorId: vendorId,
+  );
 
   @override
   Future<Map<String, Object?>> disconnect({
@@ -552,14 +599,13 @@ class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
     required String actorUserId,
     required String vendorId,
     required String reason,
-  }) =>
-      _inner.disconnect(
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        vendorId: vendorId,
-        reason: reason,
-      );
+  }) => _inner.disconnect(
+    operatorId: operatorId,
+    locationId: locationId,
+    actorUserId: actorUserId,
+    vendorId: vendorId,
+    reason: reason,
+  );
 
   @override
   Future<List<Map<String, Object?>>> listSyncLogs({
@@ -567,21 +613,19 @@ class RepositoryToToolGatewayAdapter implements IntegrationRoutesGateway {
     required String locationId,
     required String vendorId,
     int limit = 100,
-  }) =>
-      _inner.listSyncLogs(
-        operatorId: operatorId,
-        locationId: locationId,
-        vendorId: vendorId,
-        limit: limit,
-      );
+  }) => _inner.listSyncLogs(
+    operatorId: operatorId,
+    locationId: locationId,
+    vendorId: vendorId,
+    limit: limit,
+  );
 
   @override
   Future<bool> hasIntegrationsConfigurePermission({
     required String operatorId,
     required String userId,
-  }) =>
-      _inner.hasIntegrationsConfigurePermission(
-        operatorId: operatorId,
-        userId: userId,
-      );
+  }) => _inner.hasIntegrationsConfigurePermission(
+    operatorId: operatorId,
+    userId: userId,
+  );
 }

@@ -489,13 +489,13 @@ that gate F&F-side admin paths.
 ### `9.1` Firebase Identity Platform setup + JWT verifier wiring (~5-7 days)
 
 **Live, billable.** Notify user before account/billing setup. The
-implementer (Claude) **must stop and guide the user through every
-setup step** before code work proceeds — this is a hard prerequisite
+executor **must stop and guide the user through every setup step**
+before code work proceeds — this is a hard prerequisite
 gate, preserved from the prior plan's "Firebase Auth + Setup
 Checkpoints" section.
 
 **Setup Prompt Behavior Rule** (preserved from prior plan): at
-this slice's prompt, Codex/Claude must:
+this slice's prompt, the active executor must:
 
 - Tell the user exactly what to create in Firebase (Identity Platform
   tier + app registrations + email templates).

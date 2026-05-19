@@ -81,6 +81,7 @@ import 'dart:convert';
 import '../../../integrations/pos/revel_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 
 import '../../../services/integration/integration_adapter_common.dart';
@@ -111,21 +112,26 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? clock,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _clock = clock ?? DateTime.now;
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _clock = clock ?? DateTime.now;
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Revel no longer
   // reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _clock;
 
   // ─── RevelGateway: connection upsert ──────────────────────────────
@@ -180,10 +186,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<RevelWatermarkRow?>(ctx, (exec) async {
       final rows = await exec.query(
         'select w.cursor_token, w.last_modified_seen '
@@ -221,33 +224,31 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required RevelWatermarkRow row,
-  }) =>
-      advanceWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: row.cursorToken,
-        lastModifiedSeen: row.lastModifiedSeen,
-      );
+  }) => advanceWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: row.cursorToken,
+    lastModifiedSeen: row.lastModifiedSeen,
+  );
 
   // ─── Cover-fact upsert (shared writer for both interfaces) ────────
 
   @override
-  Future<bool> writeOrderFact(RevelCanonicalOrderFact fact) =>
-      upsertCoverFact(
-        operatorId: fact.operatorId,
-        locationId: fact.locationId,
-        canonicalFact: <String, Object?>{
-          'vendor_id': kRevelVendorId,
-          'vendor_entity_id': fact.vendorEntityId,
-          'vendor_modified_at': fact.vendorModifiedAt,
-          'covers': fact.covers,
-          'covers_source': 'direct',
-          'opened_at': fact.openedAt,
-          'closed_at': fact.closedAt,
-          'actual_sales': fact.actualSales,
-          'raw_payload': fact.rawPayload,
-        },
-      );
+  Future<bool> writeOrderFact(RevelCanonicalOrderFact fact) => upsertCoverFact(
+    operatorId: fact.operatorId,
+    locationId: fact.locationId,
+    canonicalFact: <String, Object?>{
+      'vendor_id': kRevelVendorId,
+      'vendor_entity_id': fact.vendorEntityId,
+      'vendor_modified_at': fact.vendorModifiedAt,
+      'covers': fact.covers,
+      'covers_source': 'direct',
+      'opened_at': fact.openedAt,
+      'closed_at': fact.closedAt,
+      'actual_sales': fact.actualSales,
+      'raw_payload': fact.rawPayload,
+    },
+  );
 
   @override
   Future<bool> upsertCoverFact({
@@ -255,10 +256,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalFact,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final inserted = await withTenant<bool>(ctx, (exec) async {
       final closedAt = _coerceUtc(canonicalFact['closed_at']);
       if (closedAt == null) {
@@ -331,8 +329,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
           'location_id': locationId,
           'vendor_id': canonicalFact['vendor_id'] ?? kRevelVendorId,
           'vendor_entity_id': canonicalFact['vendor_entity_id'],
-          'vendor_modified_at':
-              _coerceUtc(canonicalFact['vendor_modified_at']),
+          'vendor_modified_at': _coerceUtc(canonicalFact['vendor_modified_at']),
           'covers': canonicalFact['covers'],
           'covers_source': canonicalFact['covers_source'] ?? 'direct',
           'opened_at': _coerceUtc(canonicalFact['opened_at']),
@@ -340,7 +337,8 @@ class RevelPosPostgresSink extends OperatorScopedRepository
           'business_date': businessDate,
           'actual_sales': canonicalFact['actual_sales'],
           'raw_payload': jsonEncode(
-              canonicalFact['raw_payload'] ?? const <String, Object?>{}),
+            canonicalFact['raw_payload'] ?? const <String, Object?>{},
+          ),
         },
       );
       if (rows.isNotEmpty) {
@@ -369,6 +367,13 @@ class RevelPosPostgresSink extends OperatorScopedRepository
       return rows.isNotEmpty;
     });
 
+    if (inserted) {
+      _projectionTap?.recordCommittedCoverFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalFact: canonicalFact,
+      );
+    }
     return inserted;
   }
 
@@ -381,8 +386,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   /// POS sink — reservations are the LB lane's job. See [upsertLaborPunch].
   @override
@@ -390,8 +394,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      false;
+  }) async => false;
 
   // ─── Watermark advance + demo-flip auto-eval ──────────────────────
 
@@ -403,10 +406,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -458,8 +458,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
       );
       if (dmsRows.isNotEmpty) {
         final dmsRow = dmsRows.single;
-        final pendingCount =
-            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final pendingCount = (dmsRow['pending_inserts_count'] as int? ?? 0);
         final isDemo = dmsRow['is_demo'] as bool? ?? true;
         if (pendingCount >= 1 && isDemo) {
           await exec.execute(
@@ -496,10 +495,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -546,10 +542,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     if (!firstBackfillCommitted) return;
     if (backfillRecordsWritten < 1) return;
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       // Read-or-create the row with default `is_demo = true`. The
       // INSERT ... ON CONFLICT DO NOTHING is idempotent: if the row
@@ -600,10 +593,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       await exec.execute(
         'update public.vendor_credentials set '
@@ -652,10 +642,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select access_token_ciphertext '
@@ -695,10 +682,7 @@ class RevelPosPostgresSink extends OperatorScopedRepository
     if (explicitConnectionId != null && explicitConnectionId.isNotEmpty) {
       return explicitConnectionId;
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id '

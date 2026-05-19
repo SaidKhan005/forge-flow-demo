@@ -7,6 +7,29 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605191900_canonical_fact_projection_retry_evidence.sql`
+(projection retry evidence hardening: explicit pre-input/post-input stage
+metadata plus immutable original location/connection ids so hard-delete
+cleanup does not erase terminal retry evidence). The prior cutoff
+`202605191845_data_accuracy_cover_facts_nullable_covers.sql`
+(Data Accuracy covers truth: drops default/not-null from
+`public.cover_facts.covers` so NULL means the POS did not expose cover
+count and zero means a cover-capable POS sent zero). The earlier cutoff
+`202605191830_canonical_fact_projection_retry_jobs.sql`
+(canonical fact projection retry ledger: tenant-scoped durable retry rows
+for post-commit projection failures, with operator-leading indexes,
+bounded status, and replay payload checks). The earlier cutoff
+`202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
+(Per-Daypart V1 / R7f Data Accuracy precedence and source parity:
+view repair that treats keyed service-period rows as base defaults,
+then lets business, org-unit, and location scoped overrides win per
+HP #11, with source metadata following the same winning scope). The
+earlier cutoff
+`202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
+(Per-Daypart V1 / R7e Data Accuracy provenance: additive view
+replace that appends server source metadata for covers, wage, and
+walk-in handling while preserving existing value columns and HP #11
+precedence). The earlier cutoff
 `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
 (Per-Daypart V1 / R7d FINAL covers-source step, schema-destructive:
 atomic view re-create minus the 3 legacy scalar outputs, then
@@ -15,7 +38,7 @@ atomic view re-create minus the 3 legacy scalar outputs, then
 `data_accuracy_scoped_overrides`; no `cascade`, view never dropped,
 idempotent, no down migration; safe after R5 backfill + R7a jsonb +
 R7b proxy + R7c Dart cleanup, zero remaining readers proven). The
-prior cutoff
+earlier
 `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
 (R7a additive per-period hierarchy view + scoped-overrides re-key).
 The earlier
@@ -67,7 +90,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (49 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (63 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -128,6 +151,11 @@ Pending follow-up scope (49 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql`
 - `db/migrations/202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
 - `db/migrations/202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
+- `db/migrations/202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
+- `db/migrations/202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
+- `db/migrations/202605191830_canonical_fact_projection_retry_jobs.sql`
+- `db/migrations/202605191845_data_accuracy_cover_facts_nullable_covers.sql`
+- `db/migrations/202605191900_canonical_fact_projection_retry_evidence.sql`
 
 Out of scope:
 
@@ -138,7 +166,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
+  `202605191900_canonical_fact_projection_retry_evidence.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
@@ -714,7 +742,7 @@ until the post-tuning monitor window is clean.
   clauses. Apply on staging first; carry into the next Production1 batch.
 - `202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the new
   `team.audit_log.export` permission key plus default grants for
-  `operator_owner`/`operator_admin` so the 11W.5 audit log export gate has
+  `operator_owner` so the 11W.5 audit log export gate has
   catalog parity. Apply on staging first; carry into the next Production1 batch.
 - `202605061700_hardening_audit_anchor_daily_schedule.sql` adds the daily
   pg_cron tick `forge_audit_anchor_daily` at `0 2 * * *` (02:00 UTC) so the

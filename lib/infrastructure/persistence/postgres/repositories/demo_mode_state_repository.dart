@@ -147,7 +147,7 @@ class DemoModeStateRepository extends OperatorScopedRepository {
             for (final record in flipped) record.category.name,
           ],
           'flipped_count': flipped.length,
-          'operator_gate': 'operator_owner_or_operator_admin',
+          'operator_gate': 'operator_owner',
           'idempotency_key': idempotencyKey,
         },
       );

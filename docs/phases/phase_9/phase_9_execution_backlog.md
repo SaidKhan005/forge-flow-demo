@@ -87,7 +87,7 @@ Do not re-open stale findings unless the repo regresses:
   `operator_id`, preserving UNIQUE constraints + WHERE clauses) and
   `202605061600_phase_11W_5_team_audit_log_export_key.sql` (seeds the
   `team.audit_log.export` permission key + default grants for
-  `operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+  `operator_owner` so the 11W.5 audit-log export gate has
   catalog parity); apply both on staging before claiming index hygiene parity
   or live audit-log export readiness, then carry into the next Production1
   batch. The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds
@@ -176,6 +176,29 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605191900_canonical_fact_projection_retry_evidence.sql`
+  (projection retry evidence hardening: explicit pre-input/post-input
+  stage metadata plus immutable original location/connection ids so
+  hard-delete cleanup does not erase terminal retry evidence). The prior
+  cutoff `202605191845_data_accuracy_cover_facts_nullable_covers.sql`
+  (Data Accuracy covers truth: drops default/not-null from
+  `public.cover_facts.covers` so NULL means the POS did not expose cover
+  count and zero means a cover-capable POS sent zero). The earlier cutoff
+  `202605191830_canonical_fact_projection_retry_jobs.sql`
+  (canonical fact projection retry ledger: tenant-scoped durable retry
+  rows for post-commit projection failures, with operator-leading
+  indexes, bounded status, and replay payload checks). The earlier cutoff
+  `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
+  (Per-Daypart V1 / R7f Data Accuracy precedence and source parity:
+  view repair that treats keyed service-period rows as base defaults,
+  then lets business, org-unit, and location scoped overrides win per
+  HP #11, with source metadata following the same winning scope). The
+  earlier cutoff
+  `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
+  (Per-Daypart V1 / R7e Data Accuracy provenance: additive view
+  replace that appends server source metadata for covers, wage, and
+  walk-in handling while preserving existing value columns and HP #11
+  precedence). The earlier cutoff
   `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
   (Per-Daypart V1 / R7d FINAL covers-source step, schema-destructive:
   atomic view re-create minus the 3 legacy scalar outputs, then
@@ -184,7 +207,7 @@ Do not re-open stale findings unless the repo regresses:
   `data_accuracy_scoped_overrides`; no `cascade`, view never dropped,
   idempotent, no down migration; safe after R5 backfill + R7a jsonb +
   R7b proxy + R7c Dart cleanup, zero remaining readers proven). The
-  prior cutoff
+  earlier
   `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql`
   (R7a additive per-period hierarchy view + scoped-overrides re-key).
   The earlier
@@ -228,8 +251,8 @@ Do not re-open stale findings unless the repo regresses:
   keyed by `(operator_id, location_id)` with NULL columns inheriting
   the business defaults from `public.operators`. RLS via
   `app_current_operator()` wrapper + operator-leading B-tree index per
-  HP #4; reuses the existing operator_owner / operator_admin role
-  gate (no new permission key). Prior cutoff
+  HP #4; reuses the existing operator_owner role gate (no new permission
+  key). Prior cutoff
   `202605150100_phase_r_followup_not_null_flip.sql` is the
   Wave 2 R-1L-FU + R-2L-FU contract migration: flips
   `permission_keys.product_label` + `category_label` + `scope_kind` +

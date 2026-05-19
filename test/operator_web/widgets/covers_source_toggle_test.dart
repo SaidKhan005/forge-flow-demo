@@ -17,10 +17,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -79,12 +79,15 @@ void main() {
 
   DataAccuracySettings settingsWith({
     Map<String, CoversSource> perPeriod = const <String, CoversSource>{},
+    Map<String, DataAccuracySettingSource> perPeriodSources =
+        const <String, DataAccuracySettingSource>{},
   }) {
     return DataAccuracySettings(
       settingId: 'test-setting',
       operatorId: 'brio-operator',
       locationId: 'brio-chicago-loop',
       coversSourcePerServicePeriod: perPeriod,
+      coversSourcePerServicePeriodSources: perPeriodSources,
       coversManualEntries: const <String, Map<String, int>>{},
       wageSource: WageSource.vendor,
       createdAt: DateTime.utc(2026, 5, 5),
@@ -117,12 +120,7 @@ void main() {
 
       // All four configured periods render — including the 4th
       // (breakfast) the old hardcoded `Daypart` enum could not express.
-      for (final id in <String>[
-        'breakfast',
-        'lunch',
-        'dinner',
-        'late_night',
-      ]) {
+      for (final id in <String>['breakfast', 'lunch', 'dinner', 'late_night']) {
         expect(
           find.byKey(Key('covers_source_daypart_$id')),
           findsOneWidget,
@@ -138,67 +136,57 @@ void main() {
     },
   );
 
-  testWidgets(
-    'tapping manual chip for breakfast (the 4th period) emits '
-    'onChanged("breakfast", manual)',
-    (tester) async {
-      await sizeViewport(tester, const Size(1280, 1000));
+  testWidgets('tapping manual chip for breakfast (the 4th period) emits '
+      'onChanged("breakfast", manual)', (tester) async {
+    await sizeViewport(tester, const Size(1280, 1000));
 
-      String? capturedPeriodId;
-      CoversSource? capturedSource;
+    String? capturedPeriodId;
+    CoversSource? capturedSource;
 
-      await tester.pumpWidget(
-        wrap(
-          CoversSourceToggle(
-            settings: settingsWith(),
-            servicePeriods: fourPeriods,
-            onChanged: (periodId, source) {
-              capturedPeriodId = periodId;
-              capturedSource = source;
-            },
-            bundle: null,
-          ),
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(),
+          servicePeriods: fourPeriods,
+          onChanged: (periodId, source) {
+            capturedPeriodId = periodId;
+            capturedSource = source;
+          },
+          bundle: null,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('covers_source_chip_breakfast_manual')),
-      );
-      await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('covers_source_chip_breakfast_manual')),
+    );
+    await tester.pumpAndSettle();
 
-      expect(capturedPeriodId, equals('breakfast'));
-      expect(capturedSource, equals(CoversSource.manual));
-    },
-  );
+    expect(capturedPeriodId, equals('breakfast'));
+    expect(capturedSource, equals(CoversSource.manual));
+  });
 
-  testWidgets(
-    'empty period set renders the honest no-periods hint, no rows',
-    (tester) async {
-      await sizeViewport(tester, const Size(1280, 800));
+  testWidgets('empty period set renders the honest no-periods hint, no rows', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1280, 800));
 
-      await tester.pumpWidget(
-        wrap(
-          CoversSourceToggle(
-            settings: settingsWith(),
-            servicePeriods: const <ServicePeriodDefinition>[],
-            onChanged: (_, __) {},
-            bundle: null,
-          ),
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(),
+          servicePeriods: const <ServicePeriodDefinition>[],
+          onChanged: (_, __) {},
+          bundle: null,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('covers_source_no_periods')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('covers_source_daypart_lunch')),
-        findsNothing,
-      );
-    },
-  );
+    expect(find.byKey(const Key('covers_source_no_periods')), findsOneWidget);
+    expect(find.byKey(const Key('covers_source_daypart_lunch')), findsNothing);
+  });
 
   testWidgets('vendor relativity label is present', (tester) async {
     await sizeViewport(tester, const Size(1280, 1000));
@@ -219,5 +207,39 @@ void main() {
       find.byKey(const Key('vendor_relativity_label_covers')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('source label renders only from server metadata', (tester) async {
+    await sizeViewport(tester, const Size(1280, 1000));
+
+    await tester.pumpWidget(
+      wrap(
+        CoversSourceToggle(
+          settings: settingsWith(
+            perPeriod: const <String, CoversSource>{
+              'breakfast': CoversSource.manual,
+            },
+            perPeriodSources: const <String, DataAccuracySettingSource>{
+              'breakfast': DataAccuracySettingSource(
+                scopeType: 'business',
+                sourceKind: 'scoped_override',
+                overrideId: 'ovr-breakfast',
+              ),
+            },
+          ),
+          servicePeriods: fourPeriods,
+          onChanged: (_, __) {},
+          bundle: null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('covers_source_source_breakfast')),
+      findsOneWidget,
+    );
+    expect(find.text('Source: Business'), findsOneWidget);
+    expect(find.byKey(const Key('covers_source_source_lunch')), findsNothing);
   });
 }

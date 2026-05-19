@@ -166,6 +166,8 @@ void main() {
     final profile = await SqliteTargetProfileRepository.instance
         .getActiveTargetProfile(rid);
     expect(profile!.targetProfileId, 'profile-sync-1');
+    expect(profile.targetCycleId, 'cycle-sync-1');
+    expect(profile.targetProfileVersionId, 'tpv-sync-1');
     expect(profile.sourceType, 'cycle_manager_override');
     expect(
       profile.daypartFor('afternoon_tea')!.daypartTargetCPLH,
@@ -179,6 +181,7 @@ void main() {
         .getTargetProfileVersion(rid, 'tpv-sync-1');
     expect(version, isNotNull);
     expect(version!.targetProfileId, 'profile-sync-1');
+    expect(version.targetCycleId, 'cycle-sync-1');
 
     expect(client.selectedCursors, <String?>[null, 'selected-cursor-1']);
     expect(client.cycleCursors, <String?>[null, 'cycle-cursor-1']);
@@ -198,6 +201,124 @@ void main() {
     expect(selectedCursor!.watermarkValue, 'selected-cursor-1');
     expect(cycleCursor!.watermarkValue, 'cycle-cursor-1');
   });
+
+  test('active profile hydrates from its own synced cycle, not the latest '
+      'active cycle', () async {
+    const rid = 'rest_star_target_profile_pinned_cycle';
+    await _clearStarTargetRows(rid);
+
+    final client = _StarTargetSyncClient()
+      ..cyclePages.add(
+        TargetCycleSyncPage(
+          cycles: <TargetCycleSyncRow>[
+            TargetCycleSyncRow(
+              operatorId: _opId,
+              locationId: _locId,
+              cycle: _cycle(rid),
+            ),
+            TargetCycleSyncRow(
+              operatorId: _opId,
+              locationId: _locId,
+              cycle: _newerCycle(rid),
+            ),
+          ],
+          nextCursor: null,
+        ),
+      )
+      ..profilePages.add(
+        ActiveTargetProfileSyncPage(
+          profiles: <ActiveTargetProfileSyncRow>[
+            ActiveTargetProfileSyncRow(
+              operatorId: _opId,
+              locationId: _locId,
+              targetCycleId: 'cycle-sync-1',
+              targetProfileVersionId: 'tpv-sync-1',
+              profile: _profile(rid),
+            ),
+          ],
+          nextCursor: null,
+        ),
+      );
+
+    final sync = PostgresShiftRecordToMobileSync(
+      client: client,
+      shiftRepository: SqliteShiftRecordRepository.instance,
+      watermarkDao: watermarkDao,
+    );
+    final result = await sync.sync(
+      operatorId: _opId,
+      locationId: _locId,
+      restaurantId: rid,
+    );
+
+    expect(result.starTargetMirrors.targetCycles.rowsWritten, 2);
+    expect(result.starTargetMirrors.activeTargetProfiles.rowsWritten, 1);
+
+    final activeCycle = await SqliteTargetCycleRepository.instance
+        .getActiveCycle(rid);
+    expect(activeCycle!.cycleId, 'cycle-sync-newer');
+    expect(activeCycle.daypartFor('newer_only')!.targetPPA, 99);
+
+    final profile = await SqliteTargetProfileRepository.instance
+        .getActiveTargetProfile(rid);
+    expect(profile!.targetCycleId, 'cycle-sync-1');
+    expect(profile.daypartFor('supper_rush')!.daypartTargetPPA, 48);
+    expect(profile.daypartFor('newer_only'), isNull);
+  });
+
+  test(
+    'skips cycle-backed active profile rows missing profile version id',
+    () async {
+      const rid = 'rest_star_target_missing_profile_version';
+      await _clearStarTargetRows(rid);
+
+      final client = _StarTargetSyncClient()
+        ..cyclePages.add(
+          TargetCycleSyncPage(
+            cycles: <TargetCycleSyncRow>[
+              TargetCycleSyncRow(
+                operatorId: _opId,
+                locationId: _locId,
+                cycle: _cycle(rid),
+              ),
+            ],
+            nextCursor: null,
+          ),
+        )
+        ..profilePages.add(
+          ActiveTargetProfileSyncPage(
+            profiles: <ActiveTargetProfileSyncRow>[
+              ActiveTargetProfileSyncRow(
+                operatorId: _opId,
+                locationId: _locId,
+                targetCycleId: 'cycle-sync-1',
+                profile: _profile(rid, targetProfileVersionId: null),
+              ),
+            ],
+            nextCursor: null,
+          ),
+        );
+
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+      );
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+
+      expect(result.starTargetMirrors.activeTargetProfiles.rowsWritten, 0);
+      expect(
+        await SqliteTargetProfileRepository.instance.getActiveTargetProfile(
+          rid,
+        ),
+        isNull,
+      );
+    },
+  );
 
   test(
     'legacy client without star-target routes reports unavailable and leaves '
@@ -348,9 +469,43 @@ TargetCycle _cycle(String restaurantId) => TargetCycle(
   ],
 );
 
-ActiveTargetProfile _profile(String restaurantId) => ActiveTargetProfile(
+TargetCycle _newerCycle(String restaurantId) => TargetCycle(
+  cycleId: 'cycle-sync-newer',
+  restaurantId: restaurantId,
+  source: TargetCycleSource.recommended,
+  effectiveStart: '2026-07-01',
+  effectiveEnd: '2026-08-30',
+  calibrationWindowStart: '2026-05-01',
+  calibrationWindowEnd: '2026-06-30',
+  targetCPLH: 9.9,
+  targetSPLH: 222,
+  targetPPA: 99,
+  fohWage: 19,
+  bohWage: 24,
+  opzFloorCPLH: 8,
+  opzCeilingCPLH: 12,
+  createdAt: '2026-07-01T12:00:00Z',
+  dayparts: const <TargetCycleDaypart>[
+    TargetCycleDaypart(
+      servicePeriodId: 'newer_only',
+      targetCPLH: 9.9,
+      targetSPLH: 222,
+      targetPPA: 99,
+      opzFloorCPLH: 8,
+      opzCeilingCPLH: 12,
+      coverCount: 55,
+    ),
+  ],
+);
+
+ActiveTargetProfile _profile(
+  String restaurantId, {
+  String? targetProfileVersionId = 'tpv-sync-1',
+}) => ActiveTargetProfile(
   targetProfileId: 'profile-sync-1',
   restaurantId: restaurantId,
+  targetCycleId: 'cycle-sync-1',
+  targetProfileVersionId: targetProfileVersionId,
   sourceType: 'cycle_manager_override',
   targetCPLH: 5.2,
   targetSPLH: 181,
@@ -387,6 +542,7 @@ TargetProfileVersion _version(String restaurantId) => TargetProfileVersion(
   targetProfileVersionId: 'tpv-sync-1',
   targetProfileId: 'profile-sync-1',
   restaurantId: restaurantId,
+  targetCycleId: 'cycle-sync-1',
   sourceType: 'cycle_manager_override',
   targetCPLH: 5.2,
   targetSPLH: 181,
@@ -512,6 +668,7 @@ class _StarTargetSyncClient
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async {
     return null;
   }
@@ -596,6 +753,7 @@ class _LegacySyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async {
     return null;
   }

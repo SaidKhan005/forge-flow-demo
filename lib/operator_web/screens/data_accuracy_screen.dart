@@ -21,8 +21,8 @@
 // mount in a follow-up `8.spine-bridge.B.live` slice — same gateway-
 // follows-shell pattern Lane 11W.7 / 11W.8 used.
 //
-// Permission gate: mirrors Vendor connections — operator_owner /
-// operator_admin admit; location_manager lands on a friendly
+// Permission gate: mirrors Vendor connections. `operator_owner`
+// admits; `location_manager` lands on a friendly
 // forbidden surface explaining who manages data accuracy. Mirrors the
 // Phase 9 proxy gate the live wiring will enforce server-side.
 //
@@ -44,6 +44,7 @@ import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
+import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
@@ -62,8 +63,8 @@ import '../../services/integration/polling_tier_presets.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles permitted to edit data accuracy from the operator-web
-/// console. Mirrors the Vendor connections gate — operator owners +
-/// admins read+write; location managers see a friendly forbidden
+/// console. Mirrors the Vendor connections gate. Operator owners
+/// read+write; location managers see a friendly forbidden
 /// surface (read-mostly role).
 // G7d (spec §2.B/§3): v2 catalog constant. Phantom
 // `'operator_admin'` dropped (folded into `operator_owner`).
@@ -130,6 +131,9 @@ class DataAccuracyScreen extends StatefulWidget {
     this.tierEmailIdempotencyKeyFactory,
     this.wageAuthorityGateway,
     this.wageAuthorityIdempotencyKeyFactory,
+    this.hierarchyNodes = const <HierarchyMapNode>[],
+    this.ancestorOrgUnitIdsNearestFirst = const <String>[],
+    this.businessName,
     this.servicePeriodsLoader,
   });
 
@@ -198,14 +202,19 @@ class DataAccuracyScreen extends StatefulWidget {
   /// random-bytes generator; tests pass a deterministic counter.
   final String Function()? wageAuthorityIdempotencyKeyFactory;
 
+  /// Operator hierarchy passed through to the embedded Wage Authority
+  /// section so scope inheritance stays visible inside Data Accuracy.
+  final List<HierarchyMapNode> hierarchyNodes;
+  final List<String> ancestorOrgUnitIdsNearestFirst;
+  final String? businessName;
+
   /// Per-Daypart V1 Slice R5 (Gap 27/36): resolves the operator's
   /// configured service periods so the covers cards iterate the real
   /// period set, never a hardcoded `Daypart.values` triplet.
   /// Production resolves the persisted timing config; widget tests
   /// inject a fake. Falls back to the canonical fixture-era
   /// definitions only when no config is persisted yet.
-  final Future<List<ServicePeriodDefinition>> Function()?
-      servicePeriodsLoader;
+  final Future<List<ServicePeriodDefinition>> Function()? servicePeriodsLoader;
 
   bool get _canEditDataAccuracy =>
       session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
@@ -254,6 +263,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   // honest "no periods configured" hint while empty.
   List<ServicePeriodDefinition> _servicePeriods =
       const <ServicePeriodDefinition>[];
+  int _servicePeriodsLoadGeneration = 0;
 
   // In-memory editable working copy of the settings. Materialized
   // back into `DataAccuracySettings` on save. Covers source is keyed
@@ -281,13 +291,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   Future<void> _loadServicePeriods() async {
+    final generation = ++_servicePeriodsLoadGeneration;
     final loader = widget.servicePeriodsLoader ?? _defaultServicePeriodsLoader;
     try {
       final periods = await loader();
-      if (!mounted) return;
+      if (!mounted || generation != _servicePeriodsLoadGeneration) return;
       setState(() => _servicePeriods = periods);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _servicePeriodsLoadGeneration) return;
       setState(
         () => _servicePeriods = ServicePeriodDefinitionResolver.ordered(
           ServicePeriodDefinitionResolver.demoDefinitions,
@@ -302,7 +313,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   // canonical fixture-era definitions only when no config is persisted
   // yet.
   static Future<List<ServicePeriodDefinition>>
-      _defaultServicePeriodsLoader() async {
+  _defaultServicePeriodsLoader() async {
     final config = await RestaurantTimingConfigReadService.instance
         .getActiveTimingConfig();
     final defs = (config?.servicePeriodDefinitions.isNotEmpty ?? false)
@@ -341,7 +352,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         oldWidget.session.operatorId != widget.session.operatorId ||
         oldWidget.dataAccuracyGateway != widget.dataAccuracyGateway ||
         oldWidget.vendorApplicabilityGateway !=
-            widget.vendorApplicabilityGateway) {
+            widget.vendorApplicabilityGateway ||
+        oldWidget.servicePeriodsLoader != widget.servicePeriodsLoader) {
       _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
       setState(() {
         _loading = true;
@@ -356,11 +368,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _servicePeriodLoadError = null;
         _servicePeriodSaveError = null;
         _servicePeriodRows = const <DataAccuracyServicePeriodSetting>[];
+        _servicePeriods = const <ServicePeriodDefinition>[];
       });
       _loadBundle();
       _loadSettings();
       _loadWageApplicability();
       _loadServicePeriodSettings();
+      _loadServicePeriods();
     }
   }
 
@@ -430,8 +444,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void _applySettingsSeed(DataAccuracySettings? seed) {
     _lastSettings = seed;
     _coversSourcePerPeriod = <String, CoversSource>{
-      for (final e
-          in (seed?.coversSourcePerServicePeriod ?? const {}).entries)
+      for (final e in (seed?.coversSourcePerServicePeriod ?? const {}).entries)
         e.key: e.value,
     };
     _wageSource = seed?.wageSource ?? WageSource.vendor;
@@ -464,12 +477,19 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       coversSourcePerServicePeriod: Map<String, CoversSource>.from(
         _coversSourcePerPeriod,
       ),
+      coversSourcePerServicePeriodSources:
+          Map<String, DataAccuracySettingSource>.from(
+            base?.coversSourcePerServicePeriodSources ??
+                const <String, DataAccuracySettingSource>{},
+          ),
       coversManualEntries: <String, Map<String, int>>{
         for (final e in _manualEntries.entries)
           e.key: Map<String, int>.from(e.value),
       },
       wageSource: _wageSource,
+      wageSourceSource: base?.wageSourceSource,
       walkInHandlingMode: _domainWalkInModeFromWidget(_walkInMode),
+      walkInHandlingModeSource: base?.walkInHandlingModeSource,
       walkInManualEntries: Map<String, int>.from(_walkInEntries),
       createdAt: base?.createdAt ?? now,
       updatedAt: now,
@@ -536,11 +556,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _savingServicePeriod = false;
         _servicePeriodSaveError = null;
       });
-      // Refresh the keyed list so the new row (or superseded row) is
-      // visible immediately. The mobile cache is invalidated through
-      // the realtime sync surface; the operator-web view reads
-      // straight from the proxy.
-      await _loadServicePeriodSettings();
+      // Refresh both the keyed list and the primary source state so
+      // the covers/manual cards do not stay on stale effective values.
+      await Future.wait(<Future<void>>[
+        _loadServicePeriodSettings(),
+        _loadSettings(),
+      ]);
     } catch (error) {
       if (!mounted || generation != _servicePeriodSaveGeneration) return;
       setState(() {
@@ -579,6 +600,38 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   // ── Handlers ────────────────────────────────────────────────────
 
+  Future<void> _clearManualCovers(
+    OperatorWebDataAccuracyGateway gateway, {
+    required String businessDateIso,
+    required String servicePeriodId,
+  }) async {
+    final generation = ++_settingsSaveGeneration;
+    setState(() {
+      _savingSettings = true;
+      _settingsSaveError = null;
+    });
+    try {
+      final saved = await gateway.clearManualCovers(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+        businessDateIso: businessDateIso,
+        servicePeriodKey: servicePeriodId,
+      );
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _applySettingsSeed(saved);
+        _savingSettings = false;
+        _settingsSaveError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _savingSettings = false;
+        _settingsSaveError = 'Could not clear manual covers: $error';
+      });
+    }
+  }
+
   void _handleWageSourceChanged(WageSource value) {
     setState(() => _wageSource = value);
     _emitSave();
@@ -595,8 +648,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   void _handleManualEntry(String servicePeriodId, int? covers) {
+    final today = widget.businessDateIso;
     setState(() {
-      final today = widget.businessDateIso;
       final dayMap = _manualEntries.putIfAbsent(today, () => <String, int>{});
       if (covers == null) {
         dayMap.remove(servicePeriodId);
@@ -605,6 +658,17 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         dayMap[servicePeriodId] = covers;
       }
     });
+    final gateway = widget.dataAccuracyGateway;
+    if (covers == null && gateway != null) {
+      unawaited(
+        _clearManualCovers(
+          gateway,
+          businessDateIso: today,
+          servicePeriodId: servicePeriodId,
+        ),
+      );
+      return;
+    }
     _emitSave();
   }
 
@@ -671,7 +735,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
     final idempotencyKey =
         widget.tierEmailIdempotencyKeyFactory?.call() ??
-            _defaultTierEmailIdempotencyKey();
+        _defaultTierEmailIdempotencyKey();
     final result = await gateway.submitDataFreshnessRequest(
       request: OperatorTierEmailRequest(
         currentTier: tier.tierDisplayLabel,
@@ -707,10 +771,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     return 'tier-email-$rand';
   }
 
-  void _showTierEmailToast({
-    required String message,
-    required bool isSuccess,
-  }) {
+  void _showTierEmailToast({required String message, required bool isSuccess}) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
     messenger
@@ -723,8 +784,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                 : 'polling_tier_email_toast_failed',
           ),
           content: Text(message),
-          backgroundColor:
-              isSuccess ? AppColors.peacock : AppColors.sunsetDark,
+          backgroundColor: isSuccess ? AppColors.peacock : AppColors.sunsetDark,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
         ),
@@ -741,15 +801,23 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   bool get _hasReservationConnection => _bundle?.reservationConnection != null;
 
-  bool get _showWalkInCard => !_posExposesCovers && _hasReservationConnection;
+  bool get _anyDaypartReservationPlusWalkin => _servicePeriods.any(
+    (p) =>
+        (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
+        CoversSource.reservationPlusWalkin,
+  );
+
+  bool get _showWalkInCard =>
+      _hasReservationConnection &&
+      (!_posExposesCovers || _anyDaypartReservationPlusWalkin);
 
   bool get _showHistoricalSeedCard => !_posExposesCovers;
 
   bool get _anyDaypartManual => _servicePeriods.any(
-        (p) =>
-            (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
-            CoversSource.manual,
-      );
+    (p) =>
+        (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
+        CoversSource.manual,
+  );
 
   bool get _showAnyFallbackCard =>
       _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
@@ -859,14 +927,19 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          const _DataAccuracySectionHeading(
-            title: 'Sources',
+          _DataAccuracyScopeSummary(
+            locationLabel: locationLabel,
+            settings: settings,
+            servicePeriods: _servicePeriods,
           ),
+          const SizedBox(height: 14),
+          const _DataAccuracySectionHeading(title: 'Sources'),
           const SizedBox(height: 12),
           WageSourceToggle(
             value: _wageSource,
             onChanged: _handleWageSourceChanged,
             bundle: _bundle,
+            source: settings.wageSourceSource,
             vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
             vendorApplicabilityLoading: _wageApplicabilityLoading,
             vendorApplicabilityError: _wageApplicabilityError,
@@ -906,6 +979,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               onModeChanged: _handleWalkInModeChanged,
               businessDateIso: widget.businessDateIso,
               dailyWalkInCount: _walkInDailyCount,
+              source: settings.walkInHandlingModeSource,
               onDailyWalkInCountChanged: _handleWalkInCountChanged,
             ),
           ],
@@ -936,15 +1010,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               loadError: _servicePeriodLoadError,
               saveError: _servicePeriodSaveError,
               editingEnabled: widget._canEditDataAccuracy,
+              configuredServicePeriods: _servicePeriods,
               defaultEffectiveAtBusinessDateIso: widget.businessDateIso,
               onAddOrEdit: _saveKeyedServicePeriod,
               onRetry: _loadServicePeriodSettings,
             ),
           ],
           const SizedBox(height: 14),
-          const _DataAccuracySectionHeading(
-            title: 'Data Freshness',
-          ),
+          const _DataAccuracySectionHeading(title: 'Data Freshness'),
           const SizedBox(height: 12),
           PollingTierStatusCard(
             status: tier,
@@ -959,9 +1032,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           // bands, vendor-applicability labels, hierarchy-aware empty
           // state) and saves through the same gateway the standalone
           // screen used.
-          const _DataAccuracySectionHeading(
-            title: 'Wage authority',
-          ),
+          const _DataAccuracySectionHeading(title: 'Wage authority'),
           const SizedBox(height: 12),
           Container(
             key: const Key('operator_web_data_accuracy_wage_authority_section'),
@@ -977,11 +1048,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               locationName: locationLabel,
               gateway: widget.wageAuthorityGateway,
               idempotencyKeyFactory: widget.wageAuthorityIdempotencyKeyFactory,
+              hierarchyNodes: widget.hierarchyNodes,
+              ancestorOrgUnitIdsNearestFirst:
+                  widget.ancestorOrgUnitIdsNearestFirst,
+              businessName: widget.businessName,
               showHeader: false,
             ),
           ),
           const SizedBox(height: 14),
-          const DataAccuracyExplainerCard(),
+          DataAccuracyExplainerCard(servicePeriods: _servicePeriods),
         ],
       ),
     );
@@ -1020,6 +1095,154 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       case WalkInHandlingMode.walkInsTrackedSeparately:
         return DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately;
     }
+  }
+}
+
+class _DataAccuracyScopeSummary extends StatelessWidget {
+  const _DataAccuracyScopeSummary({
+    required this.locationLabel,
+    required this.settings,
+    required this.servicePeriods,
+  });
+
+  final String locationLabel;
+  final DataAccuracySettings settings;
+  final List<ServicePeriodDefinition> servicePeriods;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('operator_web_data_accuracy_scope_summary'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        children: [
+          _ScopeSummaryChip(
+            chipKey: const Key('operator_web_data_accuracy_selected_scope'),
+            label: 'Selected scope',
+            value: locationLabel,
+          ),
+          _ScopeSummaryChip(
+            chipKey: const Key('operator_web_data_accuracy_inherited_source'),
+            label: 'Inherited source',
+            value: _sourceSummary(),
+          ),
+          _ScopeSummaryChip(
+            chipKey: const Key('operator_web_data_accuracy_effective_value'),
+            label: 'Effective value',
+            value: _effectiveSummary(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _sourceSummary() {
+    final labels = <String>[];
+    void add(DataAccuracySettingSource? source) {
+      final label = source?.label;
+      if (label == null || labels.contains(label)) return;
+      labels.add(label);
+    }
+
+    add(settings.wageSourceSource);
+    add(settings.walkInHandlingModeSource);
+    for (final period in servicePeriods) {
+      add(settings.coversSourceSourceFor(period.id));
+    }
+    return labels.isEmpty ? 'Not reported yet' : labels.join(', ');
+  }
+
+  String _effectiveSummary() {
+    final parts = <String>['Wage: ${_wageSourceLabel(settings.wageSource)}'];
+    if (servicePeriods.isNotEmpty) {
+      final covers = servicePeriods
+          .map((period) {
+            return '${period.label} ${_coversSourceLabel(settings.coversSourceFor(period.id))}';
+          })
+          .join(', ');
+      parts.add('Covers: $covers');
+    }
+    parts.add('Walk-ins: ${_walkInModeLabel(settings.walkInHandlingMode)}');
+    return parts.join('. ');
+  }
+
+  static String _coversSourceLabel(CoversSource source) {
+    switch (source) {
+      case CoversSource.vendor:
+        return 'Vendor';
+      case CoversSource.forecast:
+        return 'Forecast';
+      case CoversSource.manual:
+        return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
+    }
+  }
+
+  static String _wageSourceLabel(WageSource source) {
+    switch (source) {
+      case WageSource.vendor:
+        return 'Vendor';
+      case WageSource.manualMix:
+        return 'Manual mix';
+    }
+  }
+
+  static String _walkInModeLabel(DataAccuracyWalkInHandlingMode mode) {
+    switch (mode) {
+      case DataAccuracyWalkInHandlingMode.reservationsOnly:
+        return 'Reservations only';
+      case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+        return 'Add walk-ins to reservations';
+      case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+        return 'Track walk-ins separately';
+    }
+  }
+}
+
+class _ScopeSummaryChip extends StatelessWidget {
+  const _ScopeSummaryChip({
+    required this.chipKey,
+    required this.label,
+    required this.value,
+  });
+
+  final Key chipKey;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: chipKey,
+      constraints: const BoxConstraints(minWidth: 180, maxWidth: 420),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: AppTextStyles.body12(color: AppColors.textPrimary),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1181,7 +1404,7 @@ class _ForbiddenSurface extends StatelessWidget {
                     Text(
                       'Where your dashboard reads labor dollars and '
                       'covers from is a business-wide decision. Only '
-                      'operator admins and owners can change it. '
+                      'operator owners can change it. '
                       'Location managers can keep reading dashboards '
                       'and shift views in the mobile app. Most '
                       'day-to-day actions live there.',

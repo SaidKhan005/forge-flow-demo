@@ -21,9 +21,10 @@
 // operator-configured `service_period_key` in the existing
 // `public.data_accuracy_service_period_settings` table (created by
 // `db/migrations/202605061701_phase_8_data_accuracy_service_period_settings.sql`).
-// `_readRow` projects the effective keyed rows into a
-// `covers_source_per_service_period` map so the model is resolver-keyed
-// and an operator with any number of service periods works end to end.
+// `_readRow` reads `public.effective_data_accuracy_settings_v`, the
+// hierarchy/provenance view, so the model is resolver-keyed and an
+// operator with any number of service periods keeps its inherited
+// source labels end to end.
 
 import 'dart:convert';
 
@@ -34,25 +35,6 @@ import '../../infrastructure/persistence/postgres/tenant_context.dart';
 
 class DataAccuracySettingsRepository extends OperatorScopedRepository {
   DataAccuracySettingsRepository(super.tenantWrapper);
-
-  // Projects the effective keyed covers-source rows for (operator,
-  // location) into a `{service_period_key: covers_source}` jsonb under
-  // the alias `covers_source_per_service_period`. "Effective" = the
-  // most recent row at-or-before today's UTC date per service period
-  // (the same at-or-before lookup the closed-shift aggregator uses).
-  // `reservation_plus_walkin` is admitted by the keyed table but has no
-  // operator-facing 3-way slot; the model's parser skips it (falls back
-  // to the vendor default) so it does not need filtering here.
-  static const String _perPeriodSubquery =
-      "coalesce((select jsonb_object_agg(k.service_period_key, k.covers_source) "
-      'from (select distinct on (sp.service_period_key) '
-      'sp.service_period_key, sp.covers_source '
-      'from public.data_accuracy_service_period_settings sp '
-      'where sp.operator_id = das.operator_id '
-      'and sp.location_id = das.location_id '
-      'and sp.effective_at_business_date <= (now() at time zone \'utc\')::date '
-      'order by sp.service_period_key, sp.effective_at_business_date desc '
-      ') k), \'{}\'::jsonb) as covers_source_per_service_period';
 
   /// Returns the (operator, location) row, creating a default row when
   /// none exists. Defaults match the SQL CHECK constraint defaults:
@@ -74,21 +56,22 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
       userId: actorUserId,
     );
     return withTenant<DataAccuracySettings>(ctx, (exec) async {
-      final existing = await _readRow(exec, operatorId, locationId);
-      if (existing != null) return existing;
+      final baseExists = await _baseRowExists(exec, operatorId, locationId);
       // INSERT defaults; ON CONFLICT DO NOTHING covers a concurrent
       // first-create. Then SELECT to read whichever row landed.
-      await exec.execute(
-        'insert into data_accuracy_settings ('
-        'operator_id, location_id, updated_by) '
-        'values (@operator_id::uuid, @location_id::uuid, @updated_by) '
-        'on conflict (operator_id, location_id) do nothing',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-          'updated_by': actorUserId,
-        },
-      );
+      if (!baseExists) {
+        await exec.execute(
+          'insert into data_accuracy_settings ('
+          'operator_id, location_id, updated_by) '
+          'values (@operator_id::uuid, @location_id::uuid, @updated_by) '
+          'on conflict (operator_id, location_id) do nothing',
+          parameters: <String, Object?>{
+            'operator_id': operatorId,
+            'location_id': locationId,
+            'updated_by': actorUserId,
+          },
+        );
+      }
       final created = await _readRow(exec, operatorId, locationId);
       if (created == null) {
         throw StateError(
@@ -133,7 +116,20 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
         '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
-        'covers_manual_entries = excluded.covers_manual_entries, '
+        'covers_manual_entries = ('
+        'select coalesce(jsonb_object_agg('
+        'coalesce(existing_day.key, incoming_day.key), '
+        "coalesce(existing_day.value, '{}'::jsonb) || "
+        "coalesce(incoming_day.value, '{}'::jsonb)"
+        "), '{}'::jsonb) "
+        'from jsonb_each(coalesce('
+        'data_accuracy_settings.covers_manual_entries, '
+        "'{}'::jsonb)) existing_day "
+        'full join jsonb_each(coalesce('
+        'excluded.covers_manual_entries, '
+        "'{}'::jsonb)) incoming_day "
+        'on existing_day.key = incoming_day.key'
+        '), '
         'wage_source = excluded.wage_source, '
         'walk_in_handling_mode = excluded.walk_in_handling_mode, '
         'walk_in_manual_entries = excluded.walk_in_manual_entries, '
@@ -149,8 +145,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
           'updated_by': actorUserId,
         },
       );
-      final effectiveDate =
-          effectiveAtBusinessDateIso ?? _todayUtcIso();
+      final effectiveDate = effectiveAtBusinessDateIso ?? _todayUtcIso();
       for (final entry in settings.coversSourcePerServicePeriod.entries) {
         await _upsertKeyedCoversSource(
           exec,
@@ -236,6 +231,45 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         operatorId: operatorId,
         locationId: locationId,
         manualEntries: manualEntries,
+        wageSource: current.wageSource,
+        walkInHandlingMode: current.walkInHandlingMode,
+        walkInManualEntries: current.walkInManualEntries,
+        actorUserId: actorUserId,
+      );
+    });
+  }
+
+  /// Clear one manual covers slot. Neighboring service periods on the
+  /// same business date and other dates are preserved.
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodId,
+    String? actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<DataAccuracySettings>(ctx, (exec) async {
+      final current = await _readRow(exec, operatorId, locationId);
+      if (current == null) {
+        throw StateError(
+          'data_accuracy_settings clearManualCovers called before '
+          'readOrCreateDefault - no row for this (operator, location)',
+        );
+      }
+      return _writeAndReturn(
+        exec: exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        manualEntries: _clearManualEntry(
+          current.coversManualEntries,
+          businessDateIso,
+          servicePeriodId,
+        ),
         wageSource: current.wageSource,
         walkInHandlingMode: current.walkInHandlingMode,
         walkInManualEntries: current.walkInManualEntries,
@@ -425,16 +459,20 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
   ) async {
     final rows = await exec.query(
       'select '
-      'das.setting_id::text as setting_id, '
-      'das.operator_id::text as operator_id, '
-      'das.location_id::text as location_id, '
-      '$_perPeriodSubquery, '
-      'das.covers_manual_entries, das.wage_source, '
-      'das.walk_in_handling_mode, das.walk_in_manual_entries, '
-      'das.created_at, das.updated_at, das.updated_by '
-      'from data_accuracy_settings das '
-      'where das.operator_id = @operator_id::uuid '
-      'and das.location_id = @location_id::uuid',
+      'setting_id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'covers_source_per_service_period, '
+      'covers_source_per_service_period_source, '
+      'covers_manual_entries, wage_source, '
+      'wage_source_source, '
+      'walk_in_handling_mode, '
+      'walk_in_handling_mode_source, '
+      'walk_in_manual_entries, '
+      'created_at, updated_at, updated_by '
+      'from public.effective_data_accuracy_settings_v '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
@@ -442,6 +480,25 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
     );
     if (rows.isEmpty) return null;
     return DataAccuracySettings.fromRow(rows.single);
+  }
+
+  Future<bool> _baseRowExists(
+    PostgresExecutor exec,
+    String operatorId,
+    String locationId,
+  ) async {
+    final rows = await exec.query(
+      'select das.setting_id::text as setting_id '
+      'from public.data_accuracy_settings das '
+      'where das.operator_id = @operator_id::uuid '
+      'and das.location_id = @location_id::uuid '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    return rows.isNotEmpty;
   }
 
   Future<DataAccuracySettings> _writeAndReturn({
@@ -502,6 +559,22 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
     });
     final dayMap = out.putIfAbsent(businessDateIso, () => <String, int>{});
     dayMap[servicePeriodId] = covers;
+    return out;
+  }
+
+  static Map<String, Map<String, int>> _clearManualEntry(
+    Map<String, Map<String, int>> current,
+    String businessDateIso,
+    String servicePeriodId,
+  ) {
+    final out = <String, Map<String, int>>{};
+    current.forEach((key, value) {
+      out[key] = Map<String, int>.from(value);
+    });
+    final dayMap = out[businessDateIso];
+    if (dayMap == null) return out;
+    dayMap.remove(servicePeriodId);
+    if (dayMap.isEmpty) out.remove(businessDateIso);
     return out;
   }
 

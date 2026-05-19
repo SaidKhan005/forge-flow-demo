@@ -24,7 +24,6 @@ class BenchmarkOverrideCapPolicy {
   /// users as uncapped.
   static const Set<String> adminTierRoles = <String>{
     'operator_owner',
-    'operator_admin',
     'operator_general_manager',
     'super_admin',
   };

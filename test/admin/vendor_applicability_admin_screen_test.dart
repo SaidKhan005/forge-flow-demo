@@ -105,6 +105,51 @@ void main() {
       expect(command.idempotencyKey, startsWith('admin-vendor-applicability-'));
     });
 
+    testWidgets('covers add dialog accepts custom service-period keys', (
+      tester,
+    ) async {
+      await _size(tester);
+      final gateway = _FakeVendorApplicabilityAdminGateway();
+
+      await tester.pumpWidget(
+        wrap(
+          VendorApplicabilityAdminScreen(
+            gateway: gateway,
+            initialSettingKind: 'covers',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_vendor_applicability_add')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_vendor_slug')),
+        'sevenrooms',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_metadata')),
+        '{"cover_filter":"all_covers","service_periods":["brunch","happy_hour"]}',
+      );
+      await tester.enterText(
+        find.byKey(const Key('admin_vendor_applicability_reason')),
+        'Ticket VA-201 covers source custom periods',
+      );
+      await tester.tap(
+        find.byKey(const Key('admin_vendor_applicability_submit')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.upserts, hasLength(1));
+      final command = gateway.upserts.single;
+      expect(command.settingKind, 'covers');
+      expect(command.vendorSlug, 'sevenrooms');
+      expect(command.metadata['service_periods'], <String>[
+        'brunch',
+        'happy_hour',
+      ]);
+    });
+
     testWidgets('toggle asks for a reason and writes temporal replacement', (
       tester,
     ) async {

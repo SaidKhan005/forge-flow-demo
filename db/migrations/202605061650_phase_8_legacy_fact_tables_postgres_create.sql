@@ -333,7 +333,7 @@ create table if not exists public.cover_facts (
   vendor_modified_at timestamptz,
 
   -- Volume + economics.
-  covers integer not null default 0,
+  covers integer,
   covers_source text,
   actual_sales numeric(14, 4),
 

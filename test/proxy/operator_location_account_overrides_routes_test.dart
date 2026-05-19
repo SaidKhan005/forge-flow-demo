@@ -13,7 +13,7 @@
 //     iana_timezone / rollover hour / contact_email / contact_phone /
 //     no_fields_to_update).
 //   * 404 location_not_found — the gateway returned locationNotFound.
-//   * 403 forbidden — caller lacks operator_owner / operator_admin
+//   * 403 forbidden — caller lacks operator_owner
 //     (dispatcher-level gate).
 //   * Idempotency replay — same Idempotency-Key + same body within
 //     TTL returns the cached 200 response without re-invoking the
@@ -311,7 +311,7 @@ void main() {
       },
     );
 
-    test('403 when caller lacks operator_owner / operator_admin', () async {
+    test('403 when caller lacks operator_owner', () async {
       await withRealHttp(() async {
         final ctx = await spinUp(
           initialClaims: const ProxyJwtClaims(

@@ -63,6 +63,7 @@ class CurrentWeekState {
       scheduledBohHours: bohHours,
       theoreticalLaborPct: profile.theoreticalLaborPct,
       targetProfileId: profile.targetProfileId,
+      targetProfileVersionId: profile.targetProfileVersionId,
       targetSourceType: profile.sourceType,
       targetCPLH: profile.targetCPLH,
       targetSPLH: profile.targetSPLH,

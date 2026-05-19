@@ -21,6 +21,7 @@
 
 import '../operator_scoped_repository.dart';
 import '../postgres_executor.dart';
+import 'business_timing_starter_repository.dart';
 
 class OperatorsRepository extends OperatorScopedRepository {
   OperatorsRepository(super.tenantWrapper);
@@ -212,8 +213,9 @@ class OperatorsRepository extends OperatorScopedRepository {
   /// location to attach to an `org_units` parent, so onboarding creates the
   /// operator root before inserting the primary location. Sequence: insert
   /// operator (no primary_location_id) -> insert root org_unit -> insert
-  /// location -> UPDATE operator with primary_location_id. The returning row
-  /// is the final operator state with its primary_location_id set.
+  /// location -> seed operator-scope Business Timing -> UPDATE operator with
+  /// primary_location_id. The returning row is the final operator state with
+  /// its primary_location_id set.
   Future<OperatorOnboardingResult> onboardOperatorAtomically({
     required String businessName,
     required String ownerEmail,
@@ -293,6 +295,17 @@ class OperatorsRepository extends OperatorScopedRepository {
       }
       final locationId = locationRows.single['location_id']! as String;
 
+      await insertStarterBusinessTimingProfile(
+        exec,
+        operatorId: operatorId,
+        businessTimezone: locationTimezone,
+        businessDayStartLocal: _businessDayStartLocalFromHour(
+          locationRolloverHour,
+        ),
+        adminReason: adminReason,
+        metadataSource: 'admin_operator_onboarding_bootstrap',
+      );
+
       final operatorRows = await exec.query(
         'update operators set '
         'primary_location_id = @location_id::uuid, '
@@ -320,6 +333,9 @@ class OperatorsRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 }
+
+String _businessDayStartLocalFromHour(int hour) =>
+    '${hour.toString().padLeft(2, '0')}:00';
 
 /// Compact bundle returned by [OperatorsRepository.onboardOperatorAtomically].
 /// Carries only the rows the proxy handler needs to JSON-encode for

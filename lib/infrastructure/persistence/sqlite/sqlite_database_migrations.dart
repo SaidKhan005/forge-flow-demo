@@ -215,9 +215,7 @@ Future<void> _migrateToV28(Database db) async {
 /// and the existing emit + dedupe path is unchanged.
 Future<void> _migrateToV30(Database db) async {
   if (!await _columnExists(db, 'app_notifications', 'read_at')) {
-    await db.execute(
-      'ALTER TABLE app_notifications ADD COLUMN read_at TEXT',
-    );
+    await db.execute('ALTER TABLE app_notifications ADD COLUMN read_at TEXT');
   }
 }
 
@@ -232,19 +230,13 @@ Future<void> _migrateToV30(Database db) async {
 /// with mirrored rows.
 Future<void> _migrateToV31(Database db) async {
   if (!await _columnExists(db, 'wage_role_rows', 'server_id')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN server_id TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN server_id TEXT');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'job_code')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN job_code TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN job_code TEXT');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'vendor_id')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN vendor_id TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN vendor_id TEXT');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'vendor_role_id')) {
     await db.execute(
@@ -252,29 +244,19 @@ Future<void> _migrateToV31(Database db) async {
     );
   }
   if (!await _columnExists(db, 'wage_role_rows', 'source')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN source TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN source TEXT');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'is_active')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN is_active INTEGER',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN is_active INTEGER');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'effective_at')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN effective_at TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN effective_at TEXT');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'metadata')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN metadata TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN metadata TEXT');
   }
   if (!await _columnExists(db, 'wage_role_rows', 'updated_by')) {
-    await db.execute(
-      'ALTER TABLE wage_role_rows ADD COLUMN updated_by TEXT',
-    );
+    await db.execute('ALTER TABLE wage_role_rows ADD COLUMN updated_by TEXT');
   }
   await db.execute(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_wage_role_rows_server_id '
@@ -497,11 +479,7 @@ Future<void> _migrateToV33(Database db) async {
       'ALTER TABLE weekly_plan_snapshots ADD COLUMN lock_reason TEXT',
     );
   }
-  if (!await _columnExists(
-    db,
-    'weekly_plan_snapshots',
-    'locked_by_user_id',
-  )) {
+  if (!await _columnExists(db, 'weekly_plan_snapshots', 'locked_by_user_id')) {
     await db.execute(
       'ALTER TABLE weekly_plan_snapshots ADD COLUMN locked_by_user_id TEXT',
     );
@@ -522,10 +500,7 @@ Future<void> _migrateToV33(Database db) async {
 /// effective_at_business_date)` so app-start can rehydrate honest
 /// per-period covers/wage source resolution before the first sweep.
 Future<void> _migrateToV32(Database db) async {
-  if (!await _tableExists(
-    db,
-    'data_accuracy_service_period_settings_cache',
-  )) {
+  if (!await _tableExists(db, 'data_accuracy_service_period_settings_cache')) {
     await db.execute('''
       CREATE TABLE data_accuracy_service_period_settings_cache (
         restaurant_id              TEXT NOT NULL,
@@ -535,6 +510,11 @@ Future<void> _migrateToV32(Database db) async {
         operator_id                TEXT NOT NULL,
         location_id                TEXT NOT NULL,
         covers_source              TEXT NOT NULL,
+        covers_source_scope_type   TEXT,
+        covers_source_source_kind  TEXT,
+        covers_source_scope_id     TEXT,
+        covers_source_setting_id   TEXT,
+        covers_source_override_id  TEXT,
         wage_source                TEXT NOT NULL,
         created_at                 TEXT NOT NULL,
         updated_at                 TEXT NOT NULL,
@@ -555,6 +535,87 @@ Future<void> _migrateToV32(Database db) async {
         effective_at_business_date DESC
       )
     ''');
+  }
+}
+
+Future<void> _migrateToV38(Database db) async {
+  const activeProfileCols = <String>[
+    'target_cycle_id TEXT',
+    'target_profile_version_id TEXT',
+  ];
+  for (final col in activeProfileCols) {
+    final name = col.split(' ').first;
+    if (!await _columnExists(db, 'active_target_profiles', name)) {
+      await db.execute('ALTER TABLE active_target_profiles ADD COLUMN $col');
+    }
+  }
+
+  const sourceCols = <String>[
+    'covers_source_scope_type TEXT',
+    'covers_source_source_kind TEXT',
+    'covers_source_scope_id TEXT',
+    'covers_source_setting_id TEXT',
+    'covers_source_override_id TEXT',
+  ];
+  if (await _tableExists(db, 'data_accuracy_service_period_settings_cache')) {
+    for (final col in sourceCols) {
+      final name = col.split(' ').first;
+      if (!await _columnExists(
+        db,
+        'data_accuracy_service_period_settings_cache',
+        name,
+      )) {
+        await db.execute(
+          'ALTER TABLE data_accuracy_service_period_settings_cache '
+          'ADD COLUMN $col',
+        );
+      }
+    }
+  }
+}
+
+Future<void> _migrateToV39(Database db) async {
+  if (!await _columnExists(db, 'target_profile_versions', 'target_cycle_id')) {
+    await db.execute(
+      'ALTER TABLE target_profile_versions ADD COLUMN target_cycle_id TEXT',
+    );
+  }
+  await db.execute('''
+    UPDATE target_profile_versions
+    SET target_cycle_id = (
+      SELECT active_target_profiles.target_cycle_id
+      FROM active_target_profiles
+      WHERE active_target_profiles.restaurant_id =
+            target_profile_versions.restaurant_id
+        AND active_target_profiles.target_profile_version_id =
+            target_profile_versions.target_profile_version_id
+      LIMIT 1
+    )
+    WHERE target_cycle_id IS NULL
+  ''');
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS ix_target_profile_versions_cycle
+    ON target_profile_versions(restaurant_id, target_cycle_id)
+    WHERE target_cycle_id IS NOT NULL
+  ''');
+}
+
+Future<void> _migrateToV40(Database db) async {
+  const columns = <String>[
+    'selected_scope_type TEXT',
+    'selected_scope_id TEXT',
+    'source_scope_type TEXT',
+    'source_scope_id TEXT',
+    'source_scope_label TEXT',
+    'inherited_from_ancestor INTEGER',
+  ];
+  for (final column in columns) {
+    final name = column.split(' ').first;
+    if (!await _columnExists(db, 'restaurant_timing_configs', name)) {
+      await db.execute(
+        'ALTER TABLE restaurant_timing_configs ADD COLUMN $column',
+      );
+    }
   }
 }
 
@@ -889,10 +950,12 @@ Future<void> _migrateToV9(Database db) async {
 Future<void> _migrateToV8(Database db) async {
   // ── 1. Create target profile tables ───────────────────────────────────
   await _createTableIfNotExists(db, 'active_target_profiles', '''
-    CREATE TABLE active_target_profiles (
-      restaurant_id              TEXT PRIMARY KEY NOT NULL,
-      target_profile_id          TEXT NOT NULL,
-      source_type                TEXT NOT NULL,
+      CREATE TABLE active_target_profiles (
+        restaurant_id              TEXT PRIMARY KEY NOT NULL,
+        target_profile_id          TEXT NOT NULL,
+        target_cycle_id            TEXT,
+        target_profile_version_id  TEXT,
+        source_type                TEXT NOT NULL,
       target_cplh                REAL NOT NULL,
       target_splh                REAL NOT NULL,
       target_ppa                 REAL NOT NULL,
@@ -906,6 +969,16 @@ Future<void> _migrateToV8(Database db) async {
       built_at                   TEXT NOT NULL
     )
   ''');
+  const activeProfileIdentityCols = <String>[
+    'target_cycle_id TEXT',
+    'target_profile_version_id TEXT',
+  ];
+  for (final col in activeProfileIdentityCols) {
+    final name = col.split(' ').first;
+    if (!await _columnExists(db, 'active_target_profiles', name)) {
+      await db.execute('ALTER TABLE active_target_profiles ADD COLUMN $col');
+    }
+  }
 
   await _createTableIfNotExists(db, 'target_profile_versions', '''
     CREATE TABLE target_profile_versions (

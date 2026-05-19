@@ -1,6 +1,7 @@
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import '../../../../domain/models/data_accuracy_service_period_setting.dart';
+import '../../../../domain/models/data_accuracy_settings.dart';
 
 /// Theme H#7 — persistent SQLite mirror of the proxy's
 /// `data_accuracy_service_period_settings` keyed rows.
@@ -82,6 +83,11 @@ class DataAccuracyServicePeriodSettingsCacheDao {
       'operator_id': row.operatorId,
       'location_id': row.locationId,
       'covers_source': row.coversSource.wire,
+      'covers_source_scope_type': row.coversSourceSource?.scopeType,
+      'covers_source_source_kind': row.coversSourceSource?.sourceKind,
+      'covers_source_scope_id': row.coversSourceSource?.scopeId,
+      'covers_source_setting_id': row.coversSourceSource?.settingId,
+      'covers_source_override_id': row.coversSourceSource?.overrideId,
       'wage_source': row.wageSource.wire,
       'created_at': row.createdAt.toUtc().toIso8601String(),
       'updated_at': row.updatedAt.toUtc().toIso8601String(),
@@ -99,14 +105,19 @@ class DataAccuracyServicePeriodSettingsCacheDao {
       coversSource: ServicePeriodCoversSourceWire.fromWire(
         row['covers_source']! as String,
       ),
+      coversSourceSource: DataAccuracySettingSource.fromMap(<String, Object?>{
+        'scope_type': row['covers_source_scope_type'],
+        'source_kind': row['covers_source_source_kind'],
+        'scope_id': row['covers_source_scope_id'],
+        'setting_id': row['covers_source_setting_id'],
+        'override_id': row['covers_source_override_id'],
+      }),
       wageSource: ServicePeriodWageSourceWire.fromWire(
         row['wage_source']! as String,
       ),
       effectiveAtBusinessDate: row['effective_at_business_date']! as String,
-      createdAt:
-          DateTime.parse(row['created_at']! as String).toUtc(),
-      updatedAt:
-          DateTime.parse(row['updated_at']! as String).toUtc(),
+      createdAt: DateTime.parse(row['created_at']! as String).toUtc(),
+      updatedAt: DateTime.parse(row['updated_at']! as String).toUtc(),
       updatedBy: row['updated_by'] as String?,
     );
   }

@@ -299,21 +299,24 @@ void main() {
       );
     });
 
-    test('patchLocation updates timezone and rollover hour', () async {
-      final gateway = InMemoryOperatorLocationAdminGateway();
-      final bundle = await seededOperator(gateway);
-      final primary = bundle.primaryLocation!;
-      final patched = await gateway.patchLocation(
-        LocationPatchCommand(
-          locationId: primary.locationId,
-          timezone: 'America/Vancouver',
-          businessDayRolloverHour: 6,
-          idempotencyKey: 'k-patch-loc-1',
-        ),
-      );
-      expect(patched.timezone, equals('America/Vancouver'));
-      expect(patched.businessDayRolloverHour, equals(6));
-    });
+    test(
+      'patchLocation updates timezone but ignores retired rollover hour',
+      () async {
+        final gateway = InMemoryOperatorLocationAdminGateway();
+        final bundle = await seededOperator(gateway);
+        final primary = bundle.primaryLocation!;
+        final patched = await gateway.patchLocation(
+          LocationPatchCommand(
+            locationId: primary.locationId,
+            timezone: 'America/Vancouver',
+            businessDayRolloverHour: 6,
+            idempotencyKey: 'k-patch-loc-1',
+          ),
+        );
+        expect(patched.timezone, equals('America/Vancouver'));
+        expect(patched.businessDayRolloverHour, equals(4));
+      },
+    );
 
     test('removeLocation refuses to remove primary location', () async {
       final gateway = InMemoryOperatorLocationAdminGateway();
@@ -403,10 +406,12 @@ void main() {
       final command = const LocationPatchCommand(
         locationId: 'loc-1',
         timezone: 'America/Vancouver',
+        businessDayRolloverHour: 6,
         idempotencyKey: 'k-json-patch-loc',
       );
       final json = command.toJson();
       expect(json.keys, equals(<String>{'timezone'}));
+      expect(json.containsKey('business_day_rollover_hour'), isFalse);
     });
 
     test('LocationCreateCommand serializes parent_org_unit_id', () {

@@ -11,14 +11,16 @@ import 'package:provider/provider.dart';
 import '../../services/learn_benchmark_context_service.dart';
 import '../../domain/constants/app_defaults.dart';
 import '../../domain/constants/cross_axis_pair_catalog.dart';
+import '../../domain/models/service_period_definition.dart';
+import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/shift_data_source.dart';
-import '../../models/history_pattern_record.dart';
 import '../../models/learn_benchmark_context.dart';
 import '../../models/learn_repeatable_win_summary.dart';
 import '../../models/learn_teaching_summary.dart';
 import '../../models/shift_record.dart';
 import '../../models/week_record.dart';
 import '../../services/daypart_evidence_visibility_policy.dart';
+import '../../services/history_pattern_builder.dart';
 import '../../services/learn_repeatable_wins_read_service.dart';
 import '../../services/learn_teaching_analyzer.dart';
 import '../../services/variance_driver_pattern_read_service.dart';
@@ -51,14 +53,23 @@ class _LearnTabState extends State<LearnTab>
     _future =
         Future.wait([
           source.getWeekHistory(),
-          source.getHistoryPatternRecords(),
           LearnBenchmarkContextService.instance.resolve(),
           source.getHistoricalClosedShifts(),
+          _loadServicePeriodDefinitions(),
         ]).then((results) {
           final weeks = results[0] as List<WeekRecord>;
-          final patternRecords = results[1] as List<HistoryPatternRecord>;
-          final benchmarkContext = results[2] as LearnBenchmarkContext;
-          final closedShifts = results[3] as List<ShiftRecord>;
+          final benchmarkContext = results[1] as LearnBenchmarkContext;
+          final closedShifts = results[2] as List<ShiftRecord>;
+          final servicePeriodDefinitions =
+              results[3] as List<ServicePeriodDefinition>?;
+          final weekLabelsById = {
+            for (final week in weeks) week.weekId: week.weekLabel,
+          };
+          final patternRecords = HistoryPatternBuilder.fromClosedShifts(
+            closedShifts,
+            weekLabelsById,
+            servicePeriodDefinitions: servicePeriodDefinitions,
+          );
           // 7.58.3 — coverage denominator for the leak repeat counter.
           // `closedShifts` is the same closed `shift_records` population
           // `HistoryPatternBuilder` consumes upstream, so repeats and
@@ -80,7 +91,10 @@ class _LearnTabState extends State<LearnTab>
           const driverService = VarianceDriverPatternReadService();
           final leakDriver = driverService.resolveLeakDriver(patternRecords);
           const winsService = LearnRepeatableWinsReadService();
-          final allWins = winsService.build(closedShifts);
+          final allWins = winsService.build(
+            closedShifts,
+            servicePeriodDefinitions: servicePeriodDefinitions,
+          );
           // Apply visibility policy: only truly repeated wins pass (7.55k.7).
           final repeatableWins = allWins
               .where(
@@ -134,6 +148,17 @@ class _LearnTabState extends State<LearnTab>
         );
       },
     );
+  }
+}
+
+Future<List<ServicePeriodDefinition>?> _loadServicePeriodDefinitions() async {
+  try {
+    final config = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
+    final defs = config?.servicePeriodDefinitions;
+    return defs?.isNotEmpty == true ? defs : null;
+  } catch (_) {
+    return null;
   }
 }
 
@@ -192,12 +217,13 @@ class _LearnContentState extends State<_LearnContent> {
     // scope (7.58.2 Single Source of Truth). A null card (unknown id /
     // empty set / `on_model` sentinel) falls back to the honest
     // "no patterns yet" frame instead of fabricating a card.
-    final leakCard =
-        summary.hasHistoryPatterns ? widget.leakDriver.card : null;
-    final LearnRepeatableWinSummary? topWin =
-        wins.isNotEmpty ? wins.first : null;
-    final benchmarkCard =
-        topWin == null ? null : LeverCards.lookup(topWin.dominantLeverId);
+    final leakCard = summary.hasHistoryPatterns ? widget.leakDriver.card : null;
+    final LearnRepeatableWinSummary? topWin = wins.isNotEmpty
+        ? wins.first
+        : null;
+    final benchmarkCard = topWin == null
+        ? null
+        : LeverCards.lookup(topWin.dominantLeverId);
 
     // V2-5: Carousel configuration for the active section. Leak and
     // Wins each render as a 3-frame story (dots adapt to 3); Cross-Axis
@@ -284,8 +310,7 @@ class _LearnContentState extends State<_LearnContent> {
                 stepLabel: 'FRAME 1 · WHAT HELD',
                 heading: benchmarkCard.metric,
                 caption: caption,
-                visualHint:
-                    _leverVisualHint(benchmarkCard, favorable: true),
+                visualHint: _leverVisualHint(benchmarkCard, favorable: true),
                 // V2-4: emphasis applied at RENDER over the verbatim
                 // catalog string (round-trips to it via stripMarkup).
                 body: LearnEmphasisMap.emphasizeWhatHappened(
@@ -453,14 +478,36 @@ String? _winCoverageCaption(LearnRepeatableWinSummary win) {
       '${win.closedShiftCount} $daypartLabel';
 }
 
-/// Pluralizes the trailing daypart noun on a `fullLabel` like
-/// `Tue Lunch` -> `Tue Lunches`. The three canonical daypart labels
-/// (`Lunch` / `Dinner` / `Late Night`) cover the plural rules: `Lunch`
-/// takes `es`, the others take `s`.
+/// Pluralizes the trailing service-period noun on a `fullLabel` like
+/// `Tue Lunch` -> `Tue Lunches` or `Sat Brunch` -> `Sat Brunches`.
 String _pluralizeDaypart(String fullLabel) {
-  if (fullLabel.isEmpty) return fullLabel;
-  if (fullLabel.endsWith('Lunch')) return '${fullLabel}es';
-  return '${fullLabel}s';
+  final trimmed = fullLabel.trim();
+  if (trimmed.isEmpty) return fullLabel;
+  final splitAt = trimmed.lastIndexOf(' ');
+  if (splitAt < 0) return _pluralizeWord(trimmed);
+  final prefix = trimmed.substring(0, splitAt);
+  final noun = trimmed.substring(splitAt + 1);
+  return '$prefix ${_pluralizeWord(noun)}';
+}
+
+String _pluralizeWord(String word) {
+  if (word.isEmpty) return word;
+  final lower = word.toLowerCase();
+  if (lower.endsWith('ch') ||
+      lower.endsWith('sh') ||
+      lower.endsWith('s') ||
+      lower.endsWith('x') ||
+      lower.endsWith('z')) {
+    return '${word}es';
+  }
+  if (lower.endsWith('y') && word.length > 1) {
+    final beforeY = lower.codeUnitAt(lower.length - 2);
+    const vowels = <int>[97, 101, 105, 111, 117];
+    if (!vowels.contains(beforeY)) {
+      return '${word.substring(0, word.length - 1)}ies';
+    }
+  }
+  return '${word}s';
 }
 
 /// Frame-1 `.fvis` visual hint built from the locked lever identity.

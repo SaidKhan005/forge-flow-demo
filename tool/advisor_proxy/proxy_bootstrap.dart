@@ -78,6 +78,7 @@ import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/business_date_resolver.dart';
 import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
@@ -1850,6 +1851,8 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   }) async {
     await _writeAudit(
@@ -1868,6 +1871,8 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
         'hourly_rate': hourlyRate,
         'weighted_hours': weightedHours,
         'source': source,
+        'scope_type': scopeType,
+        'org_unit_id': orgUnitId,
       },
     );
   }
@@ -2824,6 +2829,16 @@ String _datePlusDays(String yyyyMmDd, int days) {
   return parsed.add(Duration(days: days)).toIso8601String().substring(0, 10);
 }
 
+bool _isYyyyMmDdCalendarDate(String value) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
+  final parsed = DateTime.tryParse('${value}T00:00:00Z');
+  if (parsed == null) return false;
+  final year = int.parse(value.substring(0, 4));
+  final month = int.parse(value.substring(5, 7));
+  final day = int.parse(value.substring(8, 10));
+  return parsed.year == year && parsed.month == month && parsed.day == day;
+}
+
 String? _optionalStringFromObject(Object? value) {
   if (value is String && value.trim().isNotEmpty) return value.trim();
   return null;
@@ -3160,24 +3175,49 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
     required String? businessDate,
   }) async {
-    final effectiveDate = businessDate ?? _todayUtcDate();
-    final candidates = await _timingProfilesRepository
-        .listCandidateProfilesForLocation(
-          operatorId: operatorId,
-          locationId: locationId,
-          businessDate: effectiveDate,
-          userId: _uuidOrNull(scope.userId),
-        );
-    if (candidates.isEmpty) {
-      return const <String, Object?>{'timing_config': null};
-    }
-
     try {
-      final resolved = BusinessTimingProfileResolver.resolve(
-        <BusinessTimingProfile>[
-          for (final row in candidates) _timingProfile(row),
-        ],
+      final localNow = businessDate == null
+          ? await _locationLocalNowParts(
+              scope: scope,
+              operatorId: operatorId,
+              locationId: locationId,
+            )
+          : null;
+      var effectiveDate =
+          businessDate ?? localNow?.localDate ?? _todayUtcDate();
+      var candidates = await _listTimingCandidatesForDate(
+        scope: scope,
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDate: effectiveDate,
       );
+      if (candidates.isEmpty) {
+        return const <String, Object?>{'timing_config': null};
+      }
+
+      var resolved = _resolveTimingCandidates(candidates);
+      if (businessDate == null && localNow != null) {
+        final localBusinessDate = _businessDateForLocalClock(
+          localDate: localNow.localDate,
+          localTime: localNow.localTime,
+          businessDayStartLocalTime: resolved.businessDayStartLocalTime,
+        );
+        if (localBusinessDate != effectiveDate) {
+          final correctedCandidates = await _listTimingCandidatesForDate(
+            scope: scope,
+            operatorId: operatorId,
+            locationId: locationId,
+            businessDate: localBusinessDate,
+          );
+          if (correctedCandidates.isEmpty) {
+            return const <String, Object?>{'timing_config': null};
+          }
+          effectiveDate = localBusinessDate;
+          candidates = correctedCandidates;
+          resolved = _resolveTimingCandidates(candidates);
+        }
+      }
+
       final newest = candidates
           .map((row) => row.updatedAt)
           .reduce((a, b) => a.isAfter(b) ? a : b);
@@ -3186,10 +3226,78 @@ class RepositoryMobileOperationalSyncProxyGateway
         createdAt: candidates.first.createdAt.toUtc().toIso8601String(),
         updatedAt: newest.toUtc().toIso8601String(),
       );
-      return <String, Object?>{'timing_config': _timingConfigJson(config)};
+      return <String, Object?>{
+        'timing_config': _timingConfigJson(
+          config,
+          provenance: _timingConfigProvenanceJson(
+            locationId: locationId,
+            resolved: resolved,
+            candidates: candidates,
+          ),
+        ),
+      };
     } on BusinessTimingProfileResolutionException {
       return const <String, Object?>{'timing_config': null};
     }
+  }
+
+  Future<List<BusinessTimingProfileRow>> _listTimingCandidatesForDate({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+  }) {
+    return _timingProfilesRepository.listCandidateProfilesForLocation(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      userId: _uuidOrNull(scope.userId),
+    );
+  }
+
+  Future<_TimingLocalNowParts?> _locationLocalNowParts({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        "select (now() at time zone loc.timezone)::date::text as local_date, "
+        "to_char(now() at time zone loc.timezone, 'HH24:MI') as local_time "
+        'from public.locations loc '
+        'where loc.operator_id = @operator_id::uuid '
+        'and loc.location_id = @location_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final localDate = rows.single['local_date'];
+      final localTime = rows.single['local_time'];
+      if (localDate is! String || localTime is! String) return null;
+      return _TimingLocalNowParts(localDate: localDate, localTime: localTime);
+    });
+  }
+
+  static EffectiveBusinessTimingProfile _resolveTimingCandidates(
+    List<BusinessTimingProfileRow> candidates,
+  ) {
+    return BusinessTimingProfileResolver.resolve(<BusinessTimingProfile>[
+      for (final row in candidates) _timingProfile(row),
+    ]);
+  }
+
+  static String _businessDateForLocalClock({
+    required String localDate,
+    required String localTime,
+    required String businessDayStartLocalTime,
+  }) {
+    return BusinessDateResolver.resolveFromIso(
+      localIsoTimestamp: '${localDate}T$localTime:00',
+      businessDayStartLocalTime: businessDayStartLocalTime,
+    );
   }
 
   @override
@@ -3221,23 +3329,38 @@ class RepositoryMobileOperationalSyncProxyGateway
     });
   }
 
-  // Slice R7b: the per-service-period covers source no longer lives in
-  // the legacy data_accuracy_settings.covers_source_{lunch,dinner,
-  // late_night} scalar columns. It is sourced from the keyed table
-  // public.data_accuracy_service_period_settings, resolved through the
-  // HP #11 hierarchy by public.effective_data_accuracy_settings_v's
-  // covers_source_per_service_period jsonb output (R7a). This shared
-  // correlated subquery projects that jsonb for the row's
-  // (operator_id, location_id) so reads never touch a legacy scalar
-  // covers column. The legacy covers_source_{lunch,dinner,late_night}
-  // JSON wire keys are still emitted (derived from this map) so no
-  // existing mobile/admin client breaks.
-  static const String _coversPerPeriodSubquery =
-      '(select v.covers_source_per_service_period '
-      'from public.effective_data_accuracy_settings_v v '
-      'where v.operator_id = @operator_id::uuid '
-      'and v.location_id = @location_id::uuid) '
-      'as covers_source_per_service_period';
+  // Slice R7e: read the server-resolved effective view directly so
+  // value and provenance fields travel together. The legacy
+  // covers_source_{lunch,dinner,late_night} JSON keys are still
+  // emitted later by _dataAccuracyJson, derived from the keyed map.
+  static const String _effectiveDataAccuracySelectColumns =
+      'setting_id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'covers_source_per_service_period, '
+      'covers_manual_entries, wage_source, '
+      'walk_in_handling_mode, walk_in_manual_entries, '
+      'created_at, updated_at, updated_by, '
+      'covers_source_per_service_period_source, '
+      'wage_source_source, walk_in_handling_mode_source';
+
+  static Future<List<PostgresRow>> _fetchEffectiveDataAccuracyRows(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) {
+    return exec.query(
+      'select $_effectiveDataAccuracySelectColumns '
+      'from public.effective_data_accuracy_settings_v '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+  }
 
   @override
   Future<Map<String, Object?>> fetchDataAccuracySettings({
@@ -3246,22 +3369,10 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
   }) {
     return _tenantRead(scope, operatorId, locationId, (exec) async {
-      final rows = await exec.query(
-        'select setting_id::text as setting_id, '
-        'operator_id::text as operator_id, '
-        'location_id::text as location_id, '
-        '$_coversPerPeriodSubquery, '
-        'covers_manual_entries, wage_source, '
-        'walk_in_handling_mode, walk_in_manual_entries, '
-        'created_at, updated_at, updated_by '
-        'from public.data_accuracy_settings '
-        'where operator_id = @operator_id::uuid '
-        'and location_id = @location_id::uuid '
-        'limit 1',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-        },
+      final rows = await _fetchEffectiveDataAccuracyRows(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
       );
       return <String, Object?>{
         'data': rows.isEmpty ? null : _dataAccuracyJson(rows.single),
@@ -3276,21 +3387,26 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
     required Map<String, Object?> body,
   }) {
-    final coversLunch = _bodyCoversSource(
-      body,
-      'covers_source_lunch',
-      defaultValue: 'vendor',
-    );
-    final coversDinner = _bodyCoversSource(
-      body,
-      'covers_source_dinner',
-      defaultValue: 'vendor',
-    );
-    final coversLateNight = _bodyCoversSource(
-      body,
-      'covers_source_late_night',
-      defaultValue: 'vendor',
-    );
+    final legacyCovers = <String, String>{
+      if (body.containsKey('covers_source_lunch'))
+        'lunch': _bodyCoversSource(
+          body,
+          'covers_source_lunch',
+          defaultValue: 'vendor',
+        ),
+      if (body.containsKey('covers_source_dinner'))
+        'dinner': _bodyCoversSource(
+          body,
+          'covers_source_dinner',
+          defaultValue: 'vendor',
+        ),
+      if (body.containsKey('covers_source_late_night'))
+        'late_night': _bodyCoversSource(
+          body,
+          'covers_source_late_night',
+          defaultValue: 'vendor',
+        ),
+    };
     final coversPerServicePeriod = _bodyCoversSourcePerServicePeriod(body);
     final wageSource = _bodyWageSource(
       body,
@@ -3323,7 +3439,20 @@ class RepositoryMobileOperationalSyncProxyGateway
         '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
         '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
-        'covers_manual_entries = excluded.covers_manual_entries, '
+        'covers_manual_entries = ('
+        'select coalesce(jsonb_object_agg('
+        'coalesce(existing_day.key, incoming_day.key), '
+        "coalesce(existing_day.value, '{}'::jsonb) || "
+        "coalesce(incoming_day.value, '{}'::jsonb)"
+        "), '{}'::jsonb) "
+        'from jsonb_each(coalesce('
+        'public.data_accuracy_settings.covers_manual_entries, '
+        "'{}'::jsonb)) existing_day "
+        'full join jsonb_each(coalesce('
+        'excluded.covers_manual_entries, '
+        "'{}'::jsonb)) incoming_day "
+        'on existing_day.key = incoming_day.key'
+        '), '
         'wage_source = excluded.wage_source, '
         'walk_in_handling_mode = excluded.walk_in_handling_mode, '
         'walk_in_manual_entries = excluded.walk_in_manual_entries, '
@@ -3352,13 +3481,15 @@ class RepositoryMobileOperationalSyncProxyGateway
           message: 'data accuracy settings write returned no row',
         );
       }
-      // Route the keyed covers map into the keyed table. The legacy
-      // triplet is still accepted as compatibility input and then
-      // overlaid by covers_source_per_service_period so explicit keyed
-      // values win. effective_at_business_date is the 1970-01-01
-      // sentinel (matching the R5 backfill row identity) so this lands
-      // on the operator's per-location baseline keyed row and stays
-      // idempotent via the keyed UNIQUE
+      // Route only supplied covers keys into the keyed table. The
+      // legacy triplet is still accepted as compatibility input and
+      // then overlaid by covers_source_per_service_period so explicit
+      // keyed values win. Missing legacy keys are not synthesized, so
+      // keyed-only clients do not recreate hidden lunch/dinner/late_night
+      // rows. effective_at_business_date is the 1970-01-01 sentinel
+      // (matching the R5 backfill row identity) so this lands on the
+      // operator's per-location baseline keyed row and stays idempotent
+      // via the keyed UNIQUE
       // (operator_id, location_id, service_period_key,
       // effective_at_business_date) ON CONFLICT — only covers_source is
       // touched so an operator-set keyed wage_source is never clobbered.
@@ -3366,28 +3497,118 @@ class RepositoryMobileOperationalSyncProxyGateway
         exec,
         operatorId: operatorId,
         locationId: locationId,
-        covers: <String, String>{
-          'lunch': coversLunch,
-          'dinner': coversDinner,
-          'late_night': coversLateNight,
-          ...coversPerServicePeriod,
-        },
+        covers: <String, String>{...legacyCovers, ...coversPerServicePeriod},
         updatedBy: scope.userId,
       );
-      final coversRow = await exec.query(
-        'select $_coversPerPeriodSubquery',
+      final effectiveRows = await _fetchEffectiveDataAccuracyRows(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      return <String, Object?>{
+        'data': _dataAccuracyJson(
+          effectiveRows.isEmpty ? rows.single : effectiveRows.single,
+        ),
+      };
+    });
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) {
+    final businessDate = _bodyBusinessDate(body, 'business_date');
+    final servicePeriodKey = _bodyServicePeriodKey(body);
+    final clearManualCover = _bodyBool(body, 'clear') ?? false;
+    if (clearManualCover && body.containsKey('covers')) {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_manual_covers_clear',
+        message: 'clear manual covers requests must not include covers',
+      );
+    }
+    final covers = clearManualCover ? null : _bodyCoversCount(body);
+
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        clearManualCover
+            ? 'insert into public.data_accuracy_settings ('
+                  'operator_id, location_id, covers_manual_entries, '
+                  'updated_by) '
+                  "values (@operator_id::uuid, @location_id::uuid, '{}'::jsonb, "
+                  '@updated_by) '
+                  'on conflict (operator_id, location_id) do update set '
+                  'covers_manual_entries = ('
+                  'select coalesce(jsonb_object_agg(day.key, day.value), '
+                  "'{}'::jsonb) "
+                  'from jsonb_each(coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries, '
+                  "'{}'::jsonb) || jsonb_build_object("
+                  '@business_date, coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries '
+                  "-> @business_date, '{}'::jsonb"
+                  ') - @service_period_key)) day '
+                  "where day.value <> '{}'::jsonb"
+                  '), '
+                  'updated_at = now(), updated_by = excluded.updated_by '
+                  'returning setting_id::text as setting_id, '
+                  'operator_id::text as operator_id, '
+                  'location_id::text as location_id, '
+                  'covers_manual_entries, wage_source, '
+                  'walk_in_handling_mode, walk_in_manual_entries, '
+                  'created_at, updated_at, updated_by'
+            : 'insert into public.data_accuracy_settings ('
+                  'operator_id, location_id, covers_manual_entries, updated_by) '
+                  'values ('
+                  '@operator_id::uuid, @location_id::uuid, '
+                  'jsonb_build_object('
+                  '@business_date, jsonb_build_object(@service_period_key, @covers::int)'
+                  '), @updated_by) '
+                  'on conflict (operator_id, location_id) do update set '
+                  'covers_manual_entries = coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries, '
+                  "'{}'::jsonb) || jsonb_build_object("
+                  '@business_date, coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries '
+                  "-> @business_date, '{}'::jsonb"
+                  ') || jsonb_build_object(@service_period_key, @covers::int)), '
+                  'updated_at = now(), updated_by = excluded.updated_by '
+                  'returning setting_id::text as setting_id, '
+                  'operator_id::text as operator_id, '
+                  'location_id::text as location_id, '
+                  'covers_manual_entries, wage_source, '
+                  'walk_in_handling_mode, walk_in_manual_entries, '
+                  'created_at, updated_at, updated_by',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
+          'business_date': businessDate,
+          'service_period_key': servicePeriodKey,
+          if (covers != null) 'covers': covers,
+          'clear_manual_cover': clearManualCover,
+          'updated_by': _uuidOrNull(scope.userId),
         },
       );
-      final merged = <String, Object?>{
-        ...rows.single,
-        'covers_source_per_service_period': coversRow.isEmpty
-            ? null
-            : coversRow.single['covers_source_per_service_period'],
+      if (rows.isEmpty) {
+        throw const MobileOperationalSyncProxyGatewayException(
+          statusCode: 503,
+          code: 'data_accuracy_manual_covers_write_failed',
+          message: 'manual covers write returned no row',
+        );
+      }
+      final effectiveRows = await _fetchEffectiveDataAccuracyRows(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      return <String, Object?>{
+        'data': _dataAccuracyJson(
+          effectiveRows.isEmpty ? rows.single : effectiveRows.single,
+        ),
       };
-      return <String, Object?>{'data': _dataAccuracyJson(merged)};
     });
   }
 
@@ -3485,6 +3706,7 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
     required String? modifiedSince,
     required int pageSize,
+    required bool includeHierarchy,
   }) {
     return _tenantRead(scope, operatorId, locationId, (exec) async {
       final params = <String, Object?>{
@@ -3492,24 +3714,17 @@ class RepositoryMobileOperationalSyncProxyGateway
         'location_id': locationId,
         'limit': pageSize + 1,
       };
-      final cursorSql = _modifiedSinceSql(modifiedSince, params);
-      final rows = await exec.query(
-        'select wage_role_row_id::text as server_id, '
-        'operator_id::text as operator_id, '
-        'location_id::text as location_id, restaurant_id, '
-        'role_name, labor_bucket, hourly_rate, weighted_hours, '
-        'job_code, vendor_id, vendor_role_id, source, is_active, '
-        'effective_at, metadata, created_at, updated_at, updated_by '
-        'from public.wage_role_rows '
-        'where operator_id = @operator_id::uuid '
-        'and location_id = @location_id::uuid '
-        'and is_active is true '
-        '$cursorSql'
-        'order by updated_at asc, labor_bucket asc, role_name asc, '
-        'wage_role_row_id asc '
-        'limit @limit',
-        parameters: params,
-      );
+      final rows = includeHierarchy
+          ? await _fetchHierarchyWageRoleRows(
+              exec: exec,
+              params: params,
+              modifiedSince: modifiedSince,
+            )
+          : await _fetchLocationWageRoleRows(
+              exec: exec,
+              params: params,
+              modifiedSince: modifiedSince,
+            );
       return _pagePayload(
         key: 'wage_role_rows',
         rows: rows,
@@ -3517,6 +3732,83 @@ class RepositoryMobileOperationalSyncProxyGateway
         mapper: _wageRoleRowJson,
       );
     });
+  }
+
+  static Future<List<PostgresRow>> _fetchLocationWageRoleRows({
+    required PostgresExecutor exec,
+    required Map<String, Object?> params,
+    required String? modifiedSince,
+  }) {
+    final cursorSql = _modifiedSinceSql(modifiedSince, params);
+    return exec.query(
+      'select wage_role_row_id::text as server_id, '
+      'operator_id::text as operator_id, '
+      "coalesce(location_id::text, '') as location_id, "
+      'restaurant_id, role_name, labor_bucket, hourly_rate, weighted_hours, '
+      'job_code, vendor_id, vendor_role_id, source, is_active, '
+      'effective_at, metadata, created_at, updated_at, updated_by, '
+      'scope_type, org_unit_id::text as org_unit_id, '
+      'inherited_from_scope_id::text as inherited_from_scope_id, '
+      'null::text as source_label '
+      'from public.wage_role_rows '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and is_active is true '
+      '$cursorSql'
+      'order by updated_at asc, labor_bucket asc, role_name asc, '
+      'wage_role_row_id asc '
+      'limit @limit',
+      parameters: params,
+    );
+  }
+
+  static Future<List<PostgresRow>> _fetchHierarchyWageRoleRows({
+    required PostgresExecutor exec,
+    required Map<String, Object?> params,
+    required String? modifiedSince,
+  }) {
+    final cursorSql = _modifiedSinceSqlForAlias(modifiedSince, params, 'wr');
+    return exec.query(
+      'with selected_location as ('
+      '  select location_id, name, org_unit_path '
+      '  from public.locations '
+      '  where operator_id = @operator_id::uuid '
+      '  and location_id = @location_id::uuid'
+      ') '
+      'select wr.wage_role_row_id::text as server_id, '
+      'wr.operator_id::text as operator_id, '
+      "coalesce(wr.location_id::text, '') as location_id, "
+      'wr.restaurant_id, wr.role_name, wr.labor_bucket, '
+      'wr.hourly_rate, wr.weighted_hours, wr.job_code, wr.vendor_id, '
+      'wr.vendor_role_id, wr.source, wr.is_active, wr.effective_at, '
+      'wr.metadata, wr.created_at, wr.updated_at, wr.updated_by, '
+      'wr.scope_type, wr.org_unit_id::text as org_unit_id, '
+      'wr.inherited_from_scope_id::text as inherited_from_scope_id, '
+      'case '
+      "when wr.scope_type = 'location' then loc.name "
+      "when wr.scope_type = 'org_unit' then ou.name "
+      "when wr.scope_type = 'operator_wide' then op.business_name "
+      'else null end as source_label '
+      'from public.wage_role_rows wr '
+      'join public.operators op on op.operator_id = wr.operator_id '
+      'cross join selected_location loc '
+      'left join public.org_units ou '
+      '  on ou.operator_id = wr.operator_id '
+      ' and ou.id = wr.org_unit_id '
+      'where wr.operator_id = @operator_id::uuid '
+      'and wr.is_active is true '
+      'and ('
+      "  (wr.scope_type = 'location' and "
+      'wr.location_id = @location_id::uuid) '
+      "  or wr.scope_type = 'operator_wide' "
+      "  or (wr.scope_type = 'org_unit' and loc.org_unit_path <@ ou.path)"
+      ') '
+      '$cursorSql'
+      'order by wr.updated_at asc, wr.labor_bucket asc, wr.role_name asc, '
+      'wr.wage_role_row_id asc '
+      'limit @limit',
+      parameters: params,
+    );
   }
 
   @override
@@ -3611,6 +3903,18 @@ class RepositoryMobileOperationalSyncProxyGateway
       modifiedSince,
     ).toUtc().toIso8601String();
     return 'and updated_at > @modified_since::timestamptz ';
+  }
+
+  static String _modifiedSinceSqlForAlias(
+    String? modifiedSince,
+    Map<String, Object?> params,
+    String alias,
+  ) {
+    if (modifiedSince == null) return '';
+    params['modified_since'] = DateTime.parse(
+      modifiedSince,
+    ).toUtc().toIso8601String();
+    return 'and $alias.updated_at > @modified_since::timestamptz ';
   }
 
   static Map<String, Object?> _pagePayload({
@@ -3735,7 +4039,51 @@ class RepositoryMobileOperationalSyncProxyGateway
     );
   }
 
-  static Map<String, Object?> _timingConfigJson(RestaurantTimingConfig config) {
+  static Map<String, Object?> _timingConfigProvenanceJson({
+    required String locationId,
+    required EffectiveBusinessTimingProfile resolved,
+    required List<BusinessTimingProfileRow> candidates,
+  }) {
+    final sourceScopeType = resolved.resolvedScope.value;
+    BusinessTimingProfileRow? source;
+    for (final row in candidates) {
+      if (row.scopeType == sourceScopeType &&
+          row.scopeId == resolved.resolvedScopeId) {
+        source = row;
+      }
+    }
+    source ??= candidates.isEmpty ? null : candidates.last;
+    return <String, Object?>{
+      'selected_scope_type': 'location',
+      'selected_scope_id': locationId,
+      'source_scope_type': source?.scopeType ?? sourceScopeType,
+      'source_scope_id': source?.scopeId ?? resolved.resolvedScopeId,
+      'source_scope_label': _timingSourceLabel(
+        source?.displayName,
+        source?.scopeType ?? sourceScopeType,
+      ),
+      'inherited_from_ancestor': sourceScopeType != 'location',
+    };
+  }
+
+  static String _timingSourceLabel(String? displayName, String scopeType) {
+    final trimmed = displayName?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    switch (scopeType) {
+      case 'operator':
+        return 'Business default';
+      case 'org_unit':
+        return 'Org unit override';
+      case 'location':
+        return 'Location override';
+    }
+    return 'Configured setting';
+  }
+
+  static Map<String, Object?> _timingConfigJson(
+    RestaurantTimingConfig config, {
+    Map<String, Object?> provenance = const <String, Object?>{},
+  }) {
     // Per-Daypart V1 Slice 1.5: `shiftCloseAuthority` /
     // `localCloseFallback` were dropped from RestaurantTimingConfig.
     // Close-authority is auto-derived per shift from the per-vendor
@@ -3748,6 +4096,7 @@ class RepositoryMobileOperationalSyncProxyGateway
       'week_start_day': config.weekStartDay,
       'created_at': config.createdAt,
       'updated_at': config.updatedAt,
+      ...provenance,
       'service_period_definitions': <Map<String, Object?>>[
         for (final period in config.servicePeriodDefinitions) period.toMap(),
       ],
@@ -3779,6 +4128,13 @@ class RepositoryMobileOperationalSyncProxyGateway
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],
+      'covers_source_per_service_period_source': _jsonMap(
+        row['covers_source_per_service_period_source'],
+      ),
+      'wage_source_source': _jsonMap(row['wage_source_source']),
+      'walk_in_handling_mode_source': _jsonMap(
+        row['walk_in_handling_mode_source'],
+      ),
     };
   }
 
@@ -3796,6 +4152,10 @@ class RepositoryMobileOperationalSyncProxyGateway
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],
+      'scope_type': row['scope_type'] ?? 'location',
+      'org_unit_id': row['org_unit_id'],
+      'inherited_from_scope_id': row['inherited_from_scope_id'],
+      'source_label': row['source_label'],
     };
   }
 
@@ -3971,6 +4331,17 @@ class RepositoryMobileOperationalSyncProxyGateway
     );
   }
 
+  static bool? _bodyBool(Map<String, Object?> body, String field) {
+    final raw = body[field];
+    if (raw == null) return null;
+    if (raw is bool) return raw;
+    throw MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be true or false',
+    );
+  }
+
   static String _bodyServicePeriodKey(Map<String, Object?> body) {
     final key = _bodyString(body, 'service_period_key');
     if (key != null && _isServicePeriodKey(key)) return key;
@@ -3985,7 +4356,7 @@ class RepositoryMobileOperationalSyncProxyGateway
 
   static String _bodyBusinessDate(Map<String, Object?> body, String field) {
     final value = _bodyString(body, field);
-    if (value != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+    if (value != null && _isYyyyMmDdCalendarDate(value)) {
       return value;
     }
     throw MobileOperationalSyncProxyGatewayException(
@@ -4037,6 +4408,25 @@ class RepositoryMobileOperationalSyncProxyGateway
           'wage_source must be vendor_per_employee, vendor_per_position, '
           'target_substitution, or manual_mix',
     );
+  }
+
+  static int _bodyCoversCount(Map<String, Object?> body) {
+    final raw = body['covers'];
+    final parsed = raw is int
+        ? raw
+        : raw is num && raw == raw.roundToDouble()
+        ? raw.toInt()
+        : raw is String
+        ? int.tryParse(raw.trim())
+        : null;
+    if (parsed == null || parsed < 0) {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_covers',
+        message: 'covers must be a non-negative integer',
+      );
+    }
+    return parsed;
   }
 
   static Map<String, Map<String, int>> _bodyNestedIntMap(
@@ -4171,6 +4561,16 @@ class RepositoryMobileOperationalSyncProxyGateway
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
   );
+}
+
+class _TimingLocalNowParts {
+  const _TimingLocalNowParts({
+    required this.localDate,
+    required this.localTime,
+  });
+
+  final String localDate;
+  final String localTime;
 }
 
 /// Production [OperatorLocationAdminProxyGateway] backed by
@@ -4422,15 +4822,26 @@ class RepositoryOperatorLocationAdminProxyGateway
     required int businessDayRolloverHour,
     required String adminReason,
   }) async {
-    final created = await _locations.insertLocation(
-      operatorId: operatorId,
-      parentOrgUnitId: parentOrgUnitId,
-      name: name,
-      address: address,
-      timezone: timezone,
-      businessDayRolloverHour: businessDayRolloverHour,
-      adminReason: adminReason,
-    );
+    final LocationAdminRow created;
+    try {
+      created = await _locations.insertLocation(
+        operatorId: operatorId,
+        parentOrgUnitId: parentOrgUnitId,
+        name: name,
+        address: address,
+        timezone: timezone,
+        businessDayRolloverHour: businessDayRolloverHour,
+        adminReason: adminReason,
+      );
+    } on MissingOperatorBusinessTimingProfileException {
+      throw const OperatorLocationAdminRejected(
+        statusCode: 409,
+        code: 'operator_business_timing_profile_missing',
+        message:
+            'Create an operator Business Timing profile before adding a '
+            'location.',
+      );
+    }
     await _audit(
       actorUserId: actorUserId,
       operatorId: created.operatorId,
@@ -4981,7 +5392,9 @@ class RepositoryDataAccuracyAdminProxyGateway
         's.covers_source_per_service_period, s.covers_manual_entries, '
         's.wage_source, s.walk_in_handling_mode, '
         's.walk_in_manual_entries, '
-        's.created_at, s.updated_at, s.updated_by '
+        's.created_at, s.updated_at, s.updated_by, '
+        's.covers_source_per_service_period_source, '
+        's.wage_source_source, s.walk_in_handling_mode_source '
         'from operators o '
         'join locations l on l.operator_id = o.operator_id '
         'left join effective_data_accuracy_settings_v s '
@@ -5888,7 +6301,9 @@ class RepositoryDataAccuracyAdminProxyGateway
       'covers_source_per_service_period, '
       'covers_manual_entries, wage_source, '
       'walk_in_handling_mode, walk_in_manual_entries, '
-      'created_at, updated_at, updated_by '
+      'created_at, updated_at, updated_by, '
+      'covers_source_per_service_period_source, '
+      'wage_source_source, walk_in_handling_mode_source '
       'from effective_data_accuracy_settings_v '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid',
@@ -6051,7 +6466,9 @@ class RepositoryDataAccuracyAdminProxyGateway
       's.covers_source_per_service_period, s.covers_manual_entries, '
       's.wage_source, s.walk_in_handling_mode, '
       's.walk_in_manual_entries, '
-      's.created_at, s.updated_at, s.updated_by '
+      's.created_at, s.updated_at, s.updated_by, '
+      's.covers_source_per_service_period_source, '
+      's.wage_source_source, s.walk_in_handling_mode_source '
       'from operators o '
       'join locations l on l.operator_id = o.operator_id '
       'left join effective_data_accuracy_settings_v s '
@@ -6171,6 +6588,13 @@ class RepositoryDataAccuracyAdminProxyGateway
       'updated_at':
           _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
       'updated_by': row['updated_by'],
+      'covers_source_per_service_period_source': _jsonMap(
+        row['covers_source_per_service_period_source'],
+      ),
+      'wage_source_source': _jsonMap(row['wage_source_source']),
+      'walk_in_handling_mode_source': _jsonMap(
+        row['walk_in_handling_mode_source'],
+      ),
     };
   }
 
@@ -6207,6 +6631,13 @@ class RepositoryDataAccuracyAdminProxyGateway
       'updated_at':
           _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
       'updated_by': row['updated_by'],
+      'covers_source_per_service_period_source': _jsonMap(
+        row['covers_source_per_service_period_source'],
+      ),
+      'wage_source_source': _jsonMap(row['wage_source_source']),
+      'walk_in_handling_mode_source': _jsonMap(
+        row['walk_in_handling_mode_source'],
+      ),
     };
   }
 
@@ -6577,7 +7008,7 @@ class RepositoryDataAccuracyAdminProxyGateway
   }
 
   static void _validateBusinessDate(String value) {
-    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return;
+    if (_isYyyyMmDdCalendarDate(value)) return;
     throw const DataAccuracyAdminGatewayValidationError(
       statusCode: 400,
       code: 'invalid_effective_at_business_date',
@@ -8555,6 +8986,24 @@ class RepositoryObservabilityAdminProxyGateway
       final graphRow = graphRows.isEmpty
           ? const <String, Object?>{}
           : graphRows.single;
+      final projectionRetryCountRows = await exec.query(
+        _observabilityProjectionRetryCountsSql,
+        parameters: scopeParams,
+      );
+      final projectionRetryRecentRows = await exec.query(
+        _observabilityProjectionRetryRecentSql,
+        parameters: <String, Object?>{
+          ...scopeParams,
+          'limit': _projectionRetryRecentLimit,
+        },
+      );
+      final projectionRetryDeadLetterRows = await exec.query(
+        _observabilityProjectionRetryDeadLetterSql,
+        parameters: <String, Object?>{
+          ...scopeParams,
+          'limit': _projectionRetryDeadLetterLimit,
+        },
+      );
 
       return <String, Object?>{
         'as_of': asOf.toIso8601String(),
@@ -8627,6 +9076,23 @@ class RepositoryObservabilityAdminProxyGateway
             graphRow['projection_age_seconds'],
           ),
           'traversal_p95_ms': 0,
+        },
+        'projection_retries': <String, Object?>{
+          'status_counts': _projectionRetryStatusCounts(
+            projectionRetryCountRows,
+          ),
+          'recent_active': <Map<String, Object?>>[
+            for (final row in projectionRetryRecentRows)
+              _projectionRetryRowJson(row),
+          ],
+          'dead_lettered': <Map<String, Object?>>[
+            for (final row in projectionRetryDeadLetterRows)
+              _projectionRetryRowJson(row),
+          ],
+          'limits': const <String, Object?>{
+            'recent_active': _projectionRetryRecentLimit,
+            'dead_lettered': _projectionRetryDeadLetterLimit,
+          },
         },
         'route_latency': const <Map<String, Object?>>[],
         'cloud_run': const <Map<String, Object?>>[],
@@ -8810,6 +9276,87 @@ order by rows.total_usd desc, rows.request_count desc
 limit @limit::int
 ''';
 
+const int _projectionRetryRecentLimit = 25;
+const int _projectionRetryDeadLetterLimit = 25;
+
+const List<String> _projectionRetryKnownStatuses = <String>[
+  'pending',
+  'running',
+  'succeeded',
+  'dead_lettered',
+];
+
+const String _projectionRetryScopeWhere = '''
+where (@operator_id::uuid is null or operator_id = @operator_id::uuid)
+  and (
+    @location_id::uuid is null
+    or coalesce(location_id, original_location_id) = @location_id::uuid
+  )
+  and (
+    @location_ids::text[] is null
+    or coalesce(location_id::text, original_location_id::text)
+      = any(@location_ids::text[])
+  )
+''';
+
+const String _projectionRetryRowSelect = '''
+select
+  job_id::text as job_id,
+  operator_id::text as operator_id,
+  coalesce(location_id::text, original_location_id::text) as location_id,
+  original_location_id::text as original_location_id,
+  restaurant_id,
+  coalesce(connection_id::text, original_connection_id::text) as connection_id,
+  original_connection_id::text as original_connection_id,
+  vendor_id,
+  category,
+  status,
+  failure_stage,
+  fact_count,
+  attempt_count,
+  jsonb_array_length(changed_periods) as changed_period_count,
+  jsonb_array_length(open_current_fact_maps) as open_current_fact_count,
+  worker_id,
+  claimed_at,
+  next_attempt_at,
+  created_at,
+  updated_at,
+  completed_at,
+  dead_lettered_at,
+  input_hash,
+  last_error_class,
+  left(last_error_message, 500) as last_error_message,
+  left(coalesce(stack_first_frame, ''), 300) as stack_first_frame
+from public.canonical_fact_projection_retry_jobs
+''';
+
+const String _observabilityProjectionRetryCountsSql =
+    '''
+select status, count(*)::bigint as count
+from public.canonical_fact_projection_retry_jobs
+$_projectionRetryScopeWhere
+group by status
+order by status
+''';
+
+const String _observabilityProjectionRetryRecentSql =
+    '''
+$_projectionRetryRowSelect
+$_projectionRetryScopeWhere
+  and status in ('pending', 'running')
+order by updated_at desc, created_at desc, job_id desc
+limit @limit::int
+''';
+
+const String _observabilityProjectionRetryDeadLetterSql =
+    '''
+$_projectionRetryRowSelect
+$_projectionRetryScopeWhere
+  and status = 'dead_lettered'
+order by coalesce(dead_lettered_at, updated_at, created_at) desc, job_id desc
+limit @limit::int
+''';
+
 const String _observabilityCacheHitSql = '''
 select
   query_class,
@@ -8981,6 +9528,51 @@ Map<String, Object?> _costTelemetryRowJson(PostgresRow row) {
     'total_usd': _adminDouble(row['total_usd']),
     'request_count': _adminInt(row['request_count']),
     'business_name': row['business_name']?.toString(),
+  };
+}
+
+Map<String, Object?> _projectionRetryStatusCounts(List<PostgresRow> rows) {
+  final counts = <String, Object?>{
+    for (final status in _projectionRetryKnownStatuses) status: 0,
+  };
+  for (final row in rows) {
+    final status = row['status']?.toString();
+    if (status == null || status.trim().isEmpty) continue;
+    counts[status] = _adminInt(row['count']);
+  }
+  return counts;
+}
+
+Map<String, Object?> _projectionRetryRowJson(PostgresRow row) {
+  final stackFirstFrame = row['stack_first_frame']?.toString();
+  return <String, Object?>{
+    'job_id': row['job_id']?.toString() ?? '',
+    'operator_id': row['operator_id']?.toString() ?? '',
+    'location_id': row['location_id']?.toString() ?? '',
+    'original_location_id': row['original_location_id']?.toString() ?? '',
+    'restaurant_id': row['restaurant_id']?.toString() ?? '',
+    'connection_id': row['connection_id']?.toString() ?? '',
+    'original_connection_id': row['original_connection_id']?.toString() ?? '',
+    'vendor_id': row['vendor_id']?.toString() ?? '',
+    'category': row['category']?.toString() ?? '',
+    'status': row['status']?.toString() ?? '',
+    'failure_stage': row['failure_stage']?.toString() ?? 'post_input',
+    'fact_count': _adminInt(row['fact_count']),
+    'attempt_count': _adminInt(row['attempt_count']),
+    'changed_period_count': _adminInt(row['changed_period_count']),
+    'open_current_fact_count': _adminInt(row['open_current_fact_count']),
+    'worker_id': row['worker_id']?.toString(),
+    'claimed_at': _adminIsoOrNull(row['claimed_at']),
+    'next_attempt_at': _adminIso(row['next_attempt_at']),
+    'created_at': _adminIso(row['created_at']),
+    'updated_at': _adminIso(row['updated_at']),
+    'completed_at': _adminIsoOrNull(row['completed_at']),
+    'dead_lettered_at': _adminIsoOrNull(row['dead_lettered_at']),
+    'input_hash': row['input_hash']?.toString() ?? '',
+    'last_error_class': row['last_error_class']?.toString() ?? '',
+    'last_error_message': row['last_error_message']?.toString() ?? '',
+    if (stackFirstFrame != null && stackFirstFrame.trim().isNotEmpty)
+      'stack_first_frame': stackFirstFrame,
   };
 }
 

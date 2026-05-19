@@ -1,7 +1,7 @@
 # Data Accuracy Settings Contract
 
 Status: **Active authority** (Tier-2 contract)
-Updated: 2026-05-06
+Updated: 2026-05-19
 Owner: Phase 8 spine-bridge sprint
 Authority position:
 
@@ -347,12 +347,50 @@ or by the old canonical trio. The hardcoded `covers_source_lunch` /
 `covers_source_dinner` / `covers_source_late_night` shape is now a rejected
 legacy compatibility shape for new implementation work.
 
-The V1 implementation target is a keyed child table:
-`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source, covers_manual_entries)`.
-That table supports 1-4 configured service periods without schema churn.
-Closed and live aggregators must persist/use the stable key captured from the
-timing profile in force at bucket time. Labels may change; keys and provenance
-must remain stable.
+The V1 implementation target for covers-source selection is a keyed child
+table:
+`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source)`.
+That table supports operator-configured service periods without schema churn.
+Manual cover VALUES still live in
+`data_accuracy_settings.covers_manual_entries` as a sparse
+`business_date -> service_period_key -> covers` map until a future storage
+migration moves them. Closed and live aggregators must persist/use the stable
+key captured from the timing profile in force at bucket time. Labels may
+change; keys and provenance must remain stable.
+
+## Effective Source Metadata
+
+`public.effective_data_accuracy_settings_v` is the server truth for final
+Data Accuracy values and their inherited source labels. The view must expose
+source metadata alongside effective values so Admin, Operator Web, and mobile
+clients do not guess inheritance in Flutter.
+
+Required source outputs:
+
+- `covers_source_per_service_period_source`: jsonb object keyed by
+  `service_period_key`. Each value describes the winning source for that
+  period's covers source.
+- `wage_source_source`: jsonb object describing the winning source for the
+  effective wage source.
+- `walk_in_handling_mode_source`: jsonb object describing the winning source
+  for the effective walk-in handling mode.
+
+Each source object is intentionally small and wire-safe:
+
+- `scope_type`: `business`, `org_unit`, `location`, or `default`.
+- `scope_id`: the winning scope id when one exists.
+- `source_kind`: `service_period_setting`, `scoped_override`, `base_setting`,
+  or `default`.
+- `setting_id` or `override_id`: included when the winning row has one.
+
+Clients may show labels only from this metadata. If metadata is absent, the
+client must hide the source label rather than infer one locally.
+
+Default-source display decision (2026-05-19): when `source_kind = 'default'`,
+clients should keep the operator-facing source label quiet by default to avoid
+clutter. The metadata still exists for audit and debug surfaces. Visible labels
+should focus on configured or inherited sources such as `business`, `org_unit`,
+`location`, `service_period_setting`, `scoped_override`, and `base_setting`.
 
 ## Schema
 
@@ -680,9 +718,13 @@ Given (operator, location):
     wageClass = LaborWageSourceClass.lookup(vendor_id)  // sidecar lookup
     switch (wageClass):
 
-      case perEmployeeWithDollars:  // 7shifts, QBT, ADP, Push Operations
+      case perEmployeeWithDollars:  // 7shifts
         laborDollars = SUM(labor_punches.labor_dollars)
         laborDollarsSource = 'vendor_<id>_per_employee_actual_dollars'
+
+      case perEmployeeWithRates:    // QuickBooks Time
+        laborDollars = SUM(labor_punches.pay_rate * labor_punches.duration)
+        laborDollarsSource = 'vendor_<id>_per_employee_actual_dollars_per_employee_rates'
 
       case perPositionWithRates:    // Humanity, Agendrix
         laborDollars = SUM(position.pay_rate * scheduled_hours per role)
@@ -705,8 +747,10 @@ The operator-facing toggle stays binary (`vendor` | `manual_mix`) - the
 4-way classification is internal. The Data Accuracy tab's wage source
 card surfaces the active class via the vendor relativity label:
 
-- `perEmployeeWithDollars`: "Your scheduling system (QuickBooks Time)
-  reports per-employee labor dollars. F&F uses those directly."
+- `perEmployeeWithDollars`: "Your scheduling system (7shifts) reports
+  per-shift labor dollars. F&F uses those directly."
+- `perEmployeeWithRates`: "Your scheduling system (QuickBooks Time) reports
+  hours and configured pay rates. F&F multiplies rate by duration."
 - `perPositionWithRates`: "Your scheduling system (Humanity) reports
   per-position pay rates. F&F multiplies those by scheduled hours.
   This is what the wage model needs - your wage editor's role rows
@@ -823,7 +867,7 @@ affects. Reference data (sourced from `docs/integrations/<vendor_id>/`):
 | Setting | Vendors that REQUIRE it (vendor doesn't expose) | Vendors where it's OPTIONAL (vendor exposes; operator can override) |
 |---|---|---|
 | Covers source = manual | Square, Clover | Toast, Lightspeed K-Series, Revel, Aloha NCR Voyix, Oracle MICROS Simphony |
-| Wage source = manual_mix | QuickBooks Time, Humanity, Agendrix | 7shifts, ADP Workforce Now, ADP Workforce Manager, Push Operations |
+| Wage source = manual_mix | ADP Workforce Now, ADP Workforce Manager, Push Operations | 7shifts, QuickBooks Time, Humanity, Agendrix |
 | Polling cadence applies (F&F-set, not operator-set) | Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations | N/A - webhook vendors ignore polling cadence (Toast, Square, Clover, Lightspeed, Revel, Aloha NCR Voyix, 7shifts, ADP, Libro, OpenTable, SevenRooms, Tock) |
 
 The vendor-relativity label updates dynamically based on which vendors

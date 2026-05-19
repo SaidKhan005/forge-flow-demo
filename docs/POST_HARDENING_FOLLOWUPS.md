@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**59 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`;
+**64 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605191900_canonical_fact_projection_retry_evidence.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -88,7 +88,7 @@ Production1 apply.
 | `202605142100_phase_R_1L_roles_schema_rewrite.sql` | Wave 2 R-1L Roles schema rewrite: `permission_keys.product_label` + `category_label` + `scope_kind` (CHECK `org_wide`/`location_scoped`/`either`) + `implies text[]` columns added NULLABLE with inline backfill; defers NOT-NULL flip to R-1L-FU follow-up per expand-contract discipline. Backfill mirrors `lib/services/auth/custom_role_validator.dart`'s `kOrgWidePermissionKeys` + `kViewRequiredForWrite` + `kTeamUsersWriteKeys`. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` METADATA pass. Resolver imply walk in `lib/auth/permission_resolution.dart`. | code-ready |
 | `202605150000_phase_r2l_default_role_catalog_v2.sql` | Wave 2 R-2L Default Role Catalog v2 redesign: adds `permission_keys.human_label` NULLABLE with inline backfill, seeds 7 v2 role rows (general_manager / location_manager / supervisor / finance_analyst / auditor_compliance / training_lead / team_admin) + Owner v2 wording refresh, auto-migrates v1 user_roles (`operator_manager` -> `operator_general_manager`; `operator_supervisor` / `operator_staff` -> `supervisor` with location fan-out), soft-deletes v1 retired roles, emits `auth.role.seeded_catalog_v2_published` audit rows. Defers NOT-NULL flip on `human_label` to R-1L-FU follow-up. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` HUMAN_LABEL_INVALID pass. | code-ready |
 | `202605150100_phase_r_followup_not_null_flip.sql` | Wave 2 R-1L-FU + R-2L-FU contract migration: flips `permission_keys.product_label` + `category_label` + `scope_kind` + `human_label` from NULLABLE to NOT NULL after R-1L + R-2L inline backfills hydrated every row, and re-asserts `implies text[]` default of `'{}'::text[]` + NOT NULL. Defensive pre-flight DO block raises with the offending row count if any of the five columns is still NULL before the flip (never silently tightens). Idempotent: each `SET NOT NULL` no-ops on already-tight columns. Runtime mirror at `lib/auth/permission_key_metadata.dart` is NOT-NULL-at-source via `tool/permission_key_lint.dart` METADATA + HUMAN_LABEL_INVALID passes, so the inline backfills are guaranteed to find a non-NULL value in every row before this flip applies. | code-ready |
-| `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql` | Wave 2 U-FU-hp11-account per-location override schema for the three AccountScreen settings (region, business-day rollover, identity contact email + phone). Adds `public.location_account_overrides` keyed by `(operator_id, location_id)` with NULL columns inheriting the business defaults from `public.operators`. RLS via `app_current_operator()` wrapper + operator-leading B-tree index per HP #4. Reuses the existing operator_owner / operator_admin role gate — no new permission key. Business display name stays operator-wide (single business name doctrine); the location-scoped Identity card edits contact email + phone only. | code-ready |
+| `202605150200_phase_u_fu_hp11_account_per_location_overrides.sql` | Wave 2 U-FU-hp11-account per-location override schema for the three AccountScreen settings (region, business-day rollover, identity contact email + phone). Adds `public.location_account_overrides` keyed by `(operator_id, location_id)` with NULL columns inheriting the business defaults from `public.operators`. RLS via `app_current_operator()` wrapper + operator-leading B-tree index per HP #4. Reuses the existing operator_owner role gate: no new permission key. Business display name stays operator-wide (single business name doctrine); the location-scoped Identity card edits contact email + phone only. | code-ready |
 | `202605150300_phase_rp_9_default_catalog_edit_permission_key.sql` | Wave 2 RP-9 `team.roles.default_catalog.view` + `team.roles.default_catalog.edit` permission keys + baseline grants (F&F super_admin write; super_admin + ff_support read). Promotes the role-tier gate on `default_role_catalog_admin_screen.dart` + `tool/advisor_proxy/admin_default_role_catalog_routes.dart` to a granular permission key registered in the catalog. F&F-internal admin scope — NOT widened to operator-tier roles. | code-ready |
 | `202605150400_per_daypart_v1_drop_close_authority.sql` | Per-Daypart V1 Slice 1.5 deprecation step on `public.business_timing_profiles`: drops the `business_timing_profiles_local_close_required_check` cross-column CHECK and drops the NOT NULL constraint on `close_authority`. Operator decision 2026-05-15: close-authority is now auto-derived per shift from the per-vendor `CloseAuthorityCapability` lookup (`lib/services/integration/close_authority_capability.dart`) + `business_day_start_local_time` fallback. Full column drop deferred to a follow-up Postgres-only slice that also refactors `BusinessTimingProfilesRepository`'s `closeAuthority` / `localCloseFallbackTime` write surface. | code-ready |
 | `202605160000_per_daypart_v1_per_period_target_persistence.sql` | Per-Daypart V1 Slice 1 per-period data layer foundation. Adds `target_cycle_dayparts` (per-(cycle, service_period) locked CPLH/SPLH/PPA + OPZ + cover_count for cover-weighted whole-day pool rollup) and `weekly_plan_snapshot_day_dayparts` (per-(snapshot, business_date, service_period) demand-derived values + theoretical FOH/BOH dollars at lock time). Adds `weekly_plan_snapshots.wage_at_lock_time_json` (JSONB stamp — Design Rule 8: audit checks compare locked dollars against this column, not current wages). Adds 5 per-shift per-period target stamp columns on `shift_records` so closed truth retains its period band stamp per Promise 2. Both new tables are operator-scoped + RLS-policy-protected with the four sanctioned wrapper functions; B-tree indexes lead with `(operator_id, location_id)` per `hardening_rls_and_repository_pattern_contract.md`. | code-ready |
@@ -97,8 +97,13 @@ Production1 apply.
 | `202605170000_per_daypart_v1_r5_covers_source_keyed_backfill.sql` | Per-Daypart V1 R5 covers-source de-hardcode. Data-preserving backfill of legacy `covers_source_{lunch,dinner,late_night}` into the keyed `public.data_accuracy_service_period_settings` table (sentinel `effective_at_business_date` reproducing the legacy always-applies semantics, `ON CONFLICT DO NOTHING` so an operator-set keyed row is never clobbered, operator_id/location_id copied for per-tenant isolation, the keyed table's existing wrapper-only RLS preserved). Legacy 3 columns marked DEPRECATED via `COMMENT ON COLUMN`; no read path uses them post-R5. Hard column drop deferred to follow-up R7 (after proxy bootstrap SQL + `effective_data_accuracy_settings_v` view + HP #11 hierarchy surface are migrated). Additive + comment-only; no down migration. | code-ready |
 | `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql` | Per-Daypart V1 R7a per-period covers-source hierarchy. ADDITIVE: `public.effective_data_accuracy_settings_v` gains a `covers_source_per_service_period` jsonb output (resolved most-specific-scope-wins from the keyed `data_accuracy_service_period_settings` effective rows, HP #11 operator/org_unit/location precedence preserved), and `public.data_accuracy_scoped_overrides` gains a nullable `covers_source_per_service_period` jsonb column. Existing 3 scalar view outputs byte-unchanged; no column dropped or altered; RLS/timestamptz/operator-leading-index compliant; idempotent; no down migration. Sets up R7b (proxy onto the jsonb) and R7d (final legacy-column drop). | code-ready |
 | `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql` | Per-Daypart V1 R7d FINAL covers-source de-hardcode step (schema-destructive). Atomic `begin; create or replace view public.effective_data_accuracy_settings_v` (R7a body minus the 3 legacy scalar outputs) then `alter table ... drop column if exists` the 3 legacy `covers_source_{lunch,dinner,late_night}` columns on `public.data_accuracy_settings` and the 3 legacy scalar columns on `public.data_accuracy_scoped_overrides`; `commit;`. No `cascade`, view never dropped. Safe because R5 backfilled into the keyed table, R7a added the per-period jsonb (view + scoped-overrides), R7b moved the proxy off legacy-column SQL, R7c removed dead legacy-column Dart; pre-drop grep proved zero remaining SQL/view-scalar readers. Idempotent (`drop column if exists`); no down migration (destructive, rationale in header). Production-safe: all prior covers-source migrations Production1-pending, no live data. | code-ready |
+| `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql` | Per-Daypart V1 R7e Data Accuracy provenance. Additive `create or replace view` appends source metadata to `public.effective_data_accuracy_settings_v` for per-service-period covers source, wage source, and walk-in handling mode while preserving existing value columns and HP #11 precedence. No table shape change, no policy/index change, no down migration. Enables Admin/Operator Web to show honest inherited-source labels from server truth instead of guessing in Flutter. | code-ready |
+| `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql` | Per-Daypart V1 R7f Data Accuracy precedence and source parity. `create or replace view` repairs `public.effective_data_accuracy_settings_v` so keyed service-period rows are base defaults, while business, org-unit, and location scoped overrides win above them per HP #11. Source metadata follows the same winning scope. No table shape change, no policy/index change, no down migration. | code-ready |
+| `202605191830_canonical_fact_projection_retry_jobs.sql` | Canonical fact projection retry ledger. Adds `public.canonical_fact_projection_retry_jobs` so post-commit projection failures can be replayed from saved projector input without re-running vendor writes. Tenant-scoped RLS, operator-leading indexes, bounded retry state, and JSON payload checks. Schema-touching and requires explicit operator approval before merge/apply. | code-ready |
+| `202605191845_data_accuracy_cover_facts_nullable_covers.sql` | Data Accuracy covers truth. Drops default/not-null from `public.cover_facts.covers` so NULL means the POS did not expose cover count and zero means a cover-capable POS sent zero. | code-ready |
+| `202605191900_canonical_fact_projection_retry_evidence.sql` | Projection retry evidence hardening. Adds explicit pre-input/post-input failure stage metadata, immutable original location/connection ids, and FK posture that nulls live pointers instead of deleting terminal retry evidence during hard-delete cleanup. Schema-touching and requires explicit operator approval before merge/apply. | code-ready |
 
-**Action:** apply all 58 in next Production1 event per
+**Action:** apply all 64 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 
@@ -186,6 +191,81 @@ that inert state is the safety guarantee until the Azure swap ships.
 
 **Not blocking:** A11.2's other deliverables (fd watcher, p3c CLI flags)
 are independent of this swap and stay live on master.
+
+## P1 — C-1 SendGrid Webhook: outbox-status flip on terminal events (PR #611 follow-up)
+
+**Origin:** 2026-05-19 review of a rescued earlier SendGrid implementation
+(rescue branch `rescue/wt-snapshot/master-sendgrid-webhook-20260519-054323`)
+against the landed Lane C C-1 + C-1a stack (PRs
+[#599](https://github.com/SaidKhan005/forge-flow-demo/pull/599) +
+[#611](https://github.com/SaidKhan005/forge-flow-demo/pull/611)). The
+compare-against-origin pass confirmed every rescued file is superseded,
+but surfaced one delta the landed implementation does NOT cover.
+
+**The gap.** `lib/services/email/email_outbox_dispatcher.dart` lines 8-15
+contracts that bounce/complaint transitions are owned by the SendGrid
+webhook handler:
+
+> The `bounced` / `complaint` transitions are owned by the SendGrid
+> webhook handler — the dispatcher itself only advances pending →
+> sending → sent / failed.
+
+But the landed webhook receiver does NOT perform that flip. Greps across
+`tool/advisor_proxy/sendgrid_events_webhook.dart` and
+`lib/infrastructure/persistence/postgres/repositories/email_event_repository.dart`
+find zero `UPDATE email_outbox SET status` writes; the receiver only
+INSERTs into `email_event` with `ON CONFLICT DO NOTHING`. No NOTIFY-based
+listener picks up the slack (the existing NOTIFY channels cover
+`event_outbox` and permission-cache, not the email outbox). On origin
+today, a `bounce` or `complaint` SendGrid event creates an `email_event`
+row but leaves `email_outbox.status` at `'sent'` indefinitely.
+
+**Why this is follow-up, not a PR #611 regression.** The PR #611 audit
+(`docs/archive/_audits/post_codex_wave_2026-05-13/pr_611_c_1_sendgrid_events_webhook_audit.md`)
+scoped explicitly to parse + verify + INSERT. The outbox-flip was
+implicitly deferred. Operator-facing queries that need delivery state
+can join `email_outbox` to `email_event` today; the denormalized status
+column is just stale.
+
+**Why P1 not P0.** No live SendGrid traffic in production yet (Phase 9.8
+staging-only). Staging soak surfaces the divergence before launch.
+
+**Follow-up slice scope (when picked up):**
+1. Add a method on `EmailEventRepository` that updates the matching
+   `email_outbox` row's status to the terminal kind (`bounced` /
+   `complaint`), guarded against overwriting an already-terminal state
+   (prevents flapping when SendGrid emits both `bounce` and a later
+   `dropped` for the same email).
+2. Call it from `sendgrid_events_webhook.dart` after the
+   `EmailEventInsertResult.inserted` path, only for terminal event
+   kinds, and only when the FK to `email_outbox.email_id` resolves.
+   `duplicate` results skip the flip (idempotent on replays).
+3. Wrap both writes in the same `runAsSystem` admin-pool transaction so
+   an event row never lands without its corresponding outbox flip.
+4. Tests: terminal kind flips status; non-terminal kinds (`delivered`,
+   `open`) leave status untouched; duplicate event does not re-flip;
+   already-terminal `email_outbox.status` (e.g. `failed`) is not
+   overwritten.
+
+**Authority anchors:**
+- `lib/services/email/email_outbox_dispatcher.dart:8-15` — the contract
+  that the webhook owns bounce/complaint transitions.
+- `tool/advisor_proxy/sendgrid_events_webhook.dart` — the landed receiver
+  that does not flip.
+- `lib/infrastructure/persistence/postgres/repositories/email_event_repository.dart`
+  — the natural home for the new method, mirroring its existing
+  `runAsSystem` discipline.
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_611_c_1_sendgrid_events_webhook_audit.md`
+  — PR audit that scoped to receiver-only.
+- Rescue branch `rescue/wt-snapshot/master-sendgrid-webhook-20260519-054323`
+  — a superseded earlier implementation containing an in-line example
+  of the flip pattern; useful only as a sketch, its architecture is
+  incompatible with the landed `OperatorScopedRepository` discipline.
+
+**Not blocking:** the C-1 + C-1a receiver path is correct as-is for the
+events-as-audit-log use case. Defer until staging exercises the bounce
+flow or an operator-facing query needs the denormalized status to be
+accurate.
 
 ## P1 — Live Admin Operational Gates
 

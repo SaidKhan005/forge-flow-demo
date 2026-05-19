@@ -74,7 +74,14 @@ void main() {
       );
       expect(bundle.hasLocationOverride, isFalse);
       expect(bundle.effectiveDateLabel, contains('2026-05-01'));
-      for (final field in bundle.effectiveFields) {
+      final timezone = bundle.effectiveFields.firstWhere(
+        (field) => field.label == 'Timezone',
+      );
+      expect(timezone.inherited, isFalse);
+      expect(timezone.sourceLabel, equals('Location timezone'));
+      for (final field in bundle.effectiveFields.where(
+        (field) => field.label != 'Timezone',
+      )) {
         expect(field.inherited, isTrue,
             reason: '${field.label} should inherit from operator default');
         expect(field.sourceLabel, equals('Operator default'));
@@ -88,9 +95,11 @@ void main() {
     });
 
     test(
-        'location override on timezone is flagged as a Location override; '
-        'an unchanged field stays inherited', () async {
-      live.result = _resolution(candidates: <Map<String, Object?>>[
+        'timezone source stays tied to the location while timing fields use '
+        'profile provenance', () async {
+      live.result = _resolution(
+        topTimezone: 'America/Vancouver',
+        candidates: <Map<String, Object?>>[
         _candidate(
           profileId: 'op-default',
           scopeType: 'operator',
@@ -111,7 +120,8 @@ void main() {
           dayStart: '04:00',
           weekStart: 'monday',
         ),
-      ]);
+        ],
+      );
       final bundle = await gateway.loadTiming(
         operatorId: 'op-1',
         locationId: 'loc-1',
@@ -122,7 +132,7 @@ void main() {
       );
       expect(tz.value, equals('America/Vancouver'));
       expect(tz.inherited, isFalse);
-      expect(tz.sourceLabel, equals('Location override'));
+      expect(tz.sourceLabel, equals('Location timezone'));
       final dayField = bundle.effectiveFields.firstWhere(
         (f) => f.label == 'Business day starts',
       );

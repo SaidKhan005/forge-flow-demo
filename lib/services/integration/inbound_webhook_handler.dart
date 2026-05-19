@@ -45,6 +45,7 @@ import 'inbound_webhook_signing_secret_cache.dart';
 import 'integration_adapter_common.dart';
 import 'labor_adapter.dart';
 import 'pos_adapter.dart';
+import 'projecting_canonical_sink.dart';
 import 'reservation_adapter.dart';
 import 'vendor_timestamp_sanity.dart';
 
@@ -82,10 +83,10 @@ class WebhookDispatchResult {
   final int recordsWritten;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'outcome': outcome.name,
-        'records_written': recordsWritten,
-        if (message != null) 'message': message,
-      };
+    'outcome': outcome.name,
+    'records_written': recordsWritten,
+    if (message != null) 'message': message,
+  };
 }
 
 /// Handler outcome enum. Each value carries the wire-level mapping.
@@ -295,20 +296,23 @@ extension InboundWebhookFailureKindExt on InboundWebhookFailureKind {
 /// runtime values (e.g. `PerTenantLocationConfigResolver.resolve`)
 /// before constructing the adapter. Vendors that need no async lookup
 /// can return `Future.value(...)` or be declared with `async =>`.
-typedef PosAdapterFactory = Future<PosAdapter> Function({
-  required String operatorId,
-  required String locationId,
-});
+typedef PosAdapterFactory =
+    Future<PosAdapter> Function({
+      required String operatorId,
+      required String locationId,
+    });
 
-typedef LaborAdapterFactory = Future<LaborAdapter> Function({
-  required String operatorId,
-  required String locationId,
-});
+typedef LaborAdapterFactory =
+    Future<LaborAdapter> Function({
+      required String operatorId,
+      required String locationId,
+    });
 
-typedef ReservationAdapterFactory = Future<ReservationAdapter> Function({
-  required String operatorId,
-  required String locationId,
-});
+typedef ReservationAdapterFactory =
+    Future<ReservationAdapter> Function({
+      required String operatorId,
+      required String locationId,
+    });
 
 /// Inbound webhook handler. Holds per-vendor adapter factories +
 /// gateway as dependencies; no per-request state beyond what the
@@ -326,9 +330,10 @@ class InboundWebhookHandler {
     VendorTimestampSanity? sanityChecker,
     DateTime Function()? now,
     SigningSecretCache? signingSecretCache,
-  })  : sanityChecker = sanityChecker ?? const VendorTimestampSanity(),
-        _signingSecretCache = signingSecretCache,
-        _now = now ?? DateTime.now;
+    this.projectionCommitDrainer,
+  }) : sanityChecker = sanityChecker ?? const VendorTimestampSanity(),
+       _signingSecretCache = signingSecretCache,
+       _now = now ?? DateTime.now;
 
   final InboundWebhookGateway gateway;
   final Map<String, PosAdapterFactory> posAdapterFactories;
@@ -337,6 +342,7 @@ class InboundWebhookHandler {
   final Map<String, VendorWebhookSignatureVerifier> signatureVerifiers;
   final WebhookBindingExtractor bindingExtractor;
   final VendorTimestampSanity sanityChecker;
+  final CanonicalFactProjectionCommitDrainer? projectionCommitDrainer;
   final DateTime Function() _now;
 
   /// Optional per-(operator, location, vendor) signing-secret cache.
@@ -488,16 +494,21 @@ class InboundWebhookHandler {
       return const WebhookDispatchResult(
         outcome: WebhookOutcome.unknownVendor,
         statusCode: 404,
-        message: 'no connector connection for this (operator, location, vendor)',
+        message:
+            'no connector connection for this (operator, location, vendor)',
       );
     }
 
-    final claimed = bindingExtractor.extract(vendorId: vendorId, payload: payload);
-    if (claimed != null && !bindingExtractor.matches(
+    final claimed = bindingExtractor.extract(
       vendorId: vendorId,
-      claimed: claimed,
-      stored: binding.metadata,
-    )) {
+      payload: payload,
+    );
+    if (claimed != null &&
+        !bindingExtractor.matches(
+          vendorId: vendorId,
+          claimed: claimed,
+          stored: binding.metadata,
+        )) {
       return _failed(
         operatorId: operatorId,
         locationId: locationId,
@@ -605,6 +616,13 @@ class InboundWebhookHandler {
       eventKind: 'webhook_received',
       recordsCount: result.recordsWritten,
     );
+    await projectionCommitDrainer?.drainIfCommitEvent(
+      vendorId: vendorId,
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: binding.connectionId,
+      eventKind: 'webhook_received',
+    );
 
     return WebhookDispatchResult(
       outcome: WebhookOutcome.accepted,
@@ -623,21 +641,25 @@ class InboundWebhookHandler {
   /// webhook URL) resolved from `PerTenantLocationConfigResolver`
   /// can be awaited inside the closure.
   Future<Future<HandleWebhookResult> Function(HandleWebhookCommand)?>
-      _resolveAdapter({
+  _resolveAdapter({
     required String vendorId,
     required String operatorId,
     required String locationId,
   }) async {
     final posFactory = posAdapterFactories[vendorId];
     if (posFactory != null) {
-      final adapter =
-          await posFactory(operatorId: operatorId, locationId: locationId);
+      final adapter = await posFactory(
+        operatorId: operatorId,
+        locationId: locationId,
+      );
       return adapter.handleWebhook;
     }
     final laborFactory = laborAdapterFactories[vendorId];
     if (laborFactory != null) {
-      final adapter =
-          await laborFactory(operatorId: operatorId, locationId: locationId);
+      final adapter = await laborFactory(
+        operatorId: operatorId,
+        locationId: locationId,
+      );
       return adapter.handleWebhook;
     }
     final reservationFactory = reservationAdapterFactories[vendorId];
@@ -652,7 +674,8 @@ class InboundWebhookHandler {
   }
 
   String _vendorEventIdOrSynthetic(Map<String, Object?> payload) {
-    final candidate = payload['event_id'] ??
+    final candidate =
+        payload['event_id'] ??
         payload['eventId'] ??
         payload['eventGuid'] ??
         payload['id'];
@@ -680,10 +703,16 @@ class InboundWebhookHandler {
 
   Object? _sortKeys(Object? node) {
     if (node is Map) {
-      final entries = node.entries
-          .map((e) => MapEntry<String, Object?>(e.key.toString(), _sortKeys(e.value)))
-          .toList()
-        ..sort((a, b) => a.key.compareTo(b.key));
+      final entries =
+          node.entries
+              .map(
+                (e) => MapEntry<String, Object?>(
+                  e.key.toString(),
+                  _sortKeys(e.value),
+                ),
+              )
+              .toList()
+            ..sort((a, b) => a.key.compareTo(b.key));
       return Map<String, Object?>.fromEntries(entries);
     }
     if (node is List) {
@@ -773,9 +802,9 @@ typedef Adapter = Object;
 /// extractor per vendor without coupling the handler to vendor SDKs.
 class WebhookBindingExtractor {
   WebhookBindingExtractor({Map<String, BindingFieldSpec>? specs})
-      : _specs = Map<String, BindingFieldSpec>.unmodifiable(
-          specs ?? _defaultSpecs,
-        );
+    : _specs = Map<String, BindingFieldSpec>.unmodifiable(
+        specs ?? _defaultSpecs,
+      );
 
   final Map<String, BindingFieldSpec> _specs;
 
@@ -810,19 +839,19 @@ class WebhookBindingExtractor {
 
   static final Map<String, BindingFieldSpec> _defaultSpecs =
       <String, BindingFieldSpec>{
-    'lightspeed_lsk': BindingFieldSpec(
-      payloadPath: <String>['business_id'],
-      metadataKey: 'business_id',
-    ),
-    'libro': BindingFieldSpec(
-      payloadPath: <String>['venue_id'],
-      metadataKey: 'venue_id',
-    ),
-    'quickbooks_time': BindingFieldSpec(
-      payloadPath: <String>['realm_id'],
-      metadataKey: 'realm_id',
-    ),
-  };
+        'lightspeed_lsk': BindingFieldSpec(
+          payloadPath: <String>['business_id'],
+          metadataKey: 'business_id',
+        ),
+        'libro': BindingFieldSpec(
+          payloadPath: <String>['venue_id'],
+          metadataKey: 'venue_id',
+        ),
+        'quickbooks_time': BindingFieldSpec(
+          payloadPath: <String>['realm_id'],
+          metadataKey: 'realm_id',
+        ),
+      };
 }
 
 /// Per-vendor declaration of where the binding id lives in the

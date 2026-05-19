@@ -76,7 +76,9 @@ void main() {
       expect(find.text('Brooklyn Williamsburg'), findsOneWidget);
     });
 
-    testWidgets('renders arbitrary keyed service-period rows', (tester) async {
+    testWidgets('renders configured and keyed service-period rows together', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1600, 1200);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -117,7 +119,21 @@ void main() {
 
       expect(find.text('Breakfast'), findsOneWidget);
       expect(find.text('Manual'), findsOneWidget);
-      expect(find.text('Lunch'), findsNothing);
+      expect(find.text('Lunch'), findsOneWidget);
+      expect(find.text('Dinner'), findsOneWidget);
+      expect(find.text('Late Night'), findsOneWidget);
+      expect(find.text('Vendor default'), findsWidgets);
+
+      await tester.tap(
+        find.byKey(const Key('admin_data_accuracy_vendor_source_filter')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Covers from vendor').last);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Demo Diner Co.'), findsOneWidget);
+      expect(find.text('Toronto Yorkville'), findsOneWidget);
+      expect(find.text('No locations match this view.'), findsNothing);
     });
   });
 }

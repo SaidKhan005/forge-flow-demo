@@ -1,6 +1,6 @@
 # Metric Card Honesty Contract
 
-Updated: 2026-05-03
+Updated: 2026-05-19
 Owner: Phase 8 framework lane (lands in `8.0`)
 Status: Active authority for every load-bearing metric card across operator dashboards
 Companion: `docs/contracts/phase_7_58_primary_driver_contract.md` (lever-id honesty; this doc is its forward extension to metric cards)
@@ -71,8 +71,9 @@ A free-form short string identifying the data source. Examples (renamed 2026-05-
 - `vendor_toast` — POS vendor exposed and supplied this metric directly.
 - `vendor_lightspeed_lsk` — POS vendor exposed and supplied this metric directly.
 - `vendor_square_covers_unavailable_app_forecast_substituted` — POS vendor (Square) does not expose covers; F&F substituted its own app-derived forecast covers. The forecast itself is F&F-computed (per `core_app_architecture.md` Layer 6), never vendor-supplied. This naming makes that explicit.
-- `vendor_quickbooks_time_dollars_unavailable_target_wage_substituted` — labor vendor exposed hours but neither dollars nor pay rates; F&F substituted target wage × hours from the operator's locked TargetSnapshot.
-- `vendor_quickbooks_time_per_employee_actual_dollars` — labor vendor exposed per-employee actual labor dollars per shift (7shifts, QBT, ADP, Push Operations source class); aggregator summed those directly.
+- `vendor_quickbooks_time_per_employee_actual_dollars_per_employee_rates` — labor vendor exposed hours plus per-employee pay rates; F&F computed dollars by multiplying rate by duration.
+- `vendor_<id>_per_employee_actual_dollars` — labor vendor exposed per-employee actual labor dollars per shift (currently 7shifts after the hours-and-wages upgrade); aggregator summed those directly.
+- `vendor_<id>_dollars_unavailable_target_wage_substituted` — labor vendor exposed hours but neither dollars nor pay rates; F&F substituted target wage × hours from the operator's locked TargetSnapshot.
 - `vendor_humanity_per_position_actual_dollars` — labor vendor exposed per-position pay rates + observed schedule hours (Humanity, Agendrix source class); aggregator computed actual dollars via rate × hours per role. Per Jim Taylor's model the per-position shape is exactly what `wage_role_rows` consumes — closer to model truth than per-employee, which has to aggregate down to roles anyway.
 - `operator_manual_entry_per_daypart` — operator entered the value via the Data Accuracy tab on the operator web console (per `data_accuracy_settings_contract.md`).
 - `app_forecast_60_day_avg` — F&F-derived forecast covers from the 60-day historical weekly average.
@@ -148,7 +149,8 @@ Concrete file changes (lands in `8.0`):
   - Covers from operator manual entry (Data Accuracy tab override per `data_accuracy_settings_contract.md`) → state = `fallback`; provenance = `operator_manual_entry_per_daypart`.
   - Actual labor dollars null → labor-derived metrics (CPLH, blended wage) state = `unavailable`; provenance = `none`.
   - Actual labor dollars present but partial sync → state = `partial`; provenance = `vendor_<id>_partial_sync`.
-  - Labor dollars from labor vendor that exposes per-employee actuals (7shifts, QBT, ADP, Push Operations) → state = `live`; provenance = `vendor_<id>_per_employee_actual_dollars`.
+  - Labor dollars from labor vendor that exposes per-employee actuals (currently 7shifts after the hours-and-wages upgrade) → state = `live`; provenance = `vendor_<id>_per_employee_actual_dollars`.
+  - Labor dollars from labor vendor that exposes per-employee rates (QuickBooks Time) → aggregator computes actual dollars = rate × duration per punch → state = `live`; provenance = `vendor_<id>_per_employee_actual_dollars_per_employee_rates`.
   - Labor dollars from labor vendor that exposes per-position rates (Humanity, Agendrix) → aggregator computes actual dollars = rate × scheduled hours per role → state = `live`; provenance = `vendor_<id>_per_position_actual_dollars`. Per-position is closer to the Jim Taylor model truth than per-employee — `wage_role_rows` is per-role-weighted-up, so per-position vendor data populates `wage_role_rows` directly. The wage editor (`settings_wage_authority_section.dart` on mobile + the wage source card on the operator web Data Accuracy tab) surfaces vendor-populated rows for review/override; the post-spine-bridge follow-up `8.wage-editor-seed` ships the review/override UX.
   - Labor dollars derived from target wage × hours fallback (vendor exposes neither dollars nor rates) → state = `fallback`; provenance = `vendor_<id>_dollars_unavailable_target_wage_substituted`.
   - All inputs present → state = `live`; provenance = `vendor_<id>`.

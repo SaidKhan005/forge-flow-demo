@@ -5,7 +5,7 @@
 // end without a backend or real proxy. Coverage:
 //
 //   * Initial render is manual-only and does not fetch.
-//   * Confirmed manual fetch shows all six tabs and the as-of strip.
+//   * Confirmed manual fetch shows all seven tabs and the as-of strip.
 //   * Cost telemetry rows render across the full axis tuple
 //     (operator / location / staff / workflow / usage_class /
 //     query_class) so phase_11A lines 356-359 are exercised.
@@ -126,7 +126,7 @@ void main() {
     );
   });
 
-  testWidgets('confirmed manual fetch renders six tabs + as-of strip', (
+  testWidgets('confirmed manual fetch renders seven tabs + as-of strip', (
     tester,
   ) async {
     setLargeViewport(tester);
@@ -166,6 +166,10 @@ void main() {
       findsOneWidget,
     );
     expect(
+      find.byKey(const Key('admin_observability_tab_projection_retries')),
+      findsOneWidget,
+    );
+    expect(
       find.byKey(const Key('admin_observability_tab_cloud_run')),
       findsOneWidget,
     );
@@ -181,6 +185,7 @@ void main() {
     expect(find.textContaining('Losing money'), findsWidgets);
     expect(find.text('Limit events'), findsWidgets);
     expect(find.textContaining('reached a usage limit'), findsOneWidget);
+    expect(find.textContaining('Retry dead letters'), findsOneWidget);
   });
 
   testWidgets('cost telemetry rows render across the full axis tuple', (
@@ -333,6 +338,17 @@ void main() {
     expect(
       find.byTooltip(
         'Knowledge items that are not connected to a confirmed relationship yet.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_projection_retries')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip(
+        'Jobs that reached the retry limit or were recorded as non-replayable failures.',
       ),
       findsOneWidget,
     );
@@ -704,6 +720,58 @@ void main() {
       find.byKey(const Key('admin_observability_graph_traversal_p95')),
       findsOneWidget,
     );
+  });
+
+  testWidgets('projection retry status and dead letters render', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_projection_retries')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_observability_projection_retry_pending')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key('admin_observability_projection_retry_dead_lettered'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_projection_retry_active_active-retry-0001',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_projection_retry_dead_letter_dead-retry-0001',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.textContaining('service period missing'), findsOneWidget);
+    expect(find.textContaining('0 closed / 1 open'), findsOneWidget);
+    expect(find.textContaining('Before projector input'), findsOneWidget);
   });
 
   testWidgets('cloud run + route latency render on the cloud run tab', (

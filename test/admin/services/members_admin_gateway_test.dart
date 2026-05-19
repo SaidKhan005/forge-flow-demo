@@ -79,7 +79,7 @@ void main() {
       );
       final byEmail = await gateway.listMembers(
         operatorId: kDemoDinerOperatorId,
-        search: 'manager',
+        search: 'general manager',
       );
       expect(byEmail, hasLength(1));
       expect(byEmail.single.email, contains('manager'));
@@ -89,7 +89,7 @@ void main() {
         search: 'Mira',
       );
       expect(byName, hasLength(1));
-      expect(byName.single.displayName, equals('Mira Manager'));
+      expect(byName.single.displayName, equals('Mira General Manager'));
     });
 
     test('listMembers filters by role', () async {
@@ -98,10 +98,10 @@ void main() {
       );
       final managers = await gateway.listMembers(
         operatorId: kDemoDinerOperatorId,
-        roleKey: 'operator_manager',
+        roleKey: 'operator_general_manager',
       );
       expect(managers, hasLength(1));
-      expect(managers.single.roleKey, equals('operator_manager'));
+      expect(managers.single.roleKey, equals('operator_general_manager'));
     });
 
     test('listMembers filters by location', () async {
@@ -214,7 +214,7 @@ void main() {
             operatorId: kDemoDinerOperatorId,
             email: 'x@y.z',
             displayName: 'X',
-            roleKey: 'operator_staff',
+            roleKey: 'supervisor',
             primaryLocationId: kDemoDinerLocationToronto,
             idempotencyKey: 'k2',
             actorUserId: 'demo-non-admin',
@@ -227,8 +227,8 @@ void main() {
           gateway.overrideRoleGrant(
             operatorId: kDemoDinerOperatorId,
             userId: 'demo-user-diner-owner',
-            roleId: 'operator_manager',
-            roleKey: 'operator_manager',
+            roleId: 'operator_general_manager',
+            roleKey: 'operator_general_manager',
             idempotencyKey: 'k3',
             actorUserId: 'demo-non-admin',
             actorIsForgeAdmin: false,
@@ -462,7 +462,7 @@ void main() {
           operatorId: kDemoDinerOperatorId,
           email: 'first@demo-diner.test',
           displayName: 'First',
-          roleKey: 'operator_staff',
+          roleKey: 'supervisor',
           primaryLocationId: kDemoDinerLocationToronto,
           idempotencyKey: key,
           actorUserId: 'demo-super-admin',
@@ -473,7 +473,7 @@ void main() {
           operatorId: kDemoDinerOperatorId,
           email: 'second@demo-diner.test',
           displayName: 'Second',
-          roleKey: 'operator_manager',
+          roleKey: 'operator_general_manager',
           primaryLocationId: kDemoDinerLocationToronto,
           idempotencyKey: key,
           actorUserId: 'demo-super-admin',
@@ -496,8 +496,8 @@ void main() {
         final first = await gateway.overrideRoleGrant(
           operatorId: kDemoDinerOperatorId,
           userId: 'demo-user-diner-supervisor',
-          roleId: 'operator_manager',
-          roleKey: 'operator_manager',
+          roleId: 'operator_general_manager',
+          roleKey: 'operator_general_manager',
           idempotencyKey: key,
           actorUserId: 'demo-super-admin',
           actorIsForgeAdmin: true,
@@ -515,7 +515,7 @@ void main() {
         );
         expect(identical(first, second), isTrue);
         // Second call's roleKey ignored on retry.
-        expect(second.roleKey, equals('operator_manager'));
+        expect(second.roleKey, equals('operator_general_manager'));
         expect(gateway.capturedAuditEvents, hasLength(1));
       },
     );
@@ -553,7 +553,7 @@ void main() {
           operatorId: kDemoDinerOperatorId,
           email: 'owner@demo-diner.test',
           displayName: 'Duplicate',
-          roleKey: 'operator_staff',
+          roleKey: 'supervisor',
           primaryLocationId: kDemoDinerLocationToronto,
           idempotencyKey: 'k-dup',
           actorUserId: 'demo-super-admin',
@@ -579,14 +579,14 @@ void main() {
         final updated = await gateway.overrideRoleGrant(
           operatorId: kDemoDinerOperatorId,
           userId: 'demo-user-diner-staff-archived',
-          roleId: 'operator_supervisor',
-          roleKey: 'operator_supervisor',
+          roleId: 'supervisor',
+          roleKey: 'supervisor',
           idempotencyKey: 'k-override',
           actorUserId: 'demo-super-admin',
           actorIsForgeAdmin: true,
           adminReason: 'support-escalation-recover',
         );
-        expect(updated.roleKey, equals('operator_supervisor'));
+        expect(updated.roleKey, equals('supervisor'));
         // Pinned to canonical fact action; the override marker rides
         // in payload.override = true so the table can disambiguate
         // self-service `team.roles.assign` writes from admin
@@ -693,7 +693,7 @@ void main() {
                 'user_id': 'u1',
                 'email': 'a@b.c',
                 'display_name': 'A',
-                'role_key': 'operator_staff',
+                'role_key': 'supervisor',
                 'primary_location_id': 'loc-1',
                 'primary_location_name': 'Loc 1',
                 'status': 'suspended',
@@ -750,7 +750,7 @@ void main() {
                 'user_id': 'u1',
                 'email': 'a@b.c',
                 'display_name': 'Updated Name',
-                'role_key': 'operator_staff',
+                'role_key': 'supervisor',
                 'primary_location_id': 'loc-1',
                 'primary_location_name': 'Loc 1',
                 'status': 'active',
@@ -832,7 +832,7 @@ void main() {
                 'invite_id': 'inv-1',
                 'email': 'new@op.test',
                 'display_name': 'New User',
-                'role_key': 'operator_staff',
+                'role_key': 'supervisor',
                 'primary_location_id': 'loc-1',
                 'primary_location_name': 'Loc 1',
                 'invited_at': '2026-05-04T12:00:00Z',
@@ -852,7 +852,7 @@ void main() {
           operatorId: 'op-1',
           email: 'new@op.test',
           displayName: 'New User',
-          roleKey: 'operator_staff',
+          roleKey: 'supervisor',
           primaryLocationId: 'loc-1',
           idempotencyKey: 'idem-invite-1',
           actorUserId: 'admin-1',
@@ -863,8 +863,8 @@ void main() {
         final body = jsonDecode(captured.body) as Map<String, Object?>;
         expect(body['operator_id'], equals('op-1'));
         expect(body['email'], equals('new@op.test'));
-        expect(body['role_id'], equals('operator_staff'));
-        expect(body['role_key'], equals('operator_staff'));
+        expect(body['role_id'], equals('supervisor'));
+        expect(body['role_key'], equals('supervisor'));
         expect(body['scope_type'], equals('location'));
         expect(body['location_id'], equals('loc-1'));
         expect(body['primary_location_id'], equals('loc-1'));
@@ -907,7 +907,7 @@ void main() {
         operatorId: 'op-1',
         email: 'regional@op.test',
         displayName: 'Regional',
-        roleKey: 'operator_manager',
+        roleKey: 'operator_general_manager',
         primaryLocationId: '',
         scopeType: 'org_unit',
         orgUnitId: 'unit-1',
@@ -927,149 +927,137 @@ void main() {
       expect(bodies[1].containsKey('primary_location_id'), isFalse);
     });
 
-    test(
-      'Wave 2 W-2 — cancelInvite calls DELETE /v1/admin/auth/invites/{id} '
-      'with the idempotency-key and forwards operator_id + admin_reason + '
-      'optional reason',
-      () async {
-        late http.Request captured;
-        final mock = http_testing.MockClient((http.Request request) async {
-          captured = request;
+    test('Wave 2 W-2 — cancelInvite calls DELETE /v1/admin/auth/invites/{id} '
+        'with the idempotency-key and forwards operator_id + admin_reason + '
+        'optional reason', () async {
+      late http.Request captured;
+      final mock = http_testing.MockClient((http.Request request) async {
+        captured = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{'ok': true, 'revoked': true}),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+
+      final revoked = await gateway.cancelInvite(
+        operatorId: 'op-1',
+        inviteId: 'inv-9',
+        idempotencyKey: 'idemp-cancel-1',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'wrong-email',
+        reason: '  wrong-email  ',
+      );
+
+      expect(revoked, isTrue);
+      expect(captured.method, equals('DELETE'));
+      expect(captured.url.path, equals('/v1/admin/auth/invites/inv-9'));
+      expect(captured.headers['authorization'], equals('Bearer tok'));
+      expect(captured.headers['Idempotency-Key'], equals('idemp-cancel-1'));
+      final body = jsonDecode(captured.body) as Map<String, Object?>;
+      expect(body['operator_id'], equals('op-1'));
+      expect(body['admin_reason'], equals('wrong-email'));
+      // Trimmed before the wire so the audit row does not store
+      // whitespace-only padding.
+      expect(body['reason'], equals('wrong-email'));
+    });
+
+    test('Wave 2 W-2 — cancelInvite returns the proxy `revoked` bool '
+        'and treats a missing field as false', () async {
+      var call = 0;
+      final mock = http_testing.MockClient((http.Request request) async {
+        call += 1;
+        if (call == 1) {
           return http.Response(
-            jsonEncode(<String, Object?>{'ok': true, 'revoked': true}),
+            jsonEncode(<String, Object?>{'ok': true, 'revoked': false}),
             200,
             headers: <String, String>{'content-type': 'application/json'},
           );
-        });
-        final gateway = HttpMembersAdminGateway(
-          baseUri: Uri.parse('https://admin.example/'),
-          bearerTokenProvider: () async => 'tok',
-          httpClient: mock,
+        }
+        return http.Response(
+          jsonEncode(<String, Object?>{'ok': true}),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
         );
+      });
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
 
-        final revoked = await gateway.cancelInvite(
+      final alreadyRevoked = await gateway.cancelInvite(
+        operatorId: 'op-1',
+        inviteId: 'inv-already',
+        idempotencyKey: 'idemp-cancel-2',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'cleanup',
+      );
+      final missingField = await gateway.cancelInvite(
+        operatorId: 'op-1',
+        inviteId: 'inv-no-field',
+        idempotencyKey: 'idemp-cancel-3',
+        actorUserId: 'admin-1',
+        actorIsForgeAdmin: true,
+        adminReason: 'cleanup',
+      );
+
+      expect(alreadyRevoked, isFalse);
+      expect(missingField, isFalse);
+    });
+
+    test('Wave 2 W-2 — cancelInvite throws MembersAdminForbidden when the '
+        'caller is not flagged as forge_admin', () async {
+      final mock = http_testing.MockClient(
+        (request) async => throw StateError('unexpected'),
+      );
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      expect(
+        gateway.cancelInvite(
           operatorId: 'op-1',
-          inviteId: 'inv-9',
-          idempotencyKey: 'idemp-cancel-1',
+          inviteId: 'inv-1',
+          idempotencyKey: 'idemp-cancel-4',
           actorUserId: 'admin-1',
-          actorIsForgeAdmin: true,
-          adminReason: 'wrong-email',
-          reason: '  wrong-email  ',
-        );
-
-        expect(revoked, isTrue);
-        expect(captured.method, equals('DELETE'));
-        expect(captured.url.path, equals('/v1/admin/auth/invites/inv-9'));
-        expect(captured.headers['authorization'], equals('Bearer tok'));
-        expect(captured.headers['Idempotency-Key'], equals('idemp-cancel-1'));
-        final body = jsonDecode(captured.body) as Map<String, Object?>;
-        expect(body['operator_id'], equals('op-1'));
-        expect(body['admin_reason'], equals('wrong-email'));
-        // Trimmed before the wire so the audit row does not store
-        // whitespace-only padding.
-        expect(body['reason'], equals('wrong-email'));
-      },
-    );
-
-    test(
-      'Wave 2 W-2 — cancelInvite returns the proxy `revoked` bool '
-      'and treats a missing field as false',
-      () async {
-        var call = 0;
-        final mock = http_testing.MockClient((http.Request request) async {
-          call += 1;
-          if (call == 1) {
-            return http.Response(
-              jsonEncode(<String, Object?>{'ok': true, 'revoked': false}),
-              200,
-              headers: <String, String>{'content-type': 'application/json'},
-            );
-          }
-          return http.Response(
-            jsonEncode(<String, Object?>{'ok': true}),
-            200,
-            headers: <String, String>{'content-type': 'application/json'},
-          );
-        });
-        final gateway = HttpMembersAdminGateway(
-          baseUri: Uri.parse('https://admin.example/'),
-          bearerTokenProvider: () async => 'tok',
-          httpClient: mock,
-        );
-
-        final alreadyRevoked = await gateway.cancelInvite(
-          operatorId: 'op-1',
-          inviteId: 'inv-already',
-          idempotencyKey: 'idemp-cancel-2',
-          actorUserId: 'admin-1',
-          actorIsForgeAdmin: true,
+          actorIsForgeAdmin: false,
           adminReason: 'cleanup',
-        );
-        final missingField = await gateway.cancelInvite(
+        ),
+        throwsA(isA<MembersAdminForbiddenException>()),
+      );
+    });
+
+    test('Wave 2 W-2 — cancelInvite rejects empty admin_reason at the '
+        'gateway layer (defense in depth behind the proxy reject)', () async {
+      final mock = http_testing.MockClient(
+        (request) async => throw StateError('unexpected'),
+      );
+      final gateway = HttpMembersAdminGateway(
+        baseUri: Uri.parse('https://admin.example/'),
+        bearerTokenProvider: () async => 'tok',
+        httpClient: mock,
+      );
+      expect(
+        gateway.cancelInvite(
           operatorId: 'op-1',
-          inviteId: 'inv-no-field',
-          idempotencyKey: 'idemp-cancel-3',
+          inviteId: 'inv-1',
+          idempotencyKey: 'idemp-cancel-5',
           actorUserId: 'admin-1',
           actorIsForgeAdmin: true,
-          adminReason: 'cleanup',
-        );
-
-        expect(alreadyRevoked, isFalse);
-        expect(missingField, isFalse);
-      },
-    );
-
-    test(
-      'Wave 2 W-2 — cancelInvite throws MembersAdminForbidden when the '
-      'caller is not flagged as forge_admin',
-      () async {
-        final mock = http_testing.MockClient(
-          (request) async => throw StateError('unexpected'),
-        );
-        final gateway = HttpMembersAdminGateway(
-          baseUri: Uri.parse('https://admin.example/'),
-          bearerTokenProvider: () async => 'tok',
-          httpClient: mock,
-        );
-        expect(
-          gateway.cancelInvite(
-            operatorId: 'op-1',
-            inviteId: 'inv-1',
-            idempotencyKey: 'idemp-cancel-4',
-            actorUserId: 'admin-1',
-            actorIsForgeAdmin: false,
-            adminReason: 'cleanup',
-          ),
-          throwsA(isA<MembersAdminForbiddenException>()),
-        );
-      },
-    );
-
-    test(
-      'Wave 2 W-2 — cancelInvite rejects empty admin_reason at the '
-      'gateway layer (defense in depth behind the proxy reject)',
-      () async {
-        final mock = http_testing.MockClient(
-          (request) async => throw StateError('unexpected'),
-        );
-        final gateway = HttpMembersAdminGateway(
-          baseUri: Uri.parse('https://admin.example/'),
-          bearerTokenProvider: () async => 'tok',
-          httpClient: mock,
-        );
-        expect(
-          gateway.cancelInvite(
-            operatorId: 'op-1',
-            inviteId: 'inv-1',
-            idempotencyKey: 'idemp-cancel-5',
-            actorUserId: 'admin-1',
-            actorIsForgeAdmin: true,
-            adminReason: '   ',
-          ),
-          throwsA(isA<MembersAdminGatewayError>()),
-        );
-      },
-    );
+          adminReason: '   ',
+        ),
+        throwsA(isA<MembersAdminGatewayError>()),
+      );
+    });
 
     test('overrideRoleGrant sends scoped role-grant payload', () async {
       late http.Request captured;
@@ -1090,8 +1078,8 @@ void main() {
       final updated = await gateway.overrideRoleGrant(
         operatorId: 'op-1',
         userId: 'user-1',
-        roleId: 'operator_manager',
-        roleKey: 'operator_manager',
+        roleId: 'operator_general_manager',
+        roleKey: 'operator_general_manager',
         scopeType: 'org_unit',
         orgUnitId: 'unit-1',
         idempotencyKey: 'idem-grant-org-unit',
@@ -1102,7 +1090,7 @@ void main() {
 
       expect(captured.url.path, equals('/v1/admin/auth/role-grants'));
       final body = jsonDecode(captured.body) as Map<String, Object?>;
-      expect(body['role_id'], equals('operator_manager'));
+      expect(body['role_id'], equals('operator_general_manager'));
       expect(body.containsKey('role_key'), isFalse);
       expect(body['scope_type'], equals('org_unit'));
       expect(body['org_unit_id'], equals('unit-1'));
@@ -1170,7 +1158,7 @@ void main() {
         operatorId: 'op-1',
         email: 'new@op.test',
         displayName: 'New User',
-        roleKey: 'operator_staff',
+        roleKey: 'supervisor',
         primaryLocationId: 'loc-1',
         idempotencyKey: 'idem-invite-proxy-1',
         actorUserId: 'admin-1',
@@ -1181,7 +1169,7 @@ void main() {
       expect(invite.inviteId, equals('inv-proxy-1'));
       expect(invite.email, equals('new@op.test'));
       expect(invite.displayName, equals('New User'));
-      expect(invite.roleKey, equals('operator_staff'));
+      expect(invite.roleKey, equals('supervisor'));
       expect(invite.primaryLocationId, equals('loc-1'));
       expect(invite.invitedAt, equals(DateTime.utc(2026, 5, 6, 12)));
     });
@@ -1218,7 +1206,7 @@ void main() {
                 'email': 'member@op.test',
                 'display_name': 'Member One',
                 'role_id': 'role-seed-staff-uuid',
-                'role_label': 'Operator staff',
+                'role_label': 'Supervisor',
                 'status': 'active',
                 'location_id': 'loc-1',
                 'location_label': '95 Water Street',
@@ -1239,7 +1227,7 @@ void main() {
       final rows = await gateway.listMembers(operatorId: 'op-1');
 
       expect(rows, hasLength(1));
-      expect(rows.single.roleKey, equals('Operator staff'));
+      expect(rows.single.roleKey, equals('Supervisor'));
       expect(rows.single.primaryLocationId, equals('loc-1'));
       expect(rows.single.primaryLocationName, equals('95 Water Street'));
       expect(rows.single.createdAt.isUtc, isTrue);
@@ -1255,7 +1243,7 @@ void main() {
                 'user_id': 'u-invited',
                 'email': 'pending@op.test',
                 'display_name': 'Pending Member',
-                'role_id': 'operator_staff',
+                'role_id': 'supervisor',
                 'status': 'invited',
                 'location_id': 'loc-1',
                 'location_label': '95 Water Street',
@@ -1287,7 +1275,7 @@ void main() {
                 'user_id': 'u-unassigned',
                 'email': 'unassigned@op.test',
                 'display_name': 'Unassigned Member',
-                'role_id': 'operator_staff',
+                'role_id': 'supervisor',
                 'status': 'active',
                 'mfa_enrolled': false,
               },
@@ -1318,7 +1306,7 @@ void main() {
                 'invite_id': 'inv-1',
                 'email': 'invitee@op.test',
                 'role_id': 'role-seed-manager-uuid',
-                'role_label': 'Operator manager',
+                'role_label': 'General Manager',
                 'location_id': 'loc-1',
                 'location_label': '95 Water Street',
                 'created_at': '2026-05-06T14:40:00Z',
@@ -1339,7 +1327,7 @@ void main() {
 
       expect(rows, hasLength(1));
       expect(rows.single.displayName, equals('invitee@op.test'));
-      expect(rows.single.roleKey, equals('Operator manager'));
+      expect(rows.single.roleKey, equals('General Manager'));
       expect(rows.single.primaryLocationName, equals('95 Water Street'));
       expect(rows.single.invitedAt, equals(DateTime.utc(2026, 5, 6, 14, 40)));
     });
@@ -1352,7 +1340,7 @@ void main() {
               <String, Object?>{
                 'invite_id': 'inv-unassigned',
                 'email': 'invitee@op.test',
-                'role_id': 'operator_staff',
+                'role_id': 'supervisor',
                 'created_at': '2026-05-06T14:40:00Z',
               },
             ],
@@ -1484,7 +1472,7 @@ void main() {
             operatorId: 'op-1',
             email: 'taken@op.test',
             displayName: 'Taken',
-            roleKey: 'operator_staff',
+            roleKey: 'supervisor',
             primaryLocationId: 'loc-1',
             idempotencyKey: 'idem-1',
             actorUserId: 'admin-1',
@@ -1610,9 +1598,9 @@ void main() {
           kSeededRoleKeysForAdmin.toSet(),
           equals(<String>{
             'operator_owner',
-            'operator_manager',
-            'operator_supervisor',
-            'operator_staff',
+            'operator_general_manager',
+            'location_manager',
+            'supervisor',
           }),
         );
       },

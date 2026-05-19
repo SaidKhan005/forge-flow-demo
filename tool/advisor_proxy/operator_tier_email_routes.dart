@@ -4,9 +4,9 @@
 //   POST /v1/operator/tier-email/data-freshness-request
 //
 // Operator-scoped. Idempotency-Key required. Caller must hold
-// `operator_owner` or `operator_admin` role (mirrors the existing
+// `operator_owner` role (mirrors the existing
 // `/v1/.../data_accuracy_settings` write gate; no new permission key
-// is introduced — DO NOT widen permissions).
+// is introduced. Do not widen permissions.
 //
 // Body:
 //   {
@@ -71,22 +71,24 @@ class OperatorTierEmailActor {
   final String actorKind;
 }
 
-typedef OperatorTierEmailAuthResolver
-    = Future<OperatorTierEmailActor?> Function(HttpRequest request);
+typedef OperatorTierEmailAuthResolver =
+    Future<OperatorTierEmailActor?> Function(HttpRequest request);
 
-typedef OperatorTierEmailUnhandledErrorLogger = void Function({
-  required String method,
-  required String path,
-  required Object error,
-  required StackTrace stackTrace,
-});
+typedef OperatorTierEmailUnhandledErrorLogger =
+    void Function({
+      required String method,
+      required String path,
+      required Object error,
+      required StackTrace stackTrace,
+    });
 
-typedef OperatorTierEmailSendErrorLogger = void Function({
-  required String operatorId,
-  required String actorUserId,
-  required String auditRowId,
-  required Object error,
-});
+typedef OperatorTierEmailSendErrorLogger =
+    void Function({
+      required String operatorId,
+      required String actorUserId,
+      required String auditRowId,
+      required Object error,
+    });
 
 class OperatorTierEmailRouter {
   OperatorTierEmailRouter({
@@ -101,13 +103,13 @@ class OperatorTierEmailRouter {
     OperatorTierEmailSendErrorLogger? sendErrorLogger,
     String Function()? auditRowIdFactory,
     String recipient = kOperatorTierEmailRecipient,
-  })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
-        _now = now ?? DateTime.now,
-        _authResolver = authResolver,
-        _unhandledErrorLogger = unhandledErrorLogger,
-        _sendErrorLogger = sendErrorLogger,
-        _auditRowIdFactory = auditRowIdFactory ?? _defaultAuditRowIdFactory,
-        _recipient = recipient;
+  }) : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
+       _now = now ?? DateTime.now,
+       _authResolver = authResolver,
+       _unhandledErrorLogger = unhandledErrorLogger,
+       _sendErrorLogger = sendErrorLogger,
+       _auditRowIdFactory = auditRowIdFactory ?? _defaultAuditRowIdFactory,
+       _recipient = recipient;
 
   final EmailProvider emailProvider;
   final OperatorWriteAuditSink auditSink;
@@ -166,7 +168,7 @@ class OperatorTierEmailRouter {
     if (!actor.roles.any(kOperatorWriteRoles.contains)) {
       _writeJson(response, 403, <String, Object?>{
         'error': 'forbidden',
-        'message': 'operator owner or operator admin role is required',
+        'message': 'operator_owner role is required',
         'required_roles': kOperatorWriteRoles.toList(),
       });
       return true;
@@ -374,7 +376,8 @@ class OperatorTierEmailRouter {
     String? currentTier,
     String? requestedCadence,
     String? businessReason,
-  }) _parseBody(Map<String, Object?> body) {
+  })
+  _parseBody(Map<String, Object?> body) {
     final currentTier = _readNonEmpty(
       body['current_tier'] ?? body['currentTier'],
     );
@@ -420,7 +423,8 @@ class OperatorTierEmailRouter {
     String? currentTier,
     String? requestedCadence,
     String? businessReason,
-  }) _bodyError(String code, String message) {
+  })
+  _bodyError(String code, String message) {
     return (
       error: (
         statusCode: 400,

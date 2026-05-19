@@ -155,7 +155,7 @@ Every fact-table write populates `created_by` (insert) or `updated_by` (update) 
 
 **Catalog source:** `docs/contracts/auth_permission_key_catalog.md` is the rendered source. Every key listed there must appear in the Permission Explainer; nothing else may. The Explainer renders 9 categories in this exact order: `product.*` → `forgeflow.*` → `barrio.*` → `admin.*` → `team.*` → `billing.*` → `integration.*` → `integrations.*` → `workflow.*`.
 
-**Seeded roles:** `super_admin`, `ff_support`, `operator_owner`, `operator_manager`, `operator_supervisor`, `operator_staff`. All render with `is_editable=false` enforced server-side. Operator self-service surface shows seeded roles read-only with no edit button. F&F admin surface shows seeded roles read-only by default; edit button gated on `admin.roles.edit_seeded` (MFA-required) opens an editor.
+**Seeded roles:** `super_admin`, `ff_support`, `operator_owner`, `operator_general_manager`, `location_manager`, `supervisor`, `finance_analyst`, `auditor_compliance`, `training_lead`, `team_admin`. All render with `is_editable=false` enforced server-side. Operator self-service surface shows seeded roles read-only with no edit button. F&F admin surface shows seeded roles read-only by default; edit button gated on `admin.roles.edit_seeded` (MFA-required) opens an editor.
 
 **Custom-role builder:** Operator self-service via `team.roles.create_custom`. F&F admin via `admin.roles.create_custom`. Builder UX: name + description + permission picker (multi-select tree organized by category). Server enforces frozen catalog — keys outside `PermissionKeys.all` are rejected with `validation_failed/permission_key_unknown`. Custom-role rows carry `operator_id` (operator-scoped); F&F-admin-created custom roles carry the target operator's ID, not NULL.
 
@@ -175,7 +175,7 @@ Every fact-table write populates `created_by` (insert) or `updated_by` (update) 
 
 **Display order:** Children sorted alphabetically by `name`. Locations sorted alphabetically by `name` within their org-unit.
 
-**Read-only audiences:** Floor managers (`location_manager`) and `operator_supervisor` see read-only hierarchy. Mutate buttons hidden; tree expand/collapse stays interactive.
+**Read-only audiences:** Location managers (`location_manager`) and supervisors (`supervisor`) see read-only hierarchy. Mutate buttons hidden; tree expand/collapse stays interactive.
 
 **Validation copy (locked):**
 - Empty org-unit name → "Org unit name is required."

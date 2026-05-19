@@ -43,6 +43,7 @@
 import 'dart:convert';
 
 import '../../domain/models/data_accuracy_service_period_setting.dart';
+import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/import_run.dart';
 import '../../domain/models/sync_watermark.dart';
 import '../../domain/models/wage_role_row.dart';
@@ -315,9 +316,7 @@ class PostgresShiftRecordToMobileSync {
   /// observe how many were loaded; the in-memory snapshot is also
   /// updated so existing getters keep working.
   Future<List<DataAccuracyServicePeriodSetting>>
-  hydrateDataAccuracyServicePeriodSettingsFromCache(
-    String restaurantId,
-  ) async {
+  hydrateDataAccuracyServicePeriodSettingsFromCache(String restaurantId) async {
     final cached = await dataAccuracyServicePeriodSettingsCacheRepository
         .getRows(restaurantId);
     _latestDataAccuracyServicePeriodSettings =
@@ -560,17 +559,6 @@ class PostgresShiftRecordToMobileSync {
       weeklyPlanMirrors: WeeklyPlanMirrorSyncResult.skipped(),
     );
 
-    final timingConfig = await client.fetchResolvedTimingConfig(
-      operatorId: operatorId,
-      locationId: locationId,
-      restaurantId: restaurantId,
-    );
-    if (timingConfig != null) {
-      await timingConfigRepository.saveTimingConfig(timingConfig);
-      timingConfigSynced = true;
-      invalidationBus.notifyImportCompletionPersisted();
-    }
-
     while (true) {
       // BUG 2 (HIGH): re-check the auth context before each page
       // request so a sign-out / scope flip mid-sweep stops further
@@ -639,6 +627,25 @@ class PostgresShiftRecordToMobileSync {
         sourceType: openSnapshotSourceType,
       );
       openCursor = next;
+    }
+
+    if (aborted()) {
+      return abortedResult();
+    }
+
+    final timingBusinessDate = await openShiftSnapshotRepository
+        .getCurrentBusinessDate(restaurantId);
+    final timingConfig = await client.fetchResolvedTimingConfig(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      businessDate: timingBusinessDate,
+    );
+    if (aborted()) return abortedResult();
+    if (timingConfig != null) {
+      await timingConfigRepository.saveTimingConfig(timingConfig);
+      timingConfigSynced = true;
+      invalidationBus.notifyImportCompletionPersisted();
     }
 
     if (aborted()) {
@@ -722,18 +729,22 @@ class PostgresShiftRecordToMobileSync {
     }
     _latestDemoModeStates = List<DemoModeRecord>.unmodifiable(demoModeStates);
     _latestDataAccuracySettings = dataAccuracySettings;
-    _latestDataAccuracyServicePeriodSettings =
-        List<DataAccuracyServicePeriodSetting>.unmodifiable(
-          dataAccuracyServicePeriodSettings,
-        );
     // Theme H#7 — persist the keyed DAS service-period rows so app
     // restart hydrates honest covers/wage source resolution before the
     // first sweep completes.
+    final servicePeriodRowsForCache = _attachCoversSourceMetadata(
+      dataAccuracyServicePeriodSettings,
+      dataAccuracySettings,
+    );
+    _latestDataAccuracyServicePeriodSettings =
+        List<DataAccuracyServicePeriodSetting>.unmodifiable(
+          servicePeriodRowsForCache,
+        );
     final servicePeriodCacheChanged =
         await dataAccuracyServicePeriodSettingsCacheRepository.replaceAll(
-      restaurantId,
-      dataAccuracyServicePeriodSettings,
-    );
+          restaurantId,
+          servicePeriodRowsForCache,
+        );
     if (servicePeriodCacheChanged) {
       invalidationBus.notifyImportCompletionPersisted();
     }
@@ -761,6 +772,24 @@ class PostgresShiftRecordToMobileSync {
       starTargetMirrors: starTargetMirrors,
       weeklyPlanMirrors: weeklyPlanMirrors,
     );
+  }
+
+  static List<DataAccuracyServicePeriodSetting> _attachCoversSourceMetadata(
+    List<DataAccuracyServicePeriodSetting> rows,
+    DataAccuracySettingsSnapshot? settings,
+  ) {
+    if (settings == null ||
+        settings.coversSourcePerServicePeriodSources.isEmpty) {
+      return rows;
+    }
+    return <DataAccuracyServicePeriodSetting>[
+      for (final row in rows)
+        row.copyWith(
+          coversSourceSource: DataAccuracySettingSource.fromMap(
+            settings.coversSourcePerServicePeriodSources[row.servicePeriodKey],
+          ),
+        ),
+    ];
   }
 
   Future<WeeklyPlanMirrorSyncResult> _syncWeeklyPlanMirrors({
@@ -1263,6 +1292,18 @@ class PostgresShiftRecordToMobileSync {
           rowLocationId: row.locationId,
         );
         if (row.profile.restaurantId != restaurantId) continue;
+        final rowCycleId = _nonBlank(row.targetCycleId);
+        final profileCycleId = _nonBlank(row.profile.targetCycleId);
+        final cycleId = rowCycleId ?? profileCycleId;
+        final rowVersionId = _nonBlank(row.targetProfileVersionId);
+        final profileVersionId = _nonBlank(row.profile.targetProfileVersionId);
+        if ((rowCycleId != null && rowVersionId == null) ||
+            (profileCycleId != null && profileVersionId == null)) {
+          continue;
+        }
+        if (cycleId == null && row.profile.dayparts.isNotEmpty) {
+          continue;
+        }
         await targetProfileRepository.upsertActiveTargetProfile(row.profile);
         rowsWritten++;
       }
@@ -1358,6 +1399,11 @@ class PostgresShiftRecordToMobileSync {
       pagesPulled: pagesPulled,
       finalCursor: cursor,
     );
+  }
+
+  static String? _nonBlank(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   static void _assertScopedRow({

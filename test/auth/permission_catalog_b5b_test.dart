@@ -39,17 +39,29 @@ void main() {
       final catalog = File(
         'docs/contracts/auth_permission_key_catalog.md',
       ).readAsStringSync();
+      final normalizedCatalog = catalog.replaceAll(RegExp(r'\s+'), ' ');
 
       expect(catalog, contains('### `account.*` (1)'));
       expect(catalog, contains('### `business_timing.*` (1)'));
       expect(catalog, contains('| `account.configure` |'));
       expect(catalog, contains('| `business_timing.configure` |'));
       expect(catalog, contains('No MFA is required at the catalog level'));
-      expect(catalog, contains('`operator_owner` and `operator_admin`'));
+      expect(
+        normalizedCatalog,
+        contains('`operator_owner` configures the account'),
+      );
+      expect(
+        normalizedCatalog,
+        contains('no such seeded role exists; it is part of `operator_owner`'),
+      );
+      expect(
+        normalizedCatalog,
+        isNot(contains('`operator_owner` and `operator_admin`')),
+      );
       expect(catalog, contains('No B2/B10 admin keys were added.'));
     });
 
-    test('migration seeds keys and owner/admin grants idempotently', () {
+    test('migration seeds keys and historical grants idempotently', () {
       final migration = File(
         'db/migrations/202605131500_b5_b_catalog_tri_mirror.sql',
       ).readAsStringSync();
@@ -98,6 +110,23 @@ void main() {
       expect(normalized.toLowerCase(), isNot(contains('audit_logs')));
       expect(normalized, isNot(contains('admin.roles.catalog_publish')));
       expect(normalized, isNot(contains('admin.vendor_applicability.edit')));
+    });
+
+    test('v2 catalog folds phantom admin settings grants into owner', () {
+      final migration = File(
+        'db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql',
+      ).readAsStringSync();
+      final normalized = migration.replaceAll(RegExp(r'\s+'), ' ');
+
+      expect(
+        normalized,
+        contains(
+          "where r.role_key = 'operator_owner' and r.operator_id is null",
+        ),
+      );
+      expect(normalized, contains("'account.configure'"));
+      expect(normalized, contains("'business_timing.configure'"));
+      expect(normalized, isNot(contains("role_key = 'operator_admin'")));
     });
 
     test(

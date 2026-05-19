@@ -78,6 +78,7 @@ import '../../../integrations/pos/toast_pos_adapter.dart';
 import '../../../integrations/pos/toast_webhook_signature_verifier.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 
 import '../../../services/integration/integration_adapter_common.dart';
@@ -110,21 +111,26 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? clock,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _clock = clock ?? DateTime.now;
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _clock = clock ?? DateTime.now;
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Toast no longer
   // reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _clock;
 
   // ─── upsert ───────────────────────────────────────────────────────
@@ -135,13 +141,12 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalFact,
     required Map<String, Object?> rawPayload,
-  }) =>
-      _writeOrderFact(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalFact: canonicalFact,
-        rawPayload: rawPayload,
-      );
+  }) => _writeOrderFact(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalFact: canonicalFact,
+    rawPayload: rawPayload,
+  );
 
   @override
   Future<bool> upsertCoverFact({
@@ -172,10 +177,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalFact,
     required Map<String, Object?> rawPayload,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final inserted = await withTenant<bool>(ctx, (exec) async {
       final closedAt = _coerceUtc(canonicalFact['closed_at']);
       if (closedAt == null) {
@@ -249,8 +251,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
           'location_id': locationId,
           'vendor_id': kToastVendorId,
           'vendor_entity_id': canonicalFact['vendor_entity_id'],
-          'vendor_modified_at':
-              _coerceUtc(canonicalFact['vendor_modified_at']),
+          'vendor_modified_at': _coerceUtc(canonicalFact['vendor_modified_at']),
           'covers': canonicalFact['covers'],
           'covers_source': canonicalFact['covers_source'],
           'opened_at': _coerceUtc(canonicalFact['opened_at']),
@@ -286,6 +287,13 @@ class ToastPosPostgresSink extends OperatorScopedRepository
       return rows.isNotEmpty;
     });
 
+    if (inserted) {
+      _projectionTap?.recordCommittedCoverFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalFact: canonicalFact,
+      );
+    }
     return inserted;
   }
 
@@ -298,8 +306,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   /// POS sink — reservations are the LB lane's job. See the
   /// [upsertLaborPunch] note.
@@ -308,8 +315,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      false;
+  }) async => false;
 
   // ─── watermark + sync log ─────────────────────────────────────────
 
@@ -319,14 +325,13 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required String locationId,
     required String cursorToken,
     required DateTime lastModifiedSeen,
-  }) =>
-      _writeWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: cursorToken,
-        lastModifiedSeen: lastModifiedSeen,
-        explicitConnectionId: null,
-      );
+  }) => _writeWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: cursorToken,
+    lastModifiedSeen: lastModifiedSeen,
+    explicitConnectionId: null,
+  );
 
   @override
   Future<void> advanceWatermark({
@@ -335,14 +340,13 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required String cursorToken,
     required DateTime lastModifiedSeen,
     String? connectionId,
-  }) =>
-      _writeWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: cursorToken,
-        lastModifiedSeen: lastModifiedSeen,
-        explicitConnectionId: connectionId,
-      );
+  }) => _writeWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: cursorToken,
+    lastModifiedSeen: lastModifiedSeen,
+    explicitConnectionId: connectionId,
+  );
 
   Future<void> _writeWatermark({
     required String operatorId,
@@ -351,10 +355,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     required String? explicitConnectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -408,8 +409,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
       );
       if (dmsRows.isNotEmpty) {
         final dmsRow = dmsRows.single;
-        final pendingCount =
-            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final pendingCount = (dmsRow['pending_inserts_count'] as int? ?? 0);
         final isDemo = dmsRow['is_demo'] as bool? ?? true;
         if (pendingCount >= 1 && isDemo) {
           await exec.execute(
@@ -446,10 +446,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -496,10 +493,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     if (!firstBackfillCommitted) return;
     if (backfillRecordsWritten < 1) return;
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       // Read-or-create the row with default `is_demo = true`. The
       // `INSERT ... ON CONFLICT DO NOTHING` is idempotent: if the row
@@ -551,15 +545,14 @@ class ToastPosPostgresSink extends OperatorScopedRepository
   /// adapter's own `disconnect` currently routes through the transport
   /// only; the sink helper exists so the spine-bridge dispatcher and
   /// admin paths share a single wipe primitive across vendors.
-  Future<({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})>
-      wipeCredentialsPreserveWatermark({
+  Future<
+    ({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})
+  >
+  wipeCredentialsPreserveWatermark({
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final credentialsWiped = await withTenant<bool>(ctx, (exec) async {
       final wiped = await exec.execute(
         'update public.vendor_credentials set '
@@ -628,10 +621,7 @@ class ToastPosPostgresSink extends OperatorScopedRepository
     if (explicitConnectionId != null && explicitConnectionId.isNotEmpty) {
       return explicitConnectionId;
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id '

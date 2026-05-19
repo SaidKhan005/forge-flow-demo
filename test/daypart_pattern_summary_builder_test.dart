@@ -6,6 +6,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/dev/fixture_seed_data.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/daypart_pattern_summary_builder.dart';
 
@@ -27,6 +28,7 @@ ShiftRecord _shift({
   int bohHours = 42,
   String? businessDate,
   String? sourceShiftId,
+  String? sourceSystem,
 }) {
   return ShiftRecord(
     restaurantId: restaurantId,
@@ -44,6 +46,7 @@ ShiftRecord _shift({
     primaryLever: primaryLever,
     businessDate: businessDate,
     sourceShiftId: sourceShiftId,
+    sourceSystem: sourceSystem,
   );
 }
 
@@ -57,8 +60,11 @@ void main() {
       test('projected shifts are excluded', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'projected', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'projected',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -68,8 +74,11 @@ void main() {
       test('open shifts are excluded', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'open', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'open',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -79,8 +88,11 @@ void main() {
       test('closed shifts are included', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -91,21 +103,86 @@ void main() {
       test('mixed status: only closed count toward summary', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W13', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'projected', primaryLever: 'CPLH_UP',
+            weekId: '2026-W13',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'projected',
+            primaryLever: 'CPLH_UP',
           ),
           _shift(
-            weekId: '2026-W14', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'open', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W14',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'open',
+            primaryLever: 'PPA_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
         expect(result, hasLength(1));
         expect(result.first.closedShiftCount, 1);
+      });
+
+      test('app-local same-day closed rows are excluded from summaries', () {
+        final shifts = [
+          _shift(
+            weekId: '2026-W20',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
+            businessDate: '2026-05-18',
+          ),
+          _shift(
+            weekId: '2026-W20',
+            dayLabel: 'Tue',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
+            businessDate: '2026-05-19',
+          ),
+        ];
+
+        final result = DaypartPatternSummaryBuilder.fromClosedShifts(
+          shifts,
+          currentOperationalBusinessDate: '2026-05-19',
+          shiftCloseAuthorityForRow: (_) =>
+              ShiftCloseAuthority.appLocalCutoffFallback,
+        );
+
+        expect(result, hasLength(1));
+        expect(result.single.dayLabel, 'Mon');
+        expect(result.single.closedShiftCount, 1);
+      });
+
+      test('vendor-finalized same-day closed rows are included', () {
+        final shifts = [
+          _shift(
+            weekId: '2026-W20',
+            dayLabel: 'Tue',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
+            businessDate: '2026-05-19',
+          ),
+        ];
+
+        final result = DaypartPatternSummaryBuilder.fromClosedShifts(
+          shifts,
+          currentOperationalBusinessDate: '2026-05-19',
+          shiftCloseAuthorityForRow: (_) =>
+              ShiftCloseAuthority.vendorFinalization,
+        );
+
+        expect(result, hasLength(1));
+        expect(result.single.dayLabel, 'Tue');
+        expect(result.single.benchmarkCount, 1);
       });
 
       test('empty input returns empty list', () {
@@ -120,18 +197,27 @@ void main() {
       test('same dayLabel + daypart from different weeks group together', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Sat', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_UP',
+            weekId: '2026-W10',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
             businessDate: '2026-03-07',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Sat', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_UP',
+            weekId: '2026-W11',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_UP',
             businessDate: '2026-03-14',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Sat', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_UP',
+            weekId: '2026-W12',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
             businessDate: '2026-03-21',
           ),
         ];
@@ -145,35 +231,53 @@ void main() {
       test('different dayparts on same day produce separate summaries', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'late_night',
-            status: 'closed', primaryLever: 'SPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'late_night',
+            status: 'closed',
+            primaryLever: 'SPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
         expect(result, hasLength(3));
-        expect(result.map((s) => s.daypart).toList(),
-            ['lunch', 'dinner', 'late_night']);
+        expect(result.map((s) => s.daypart).toList(), [
+          'lunch',
+          'dinner',
+          'late_night',
+        ]);
       });
 
       test('different restaurants produce separate summaries', () {
         final shifts = [
           _shift(
             restaurantId: 'rest_A',
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
             restaurantId: 'rest_B',
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -188,16 +292,30 @@ void main() {
       test('averages are computed correctly across shifts', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
-            covers: 200, ppa: 40.0, cplh: 4.0, splh: 160.0,
-            fohHours: 50, bohHours: 50,
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
+            covers: 200,
+            ppa: 40.0,
+            cplh: 4.0,
+            splh: 160.0,
+            fohHours: 50,
+            bohHours: 50,
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
-            covers: 100, ppa: 50.0, cplh: 5.0, splh: 200.0,
-            fohHours: 20, bohHours: 25,
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
+            covers: 100,
+            ppa: 50.0,
+            cplh: 5.0,
+            splh: 200.0,
+            fohHours: 20,
+            bohHours: 25,
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -260,16 +378,25 @@ void main() {
       test('favorable levers count as benchmark, unfavorable as leak', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Thu', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_UP', // favorable
+            weekId: '2026-W10',
+            dayLabel: 'Thu',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP', // favorable
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Thu', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_UP', // favorable
+            weekId: '2026-W11',
+            dayLabel: 'Thu',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_UP', // favorable
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Thu', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN', // unfavorable
+            weekId: '2026-W12',
+            dayLabel: 'Thu',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN', // unfavorable
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -282,12 +409,18 @@ void main() {
       test('ON_MODEL does not count as benchmark or leak', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'ON_MODEL',
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'ON_MODEL',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_UP',
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -301,12 +434,18 @@ void main() {
       test('all ON_MODEL produces null dominant levers', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'ON_MODEL',
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'ON_MODEL',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'ON_MODEL',
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'ON_MODEL',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -323,12 +462,18 @@ void main() {
       test('benchmark tie: ppa_up wins over cplh_up', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Wed', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_UP',
+            weekId: '2026-W10',
+            dayLabel: 'Wed',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_UP',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Wed', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_UP',
+            weekId: '2026-W11',
+            dayLabel: 'Wed',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -339,12 +484,18 @@ void main() {
       test('leak tie: cplh_down wins over ppa_down', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Wed', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W10',
+            dayLabel: 'Wed',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_DOWN',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Wed', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Wed',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -354,16 +505,25 @@ void main() {
       test('higher frequency wins over tie-break order', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Tue', daypart: 'dinner',
-            status: 'closed', primaryLever: 'SPLH_DOWN',
+            weekId: '2026-W10',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'SPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Tue', daypart: 'dinner',
-            status: 'closed', primaryLever: 'SPLH_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'SPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Tue', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -378,8 +538,11 @@ void main() {
       test('sourceShiftId is used when present', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
             sourceShiftId: 'toast-shift-001',
           ),
         ];
@@ -390,36 +553,51 @@ void main() {
       test('synthetic fallback when sourceShiftId is absent', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
         // Fallback uses weekId as suffix when businessDate is absent.
-        expect(result.first.exemplarSourceShiftIds.first,
-            '2026-W12:Mon:dinner:2026-W12');
+        expect(
+          result.first.exemplarSourceShiftIds.first,
+          '2026-W12:Mon:dinner:2026-W12',
+        );
       });
 
       test('synthetic fallback uses businessDate when present', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
             businessDate: '2026-03-23',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
-        expect(result.first.exemplarSourceShiftIds.first,
-            '2026-W12:Mon:dinner:2026-03-23');
+        expect(
+          result.first.exemplarSourceShiftIds.first,
+          '2026-W12:Mon:dinner:2026-03-23',
+        );
       });
 
       test('limited to 5 exemplar IDs', () {
-        final shifts = List.generate(8, (i) => _shift(
-          weekId: '2026-W${(i + 5).toString().padLeft(2, '0')}',
-          dayLabel: 'Mon', daypart: 'dinner',
-          status: 'closed', primaryLever: 'CPLH_DOWN',
-          sourceShiftId: 'shift-$i',
-        ));
+        final shifts = List.generate(
+          8,
+          (i) => _shift(
+            weekId: '2026-W${(i + 5).toString().padLeft(2, '0')}',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
+            sourceShiftId: 'shift-$i',
+          ),
+        );
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
         expect(result.first.exemplarSourceShiftIds, hasLength(5));
         expect(result.first.exemplarSourceShiftIds.first, 'shift-0');
@@ -433,24 +611,39 @@ void main() {
       test('output is sorted by day order then service-period order', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'late_night',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'late_night',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'lunch',
-            status: 'closed', primaryLever: 'SPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'SPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Sat', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_UP',
+            weekId: '2026-W12',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -472,12 +665,16 @@ void main() {
       test('threshold of 1 includes single-shift buckets', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(
-          shifts, minSampleThreshold: 1,
+          shifts,
+          minSampleThreshold: 1,
         );
         expect(result, hasLength(1));
       });
@@ -486,29 +683,45 @@ void main() {
         final shifts = [
           // Mon lunch: 2 shifts — below threshold
           _shift(
-            weekId: '2026-W10', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_DOWN',
           ),
           // Tue dinner: 3 shifts — meets threshold
           _shift(
-            weekId: '2026-W10', dayLabel: 'Tue', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W10',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Tue', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Tue', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(
-          shifts, minSampleThreshold: 3,
+          shifts,
+          minSampleThreshold: 3,
         );
         expect(result, hasLength(1));
         expect(result.first.dayLabel, 'Tue');
@@ -518,12 +731,16 @@ void main() {
       test('high threshold excludes all buckets', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(
-          shifts, minSampleThreshold: 10,
+          shifts,
+          minSampleThreshold: 10,
         );
         expect(result, isEmpty);
       });
@@ -535,8 +752,11 @@ void main() {
       test('fullLabel combines dayLabel and daypartLabel', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Sat', daypart: 'dinner',
-            status: 'closed', primaryLever: 'PPA_UP',
+            weekId: '2026-W12',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -546,8 +766,11 @@ void main() {
       test('daypartLabel maps known IDs', () {
         final shifts = [
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'late_night',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'late_night',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -557,12 +780,18 @@ void main() {
       test('meetsThreshold returns correct boolean', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -578,35 +807,55 @@ void main() {
       test('unknown lever id does not count as benchmark or leak', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'UNKNOWN_LEVER',
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'UNKNOWN_LEVER',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
         final s = result.first;
 
         expect(s.closedShiftCount, 2); // unknown still counted in total
-        expect(s.leakCount, 1);        // only the valid cplh_down
+        expect(s.leakCount, 1); // only the valid cplh_down
         expect(s.benchmarkCount, 0);
       });
 
       test('unknown lever id still contributes to metric averages', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Tue', daypart: 'lunch',
-            status: 'closed', primaryLever: 'TOTALLY_BOGUS',
-            covers: 200, ppa: 40.0, cplh: 4.0, splh: 160.0,
-            fohHours: 50, bohHours: 50,
+            weekId: '2026-W10',
+            dayLabel: 'Tue',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'TOTALLY_BOGUS',
+            covers: 200,
+            ppa: 40.0,
+            cplh: 4.0,
+            splh: 160.0,
+            fohHours: 50,
+            bohHours: 50,
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Tue', daypart: 'lunch',
-            status: 'closed', primaryLever: 'PPA_UP',
-            covers: 100, ppa: 50.0, cplh: 5.0, splh: 200.0,
-            fohHours: 20, bohHours: 25,
+            weekId: '2026-W11',
+            dayLabel: 'Tue',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
+            covers: 100,
+            ppa: 50.0,
+            cplh: 5.0,
+            splh: 200.0,
+            fohHours: 20,
+            bohHours: 25,
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -622,12 +871,18 @@ void main() {
       test('all unknown levers produce null dominant levers', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Wed', daypart: 'dinner',
-            status: 'closed', primaryLever: 'FAKE_UP',
+            weekId: '2026-W10',
+            dayLabel: 'Wed',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'FAKE_UP',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Wed', daypart: 'dinner',
-            status: 'closed', primaryLever: 'FAKE_DOWN',
+            weekId: '2026-W11',
+            dayLabel: 'Wed',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'FAKE_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -643,8 +898,11 @@ void main() {
       test('empty primaryLever string does not count as lever evidence', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Thu', daypart: 'lunch',
-            status: 'closed', primaryLever: '',
+            weekId: '2026-W10',
+            dayLabel: 'Thu',
+            daypart: 'lunch',
+            status: 'closed',
+            primaryLever: '',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -658,16 +916,25 @@ void main() {
       test('dominant lever only from valid known IDs', () {
         final shifts = [
           _shift(
-            weekId: '2026-W10', dayLabel: 'Fri', daypart: 'dinner',
-            status: 'closed', primaryLever: 'UNKNOWN_LEAK',
+            weekId: '2026-W10',
+            dayLabel: 'Fri',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'UNKNOWN_LEAK',
           ),
           _shift(
-            weekId: '2026-W11', dayLabel: 'Fri', daypart: 'dinner',
-            status: 'closed', primaryLever: 'UNKNOWN_LEAK',
+            weekId: '2026-W11',
+            dayLabel: 'Fri',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'UNKNOWN_LEAK',
           ),
           _shift(
-            weekId: '2026-W12', dayLabel: 'Fri', daypart: 'dinner',
-            status: 'closed', primaryLever: 'CPLH_DOWN',
+            weekId: '2026-W12',
+            dayLabel: 'Fri',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_DOWN',
           ),
         ];
         final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
@@ -684,68 +951,114 @@ void main() {
     group('K — exemplar fallback IDs are deterministic across input order', () {
       test('reordered input produces same exemplar list', () {
         final a = _shift(
-          weekId: '2026-W10', dayLabel: 'Mon', daypart: 'dinner',
-          status: 'closed', primaryLever: 'CPLH_DOWN',
+          weekId: '2026-W10',
+          dayLabel: 'Mon',
+          daypart: 'dinner',
+          status: 'closed',
+          primaryLever: 'CPLH_DOWN',
           businessDate: '2026-03-02',
         );
         final b = _shift(
-          weekId: '2026-W11', dayLabel: 'Mon', daypart: 'dinner',
-          status: 'closed', primaryLever: 'PPA_DOWN',
+          weekId: '2026-W11',
+          dayLabel: 'Mon',
+          daypart: 'dinner',
+          status: 'closed',
+          primaryLever: 'PPA_DOWN',
           businessDate: '2026-03-09',
         );
         final c = _shift(
-          weekId: '2026-W12', dayLabel: 'Mon', daypart: 'dinner',
-          status: 'closed', primaryLever: 'SPLH_DOWN',
+          weekId: '2026-W12',
+          dayLabel: 'Mon',
+          daypart: 'dinner',
+          status: 'closed',
+          primaryLever: 'SPLH_DOWN',
           businessDate: '2026-03-16',
         );
 
-        final forward = DaypartPatternSummaryBuilder.fromClosedShifts([a, b, c]);
-        final reverse = DaypartPatternSummaryBuilder.fromClosedShifts([c, b, a]);
-        final shuffled = DaypartPatternSummaryBuilder.fromClosedShifts([b, c, a]);
+        final forward = DaypartPatternSummaryBuilder.fromClosedShifts([
+          a,
+          b,
+          c,
+        ]);
+        final reverse = DaypartPatternSummaryBuilder.fromClosedShifts([
+          c,
+          b,
+          a,
+        ]);
+        final shuffled = DaypartPatternSummaryBuilder.fromClosedShifts([
+          b,
+          c,
+          a,
+        ]);
 
-        expect(forward.first.exemplarSourceShiftIds,
-            reverse.first.exemplarSourceShiftIds);
-        expect(forward.first.exemplarSourceShiftIds,
-            shuffled.first.exemplarSourceShiftIds);
+        expect(
+          forward.first.exemplarSourceShiftIds,
+          reverse.first.exemplarSourceShiftIds,
+        );
+        expect(
+          forward.first.exemplarSourceShiftIds,
+          shuffled.first.exemplarSourceShiftIds,
+        );
       });
 
-      test('reordered input with sourceShiftId produces same exemplar list', () {
-        final a = _shift(
-          weekId: '2026-W10', dayLabel: 'Sat', daypart: 'dinner',
-          status: 'closed', primaryLever: 'PPA_UP',
-          sourceShiftId: 'toast-001',
-        );
-        final b = _shift(
-          weekId: '2026-W11', dayLabel: 'Sat', daypart: 'dinner',
-          status: 'closed', primaryLever: 'CPLH_UP',
-          sourceShiftId: 'toast-002',
-        );
+      test(
+        'reordered input with sourceShiftId produces same exemplar list',
+        () {
+          final a = _shift(
+            weekId: '2026-W10',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
+            sourceShiftId: 'toast-001',
+          );
+          final b = _shift(
+            weekId: '2026-W11',
+            dayLabel: 'Sat',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'CPLH_UP',
+            sourceShiftId: 'toast-002',
+          );
 
-        final forward = DaypartPatternSummaryBuilder.fromClosedShifts([a, b]);
-        final reverse = DaypartPatternSummaryBuilder.fromClosedShifts([b, a]);
+          final forward = DaypartPatternSummaryBuilder.fromClosedShifts([a, b]);
+          final reverse = DaypartPatternSummaryBuilder.fromClosedShifts([b, a]);
 
-        expect(forward.first.exemplarSourceShiftIds,
-            reverse.first.exemplarSourceShiftIds);
-      });
+          expect(
+            forward.first.exemplarSourceShiftIds,
+            reverse.first.exemplarSourceShiftIds,
+          );
+        },
+      );
 
       test('reordered input without businessDate still deterministic', () {
         final a = _shift(
-          weekId: '2026-W08', dayLabel: 'Tue', daypart: 'lunch',
-          status: 'closed', primaryLever: 'CPLH_DOWN',
+          weekId: '2026-W08',
+          dayLabel: 'Tue',
+          daypart: 'lunch',
+          status: 'closed',
+          primaryLever: 'CPLH_DOWN',
         );
         final b = _shift(
-          weekId: '2026-W09', dayLabel: 'Tue', daypart: 'lunch',
-          status: 'closed', primaryLever: 'PPA_DOWN',
+          weekId: '2026-W09',
+          dayLabel: 'Tue',
+          daypart: 'lunch',
+          status: 'closed',
+          primaryLever: 'PPA_DOWN',
         );
 
         final forward = DaypartPatternSummaryBuilder.fromClosedShifts([a, b]);
         final reverse = DaypartPatternSummaryBuilder.fromClosedShifts([b, a]);
 
-        expect(forward.first.exemplarSourceShiftIds,
-            reverse.first.exemplarSourceShiftIds);
+        expect(
+          forward.first.exemplarSourceShiftIds,
+          reverse.first.exemplarSourceShiftIds,
+        );
         // weekId-based fallback: sorted ascending.
-        expect(forward.first.exemplarSourceShiftIds.first,
-            '2026-W08:Tue:lunch:2026-W08');
+        expect(
+          forward.first.exemplarSourceShiftIds.first,
+          '2026-W08:Tue:lunch:2026-W08',
+        );
       });
     });
 
@@ -768,8 +1081,10 @@ void main() {
           expect(s.avgCPLH, greaterThan(0));
           expect(s.avgSPLH, greaterThan(0));
           expect(s.exemplarSourceShiftIds, isNotEmpty);
-          expect(s.exemplarSourceShiftIds.length,
-              lessThanOrEqualTo(DaypartPatternSummaryBuilder.maxExemplarCount));
+          expect(
+            s.exemplarSourceShiftIds.length,
+            lessThanOrEqualTo(DaypartPatternSummaryBuilder.maxExemplarCount),
+          );
         }
 
         // Should be sorted: day order then service-period order.
@@ -781,8 +1096,10 @@ void main() {
           final currDay = _dayIndex(curr.dayLabel);
 
           if (prevDay == currDay) {
-            expect(_dpIndex(prev.daypart),
-                lessThanOrEqualTo(_dpIndex(curr.daypart)));
+            expect(
+              _dpIndex(prev.daypart),
+              lessThanOrEqualTo(_dpIndex(curr.daypart)),
+            );
           } else {
             expect(prevDay, lessThan(currDay));
           }
@@ -797,8 +1114,10 @@ void main() {
         for (final s in result) {
           // benchmark + leak + on_model = closedShiftCount
           // (on_model count is implied: total - benchmark - leak)
-          expect(s.benchmarkCount + s.leakCount,
-              lessThanOrEqualTo(s.closedShiftCount));
+          expect(
+            s.benchmarkCount + s.leakCount,
+            lessThanOrEqualTo(s.closedShiftCount),
+          );
         }
       });
 
@@ -817,8 +1136,15 @@ void main() {
 }
 
 int _dayIndex(String dayLabel) {
-  const order = {'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3,
-                  'Fri': 4, 'Sat': 5, 'Sun': 6};
+  const order = {
+    'Mon': 0,
+    'Tue': 1,
+    'Wed': 2,
+    'Thu': 3,
+    'Fri': 4,
+    'Sat': 5,
+    'Sun': 6,
+  };
   return order[dayLabel] ?? 99;
 }
 

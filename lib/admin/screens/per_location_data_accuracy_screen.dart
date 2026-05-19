@@ -180,7 +180,10 @@ class _PerLocationDataAccuracyScreenState
     if (!_locationMutationEnabled) return;
     final result = await showDialog<_DataAccuracyOverrideDraft>(
       context: context,
-      builder: (_) => _DataAccuracyOverrideDialog(initial: row),
+      builder: (_) => _DataAccuracyOverrideDialog(
+        initial: row,
+        keyedRows: <DataAccuracyAdminRow>[row],
+      ),
     );
     if (result == null) return;
     setState(() => _actionError = null);
@@ -191,6 +194,7 @@ class _PerLocationDataAccuracyScreenState
         coversSourceLunch: result.coversSourceLunch,
         coversSourceDinner: result.coversSourceDinner,
         coversSourceLateNight: result.coversSourceLateNight,
+        coversSourcePerServicePeriod: result.coversSourcePerServicePeriod,
         wageSource: result.wageSource,
         walkInHandlingMode: result.walkInHandlingMode,
         actorUserId: widget.actorUserId,
@@ -657,6 +661,7 @@ class _DataAccuracyOverrideDialogState
   late final List<String> _servicePeriodKeys = _usesKeyedCovers
       ? _servicePeriodKeysForRows(widget.keyedRows!)
       : const <String>[];
+  late Map<String, CoversSource> _initialCoversSourcePerServicePeriod;
   late Map<String, CoversSource> _coversSourcePerServicePeriod;
   late CoversSource _lunch;
   late CoversSource _dinner;
@@ -668,10 +673,13 @@ class _DataAccuracyOverrideDialogState
   @override
   void initState() {
     super.initState();
-    _coversSourcePerServicePeriod = <String, CoversSource>{
+    _initialCoversSourcePerServicePeriod = <String, CoversSource>{
       for (final key in _servicePeriodKeys)
         key: _initialCoversSourceForKey(key),
     };
+    _coversSourcePerServicePeriod = Map<String, CoversSource>.of(
+      _initialCoversSourcePerServicePeriod,
+    );
     _lunch = widget.initial.settings.coversSourceFor('lunch');
     _dinner = widget.initial.settings.coversSourceFor('dinner');
     _lateNight = widget.initial.settings.coversSourceFor('late_night');
@@ -783,15 +791,20 @@ class _DataAccuracyOverrideDialogState
           onPressed: () {
             final note = _reason.text.trim();
             if (note.isEmpty) return;
+            final changedCovers = <String, CoversSource>{
+              for (final entry in _coversSourcePerServicePeriod.entries)
+                if (_initialCoversSourcePerServicePeriod[entry.key] !=
+                    entry.value)
+                  entry.key: entry.value,
+            };
             Navigator.of(context).pop(
               _DataAccuracyOverrideDraft(
                 coversSourceLunch: _usesKeyedCovers ? null : _lunch,
                 coversSourceDinner: _usesKeyedCovers ? null : _dinner,
                 coversSourceLateNight: _usesKeyedCovers ? null : _lateNight,
-                coversSourcePerServicePeriod: _usesKeyedCovers
-                    ? Map<String, CoversSource>.unmodifiable(
-                        _coversSourcePerServicePeriod,
-                      )
+                coversSourcePerServicePeriod:
+                    _usesKeyedCovers && changedCovers.isNotEmpty
+                    ? Map<String, CoversSource>.unmodifiable(changedCovers)
                     : null,
                 wageSource: _wage,
                 walkInHandlingMode: _walkInMode,
@@ -867,6 +880,9 @@ List<String> _servicePeriodKeysForRows(List<DataAccuracyAdminRow> rows) {
   }
 
   for (final row in rows) {
+    for (final definition in row.configuredServicePeriods) {
+      add(definition.id);
+    }
     for (final key in row.settings.coversSourcePerServicePeriod.keys) {
       add(key);
     }
@@ -999,6 +1015,22 @@ class _ServicePeriodOverrideDialogState
   ServicePeriodWageSource _wage = ServicePeriodWageSource.vendorPerEmployee;
   String? _errorText;
 
+  List<String> get _configuredServicePeriodKeys => widget
+      .initial
+      .configuredServicePeriods
+      .map((period) => period.id.trim())
+      .where((key) => key.isNotEmpty)
+      .toList(growable: false);
+
+  @override
+  void initState() {
+    super.initState();
+    final configured = _configuredServicePeriodKeys;
+    if (configured.isNotEmpty) {
+      _keyCtl.text = configured.first;
+    }
+  }
+
   @override
   void dispose() {
     _keyCtl.dispose();
@@ -1059,14 +1091,42 @@ class _ServicePeriodOverrideDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              if (_configuredServicePeriodKeys.isNotEmpty) ...[
+                DropdownButtonFormField<String>(
+                  key: const Key('admin_data_accuracy_service_period_picker'),
+                  initialValue:
+                      _configuredServicePeriodKeys.contains(_keyCtl.text)
+                      ? _keyCtl.text
+                      : _configuredServicePeriodKeys.first,
+                  decoration: const InputDecoration(
+                    labelText: 'Configured service period',
+                    helperText:
+                        'Pick from this location\'s business timing setup.',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _configuredServicePeriodKeys
+                      .map(
+                        (key) => DropdownMenuItem<String>(
+                          value: key,
+                          child: Text(_servicePeriodKeyLabel(key)),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    setState(() => _keyCtl.text = value);
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
               TextField(
                 key: const Key('admin_data_accuracy_service_period_key'),
                 controller: _keyCtl,
                 decoration: const InputDecoration(
                   labelText: 'Service period key',
                   helperText:
-                      'Examples: lunch, dinner, breakfast, brunch, '
-                      'happy_hour.',
+                      'Use the configured picker above when available. '
+                      'Custom keys are for migration/support repair.',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -1217,6 +1277,8 @@ String _coversSourceLabel(CoversSource source) {
       return 'Forecast';
     case CoversSource.manual:
       return 'Manual entry';
+    case CoversSource.reservationPlusWalkin:
+      return 'Reservations + walk-ins';
   }
 }
 

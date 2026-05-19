@@ -90,6 +90,7 @@ import 'package:forge_and_flow/integrations/pos/aloha_ncr_voyix_pos_production_a
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/vendor_sync/vendor_sync_outage_detector.dart';
 import 'package:http/http.dart' as http;
 import 'package:meta/meta.dart';
@@ -100,6 +101,7 @@ import '../advisor_proxy/advisor_proxy.dart'
 // dedicated file (not through `phase_8_production_binder.dart`) so the
 // worker compile graph stays clear of `proxy_bootstrap.dart`'s
 // admin-pool / Firebase / LLM machinery.
+import '../advisor_proxy/phase_8_projector_wiring.dart';
 import '../advisor_proxy/phase_8_vendor_integration_factories.dart'
     show
         Phase8VendorIntegrationFactories,
@@ -145,8 +147,7 @@ abstract class IntegrationSyncWorkerEnvNames {
       'INTEGRATION_SYNC_WORKER_POLL_SECONDS';
   static const String maxRowsPerTick =
       'INTEGRATION_SYNC_WORKER_MAX_ROWS_PER_TICK';
-  static const String workerIdPrefix =
-      'INTEGRATION_SYNC_WORKER_ID_PREFIX';
+  static const String workerIdPrefix = 'INTEGRATION_SYNC_WORKER_ID_PREFIX';
 
   // ─── Optional vendor app-credential bundle names ───────────────────
   // Mirrors `tool/first_connect_backfill_worker/main.dart`. Each
@@ -206,8 +207,8 @@ WorkerCliArgs parseArgs(List<String> args) {
     'daemon' => WorkerMode.daemon,
     'runOnce' => WorkerMode.runOnce,
     final unknown => throw FormatException(
-        'unknown mode "$unknown" (expected daemon|runOnce)',
-      ),
+      'unknown mode "$unknown" (expected daemon|runOnce)',
+    ),
   };
   int? maxRowsPerTick;
   int? pollIntervalSeconds;
@@ -350,12 +351,14 @@ class WorkerRuntimeConfig {
       kPhase8WebhookPublicBaseUriEnvName,
       fallback: kPhase8DefaultWebhookPublicBaseUri,
     );
-    final maxRowsPerTick = cliOverrides?.maxRowsPerTick ??
+    final maxRowsPerTick =
+        cliOverrides?.maxRowsPerTick ??
         optionalInt(
           IntegrationSyncWorkerEnvNames.maxRowsPerTick,
           fallback: defaultMaxRowsPerTick,
         );
-    final pollSeconds = cliOverrides?.pollIntervalSeconds ??
+    final pollSeconds =
+        cliOverrides?.pollIntervalSeconds ??
         optionalInt(
           IntegrationSyncWorkerEnvNames.pollIntervalSeconds,
           fallback: defaultPollInterval.inSeconds,
@@ -377,8 +380,8 @@ class WorkerRuntimeConfig {
     final alohaOrganizationId = optionalSecret(
       IntegrationSyncWorkerEnvNames.alohaNcrVoyixOrganizationId,
     );
-    final AlohaNcrVoyixOauthClientCredentials? alohaCreds = (alohaClientId !=
-                null &&
+    final AlohaNcrVoyixOauthClientCredentials? alohaCreds =
+        (alohaClientId != null &&
             alohaClientSecret != null &&
             alohaApplicationKey != null &&
             alohaOrganizationId != null)
@@ -399,7 +402,8 @@ class WorkerRuntimeConfig {
     final squareNotificationUrlHost = optionalSecret(
       IntegrationSyncWorkerEnvNames.squareNotificationUrlHost,
     );
-    final SquareAppCredentials? squareCreds = (squareClientId != null &&
+    final SquareAppCredentials? squareCreds =
+        (squareClientId != null &&
             squareClientSecret != null &&
             squareNotificationUrlHost != null)
         ? SquareAppCredentials(
@@ -415,8 +419,8 @@ class WorkerRuntimeConfig {
     final cloverAppId = optionalSecret(
       IntegrationSyncWorkerEnvNames.cloverAppId,
     );
-    final CloverAppCredentials? cloverCreds = (cloverAppToken != null &&
-            cloverAppId != null)
+    final CloverAppCredentials? cloverCreds =
+        (cloverAppToken != null && cloverAppId != null)
         ? CloverAppCredentials(appToken: cloverAppToken, appId: cloverAppId)
         : null;
 
@@ -616,7 +620,10 @@ class BinderBackedSyncAdapterResolver {
       case IntegrationCategory.pos:
         final factory = factories.posAdapterFactories[row.vendorId];
         if (factory != null) {
-          return factory(operatorId: row.operatorId, locationId: row.locationId);
+          return factory(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+          );
         }
         if (disabledReason != null) {
           throw SyncWorkerVendorDisabledException(
@@ -632,7 +639,10 @@ class BinderBackedSyncAdapterResolver {
       case IntegrationCategory.labor:
         final factory = factories.laborAdapterFactories[row.vendorId];
         if (factory != null) {
-          return factory(operatorId: row.operatorId, locationId: row.locationId);
+          return factory(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+          );
         }
         if (disabledReason != null) {
           throw SyncWorkerVendorDisabledException(
@@ -648,7 +658,10 @@ class BinderBackedSyncAdapterResolver {
       case IntegrationCategory.reservation:
         final factory = factories.reservationAdapterFactories[row.vendorId];
         if (factory != null) {
-          return factory(operatorId: row.operatorId, locationId: row.locationId);
+          return factory(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+          );
         }
         if (disabledReason != null) {
           throw SyncWorkerVendorDisabledException(
@@ -731,12 +744,12 @@ class WorkerTickResult {
   final int skipped;
 
   Map<String, Object?> toLogFields() => <String, Object?>{
-        'processed': processed,
-        'succeeded': succeeded,
-        'failed': failed,
-        'watermark_advanced': watermarkAdvanced,
-        'skipped': skipped,
-      };
+    'processed': processed,
+    'succeeded': succeeded,
+    'failed': failed,
+    'watermark_advanced': watermarkAdvanced,
+    'skipped': skipped,
+  };
 }
 
 // ─── Run-once orchestration ─────────────────────────────────────────
@@ -772,12 +785,13 @@ class WorkerTickResult {
 /// `lib/services/vendor_sync` (production wires the detector
 /// via a closure in the runtime bootstrap; tests skip the
 /// observer entirely by leaving it null).
-typedef VendorSyncOutageObserver = Future<void> Function({
-  required String operatorId,
-  required String locationId,
-  required String connectionId,
-  required String eventKind,
-});
+typedef VendorSyncOutageObserver =
+    Future<void> Function({
+      required String operatorId,
+      required String locationId,
+      required String connectionId,
+      required String eventKind,
+    });
 
 Future<WorkerTickResult> runSyncWorkerOnce({
   required SyncWorkerSource source,
@@ -789,6 +803,7 @@ Future<WorkerTickResult> runSyncWorkerOnce({
   IOSink? out,
   IOSink? err,
   VendorSyncOutageObserver? outageObserver,
+  CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
 }) async {
   // ignore: close_sinks - stdout/stderr owned by dart:io.
   final stdoutSink = out ?? stdout;
@@ -832,12 +847,14 @@ Future<WorkerTickResult> runSyncWorkerOnce({
         eventKind: 'poll_error',
         errorMessage: error.toString(),
       );
-      stderrSink.writeln(jsonEncode(<String, Object?>{
-        'event': 'integration_sync_vendor_disabled',
-        'vendor_id': row.vendorId,
-        'connection_id': row.connectionId,
-        'reason': error.reason,
-      }));
+      stderrSink.writeln(
+        jsonEncode(<String, Object?>{
+          'event': 'integration_sync_vendor_disabled',
+          'vendor_id': row.vendorId,
+          'connection_id': row.connectionId,
+          'reason': error.reason,
+        }),
+      );
       continue;
     } on SyncWorkerVendorNotWiredException catch (error) {
       tally.skipped += 1;
@@ -848,11 +865,13 @@ Future<WorkerTickResult> runSyncWorkerOnce({
         eventKind: 'vendor_not_registered',
         errorMessage: error.toString(),
       );
-      stderrSink.writeln(jsonEncode(<String, Object?>{
-        'event': 'integration_sync_vendor_not_wired',
-        'vendor_id': row.vendorId,
-        'connection_id': row.connectionId,
-      }));
+      stderrSink.writeln(
+        jsonEncode(<String, Object?>{
+          'event': 'integration_sync_vendor_not_wired',
+          'vendor_id': row.vendorId,
+          'connection_id': row.connectionId,
+        }),
+      );
       continue;
     } catch (error) {
       // Unexpected resolver failure (broker decrypt error, async
@@ -866,12 +885,14 @@ Future<WorkerTickResult> runSyncWorkerOnce({
         eventKind: 'poll_error',
         errorMessage: error.toString(),
       );
-      stderrSink.writeln(jsonEncode(<String, Object?>{
-        'event': 'integration_sync_resolver_error',
-        'vendor_id': row.vendorId,
-        'connection_id': row.connectionId,
-        'error': error.toString(),
-      }));
+      stderrSink.writeln(
+        jsonEncode(<String, Object?>{
+          'event': 'integration_sync_resolver_error',
+          'vendor_id': row.vendorId,
+          'connection_id': row.connectionId,
+          'error': error.toString(),
+        }),
+      );
       continue;
     }
 
@@ -883,17 +904,20 @@ Future<WorkerTickResult> runSyncWorkerOnce({
         // the resolved instance.
         adapterFactory: (_) => adapter,
         canonicalSink: wrappedSink,
+        projectionCommitDrainer: projectionCommitDrainer,
       );
     } on StateError {
       // "vendor not registered" or "factory returned wrong category"
       // surfaces here. The dispatcher already wrote the durable
       // sync_log row before throwing; we count it and continue.
       tally.skipped += 1;
-      stdoutSink.writeln(jsonEncode(<String, Object?>{
-        'event': 'integration_sync_dispatch_state_error',
-        'vendor_id': row.vendorId,
-        'connection_id': row.connectionId,
-      }));
+      stdoutSink.writeln(
+        jsonEncode(<String, Object?>{
+          'event': 'integration_sync_dispatch_state_error',
+          'vendor_id': row.vendorId,
+          'connection_id': row.connectionId,
+        }),
+      );
       continue;
     } catch (error) {
       // Adapter-thrown errors are caught inside the dispatcher and
@@ -901,12 +925,14 @@ Future<WorkerTickResult> runSyncWorkerOnce({
       // dispatcher itself surfaced something unusual. Count it as a
       // failure but do not stop the tick.
       tally.failed += 1;
-      stderrSink.writeln(jsonEncode(<String, Object?>{
-        'event': 'integration_sync_dispatch_error',
-        'vendor_id': row.vendorId,
-        'connection_id': row.connectionId,
-        'error': error.toString(),
-      }));
+      stderrSink.writeln(
+        jsonEncode(<String, Object?>{
+          'event': 'integration_sync_dispatch_error',
+          'vendor_id': row.vendorId,
+          'connection_id': row.connectionId,
+          'error': error.toString(),
+        }),
+      );
     }
   }
 
@@ -937,8 +963,8 @@ class _CountingCanonicalSink implements CanonicalSink {
     this._tally, {
     VendorSyncOutageObserver? outageObserver,
     IOSink? errSink,
-  })  : _outageObserver = outageObserver,
-        _errSink = errSink;
+  }) : _outageObserver = outageObserver,
+       _errSink = errSink;
 
   final CanonicalSink _delegate;
   final _TickTally _tally;
@@ -950,36 +976,33 @@ class _CountingCanonicalSink implements CanonicalSink {
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) =>
-      _delegate.upsertCoverFact(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalFact: canonicalFact,
-      );
+  }) => _delegate.upsertCoverFact(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalFact: canonicalFact,
+  );
 
   @override
   Future<bool> upsertLaborPunch({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) =>
-      _delegate.upsertLaborPunch(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalPunch: canonicalPunch,
-      );
+  }) => _delegate.upsertLaborPunch(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalPunch: canonicalPunch,
+  );
 
   @override
   Future<bool> upsertReservationFact({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) =>
-      _delegate.upsertReservationFact(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalReservation: canonicalReservation,
-      );
+  }) => _delegate.upsertReservationFact(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalReservation: canonicalReservation,
+  );
 
   @override
   Future<void> advanceWatermark({
@@ -1045,14 +1068,16 @@ class _CountingCanonicalSink implements CanonicalSink {
           eventKind: eventKind,
         );
       } catch (error, stack) {
-        _errSink?.writeln(jsonEncode(<String, Object?>{
-          'event': 'vendor_sync_outage_observer_error',
-          'operator_id': operatorId,
-          'connection_id': connectionId,
-          'event_kind': eventKind,
-          'error': error.toString(),
-          'stack_first_frame': stack.toString().split('\n').first,
-        }));
+        _errSink?.writeln(
+          jsonEncode(<String, Object?>{
+            'event': 'vendor_sync_outage_observer_error',
+            'operator_id': operatorId,
+            'connection_id': connectionId,
+            'event_kind': eventKind,
+            'error': error.toString(),
+            'stack_first_frame': stack.toString().split('\n').first,
+          }),
+        );
       }
     }
   }
@@ -1066,16 +1091,15 @@ class _CountingCanonicalSink implements CanonicalSink {
     required bool firstBackfillCommitted,
     required int backfillRecordsWritten,
     required String connectionId,
-  }) =>
-      _delegate.evaluateDemoFlip(
-        operatorId: operatorId,
-        locationId: locationId,
-        category: category,
-        connectionStatus: connectionStatus,
-        firstBackfillCommitted: firstBackfillCommitted,
-        backfillRecordsWritten: backfillRecordsWritten,
-        connectionId: connectionId,
-      );
+  }) => _delegate.evaluateDemoFlip(
+    operatorId: operatorId,
+    locationId: locationId,
+    category: category,
+    connectionStatus: connectionStatus,
+    firstBackfillCommitted: firstBackfillCommitted,
+    backfillRecordsWritten: backfillRecordsWritten,
+    connectionId: connectionId,
+  );
 }
 
 // ─── Daemon loop ─────────────────────────────────────────────────────
@@ -1090,10 +1114,12 @@ class IntegrationSyncWorkerLoop {
     IOSink? out,
     IOSink? err,
     VendorSyncOutageObserver? outageObserver,
-  })  : _dispatcher = dispatcher ?? IntegrationSyncWorkerDispatch(),
-        _out = out ?? stdout,
-        _err = err ?? stderr,
-        _outageObserver = outageObserver;
+    CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
+  }) : _dispatcher = dispatcher ?? IntegrationSyncWorkerDispatch(),
+       _out = out ?? stdout,
+       _err = err ?? stderr,
+       _outageObserver = outageObserver,
+       _projectionCommitDrainer = projectionCommitDrainer;
 
   final SyncWorkerSource source;
   final CanonicalSink canonicalSink;
@@ -1104,6 +1130,7 @@ class IntegrationSyncWorkerLoop {
   final IOSink _out;
   final IOSink _err;
   final VendorSyncOutageObserver? _outageObserver;
+  final CanonicalFactProjectionCommitDrainer? _projectionCommitDrainer;
 
   bool _stopRequested = false;
   Completer<void>? _stoppedCompleter;
@@ -1129,6 +1156,7 @@ class IntegrationSyncWorkerLoop {
             out: _out,
             err: _err,
             outageObserver: _outageObserver,
+            projectionCommitDrainer: _projectionCommitDrainer,
           );
           _out.writeln(
             'integration_sync_worker tick: '
@@ -1140,9 +1168,7 @@ class IntegrationSyncWorkerLoop {
           // dispatcher's poll_error log. Reaching here means the
           // source SELECT itself failed (DB unreachable, role-elevate
           // refused, etc.). Don't crash the loop — log + sleep.
-          _err.writeln(
-            'integration_sync_worker tick error: $error',
-          );
+          _err.writeln('integration_sync_worker tick error: $error');
           _err.writeln(stack.toString());
         }
         if (_stopRequested) break;
@@ -1164,8 +1190,7 @@ class IntegrationSyncWorkerLoop {
     }
   }
 
-  Future<void> get stopped =>
-      _stoppedCompleter?.future ?? Future<void>.value();
+  Future<void> get stopped => _stoppedCompleter?.future ?? Future<void>.value();
 }
 
 // ─── Entry point ────────────────────────────────────────────────────
@@ -1187,8 +1212,7 @@ PostgresPool _defaultPoolFactory(String connectionString) =>
 @visibleForTesting
 int integrationSyncWorkerResolvedPoolMaxConnections({
   Map<String, String>? environment,
-}) =>
-    resolvePostgresMaxConnectionsPerPool(environment: environment);
+}) => resolvePostgresMaxConnectionsPerPool(environment: environment);
 
 /// Bundle returned by [buildWorkerRuntime]. Tests inject overrides so
 /// the worker's source / sink / resolver paths can be exercised
@@ -1201,6 +1225,7 @@ class WorkerRuntime {
     required this.config,
     required this.disabledVendors,
     required this.wiredVendorIds,
+    this.projectionCommitDrainer,
     this.outageObserver,
     this.outageEmailBindings,
   });
@@ -1218,6 +1243,10 @@ class WorkerRuntime {
   /// Vendor ids whose adapter factory is wired (sorted ascending for
   /// stable boot logs).
   final List<String> wiredVendorIds;
+
+  /// Drains direct adapter fact-write taps after successful worker
+  /// commit logs.
+  final CanonicalFactProjectionCommitDrainer? projectionCommitDrainer;
 
   /// C-2-D production binding: vendor sync outage observer wired
   /// through `buildWorkerRuntime`. Non-null when the runtime is built
@@ -1258,6 +1287,7 @@ WorkerRuntime buildWorkerRuntime({
     wrapper,
     webhookPublicBaseUri: config.webhookPublicBaseUri,
   );
+  final projectorWiring = buildDefaultPhase8ProjectorWiring(wrapper);
   final factories = buildPhase8VendorIntegrationFactoriesFromCredentials(
     tenantTransactionWrapper: wrapper,
     broker: broker,
@@ -1267,6 +1297,15 @@ WorkerRuntime buildWorkerRuntime({
     alohaNcrVoyixCredentials: config.alohaNcrVoyixCredentials,
     squareAppCredentials: config.squareAppCredentials,
     cloverAppCredentials: config.cloverAppCredentials,
+    canonicalFactPostCommitProjector: projectorWiring.projector,
+    canonicalFactPeriodResolver: projectorWiring.periodResolver,
+    canonicalRestaurantIdResolver: projectorWiring.restaurantIdResolver,
+    canonicalFactProjectionRetryRecorder: projectorWiring.retryRecorder,
+  );
+  final projectionCommitDrainer = CanonicalFactProjectionCommitDrainer(
+    tapsByVendor: Map<String, CanonicalFactProjectionTap>.unmodifiable(
+      factories.projectionTapsByVendor,
+    ),
   );
   final resolver = BinderBackedSyncAdapterResolver(factories: factories);
 
@@ -1274,8 +1313,7 @@ WorkerRuntime buildWorkerRuntime({
     ...factories.posAdapterFactories.keys,
     ...factories.laborAdapterFactories.keys,
     ...factories.reservationAdapterFactories.keys,
-  }.toList()
-    ..sort();
+  }.toList()..sort();
 
   // C-2-D production binding: compose the detector + dispatcher seams
   // off the same tenant wrapper so RLS / SET LOCAL discipline matches
@@ -1285,12 +1323,15 @@ WorkerRuntime buildWorkerRuntime({
   // `withSystem` (cross-tenant; the worker walks all operators); the
   // outbox INSERT + audit row write ride `withTenant` (per-tenant
   // RLS engaged).
-  final outageStateRepository =
-      PostgresVendorSyncOutageStateRepository(wrapper);
-  final outageAdminEmailLookup =
-      PostgresVendorSyncOutageAdminEmailLookup(tenantWrapper: wrapper);
-  final outageVendorIdLookup =
-      PostgresVendorSyncOutageVendorIdLookup(tenantWrapper: wrapper);
+  final outageStateRepository = PostgresVendorSyncOutageStateRepository(
+    wrapper,
+  );
+  final outageAdminEmailLookup = PostgresVendorSyncOutageAdminEmailLookup(
+    tenantWrapper: wrapper,
+  );
+  final outageVendorIdLookup = PostgresVendorSyncOutageVendorIdLookup(
+    tenantWrapper: wrapper,
+  );
   final outageEmailBindings = VendorSyncOutageEmailBindings(
     stateRepository: outageStateRepository,
     adminEmailLookup: outageAdminEmailLookup,
@@ -1310,9 +1351,11 @@ WorkerRuntime buildWorkerRuntime({
     canonicalSink: canonicalSink,
     resolveAdapterFactory: resolver.call,
     config: config,
-    disabledVendors:
-        Map<String, String>.unmodifiable(factories.disabledVendors),
+    disabledVendors: Map<String, String>.unmodifiable(
+      factories.disabledVendors,
+    ),
     wiredVendorIds: List<String>.unmodifiable(wired),
+    projectionCommitDrainer: projectionCommitDrainer,
     outageObserver: outageObserver,
     outageEmailBindings: outageEmailBindings,
   );
@@ -1347,7 +1390,8 @@ Future<int> runCli(
     return 2;
   }
 
-  final hasOverrides = sourceOverride != null &&
+  final hasOverrides =
+      sourceOverride != null &&
       canonicalSinkOverride != null &&
       resolveAdapterFactoryOverride != null;
 
@@ -1362,16 +1406,18 @@ Future<int> runCli(
   // override path pass `outageObserverOverride` (or leave it null —
   // existing observer-related tests already exercise the null path).
   VendorSyncOutageObserver? outageObserver;
+  CanonicalFactProjectionCommitDrainer? projectionCommitDrainer;
 
   if (hasOverrides) {
     config = WorkerRuntimeConfig(
       postgresUrl: 'test://override',
       pgcryptoEnvelopeKey: 'test-pgcrypto-key',
       webhookPublicBaseUri: Uri.parse(kPhase8DefaultWebhookPublicBaseUri),
-      maxRowsPerTick: args.maxRowsPerTick ??
-          WorkerRuntimeConfig.defaultMaxRowsPerTick,
+      maxRowsPerTick:
+          args.maxRowsPerTick ?? WorkerRuntimeConfig.defaultMaxRowsPerTick,
       pollInterval: Duration(
-        seconds: args.pollIntervalSeconds ??
+        seconds:
+            args.pollIntervalSeconds ??
             WorkerRuntimeConfig.defaultPollInterval.inSeconds,
       ),
       workerIdPrefix: WorkerRuntimeConfig.defaultWorkerIdPrefix,
@@ -1402,8 +1448,8 @@ Future<int> runCli(
     resolveAdapterFactory = runtime.resolveAdapterFactory;
     disabledVendors = runtime.disabledVendors;
     wiredVendorIds = runtime.wiredVendorIds;
-    outageObserver =
-        outageObserverOverride ?? runtime.outageObserver;
+    projectionCommitDrainer = runtime.projectionCommitDrainer;
+    outageObserver = outageObserverOverride ?? runtime.outageObserver;
     // Boot-time JSON log: name three categories so a deploy review can
     // verify the worker matches the proxy's connector activation list
     // one-to-one. Secret values are NEVER echoed — only env names.
@@ -1437,19 +1483,14 @@ Future<int> runCli(
           out: stdoutSink,
           err: stderrSink,
           outageObserver: outageObserver,
+          projectionCommitDrainer: projectionCommitDrainer,
         );
         stdoutSink.writeln(
-          'integration_sync_worker exit: ${jsonEncode(<String, Object?>{
-            'event': 'exit',
-            'mode': 'runOnce',
-            ...result.toLogFields(),
-          })}',
+          'integration_sync_worker exit: ${jsonEncode(<String, Object?>{'event': 'exit', 'mode': 'runOnce', ...result.toLogFields()})}',
         );
         return 0;
       } catch (error) {
-        stderrSink.writeln(
-          'integration_sync_worker runOnce error: $error',
-        );
+        stderrSink.writeln('integration_sync_worker runOnce error: $error');
         return 3;
       }
     case WorkerMode.daemon:
@@ -1462,6 +1503,7 @@ Future<int> runCli(
         out: stdoutSink,
         err: stderrSink,
         outageObserver: outageObserver,
+        projectionCommitDrainer: projectionCommitDrainer,
       );
       if (installSignalHandlers != null) {
         await installSignalHandlers(loop);
@@ -1471,16 +1513,11 @@ Future<int> runCli(
       try {
         await loop.run();
         stdoutSink.writeln(
-          'integration_sync_worker exit: ${jsonEncode(<String, Object?>{
-            'event': 'exit',
-            'mode': 'daemon',
-          })}',
+          'integration_sync_worker exit: ${jsonEncode(<String, Object?>{'event': 'exit', 'mode': 'daemon'})}',
         );
         return 0;
       } catch (error) {
-        stderrSink.writeln(
-          'integration_sync_worker daemon error: $error',
-        );
+        stderrSink.writeln('integration_sync_worker daemon error: $error');
         return 3;
       }
   }
@@ -1504,4 +1541,3 @@ void _installDefaultSignalHandlers(IntegrationSyncWorkerLoop loop) {
 Future<void> main(List<String> args) async {
   exitCode = await runCli(args);
 }
-

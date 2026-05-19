@@ -214,9 +214,8 @@ void main() {
         'plus the per-period map (4-period operator)', () async {
       final pool = _StubPool(
         rowsByContains: <String, List<PostgresRow>>{
-          // The data_accuracy_settings row carries non-covers
-          // fields + the correlated view jsonb subquery output.
-          'from public.data_accuracy_settings': <PostgresRow>[
+          // The effective view carries final values plus provenance.
+          'from public.effective_data_accuracy_settings_v': <PostgresRow>[
             <String, Object?>{
               'setting_id': 'set-1',
               'operator_id': _opId,
@@ -227,9 +226,25 @@ void main() {
                 'late_night': 'vendor',
                 'brunch': 'reservation_plus_walkin',
               },
+              'covers_source_per_service_period_source': <String, Object?>{
+                'lunch': <String, Object?>{
+                  'scope_type': 'location',
+                  'source_kind': 'service_period_setting',
+                  'setting_id': 'sp-lunch',
+                },
+              },
               'covers_manual_entries': <String, Object?>{},
               'wage_source': 'vendor',
+              'wage_source_source': <String, Object?>{
+                'scope_type': 'business',
+                'source_kind': 'scoped_override',
+                'override_id': 'ovr-wage',
+              },
               'walk_in_handling_mode': 'reservations_only',
+              'walk_in_handling_mode_source': <String, Object?>{
+                'scope_type': 'default',
+                'source_kind': 'default',
+              },
               'walk_in_manual_entries': <String, Object?>{},
               'created_at': DateTime.utc(2026, 5, 17),
               'updated_at': DateTime.utc(2026, 5, 17),
@@ -254,10 +269,12 @@ void main() {
       );
 
       // The SELECT must not name a legacy covers column and must
-      // pull the view's per-period jsonb subquery.
+      // pull the effective view's per-period jsonb.
       final selectSql = pool.lastTx!.calls
           .map((c) => c.sql)
-          .firstWhere((s) => s.contains('from public.data_accuracy_settings'));
+          .firstWhere(
+            (s) => s.contains('from public.effective_data_accuracy_settings_v'),
+          );
       expect(selectSql.contains('covers_source_lunch'), isFalse);
       expect(selectSql.contains('covers_source_dinner'), isFalse);
       expect(selectSql.contains('covers_source_late_night'), isFalse);
@@ -265,6 +282,12 @@ void main() {
         selectSql.contains('from public.effective_data_accuracy_settings_v'),
         isTrue,
       );
+      expect(
+        selectSql.contains('covers_source_per_service_period_source'),
+        isTrue,
+      );
+      expect(selectSql.contains('wage_source_source'), isTrue);
+      expect(selectSql.contains('walk_in_handling_mode_source'), isTrue);
 
       final data = result['data']! as Map<String, Object?>;
       // (b) legacy wire keys still emitted, sourced from keyed data.
@@ -278,13 +301,19 @@ void main() {
       expect(perPeriod['dinner'], 'forecast');
       expect(perPeriod['late_night'], 'vendor');
       expect(perPeriod['brunch'], 'reservation_plus_walkin');
+      final sourceMap =
+          data['covers_source_per_service_period_source']!
+              as Map<String, Object?>;
+      expect(sourceMap['lunch'], isA<Map<String, Object?>>());
+      final wageSource = data['wage_source_source'] as Map<String, Object?>;
+      expect(wageSource['scope_type'], 'business');
     });
 
     test('fetch emits vendor defaults for legacy keys when the keyed map '
         'has no row (unchanged default behavior)', () async {
       final pool = _StubPool(
         rowsByContains: <String, List<PostgresRow>>{
-          'from public.data_accuracy_settings': <PostgresRow>[
+          'from public.effective_data_accuracy_settings_v': <PostgresRow>[
             <String, Object?>{
               'setting_id': 'set-1',
               'operator_id': _opId,
@@ -340,15 +369,25 @@ void main() {
               'updated_by': _userId,
             },
           ],
-          // Post-write covers re-read via the view jsonb subquery.
-          'select (select v.covers_source_per_service_period': <PostgresRow>[
+          // Post-write re-read via the effective view.
+          'from public.effective_data_accuracy_settings_v': <PostgresRow>[
             <String, Object?>{
+              'setting_id': 'set-1',
+              'operator_id': _opId,
+              'location_id': _locId,
               'covers_source_per_service_period': <String, Object?>{
                 'lunch': 'forecast',
                 'dinner': 'forecast',
                 'late_night': 'vendor',
                 'breakfast': 'manual',
               },
+              'covers_manual_entries': <String, Object?>{},
+              'wage_source': 'vendor',
+              'walk_in_handling_mode': 'reservations_only',
+              'walk_in_manual_entries': <String, Object?>{},
+              'created_at': DateTime.utc(2026, 5, 17),
+              'updated_at': DateTime.utc(2026, 5, 17),
+              'updated_by': _userId,
             },
           ],
         },
@@ -448,6 +487,88 @@ void main() {
           'breakfast': 'manual',
         }),
       );
+    });
+
+    test('upsertDataAccuracySettings does not synthesize legacy dayparts '
+        'for keyed-only clients', () async {
+      final pool = _StubPool(
+        rowsByContains: <String, List<PostgresRow>>{
+          'insert into public.data_accuracy_settings': <PostgresRow>[
+            <String, Object?>{
+              'setting_id': 'set-1',
+              'operator_id': _opId,
+              'location_id': _locId,
+              'covers_manual_entries': <String, Object?>{},
+              'wage_source': 'vendor',
+              'walk_in_handling_mode': 'reservations_only',
+              'walk_in_manual_entries': <String, Object?>{},
+              'created_at': DateTime.utc(2026, 5, 19),
+              'updated_at': DateTime.utc(2026, 5, 19),
+              'updated_by': _userId,
+            },
+          ],
+          'from public.effective_data_accuracy_settings_v': <PostgresRow>[
+            <String, Object?>{
+              'setting_id': 'set-1',
+              'operator_id': _opId,
+              'location_id': _locId,
+              'covers_source_per_service_period': <String, Object?>{
+                'breakfast': 'vendor',
+                'lunch': 'manual',
+                'dinner': 'forecast',
+                'late_service': 'manual',
+              },
+              'covers_manual_entries': <String, Object?>{},
+              'wage_source': 'vendor',
+              'walk_in_handling_mode': 'reservations_only',
+              'walk_in_manual_entries': <String, Object?>{},
+              'created_at': DateTime.utc(2026, 5, 19),
+              'updated_at': DateTime.utc(2026, 5, 19),
+              'updated_by': _userId,
+            },
+          ],
+        },
+      );
+      final gateway = RepositoryMobileOperationalSyncProxyGateway(
+        tenantWrapper: TenantTransactionWrapper(pool),
+      );
+
+      await gateway.upsertDataAccuracySettings(
+        scope: const OperatorContext(
+          userId: _userId,
+          operatorId: _opId,
+          locationId: _locId,
+          roles: <String>['operator_owner'],
+        ),
+        operatorId: _opId,
+        locationId: _locId,
+        body: <String, Object?>{
+          'covers_source_per_service_period': <String, Object?>{
+            'breakfast': 'vendor',
+            'lunch': 'manual',
+            'dinner': 'forecast',
+            'late_service': 'manual',
+          },
+          'wage_source': 'vendor',
+          'walk_in_handling_mode': 'reservations_only',
+        },
+      );
+
+      final keyedWrites = pool.lastTx!.calls
+          .where(
+            (c) => c.sql.contains(
+              'insert into public.data_accuracy_service_period_settings',
+            ),
+          )
+          .toList();
+      final writtenPeriods = keyedWrites
+          .map((c) => c.parameters['service_period_key'])
+          .toSet();
+      expect(
+        writtenPeriods,
+        equals(<String>{'breakfast', 'lunch', 'dinner', 'late_service'}),
+      );
+      expect(writtenPeriods.contains('late_night'), isFalse);
     });
   });
 

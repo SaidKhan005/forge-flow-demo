@@ -12,11 +12,15 @@
 //   * operator_owner can grant/revoke operator-scoped roles within
 //     their own operator. They CAN edit their own custom roles;
 //     they CANNOT edit seeded roles (super_admin / ff_support /
-//     operator_owner / operator_manager / operator_supervisor /
-//     operator_staff are `is_seeded = true` + `is_editable` flagged
+//     operator_owner and the active R-2L v2 seeded roles are
+//     `is_seeded = true` + `is_editable` flagged
 //     per `auth_permission_key_catalog.md`).
-//   * operator_manager can grant operator_supervisor + operator_staff
-//     within their operator + location only.
+//   * operator_general_manager can grant/revoke non-platform roles
+//     within their operator, but cannot grant owner / F&F platform
+//     tiers.
+//   * location_manager can grant supervisor within their own location.
+//   * retired v1 role actors are denied; the R-2L migration maps them
+//     to the current v2 roles before runtime.
 //
 // The policy returns a [RoleManagementDecision] with reason text so
 // audit can record why something was rejected.
@@ -129,9 +133,7 @@ abstract class RoleManagementPolicy {
       if (role.operatorId == null) {
         // Global / non-operator-scoped role. Only super_admin can
         // touch globals (allow path above).
-        return RoleManagementDecision.deny(
-          'global roles require super_admin',
-        );
+        return RoleManagementDecision.deny('global roles require super_admin');
       }
       if (actor.actorRoles.contains('operator_owner')) {
         if (role.operatorId == actor.actorOperatorId) {
@@ -197,32 +199,68 @@ abstract class RoleManagementPolicy {
       }
       // Owners may grant any other operator-scoped role within their
       // operator (the seeded-role-protection is on EDIT, not on
-      // GRANT — granting an existing seeded role like
-      // operator_supervisor to a user is fine).
+      // GRANT; granting an existing seeded role like supervisor to a
+      // user is fine).
       return RoleManagementDecision.allow(
         'operator_owner managing own operator',
       );
     }
-    if (actor.actorRoles.contains('operator_manager')) {
+    if (actor.actorRoles.contains('operator_general_manager')) {
       if (grant.targetOperatorId != actor.actorOperatorId) {
         return RoleManagementDecision.deny(
-          'operator_manager cannot manage grants for another operator',
+          'operator_general_manager cannot manage grants for another operator',
+        );
+      }
+      const blocked = <String>{'super_admin', 'ff_support', 'operator_owner'};
+      if (blocked.contains(grant.targetRoleKey)) {
+        return RoleManagementDecision.deny(
+          'operator_general_manager cannot grant or revoke owner/platform roles',
+        );
+      }
+      const retired = <String>{
+        'operator_manager',
+        'operator_supervisor',
+        'operator_staff',
+      };
+      if (action == RoleManagementAction.grantRole &&
+          retired.contains(grant.targetRoleKey)) {
+        return RoleManagementDecision.deny(
+          'operator_general_manager cannot grant retired v1 role keys',
+        );
+      }
+      return RoleManagementDecision.allow(
+        'operator_general_manager managing own operator',
+      );
+    }
+    if (actor.actorRoles.contains('location_manager')) {
+      if (grant.targetOperatorId != actor.actorOperatorId) {
+        return RoleManagementDecision.deny(
+          'location_manager cannot manage grants for another operator',
         );
       }
       if (grant.targetLocationId != null &&
           grant.targetLocationId != actor.actorLocationId) {
         return RoleManagementDecision.deny(
-          'operator_manager cannot manage grants outside own location',
+          'location_manager cannot manage grants outside own location',
         );
       }
-      const allowed = <String>{'operator_supervisor', 'operator_staff'};
-      if (!allowed.contains(grant.targetRoleKey)) {
+      if (grant.targetLocationId == null) {
         return RoleManagementDecision.deny(
-          'operator_manager limited to operator_supervisor + operator_staff',
+          'location_manager cannot manage operator-wide grants',
+        );
+      }
+      if (grant.targetRoleKey != 'supervisor') {
+        return RoleManagementDecision.deny(
+          'location_manager limited to supervisor grants',
         );
       }
       return RoleManagementDecision.allow(
-        'operator_manager granting allowed sub-role',
+        'location_manager granting supervisor in own location',
+      );
+    }
+    if (actor.actorRoles.contains('operator_manager')) {
+      return RoleManagementDecision.deny(
+        'operator_manager is retired; use operator_general_manager',
       );
     }
     return RoleManagementDecision.deny('actor lacks grant privilege');

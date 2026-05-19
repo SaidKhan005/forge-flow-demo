@@ -124,6 +124,7 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -178,22 +179,27 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): 7shifts no
   // longer reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── CanonicalSink: covers / reservations are unsupported ─────────
@@ -265,10 +271,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalPunch,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<bool>(ctx, (exec) async {
       return _upsertLaborPunchFromDict(
         exec: exec,
@@ -335,10 +338,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<SevenShiftsWatermarkRow?>(ctx, (exec) async {
       final rows = await exec.query(
         'select cursor_token, last_modified_seen '
@@ -375,10 +375,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String locationId,
     required SevenShiftsWatermarkRow row,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final connectionId = await _resolveConnectionId(
         explicit: null,
@@ -412,10 +409,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String cursorToken,
     required DateTime lastModifiedSeen,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final resolvedConnectionId = await _resolveConnectionId(
         explicit: connectionId,
@@ -588,10 +582,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String locationId,
     required int statusCode,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final connectionId = await _resolveConnectionId(
         explicit: null,
@@ -634,10 +625,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     int? recordsCount,
     Map<String, Object?>? payloadPreview,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final resolvedConnectionId = await _resolveConnectionId(
         explicit: connectionId,
@@ -726,10 +714,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required IntegrationCategory category,
     required String connectionId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       // INSERT a live row when missing, then flip is_demo only when
       // the row is still demo. The WHERE clause on the UPDATE path is
@@ -768,10 +753,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select access_token_ciphertext '
@@ -783,9 +765,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
         'and is_active = true '
         'order by updated_at desc '
         'limit 1',
-        parameters: <String, Object?>{
-          'vendor_id': kSevenShiftsVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kSevenShiftsVendorId},
       );
       if (rows.isEmpty) return null;
       final value = rows.single['access_token_ciphertext'];
@@ -799,10 +779,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select metadata from public.connector_connection '
@@ -810,9 +787,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
         'and location_id = public.app_current_location() '
         'and vendor_id = @vendor_id '
         'limit 1',
-        parameters: <String, Object?>{
-          'vendor_id': kSevenShiftsVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kSevenShiftsVendorId},
       );
       if (rows.isEmpty) return null;
       final metadata = rows.single['metadata'];
@@ -844,10 +819,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       await exec.execute(
         'update public.vendor_credentials set '
@@ -909,8 +881,10 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalPunch,
   }) async {
     final vendorEntityId = _requireString(canonicalPunch, 'vendor_entity_id');
-    final vendorModifiedAt =
-        _requireUtcInstant(canonicalPunch, 'vendor_modified_at');
+    final vendorModifiedAt = _requireUtcInstant(
+      canonicalPunch,
+      'vendor_modified_at',
+    );
     final shiftStart = _requireUtcInstant(canonicalPunch, 'shift_start');
     final shiftEnd = _readUtcInstant(canonicalPunch, 'shift_end');
     final employeeSourceId = _requireString(canonicalPunch, 'employee_id');
@@ -921,11 +895,12 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
 
     // Wage-dollar payload is preserved inside raw_payload; pay_rate is
     // derived when actual_labor_dollars is present and hours_worked > 0.
-    final actualLaborDollars = _readNumber(canonicalPunch, 'actual_labor_dollars');
+    final actualLaborDollars = _readNumber(
+      canonicalPunch,
+      'actual_labor_dollars',
+    );
     final num? payRate;
-    if (actualLaborDollars != null &&
-        hoursWorked != null &&
-        hoursWorked > 0) {
+    if (actualLaborDollars != null && hoursWorked != null && hoursWorked > 0) {
       payRate = actualLaborDollars * 3600.0 / hoursWorked;
     } else {
       payRate = null;
@@ -952,8 +927,12 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
         'is_approved': canonicalPunch['is_approved'],
     };
 
-    final businessDate =
-        await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
+    final businessDate = await _resolveBusinessDate(
+      exec,
+      operatorId,
+      locationId,
+      shiftStart,
+    );
     final affected = await exec.execute(
       'insert into public.labor_punches ('
       'operator_id, location_id, '
@@ -1000,7 +979,15 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
         'business_date': _formatDate(businessDate),
       },
     );
-    return affected > 0;
+    final inserted = affected > 0;
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    }
+    return inserted;
   }
 
   // ─── Helpers ──────────────────────────────────────────────────────
@@ -1022,9 +1009,7 @@ class SevenShiftsPostgresSink extends OperatorScopedRepository
       'and location_id = public.app_current_location() '
       'and vendor_id = @vendor_id '
       'limit 1',
-      parameters: <String, Object?>{
-        'vendor_id': kSevenShiftsVendorId,
-      },
+      parameters: <String, Object?>{'vendor_id': kSevenShiftsVendorId},
     );
     if (rows.isEmpty) {
       throw StateError(

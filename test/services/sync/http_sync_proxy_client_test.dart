@@ -169,6 +169,96 @@ void main() {
     },
   );
 
+  test('submitManualCovers patches scoped canonical covers route', () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'setting_id': 'setting-1'},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.submitManualCovers(
+      operatorId: 'op',
+      locationId: 'loc',
+      restaurantId: 'restaurant-1',
+      businessDate: '2026-05-10',
+      servicePeriodKey: 'brunch',
+      covers: 84,
+      recordedAt: '2026-05-10T18:00:00Z',
+      idempotencyKey: 'manual-covers-idem-1',
+    );
+
+    expect(seen.method, 'PATCH');
+    expect(
+      seen.url.path,
+      '/base/v1/operators/op/locations/loc/'
+      'data_accuracy_settings/manual_covers',
+    );
+    expect(seen.headers['authorization'], 'Bearer token-1');
+    expect(seen.headers['idempotency-key'], 'manual-covers-idem-1');
+    final body = jsonDecode(seen.body) as Map<String, Object?>;
+    expect(body, <String, Object?>{
+      'restaurant_id': 'restaurant-1',
+      'business_date': '2026-05-10',
+      'service_period_key': 'brunch',
+      'covers': 84,
+      'recorded_at': '2026-05-10T18:00:00Z',
+    });
+  });
+
+  test('clearManualCovers patches canonical clear route', () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'setting_id': 'setting-1'},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.clearManualCovers(
+      operatorId: 'op',
+      locationId: 'loc',
+      restaurantId: 'restaurant-1',
+      businessDate: '2026-05-10',
+      servicePeriodKey: 'brunch',
+      idempotencyKey: 'manual-covers-clear-idem-1',
+    );
+
+    expect(seen.method, 'PATCH');
+    expect(
+      seen.url.path,
+      '/base/v1/operators/op/locations/loc/'
+      'data_accuracy_settings/manual_covers',
+    );
+    expect(seen.headers['authorization'], 'Bearer token-1');
+    expect(seen.headers['idempotency-key'], 'manual-covers-clear-idem-1');
+    final body = jsonDecode(seen.body) as Map<String, Object?>;
+    expect(body, <String, Object?>{
+      'restaurant_id': 'restaurant-1',
+      'business_date': '2026-05-10',
+      'service_period_key': 'brunch',
+      'clear': true,
+    });
+    expect(body.containsKey('covers'), isFalse);
+  });
+
   test(
     'switchDemoModeToLive posts scoped route with idempotency key',
     () async {
@@ -237,6 +327,12 @@ void main() {
                 'business_day_start_local_time': '05:00:00',
                 'week_start_day': 1,
                 'close_authority': 'vendor_finalization',
+                'selected_scope_type': 'location',
+                'selected_scope_id': 'loc',
+                'source_scope_type': 'org_unit',
+                'source_scope_id': 'district-1',
+                'source_scope_label': 'Metro District',
+                'inherited_from_ancestor': true,
                 'service_period_definitions_json': jsonEncode(<Object?>[
                   <String, Object?>{
                     'service_period_key': 'brunch',
@@ -274,7 +370,24 @@ void main() {
                   '2026-05-05': <String, Object?>{'dinner': 120},
                 },
                 'wage_source': 'manual_mix',
+                'wage_source_source': <String, Object?>{
+                  'scope_type': 'business',
+                  'source_kind': 'scoped_override',
+                  'override_id': 'ovr-wage',
+                },
                 'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+                'walk_in_handling_mode_source': <String, Object?>{
+                  'scope_type': 'location',
+                  'source_kind': 'base_setting',
+                  'setting_id': 'setting-1',
+                },
+                'covers_source_per_service_period_source': <String, Object?>{
+                  'dinner': <String, Object?>{
+                    'scope_type': 'org_unit',
+                    'source_kind': 'scoped_override',
+                    'override_id': 'ovr-dinner',
+                  },
+                },
                 'walk_in_manual_entries': <String, Object?>{'2026-05-05': 14},
                 'updated_at': '2026-05-06T12:00:00Z',
               },
@@ -377,6 +490,7 @@ void main() {
       operatorId: 'op',
       locationId: 'loc',
       restaurantId: 'loc',
+      businessDate: '2026-05-04',
     );
     final demo = await client.fetchDemoModeStates(
       operatorId: 'op',
@@ -409,6 +523,12 @@ void main() {
     expect(open.snapshots.single.servicePeriodKey, 'lunch');
     expect(timing!.businessDayStartLocalTime, '05:00');
     expect(timing.businessTimezone, 'America/St_Johns');
+    expect(timing.selectedScopeType, 'location');
+    expect(timing.selectedScopeId, 'loc');
+    expect(timing.sourceScopeType, 'org_unit');
+    expect(timing.sourceScopeId, 'district-1');
+    expect(timing.sourceScopeLabel, 'Metro District');
+    expect(timing.inheritedFromAncestor, isTrue);
     expect(timing.servicePeriodDefinitions.single.id, 'brunch');
     expect(timing.servicePeriodDefinitions.single.startLocalTime, '09:00');
     expect(timing.servicePeriodDefinitions.single.applicableDays, <int>[6, 7]);
@@ -419,7 +539,13 @@ void main() {
     // ignored on parse. Per-period covers source flows via the keyed
     // service-period settings, asserted below as `keyedAccuracy`.
     expect(accuracy!.coversManualEntries['2026-05-05']!['dinner'], 120);
+    expect(
+      accuracy.coversSourcePerServicePeriodSources['dinner']!['scope_type'],
+      'org_unit',
+    );
+    expect(accuracy.wageSourceSource!['scope_type'], 'business');
     expect(accuracy.walkInHandlingMode, 'walk_ins_added_to_reservations');
+    expect(accuracy.walkInHandlingModeSource!['source_kind'], 'base_setting');
     expect(accuracy.walkInManualEntries['2026-05-05'], 14);
     expect(keyedAccuracy.single.servicePeriodKey, 'brunch');
     expect(keyedAccuracy.single.coversSource.wire, 'reservation_plus_walkin');
@@ -450,6 +576,20 @@ void main() {
     expect(backfill.vendorId, 'toast');
     expect(backfill.isRunning, isTrue);
     expect(requests, hasLength(9));
+    expect(
+      fullUrls.where((url) => url.contains('/timing/resolved')).single,
+      Uri.parse(
+            'https://proxy.example/base/v1/operators/op/locations/loc/'
+            'timing/resolved',
+          )
+          .replace(
+            queryParameters: <String, String>{
+              'restaurant_id': 'loc',
+              'business_date': '2026-05-04',
+            },
+          )
+          .toString(),
+    );
     final wageRoleUrl = Uri.parse(
       'https://proxy.example/base/v1/operators/op/locations/loc/'
       'wage_role_rows',
@@ -673,11 +813,16 @@ void main() {
     expect(selected.nextCursor, 'selected-next');
     expect(cycles.cycles.single.cycle.cycleId, 'cycle-1');
     expect(cycles.cycles.single.cycle.managerOverrideUsed, isTrue);
-    expect(cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH, 0);
+    expect(
+      cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH,
+      0,
+    );
     expect(cycles.cycles.single.cycle.daypartFor('supper_rush')!.targetPPA, 48);
     expect(cycles.cycles.single.cycle.daypartFor('legacy_lunch'), isNull);
     expect(cycles.nextCursor, 'cycle-next');
     expect(profiles.profiles.single.profile.targetProfileId, 'profile-1');
+    expect(profiles.profiles.single.profile.targetCycleId, 'cycle-1');
+    expect(profiles.profiles.single.profile.targetProfileVersionId, 'tpv-1');
     expect(
       profiles.profiles.single.profile
           .daypartFor('afternoon_tea')!
@@ -690,10 +835,7 @@ void main() {
           .daypartTargetPPA,
       48,
     );
-    expect(
-      profiles.profiles.single.profile.daypartFor('legacy_lunch'),
-      isNull,
-    );
+    expect(profiles.profiles.single.profile.daypartFor('legacy_lunch'), isNull);
     expect(versions.isUnavailable, isTrue);
     expect(versions.unavailableReason, 'target_profile_versions_not_projected');
     expect(requests.first.queryParameters['modified_since'], 'selected-cursor');

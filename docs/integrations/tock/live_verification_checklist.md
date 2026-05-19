@@ -74,7 +74,7 @@ that resolved each check that failed.
       remove the F&F webhook URL from the Tock dashboard manually
       (manualPaste vendor — adapter never auto-registered).
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit

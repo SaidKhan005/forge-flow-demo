@@ -85,6 +85,10 @@ class DataAccuracySettingsSnapshot {
     required this.coversManualEntries,
     required this.wageSource,
     required this.updatedAt,
+    this.coversSourcePerServicePeriodSources =
+        const <String, Map<String, Object?>>{},
+    this.wageSourceSource,
+    this.walkInHandlingModeSource,
     this.walkInHandlingMode = 'reservations_only',
     this.walkInManualEntries = const <String, int>{},
   });
@@ -98,6 +102,11 @@ class DataAccuracySettingsSnapshot {
   // hydration path); the legacy 3-daypart fields were vestigial and
   // had no downstream resolver, so they were removed (slice R7c).
 
+  /// Server-emitted winning source metadata for covers-source values.
+  /// Mobile carries this forward for parity with web/admin payloads,
+  /// but does not infer labels when it is absent.
+  final Map<String, Map<String, Object?>> coversSourcePerServicePeriodSources;
+
   /// Sparse map keyed by ISO `business_date`; each value is an
   /// inner map `{ "lunch": int, "dinner": int, "late_night": int }`.
   /// Missing date + manual setting means the aggregator returns null
@@ -107,10 +116,12 @@ class DataAccuracySettingsSnapshot {
   /// `'vendor'` (use labor vendor dollars when exposed) or
   /// `'manual_mix'` (always use wage_role_rows mix).
   final String wageSource;
+  final Map<String, Object?>? wageSourceSource;
 
   /// `'reservations_only'`, `'walk_ins_added_to_reservations'`, or
   /// `'walk_ins_tracked_separately'`.
   final String walkInHandlingMode;
+  final Map<String, Object?>? walkInHandlingModeSource;
 
   /// Sparse map keyed by ISO `business_date`; each value is the
   /// operator-entered walk-in count for that day.
@@ -211,6 +222,48 @@ abstract class DemoModeMasterSwitchClient {
   });
 }
 
+/// Canonical mobile write seam for manual covers.
+///
+/// Kept separate from [SyncProxyClient] so read-only sync fakes do not need a
+/// mutation method, while the production [HttpSyncProxyClient] can implement
+/// this alongside the existing operational reads.
+abstract class ManualCoversWriteClient {
+  Future<void> submitManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    required String idempotencyKey,
+    String? restaurantId,
+    String? recordedAt,
+  });
+
+  Future<void> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required String idempotencyKey,
+    String? restaurantId,
+  });
+}
+
+class SyncProxyClientException implements Exception {
+  const SyncProxyClientException({
+    required this.code,
+    required this.message,
+    this.statusCode,
+  });
+
+  final String code;
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => 'SyncProxyClientException($code, status=$statusCode)';
+}
+
 /// Vendor-agnostic mobile sync surface.
 ///
 /// The production implementation talks to the proxy
@@ -252,12 +305,14 @@ abstract class SyncProxyClient {
   /// location, or null when the operator has not configured timing
   /// yet and mobile should keep its current local/default row.
   ///
-  /// This is the resolved shape, not the inheritance graph. Mobile
-  /// stores it in `restaurant_timing_configs` for fast rendering.
+  /// This is the resolved shape plus the winning source summary, not
+  /// the full inheritance graph. Mobile stores it in
+  /// `restaurant_timing_configs` for fast rendering.
   Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   });
 
   /// Pull every `demo_mode_state` row for this (operator, location).

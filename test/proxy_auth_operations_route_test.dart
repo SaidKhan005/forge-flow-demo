@@ -179,7 +179,7 @@ void main() {
             final response = await harness
                 .postJson(adminAuthInvitesPath, <String, Object?>{
                   'email': 'new.user@example.test',
-                  'role_id': 'operator_staff',
+                  'role_id': 'supervisor',
                   'scope_type': 'location',
                   'location_id': _locationId,
                 }, idempotencyKey: 'idem-invite-create-1');
@@ -214,7 +214,7 @@ void main() {
               <String, Object?>{
                 'email': 'manager@example.test',
                 'display_name': 'Manager User',
-                'role_key': 'operator_manager',
+                'role_key': 'operator_general_manager',
                 'primary_location_id': _locationId,
               },
               idempotencyKey: 'idem-invite-create-admin-console',
@@ -222,13 +222,13 @@ void main() {
 
             expect(response.statusCode, equals(201));
             final command = gateway.inviteCreates.single;
-            expect(command.roleId, equals('operator_manager'));
+            expect(command.roleId, equals('operator_general_manager'));
             expect(command.scopeType, equals('location'));
             expect(command.targetLocationId, equals(_locationId));
             expect(response.json['invite'], isA<Map<String, Object?>>());
             final invite = response.json['invite'] as Map<String, Object?>;
             expect(invite['email'], equals('manager@example.test'));
-            expect(invite['role_key'], equals('operator_manager'));
+            expect(invite['role_key'], equals('operator_general_manager'));
             expect(invite['primary_location_id'], equals(_locationId));
           } finally {
             await harness.close();
@@ -259,7 +259,7 @@ void main() {
                 'operator_id': targetOperatorId,
                 'email': 'manager@example.test',
                 'display_name': 'Manager User',
-                'role_key': 'operator_manager',
+                'role_key': 'operator_general_manager',
                 'primary_location_id': targetLocationId,
               },
               idempotencyKey: 'idem-invite-create-admin-target',
@@ -521,36 +521,33 @@ void main() {
       },
     );
 
-    test(
-      'PATCH admin org-unit name requires admin_reason',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingAuthOperationsGateway();
-          final guard = _RecordingAdminGuard();
-          final harness = await _RouteHarness.start(
-            authOperationsGateway: gateway,
-            adminPermissionGuard: guard,
+    test('PATCH admin org-unit name requires admin_reason', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
+          final response = await harness.patchJson(
+            '$adminAuthOrgUnitsPath/$targetOrgUnit/name',
+            const <String, Object?>{'name': 'No Reason Region'},
+            idempotencyKey: 'idem-org-unit-rename-missing-reason',
           );
-          try {
-            const targetOrgUnit = '88888888-8888-4888-8888-888888888888';
-            final response = await harness.patchJson(
-              '$adminAuthOrgUnitsPath/$targetOrgUnit/name',
-              const <String, Object?>{'name': 'No Reason Region'},
-              idempotencyKey: 'idem-org-unit-rename-missing-reason',
-            );
 
-            expect(response.statusCode, equals(400));
-            expect(
-              response.json['error'],
-              equals('missing_org_unit_rename_fields'),
-            );
-            expect(gateway.orgUnitRenames, isEmpty);
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(400));
+          expect(
+            response.json['error'],
+            equals('missing_org_unit_rename_fields'),
+          );
+          expect(gateway.orgUnitRenames, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test(
       'PATCH org-unit name replays the original 2xx on idempotency reuse',
@@ -774,7 +771,7 @@ void main() {
           final response = await harness
               .postJson(adminAuthInvitesPath, <String, Object?>{
                 'email': 'new.user@example.test',
-                'role_id': 'operator_staff',
+                'role_id': 'supervisor',
                 'scope_type': 'operator_wide',
               });
 
@@ -976,37 +973,10 @@ void main() {
             );
 
             expect(response.statusCode, equals(400));
-            expect(response.json['error'], equals('missing_user_profile_fields'));
-            expect(gateway.profilePatches, isEmpty);
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
-
-    test(
-      'W-1 — PATCH admin user rejects malformed email with 400',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingAuthOperationsGateway();
-          final guard = _RecordingAdminGuard();
-          final harness = await _RouteHarness.start(
-            authOperationsGateway: gateway,
-            adminPermissionGuard: guard,
-          );
-          try {
-            final response = await harness.patchJson(
-              '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
-              const <String, Object?>{
-                'email': 'not-an-email',
-                'admin_reason': 'operator typo fix',
-              },
-              idempotencyKey: 'idem-user-edit-bad-email',
+            expect(
+              response.json['error'],
+              equals('missing_user_profile_fields'),
             );
-
-            expect(response.statusCode, equals(400));
-            expect(response.json['error'], equals('invalid_email'));
             expect(gateway.profilePatches, isEmpty);
           } finally {
             await harness.close();
@@ -1014,6 +984,33 @@ void main() {
         });
       },
     );
+
+    test('W-1 — PATCH admin user rejects malformed email with 400', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.patchJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}',
+            const <String, Object?>{
+              'email': 'not-an-email',
+              'admin_reason': 'operator typo fix',
+            },
+            idempotencyKey: 'idem-user-edit-bad-email',
+          );
+
+          expect(response.statusCode, equals(400));
+          expect(response.json['error'], equals('invalid_email'));
+          expect(gateway.profilePatches, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test(
       'W-3 — PATCH /v1/auth/self/profile patches display name + email',
@@ -1026,20 +1023,19 @@ void main() {
             adminPermissionGuard: guard,
           );
           try {
-            final response = await harness.patchJson(
-              '/v1/auth/self/profile',
-              const <String, Object?>{
-                'display_name': 'Alex Morrison-Davies',
-                'email': 'alex@new-domain.com',
-              },
-              idempotencyKey: 'idem-self-profile-1',
-            );
+            final response = await harness
+                .patchJson('/v1/auth/self/profile', const <String, Object?>{
+                  'display_name': 'Alex Morrison-Davies',
+                  'email': 'alex@new-domain.com',
+                }, idempotencyKey: 'idem-self-profile-1');
 
             expect(response.statusCode, equals(200));
             // The route MUST gate on the self-edit key, NOT on
             // team.users.invite (which gates admin-editing-someone-else).
-            expect(guard.permissionKeys,
-                equals(<String>['team.users.self_update']));
+            expect(
+              guard.permissionKeys,
+              equals(<String>['team.users.self_update']),
+            );
             final command = gateway.selfProfilePatches.single;
             // Actor == target: the proxy resolves the actor from the
             // verified bearer token; no client-supplied target id.
@@ -1097,9 +1093,7 @@ void main() {
           try {
             final response = await harness.patchJson(
               '/v1/auth/self/profile',
-              const <String, Object?>{
-                'email': 'not-an-email',
-              },
+              const <String, Object?>{'email': 'not-an-email'},
               idempotencyKey: 'idem-self-profile-bad-email',
             );
 
@@ -2064,7 +2058,9 @@ void main() {
               everyElement(equals('totp-db-factor')),
             );
             expect(
-              gateway.recoveryCodeViews.map((command) => command.idempotencyKey),
+              gateway.recoveryCodeViews.map(
+                (command) => command.idempotencyKey,
+              ),
               equals(<String>['idem-view-codes', 'idem-view-codes-2']),
             );
           } finally {
@@ -3059,16 +3055,8 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
     MfaMarkRecoveryCodesViewedCommand command,
   ) async {
     recoveryCodeViews.add(command);
-    final viewedAt = DateTime.utc(
-      2026,
-      5,
-      6,
-      12,
-      recoveryCodeViews.length - 1,
-    );
-    return MfaMarkRecoveryCodesViewedCompleted(
-      viewedAt: viewedAt,
-    );
+    final viewedAt = DateTime.utc(2026, 5, 6, 12, recoveryCodeViews.length - 1);
+    return MfaMarkRecoveryCodesViewedCompleted(viewedAt: viewedAt);
   }
 
   @override

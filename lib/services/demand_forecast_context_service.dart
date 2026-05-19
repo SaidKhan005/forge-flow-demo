@@ -26,13 +26,16 @@ import 'dart:math' show max;
 
 import '../domain/models/demand_forecast_context.dart';
 import '../domain/models/schedule_forecast_demand.dart';
+import '../domain/repositories/open_shift_snapshot_repository.dart';
 import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import 'business_date_authority_service.dart';
+import 'closed_truth_eligibility.dart';
 
 /// Repository-backed service that builds [DemandForecastContext] v2 from
 /// eligible closed shifts.
@@ -50,6 +53,8 @@ class DemandForecastContextService {
   final RestaurantScopeRepository _scopeRepo =
       SqliteRestaurantScopeRepository.instance;
   final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
+  final OpenShiftSnapshotRepository _openShiftRepo =
+      SqliteOpenShiftSnapshotRepository.instance;
   final WeeklyPlanSnapshotRepository _weeklyPlanSnapshotRepo =
       SqliteWeeklyPlanSnapshotRepository.instance;
 
@@ -96,10 +101,17 @@ class DemandForecastContextService {
   ) async {
     // ── Level 1: 60-day baseline ──────────────────────────────────────────
     final baselineStart = subtractDays(anchorDate, 59);
-    final closedShifts60 = await _shiftRepo.getClosedShiftsInDateRange(
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    final rawClosedShifts60 = await _shiftRepo.getClosedShiftsInDateRange(
       restaurantId,
       baselineStart,
       anchorDate,
+    );
+    final closedShifts60 = ClosedTruthEligibility.filter(
+      rawClosedShifts60,
+      currentOperationalBusinessDate: operationalBusinessDate,
     );
 
     // No eligible closed shifts in the 60-day window → truly unavailable.
@@ -124,10 +136,14 @@ class DemandForecastContextService {
 
     // ── Level 2: fixed 3-week recent trend ────────────────────────────────
     final recentStart = subtractDays(anchorDate, 20);
-    final closedShifts21 = await _shiftRepo.getClosedShiftsInDateRange(
+    final rawClosedShifts21 = await _shiftRepo.getClosedShiftsInDateRange(
       restaurantId,
       recentStart,
       anchorDate,
+    );
+    final closedShifts21 = ClosedTruthEligibility.filter(
+      rawClosedShifts21,
+      currentOperationalBusinessDate: operationalBusinessDate,
     );
 
     final recentTotal = closedShifts21.fold<int>(

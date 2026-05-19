@@ -73,7 +73,9 @@ void main() {
       ];
 
       for (final probe in probes) {
-        final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
+        final gateway = _RecordingStepUpGateway(
+          now: () => DateTime.utc(2026, 5, 13, 10),
+        );
         final router = StepUpChallengeRouter(gateway: gateway);
         final request = _FakeHttpRequest(
           method: probe.method,
@@ -101,83 +103,103 @@ void main() {
           router: router,
           now: () => DateTime.utc(2026, 5, 13, 10),
         );
-        expect(wrote, isTrue,
-            reason: 'gate did not respond for ${probe.method} ${probe.path}');
-        expect(request.response.statusCodeValue, equals(401),
-            reason: 'expected 401 challenge for ${probe.method} ${probe.path}');
-        final wwwHeader = request.response.capturedHeaders[
-            kStepUpWwwAuthenticateHeader];
-        expect(wwwHeader, isNotNull,
-            reason: 'missing WWW-Authenticate for ${probe.method} ${probe.path}');
+        expect(
+          wrote,
+          isTrue,
+          reason: 'gate did not respond for ${probe.method} ${probe.path}',
+        );
+        expect(
+          request.response.statusCodeValue,
+          equals(401),
+          reason: 'expected 401 challenge for ${probe.method} ${probe.path}',
+        );
+        final wwwHeader =
+            request.response.capturedHeaders[kStepUpWwwAuthenticateHeader];
+        expect(
+          wwwHeader,
+          isNotNull,
+          reason: 'missing WWW-Authenticate for ${probe.method} ${probe.path}',
+        );
         expect(wwwHeader, contains('error="insufficient_user_authentication"'));
         expect(wwwHeader, contains('acr_values="urn:mfa"'));
         expect(wwwHeader, contains('max_age=300'));
-        final body = jsonDecode(request.response.writtenBody)
-            as Map<String, Object?>;
+        final body =
+            jsonDecode(request.response.writtenBody) as Map<String, Object?>;
         expect(body['error'], equals('insufficient_user_authentication'));
         expect(body['challenge_id'], isA<String>());
         expect((body['challenge_id'] as String).isNotEmpty, isTrue);
         expect(body['required_acr'], equals('urn:mfa'));
         expect(body['max_age_seconds'], equals(300));
-        expect(gateway.emittedChallenges, hasLength(1),
-            reason: 'expected 1 challenge persisted for ${probe.path}');
+        expect(
+          gateway.emittedChallenges,
+          hasLength(1),
+          reason: 'expected 1 challenge persisted for ${probe.path}',
+        );
         expect(gateway.emittedChallenges.single.routePath, equals(probe.path));
         expect(gateway.emittedChallenges.single.operatorId, equals(_opA));
         expect(gateway.emittedChallenges.single.userId, equals(_userA));
       }
     });
 
-    test('valid presented Step-Up-Challenge-Id HEADER admits the request',
-        () async {
-      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
-      // Pre-seed the gateway with a challenge for opA/userA/revoke.
-      gateway.seedChallenge(
-        challengeId: 'CHAL_VALID',
-        operatorId: _opA,
-        locationId: _locA,
-        userId: _userA,
-        routePath: '/v1/auth/session/revoke',
-        expiresAt: DateTime.utc(2026, 5, 13, 10, 10),
-      );
-      // The route registry doesn't currently flag session/revoke —
-      // pick a flagged route the gateway can consume. Use
-      // /v1/auth/password/change.
-      gateway.seedChallenge(
-        challengeId: 'CHAL_PASSWORD',
-        operatorId: _opA,
-        locationId: _locA,
-        userId: _userA,
-        routePath: '/v1/auth/password/change',
-        expiresAt: DateTime.utc(2026, 5, 13, 10, 10),
-      );
-      final router = StepUpChallengeRouter(gateway: gateway);
-      final request = _FakeHttpRequest(
-        method: 'POST',
-        path: '/v1/auth/password/change',
-        headers: <String, String>{
-          HttpHeaders.authorizationHeader: 'Bearer placeholder',
-          kStepUpChallengeIdHeader: 'CHAL_PASSWORD',
-        },
-      );
-      final wrote = await runStepUpGate(
-        request: request,
-        path: '/v1/auth/password/change',
-        authGuard: _StubAuthGuard(_scope(
+    test(
+      'valid presented Step-Up-Challenge-Id HEADER admits the request',
+      () async {
+        final gateway = _RecordingStepUpGateway(
+          now: () => DateTime.utc(2026, 5, 13, 10),
+        );
+        // Pre-seed the gateway with a challenge for opA/userA/revoke.
+        gateway.seedChallenge(
+          challengeId: 'CHAL_VALID',
           operatorId: _opA,
           locationId: _locA,
           userId: _userA,
-          authTime: DateTime.utc(2026, 5, 13, 9), // stale
-        )),
-        router: router,
-        now: () => DateTime.utc(2026, 5, 13, 10),
-      );
-      // Admit -> gate writes nothing, returns false.
-      expect(wrote, isFalse);
-      expect(gateway.consumedIds, contains('CHAL_PASSWORD'));
-    });
+          routePath: '/v1/auth/session/revoke',
+          expiresAt: DateTime.utc(2026, 5, 13, 10, 10),
+        );
+        // The route registry doesn't currently flag session/revoke —
+        // pick a flagged route the gateway can consume. Use
+        // /v1/auth/password/change.
+        gateway.seedChallenge(
+          challengeId: 'CHAL_PASSWORD',
+          operatorId: _opA,
+          locationId: _locA,
+          userId: _userA,
+          routePath: '/v1/auth/password/change',
+          expiresAt: DateTime.utc(2026, 5, 13, 10, 10),
+        );
+        final router = StepUpChallengeRouter(gateway: gateway);
+        final request = _FakeHttpRequest(
+          method: 'POST',
+          path: '/v1/auth/password/change',
+          headers: <String, String>{
+            HttpHeaders.authorizationHeader: 'Bearer placeholder',
+            kStepUpChallengeIdHeader: 'CHAL_PASSWORD',
+          },
+        );
+        final wrote = await runStepUpGate(
+          request: request,
+          path: '/v1/auth/password/change',
+          authGuard: _StubAuthGuard(
+            _scope(
+              operatorId: _opA,
+              locationId: _locA,
+              userId: _userA,
+              authTime: DateTime.utc(2026, 5, 13, 9), // stale
+            ),
+          ),
+          router: router,
+          now: () => DateTime.utc(2026, 5, 13, 10),
+        );
+        // Admit -> gate writes nothing, returns false.
+        expect(wrote, isFalse);
+        expect(gateway.consumedIds, contains('CHAL_PASSWORD'));
+      },
+    );
 
     test('consumed challenge replayed returns 410', () async {
-      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
+      final gateway = _RecordingStepUpGateway(
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
       gateway.seedChallenge(
         challengeId: 'CHAL_ALREADY_USED',
         operatorId: _opA,
@@ -199,25 +221,28 @@ void main() {
       final wrote = await runStepUpGate(
         request: request,
         path: '/v1/auth/password/change',
-        authGuard: _StubAuthGuard(_scope(
-          operatorId: _opA,
-          locationId: _locA,
-          userId: _userA,
-          authTime: DateTime.utc(2026, 5, 13, 9), // stale
-        )),
+        authGuard: _StubAuthGuard(
+          _scope(
+            operatorId: _opA,
+            locationId: _locA,
+            userId: _userA,
+            authTime: DateTime.utc(2026, 5, 13, 9), // stale
+          ),
+        ),
         router: router,
         now: () => DateTime.utc(2026, 5, 13, 10),
       );
       expect(wrote, isTrue);
       expect(request.response.statusCodeValue, equals(410));
-      final body = jsonDecode(request.response.writtenBody)
-          as Map<String, Object?>;
+      final body =
+          jsonDecode(request.response.writtenBody) as Map<String, Object?>;
       expect(body['error'], equals('step_up_challenge_already_consumed'));
     });
 
-    test('cross-operator challenge replay returns 401 (oracle-safe)',
-        () async {
-      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
+    test('cross-operator challenge replay returns 401 (oracle-safe)', () async {
+      final gateway = _RecordingStepUpGateway(
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
       // Challenge issued for operator B; replay attempt from operator A.
       gateway.seedChallenge(
         challengeId: 'CHAL_CROSS_OP',
@@ -239,12 +264,14 @@ void main() {
       final wrote = await runStepUpGate(
         request: request,
         path: '/v1/auth/password/change',
-        authGuard: _StubAuthGuard(_scope(
-          operatorId: _opA, // wrong operator
-          locationId: _locA,
-          userId: _userA,
-          authTime: DateTime.utc(2026, 5, 13, 9), // stale
-        )),
+        authGuard: _StubAuthGuard(
+          _scope(
+            operatorId: _opA, // wrong operator
+            locationId: _locA,
+            userId: _userA,
+            authTime: DateTime.utc(2026, 5, 13, 9), // stale
+          ),
+        ),
         router: router,
         now: () => DateTime.utc(2026, 5, 13, 10),
       );
@@ -256,7 +283,9 @@ void main() {
     });
 
     test('wrong-route challenge replay returns 401 (oracle-safe)', () async {
-      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
+      final gateway = _RecordingStepUpGateway(
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
       gateway.seedChallenge(
         challengeId: 'CHAL_FOR_PASSWORD',
         operatorId: _opA,
@@ -278,12 +307,14 @@ void main() {
       final wrote = await runStepUpGate(
         request: request,
         path: '/v1/admin/auth/roles',
-        authGuard: _StubAuthGuard(_scope(
-          operatorId: _opA,
-          locationId: _locA,
-          userId: _userA,
-          authTime: DateTime.utc(2026, 5, 13, 9), // stale
-        )),
+        authGuard: _StubAuthGuard(
+          _scope(
+            operatorId: _opA,
+            locationId: _locA,
+            userId: _userA,
+            authTime: DateTime.utc(2026, 5, 13, 9), // stale
+          ),
+        ),
         router: router,
         now: () => DateTime.utc(2026, 5, 13, 10),
       );
@@ -292,7 +323,9 @@ void main() {
     });
 
     test('service-principal caller skips the gate (V1)', () async {
-      final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
+      final gateway = _RecordingStepUpGateway(
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
       final router = StepUpChallengeRouter(gateway: gateway);
       final request = _FakeHttpRequest(
         method: 'POST',
@@ -319,77 +352,84 @@ void main() {
       expect(gateway.emittedChallenges, isEmpty);
     });
 
-    test('unflagged route is unaffected (gate.isSensitive returns false)',
-        () async {
-      final router = StepUpChallengeRouter(gateway: _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10)));
-      // The dispatcher would not call runStepUpGate at all because
-      // isSensitive returns false; here we assert isSensitive directly.
-      expect(
-        router.isSensitive(method: 'GET', path: '/v1/operator/account'),
-        isFalse,
-      );
-      expect(
-        router.isSensitive(method: 'POST', path: '/v1/auth/handoff/codes'),
-        isFalse,
-      );
-      // B11.1's handoff codes route is NOT a step-up target.
-      expect(
-        router.isSensitive(method: 'POST', path: '/v1/auth/handoff/redeem'),
-        isFalse,
-      );
-    });
-
     test(
-      'addendum A1 — Step-Up-Challenge-Id passed as URL query parameter is '
-      'IGNORED; the gate emits a fresh challenge',
+      'unflagged route is unaffected (gate.isSensitive returns false)',
       () async {
-        final gateway = _RecordingStepUpGateway(now: () => DateTime.utc(2026, 5, 13, 10));
-        gateway.seedChallenge(
-          challengeId: 'CHAL_TOKEN_IN_URL',
-          operatorId: _opA,
-          locationId: _locA,
-          userId: _userA,
-          routePath: '/v1/auth/password/change',
-          expiresAt: DateTime.utc(2026, 5, 13, 10, 10),
+        final router = StepUpChallengeRouter(
+          gateway: _RecordingStepUpGateway(
+            now: () => DateTime.utc(2026, 5, 13, 10),
+          ),
         );
-        final router = StepUpChallengeRouter(gateway: gateway);
-        // No Step-Up-Challenge-Id HEADER. The id is in the URL — the
-        // gate does NOT inspect URL params, so this is just an
-        // unflagged challenge id from the proxy's perspective.
-        final request = _FakeHttpRequest(
-          method: 'POST',
-          path: '/v1/auth/password/change',
-          // Even if URL has ?challenge_id=... it is irrelevant —
-          // runStepUpGate reads ONLY from request.headers.value(...)
-          // for kStepUpChallengeIdHeader.
-          headers: <String, String>{
-            HttpHeaders.authorizationHeader: 'Bearer placeholder',
-          },
+        // The dispatcher would not call runStepUpGate at all because
+        // isSensitive returns false; here we assert isSensitive directly.
+        expect(
+          router.isSensitive(method: 'GET', path: '/v1/operator/account'),
+          isFalse,
         );
-        final wrote = await runStepUpGate(
-          request: request,
-          path: '/v1/auth/password/change',
-          authGuard: _StubAuthGuard(_scope(
+        expect(
+          router.isSensitive(method: 'POST', path: '/v1/auth/handoff/codes'),
+          isFalse,
+        );
+        // B11.1's handoff codes route is NOT a step-up target.
+        expect(
+          router.isSensitive(method: 'POST', path: '/v1/auth/handoff/redeem'),
+          isFalse,
+        );
+      },
+    );
+
+    test('addendum A1 — Step-Up-Challenge-Id passed as URL query parameter is '
+        'IGNORED; the gate emits a fresh challenge', () async {
+      final gateway = _RecordingStepUpGateway(
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
+      gateway.seedChallenge(
+        challengeId: 'CHAL_TOKEN_IN_URL',
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        routePath: '/v1/auth/password/change',
+        expiresAt: DateTime.utc(2026, 5, 13, 10, 10),
+      );
+      final router = StepUpChallengeRouter(gateway: gateway);
+      // No Step-Up-Challenge-Id HEADER. The id is in the URL — the
+      // gate does NOT inspect URL params, so this is just an
+      // unflagged challenge id from the proxy's perspective.
+      final request = _FakeHttpRequest(
+        method: 'POST',
+        path: '/v1/auth/password/change',
+        // Even if URL has ?challenge_id=... it is irrelevant —
+        // runStepUpGate reads ONLY from request.headers.value(...)
+        // for kStepUpChallengeIdHeader.
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer placeholder',
+        },
+      );
+      final wrote = await runStepUpGate(
+        request: request,
+        path: '/v1/auth/password/change',
+        authGuard: _StubAuthGuard(
+          _scope(
             operatorId: _opA,
             locationId: _locA,
             userId: _userA,
             authTime: DateTime.utc(2026, 5, 13, 9),
-          )),
-          router: router,
-          now: () => DateTime.utc(2026, 5, 13, 10),
-        );
-        // Gate emits a FRESH challenge (not the seeded one), proving
-        // the URL-param value was ignored.
-        expect(wrote, isTrue);
-        expect(request.response.statusCodeValue, equals(401));
-        expect(gateway.consumedIds, isEmpty);
-        expect(gateway.emittedChallenges, hasLength(1));
-        expect(
-          gateway.emittedChallenges.single.challengeId,
-          isNot(equals('CHAL_TOKEN_IN_URL')),
-        );
-      },
-    );
+          ),
+        ),
+        router: router,
+        now: () => DateTime.utc(2026, 5, 13, 10),
+      );
+      // Gate emits a FRESH challenge (not the seeded one), proving
+      // the URL-param value was ignored.
+      expect(wrote, isTrue);
+      expect(request.response.statusCodeValue, equals(401));
+      expect(gateway.consumedIds, isEmpty);
+      expect(gateway.emittedChallenges, hasLength(1));
+      expect(
+        gateway.emittedChallenges.single.challengeId,
+        isNot(equals('CHAL_TOKEN_IN_URL')),
+      );
+    });
   });
 }
 
@@ -412,7 +452,7 @@ OperatorContext _scope({
     userId: userId,
     operatorId: operatorId,
     locationId: locationId,
-    roles: const <String>['operator_admin'],
+    roles: const <String>['operator_owner'],
     actorKind: actorKind,
     lastFreshAuthAt: authTime,
   );
@@ -445,7 +485,7 @@ class _StubAuthGuard implements ProxyRequestGuard {
 /// behavior without binding Postgres.
 class _RecordingStepUpGateway implements StepUpChallengesGateway {
   _RecordingStepUpGateway({DateTime Function() now = DateTime.now})
-      : _now = now;
+    : _now = now;
 
   final DateTime Function() _now;
   final Map<String, _StoredChallenge> _store = <String, _StoredChallenge>{};
@@ -581,9 +621,9 @@ class _FakeHttpRequest implements HttpRequest {
     required this.method,
     required this.path,
     Map<String, String> headers = const <String, String>{},
-  })  : uri = Uri.parse(path),
-        response = _FakeHttpResponse(),
-        _headers = _FakeHttpHeaders(headers);
+  }) : uri = Uri.parse(path),
+       response = _FakeHttpResponse(),
+       _headers = _FakeHttpHeaders(headers);
 
   @override
   final String method;
@@ -609,10 +649,10 @@ class _FakeHttpRequest implements HttpRequest {
 
 class _FakeHttpHeaders implements HttpHeaders {
   _FakeHttpHeaders(Map<String, String> source)
-      : _store = <String, List<String>>{
-          for (final entry in source.entries)
-            entry.key.toLowerCase(): <String>[entry.value],
-        };
+    : _store = <String, List<String>>{
+        for (final entry in source.entries)
+          entry.key.toLowerCase(): <String>[entry.value],
+      };
 
   final Map<String, List<String>> _store;
 

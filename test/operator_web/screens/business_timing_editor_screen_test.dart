@@ -17,6 +17,7 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
   final List<BusinessTimingProfileCreate> creates =
       <BusinessTimingProfileCreate>[];
+  final List<_ProfileUpdateCall> updates = <_ProfileUpdateCall>[];
 
   @override
   Future<List<BusinessTimingProfileWriteResult>> listProfiles() async =>
@@ -26,14 +27,13 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
   Future<BusinessTimingResolutionResult> resolveForLocation({
     required String locationId,
     String? businessDate,
-  }) async =>
-      BusinessTimingResolutionResult(
-        operatorId: 'op-1',
-        locationId: locationId,
-        businessDate: businessDate ?? '2026-05-01',
-        ianaTimezone: 'America/Toronto',
-        candidates: const <BusinessTimingResolutionCandidate>[],
-      );
+  }) async => BusinessTimingResolutionResult(
+    operatorId: 'op-1',
+    locationId: locationId,
+    businessDate: businessDate ?? '2026-05-01',
+    ianaTimezone: 'America/Toronto',
+    candidates: const <BusinessTimingResolutionCandidate>[],
+  );
 
   @override
   Future<BusinessTimingProfileWriteResult> createProfile(
@@ -57,6 +57,9 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
               startLocal: p.startLocal,
               endLocal: p.endLocal,
               rollsPastMidnight: false,
+              applicableDays: p.applicableDays,
+              shortLabel: p.shortLabel,
+              sortOrder: p.sortOrder,
             ),
           )
           .toList(),
@@ -69,42 +72,75 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
   Future<BusinessTimingProfileWriteResult> updateProfile({
     required String profileId,
     required BusinessTimingProfilePatch patch,
-  }) async =>
-      throw UnimplementedError('not used in these tests');
+  }) async {
+    updates.add(_ProfileUpdateCall(profileId, patch));
+    return BusinessTimingProfileWriteResult(
+      profileId: profileId,
+      versionId: profileId,
+      scopeKind: patch.scopeKind ?? 'operator',
+      scopeId: patch.scopeId ?? 'op-1',
+      effectiveAtBusinessDate: patch.effectiveAtBusinessDate ?? '2026-05-01',
+      ianaTimezone: patch.ianaTimezone ?? 'America/Toronto',
+      weekStartDay: patch.weekStartDay ?? 'monday',
+      businessDayStartLocal: patch.businessDayStartLocal ?? '04:00',
+      servicePeriods: (patch.servicePeriods ?? const <ServicePeriodCreate>[])
+          .map(
+            (p) => ServicePeriod(
+              key: p.key,
+              label: p.label,
+              startLocal: p.startLocal,
+              endLocal: p.endLocal,
+              rollsPastMidnight: false,
+              applicableDays: p.applicableDays,
+              shortLabel: p.shortLabel,
+              sortOrder: p.sortOrder,
+            ),
+          )
+          .toList(),
+      createdAt: DateTime.utc(2026, 5, 6, 18),
+      updatedAt: DateTime.utc(2026, 5, 6, 18),
+    );
+  }
 
   @override
   Future<BusinessTimingProfileWriteResult> addServicePeriod({
     required String profileId,
     required ServicePeriodCreate period,
-  }) async =>
-      throw UnimplementedError('not used in these tests');
+  }) async => throw UnimplementedError('not used in these tests');
 
   @override
   Future<BusinessTimingProfileWriteResult> updateServicePeriod({
     required String profileId,
     required String key,
     required ServicePeriodPatch patch,
-  }) async =>
-      throw UnimplementedError('not used in these tests');
+  }) async => throw UnimplementedError('not used in these tests');
+}
+
+class _ProfileUpdateCall {
+  const _ProfileUpdateCall(this.profileId, this.patch);
+
+  final String profileId;
+  final BusinessTimingProfilePatch patch;
 }
 
 OperatorWebSession sessionWithRole(String role) => OperatorWebSession(
-      uid: 'uid-$role',
-      email: 'alex@brio-restaurants.com',
-      displayName: 'Alex Morrison',
-      operatorId: 'op-1',
-      businessName: 'Brio Restaurants',
-      primaryLocationId: 'loc-1',
-      primaryLocationName: 'Brio Main',
-      roles: <String>[role],
-      weekStartDay: 'monday',
-      rolloverHour: 4,
-    );
+  uid: 'uid-$role',
+  email: 'alex@brio-restaurants.com',
+  displayName: 'Alex Morrison',
+  operatorId: 'op-1',
+  businessName: 'Brio Restaurants',
+  primaryLocationId: 'loc-1',
+  primaryLocationName: 'Brio Main',
+  roles: <String>[role],
+  weekStartDay: 'monday',
+  rolloverHour: 4,
+  primaryLocationTimezone: 'America/Vancouver',
+);
 
 Widget wrap(Widget child) => MaterialApp(
-      theme: AppTheme.themeData,
-      home: Scaffold(body: child),
-    );
+  theme: AppTheme.themeData,
+  home: Scaffold(body: child),
+);
 
 Future<void> _sizeViewport(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1280, 2400);
@@ -116,12 +152,151 @@ Future<void> _sizeViewport(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'org-unit scope save writes org_unit with the selected group id',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeBusinessTimingGateway();
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          BusinessTimingEditorScreen(
+            session: session,
+            gateway: gateway,
+            orgUnitId: 'org-east',
+            orgUnitName: 'East Region',
+            orgUnitHelper: 'Region',
+            locationId: 'loc-1',
+            locationName: 'Downtown',
+            initialScopeKind: 'org_unit',
+          ),
+        ),
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.creates, hasLength(1));
+      final create = gateway.creates.single;
+      expect(create.scopeKind, 'org_unit');
+      expect(create.scopeId, 'org-east');
+      expect(find.textContaining('East Region'), findsWidgets);
+      expect(
+        find.textContaining('business, selected group, and location'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('tree shows the business and the location'),
+        findsNothing,
+      );
+      expect(find.textContaining('scope_kind'), findsNothing);
+    },
+  );
+
+  testWidgets('selecting location scope still writes the location id', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeBusinessTimingGateway();
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(
+        BusinessTimingEditorScreen(
+          session: session,
+          gateway: gateway,
+          orgUnitId: 'org-east',
+          orgUnitName: 'East Region',
+          orgUnitHelper: 'Region',
+          locationId: 'loc-1',
+          locationName: 'Downtown',
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_scope_kind')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Just Downtown').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gateway.creates, hasLength(1));
+    final create = gateway.creates.single;
+    expect(create.scopeKind, 'location');
+    expect(create.scopeId, 'loc-1');
+  });
+
+  testWidgets('updating an existing org-unit profile keeps org_unit scope', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeBusinessTimingGateway();
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(
+        BusinessTimingEditorScreen(
+          session: session,
+          gateway: gateway,
+          orgUnitId: 'org-east',
+          orgUnitName: 'East Region',
+          orgUnitHelper: 'Region',
+          locationId: 'loc-1',
+          locationName: 'Downtown',
+          existingProfile: BusinessTimingProfileWriteResult(
+            profileId: 'profile-east',
+            versionId: 'profile-east',
+            scopeKind: 'org_unit',
+            scopeId: 'org-east',
+            effectiveAtBusinessDate: '2026-05-10',
+            ianaTimezone: 'America/Toronto',
+            weekStartDay: 'monday',
+            businessDayStartLocal: '04:00',
+            servicePeriods: const <ServicePeriod>[
+              ServicePeriod(
+                key: 'lunch',
+                label: 'Lunch',
+                startLocal: '11:00',
+                endLocal: '15:00',
+                rollsPastMidnight: false,
+                sortOrder: 1,
+              ),
+            ],
+            createdAt: DateTime.utc(2026, 5, 6, 18),
+            updatedAt: DateTime.utc(2026, 5, 6, 18),
+          ),
+        ),
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gateway.creates, isEmpty);
+    expect(gateway.updates, hasLength(1));
+    expect(gateway.updates.single.profileId, 'profile-east');
+    expect(gateway.updates.single.patch.scopeKind, 'org_unit');
+    expect(gateway.updates.single.patch.scopeId, 'org-east');
+  });
+
   testWidgets('renders the editor + service-period editor', (tester) async {
     await _sizeViewport(tester);
     final session = sessionWithRole('operator_owner');
-    await tester.pumpWidget(
-      wrap(BusinessTimingEditorScreen(session: session)),
-    );
+    await tester.pumpWidget(wrap(BusinessTimingEditorScreen(session: session)));
     expect(
       find.byKey(const Key('operator_web_business_timing_editor_screen')),
       findsOneWidget,
@@ -134,38 +309,51 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_editor_save')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(
+        const Key('operator_web_business_timing_editor_timezone_readonly'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('operator_web_business_timing_editor_iana')),
+      findsNothing,
+    );
+    expect(find.text('America/Vancouver'), findsOneWidget);
+    expect(
+      find.textContaining('Account or the location record'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('Wave 2 H-2: hierarchy tree mounts and highlights default scope',
-      (tester) async {
+  testWidgets('Wave 2 H-2: hierarchy tree mounts and highlights default scope', (
+    tester,
+  ) async {
     await _sizeViewport(tester);
     final session = sessionWithRole('operator_owner');
-    await tester.pumpWidget(
-      wrap(BusinessTimingEditorScreen(session: session)),
-    );
+    await tester.pumpWidget(wrap(BusinessTimingEditorScreen(session: session)));
     // Tree itself mounts.
     expect(
-      find.byKey(const Key(
-        'operator_web_business_timing_editor_hierarchy_tree',
-      )),
+      find.byKey(
+        const Key('operator_web_business_timing_editor_hierarchy_tree'),
+      ),
       findsOneWidget,
     );
     // Default scope is operator (Across all locations), so the
     // Business node is the current scope and gets the highlight
     // badge.
     expect(
-      find.byKey(const Key(
-        'operator_web_business_timing_editor_hierarchy_tree_node_business_current_badge',
-      )),
+      find.byKey(
+        const Key(
+          'operator_web_business_timing_editor_hierarchy_tree_node_business_current_badge',
+        ),
+      ),
       findsOneWidget,
     );
     // The location row should show an "Inherits from here" target
     // (it inherits from the business above) — verified via the
     // header pill copy + plain-English subtitle.
-    expect(
-      find.textContaining('Editing Business'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Editing Business'), findsOneWidget);
     // No engineering jargon: no scope_kind=… leak.
     expect(find.textContaining('scope_kind'), findsNothing);
     expect(find.textContaining('scope_id'), findsNothing);
@@ -174,9 +362,7 @@ void main() {
   testWidgets('Save disabled when no gateway', (tester) async {
     await _sizeViewport(tester);
     final session = sessionWithRole('operator_owner');
-    await tester.pumpWidget(
-      wrap(BusinessTimingEditorScreen(session: session)),
-    );
+    await tester.pumpWidget(wrap(BusinessTimingEditorScreen(session: session)));
     final save = tester.widget<ButtonStyleButton>(
       find.byKey(const Key('operator_web_business_timing_editor_save')),
     );
@@ -209,9 +395,7 @@ void main() {
     final gateway = _FakeBusinessTimingGateway();
     final session = sessionWithRole('operator_owner');
     await tester.pumpWidget(
-      wrap(
-        BusinessTimingEditorScreen(session: session, gateway: gateway),
-      ),
+      wrap(BusinessTimingEditorScreen(session: session, gateway: gateway)),
     );
     await tester.ensureVisible(
       find.byKey(const Key('operator_web_business_timing_editor_save')),
@@ -223,6 +407,8 @@ void main() {
     expect(gateway.creates, hasLength(1));
     final create = gateway.creates.single;
     expect(create.scopeKind, 'operator');
+    expect(create.scopeId, 'op-1');
+    expect(create.ianaTimezone, 'America/Vancouver');
     expect(create.weekStartDay, 'monday');
     expect(create.servicePeriods, isNotEmpty);
     expect(
@@ -233,9 +419,7 @@ void main() {
 
   // Slice 2.5 / Gap 28 — seed + save round-trip the three new fields.
 
-  BusinessTimingProfileWriteResult profileWith(
-    List<ServicePeriod> periods,
-  ) =>
+  BusinessTimingProfileWriteResult profileWith(List<ServicePeriod> periods) =>
       BusinessTimingProfileWriteResult(
         profileId: 'profile-existing',
         versionId: 'profile-existing',
@@ -272,7 +456,7 @@ void main() {
                 rollsPastMidnight: false,
                 applicableDays: <int>[6, 7],
                 shortLabel: 'B',
-                sortOrder: 0,
+                sortOrder: 1,
               ),
             ]),
           ),
@@ -304,9 +488,7 @@ void main() {
       final gateway = _FakeBusinessTimingGateway();
       final session = sessionWithRole('operator_owner');
       await tester.pumpWidget(
-        wrap(
-          BusinessTimingEditorScreen(session: session, gateway: gateway),
-        ),
+        wrap(BusinessTimingEditorScreen(session: session, gateway: gateway)),
       );
       await tester.ensureVisible(
         find.byKey(const Key('operator_web_business_timing_editor_save')),
@@ -331,44 +513,41 @@ void main() {
       expect(firstPeriod.containsKey('applicableDays'), isTrue);
       expect(firstPeriod.containsKey('shortLabel'), isTrue);
       expect(firstPeriod.containsKey('sortOrder'), isTrue);
+      expect(firstPeriod['sortOrder'], 1);
     },
   );
 
-  testWidgets(
-    'tapping day chips before save emits filtered applicableDays',
-    (tester) async {
-      await _sizeViewport(tester);
-      final gateway = _FakeBusinessTimingGateway();
-      final session = sessionWithRole('operator_owner');
-      await tester.pumpWidget(
-        wrap(
-          BusinessTimingEditorScreen(session: session, gateway: gateway),
-        ),
-      );
-      // Default seed has two periods (Lunch, Dinner). Restrict the
-      // first to weekends only by deselecting Mon..Fri (ISO 1..5).
-      for (var iso = 1; iso <= 5; iso++) {
-        await tester.ensureVisible(
-          find.byKey(ValueKey('service_period_editor_day_0_$iso')),
-        );
-        await tester.tap(
-          find.byKey(ValueKey('service_period_editor_day_0_$iso')),
-        );
-        await tester.pumpAndSettle();
-      }
+  testWidgets('tapping day chips before save emits filtered applicableDays', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeBusinessTimingGateway();
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(BusinessTimingEditorScreen(session: session, gateway: gateway)),
+    );
+    // Default seed has two periods (Lunch, Dinner). Restrict the
+    // first to weekends only by deselecting Mon..Fri (ISO 1..5).
+    for (var iso = 1; iso <= 5; iso++) {
       await tester.ensureVisible(
-        find.byKey(const Key('operator_web_business_timing_editor_save')),
+        find.byKey(ValueKey('service_period_editor_day_0_$iso')),
       );
       await tester.tap(
-        find.byKey(const Key('operator_web_business_timing_editor_save')),
+        find.byKey(ValueKey('service_period_editor_day_0_$iso')),
       );
       await tester.pumpAndSettle();
-      expect(gateway.creates, hasLength(1));
-      final create = gateway.creates.single;
-      expect(create.servicePeriods.first.applicableDays, <int>[6, 7]);
-      // Other period was untouched and still defaults to all 7.
-      expect(create.servicePeriods[1].applicableDays,
-          <int>[1, 2, 3, 4, 5, 6, 7]);
-    },
-  );
+    }
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.pumpAndSettle();
+    expect(gateway.creates, hasLength(1));
+    final create = gateway.creates.single;
+    expect(create.servicePeriods.first.applicableDays, <int>[6, 7]);
+    // Other period was untouched and still defaults to all 7.
+    expect(create.servicePeriods[1].applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
+  });
 }

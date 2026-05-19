@@ -72,6 +72,7 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -110,22 +111,27 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): QuickBooks Time
   // no longer reads `locations.business_day_rollover_hour`. The cutoff
   // is resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── CanonicalSink: covers / reservations are unsupported ─────────
@@ -198,12 +204,9 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    return withTenant<bool>(ctx, (exec) async {
+  }) async {
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
+    final inserted = await withTenant<bool>(ctx, (exec) async {
       return _upsertLaborPunchInternal(
         exec: exec,
         operatorId: operatorId,
@@ -211,6 +214,14 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
         canonicalPunch: canonicalPunch,
       );
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    }
+    return inserted;
   }
 
   // ─── QuickBooksTimeGateway: typed punch-fact write ────────────────
@@ -224,28 +235,37 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
   /// column NULL — Lane `.2`'s aggregator computes labor_dollars via
   /// rate × duration when both land.
   @override
-  Future<bool> writePunchFact(QuickBooksTimeCanonicalPunchFact fact) {
+  Future<bool> writePunchFact(QuickBooksTimeCanonicalPunchFact fact) async {
+    final canonicalPunch = <String, Object?>{
+      'vendor_entity_id': fact.vendorEntityId,
+      'vendor_modified_at': fact.vendorModifiedAt,
+      'shift_start': fact.shiftStart,
+      'shift_end': fact.shiftEnd,
+      'employee_source_id': fact.employeeId,
+      'role_name': fact.roleName,
+      'hours_worked': _deriveSeconds(fact.shiftStart, fact.shiftEnd),
+      'raw_payload': fact.rawPayload,
+    };
     final ctx = TenantContext(
       operatorId: fact.operatorId,
       locationId: fact.locationId,
     );
-    return withTenant<bool>(ctx, (exec) async {
+    final inserted = await withTenant<bool>(ctx, (exec) async {
       return _upsertLaborPunchInternal(
         exec: exec,
         operatorId: fact.operatorId,
         locationId: fact.locationId,
-        canonicalPunch: <String, Object?>{
-          'vendor_entity_id': fact.vendorEntityId,
-          'vendor_modified_at': fact.vendorModifiedAt,
-          'shift_start': fact.shiftStart,
-          'shift_end': fact.shiftEnd,
-          'employee_source_id': fact.employeeId,
-          'role_name': fact.roleName,
-          'hours_worked': _deriveSeconds(fact.shiftStart, fact.shiftEnd),
-          'raw_payload': fact.rawPayload,
-        },
+        canonicalPunch: canonicalPunch,
       );
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: fact.operatorId,
+        locationId: fact.locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    }
+    return inserted;
   }
 
   // ─── Shared private writer ────────────────────────────────────────
@@ -257,12 +277,16 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalPunch,
   }) async {
     final vendorEntityId = _requireString(canonicalPunch, 'vendor_entity_id');
-    final vendorModifiedAt =
-        _requireUtcInstant(canonicalPunch, 'vendor_modified_at');
+    final vendorModifiedAt = _requireUtcInstant(
+      canonicalPunch,
+      'vendor_modified_at',
+    );
     final shiftStart = _requireUtcInstant(canonicalPunch, 'shift_start');
     final shiftEnd = _readUtcInstant(canonicalPunch, 'shift_end');
-    final employeeSourceId =
-        _requireString(canonicalPunch, 'employee_source_id');
+    final employeeSourceId = _requireString(
+      canonicalPunch,
+      'employee_source_id',
+    );
     final roleName = _requireString(canonicalPunch, 'role_name');
     final hoursWorked = _requireNumber(canonicalPunch, 'hours_worked');
     final payRate = _readNumber(canonicalPunch, 'pay_rate');
@@ -281,8 +305,12 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       );
     }
 
-    final businessDate =
-        await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
+    final businessDate = await _resolveBusinessDate(
+      exec,
+      operatorId,
+      locationId,
+      shiftStart,
+    );
     final affected = await exec.execute(
       'insert into public.labor_punches ('
       'operator_id, location_id, '
@@ -350,10 +378,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String cursorToken,
     required DateTime lastModifiedSeen,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       await _writeWatermarkInternal(
         exec: exec,
@@ -373,10 +398,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<QuickBooksTimeWatermarkRow?>(ctx, (exec) async {
       final rows = await exec.query(
         'select cursor_token, last_modified_seen '
@@ -413,10 +435,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String locationId,
     required QuickBooksTimeWatermarkRow row,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final connectionId = await _resolveConnectionId(exec);
       if (connectionId == null) {
@@ -485,10 +504,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     int? recordsCount,
     Map<String, Object?>? payloadPreview,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       await exec.execute(
         'insert into public.connector_sync_log ('
@@ -538,10 +554,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
         backfillRecordsWritten < 1) {
       return Future<void>.value();
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       // INSERT default-demo row when missing, then flip is_demo only
       // when the row is still demo. The WHERE clause on the UPDATE
@@ -625,10 +638,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       // Wipe the credential ciphertext only; the watermark and
       // canonical-fact rows are intentionally preserved so reconnect
@@ -639,9 +649,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
         'and (location_id = public.app_current_location() '
         '  or location_id is null) '
         'and vendor_id = @vendor_id',
-        parameters: <String, Object?>{
-          'vendor_id': kQuickBooksTimeVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kQuickBooksTimeVendorId},
       );
     });
   }
@@ -651,10 +659,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select access_token_ciphertext '
@@ -666,9 +671,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
         'and is_active = true '
         'order by updated_at desc '
         'limit 1',
-        parameters: <String, Object?>{
-          'vendor_id': kQuickBooksTimeVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kQuickBooksTimeVendorId},
       );
       if (rows.isEmpty) return null;
       final value = rows.single['access_token_ciphertext'];
@@ -682,10 +685,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select metadata from public.connector_connection '
@@ -693,9 +693,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
         'and location_id = public.app_current_location() '
         'and vendor_id = @vendor_id '
         'limit 1',
-        parameters: <String, Object?>{
-          'vendor_id': kQuickBooksTimeVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kQuickBooksTimeVendorId},
       );
       if (rows.isEmpty) return null;
       final metadata = rows.single['metadata'];
@@ -727,9 +725,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       'and vendor_id = @vendor_id '
       'order by updated_at desc '
       'limit 1',
-      parameters: <String, Object?>{
-        'vendor_id': kQuickBooksTimeVendorId,
-      },
+      parameters: <String, Object?>{'vendor_id': kQuickBooksTimeVendorId},
     );
     if (rows.isEmpty) return null;
     final value = rows.single['connection_id'];
@@ -744,9 +740,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       'and location_id = public.app_current_location() '
       'and vendor_id = @vendor_id '
       'limit 1',
-      parameters: <String, Object?>{
-        'vendor_id': kQuickBooksTimeVendorId,
-      },
+      parameters: <String, Object?>{'vendor_id': kQuickBooksTimeVendorId},
     );
     if (rows.isEmpty) return null;
     final value = rows.single['module'];
@@ -839,11 +833,7 @@ class QuickBooksTimePostgresSink extends OperatorScopedRepository
       final parsed = num.tryParse(value);
       if (parsed != null) return parsed;
     }
-    throw ArgumentError.value(
-      value,
-      key,
-      'canonicalPunch.$key must be a num',
-    );
+    throw ArgumentError.value(value, key, 'canonicalPunch.$key must be a num');
   }
 
   static num? _readNumber(Map<String, Object?> map, String key) {

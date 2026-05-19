@@ -478,6 +478,22 @@ void main() {
       ];
       final client = _FakeSyncProxyClient()
         ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptDataAccuracySettings(
+          DataAccuracySettingsSnapshot(
+            operatorId: _opId,
+            locationId: _locId,
+            coversSourcePerServicePeriodSources: const {
+              'brunch': {
+                'scope_type': 'location',
+                'source_kind': 'scoped_override',
+                'scope_id': 'loc-scope-1',
+              },
+            },
+            coversManualEntries: const {},
+            wageSource: 'vendor',
+            updatedAt: DateTime.utc(2026, 5, 4, 12, 0),
+          ),
+        )
         ..scriptDataAccuracyServicePeriodSettings(keyedSettings);
 
       final sync = PostgresShiftRecordToMobileSync(
@@ -505,6 +521,14 @@ void main() {
       expect(
         sync.latestDataAccuracyServicePeriodSettings.first.wageSource,
         ServicePeriodWageSource.manualMix,
+      );
+      expect(
+        sync
+            .latestDataAccuracyServicePeriodSettings
+            .first
+            .coversSourceSource
+            ?.label,
+        'Location',
       );
     },
   );
@@ -778,6 +802,7 @@ void main() {
     expect(result.timingConfigSynced, isTrue);
     expect(result.openSnapshotPagesPulled, 2);
     expect(result.finalOpenSnapshotCursor, 'open-cursor-1');
+    expect(client.timingBusinessDatesObserved, <String?>['2026-05-04']);
     expect(
       invalidations.count,
       2,
@@ -1026,6 +1051,7 @@ class _FakeSyncProxyClient implements SyncProxyClient {
   final List<_OpenPage> _openPages = <_OpenPage>[];
   final List<String?> shiftCursorsObserved = <String?>[];
   final List<String?> openCursorsObserved = <String?>[];
+  final List<String?> timingBusinessDatesObserved = <String?>[];
   List<DemoModeRecord> _demoModeStates = const <DemoModeRecord>[];
   DataAccuracySettingsSnapshot? _dataAccuracySettings;
   List<DataAccuracyServicePeriodSetting> _dataAccuracyServicePeriodSettings =
@@ -1121,7 +1147,11 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
-  }) async => _timingConfig;
+    String? businessDate,
+  }) async {
+    timingBusinessDatesObserved.add(businessDate);
+    return _timingConfig;
+  }
 
   @override
   Future<List<DemoModeRecord>> fetchDemoModeStates({

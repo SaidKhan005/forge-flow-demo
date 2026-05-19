@@ -34,8 +34,10 @@ import 'package:forge_and_flow/auth/auth_session.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_context.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_source.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings/settings_data_sections.dart';
+import 'package:forge_and_flow/screens/settings/settings_timing_authority_section.dart';
 import 'package:forge_and_flow/screens/settings/settings_wage_authority_section.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/services/auth_login_service.dart';
@@ -116,15 +118,44 @@ const _rows = <WageRoleRow>[
   ),
 ];
 
-Widget _wageHarness({required bool viewOnly}) {
+Widget _wageHarness({required bool viewOnly, String? scopeLabel}) {
   return MaterialApp(
     home: Scaffold(
       body: SingleChildScrollView(
         child: WageAuthoritySection(
           onChanged: () {},
           viewOnly: viewOnly,
+          scopeLabel: scopeLabel,
           initialWageContextForTest: _ctx,
           initialRowsForTest: _rows,
+        ),
+      ),
+    ),
+  );
+}
+
+Widget _timingHarness({required String scopeLabel}) {
+  return MaterialApp(
+    home: Scaffold(
+      body: SingleChildScrollView(
+        child: TimingAuthoritySection(
+          restaurantId: 'demo_restaurant_001',
+          scopeLabel: scopeLabel,
+          initialConfigForTest: const RestaurantTimingConfig(
+            restaurantId: 'demo_restaurant_001',
+            businessTimezone: 'America/St_Johns',
+            businessDayStartLocalTime: '05:00',
+            weekStartDay: DateTime.monday,
+            servicePeriodDefinitions: [],
+            createdAt: '2026-05-15T00:00:00Z',
+            updatedAt: '2026-05-15T00:00:00Z',
+            selectedScopeType: 'location',
+            selectedScopeId: 'demo_restaurant_001',
+            sourceScopeType: 'org_unit',
+            sourceScopeId: 'district-1',
+            sourceScopeLabel: 'Metro District',
+            inheritedFromAncestor: true,
+          ),
         ),
       ),
     ),
@@ -134,54 +165,51 @@ Widget _wageHarness({required bool viewOnly}) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets(
-    'E — Setup keeps the Wage Setup control; Integrations keeps its '
-    'content but drops the descriptive sub-paragraph',
-    (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
+  testWidgets('E — Setup keeps the Wage Setup control; Integrations keeps its '
+      'content but drops the descriptive sub-paragraph', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
 
-      final notifier = _notifier();
-      await tester.pumpWidget(
-        _wrap(
-          notifier: notifier,
-          child: SettingsScreen(
-            initialStatus: AppDataStatus.current(),
-            teamActor: _ownerActor,
-          ),
+    final notifier = _notifier();
+    await tester.pumpWidget(
+      _wrap(
+        notifier: notifier,
+        child: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          teamActor: _ownerActor,
         ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-      // Setup tab (default) still mounts the Wage Setup control.
-      expect(
-        find.byType(WageAuthoritySection, skipOffstage: false),
-        findsOneWidget,
-      );
+    // Setup tab (default) still mounts the Wage Setup control.
+    expect(
+      find.byType(WageAuthoritySection, skipOffstage: false),
+      findsOneWidget,
+    );
 
-      // Integrations tab: section content remains, prose removed.
-      await tester.tap(find.byKey(const Key('settings_tab_integrations')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+    // Integrations tab: section content remains, prose removed.
+    await tester.tap(find.byKey(const Key('settings_tab_integrations')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-      expect(
-        find.byKey(
-          const Key('settings_integrations_section'),
-          skipOffstage: false,
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining(
-          'See which categories are still on demo data',
-          skipOffstage: false,
-        ),
-        findsNothing,
-      );
-    },
-  );
+    expect(
+      find.byKey(
+        const Key('settings_integrations_section'),
+        skipOffstage: false,
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining(
+        'See which categories are still on demo data',
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+  });
 
   testWidgets(
     'F — Wage Setup renders the restyled summary + HP #11 Source line + '
@@ -191,13 +219,20 @@ void main() {
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(_wageHarness(viewOnly: true));
+      await tester.pumpWidget(
+        _wageHarness(viewOnly: true, scopeLabel: 'Barrio Legado: St Johns'),
+      );
       await tester.pump();
 
       expect(
         find.byKey(const Key('settings_wage_setup_section')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('settings_wage_setup_scope_label')),
+        findsOneWidget,
+      );
+      expect(find.text('Applies to: Barrio Legado: St Johns'), findsOneWidget);
       expect(
         find.byKey(const Key('settings_wage_setup_summary_card')),
         findsOneWidget,
@@ -211,10 +246,7 @@ void main() {
       expect(find.text('Blended wage mix'), findsOneWidget);
       expect(find.text('\$17.25/hr'), findsOneWidget);
       // Effective front/back wage badges (HP #11 effective values).
-      expect(
-        find.text('Front of house · \$16.00/hr'),
-        findsOneWidget,
-      );
+      expect(find.text('Front of house · \$16.00/hr'), findsOneWidget);
       expect(find.text('Back of house · \$18.50/hr'), findsOneWidget);
 
       // Three labor-bucket cards.
@@ -239,23 +271,47 @@ void main() {
   );
 
   testWidgets(
-    'F — editable path still exposes the Edit wage mix control '
-    '(no control removed by the restyle)',
+    'F â€” Business Timing renders the selected scope before timing values',
     (tester) async {
-      tester.view.physicalSize = const Size(1080, 2400);
+      tester.view.physicalSize = const Size(1080, 1600);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.resetPhysicalSize);
 
-      await tester.pumpWidget(_wageHarness(viewOnly: false));
-      await tester.pump();
+      await tester.pumpWidget(
+        _timingHarness(scopeLabel: 'Barrio Legado: St Johns'),
+      );
+      await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('settings_wage_setup_section')),
+        find.byKey(const Key('settings_timing_authority_scope_label')),
         findsOneWidget,
       );
-      expect(find.text('Edit wage mix'), findsOneWidget);
+      expect(find.text('Applies to: Barrio Legado: St Johns'), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings_timing_authority_source_label')),
+        findsOneWidget,
+      );
+      expect(find.text('Inherited from: Metro District'), findsOneWidget);
+      expect(find.text('Timezone'), findsOneWidget);
+      expect(find.text('America/St_Johns'), findsOneWidget);
     },
   );
+
+  testWidgets('F — editable path still exposes the Edit wage mix control '
+      '(no control removed by the restyle)', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+
+    await tester.pumpWidget(_wageHarness(viewOnly: false));
+    await tester.pump();
+
+    expect(
+      find.byKey(const Key('settings_wage_setup_section')),
+      findsOneWidget,
+    );
+    expect(find.text('Edit wage mix'), findsOneWidget);
+  });
 
   testWidgets(
     'G — Data tab drops the section sub-paragraphs but keeps freshness '

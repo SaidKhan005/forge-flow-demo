@@ -2,7 +2,7 @@
 #
 # Durable staging/prod repair for the launch smoke accounts:
 #   * saidumarkhan005@gmail.com becomes the highest admin account.
-#   * newoundlandlimited@gmail.com is kept as a regular staff user.
+#   * newoundlandlimited@gmail.com is kept as a regular supervisor user.
 #
 # This script never stores credentials in the repo and never prints
 # connection strings. It expects POSTGRES_ADMIN_URL from the existing
@@ -161,11 +161,11 @@ declare
   regular_location_id uuid;
 
   admin_role_id uuid;
-  staff_role_id uuid;
-  staff_scope text;
+  supervisor_role_id uuid;
+  supervisor_scope text;
 
   regular_revoked integer := 0;
-  regular_staff_inserted integer := 0;
+  regular_supervisor_inserted integer := 0;
   regular_admin_deleted integer := 0;
   regular_user_bumped integer := 0;
   admin_grant_inserted integer := 0;
@@ -216,18 +216,18 @@ begin
   end if;
 
   select r.role_id
-    into staff_role_id
+    into supervisor_role_id
     from public.roles r
    where r.operator_id is null
-     and r.role_key = 'operator_staff'
+     and r.role_key = 'supervisor'
      and r.deleted_at is null
    limit 1;
 
-  if staff_role_id is null then
-    raise exception 'seeded role operator_staff was not found';
+  if supervisor_role_id is null then
+    raise exception 'seeded role supervisor was not found';
   end if;
 
-  staff_scope := case
+  supervisor_scope := case
     when regular_location_id is null then 'operator_wide'
     else 'location'
   end;
@@ -245,8 +245,10 @@ begin
        'super_admin',
        'ff_support',
        'operator_owner',
+       'operator_general_manager',
        'operator_manager',
-       'operator_supervisor'
+       'operator_supervisor',
+       'operator_staff'
      );
   get diagnostics regular_revoked = row_count;
 
@@ -268,15 +270,15 @@ begin
     )
     select gen_random_uuid(),
            regular_user_id,
-           staff_role_id,
+           supervisor_role_id,
            regular_operator_id,
            regular_location_id,
            null,
-           staff_scope,
+           supervisor_scope,
            now(),
            null,
            admin_user_id,
-           'launch account role enforcement: regular account staff role',
+           'launch account role enforcement: regular account supervisor role',
            now(),
            now()
      where not exists (
@@ -284,7 +286,7 @@ begin
          from public.user_roles existing
         where existing.user_id = regular_user_id
           and existing.operator_id = regular_operator_id
-          and existing.role_id = staff_role_id
+          and existing.role_id = supervisor_role_id
           and existing.revoked_at is null
           and coalesce(
             existing.location_id,
@@ -296,21 +298,21 @@ begin
      )
     returning 1
   )
-  select count(*) into regular_staff_inserted from inserted;
+  select count(*) into regular_supervisor_inserted from inserted;
 
   delete from public.operator_admins
    where user_id = regular_user_id;
   get diagnostics regular_admin_deleted = row_count;
 
   update public.users
-     set primary_role_id = staff_role_id,
+     set primary_role_id = supervisor_role_id,
          roles_version = roles_version + 1,
          updated_at = now()
    where user_id = regular_user_id
      and (
-       primary_role_id is distinct from staff_role_id
+       primary_role_id is distinct from supervisor_role_id
        or regular_revoked > 0
-       or regular_staff_inserted > 0
+       or regular_supervisor_inserted > 0
        or regular_admin_deleted > 0
      );
   get diagnostics regular_user_bumped = row_count;
@@ -406,14 +408,14 @@ begin
      );
   get diagnostics admin_user_bumped = row_count;
 
-  raise notice 'launch account roles enforced: admin %, regular %, operator %, admin grant inserts %, admin assignment changes %, regular admin revokes %, regular staff inserts %, regular admin deletes %, user bumps admin/regular %/%',
+  raise notice 'launch account roles enforced: admin %, regular %, operator %, admin grant inserts %, admin assignment changes %, regular admin revokes %, regular supervisor inserts %, regular admin deletes %, user bumps admin/regular %/%',
     admin_email,
     regular_email,
     regular_operator_id,
     admin_grant_inserted,
     admin_operator_changed,
     regular_revoked,
-    regular_staff_inserted,
+    regular_supervisor_inserted,
     regular_admin_deleted,
     admin_user_bumped,
     regular_user_bumped;

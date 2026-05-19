@@ -73,35 +73,40 @@ void main() {
       }
     });
 
-    test('lunch applies to weekdays 1-5 only', () async {
+    test('lunch applies to all days 1-7', () async {
       final repo = SqliteRestaurantTimingConfigRepository.instance;
       final config = await repo.getTimingConfig('demo_restaurant_001');
-      final lunch =
-          config!.servicePeriodDefinitions.firstWhere((d) => d.id == 'lunch');
-      expect(lunch.applicableDays, [1, 2, 3, 4, 5]);
+      final lunch = config!.servicePeriodDefinitions.firstWhere(
+        (d) => d.id == 'lunch',
+      );
+      expect(lunch.applicableDays, [1, 2, 3, 4, 5, 6, 7]);
       expect(lunch.rollsPastMidnight, isFalse);
     });
 
     test('dinner applies to all days 1-7', () async {
       final repo = SqliteRestaurantTimingConfigRepository.instance;
       final config = await repo.getTimingConfig('demo_restaurant_001');
-      final dinner =
-          config!.servicePeriodDefinitions.firstWhere((d) => d.id == 'dinner');
+      final dinner = config!.servicePeriodDefinitions.firstWhere(
+        (d) => d.id == 'dinner',
+      );
       expect(dinner.applicableDays, [1, 2, 3, 4, 5, 6, 7]);
       expect(dinner.rollsPastMidnight, isFalse);
     });
 
-    test('late_night applies to Fri-Sat (5-6) and rolls past midnight',
-        () async {
-      final repo = SqliteRestaurantTimingConfigRepository.instance;
-      final config = await repo.getTimingConfig('demo_restaurant_001');
-      final lateNight = config!.servicePeriodDefinitions
-          .firstWhere((d) => d.id == 'late_night');
-      expect(lateNight.applicableDays, [5, 6]);
-      expect(lateNight.rollsPastMidnight, isTrue);
-      expect(lateNight.startLocalTime, '23:00');
-      expect(lateNight.endLocalTime, '02:00');
-    });
+    test(
+      'late_night applies to Fri-Sat (5-6) and rolls past midnight',
+      () async {
+        final repo = SqliteRestaurantTimingConfigRepository.instance;
+        final config = await repo.getTimingConfig('demo_restaurant_001');
+        final lateNight = config!.servicePeriodDefinitions.firstWhere(
+          (d) => d.id == 'late_night',
+        );
+        expect(lateNight.applicableDays, [5, 6]);
+        expect(lateNight.rollsPastMidnight, isTrue);
+        expect(lateNight.startLocalTime, '23:00');
+        expect(lateNight.endLocalTime, '02:00');
+      },
+    );
 
     test('save and re-read preserves all definition fields', () async {
       final repo = SqliteRestaurantTimingConfigRepository.instance;
@@ -114,60 +119,105 @@ void main() {
       final reread = await repo.getTimingConfig('demo_restaurant_001');
 
       expect(reread, isNotNull);
-      expect(reread!.servicePeriodDefinitions.length,
-          original.servicePeriodDefinitions.length);
+      expect(
+        reread!.servicePeriodDefinitions.length,
+        original.servicePeriodDefinitions.length,
+      );
       for (var i = 0; i < original.servicePeriodDefinitions.length; i++) {
-        expect(reread.servicePeriodDefinitions[i],
-            original.servicePeriodDefinitions[i]);
+        expect(
+          reread.servicePeriodDefinitions[i],
+          original.servicePeriodDefinitions[i],
+        );
       }
     });
-  });
 
-  // ── C: Business timezone composed from RestaurantLocation ─────────────────
-
-  group('C — timezone composition', () {
-    test('businessTimezone comes from RestaurantLocation, not timing table',
-        () async {
-      final repo = SqliteRestaurantTimingConfigRepository.instance;
-      final config = await repo.getTimingConfig('demo_restaurant_001');
-      expect(config, isNotNull);
-      // America/St_Johns is the demo restaurant's timezone on RestaurantLocation
-      expect(config!.businessTimezone, 'America/St_Johns');
-    });
-
-    test('timing config table row does not contain a timezone column',
-        () async {
-      final db = await SqliteDatabase.instance.database;
-      final columns =
-          await db.rawQuery('PRAGMA table_info(restaurant_timing_configs)');
-      final colNames = columns.map((c) => c['name'] as String).toList();
-      expect(colNames, isNot(contains('business_timezone')));
-    });
-
-    test('save hydrates RestaurantLocation timezone from server config',
-        () async {
+    test('save and re-read preserves timing source provenance', () async {
       final repo = SqliteRestaurantTimingConfigRepository.instance;
       final original = await repo.getTimingConfig('demo_restaurant_001');
       expect(original, isNotNull);
 
       await repo.saveTimingConfig(
         RestaurantTimingConfig(
-          restaurantId: 'live-location-1',
-          businessTimezone: 'America/Toronto',
-          businessDayStartLocalTime: original!.businessDayStartLocalTime,
+          restaurantId: 'demo_restaurant_001',
+          businessTimezone: original!.businessTimezone,
+          businessDayStartLocalTime: original.businessDayStartLocalTime,
           weekStartDay: original.weekStartDay,
           servicePeriodDefinitions: original.servicePeriodDefinitions,
-          createdAt: '2026-05-07T00:00:00.000Z',
-          updatedAt: '2026-05-07T00:00:00.000Z',
+          createdAt: original.createdAt,
+          updatedAt: original.updatedAt,
+          selectedScopeType: 'location',
+          selectedScopeId: 'demo_restaurant_001',
+          sourceScopeType: 'org_unit',
+          sourceScopeId: 'district-1',
+          sourceScopeLabel: 'Metro District',
+          inheritedFromAncestor: true,
         ),
       );
-
       SqliteRestaurantTimingConfigRepository.instance.resetDao();
-      final saved = await repo.getTimingConfig('live-location-1');
+      final reread = await repo.getTimingConfig('demo_restaurant_001');
 
-      expect(saved, isNotNull);
-      expect(saved!.businessTimezone, 'America/Toronto');
+      expect(reread, isNotNull);
+      expect(reread!.selectedScopeType, 'location');
+      expect(reread.selectedScopeId, 'demo_restaurant_001');
+      expect(reread.sourceScopeType, 'org_unit');
+      expect(reread.sourceScopeId, 'district-1');
+      expect(reread.sourceScopeLabel, 'Metro District');
+      expect(reread.inheritedFromAncestor, isTrue);
     });
+  });
+
+  // ── C: Business timezone composed from RestaurantLocation ─────────────────
+
+  group('C — timezone composition', () {
+    test(
+      'businessTimezone comes from RestaurantLocation, not timing table',
+      () async {
+        final repo = SqliteRestaurantTimingConfigRepository.instance;
+        final config = await repo.getTimingConfig('demo_restaurant_001');
+        expect(config, isNotNull);
+        // America/St_Johns is the demo restaurant's timezone on RestaurantLocation
+        expect(config!.businessTimezone, 'America/St_Johns');
+      },
+    );
+
+    test(
+      'timing config table row does not contain a timezone column',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        final columns = await db.rawQuery(
+          'PRAGMA table_info(restaurant_timing_configs)',
+        );
+        final colNames = columns.map((c) => c['name'] as String).toList();
+        expect(colNames, isNot(contains('business_timezone')));
+      },
+    );
+
+    test(
+      'save hydrates RestaurantLocation timezone from server config',
+      () async {
+        final repo = SqliteRestaurantTimingConfigRepository.instance;
+        final original = await repo.getTimingConfig('demo_restaurant_001');
+        expect(original, isNotNull);
+
+        await repo.saveTimingConfig(
+          RestaurantTimingConfig(
+            restaurantId: 'live-location-1',
+            businessTimezone: 'America/Toronto',
+            businessDayStartLocalTime: original!.businessDayStartLocalTime,
+            weekStartDay: original.weekStartDay,
+            servicePeriodDefinitions: original.servicePeriodDefinitions,
+            createdAt: '2026-05-07T00:00:00.000Z',
+            updatedAt: '2026-05-07T00:00:00.000Z',
+          ),
+        );
+
+        SqliteRestaurantTimingConfigRepository.instance.resetDao();
+        final saved = await repo.getTimingConfig('live-location-1');
+
+        expect(saved, isNotNull);
+        expect(saved!.businessTimezone, 'America/Toronto');
+      },
+    );
   });
 
   // ── D: Runtime read seam works ────────────────────────────────────────────
@@ -222,8 +272,10 @@ void main() {
         ShiftCloseAuthority.fromValue('vendor_finalization'),
         ShiftCloseAuthority.vendorFinalization,
       );
-      expect(ShiftCloseAuthority.vendorFinalization.value,
-          'vendor_finalization');
+      expect(
+        ShiftCloseAuthority.vendorFinalization.value,
+        'vendor_finalization',
+      );
     });
 
     test('app_local_cutoff_fallback round-trips', () {
@@ -231,8 +283,10 @@ void main() {
         ShiftCloseAuthority.fromValue('app_local_cutoff_fallback'),
         ShiftCloseAuthority.appLocalCutoffFallback,
       );
-      expect(ShiftCloseAuthority.appLocalCutoffFallback.value,
-          'app_local_cutoff_fallback');
+      expect(
+        ShiftCloseAuthority.appLocalCutoffFallback.value,
+        'app_local_cutoff_fallback',
+      );
     });
 
     test('unknown value throws ArgumentError', () {
@@ -303,17 +357,21 @@ void main() {
   group('H — schema validation', () {
     test('restaurant_timing_configs table has expected columns', () async {
       final db = await SqliteDatabase.instance.database;
-      final columns =
-          await db.rawQuery('PRAGMA table_info(restaurant_timing_configs)');
+      final columns = await db.rawQuery(
+        'PRAGMA table_info(restaurant_timing_configs)',
+      );
       final colNames = columns.map((c) => c['name'] as String).toSet();
-      expect(colNames, containsAll([
-        'restaurant_id',
-        'business_day_start_local_time',
-        'week_start_day',
-        'service_period_definitions_json',
-        'created_at',
-        'updated_at',
-      ]));
+      expect(
+        colNames,
+        containsAll([
+          'restaurant_id',
+          'business_day_start_local_time',
+          'week_start_day',
+          'service_period_definitions_json',
+          'created_at',
+          'updated_at',
+        ]),
+      );
       // Per-Daypart V1 Slice 1.5: `shift_close_authority` +
       // `local_close_fallback` dropped (operator decision 2026-05-15).
       expect(colNames, isNot(contains('shift_close_authority')));
@@ -324,99 +382,105 @@ void main() {
   // ── I: No demo-timezone fallback ─────────────────────────────────────────
 
   group('I — no demo-timezone fallback', () {
-    test('returns null when timing row exists but restaurant location is missing',
-        () async {
-      final db = await SqliteDatabase.instance.database;
+    test(
+      'returns null when timing row exists but restaurant location is missing',
+      () async {
+        final db = await SqliteDatabase.instance.database;
 
-      // Insert a timing-config row for a restaurant that has no location row.
-      await db.insert('restaurant_timing_configs', {
-        'restaurant_id': 'orphan_restaurant',
-        'business_day_start_local_time': '04:00',
-        'week_start_day': 1,
-        'service_period_definitions_json': '[]',
-        'created_at': '2026-04-13T00:00:00Z',
-        'updated_at': '2026-04-13T00:00:00Z',
-      });
+        // Insert a timing-config row for a restaurant that has no location row.
+        await db.insert('restaurant_timing_configs', {
+          'restaurant_id': 'orphan_restaurant',
+          'business_day_start_local_time': '04:00',
+          'week_start_day': 1,
+          'service_period_definitions_json': '[]',
+          'created_at': '2026-04-13T00:00:00Z',
+          'updated_at': '2026-04-13T00:00:00Z',
+        });
 
-      final repo = SqliteRestaurantTimingConfigRepository.instance;
-      repo.resetDao();
-      final config = await repo.getTimingConfig('orphan_restaurant');
+        final repo = SqliteRestaurantTimingConfigRepository.instance;
+        repo.resetDao();
+        final config = await repo.getTimingConfig('orphan_restaurant');
 
-      // Must return null — no demo-timezone fallback.
-      expect(config, isNull);
-    });
+        // Must return null — no demo-timezone fallback.
+        expect(config, isNull);
+      },
+    );
 
-    test('demo restaurant still resolves because its location row exists',
-        () async {
-      final repo = SqliteRestaurantTimingConfigRepository.instance;
-      final config = await repo.getTimingConfig('demo_restaurant_001');
-      expect(config, isNotNull);
-      expect(config!.businessTimezone, 'America/St_Johns');
-    });
+    test(
+      'demo restaurant still resolves because its location row exists',
+      () async {
+        final repo = SqliteRestaurantTimingConfigRepository.instance;
+        final config = await repo.getTimingConfig('demo_restaurant_001');
+        expect(config, isNotNull);
+        expect(config!.businessTimezone, 'America/St_Johns');
+      },
+    );
   });
 
   // ── J: Service-period canonicalization ────────────────────────────────────
 
   group('J — service-period canonicalization', () {
-    test('unordered definitions are persisted in canonical sortOrder/id order',
-        () async {
-      final repo = SqliteRestaurantTimingConfigRepository.instance;
+    test(
+      'unordered definitions are persisted in canonical sortOrder/id order',
+      () async {
+        final repo = SqliteRestaurantTimingConfigRepository.instance;
 
-      // Build definitions deliberately out of canonical order.
-      const defs = [
-        ServicePeriodDefinition(
-          id: 'dinner',
-          label: 'Dinner',
-          shortLabel: 'D',
-          sortOrder: 1,
-          startLocalTime: '17:00',
-          endLocalTime: '23:00',
-          rollsPastMidnight: false,
-          applicableDays: [1, 2, 3, 4, 5, 6, 7],
-        ),
-        ServicePeriodDefinition(
-          id: 'lunch',
-          label: 'Lunch',
-          shortLabel: 'L',
-          sortOrder: 0,
-          startLocalTime: '11:00',
-          endLocalTime: '15:00',
-          rollsPastMidnight: false,
-          applicableDays: [1, 2, 3, 4, 5],
-        ),
-        ServicePeriodDefinition(
-          id: 'late_night',
-          label: 'Late Night',
-          shortLabel: 'LN',
-          sortOrder: 2,
-          startLocalTime: '23:00',
-          endLocalTime: '02:00',
-          rollsPastMidnight: true,
-          applicableDays: [5, 6],
-        ),
-      ];
+        // Build definitions deliberately out of canonical order.
+        const defs = [
+          ServicePeriodDefinition(
+            id: 'dinner',
+            label: 'Dinner',
+            shortLabel: 'D',
+            sortOrder: 1,
+            startLocalTime: '17:00',
+            endLocalTime: '23:00',
+            rollsPastMidnight: false,
+            applicableDays: [1, 2, 3, 4, 5, 6, 7],
+          ),
+          ServicePeriodDefinition(
+            id: 'lunch',
+            label: 'Lunch',
+            shortLabel: 'L',
+            sortOrder: 0,
+            startLocalTime: '11:00',
+            endLocalTime: '15:00',
+            rollsPastMidnight: false,
+            applicableDays: [1, 2, 3, 4, 5],
+          ),
+          ServicePeriodDefinition(
+            id: 'late_night',
+            label: 'Late Night',
+            shortLabel: 'LN',
+            sortOrder: 2,
+            startLocalTime: '23:00',
+            endLocalTime: '02:00',
+            rollsPastMidnight: true,
+            applicableDays: [5, 6],
+          ),
+        ];
 
-      // Save with dinner first (out of order).
-      final config = RestaurantTimingConfig(
-        restaurantId: 'demo_restaurant_001',
-        businessTimezone: 'America/St_Johns',
-        businessDayStartLocalTime: '04:00',
-        weekStartDay: 1,
-        servicePeriodDefinitions: defs,
-        createdAt: '2026-04-13T00:00:00Z',
-        updatedAt: '2026-04-13T00:00:00Z',
-      );
-      await repo.saveTimingConfig(config);
-      repo.resetDao();
+        // Save with dinner first (out of order).
+        final config = RestaurantTimingConfig(
+          restaurantId: 'demo_restaurant_001',
+          businessTimezone: 'America/St_Johns',
+          businessDayStartLocalTime: '04:00',
+          weekStartDay: 1,
+          servicePeriodDefinitions: defs,
+          createdAt: '2026-04-13T00:00:00Z',
+          updatedAt: '2026-04-13T00:00:00Z',
+        );
+        await repo.saveTimingConfig(config);
+        repo.resetDao();
 
-      final reread = await repo.getTimingConfig('demo_restaurant_001');
-      expect(reread, isNotNull);
+        final reread = await repo.getTimingConfig('demo_restaurant_001');
+        expect(reread, isNotNull);
 
-      // Canonical order: lunch (sort 0), dinner (sort 1), late_night (sort 2).
-      expect(reread!.servicePeriodDefinitions[0].id, 'lunch');
-      expect(reread.servicePeriodDefinitions[1].id, 'dinner');
-      expect(reread.servicePeriodDefinitions[2].id, 'late_night');
-    });
+        // Canonical order: lunch (sort 0), dinner (sort 1), late_night (sort 2).
+        expect(reread!.servicePeriodDefinitions[0].id, 'lunch');
+        expect(reread.servicePeriodDefinitions[1].id, 'dinner');
+        expect(reread.servicePeriodDefinitions[2].id, 'late_night');
+      },
+    );
 
     test('same-sortOrder definitions break tie by id alphabetically', () async {
       final repo = SqliteRestaurantTimingConfigRepository.instance;
@@ -475,11 +539,15 @@ void main() {
       final reread = await repo.getTimingConfig('demo_restaurant_001');
 
       expect(reread, isNotNull);
-      expect(reread!.servicePeriodDefinitions.length,
-          original.servicePeriodDefinitions.length);
+      expect(
+        reread!.servicePeriodDefinitions.length,
+        original.servicePeriodDefinitions.length,
+      );
       for (var i = 0; i < original.servicePeriodDefinitions.length; i++) {
-        expect(reread.servicePeriodDefinitions[i],
-            original.servicePeriodDefinitions[i]);
+        expect(
+          reread.servicePeriodDefinitions[i],
+          original.servicePeriodDefinitions[i],
+        );
       }
     });
   });

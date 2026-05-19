@@ -39,10 +39,33 @@ void main() {
   final pinnedClock = DateTime.utc(2026, 5, 5, 18);
 
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
+
+  test('demo audit payloads use current v2 role ids', () {
+    const retiredRoleFragments = <String>{
+      'operator_admin',
+      'operator_manager',
+      'operator_supervisor',
+      'operator_staff',
+      'role-operator-manager',
+      'role-operator-supervisor',
+      'role-operator-staff',
+    };
+
+    for (final entry in kDemoAuditLogEntriesFixture) {
+      final payloadText = entry.payload.toString();
+      for (final retired in retiredRoleFragments) {
+        expect(
+          payloadText,
+          isNot(contains(retired)),
+          reason: '${entry.entryId} should not expose retired role $retired',
+        );
+      }
+    }
+  });
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -56,18 +79,17 @@ void main() {
   OperatorWebSession sessionWithRole(
     String role, {
     Set<String> permissions = const <String>{},
-  }) =>
-      OperatorWebSession(
-        uid: 'demo-user-owner',
-        email: 'sam.owner@demobistro.test',
-        displayName: 'Sam Patel',
-        operatorId: kDemoOperatorIdFixture,
-        businessName: kDemoOperatorBusinessNameFixture,
-        primaryLocationId: 'demo-loc-downtown',
-        primaryLocationName: 'Downtown',
-        roles: <String>[role],
-        permissions: permissions,
-      );
+  }) => OperatorWebSession(
+    uid: 'demo-user-owner',
+    email: 'sam.owner@demobistro.test',
+    displayName: 'Sam Patel',
+    operatorId: kDemoOperatorIdFixture,
+    businessName: kDemoOperatorBusinessNameFixture,
+    primaryLocationId: 'demo-loc-downtown',
+    primaryLocationName: 'Downtown',
+    roles: <String>[role],
+    permissions: permissions,
+  );
 
   Future<WebTeamAuditLogGateway> pumpScreen(
     WidgetTester tester, {
@@ -76,8 +98,7 @@ void main() {
     String Function()? idempotencyKeyFactory,
     Future<void> Function(String value)? copyToClipboard,
   }) async {
-    final resolved =
-        gateway ?? DemoWebTeamAuditLogGateway(clock: pinnedClock);
+    final resolved = gateway ?? DemoWebTeamAuditLogGateway(clock: pinnedClock);
     await tester.pumpWidget(
       wrap(
         AuditLogScreen(
@@ -93,8 +114,9 @@ void main() {
   }
 
   group('AuditLogScreen layout', () {
-    testWidgets('operator_owner sees the screen with filters and rows',
-        (tester) async {
+    testWidgets('operator_owner sees the screen with filters and rows', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1600));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -168,8 +190,9 @@ void main() {
   });
 
   group('Action filter', () {
-    testWidgets('selecting team.users.invite narrows the list to invite rows',
-        (tester) async {
+    testWidgets('selecting team.users.invite narrows the list to invite rows', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1600));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -195,8 +218,9 @@ void main() {
   });
 
   group('Pagination', () {
-    testWidgets('cursor pagination 200/page sorted by created_at DESC',
-        (tester) async {
+    testWidgets('cursor pagination 200/page sorted by created_at DESC', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1600));
       // Tiny page size so the test exercises load-more without
       // scaling the fixture set.
@@ -233,8 +257,9 @@ void main() {
   });
 
   group('Row rendering', () {
-    testWidgets('action label is humanized via WebAuditLogActionLabels',
-        (tester) async {
+    testWidgets('action label is humanized via WebAuditLogActionLabels', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1600));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -286,8 +311,9 @@ void main() {
       }
     });
 
-    testWidgets('payload toggle expands and shows the JSON body',
-        (tester) async {
+    testWidgets('payload toggle expands and shows the JSON body', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1600));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -300,9 +326,7 @@ void main() {
       );
       await tester.tap(
         find.byKey(
-          const Key(
-            'operator_web_audit_log_row_demo-audit-002_payload_toggle',
-          ),
+          const Key('operator_web_audit_log_row_demo-audit-002_payload_toggle'),
         ),
       );
       await tester.pumpAndSettle();
@@ -317,8 +341,9 @@ void main() {
 
   group('Time window filter', () {
     testWidgets('Custom range chip renders so the locked filter set is '
-        'complete (parity contract: time_window includes custom range)',
-        (tester) async {
+        'complete (parity contract: time_window includes custom range)', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1600));
       await pumpScreen(tester, session: sessionWithRole('operator_owner'));
 
@@ -347,8 +372,7 @@ void main() {
 
   group('CSV export', () {
     testWidgets('export writes its own audit.export.requested row and threads '
-        'the screen-supplied idempotency key into the gateway',
-        (tester) async {
+        'the screen-supplied idempotency key into the gateway', (tester) async {
       await sizeViewport(tester, const Size(1280, 1600));
       final gateway = DemoWebTeamAuditLogGateway(clock: pinnedClock);
       final clipboardWrites = <String>[];
@@ -430,7 +454,7 @@ void main() {
 /// test can exercise load-more without inflating the fixture set.
 class _SmallPageGateway implements WebTeamAuditLogGateway {
   _SmallPageGateway({required DateTime pinnedClock, required this.pageSize})
-      : _delegate = DemoWebTeamAuditLogGateway(clock: pinnedClock);
+    : _delegate = DemoWebTeamAuditLogGateway(clock: pinnedClock);
 
   final DemoWebTeamAuditLogGateway _delegate;
   final int pageSize;

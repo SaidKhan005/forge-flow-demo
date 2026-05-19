@@ -40,7 +40,7 @@ Provider can be swapped via the `EmailProvider<T>` abstraction (mirrors `LLMProv
 - `email_outbox` table — durable email queue with retry/idempotency (mirrors `event_outbox` pattern from Phase 10a).
 - `email_event` table — delivery tracking from SendGrid webhooks.
 - Domain authentication setup: DKIM + SPF + DMARC records on `mail.forgeflow.app` subdomain.
-- Email templates: `operator_invite_first_admin`, `operator_admin_invite`, `password_reset_request`, `mfa_factor_changed_notice`, `vendor_sync_error_alert`, `vendor_webhook_signature_alert`, `vendor_connection_auto_disabled`, `tos_version_updated_notice`. Templates rendered from Markdown to HTML at send time; brand-styled wrapper.
+- Email templates: `operator_invite_first_admin`, `operator_member_invite`, `password_reset_request`, `mfa_factor_changed_notice`, `vendor_sync_error_alert`, `vendor_webhook_signature_alert`, `vendor_connection_auto_disabled`, `tos_version_updated_notice`. Templates rendered from Markdown to HTML at send time; brand-styled wrapper. Supersession note: `operator_admin_invite` was the old template name; active role language uses operator owner/manager/member.
 - Phase 11A.4 integration: SendGrid API key visible in "Connected services" tab as a rotatable provider key (alongside Anthropic, Voyage, Azure DB, Gemini).
 
 Does not own:
@@ -88,7 +88,7 @@ email_event (
 | Template ID | Subject pattern | Trigger |
 |---|---|---|
 | `operator_invite_first_admin` | "Welcome to Forge & Flow — set up your account" | Phase 11A.1 operator creation |
-| `operator_admin_invite` | "{{Inviter}} invited you to join {{Business}}" | Phase 11W.1.write member invite |
+| `operator_member_invite` | "{{Inviter}} invited you to join {{Business}}" | Phase 11W.1.write member invite |
 | `password_reset_request` | "Reset your Forge & Flow password" | Phase 9 password reset |
 | `mfa_factor_changed_notice` | "Your Forge & Flow MFA has been updated" | Phase 9 MFA enroll/remove |
 | `vendor_sync_error_alert` | "Forge & Flow couldn't sync from {{Vendor}}" | Connector status `error` ≥ 1h |

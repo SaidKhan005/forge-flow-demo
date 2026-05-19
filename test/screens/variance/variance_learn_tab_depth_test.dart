@@ -56,19 +56,19 @@ const _ctx = LearnBenchmarkContext(
 );
 
 WeekRecord _stubWeek(String id) => WeekRecord(
-      weekId: id,
-      weekLabel: id,
-      totalCovers: 1000,
-      forecastCovers: 1000,
-      totalFohHours: 200,
-      totalBohHours: 200,
-      avgPPA: 42,
-      avgCPLH: 4.5,
-      theoreticalLaborPct: 20.0,
-      actualLaborPct: 20.0,
-      dollarGap: 0,
-      primaryLeverId: 'on_model',
-    );
+  weekId: id,
+  weekLabel: id,
+  totalCovers: 1000,
+  forecastCovers: 1000,
+  totalFohHours: 200,
+  totalBohHours: 200,
+  avgPPA: 42,
+  avgCPLH: 4.5,
+  theoreticalLaborPct: 20.0,
+  actualLaborPct: 20.0,
+  dollarGap: 0,
+  primaryLeverId: 'on_model',
+);
 
 HistoryPatternRecord _r({
   required String week,
@@ -76,37 +76,55 @@ HistoryPatternRecord _r({
   required String daypart,
   required String leverId,
   bool isBenchmark = false,
-}) =>
-    HistoryPatternRecord(
-      weekId: week,
-      weekLabel: week,
-      dayLabel: day,
-      daypart: daypart,
-      leverId: leverId,
-      isBenchmark: isBenchmark,
-    );
+}) => HistoryPatternRecord(
+  weekId: week,
+  weekLabel: week,
+  dayLabel: day,
+  daypart: daypart,
+  leverId: leverId,
+  isBenchmark: isBenchmark,
+);
 
-// Builds a closed-shift fixture of [n] rows. Only `isClosed` and the
-// list length matter for the LearnTab loader (the closed-shift list
-// is the coverage denominator).
-List<ShiftRecord> _stubClosedShifts(int n) => List.generate(
-      n,
-      (i) => ShiftRecord(
-        weekId: 'W${(i ~/ 4) + 1}',
-        dayLabel: 'D$i',
-        daypart: 'lunch',
-        status: 'closed',
-        covers: 100,
-        forecastCovers: 100,
-        ppa: 42,
-        cplh: 4.5,
-        splh: 180,
-        fohHours: 10,
-        bohHours: 10,
-        primaryLever: 'on_model',
-        businessDate: '2026-03-${(10 + i).toString().padLeft(2, '0')}',
-      ),
-    );
+// Builds a closed-shift fixture of [n] rows. The first six rows carry
+// the recurring Tue Lunch leak the LearnTab now derives directly from
+// closed shifts; the full list is still the coverage denominator.
+List<ShiftRecord> _stubClosedShifts(int n) => List.generate(n, (i) {
+  final isRecurringLeak = i < 6;
+  return ShiftRecord(
+    weekId: isRecurringLeak ? 'W${i + 1}' : 'W${(i ~/ 4) + 1}',
+    dayLabel: isRecurringLeak ? 'Tue' : 'D$i',
+    daypart: 'lunch',
+    status: 'closed',
+    covers: 100,
+    forecastCovers: 100,
+    ppa: 42,
+    cplh: 4.5,
+    splh: 180,
+    fohHours: 10,
+    bohHours: 10,
+    primaryLever: isRecurringLeak ? 'covers_down' : 'on_model',
+    businessDate: '2026-03-${(10 + i).toString().padLeft(2, '0')}',
+  );
+});
+
+List<ShiftRecord> _brunchWinShifts() => List.generate(
+  2,
+  (i) => ShiftRecord(
+    weekId: 'W${i + 1}',
+    dayLabel: 'Sat',
+    daypart: 'brunch',
+    status: 'closed',
+    covers: 100,
+    forecastCovers: 100,
+    ppa: 48,
+    cplh: 5.1,
+    splh: 190,
+    fohHours: 10,
+    bohHours: 10,
+    primaryLever: 'PPA_UP',
+    businessDate: '2026-03-${(20 + i).toString().padLeft(2, '0')}',
+  ),
+);
 
 class _FakeShiftDataSource implements ShiftDataSource {
   final List<HistoryPatternRecord> patterns;
@@ -136,25 +154,39 @@ class _FakeShiftDataSource implements ShiftDataSource {
 }
 
 Widget _harness(_FakeShiftDataSource source) => MaterialApp(
-      home: Scaffold(
-        body: Provider<ShiftDataSource>(
-          create: (_) => source,
-          child: const LearnTab(),
-        ),
-      ),
-    );
+  home: Scaffold(
+    body: Provider<ShiftDataSource>(
+      create: (_) => source,
+      child: const LearnTab(),
+    ),
+  ),
+);
+
+Future<void> _pumpLearnReady(WidgetTester tester) async {
+  await tester.pump();
+  for (var i = 0; i < 30; i++) {
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+    });
+    await tester.pump(const Duration(milliseconds: 50));
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) {
+      break;
+    }
+  }
+  await tester.pump(const Duration(milliseconds: 350));
+}
 
 // Single-axis recurring leak fixture: covers_down recurring across 6
 // weeks in Tue Lunch. `summary.hasHistoryPatterns` is true so the
 // Recurring Leak section renders its 3-frame story.
 List<HistoryPatternRecord> _recurringLeakPatterns() => <HistoryPatternRecord>[
-      _r(week: 'W1', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
-      _r(week: 'W2', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
-      _r(week: 'W3', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
-      _r(week: 'W4', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
-      _r(week: 'W5', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
-      _r(week: 'W6', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
-    ];
+  _r(week: 'W1', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
+  _r(week: 'W2', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
+  _r(week: 'W3', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
+  _r(week: 'W4', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
+  _r(week: 'W5', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
+  _r(week: 'W6', day: 'Tue', daypart: 'lunch', leverId: 'covers_down'),
+];
 
 // --- Tests -----------------------------------------------------------------
 
@@ -168,8 +200,9 @@ void main() {
   });
 
   group('V2-5 - the Learn rail keeps all three sections', () {
-    testWidgets('Recurring Leak / Repeatable Wins / Cross-Axis all render',
-        (tester) async {
+    testWidgets('Recurring Leak / Repeatable Wins / Cross-Axis all render', (
+      tester,
+    ) async {
       final source = _FakeShiftDataSource(
         patterns: _recurringLeakPatterns(),
         closedShifts: _stubClosedShifts(12),
@@ -177,7 +210,7 @@ void main() {
       );
 
       await tester.pumpWidget(_harness(source));
-      await tester.pumpAndSettle();
+      await _pumpLearnReady(tester);
 
       // The rail preserves all three buttons in mockup order; none is
       // dropped or conditionally swapped out.
@@ -199,23 +232,17 @@ void main() {
         );
 
         await tester.pumpWidget(_harness(source));
-        await tester.pumpAndSettle();
+        await _pumpLearnReady(tester);
 
         // Frame 1 step label.
         expect(find.text('FRAME 1 · WHAT HAPPENED'), findsOneWidget);
         // Heading is the V2-1 sentence-case LeverCardData.metric for
         // `covers_down` - NOT uppercased.
-        expect(
-          find.text(LeverCards.coversDown.metric),
-          findsOneWidget,
-        );
+        expect(find.text(LeverCards.coversDown.metric), findsOneWidget);
         expect(LeverCards.coversDown.metric, 'Covers came in light');
         // Frame-1 caption: count = 6, coverage = 12, 'Tue Lunch' ->
         // 'Tue Lunches'.
-        expect(
-          find.text('Repeated 6 of last 12 Tue Lunches'),
-          findsOneWidget,
-        );
+        expect(find.text('Repeated 6 of last 12 Tue Lunches'), findsOneWidget);
       },
     );
 
@@ -229,46 +256,57 @@ void main() {
         );
 
         await tester.pumpWidget(_harness(source));
-        await tester.pumpAndSettle();
+        await _pumpLearnReady(tester);
 
         // Swipe to frame 2.
-        await tester.drag(
-          find.byType(PageView),
-          const Offset(-400, 0),
-        );
-        await tester.pumpAndSettle();
+        await tester.drag(find.byType(PageView), const Offset(-400, 0));
+        await _pumpLearnReady(tester);
         expect(find.text('FRAME 2 · WHY IT MATTERS'), findsOneWidget);
 
         // Swipe to frame 3 (the action / THE PLAY frame).
-        await tester.drag(
-          find.byType(PageView),
-          const Offset(-400, 0),
-        );
-        await tester.pumpAndSettle();
+        await tester.drag(find.byType(PageView), const Offset(-400, 0));
+        await _pumpLearnReady(tester);
         expect(find.text('FRAME 3 · WHAT TO DO'), findsOneWidget);
         expect(find.text('THE PLAY'), findsOneWidget);
       },
     );
 
-    testWidgets(
-      'leak caption omitted (honest fallback) when coverage is 0',
-      (tester) async {
-        // No recurring patterns AND no closed shifts: the Recurring
-        // Leak section falls back to the honest "Leaks will surface
-        // here" card and the coverage caption never renders.
-        final source = _FakeShiftDataSource(
-          patterns: const [],
-          closedShifts: const [],
-          weeks: const [],
-        );
+    testWidgets('Repeatable Wins caption pluralizes custom periods', (
+      tester,
+    ) async {
+      final source = _FakeShiftDataSource(
+        patterns: const [],
+        closedShifts: _brunchWinShifts(),
+        weeks: [_stubWeek('W1'), _stubWeek('W2')],
+      );
 
-        await tester.pumpWidget(_harness(source));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(_harness(source));
+      await _pumpLearnReady(tester);
 
-        expect(find.textContaining('Repeated'), findsNothing);
-        expect(find.text('Leaks will surface here'), findsOneWidget);
-      },
-    );
+      await tester.tap(find.text('Repeatable Wins'));
+      await _pumpLearnReady(tester);
+
+      expect(find.text('In the zone 2 of last 2 Sat brunches'), findsOneWidget);
+    });
+
+    testWidgets('leak caption omitted (honest fallback) when coverage is 0', (
+      tester,
+    ) async {
+      // No recurring patterns AND no closed shifts: the Recurring
+      // Leak section falls back to the honest "Leaks will surface
+      // here" card and the coverage caption never renders.
+      final source = _FakeShiftDataSource(
+        patterns: const [],
+        closedShifts: const [],
+        weeks: const [],
+      );
+
+      await tester.pumpWidget(_harness(source));
+      await _pumpLearnReady(tester);
+
+      expect(find.textContaining('Repeated'), findsNothing);
+      expect(find.text('Leaks will surface here'), findsOneWidget);
+    });
   });
 
   group('V2-5 - Cross-Axis is its own 4-pair section', () {
@@ -283,10 +321,10 @@ void main() {
         );
 
         await tester.pumpWidget(_harness(source));
-        await tester.pumpAndSettle();
+        await _pumpLearnReady(tester);
 
         await tester.tap(find.text('Cross-Axis'));
-        await tester.pumpAndSettle();
+        await _pumpLearnReady(tester);
 
         // First pair card: metric heading + axis badge + the three
         // labelled blocks (What happened / What to do / What to study).
@@ -308,36 +346,32 @@ void main() {
     );
   });
 
-  group(
-      'Hard gate #4 - em-dash hygiene on '
+  group('Hard gate #4 - em-dash hygiene on '
       '`lib/screens/variance/variance_learn_tab.dart`', () {
-    test(
-      'no em dash (U+2014) in operator-facing string literals',
-      () {
-        final source = File(
-          'lib/screens/variance/variance_learn_tab.dart',
-        ).readAsStringSync();
-        // Strip single-line comments: the hard gate bans em dashes in
-        // OPERATOR-FACING COPY (string literals), not documentation.
-        final withoutLineComments = source
-            .split('\n')
-            .map((line) {
-              final idx = line.indexOf('//');
-              return idx >= 0 ? line.substring(0, idx) : line;
-            })
-            .join('\n');
-        final stringLiteralRe = RegExp(r"'([^'\\]*(?:\\.[^'\\]*)*)'");
-        for (final m in stringLiteralRe.allMatches(withoutLineComments)) {
-          final body = m.group(1) ?? '';
-          expect(
-            body.contains('—'),
-            isFalse,
-            reason:
-                'Em dash (U+2014) leaked into a string literal: \'$body\'. '
-                'Use period, colon, or middot instead.',
-          );
-        }
-      },
-    );
+    test('no em dash (U+2014) in operator-facing string literals', () {
+      final source = File(
+        'lib/screens/variance/variance_learn_tab.dart',
+      ).readAsStringSync();
+      // Strip single-line comments: the hard gate bans em dashes in
+      // OPERATOR-FACING COPY (string literals), not documentation.
+      final withoutLineComments = source
+          .split('\n')
+          .map((line) {
+            final idx = line.indexOf('//');
+            return idx >= 0 ? line.substring(0, idx) : line;
+          })
+          .join('\n');
+      final stringLiteralRe = RegExp(r"'([^'\\]*(?:\\.[^'\\]*)*)'");
+      for (final m in stringLiteralRe.allMatches(withoutLineComments)) {
+        final body = m.group(1) ?? '';
+        expect(
+          body.contains('—'),
+          isFalse,
+          reason:
+              'Em dash (U+2014) leaked into a string literal: \'$body\'. '
+              'Use period, colon, or middot instead.',
+        );
+      }
+    });
   });
 }

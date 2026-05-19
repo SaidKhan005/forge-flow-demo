@@ -60,6 +60,7 @@ import '../../../integrations/reservation/sevenrooms_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -91,16 +92,20 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): SevenRooms no
   // longer reads `locations.business_day_rollover_hour`. The cutoff is
@@ -112,6 +117,7 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
   // but the sink ignores `businessDayRolloverHour` and routes through
   // the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── SevenRoomsReservationGateway: connection lookups ─────────────
@@ -159,8 +165,10 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) async {
-    final binding =
-        await lookupBinding(operatorId: operatorId, locationId: locationId);
+    final binding = await lookupBinding(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     if (binding == null) return null;
     return SevenRoomsDisconnectBinding(
       connectionId: binding.connectionId,
@@ -289,8 +297,10 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
       restaurantTimezone: restaurantTimezone,
       instantUtc: reservationAtUtc.toUtc(),
     );
+    final businessDateIso = _formatDate(businessDate);
     final transitionsIso = statusTransitions.map(
-      (key, value) => MapEntry<String, String>(key, value.toUtc().toIso8601String()),
+      (key, value) =>
+          MapEntry<String, String>(key, value.toUtc().toIso8601String()),
     );
     final rawPayload = <String, Object?>{
       'vendor_id': kSevenRoomsVendorId,
@@ -301,7 +311,7 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
       'status': status.name,
       'status_transitions': transitionsIso,
     };
-    return withTenant<bool>(tenant, (exec) async {
+    final inserted = await withTenant<bool>(tenant, (exec) async {
       return _insertReservationFact(
         exec: exec,
         operatorId: tenant.operatorId,
@@ -318,6 +328,25 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
         rawPayload: rawPayload,
       );
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedReservationFact(
+        operatorId: tenant.operatorId,
+        locationId: tenant.locationId,
+        canonicalReservation: <String, Object?>{
+          'connection_id': connectionId,
+          'vendor_id': kSevenRoomsVendorId,
+          'vendor_entity_id': vendorEntityId,
+          'vendor_modified_at': vendorModifiedAtUtc.toUtc(),
+          'reservation_at': reservationAtUtc.toUtc(),
+          'business_date': businessDateIso,
+          'party_size': partySize,
+          'status': status.name,
+          'status_transitions': statusTransitions,
+          'raw_payload': rawPayload,
+        },
+      );
+    }
+    return inserted;
   }
 
   Future<bool> _insertReservationFact({
@@ -546,36 +575,31 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
   /// `connectionId`, so this lookup is the seam that recovers the
   /// tenant pair before the actual write runs under
   /// [OperatorScopedRepository.withTenant].
-  Future<TenantContext> _resolveTenantForConnection(
-    String connectionId,
-  ) async {
-    return withSystem<TenantContext>(
-      (exec) async {
-        final rows = await exec.query(
-          'select operator_id, location_id from public.connector_connection '
-          'where connection_id = @connection_id::uuid '
-          '  and vendor_id = @vendor_id '
-          'limit 1',
-          parameters: <String, Object?>{
-            'connection_id': connectionId,
-            'vendor_id': kSevenRoomsVendorId,
-          },
+  Future<TenantContext> _resolveTenantForConnection(String connectionId) async {
+    return withSystem<TenantContext>((exec) async {
+      final rows = await exec.query(
+        'select operator_id, location_id from public.connector_connection '
+        'where connection_id = @connection_id::uuid '
+        '  and vendor_id = @vendor_id '
+        'limit 1',
+        parameters: <String, Object?>{
+          'connection_id': connectionId,
+          'vendor_id': kSevenRoomsVendorId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError(
+          'SevenRoomsReservationPostgresSink could not resolve tenant for '
+          'connection_id=$connectionId; the connector_connection row is '
+          'missing or not bound to vendor_id=$kSevenRoomsVendorId.',
         );
-        if (rows.isEmpty) {
-          throw StateError(
-            'SevenRoomsReservationPostgresSink could not resolve tenant for '
-            'connection_id=$connectionId; the connector_connection row is '
-            'missing or not bound to vendor_id=$kSevenRoomsVendorId.',
-          );
-        }
-        final row = rows.single;
-        return TenantContext(
-          operatorId: row['operator_id']! as String,
-          locationId: row['location_id']! as String,
-        );
-      },
-      reason: 'sevenrooms.sink.resolve_tenant_for_connection',
-    );
+      }
+      final row = rows.single;
+      return TenantContext(
+        operatorId: row['operator_id']! as String,
+        locationId: row['location_id']! as String,
+      );
+    }, reason: 'sevenrooms.sink.resolve_tenant_for_connection');
   }
 
   // ─── CanonicalSink composition view ───────────────────────────────
@@ -585,7 +609,7 @@ class SevenRoomsReservationPostgresSink extends OperatorScopedRepository
   /// bespoke [SevenRoomsReservationGateway] surface and this view.
   CanonicalSink asCanonicalSink({
     required String Function(String operatorId, String locationId)
-        connectionIdResolver,
+    connectionIdResolver,
   }) {
     return _SevenRoomsCanonicalSinkView(
       sink: this,
@@ -611,23 +635,21 @@ class _SevenRoomsCanonicalSinkView implements CanonicalSink {
 
   final SevenRoomsReservationPostgresSink sink;
   final String Function(String operatorId, String locationId)
-      connectionIdResolver;
+  connectionIdResolver;
 
   @override
   Future<bool> upsertCoverFact({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) async =>
-      false;
+  }) async => false;
 
   @override
   Future<bool> upsertLaborPunch({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   @override
   Future<bool> upsertReservationFact({
@@ -636,16 +658,15 @@ class _SevenRoomsCanonicalSinkView implements CanonicalSink {
     required Map<String, Object?> canonicalReservation,
   }) {
     final connectionId = connectionIdResolver(operatorId, locationId);
-    final vendorEntityId =
-        canonicalReservation['vendor_entity_id']! as String;
-    final vendorModifiedAt =
-        _coerceInstant(canonicalReservation['vendor_modified_at'])!;
-    final reservationAt =
-        _coerceInstant(canonicalReservation['reservation_at'])!;
-    final partySize =
-        (canonicalReservation['party_size']! as num).toInt();
-    final status =
-        _statusFromName(canonicalReservation['status']! as String);
+    final vendorEntityId = canonicalReservation['vendor_entity_id']! as String;
+    final vendorModifiedAt = _coerceInstant(
+      canonicalReservation['vendor_modified_at'],
+    )!;
+    final reservationAt = _coerceInstant(
+      canonicalReservation['reservation_at'],
+    )!;
+    final partySize = (canonicalReservation['party_size']! as num).toInt();
+    final status = _statusFromName(canonicalReservation['status']! as String);
     final transitions = <String, DateTime>{};
     final transitionsRaw = canonicalReservation['status_transitions'];
     if (transitionsRaw is Map) {
@@ -665,8 +686,7 @@ class _SevenRoomsCanonicalSinkView implements CanonicalSink {
     // purely to satisfy the bespoke gateway signature; the value is
     // dead.
     return sink.writeReservationFact(
-      tenant:
-          TenantContext(operatorId: operatorId, locationId: locationId),
+      tenant: TenantContext(operatorId: operatorId, locationId: locationId),
       connectionId: connectionId,
       vendorEntityId: vendorEntityId,
       reservationAtUtc: reservationAt,

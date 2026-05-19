@@ -222,6 +222,55 @@ void main() {
     expect(events.single.diff.containsKey('covers_source_lunch'), isFalse);
   });
 
+  testWidgets(
+    'Covers and Wage scope edit uses configured periods before rows exist',
+    (tester) async {
+      useWideViewport(tester);
+      const businessScope = AdminHierarchyScopeIntent.business(
+        operatorId: 'op-1',
+        operatorName: 'Demo Diner Co.',
+      );
+      final adminGateway = InMemoryDataAccuracyAdminGateway(
+        operatorLocations: const <OperatorLocationRef>[
+          OperatorLocationRef(
+            operatorId: 'op-1',
+            businessName: 'Demo Diner Co.',
+            locationId: 'loc-1a',
+            locationName: 'Toronto Yorkville',
+          ),
+        ],
+        initialTierDefinitions: <PollingTierKey, TierDefinition>{
+          PollingTierKey.standard: kDemoStandardTierDefinition(),
+          PollingTierKey.premium: kDemoPremiumTierDefinition(),
+          PollingTierKey.custom: kDemoCustomTierDefinition(),
+        },
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: adminGateway,
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: businessScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final scopeButton = find.byKey(
+        const Key('admin_data_accuracy_scope_override'),
+      );
+      expect(scopeButton, findsOneWidget);
+      await tester.ensureVisible(scopeButton);
+      await tester.tap(scopeButton);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Covers source - Lunch'), findsOneWidget);
+      expect(find.text('Covers source - Dinner'), findsOneWidget);
+      expect(find.text('Covers source - Late Night'), findsOneWidget);
+    },
+  );
+
   test(
     'gateway accepts keyed covers maps for business, org-unit, and location scopes',
     () async {

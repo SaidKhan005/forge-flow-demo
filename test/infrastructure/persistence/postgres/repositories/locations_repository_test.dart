@@ -55,6 +55,7 @@ const String _opB = '44444444-4444-4444-4444-444444444444';
 const String _locA = '22222222-2222-2222-2222-222222222222';
 const String _locB = '55555555-5555-5555-5555-555555555555';
 const String _parentOrgUnitA = '33333333-3333-3333-3333-333333333333';
+const String _timingProfileId = '66666666-6666-6666-6666-666666666666';
 
 PostgresRow _locationRow({
   String locationId = _locA,
@@ -237,6 +238,91 @@ void main() {
       );
       expect(insertSql, contains('@timezone'));
       expect(insertSql, isNot(contains("'Pacific/Auckland'")));
+      final timingGuardSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from public.business_timing_profiles'),
+      );
+      expect(timingGuardSql, contains("scope_type = 'operator'"));
+      expect(timingGuardSql, contains('now() at time zone'));
+      expect(timingGuardSql, isNot(contains('current_date')));
+      final timingGuardParams =
+          tx.parameters[tx.executedSql.indexOf(timingGuardSql)];
+      expect(timingGuardParams['business_timezone'], 'Pacific/Auckland');
+      expect(timingGuardParams['business_day_start_local_time'], '03:00');
+      expect(
+        tx.executedSql.where(
+          (s) => s.contains('insert into public.business_timing_profiles'),
+        ),
+        isEmpty,
+        reason:
+            'new locations inherit operator timing; location creation must '
+            'not duplicate it with a location-scoped profile',
+      );
+    });
+
+    test('bootstraps missing operator-scope Business Timing before adding '
+        'a legacy operator location', () async {
+      final pool = _LocationsPool(
+        operatorTimingRows: const <PostgresRow>[],
+        insertedRows: <PostgresRow>[_locationRow()],
+      );
+      final repo = LocationsRepository(TenantTransactionWrapper(pool));
+
+      final row = await repo.insertLocation(
+        operatorId: _opA,
+        parentOrgUnitId: _parentOrgUnitA,
+        name: 'No Timing',
+        address: 'addr',
+        timezone: 'UTC',
+        businessDayRolloverHour: 4,
+        adminReason: 'admin.locations.create',
+      );
+      expect(row.locationId, _locA);
+      final tx = pool.transactions.single;
+      final dataStatements = tx.executedSql
+          .where(
+            (s) =>
+                s.contains('select profile_id::text as profile_id') ||
+                s.contains('insert into public.business_timing_profiles') ||
+                s.contains(
+                  'insert into public.business_timing_service_periods',
+                ) ||
+                s.contains('insert into public.business_timing_audit_events') ||
+                s.contains('insert into locations'),
+          )
+          .toList();
+      expect(dataStatements, hasLength(6));
+      expect(dataStatements[0], contains('select profile_id'));
+      expect(
+        dataStatements[1],
+        contains('insert into public.business_timing_profiles'),
+      );
+      expect(
+        dataStatements[4],
+        contains('insert into public.business_timing_audit_events'),
+      );
+      expect(dataStatements[5], contains('insert into locations'));
+      final timingProfileParams = tx.parameters.firstWhere(
+        (p) => p['profile_id'] == null && p.containsKey('display_name'),
+      );
+      expect(timingProfileParams['business_timezone'], 'UTC');
+      expect(timingProfileParams['business_day_start_local_time'], '04:00');
+      final auditParams = tx.parameters.firstWhere(
+        (p) =>
+            p['metadata']?.toString().contains(
+              'admin_location_missing_operator_timing_bootstrap',
+            ) ??
+            false,
+      );
+      expect(auditParams['profile_id'], _timingProfileId);
+      expect(auditParams['reason'], 'admin.locations.create');
+      expect(
+        tx.executedSql.where((s) => s.contains('insert into locations')),
+        hasLength(1),
+        reason:
+            'legacy operators get a guarded support bootstrap before the '
+            'new location inherits operator timing',
+      );
+      expect(tx.commitCount, equals(1));
     });
 
     test('business_day_rollover_hour boundary: 0 (midnight rollover) and '
@@ -520,6 +606,9 @@ class _LocationsPool implements PostgresPool {
     this.listForOperatorRows = const <PostgresRow>[],
     this.listAllRows = const <PostgresRow>[],
     this.insertedRows = const <PostgresRow>[],
+    this.operatorTimingRows = const <PostgresRow>[
+      <String, Object?>{'profile_id': 'profile-1'},
+    ],
     this.updatedRows = const <PostgresRow>[],
     this.activeTargetRows = const <PostgresRow>[],
     this.deleteAffectedRows = 0,
@@ -528,6 +617,7 @@ class _LocationsPool implements PostgresPool {
   final List<PostgresRow> listForOperatorRows;
   final List<PostgresRow> listAllRows;
   final List<PostgresRow> insertedRows;
+  final List<PostgresRow> operatorTimingRows;
   final List<PostgresRow> updatedRows;
   final List<PostgresRow> activeTargetRows;
   final int deleteAffectedRows;
@@ -539,6 +629,7 @@ class _LocationsPool implements PostgresPool {
       listForOperatorRows: listForOperatorRows,
       listAllRows: listAllRows,
       insertedRows: insertedRows,
+      operatorTimingRows: operatorTimingRows,
       updatedRows: updatedRows,
       activeTargetRows: activeTargetRows,
       deleteAffectedRows: deleteAffectedRows,
@@ -553,6 +644,7 @@ class _LocationsTransaction extends PostgresTransaction {
     required this.listForOperatorRows,
     required this.listAllRows,
     required this.insertedRows,
+    required this.operatorTimingRows,
     required this.updatedRows,
     required this.activeTargetRows,
     required this.deleteAffectedRows,
@@ -561,6 +653,7 @@ class _LocationsTransaction extends PostgresTransaction {
   final List<PostgresRow> listForOperatorRows;
   final List<PostgresRow> listAllRows;
   final List<PostgresRow> insertedRows;
+  final List<PostgresRow> operatorTimingRows;
   final List<PostgresRow> updatedRows;
   final List<PostgresRow> activeTargetRows;
   final int deleteAffectedRows;
@@ -579,6 +672,31 @@ class _LocationsTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
+    if (sql.contains('insert into public.business_timing_profiles')) {
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': _timingProfileId,
+          'effective_from_business_date': '2026-04-30',
+        },
+      ];
+    }
+    if (sql.contains('insert into public.business_timing_service_periods')) {
+      return <PostgresRow>[
+        <String, Object?>{
+          'service_period_id': parameters['service_period_key'],
+        },
+      ];
+    }
+    if (sql.contains('insert into public.business_timing_audit_events')) {
+      return <PostgresRow>[
+        <String, Object?>{
+          'audit_event_id': '77777777-7777-7777-7777-777777777777',
+        },
+      ];
+    }
+    if (sql.contains('from public.business_timing_profiles')) {
+      return operatorTimingRows;
+    }
     if (sql.contains('insert into locations')) {
       return insertedRows;
     }

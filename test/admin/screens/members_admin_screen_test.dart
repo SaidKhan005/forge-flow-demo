@@ -660,9 +660,7 @@ void main() {
         await tester.pump();
         // Confirm checkbox appears when email is dirty — must be ticked
         // before save enables.
-        await tester.tap(
-          find.byKey(const Key('admin_members_email_confirm')),
-        );
+        await tester.tap(find.byKey(const Key('admin_members_email_confirm')));
         await tester.pump();
         await tester.enterText(
           find.byKey(const Key('admin_members_display_name_field')),
@@ -759,7 +757,7 @@ void main() {
         );
         await tester.tap(find.byKey(const Key('admin_members_invite_role')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Operator manager').last);
+        await tester.tap(find.text('General Manager').last);
         await tester.pumpAndSettle();
         await tester.tap(
           find.byKey(const Key('admin_members_invite_location')),
@@ -783,7 +781,7 @@ void main() {
           (i) => i.email == 'newcoach@demo-diner.test',
         );
         expect(fresh.displayName, equals('Casey Coach'));
-        expect(fresh.roleKey, equals('operator_manager'));
+        expect(fresh.roleKey, equals('operator_general_manager'));
         expect(fresh.invitedBy, equals('demo-super-admin'));
 
         final auditActions = gateway.capturedAuditEvents
@@ -829,7 +827,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Operator manager').last);
+      await tester.tap(find.text('General Manager').last);
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('admin_members_invite_location')));
       await tester.pumpAndSettle();
@@ -877,30 +875,16 @@ void main() {
 
         // Demo seed has one pending invite for `newhire@demo-diner.test`.
         expect(
-          find.byKey(
-            const Key('admin_members_invite_row_demo-invite-diner-1'),
-          ),
+          find.byKey(const Key('admin_members_invite_row_demo-invite-diner-1')),
           findsOneWidget,
         );
 
-        // Scroll the cancel button into view before tapping. The
-        // members admin screen grew vertically (new rows above the
-        // pending-invite block) so the row's cancel affordance lives
-        // just below the default 1600x1200 test viewport; without
-        // ensureVisible the tap() resolves to an offset outside the
-        // root render tree and silently misses the widget, leaving
-        // the confirm dialog unmounted on the next step.
-        await tester.ensureVisible(
-          find.byKey(
-            const Key('admin_members_invite_cancel_demo-invite-diner-1'),
-          ),
+        final cancelButton = find.byKey(
+          const Key('admin_members_invite_cancel_demo-invite-diner-1'),
         );
+        await tester.ensureVisible(cancelButton);
         await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(
-            const Key('admin_members_invite_cancel_demo-invite-diner-1'),
-          ),
-        );
+        await tester.tap(cancelButton);
         await tester.pumpAndSettle();
 
         // Plain-English confirmation step + admin-reason gate fan
@@ -922,9 +906,7 @@ void main() {
         // carries the proxy-pinned event name `invite.cancel` with
         // the previous email + reason payload.
         expect(
-          find.byKey(
-            const Key('admin_members_invite_row_demo-invite-diner-1'),
-          ),
+          find.byKey(const Key('admin_members_invite_row_demo-invite-diner-1')),
           findsNothing,
         );
         final invites = await gateway.listInvites(
@@ -936,10 +918,7 @@ void main() {
             .toList();
         expect(cancelEvents, hasLength(1));
         expect(cancelEvents.single.targetKind, equals('team_invite'));
-        expect(
-          cancelEvents.single.targetId,
-          equals('demo-invite-diner-1'),
-        );
+        expect(cancelEvents.single.targetId, equals('demo-invite-diner-1'));
         expect(
           cancelEvents.single.payload['previous_email'],
           equals('newhire@demo-diner.test'),
@@ -1226,7 +1205,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Operator manager').last);
+      await tester.tap(find.text('General Manager').last);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_admin_reason')),
@@ -1297,7 +1276,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Operator manager').last);
+      await tester.tap(find.text('General Manager').last);
       await tester.pumpAndSettle();
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_admin_reason')),
@@ -1365,10 +1344,7 @@ void main() {
           find.byKey(const Key('admin_members_invite_location')),
           findsOneWidget,
         );
-        expect(
-          find.text('Choose where this person will work'),
-          findsOneWidget,
-        );
+        expect(find.text('Choose where this person will work'), findsOneWidget);
         expect(
           find.text(
             'Pick the location, region, or whole business. Higher levels '
@@ -1454,7 +1430,7 @@ void main() {
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Operator manager').last);
+      await tester.tap(find.text('General Manager').last);
       await tester.pumpAndSettle();
 
       // Pick Loc 2 in the hierarchy tree. Scroll it into view first

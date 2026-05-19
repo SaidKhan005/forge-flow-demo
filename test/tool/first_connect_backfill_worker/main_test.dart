@@ -47,6 +47,33 @@ const String _vendorId = 'lightspeed_lsk';
 final DateTime _connectedAt = DateTime.utc(2026, 5, 6, 12);
 
 void main() {
+  group('buildWorkerRuntime', () {
+    test('wires projection taps for backfill commits', () {
+      final runtime = buildWorkerRuntime(
+        config: WorkerRuntimeConfig(
+          postgresUrl: 'postgres://test',
+          pgcryptoEnvelopeKey: 'test-pgcrypto-key',
+          webhookPublicBaseUri: Uri.parse('https://api.forgeflow.app'),
+          maxAttempts: 10,
+          maxJobsPerTick: 5,
+          pollInterval: const Duration(seconds: 30),
+          claimStaleAfter: const Duration(minutes: 15),
+          workerIdPrefix: 'first-connect-backfill-test',
+          loadedSecretNames: const <String>[],
+          environment: const <String, String>{},
+        ),
+        poolFactory: (_) => _NeverPostgresPool(),
+      );
+
+      final drainer = runtime.projectionCommitDrainer;
+      expect(drainer, isNotNull);
+      expect(drainer!.tapCount, greaterThan(0));
+      expect(drainer.hasTapForVendor('toast'), isTrue);
+      expect(drainer.hasTapForVendor('adp'), isTrue);
+      expect(drainer.hasTapForVendor('opentable'), isTrue);
+    });
+  });
+
   group('runWorkerTick', () {
     test(
       'happy path: claim → dispatch → mark succeeded → watermark + sync log + demo flip',
@@ -317,7 +344,7 @@ void main() {
       // dispatcher can `await` the per-tenant construction; the test
       // unwraps the Future before identity-checking against the
       // recorded adapter instance.
-      final resolved = await (result as Future<Object>);
+      final resolved = await result;
       expect(identical(resolved, adapter), isTrue);
     });
 
@@ -735,6 +762,13 @@ class _RecordingPosAdapter implements PosAdapter {
   @override
   Future<DisconnectResult> disconnect(DisconnectCommand command) =>
       throw UnimplementedError();
+}
+
+class _NeverPostgresPool implements PostgresPool {
+  @override
+  Future<PostgresTransaction> beginTransaction() {
+    throw StateError('test must not touch Postgres');
+  }
 }
 
 class _AuditRowCapture {

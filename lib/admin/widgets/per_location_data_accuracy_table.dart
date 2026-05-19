@@ -170,8 +170,16 @@ class _PerLocationDataAccuracyTableState
     final updatedAt = _modifiedAtLabel(row);
     final covers = _coversFacts(row);
     final metadata = <_MiniFact>[
-      _MiniFact('Wage source', _wageLabel(row.settings.wageSource)),
-      _MiniFact('Walk-ins', _walkInLabel(row.settings.walkInHandlingMode)),
+      _MiniFact(
+        'Wage source',
+        _wageLabel(row.settings.wageSource),
+        sourceLabel: row.settings.wageSourceSource?.label,
+      ),
+      _MiniFact(
+        'Walk-ins',
+        _walkInLabel(row.settings.walkInHandlingMode),
+        sourceLabel: row.settings.walkInHandlingModeSource?.label,
+      ),
       _MiniFact('Last override', updatedAt),
       _MiniFact('Changed by', updatedBy),
     ];
@@ -284,37 +292,44 @@ class _PerLocationDataAccuracyTableState
         return 'Forecast';
       case CoversSource.manual:
         return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
     }
   }
 
   static List<_MiniFact> _coversFacts(DataAccuracyAdminRow row) {
-    final servicePeriodRows = row.servicePeriodSettings;
-    if (servicePeriodRows.isNotEmpty) {
-      return <_MiniFact>[
-        for (final period in servicePeriodRows)
-          _MiniFact(
-            _servicePeriodLabel(period.servicePeriodKey),
-            _servicePeriodCoversLabel(period.coversSource),
-          ),
-      ];
-    }
-
+    final servicePeriodFacts = _servicePeriodFacts(row);
+    if (servicePeriodFacts.isNotEmpty) return servicePeriodFacts;
     final keyed = row.settings.coversSourcePerServicePeriod;
     if (keyed.isNotEmpty) {
       final entries = keyed.entries.toList(growable: false)
         ..sort((a, b) => a.key.compareTo(b.key));
       return <_MiniFact>[
         for (final entry in entries)
-          _MiniFact(_servicePeriodLabel(entry.key), _coversLabel(entry.value)),
+          _MiniFact(
+            _servicePeriodLabelFor(row, entry.key),
+            _coversLabel(entry.value),
+            sourceLabel: row.settings.coversSourceSourceFor(entry.key)?.label,
+          ),
+      ];
+    }
+
+    final configured = row.configuredServicePeriods;
+    if (configured.isNotEmpty) {
+      return <_MiniFact>[
+        for (final period in configured)
+          _MiniFact(
+            _servicePeriodLabelFor(row, period.id),
+            _coversLabel(row.settings.coversSourceFor(period.id)),
+            sourceLabel: row.settings.coversSourceSourceFor(period.id)?.label,
+          ),
       ];
     }
 
     return <_MiniFact>[
-      _MiniFact('Lunch', _coversLabel(row.settings.coversSourceFor('lunch'))),
-      _MiniFact('Dinner', _coversLabel(row.settings.coversSourceFor('dinner'))),
       _MiniFact(
-        'Late night',
-        _coversLabel(row.settings.coversSourceFor('late_night')),
+        'Service periods',
+        '${_coversLabel(kDefaultCoversSource)} default',
       ),
     ];
   }
@@ -322,6 +337,15 @@ class _PerLocationDataAccuracyTableState
   static bool _coversUsesVendor(DataAccuracyAdminRow row) {
     final servicePeriodRows = row.servicePeriodSettings;
     if (servicePeriodRows.isNotEmpty) {
+      final configured = row.configuredServicePeriods;
+      if (configured.isNotEmpty) {
+        final keyed = <String>{
+          for (final period in servicePeriodRows) period.servicePeriodKey,
+        };
+        if (configured.any((period) => !keyed.contains(period.id))) {
+          return true;
+        }
+      }
       return servicePeriodRows.any(
         (period) => period.coversSource == ServicePeriodCoversSource.vendor,
       );
@@ -332,9 +356,79 @@ class _PerLocationDataAccuracyTableState
       return keyed.values.any((source) => source == CoversSource.vendor);
     }
 
-    return row.settings.coversSourceFor('lunch') == CoversSource.vendor ||
-        row.settings.coversSourceFor('dinner') == CoversSource.vendor ||
-        row.settings.coversSourceFor('late_night') == CoversSource.vendor;
+    final configured = row.configuredServicePeriods;
+    if (configured.isNotEmpty) {
+      return configured.any(
+        (period) =>
+            row.settings.coversSourceFor(period.id) == CoversSource.vendor,
+      );
+    }
+
+    return true;
+  }
+
+  static List<_MiniFact> _servicePeriodFacts(DataAccuracyAdminRow row) {
+    final servicePeriodRows = row.servicePeriodSettings;
+    if (servicePeriodRows.isEmpty) return const <_MiniFact>[];
+
+    final configured = row.configuredServicePeriods;
+    final keyedRows = <String, DataAccuracyServicePeriodSetting>{
+      for (final period in servicePeriodRows) period.servicePeriodKey: period,
+    };
+    if (configured.isEmpty) {
+      final sorted = servicePeriodRows.toList(growable: false)
+        ..sort((a, b) => a.servicePeriodKey.compareTo(b.servicePeriodKey));
+      return <_MiniFact>[
+        for (final period in sorted)
+          _MiniFact(
+            _servicePeriodLabelFor(row, period.servicePeriodKey),
+            _servicePeriodCoversLabel(period.coversSource),
+            sourceLabel: row.settings
+                .coversSourceSourceFor(period.servicePeriodKey)
+                ?.label,
+          ),
+      ];
+    }
+
+    final seen = <String>{};
+    final facts = <_MiniFact>[
+      for (final period in configured)
+        _servicePeriodFactFor(
+          row: row,
+          key: period.id,
+          keyedRow: keyedRows[period.id],
+          seen: seen,
+        ),
+    ];
+    final extraKeys =
+        keyedRows.keys.where((key) => !seen.contains(key)).toList()..sort();
+    facts.addAll(<_MiniFact>[
+      for (final key in extraKeys)
+        _servicePeriodFactFor(
+          row: row,
+          key: key,
+          keyedRow: keyedRows[key],
+          seen: seen,
+        ),
+    ]);
+    return facts;
+  }
+
+  static _MiniFact _servicePeriodFactFor({
+    required DataAccuracyAdminRow row,
+    required String key,
+    required DataAccuracyServicePeriodSetting? keyedRow,
+    required Set<String> seen,
+  }) {
+    seen.add(key);
+    if (keyedRow != null) {
+      return _MiniFact(
+        _servicePeriodLabelFor(row, key),
+        _servicePeriodCoversLabel(keyedRow.coversSource),
+        sourceLabel: row.settings.coversSourceSourceFor(key)?.label,
+      );
+    }
+    return _MiniFact(_servicePeriodLabelFor(row, key), 'Vendor default');
   }
 
   static String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {
@@ -360,6 +454,15 @@ class _PerLocationDataAccuracyTableState
               : '${part[0].toUpperCase()}${part.substring(1)}',
         )
         .join(' ');
+  }
+
+  static String _servicePeriodLabelFor(DataAccuracyAdminRow row, String key) {
+    for (final period in row.configuredServicePeriods) {
+      if (period.id == key && period.label.trim().isNotEmpty) {
+        return period.label.trim();
+      }
+    }
+    return _servicePeriodLabel(key);
   }
 
   static String _modifiedAtLabel(DataAccuracyAdminRow row) {
@@ -527,10 +630,11 @@ class _OperatorLocationBlock extends StatelessWidget {
 }
 
 class _MiniFact {
-  const _MiniFact(this.label, this.value);
+  const _MiniFact(this.label, this.value, {this.sourceLabel});
 
   final String label;
   final String value;
+  final String? sourceLabel;
 }
 
 class _FactWrap extends StatelessWidget {
@@ -545,17 +649,26 @@ class _FactWrap extends StatelessWidget {
       runSpacing: 8,
       children: [
         for (final fact in facts)
-          _FactPill(label: fact.label, value: fact.value),
+          _FactPill(
+            label: fact.label,
+            value: fact.value,
+            sourceLabel: fact.sourceLabel,
+          ),
       ],
     );
   }
 }
 
 class _FactPill extends StatelessWidget {
-  const _FactPill({required this.label, required this.value});
+  const _FactPill({
+    required this.label,
+    required this.value,
+    required this.sourceLabel,
+  });
 
   final String label;
   final String value;
+  final String? sourceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -582,6 +695,14 @@ class _FactPill extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textPrimary),
             overflow: TextOverflow.ellipsis,
           ),
+          if (sourceLabel != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Source: $sourceLabel',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ],
       ),
     );

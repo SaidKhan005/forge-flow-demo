@@ -168,6 +168,7 @@ import 'package:forge_and_flow/integrations/reservation/tock_reservation_product
 import 'package:forge_and_flow/integrations/reservation/tock_webhook_signature_verifier.dart'
     hide kTockVendorId;
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
+import 'package:forge_and_flow/services/integration/canonical_fact_projection_retry.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
@@ -218,6 +219,7 @@ class Phase8VendorIntegrationFactories {
     required this.signatureVerifiers,
     required this.disabledVendors,
     this.projectingSinksByVendor = const <String, ProjectingCanonicalSink>{},
+    this.projectionTapsByVendor = const <String, CanonicalFactProjectionTap>{},
   });
 
   /// POS adapter factories keyed by vendor id (URL-path form).
@@ -260,6 +262,14 @@ class Phase8VendorIntegrationFactories {
   /// to reach the projecting view of each vendor's canonical write
   /// surface so a successful commit signal projects buffered facts.
   final Map<String, ProjectingCanonicalSink> projectingSinksByVendor;
+
+  /// Per-vendor projection taps used by direct vendor sink methods.
+  ///
+  /// These taps receive successful fact writes from the concrete Postgres
+  /// sinks without re-writing the fact row. Server commit paths drain the
+  /// matching tap after `webhook_received`, `poll_success`,
+  /// `backfill_success`, or `backfill_partial`.
+  final Map<String, CanonicalFactProjectionTap> projectionTapsByVendor;
 }
 
 /// Build the per-vendor adapter factory closures, signature verifiers,
@@ -279,7 +289,7 @@ class Phase8VendorIntegrationFactories {
 /// skipped with a structured warning so the proxy still binds and the
 /// worker can dead-letter the job with a clear reason.
 Phase8VendorIntegrationFactories
-    buildPhase8VendorIntegrationFactoriesFromCredentials({
+buildPhase8VendorIntegrationFactoriesFromCredentials({
   required TenantTransactionWrapper tenantTransactionWrapper,
   required VendorCredentialBroker broker,
   required PerTenantLocationConfigResolver locationConfigResolver,
@@ -302,6 +312,7 @@ Phase8VendorIntegrationFactories
   CanonicalFactPostCommitProjector? canonicalFactPostCommitProjector,
   CanonicalFactPeriodResolver? canonicalFactPeriodResolver,
   CanonicalRestaurantIdResolver? canonicalRestaurantIdResolver,
+  CanonicalFactProjectionRetryRecorder? canonicalFactProjectionRetryRecorder,
 }) {
   // The body uses `wrapper` as a short alias for the parameter so the
   // per-vendor branches read identically to the previous binder body
@@ -325,10 +336,28 @@ Phase8VendorIntegrationFactories
   // wrapped surface so a successful canonical-fact commit projects
   // `open_shift_snapshots` / `closed_shift_aggregates`.
   final projectingSinksByVendor = <String, ProjectingCanonicalSink>{};
+  final projectionTapsByVendor = <String, CanonicalFactProjectionTap>{};
   final bool projectorWiringActive =
       canonicalFactPostCommitProjector != null &&
-          canonicalFactPeriodResolver != null &&
-          canonicalRestaurantIdResolver != null;
+      canonicalFactPeriodResolver != null &&
+      canonicalRestaurantIdResolver != null;
+  CanonicalFactProjectionTap? buildProjectionTap({
+    required String vendorId,
+    required IntegrationCategory category,
+  }) {
+    if (!projectorWiringActive) return null;
+    final tap = BufferedCanonicalFactProjectionTap(
+      projector: canonicalFactPostCommitProjector,
+      category: category,
+      vendorId: vendorId,
+      periodResolver: canonicalFactPeriodResolver,
+      restaurantIdResolver: canonicalRestaurantIdResolver,
+      retryRecorder: canonicalFactProjectionRetryRecorder,
+    );
+    projectionTapsByVendor[vendorId] = tap;
+    return tap;
+  }
+
   void wrapCanonicalSink({
     required String vendorId,
     required IntegrationCategory category,
@@ -342,11 +371,19 @@ Phase8VendorIntegrationFactories
       vendorId: vendorId,
       periodResolver: canonicalFactPeriodResolver,
       restaurantIdResolver: canonicalRestaurantIdResolver,
+      retryRecorder: canonicalFactProjectionRetryRecorder,
     );
   }
 
   // ─── POS — Toast (PR #247 refresh closure) ──────────────────────────
-  final toastSink = ToastPosPostgresSink(wrapper);
+  final toastProjectionTap = buildProjectionTap(
+    vendorId: kToastVendorId,
+    category: IntegrationCategory.pos,
+  );
+  final toastSink = ToastPosPostgresSink(
+    wrapper,
+    projectionTap: toastProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kToastVendorId,
     category: IntegrationCategory.pos,
@@ -362,26 +399,32 @@ Phase8VendorIntegrationFactories
   // `Future<ToastPosAdapter> Function(...)` is NOT a subtype of
   // `Future<PosAdapter> Function(...)`. The cast widens the closure's
   // return type to the typedef's expected `Future<PosAdapter>`.
-  posAdapterFactories[kToastVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final tokenResolver = ToastBrokerAccessTokenResolver(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-      oauthExchange: toastRefresh,
-    );
-    final transport = ToastPosProductionApiClient(
-      httpClient: sharedHttpClient,
-      tokenResolver: tokenResolver,
-    );
-    return ToastPosAdapter(transport: transport, factSink: toastSink);
-  } as PosAdapterFactory;
+  posAdapterFactories[kToastVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final tokenResolver = ToastBrokerAccessTokenResolver(
+              broker: broker,
+              operatorId: operatorId,
+              locationId: locationId,
+              oauthExchange: toastRefresh,
+            );
+            final transport = ToastPosProductionApiClient(
+              httpClient: sharedHttpClient,
+              tokenResolver: tokenResolver,
+            );
+            return ToastPosAdapter(transport: transport, factSink: toastSink);
+          }
+          as PosAdapterFactory;
   signatureVerifiers[kToastVendorId] = const ToastWebhookSignatureVerifier();
 
   // ─── POS — Aloha NCR Voyix (optional static app credentials) ───────
-  final alohaSink = AlohaNcrVoyixPostgresSink(wrapper);
+  final alohaProjectionTap = buildProjectionTap(
+    vendorId: kAlohaNcrVoyixVendorId,
+    category: IntegrationCategory.pos,
+  );
+  final alohaSink = AlohaNcrVoyixPostgresSink(
+    wrapper,
+    projectionTap: alohaProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kAlohaNcrVoyixVendorId,
     category: IntegrationCategory.pos,
@@ -392,35 +435,42 @@ Phase8VendorIntegrationFactories
     final alohaRefresh = makeAlohaNcrVoyixOauthRefreshClosure(
       httpClient: sharedHttpClient,
     );
-    posAdapterFactories[kAlohaNcrVoyixVendorId] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      final credentialStore = makeAlohaNcrVoyixCredentialStore(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: alohaRefresh,
-      );
-      final transport = AlohaNcrVoyixPosProductionApiClient(
-        credentialStore: credentialStore,
-        oauthCredentials: alohaCreds,
-        httpClient: sharedHttpClient,
-      );
-      return AlohaNcrVoyixPosAdapter(
-        transport: transport,
-        factSink: alohaSink,
-      );
-    } as PosAdapterFactory;
+    posAdapterFactories[kAlohaNcrVoyixVendorId] =
+        ({required String operatorId, required String locationId}) async {
+              final credentialStore = makeAlohaNcrVoyixCredentialStore(
+                broker: broker,
+                operatorId: operatorId,
+                locationId: locationId,
+                oauthRefresh: alohaRefresh,
+              );
+              final transport = AlohaNcrVoyixPosProductionApiClient(
+                credentialStore: credentialStore,
+                oauthCredentials: alohaCreds,
+                httpClient: sharedHttpClient,
+              );
+              return AlohaNcrVoyixPosAdapter(
+                transport: transport,
+                factSink: alohaSink,
+              );
+            }
+            as PosAdapterFactory;
     signatureVerifiers[kAlohaNcrVoyixVendorId] =
         const AlohaNcrVoyixWebhookSignatureVerifier();
   } else {
-    disabledVendors[kAlohaNcrVoyixVendorId] = 'aloha_ncr_voyix_credentials_missing';
+    disabledVendors[kAlohaNcrVoyixVendorId] =
+        'aloha_ncr_voyix_credentials_missing';
   }
 
   // ─── POS — Clover (optional static app credentials) ────────────────
   if (cloverAppCredentials != null) {
-    final cloverSink = CloverPostgresSink(wrapper);
+    final cloverProjectionTap = buildProjectionTap(
+      vendorId: kCloverVendorId,
+      category: IntegrationCategory.pos,
+    );
+    final cloverSink = CloverPostgresSink(
+      wrapper,
+      projectionTap: cloverProjectionTap,
+    );
     wrapCanonicalSink(
       vendorId: kCloverVendorId,
       category: IntegrationCategory.pos,
@@ -435,41 +485,41 @@ Phase8VendorIntegrationFactories
     final appTokenSource = makeStaticCloverAppTokenSource(
       cloverAppCreds.appToken,
     );
-    final appIdSource = makeStaticCloverAppIdSource(
-      cloverAppCreds.appId,
-    );
-    posAdapterFactories[kCloverVendorId] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      final merchantTokenSource = makeCloverAccessTokenSource(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: cloverRefresh,
-      );
-      final transport = CloverPosProductionApiClient(
-        httpClient: sharedHttpClient,
-        merchantTokenSource: merchantTokenSource,
-        appTokenSource: appTokenSource,
-        appIdSource: appIdSource,
-      );
-      final webhookRegistry = CloverPosWebhookRegistry(
-        wrapper,
-        api: transport,
-        callbackUrlSource: () => webhookPublicBaseUri
-            .resolve('/v1/webhooks/$kCloverVendorId/$operatorId/$locationId')
-            .toString(),
-      );
-      return CloverPosAdapter(
-        api: transport,
-        factWriter: cloverSink,
-        watermarkStore: cloverSink,
-        webhookRegistry: webhookRegistry,
-        credentials: cloverCredStore,
-      );
-    } as PosAdapterFactory;
-    signatureVerifiers[kCloverVendorId] = const CloverWebhookSignatureVerifier();
+    final appIdSource = makeStaticCloverAppIdSource(cloverAppCreds.appId);
+    posAdapterFactories[kCloverVendorId] =
+        ({required String operatorId, required String locationId}) async {
+              final merchantTokenSource = makeCloverAccessTokenSource(
+                broker: broker,
+                operatorId: operatorId,
+                locationId: locationId,
+                oauthRefresh: cloverRefresh,
+              );
+              final transport = CloverPosProductionApiClient(
+                httpClient: sharedHttpClient,
+                merchantTokenSource: merchantTokenSource,
+                appTokenSource: appTokenSource,
+                appIdSource: appIdSource,
+              );
+              final webhookRegistry = CloverPosWebhookRegistry(
+                wrapper,
+                api: transport,
+                callbackUrlSource: () => webhookPublicBaseUri
+                    .resolve(
+                      '/v1/webhooks/$kCloverVendorId/$operatorId/$locationId',
+                    )
+                    .toString(),
+              );
+              return CloverPosAdapter(
+                api: transport,
+                factWriter: cloverSink,
+                watermarkStore: cloverSink,
+                webhookRegistry: webhookRegistry,
+                credentials: cloverCredStore,
+              );
+            }
+            as PosAdapterFactory;
+    signatureVerifiers[kCloverVendorId] =
+        const CloverWebhookSignatureVerifier();
   } else {
     disabledVendors[kCloverVendorId] = 'clover_app_credentials_missing';
   }
@@ -486,7 +536,14 @@ Phase8VendorIntegrationFactories
   // that triggers them surfaces immediately; the connect/disconnect
   // hot path is wired separately by the admin-routes binding (which
   // materialises a fully-formed transport).
-  final lightspeedLskSink = LightspeedLskPosPostgresSink(wrapper);
+  final lightspeedLskProjectionTap = buildProjectionTap(
+    vendorId: kLightspeedLskVendorId,
+    category: IntegrationCategory.pos,
+  );
+  final lightspeedLskSink = LightspeedLskPosPostgresSink(
+    wrapper,
+    projectionTap: lightspeedLskProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kLightspeedLskVendorId,
     category: IntegrationCategory.pos,
@@ -495,40 +552,46 @@ Phase8VendorIntegrationFactories
   final lightspeedLskRefresh = makeLightspeedLskOauthRefreshClosure(
     httpClient: sharedHttpClient,
   );
-  posAdapterFactories[kLightspeedLskVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final config = await locationConfigResolver.resolve(
-      operatorId: operatorId,
-      locationId: locationId,
-      vendorId: kLightspeedLskVendorId,
-    );
-    final tokenResolver = LightspeedLskBrokerAccessTokenResolver(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-      oauthRefresh: lightspeedLskRefresh,
-    );
-    final ordersClient = LightspeedLskProductionOrdersClient(
-      tokenResolver: tokenResolver,
-      httpClient: sharedHttpClient,
-    );
-    return LightspeedLskPosAdapter(
-      gateway: lightspeedLskSink,
-      oauthClient: const _UnboundLightspeedLskOAuthClient(),
-      webhookClient: const _UnboundLightspeedLskWebhookClient(),
-      ordersClient: ordersClient,
-      restaurantTimezone: config.restaurantTimezone,
-      businessDayRolloverHour: config.businessDayRolloverHour,
-      webhookUrl: config.webhookBaseUri.toString(),
-    );
-  } as PosAdapterFactory;
+  posAdapterFactories[kLightspeedLskVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final config = await locationConfigResolver.resolve(
+              operatorId: operatorId,
+              locationId: locationId,
+              vendorId: kLightspeedLskVendorId,
+            );
+            final tokenResolver = LightspeedLskBrokerAccessTokenResolver(
+              broker: broker,
+              operatorId: operatorId,
+              locationId: locationId,
+              oauthRefresh: lightspeedLskRefresh,
+            );
+            final ordersClient = LightspeedLskProductionOrdersClient(
+              tokenResolver: tokenResolver,
+              httpClient: sharedHttpClient,
+            );
+            return LightspeedLskPosAdapter(
+              gateway: lightspeedLskSink,
+              oauthClient: const _UnboundLightspeedLskOAuthClient(),
+              webhookClient: const _UnboundLightspeedLskWebhookClient(),
+              ordersClient: ordersClient,
+              restaurantTimezone: config.restaurantTimezone,
+              businessDayRolloverHour: config.businessDayRolloverHour,
+              webhookUrl: config.webhookBaseUri.toString(),
+            );
+          }
+          as PosAdapterFactory;
   signatureVerifiers[kLightspeedLskVendorId] =
       const LightspeedLskWebhookSignatureVerifier();
 
   // ─── POS — Oracle MICROS Simphony ──────────────────────────────────
-  final oracleSink = OracleMicrosSimphonyPostgresSink(wrapper);
+  final oracleProjectionTap = buildProjectionTap(
+    vendorId: kOracleMicrosSimphonyVendorId,
+    category: IntegrationCategory.pos,
+  );
+  final oracleSink = OracleMicrosSimphonyPostgresSink(
+    wrapper,
+    projectionTap: oracleProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kOracleMicrosSimphonyVendorId,
     category: IntegrationCategory.pos,
@@ -543,25 +606,24 @@ Phase8VendorIntegrationFactories
     broker: broker,
     oauthExchange: simphonyExchange,
   );
-  posAdapterFactories[kOracleMicrosSimphonyVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final transport = OracleMicrosSimphonyProductionApiClient(
-      httpClient: sharedHttpClient,
-      tokenStore: simphonyTokenStore,
-      credential: const SimphonyVendorCredentialHandle(
-        // The adapter does not surface a credential id distinct from
-        // the (operator, location, vendor) triple — the broker keys on
-        // that triple internally.
-        credentialId: '',
-      ),
-    );
-    return OracleMicrosSimphonyPosAdapter(
-      apiClient: transport,
-      canonicalSink: oracleSink,
-    );
-  } as PosAdapterFactory;
+  posAdapterFactories[kOracleMicrosSimphonyVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final transport = OracleMicrosSimphonyProductionApiClient(
+              httpClient: sharedHttpClient,
+              tokenStore: simphonyTokenStore,
+              credential: const SimphonyVendorCredentialHandle(
+                // The adapter does not surface a credential id distinct from
+                // the (operator, location, vendor) triple — the broker keys on
+                // that triple internally.
+                credentialId: '',
+              ),
+            );
+            return OracleMicrosSimphonyPosAdapter(
+              apiClient: transport,
+              canonicalSink: oracleSink,
+            );
+          }
+          as PosAdapterFactory;
   // Oracle MICROS Simphony's documented v2 (STSGen2) API exposes no
   // webhook delivery surface — see
   // `docs/integrations/oracle_micros_simphony/api_consumed.md` and
@@ -572,31 +634,39 @@ Phase8VendorIntegrationFactories
   // here. Registering one is unreachable code; intentionally absent.
 
   // ─── POS — Revel ───────────────────────────────────────────────────
-  final revelSink = RevelPosPostgresSink(wrapper);
+  final revelProjectionTap = buildProjectionTap(
+    vendorId: kRevelVendorId,
+    category: IntegrationCategory.pos,
+  );
+  final revelSink = RevelPosPostgresSink(
+    wrapper,
+    projectionTap: revelProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kRevelVendorId,
     category: IntegrationCategory.pos,
     underlying: revelSink,
   );
-  posAdapterFactories[kRevelVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final transport = RevelProductionApiClient(
-      deps: RevelProductionApiClientDeps(
-        httpClient: sharedHttpClient,
-      ),
-    );
-    return RevelPosAdapter(
-      transport: transport,
-      gateway: revelSink,
-    );
-  } as PosAdapterFactory;
+  posAdapterFactories[kRevelVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final transport = RevelProductionApiClient(
+              deps: RevelProductionApiClientDeps(httpClient: sharedHttpClient),
+            );
+            return RevelPosAdapter(transport: transport, gateway: revelSink);
+          }
+          as PosAdapterFactory;
   signatureVerifiers[kRevelVendorId] = const RevelWebhookSignatureVerifier();
 
   // ─── POS — Square (optional static app credentials) ────────────────
   if (squareAppCredentials != null) {
-    final squareSink = SquarePosPostgresSink(wrapper);
+    final squareProjectionTap = buildProjectionTap(
+      vendorId: kSquareVendorId,
+      category: IntegrationCategory.pos,
+    );
+    final squareSink = SquarePosPostgresSink(
+      wrapper,
+      projectionTap: squareProjectionTap,
+    );
     wrapCanonicalSink(
       vendorId: kSquareVendorId,
       category: IntegrationCategory.pos,
@@ -608,109 +678,127 @@ Phase8VendorIntegrationFactories
       clientId: squareAppCreds.clientId,
       clientSecret: squareAppCreds.clientSecret,
     );
-    posAdapterFactories[kSquareVendorId] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      final credentialResolver = SquareBrokerCredentialResolver(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: squareRefresh,
-        clientId: squareAppCreds.clientId,
-        clientSecret: squareAppCreds.clientSecret,
-      );
-      final transport = SquarePosProductionApiClient(
-        credentials: credentialResolver,
-        httpClient: sharedHttpClient,
-      );
-      return SquarePosAdapter(
-        apiClient: transport,
-        factWriter: squareSink,
-        watermarkStore: squareSink,
-        notificationUrlForConnection: ({
-          required String operatorId,
-          required String locationId,
-        }) async {
-          // Square's notification URL is the per-(operator, location)
-          // webhook callback; the adapter uses this to register the
-          // subscription with Square. The per-tenant location resolver
-          // composes the canonical
-          // `/v1/webhooks/<vendor>/<operatorId>/<locationId>` shape
-          // off [webhookPublicBaseUri].
-          final config = await locationConfigResolver.resolve(
-            operatorId: operatorId,
-            locationId: locationId,
-            vendorId: kSquareVendorId,
-          );
-          return config.webhookBaseUri.toString();
-        },
-      );
-    } as PosAdapterFactory;
-    signatureVerifiers[kSquareVendorId] = const SquareWebhookSignatureVerifier();
+    posAdapterFactories[kSquareVendorId] =
+        ({required String operatorId, required String locationId}) async {
+              final credentialResolver = SquareBrokerCredentialResolver(
+                broker: broker,
+                operatorId: operatorId,
+                locationId: locationId,
+                oauthRefresh: squareRefresh,
+                clientId: squareAppCreds.clientId,
+                clientSecret: squareAppCreds.clientSecret,
+              );
+              final transport = SquarePosProductionApiClient(
+                credentials: credentialResolver,
+                httpClient: sharedHttpClient,
+              );
+              return SquarePosAdapter(
+                apiClient: transport,
+                factWriter: squareSink,
+                watermarkStore: squareSink,
+                notificationUrlForConnection:
+                    ({
+                      required String operatorId,
+                      required String locationId,
+                    }) async {
+                      // Square's notification URL is the per-(operator, location)
+                      // webhook callback; the adapter uses this to register the
+                      // subscription with Square. The per-tenant location resolver
+                      // composes the canonical
+                      // `/v1/webhooks/<vendor>/<operatorId>/<locationId>` shape
+                      // off [webhookPublicBaseUri].
+                      final config = await locationConfigResolver.resolve(
+                        operatorId: operatorId,
+                        locationId: locationId,
+                        vendorId: kSquareVendorId,
+                      );
+                      return config.webhookBaseUri.toString();
+                    },
+              );
+            }
+            as PosAdapterFactory;
+    signatureVerifiers[kSquareVendorId] =
+        const SquareWebhookSignatureVerifier();
   } else {
     disabledVendors[kSquareVendorId] = 'square_app_credentials_missing';
   }
 
   // ─── Labor — ADP ───────────────────────────────────────────────────
-  final adpSink = AdpPostgresSink(tenantWrapper: wrapper);
+  final adpProjectionTap = buildProjectionTap(
+    vendorId: kAdpVendorId,
+    category: IntegrationCategory.labor,
+  );
+  final adpSink = AdpPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: adpProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kAdpVendorId,
     category: IntegrationCategory.labor,
     underlying: adpSink,
   );
-  laborAdapterFactories[kAdpVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final credentialsProvider = makeAdpCredentialsProvider(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    final subscriptionSecretProvider = makeAdpSubscriptionSecretProvider(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    final transport = AdpLaborProductionApiClient(
-      credentialsProvider: credentialsProvider,
-      subscriptionSecretProvider: subscriptionSecretProvider,
-      httpClient: sharedHttpClient,
-    );
-    return AdpLaborAdapter(
-      transport: transport,
-      gateway: adpSink,
-    );
-  } as LaborAdapterFactory;
+  laborAdapterFactories[kAdpVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final credentialsProvider = makeAdpCredentialsProvider(
+              broker: broker,
+              operatorId: operatorId,
+              locationId: locationId,
+            );
+            final subscriptionSecretProvider =
+                makeAdpSubscriptionSecretProvider(
+                  broker: broker,
+                  operatorId: operatorId,
+                  locationId: locationId,
+                );
+            final transport = AdpLaborProductionApiClient(
+              credentialsProvider: credentialsProvider,
+              subscriptionSecretProvider: subscriptionSecretProvider,
+              httpClient: sharedHttpClient,
+            );
+            return AdpLaborAdapter(transport: transport, gateway: adpSink);
+          }
+          as LaborAdapterFactory;
   signatureVerifiers[kAdpVendorId] = const AdpWebhookSignatureVerifier();
 
   // ─── Labor — Agendrix ──────────────────────────────────────────────
-  final agendrixSink = AgendrixPostgresSink(tenantWrapper: wrapper);
+  final agendrixProjectionTap = buildProjectionTap(
+    vendorId: agendrixVendorId,
+    category: IntegrationCategory.labor,
+  );
+  final agendrixSink = AgendrixPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: agendrixProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: agendrixVendorId,
     category: IntegrationCategory.labor,
     underlying: agendrixSink,
   );
   final agendrixCredentialStore = AgendrixBrokerCredentialStore(broker: broker);
-  laborAdapterFactories[agendrixVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final transport = AgendrixProductionApiClient(
-      credentialStore: agendrixCredentialStore,
-      httpClient: sharedHttpClient,
-    );
-    return AgendrixLaborAdapter(
-      apiClient: transport,
-      canonicalSink: agendrixSink,
-    );
-  } as LaborAdapterFactory;
+  laborAdapterFactories[agendrixVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final transport = AgendrixProductionApiClient(
+              credentialStore: agendrixCredentialStore,
+              httpClient: sharedHttpClient,
+            );
+            return AgendrixLaborAdapter(
+              apiClient: transport,
+              canonicalSink: agendrixSink,
+            );
+          }
+          as LaborAdapterFactory;
   signatureVerifiers[agendrixVendorId] =
       const AgendrixWebhookSignatureVerifier();
 
   // ─── Labor — Humanity (keyPaste; no app-cred boot gate) ────────────
-  final humanitySink = HumanityPostgresSink(tenantWrapper: wrapper);
+  final humanityProjectionTap = buildProjectionTap(
+    vendorId: kHumanityVendorId,
+    category: IntegrationCategory.labor,
+  );
+  final humanitySink = HumanityPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: humanityProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kHumanityVendorId,
     category: IntegrationCategory.labor,
@@ -727,47 +815,61 @@ Phase8VendorIntegrationFactories
   // are real authorization-code OAuth and CANNOT connect without app
   // creds), Humanity registers unconditionally — missing app creds
   // only impacts long-lived refresh, surfaced via the dedicated worker.
-  laborAdapterFactories[kHumanityVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final transport = HumanityLaborProductionApiClient(
-      httpClient: sharedHttpClient,
-    );
-    return HumanityLaborAdapter(
-      httpClient: transport,
-      gateway: humanitySink,
-    );
-  } as LaborAdapterFactory;
+  laborAdapterFactories[kHumanityVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final transport = HumanityLaborProductionApiClient(
+              httpClient: sharedHttpClient,
+            );
+            return HumanityLaborAdapter(
+              httpClient: transport,
+              gateway: humanitySink,
+            );
+          }
+          as LaborAdapterFactory;
   signatureVerifiers[kHumanityVendorId] =
       const HumanityWebhookSignatureVerifier();
 
   // ─── Labor — Push Operations ───────────────────────────────────────
-  final pushOpsSink = PushOperationsPostgresSink(tenantWrapper: wrapper);
+  final pushOpsProjectionTap = buildProjectionTap(
+    vendorId: pushOperationsVendorId,
+    category: IntegrationCategory.labor,
+  );
+  final pushOpsSink = PushOperationsPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: pushOpsProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: pushOperationsVendorId,
     category: IntegrationCategory.labor,
     underlying: pushOpsSink,
   );
-  final pushOpsBearerResolver = makePushOperationsBearerResolver(broker: broker);
-  laborAdapterFactories[pushOperationsVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final transport = PushOperationsLaborProductionApiClient(
-      bearerResolver: pushOpsBearerResolver,
-      httpClient: sharedHttpClient,
-    );
-    return PushOperationsLaborAdapter(
-      apiClient: transport,
-      canonicalSink: pushOpsSink,
-    );
-  } as LaborAdapterFactory;
+  final pushOpsBearerResolver = makePushOperationsBearerResolver(
+    broker: broker,
+  );
+  laborAdapterFactories[pushOperationsVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final transport = PushOperationsLaborProductionApiClient(
+              bearerResolver: pushOpsBearerResolver,
+              httpClient: sharedHttpClient,
+            );
+            return PushOperationsLaborAdapter(
+              apiClient: transport,
+              canonicalSink: pushOpsSink,
+            );
+          }
+          as LaborAdapterFactory;
   signatureVerifiers[pushOperationsVendorId] =
       const PushOperationsWebhookSignatureVerifier();
 
   // ─── Labor — QuickBooks Time (optional static app credentials) ─────
-  final qbtSink = QuickBooksTimePostgresSink(tenantWrapper: wrapper);
+  final qbtProjectionTap = buildProjectionTap(
+    vendorId: kQuickBooksTimeVendorId,
+    category: IntegrationCategory.labor,
+  );
+  final qbtSink = QuickBooksTimePostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: qbtProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: kQuickBooksTimeVendorId,
     category: IntegrationCategory.labor,
@@ -790,34 +892,40 @@ Phase8VendorIntegrationFactories
       clientId: qbtCreds.clientId,
       clientSecret: qbtCreds.clientSecret,
     );
-    laborAdapterFactories[kQuickBooksTimeVendorId] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      final credStore = QuickBooksTimeBrokerCredentialStore(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: qbtRefresh,
-      );
-      final transport = QuickBooksTimeLaborProductionApiClient(
-        QuickBooksTimeProductionApiClientDeps(
-          credentials: credStore,
-          oauthCredentials: qbtOauthCreds,
-          httpClient: sharedHttpClient,
-        ),
-      );
-      return QuickBooksTimeLaborAdapter(
-        transport: transport,
-        gateway: qbtSink,
-      );
-    } as LaborAdapterFactory;
+    laborAdapterFactories[kQuickBooksTimeVendorId] =
+        ({required String operatorId, required String locationId}) async {
+              final credStore = QuickBooksTimeBrokerCredentialStore(
+                broker: broker,
+                operatorId: operatorId,
+                locationId: locationId,
+                oauthRefresh: qbtRefresh,
+              );
+              final transport = QuickBooksTimeLaborProductionApiClient(
+                QuickBooksTimeProductionApiClientDeps(
+                  credentials: credStore,
+                  oauthCredentials: qbtOauthCreds,
+                  httpClient: sharedHttpClient,
+                ),
+              );
+              return QuickBooksTimeLaborAdapter(
+                transport: transport,
+                gateway: qbtSink,
+              );
+            }
+            as LaborAdapterFactory;
     signatureVerifiers[kQuickBooksTimeVendorId] =
         const QuickBooksTimeWebhookSignatureVerifier();
   }
 
   // ─── Labor — 7shifts (optional static app credentials) ─────────────
-  final sevenShiftsSink = SevenShiftsPostgresSink(tenantWrapper: wrapper);
+  final sevenShiftsProjectionTap = buildProjectionTap(
+    vendorId: 'seven_shifts',
+    category: IntegrationCategory.labor,
+  );
+  final sevenShiftsSink = SevenShiftsPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: sevenShiftsProjectionTap,
+  );
   wrapCanonicalSink(
     vendorId: 'seven_shifts',
     category: IntegrationCategory.labor,
@@ -835,34 +943,40 @@ Phase8VendorIntegrationFactories
       clientId: sevenShiftsCreds.clientId,
       clientSecret: sevenShiftsCreds.clientSecret,
     );
-    laborAdapterFactories['seven_shifts'] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      final accessTokenProvider =
-          seven_shifts_bridge.makeSevenShiftsAccessTokenProvider(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: sevenShiftsRefresh,
-      );
-      final transport = SevenShiftsApiClient(
-        deps: SevenShiftsApiClientDeps(
-          accessTokenProvider: accessTokenProvider,
-          httpClient: sharedHttpClient,
-        ),
-      );
-      return SevenShiftsLaborAdapter(
-        transport: transport,
-        gateway: sevenShiftsSink,
-      );
-    } as LaborAdapterFactory;
+    laborAdapterFactories['seven_shifts'] =
+        ({required String operatorId, required String locationId}) async {
+              final accessTokenProvider = seven_shifts_bridge
+                  .makeSevenShiftsAccessTokenProvider(
+                    broker: broker,
+                    operatorId: operatorId,
+                    locationId: locationId,
+                    oauthRefresh: sevenShiftsRefresh,
+                  );
+              final transport = SevenShiftsApiClient(
+                deps: SevenShiftsApiClientDeps(
+                  accessTokenProvider: accessTokenProvider,
+                  httpClient: sharedHttpClient,
+                ),
+              );
+              return SevenShiftsLaborAdapter(
+                transport: transport,
+                gateway: sevenShiftsSink,
+              );
+            }
+            as LaborAdapterFactory;
     signatureVerifiers['seven_shifts'] =
         const SevenShiftsWebhookSignatureVerifier();
   }
 
   // ─── Reservation — Libro (optional static app credentials) ─────────
-  final libroSink = LibroPostgresSink(tenantWrapper: wrapper);
+  final libroProjectionTap = buildProjectionTap(
+    vendorId: kLibroVendorId,
+    category: IntegrationCategory.reservation,
+  );
+  final libroSink = LibroPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: libroProjectionTap,
+  );
   // Libro / OpenTable / Tock / SevenRooms expose their CanonicalSink
   // surface as a private view (e.g. `_LibroCanonicalSinkView`) reached
   // via `asCanonicalSink(connectionIdResolver: ...)`. The resolver
@@ -883,49 +997,54 @@ Phase8VendorIntegrationFactories
       clientId: libroCreds.clientId,
       clientSecret: libroCreds.clientSecret,
     );
-    reservationAdapterFactories[kLibroVendorId] = ({
-      required String operatorId,
-      required String locationId,
-    }) async {
-      final bearerResolver = makeLibroBearerTokenResolver(
-        broker: broker,
-        operatorId: operatorId,
-        locationId: locationId,
-        oauthRefresh: libroRefresh,
-      );
-      final transport = LibroReservationProductionApiClient(
-        bearerTokenResolver: bearerResolver,
-        httpClient: sharedHttpClient,
-      );
-      return LibroReservationAdapter(
-        gateway: libroSink,
-        httpClient: transport,
-        timezoneConverter: LibroIanaConverter(),
-      );
-    } as ReservationAdapterFactory;
+    reservationAdapterFactories[kLibroVendorId] =
+        ({required String operatorId, required String locationId}) async {
+              final bearerResolver = makeLibroBearerTokenResolver(
+                broker: broker,
+                operatorId: operatorId,
+                locationId: locationId,
+                oauthRefresh: libroRefresh,
+              );
+              final transport = LibroReservationProductionApiClient(
+                bearerTokenResolver: bearerResolver,
+                httpClient: sharedHttpClient,
+              );
+              return LibroReservationAdapter(
+                gateway: libroSink,
+                httpClient: transport,
+                timezoneConverter: LibroIanaConverter(),
+              );
+            }
+            as ReservationAdapterFactory;
     signatureVerifiers[kLibroVendorId] = const LibroWebhookSignatureVerifier();
   }
 
   // ─── Reservation — OpenTable ───────────────────────────────────────
-  final opentableSink = OpenTableReservationPostgresSink(tenantWrapper: wrapper);
-  reservationAdapterFactories[kOpenTableVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final credentialStore = OpenTableBrokerCredentialStore(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    final transport = OpenTableReservationProductionApiClient(
-      httpClient: sharedHttpClient,
-      credentialStore: credentialStore,
-    );
-    return OpenTableReservationAdapter(
-      transport: transport,
-      gateway: opentableSink,
-    );
-  } as ReservationAdapterFactory;
+  final opentableProjectionTap = buildProjectionTap(
+    vendorId: kOpenTableVendorId,
+    category: IntegrationCategory.reservation,
+  );
+  final opentableSink = OpenTableReservationPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: opentableProjectionTap,
+  );
+  reservationAdapterFactories[kOpenTableVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final credentialStore = OpenTableBrokerCredentialStore(
+              broker: broker,
+              operatorId: operatorId,
+              locationId: locationId,
+            );
+            final transport = OpenTableReservationProductionApiClient(
+              httpClient: sharedHttpClient,
+              credentialStore: credentialStore,
+            );
+            return OpenTableReservationAdapter(
+              transport: transport,
+              gateway: opentableSink,
+            );
+          }
+          as ReservationAdapterFactory;
   signatureVerifiers[kOpenTableVendorId] =
       const OpenTableWebhookSignatureVerifier();
 
@@ -943,67 +1062,76 @@ Phase8VendorIntegrationFactories
   // `SevenRoomsTransportDeps`.
   final sevenRoomsSink = SevenRoomsReservationPostgresSink(
     tenantWrapper: wrapper,
-  );
-  reservationAdapterFactories[kSevenRoomsVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final config = await locationConfigResolver.resolve(
-      operatorId: operatorId,
-      locationId: locationId,
+    projectionTap: buildProjectionTap(
       vendorId: kSevenRoomsVendorId,
-    );
-    final credentialStore = SevenRoomsBrokerCredentialStore(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    final transportDeps = SevenRoomsTransportDeps.shared(
-      credentialStore: credentialStore,
-      httpClient: sharedHttpClient,
-    );
-    final authClient = transportDeps.buildAuthClient();
-    final reservationsClient = transportDeps.buildReservationsClient(
-      // Production threads the per-operator credential id from the
-      // live binding (looked up by the adapter at backfill / poll
-      // time). For factory construction we pass an empty string; the
-      // adapter looks up the binding before any API call so the
-      // empty placeholder is never the value used on the wire.
-      credentialIdForRequest: '',
-    );
-    return SevenRoomsReservationAdapter(
-      gateway: sevenRoomsSink,
-      authClient: authClient,
-      webhookClient: const SevenRoomsWebhookProductionApiClient(),
-      reservationsClient: reservationsClient,
-      restaurantTimezone: config.restaurantTimezone,
-      businessDayRolloverHour: config.businessDayRolloverHour,
-      webhookUrl: config.webhookBaseUri.toString(),
-    );
-  } as ReservationAdapterFactory;
+      category: IntegrationCategory.reservation,
+    ),
+  );
+  reservationAdapterFactories[kSevenRoomsVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final config = await locationConfigResolver.resolve(
+              operatorId: operatorId,
+              locationId: locationId,
+              vendorId: kSevenRoomsVendorId,
+            );
+            final credentialStore = SevenRoomsBrokerCredentialStore(
+              broker: broker,
+              operatorId: operatorId,
+              locationId: locationId,
+            );
+            final transportDeps = SevenRoomsTransportDeps.shared(
+              credentialStore: credentialStore,
+              httpClient: sharedHttpClient,
+            );
+            final authClient = transportDeps.buildAuthClient();
+            final reservationsClient = transportDeps.buildReservationsClient(
+              // Production threads the per-operator credential id from the
+              // live binding (looked up by the adapter at backfill / poll
+              // time). For factory construction we pass an empty string; the
+              // adapter looks up the binding before any API call so the
+              // empty placeholder is never the value used on the wire.
+              credentialIdForRequest: '',
+            );
+            return SevenRoomsReservationAdapter(
+              gateway: sevenRoomsSink,
+              authClient: authClient,
+              webhookClient: const SevenRoomsWebhookProductionApiClient(),
+              reservationsClient: reservationsClient,
+              restaurantTimezone: config.restaurantTimezone,
+              businessDayRolloverHour: config.businessDayRolloverHour,
+              webhookUrl: config.webhookBaseUri.toString(),
+            );
+          }
+          as ReservationAdapterFactory;
   signatureVerifiers[kSevenRoomsVendorId] =
       const SevenRoomsWebhookSignatureVerifier();
 
   // ─── Reservation — Tock ────────────────────────────────────────────
-  final tockSink = TockReservationPostgresSink(tenantWrapper: wrapper);
-  reservationAdapterFactories[kTockVendorId] = ({
-    required String operatorId,
-    required String locationId,
-  }) async {
-    final resolver = TockBrokerCredentialResolver(
-      broker: broker,
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    final transport = TockReservationProductionApiClient(
-      credentialResolver: resolver,
-      httpClient: sharedHttpClient,
-    );
-    return TockReservationAdapter(
-      transport: transport,
-      factSink: tockSink,
-    );
-  } as ReservationAdapterFactory;
+  final tockProjectionTap = buildProjectionTap(
+    vendorId: kTockVendorId,
+    category: IntegrationCategory.reservation,
+  );
+  final tockSink = TockReservationPostgresSink(
+    tenantWrapper: wrapper,
+    projectionTap: tockProjectionTap,
+  );
+  reservationAdapterFactories[kTockVendorId] =
+      ({required String operatorId, required String locationId}) async {
+            final resolver = TockBrokerCredentialResolver(
+              broker: broker,
+              operatorId: operatorId,
+              locationId: locationId,
+            );
+            final transport = TockReservationProductionApiClient(
+              credentialResolver: resolver,
+              httpClient: sharedHttpClient,
+            );
+            return TockReservationAdapter(
+              transport: transport,
+              factSink: tockSink,
+            );
+          }
+          as ReservationAdapterFactory;
   signatureVerifiers[kTockVendorId] = const TockWebhookSignatureVerifier();
 
   return Phase8VendorIntegrationFactories(
@@ -1013,6 +1141,7 @@ Phase8VendorIntegrationFactories
     signatureVerifiers: signatureVerifiers,
     disabledVendors: disabledVendors,
     projectingSinksByVendor: projectingSinksByVendor,
+    projectionTapsByVendor: projectionTapsByVendor,
   );
 }
 

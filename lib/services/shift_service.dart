@@ -26,6 +26,7 @@
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/closed_shift_input.dart';
+import '../domain/models/open_shift_snapshot.dart';
 import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/models/shift_fact.dart';
@@ -42,6 +43,7 @@ import '../domain/services/shift_boundary_resolver.dart';
 import '../domain/services/utc_metadata_timestamp.dart';
 import '../state/app_runtime_invalidation_bus.dart';
 import 'business_date_authority_service.dart';
+import 'closed_truth_eligibility.dart';
 import 'restaurant_timing_config_read_service.dart';
 import 'schedule_plan_read_service.dart';
 import 'weekly_plan_snapshot_service.dart';
@@ -64,7 +66,6 @@ import '../models/week_data.dart';
 import '../models/week_record.dart';
 import 'daypart_plan_allocator.dart';
 import 'history_pattern_builder.dart';
-import 'integration/close_authority_capability.dart';
 import 'integration/shift_vendor_source_resolver.dart';
 import 'labor_model.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
@@ -105,7 +106,10 @@ class ShiftService {
     final restaurantId = await _activeRestaurantId();
     final profile = await _loadActiveProfile(restaurantId);
     final shifts = await _shiftRepo.getShiftsForWeek(restaurantId, weekId);
-    final closed = shifts.where((s) => s.isClosed).toList();
+    final closed = await _eligibleClosedTruthRows(
+      restaurantId,
+      shifts.where((s) => s.isClosed),
+    );
     if (closed.isEmpty) return null;
 
     final totalCovers = closed.fold<int>(0, (s, r) => s + r.covers);
@@ -211,7 +215,9 @@ class ShiftService {
         monthStartDate,
         maxClosedDate,
       );
-      monthDollarImpact = _accumulateDollarImpact(monthShifts);
+      monthDollarImpact = _accumulateDollarImpact(
+        await _eligibleClosedTruthRows(restaurantId, monthShifts),
+      );
 
       final sixtyDayStartDt = closedDt.subtract(const Duration(days: 59));
       final sixtyDayStartDate = _formatDate(sixtyDayStartDt);
@@ -220,7 +226,9 @@ class ShiftService {
         sixtyDayStartDate,
         maxClosedDate,
       );
-      sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
+      sixtyDayDollarImpact = _accumulateDollarImpact(
+        await _eligibleClosedTruthRows(restaurantId, sixtyDayShifts),
+      );
     }
 
     return WeekData(
@@ -272,7 +280,15 @@ class ShiftService {
       restaurantId,
       weekIds,
     );
-    return HistoryPatternBuilder.fromClosedShifts(closedShifts, weekLabelsById);
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    return HistoryPatternBuilder.fromClosedShifts(
+      closedShifts,
+      weekLabelsById,
+      currentOperationalBusinessDate: operationalBusinessDate,
+      shiftCloseAuthorityForRow: ClosedTruthEligibility.closeAuthorityForShift,
+    );
   }
 
   // ── Historical closed shifts (for benchmark daypart evidence) ────────────────
@@ -282,7 +298,31 @@ class ShiftService {
     if (weeks.isEmpty) return [];
     final weekIds = weeks.map((w) => w.weekId).toList();
     final restaurantId = await _activeRestaurantId();
-    return _shiftRepo.getClosedShiftsForWeeks(restaurantId, weekIds);
+    final shifts = await _shiftRepo.getClosedShiftsForWeeks(
+      restaurantId,
+      weekIds,
+    );
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    return ClosedTruthEligibility.filter(
+      shifts,
+      currentOperationalBusinessDate: operationalBusinessDate,
+    );
+  }
+
+  Future<List<ShiftRecord>> _eligibleClosedTruthRows(
+    String restaurantId,
+    Iterable<ShiftRecord> shifts, {
+    String? currentOperationalBusinessDate,
+  }) async {
+    final operationalBusinessDate =
+        currentOperationalBusinessDate ??
+        await _openShiftRepo.getCurrentBusinessDate(restaurantId);
+    return ClosedTruthEligibility.filter(
+      shifts,
+      currentOperationalBusinessDate: operationalBusinessDate,
+    );
   }
 
   // ── Close a shift ─────────────────────────────────────────────────────────────
@@ -291,28 +331,37 @@ class ShiftService {
     // 1. Load active target profile
     final profile = await _loadActiveProfile(input.restaurantId);
 
-    // 2. Create an immutable target profile version
+    // 2. Create or reuse the immutable target profile version.
+    //
+    // Server-truth active profiles already carry the canonical version id.
+    // Reuse that id so mobile/local close paths lock the same identity the
+    // server path would use. Only mint a local compatibility version when the
+    // active profile has no version id yet.
     final now = nowIsoUtc();
-    final versionId =
-        'tpv_${now.replaceAll(RegExp(r'[^0-9]'), '')}_${input.weekId}_${input.dayLabel}_${input.daypart}';
-    final version = TargetProfileVersion(
-      targetProfileVersionId: versionId,
-      targetProfileId: profile.targetProfileId,
-      restaurantId: input.restaurantId,
-      sourceType: profile.sourceType,
-      targetCPLH: profile.targetCPLH,
-      targetSPLH: profile.targetSPLH,
-      targetPPA: profile.targetPPA,
-      fohWage: profile.fohWage,
-      bohWage: profile.bohWage,
-      opzFloorCPLH: profile.opzFloorCPLH,
-      opzCeilingCPLH: profile.opzCeilingCPLH,
-      theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
-      theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
-      theoreticalLaborPct: profile.theoreticalLaborPct,
-      createdAt: now,
-    );
-    await _profileRepo.insertTargetProfileVersion(version);
+    final activeVersionId = profile.targetProfileVersionId?.trim();
+    final versionId = (activeVersionId != null && activeVersionId.isNotEmpty)
+        ? activeVersionId
+        : 'tpv_${now.replaceAll(RegExp(r'[^0-9]'), '')}_${input.weekId}_${input.dayLabel}_${input.daypart}';
+    if (activeVersionId == null || activeVersionId.isEmpty) {
+      final version = TargetProfileVersion(
+        targetProfileVersionId: versionId,
+        targetProfileId: profile.targetProfileId,
+        restaurantId: input.restaurantId,
+        sourceType: profile.sourceType,
+        targetCPLH: profile.targetCPLH,
+        targetSPLH: profile.targetSPLH,
+        targetPPA: profile.targetPPA,
+        fohWage: profile.fohWage,
+        bohWage: profile.bohWage,
+        opzFloorCPLH: profile.opzFloorCPLH,
+        opzCeilingCPLH: profile.opzCeilingCPLH,
+        theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
+        theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+        theoreticalLaborPct: profile.theoreticalLaborPct,
+        createdAt: now,
+      );
+      await _profileRepo.insertTargetProfileVersion(version);
+    }
 
     // 3. Build locked target snapshot from the active profile + version.
     //
@@ -345,7 +394,10 @@ class ShiftService {
       input.restaurantId,
       input.weekId,
     );
-    final closedShifts = allShifts.where((s) => s.isClosed).toList();
+    final closedShifts = await _eligibleClosedTruthRows(
+      input.restaurantId,
+      allShifts.where((s) => s.isClosed),
+    );
 
     // 8. Upsert WeekRecord only when the week is fully closed.
     //
@@ -374,24 +426,6 @@ class ShiftService {
     AppRuntimeInvalidationBus.instance.notifyRuntimeWriteCompleted();
 
     return record;
-  }
-
-  /// Per-Daypart V1 Slice 1.5 — translate a row's `sourceSystem` POS
-  /// vendor id into the [ShiftCloseAuthority] the shift boundary
-  /// resolver expects. Reliable vendor finalization classes (Toast,
-  /// Aloha, Oracle Simphony, Lightspeed K-Series, Revel, Square,
-  /// Clover) map to `vendorFinalization`; everything else (unknown,
-  /// null, demo seeder rows, labor-only inputs) maps to
-  /// `appLocalCutoffFallback` so the operator's business-day-start
-  /// rollover is the close moment.
-  static ShiftCloseAuthority _closeAuthorityForRow(String? sourceSystem) {
-    final capability = resolveCloseAuthorityCapability(sourceSystem);
-    switch (capability) {
-      case CloseAuthorityCapability.vendorReliableFinalization:
-        return ShiftCloseAuthority.vendorFinalization;
-      case CloseAuthorityCapability.unreliableFallbackToBusinessDayStart:
-        return ShiftCloseAuthority.appLocalCutoffFallback;
-    }
   }
 
   /// Per-Daypart V1 Slice 1.5 (Gap 24) — expected closed-shift count
@@ -722,7 +756,9 @@ class ShiftService {
         monthStart,
         maxClosedDate,
       );
-      monthDollarImpact = _accumulateDollarImpact(monthShifts);
+      monthDollarImpact = _accumulateDollarImpact(
+        await _eligibleClosedTruthRows(restaurantId, monthShifts),
+      );
       final sixtyDayStart = _formatDate(
         closedDt.subtract(const Duration(days: 59)),
       );
@@ -731,7 +767,9 @@ class ShiftService {
         sixtyDayStart,
         maxClosedDate,
       );
-      sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
+      sixtyDayDollarImpact = _accumulateDollarImpact(
+        await _eligibleClosedTruthRows(restaurantId, sixtyDayShifts),
+      );
     }
 
     return WeekRecord(
@@ -927,7 +965,8 @@ class ShiftService {
           .where(
             (s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
               rowStatus: s.status,
-              shiftCloseAuthority: _closeAuthorityForRow(s.sourceSystem),
+              shiftCloseAuthority:
+                  ClosedTruthEligibility.closeAuthorityForShift(s),
               rowBusinessDate: s.businessDate,
               currentOperationalBusinessDate: operationalBusinessDate,
             ),
@@ -1211,6 +1250,17 @@ class ShiftService {
       restaurantId,
       weekId,
     );
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    final eligibleClosed = await _eligibleClosedTruthRows(
+      restaurantId,
+      dbShifts.where((s) => s.isClosed),
+      currentOperationalBusinessDate: operationalBusinessDate,
+    );
+    final eligibleClosedKeys = eligibleClosed
+        .map((s) => '${s.dayLabel}|${s.daypart}')
+        .toSet();
 
     // Build snapshot key set — these override projected shift_records rows
     final snapshotKeys = openSnapshots
@@ -1221,8 +1271,9 @@ class ShiftService {
     final kept = dbShifts
         .where(
           (s) =>
-              s.isClosed ||
-              !snapshotKeys.contains('${s.dayLabel}|${s.daypart}'),
+              eligibleClosedKeys.contains('${s.dayLabel}|${s.daypart}') ||
+              (!s.isClosed &&
+                  !snapshotKeys.contains('${s.dayLabel}|${s.daypart}')),
         )
         .toList();
 
@@ -1260,9 +1311,13 @@ class ShiftService {
     final openAsRecords = openSnapshots
         .where((s) => !closedKeys.contains('${s.dayLabel}|${s.daypart}'))
         .map((s) {
+          final snapshot = _snapshotForFullWeek(
+            s,
+            currentOperationalBusinessDate: operationalBusinessDate,
+          );
           final allocation = overrides[s.dayLabel]?[s.daypart];
           return CurrentWeekState.shiftRecordFromSnapshot(
-            s,
+            snapshot,
             profile,
             planForecastCovers: allocation?.forecastCovers,
             planForecastSales: allocation?.forecastSales,
@@ -1273,6 +1328,47 @@ class ShiftService {
         .toList();
 
     return [...keptWithPlanTargets, ...openAsRecords];
+  }
+
+  OpenShiftSnapshot _snapshotForFullWeek(
+    OpenShiftSnapshot snapshot, {
+    required String? currentOperationalBusinessDate,
+  }) {
+    if (snapshot.status != 'closed') return snapshot;
+    final eligible = ShiftBoundaryResolver.isEligibleForClosedTruth(
+      rowStatus: snapshot.status,
+      shiftCloseAuthority: ClosedTruthEligibility.closeAuthorityForSourceSystem(
+        snapshot.sourceSystem,
+      ),
+      rowBusinessDate: snapshot.businessDate,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+    );
+    if (eligible) return snapshot;
+    return OpenShiftSnapshot(
+      restaurantId: snapshot.restaurantId,
+      weekId: snapshot.weekId,
+      dayLabel: snapshot.dayLabel,
+      daypart: snapshot.daypart,
+      status: 'projected',
+      businessDate: snapshot.businessDate,
+      businessTimingProfileId: snapshot.businessTimingProfileId,
+      businessTimingProfileVersionId: snapshot.businessTimingProfileVersionId,
+      servicePeriodKey: snapshot.servicePeriodKey,
+      forecastCovers: snapshot.forecastCovers,
+      currentCovers: 0,
+      scheduledFohHours: snapshot.scheduledFohHours,
+      scheduledBohHours: snapshot.scheduledBohHours,
+      currentPPA: 0,
+      currentCPLH: 0,
+      currentSPLH: 0,
+      blendedWage: snapshot.blendedWage,
+      timeLabel: snapshot.timeLabel,
+      serviceElapsedLabel: snapshot.serviceElapsedLabel,
+      sourceSystem: snapshot.sourceSystem,
+      sourceShiftId: snapshot.sourceShiftId,
+      lastEventAt: snapshot.lastEventAt,
+      updatedAt: snapshot.updatedAt,
+    );
   }
 
   ShiftRecord _withPlanTargets(ShiftRecord s, DaypartAllocation allocation) {

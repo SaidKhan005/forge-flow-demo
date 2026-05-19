@@ -367,6 +367,8 @@ class ActiveTargetProfileSyncRow {
       profile: ActiveTargetProfile(
         targetProfileId: _requiredString(json, 'target_profile_id'),
         restaurantId: _requiredString(json, 'restaurant_id'),
+        targetCycleId: _readString(json['target_cycle_id']),
+        targetProfileVersionId: _readString(json['target_profile_version_id']),
         sourceType: _requiredString(json, 'source_type'),
         targetCPLH: _requiredDouble(json, 'target_cplh'),
         targetSPLH: _requiredDouble(json, 'target_splh'),
@@ -419,6 +421,7 @@ class TargetProfileVersionSyncRow {
         ),
         targetProfileId: _requiredString(json, 'target_profile_id'),
         restaurantId: _requiredString(json, 'restaurant_id'),
+        targetCycleId: _readString(json['target_cycle_id']),
         sourceType: _requiredString(json, 'source_type'),
         targetCPLH: _requiredDouble(json, 'target_cplh'),
         targetSPLH: _requiredDouble(json, 'target_splh'),
@@ -507,9 +510,7 @@ int _requiredInt(Map<String, dynamic> json, String key) {
   return value;
 }
 
-List<TargetCycleDaypart> _readTargetCycleDayparts(
-  Map<String, dynamic> json,
-) {
+List<TargetCycleDaypart> _readTargetCycleDayparts(Map<String, dynamic> json) {
   final rows =
       _readList(json['target_cycle_dayparts']) ?? _readList(json['dayparts']);
   if (rows == null) return const <TargetCycleDaypart>[];
@@ -592,9 +593,7 @@ List<Map<String, dynamic>>? _readList(Object? value) {
   if (value is! List) {
     throw const FormatException('Star-target dayparts value was not a list.');
   }
-  return <Map<String, dynamic>>[
-    for (final item in value) _dynamicMap(item),
-  ];
+  return <Map<String, dynamic>>[for (final item in value) _dynamicMap(item)];
 }
 
 Map<String, dynamic> _dynamicMap(Object? value) {

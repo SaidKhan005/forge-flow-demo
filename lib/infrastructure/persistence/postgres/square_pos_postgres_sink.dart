@@ -96,6 +96,7 @@ import 'dart:convert';
 import '../../../integrations/pos/square_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 
 import '../../../services/integration/integration_adapter_common.dart';
@@ -128,15 +129,19 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? clock,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _clock = clock ?? DateTime.now;
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _clock = clock ?? DateTime.now;
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Square no longer
   // reads `locations.business_day_rollover_hour`. The location-row
@@ -150,6 +155,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
   // so existing call sites continue to compile and so test suites can
   // inject a stub IANA converter; it is threaded into the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _clock;
 
   // ─── bespoke fact write — converts and delegates ─────────────────
@@ -185,10 +191,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalFact,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final inserted = await withTenant<bool>(ctx, (exec) async {
       final closedAt = _coerceUtc(canonicalFact['closed_at']);
       if (closedAt == null) {
@@ -308,6 +311,13 @@ class SquarePosPostgresSink extends OperatorScopedRepository
       return rows.isNotEmpty;
     });
 
+    if (inserted) {
+      _projectionTap?.recordCommittedCoverFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalFact: canonicalFact,
+      );
+    }
     return inserted;
   }
 
@@ -320,8 +330,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   /// POS sink — reservations are the LB lane's job. See the
   /// [upsertLaborPunch] note.
@@ -330,8 +339,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      false;
+  }) async => false;
 
   // ─── watermark — bespoke + unified delegate to a private writer ──
 
@@ -345,14 +353,13 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     required String locationId,
     required String? cursorToken,
     required DateTime lastModifiedSeen,
-  }) =>
-      _advanceWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: cursorToken,
-        lastModifiedSeen: lastModifiedSeen,
-        explicitConnectionId: null,
-      );
+  }) => _advanceWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: cursorToken,
+    lastModifiedSeen: lastModifiedSeen,
+    explicitConnectionId: null,
+  );
 
   /// Unified [CanonicalSink] watermark surface consumed by the spine-
   /// bridge sync worker. `connectionId` is widened to optional named so
@@ -365,14 +372,13 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     required String cursorToken,
     required DateTime lastModifiedSeen,
     String? connectionId,
-  }) =>
-      _advanceWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: cursorToken,
-        lastModifiedSeen: lastModifiedSeen,
-        explicitConnectionId: connectionId,
-      );
+  }) => _advanceWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: cursorToken,
+    lastModifiedSeen: lastModifiedSeen,
+    explicitConnectionId: connectionId,
+  );
 
   Future<void> _advanceWatermark({
     required String operatorId,
@@ -381,10 +387,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     required String? explicitConnectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -438,8 +441,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
       );
       if (dmsRows.isNotEmpty) {
         final dmsRow = dmsRows.single;
-        final pendingCount =
-            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final pendingCount = (dmsRow['pending_inserts_count'] as int? ?? 0);
         final isDemo = dmsRow['is_demo'] as bool? ?? true;
         if (pendingCount >= 1 && isDemo) {
           await exec.execute(
@@ -478,10 +480,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -528,10 +527,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     if (!firstBackfillCommitted) return;
     if (backfillRecordsWritten < 1) return;
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       // Read-or-create the row with default `is_demo = true`. The
       // `INSERT ... ON CONFLICT DO NOTHING` is idempotent: if the row
@@ -587,15 +583,14 @@ class SquarePosPostgresSink extends OperatorScopedRepository
   /// `revokeOauth`) through its `SquareApiClient`; this method is the
   /// repository-side counterpart that the spine-bridge dispatcher
   /// calls during a disconnect tick.
-  Future<({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})>
-      wipeCredentialsPreserveWatermark({
+  Future<
+    ({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})
+  >
+  wipeCredentialsPreserveWatermark({
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final credentialsWiped = await withTenant<bool>(ctx, (exec) async {
       final wiped = await exec.execute(
         'update public.vendor_credentials set '
@@ -664,10 +659,7 @@ class SquarePosPostgresSink extends OperatorScopedRepository
     if (explicitConnectionId != null && explicitConnectionId.isNotEmpty) {
       return explicitConnectionId;
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id '

@@ -1037,23 +1037,14 @@ const String kDemoDinerOrgUnitEast = '00000000-0000-4000-8000-000000000d02';
 const String kDemoDinerOrgUnitWest = '00000000-0000-4000-8000-000000000d03';
 const String kDemoSunsetOrgUnitRoot = '00000000-0000-4000-8000-000000000s01';
 
-// Cross-surface parity register G73 (BY-DESIGN-UNDOCUMENTED, now
-// documented): this demo fixture intentionally seeds the legacy v1
-// 6-role catalog (operator_owner / operator_manager /
-// operator_supervisor / operator_staff, plus a custom Floor Captain
-// and the trimmed Sunset set) for demo-walkthrough continuity.
-// Production role seeding is the v2 10-role default-role catalog in
-// `db/migrations/202605150000_phase_r2l_default_role_catalog_v2.sql`;
-// this in-memory demo gateway never feeds production seeding, so the
-// v1 shape here is a demo-only carve-out with no production analogue.
-// Keep this list stable so the Roles walkthrough stays deterministic;
-// do not "upgrade" it to v2 without a paired walkthrough refresh.
+// Keep this fixture aligned to the current operator seeded roles while
+// preserving the custom Floor Captain row for demo walkthroughs.
 Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
   const dinerRoles = <RoleAdminRow>[
     RoleAdminRow(
       roleId: 'role-seed-operator-owner',
       roleKey: 'operator_owner',
-      displayName: 'Operator owner',
+      displayName: 'Owner',
       description:
           'Full access to the operator account, including team and billing.',
       isSeeded: true,
@@ -1066,28 +1057,29 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
       ],
     ),
     RoleAdminRow(
-      roleId: 'role-seed-operator-manager',
-      roleKey: 'operator_manager',
-      displayName: 'Operator manager',
-      description: 'Day-to-day operations and team management.',
+      roleId: 'role-seed-operator-general-manager',
+      roleKey: 'operator_general_manager',
+      displayName: 'General Manager',
+      description:
+          'Day-to-day operations and team management across locations.',
       isSeeded: true,
       permissionKeys: <String>['team.users.view', 'team.roles.assign'],
     ),
     RoleAdminRow(
-      roleId: 'role-seed-operator-supervisor',
-      roleKey: 'operator_supervisor',
-      displayName: 'Operator supervisor',
-      description: 'Floor supervisor with read-only team visibility.',
+      roleId: 'role-seed-location-manager',
+      roleKey: 'location_manager',
+      displayName: 'Location Manager',
+      description: 'Manages one location and its team membership.',
       isSeeded: true,
-      permissionKeys: <String>['team.users.view'],
+      permissionKeys: <String>['team.users.view', 'team.roles.assign'],
     ),
     RoleAdminRow(
-      roleId: 'role-seed-operator-staff',
-      roleKey: 'operator_staff',
-      displayName: 'Operator staff',
-      description: 'Staff member.',
+      roleId: 'role-seed-supervisor',
+      roleKey: 'supervisor',
+      displayName: 'Supervisor',
+      description: 'Shift supervisor with read-only team visibility.',
       isSeeded: true,
-      permissionKeys: <String>[],
+      permissionKeys: <String>['team.users.view'],
     ),
     RoleAdminRow(
       roleId: 'role-custom-floor-captain',
@@ -1104,7 +1096,7 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
     RoleAdminRow(
       roleId: 'role-seed-operator-owner',
       roleKey: 'operator_owner',
-      displayName: 'Operator owner',
+      displayName: 'Owner',
       description:
           'Full access to the operator account, including team and billing.',
       isSeeded: true,
@@ -1117,12 +1109,29 @@ Map<String, List<RoleAdminRow>> kDemoRolesByOperator() {
       ],
     ),
     RoleAdminRow(
-      roleId: 'role-seed-operator-staff',
-      roleKey: 'operator_staff',
-      displayName: 'Operator staff',
-      description: 'Staff member.',
+      roleId: 'role-seed-operator-general-manager',
+      roleKey: 'operator_general_manager',
+      displayName: 'General Manager',
+      description:
+          'Day-to-day operations and team management across locations.',
       isSeeded: true,
-      permissionKeys: <String>[],
+      permissionKeys: <String>['team.users.view', 'team.roles.assign'],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-location-manager',
+      roleKey: 'location_manager',
+      displayName: 'Location Manager',
+      description: 'Manages one location and its team membership.',
+      isSeeded: true,
+      permissionKeys: <String>['team.users.view', 'team.roles.assign'],
+    ),
+    RoleAdminRow(
+      roleId: 'role-seed-supervisor',
+      roleKey: 'supervisor',
+      displayName: 'Supervisor',
+      description: 'Shift supervisor with read-only team visibility.',
+      isSeeded: true,
+      permissionKeys: <String>['team.users.view'],
     ),
   ];
   return <String, List<RoleAdminRow>>{
@@ -1220,7 +1229,7 @@ Map<String, List<SessionAdminRow>> kDemoSessionsByOperator({DateTime? at}) {
       SessionAdminRow(
         sessionId: 'session-diner-manager-mobile',
         userId: 'demo-user-diner-manager',
-        userDisplayName: 'Mira Manager',
+        userDisplayName: 'Mira General Manager',
         userEmail: 'manager@demo-diner.test',
         deviceFingerprint: 'Android Chrome on Pixel',
         ipGeoCity: 'Vancouver, BC',

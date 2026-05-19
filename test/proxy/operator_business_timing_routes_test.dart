@@ -56,18 +56,20 @@ void main() {
       }
     }
 
-    Future<({
-      HttpServer server,
-      HttpClient client,
-      Uri baseUri,
-      _RecordingTimingGateway gateway,
-      _RecordingAuditSink audit,
-      _SettableVerifier verifier,
-    })> spinUp({
-      ProxyJwtClaims? initialClaims,
-    }) async {
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _RecordingTimingGateway gateway,
+        _RecordingAuditSink audit,
+        _SettableVerifier verifier,
+      })
+    >
+    spinUp({ProxyJwtClaims? initialClaims}) async {
       final verifier = _SettableVerifier();
-      verifier.claims = initialClaims ??
+      verifier.claims =
+          initialClaims ??
           const ProxyJwtClaims(
             userId: _kUser,
             operatorId: _kOpA,
@@ -86,11 +88,7 @@ void main() {
       // ignore: unawaited_futures
       server.listen((request) async {
         try {
-          await routeRequest(
-            request,
-            guard,
-            operatorWriteRouter: router,
-          );
+          await routeRequest(request, guard, operatorWriteRouter: router);
         } catch (_) {
           try {
             request.response.statusCode = 500;
@@ -99,8 +97,7 @@ void main() {
         }
       });
       final client = HttpClient();
-      final baseUri =
-          Uri.parse('http://${server.address.host}:${server.port}');
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
       return (
         server: server,
         client: client,
@@ -111,29 +108,68 @@ void main() {
       );
     }
 
-    test('POST /v1/operator/business-timing-profiles - 201 happy path',
-        () async {
+    test(
+      'POST /v1/operator/business-timing-profiles - 201 happy path',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
+              method: 'POST',
+              idempotencyKey: 'idem-create-1',
+              body: _validProfileBody(),
+            );
+            expect(response.statusCode, equals(201));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['profileId'], equals(_kProfileA));
+            expect(body['versionId'], equals(_kProfileA));
+            expect(body['servicePeriods'], hasLength(2));
+            expect(ctx.gateway.createCalls, equals(1));
+            expect(ctx.audit.records, hasLength(1));
+            expect(
+              ctx.audit.records.single['eventKind'],
+              equals('business_timing_profile_created'),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('POST profile preserves service-period metadata', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
         try {
+          final body = _validProfileBody();
+          body['servicePeriods'] = const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '10:00',
+              'endLocal': '14:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ];
           final response = await _httpJson(
             ctx.client,
             ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
             method: 'POST',
-            idempotencyKey: 'idem-create-1',
-            body: _validProfileBody(),
+            idempotencyKey: 'idem-create-metadata',
+            body: body,
           );
           expect(response.statusCode, equals(201));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['profileId'], equals(_kProfileA));
-          expect(body['versionId'], equals(_kProfileA));
-          expect(body['servicePeriods'], hasLength(2));
-          expect(ctx.gateway.createCalls, equals(1));
-          expect(ctx.audit.records, hasLength(1));
-          expect(
-            ctx.audit.records.single['eventKind'],
-            equals('business_timing_profile_created'),
-          );
+          final json = jsonDecode(response.body) as Map<String, Object?>;
+          final periods = json['servicePeriods'] as List<Object?>;
+          final period = periods.single as Map<String, Object?>;
+          expect(period['applicableDays'], equals(<int>[6, 7]));
+          expect(period['shortLabel'], equals('B'));
+          expect(period['sortOrder'], equals(2));
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -236,9 +272,7 @@ void main() {
             ),
             method: 'PATCH',
             idempotencyKey: 'idem-patch-1',
-            body: const <String, Object?>{
-              'businessDayStartLocal': '03:00',
-            },
+            body: const <String, Object?>{'businessDayStartLocal': '03:00'},
           );
           expect(response.statusCode, equals(200));
           expect(ctx.gateway.updateCalls, equals(1));
@@ -266,9 +300,7 @@ void main() {
             ),
             method: 'PATCH',
             idempotencyKey: 'idem-missing',
-            body: const <String, Object?>{
-              'businessDayStartLocal': '03:00',
-            },
+            body: const <String, Object?>{'businessDayStartLocal': '03:00'},
           );
           expect(response.statusCode, equals(404));
           final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -357,11 +389,15 @@ void main() {
             ),
             method: 'PATCH',
             idempotencyKey: 'idem-patch-period',
-            body: const <String, Object?>{
-              'label': 'Renamed Lunch',
-            },
+            body: const <String, Object?>{'label': 'Renamed Lunch'},
           );
           expect(response.statusCode, equals(200));
+          final json = jsonDecode(response.body) as Map<String, Object?>;
+          final periods = json['servicePeriods'] as List<Object?>;
+          final lunch = (periods.first as Map<String, Object?>);
+          expect(lunch['applicableDays'], equals(<int>[1, 2, 3, 4, 5]));
+          expect(lunch['shortLabel'], equals('L'));
+          expect(lunch['sortOrder'], equals(1));
           expect(ctx.gateway.replaceCalls, equals(1));
           expect(ctx.audit.records, hasLength(1));
           expect(
@@ -388,9 +424,7 @@ void main() {
             ),
             method: 'PATCH',
             idempotencyKey: 'idem-rename',
-            body: const <String, Object?>{
-              'key': 'lunch_renamed',
-            },
+            body: const <String, Object?>{'key': 'lunch_renamed'},
           );
           expect(response.statusCode, equals(400));
           final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -415,9 +449,7 @@ void main() {
             ),
             method: 'PATCH',
             idempotencyKey: 'idem-missing-period',
-            body: const <String, Object?>{
-              'label': 'Brunch',
-            },
+            body: const <String, Object?>{'label': 'Brunch'},
           );
           expect(response.statusCode, equals(404));
           final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -460,36 +492,38 @@ void main() {
       });
     });
 
-    test('idempotency conflict returns 409 on same key + different body',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          await _httpJson(
-            ctx.client,
-            ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
-            method: 'POST',
-            idempotencyKey: 'idem-collide',
-            body: _validProfileBody(),
-          );
-          final variant = _validProfileBody();
-          variant['businessDayStartLocal'] = '05:00';
-          final second = await _httpJson(
-            ctx.client,
-            ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
-            method: 'POST',
-            idempotencyKey: 'idem-collide',
-            body: variant,
-          );
-          expect(second.statusCode, equals(409));
-          final body = jsonDecode(second.body) as Map<String, Object?>;
-          expect(body['error'], equals('idempotency_key_conflict'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'idempotency conflict returns 409 on same key + different body',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
+              method: 'POST',
+              idempotencyKey: 'idem-collide',
+              body: _validProfileBody(),
+            );
+            final variant = _validProfileBody();
+            variant['businessDayStartLocal'] = '05:00';
+            final second = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
+              method: 'POST',
+              idempotencyKey: 'idem-collide',
+              body: variant,
+            );
+            expect(second.statusCode, equals(409));
+            final body = jsonDecode(second.body) as Map<String, Object?>;
+            expect(body['error'], equals('idempotency_key_conflict'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
   });
 }
 
@@ -519,8 +553,7 @@ class _NoopAccountGateway implements OperatorAccountWriteGateway {
   @override
   Future<OperatorAccountRecord?> loadAccount({
     required String operatorId,
-  }) async =>
-      null;
+  }) async => null;
 }
 
 class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
@@ -549,6 +582,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
           startLocal: '11:00',
           endLocal: '15:00',
           rollsPastMidnight: false,
+          applicableDays: <int>[1, 2, 3, 4, 5],
+          shortLabel: 'L',
+          sortOrder: 1,
         ),
         OperatorBusinessTimingServicePeriodRecord(
           key: 'dinner',
@@ -556,6 +592,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
           startLocal: '17:00',
           endLocal: '22:00',
           rollsPastMidnight: false,
+          applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+          shortLabel: 'D',
+          sortOrder: 2,
         ),
       ],
       createdAt: DateTime.utc(2026, 5, 1),
@@ -584,6 +623,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
             startLocal: p.startLocal,
             endLocal: p.endLocal,
             rollsPastMidnight: p.rollsPastMidnight,
+            applicableDays: p.applicableDays,
+            shortLabel: p.shortLabel,
+            sortOrder: p.sortOrder,
           ),
       ],
       createdAt: DateTime.utc(2026, 5, 1),
@@ -693,6 +735,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
             startLocal: p.startLocal,
             endLocal: p.endLocal,
             rollsPastMidnight: p.rollsPastMidnight,
+            applicableDays: p.applicableDays,
+            shortLabel: p.shortLabel,
+            sortOrder: p.sortOrder,
           ),
       ],
       createdAt: existing.createdAt,

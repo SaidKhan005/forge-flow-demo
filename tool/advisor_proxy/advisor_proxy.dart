@@ -7501,8 +7501,9 @@ abstract class PricingTierAdminProxyGateway {
 /// still run through tenant-scoped Postgres transactions so RLS remains the
 /// backup defense.
 ///
-/// Mobile reads from this surface only. The scoped data accuracy write is used
-/// by operator-owned web flows so server truth remains authoritative.
+/// Mobile mostly reads from this surface. The data-accuracy write endpoints are
+/// narrow canonical-write seams for operator-owned clients so server truth
+/// remains authoritative.
 abstract class MobileOperationalSyncProxyGateway {
   Future<Map<String, Object?>> fetchShiftRecords({
     required OperatorContext scope,
@@ -7546,6 +7547,13 @@ abstract class MobileOperationalSyncProxyGateway {
     required Map<String, Object?> body,
   });
 
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  });
+
   Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -7565,6 +7573,7 @@ abstract class MobileOperationalSyncProxyGateway {
     required String locationId,
     required String? modifiedSince,
     required int pageSize,
+    required bool includeHierarchy,
   });
 
   Future<Map<String, Object?>> fetchPollingTierAssignment({
@@ -8006,6 +8015,8 @@ const String adminIntegrationsRotateAzureDbPath =
     '/v1/admin/integrations/rotate-azure-db';
 const String adminIntegrationsRotateGeminiPath =
     '/v1/admin/integrations/rotate-gemini';
+const String adminIntegrationsRotateSendgridPath =
+    '/v1/admin/integrations/rotate-sendgrid';
 const String adminIntegrationsStatusPath = '/v1/admin/integrations/status';
 
 /// Read-side role admit set for `/v1/admin/integrations*`. Mirrors
@@ -8048,6 +8059,8 @@ const Set<String> kProxyIntegrationKeyKinds = <String>{
   'anthropic',
   'voyage',
   'azure_db',
+  'gemini',
+  'sendgrid',
 };
 
 /// Gateway the proxy delegates to for `/v1/admin/integrations/*`
@@ -8517,6 +8530,22 @@ abstract class OperatorLocationAdminProxyGateway {
     required String locationId,
     required String adminReason,
   });
+}
+
+class OperatorLocationAdminRejected implements Exception {
+  const OperatorLocationAdminRejected({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'OperatorLocationAdminRejected($statusCode/$code): $message';
 }
 
 enum AdminLocationRemovalResult { removed, notFound, primaryLocationProtected }
@@ -9586,7 +9615,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -9665,6 +9694,8 @@ Future<void> routeRequest(
             mobileOperationalPath != null &&
             (mobileOperationalPath.resource == 'data_accuracy_settings' ||
                 mobileOperationalPath.resource ==
+                    'data_accuracy_settings/manual_covers' ||
+                mobileOperationalPath.resource ==
                     'data_accuracy_service_period_settings')) {
           await _routeOperatorDataAccuracySettingsWrite(
             request: request,
@@ -9672,6 +9703,7 @@ Future<void> routeRequest(
             authGuard: authGuard,
             gateway: mobileOperationalSyncGateway,
             businessScopeGateway: businessScopeGateway,
+            idempotencyStore: adminRequestIdempotencyStore,
             target: mobileOperationalPath,
           );
           return;
@@ -14325,6 +14357,13 @@ Future<void> routeRequest(
 
           final idempotencyKey =
               (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (dataAccuracyMethod != 'GET' && idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
           if (idempotencyKey.length > 200) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_too_long',
@@ -15162,6 +15201,13 @@ Future<void> routeRequest(
               });
               return;
             }
+            if (error is OperatorLocationAdminRejected) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
             if (error is AdminIdempotencyKeyConflict) {
               _writeJson(response, 409, <String, Object?>{
                 'error': 'idempotency_key_conflict',
@@ -15255,7 +15301,7 @@ Future<void> routeRequest(
 
         // Fix #4 / S1 — operator-web location-scoped business-timing
         // resolution route. GET only, read-only, no Idempotency-Key.
-        // Same operator owner / admin role gate as the write router,
+        // Same operator owner role gate as the write router,
         // plus an explicit tenant scope-mismatch reject (mirrors the
         // auth-location-integrations route): the path locationId must
         // equal the signed-in location scope. operatorId is ALWAYS the
@@ -15279,7 +15325,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -15354,7 +15400,7 @@ Future<void> routeRequest(
 
         // Phase 11W.7 / Wave A2 - operator-scoped account + business-
         // timing write router. Five operator-write routes that all
-        // share auth (operator owner / admin) + Idempotency-Key.
+        // share auth (operator owner) + Idempotency-Key.
         if (OperatorWriteRouter.matches(path, request.method)) {
           if (operatorWriteRouter == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -15373,7 +15419,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -15835,7 +15881,7 @@ Future<void> routeRequest(
 
         // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
         // Dedicated POST/DELETE seam that mirrors the OperatorWriteRouter
-        // discipline (operator owner / admin role, Idempotency-Key, body
+        // discipline (operator owner role, Idempotency-Key, body
         // validation) but lives in its own router so the wage editor's
         // proxy contract stays narrow and op-web W3.D parity can call it
         // directly.
@@ -15856,7 +15902,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -16176,12 +16222,14 @@ Future<void> _routeOperatorLocationAdmin({
     if (body.containsKey('timezone')) {
       timezone = _requireBodyTimezone(body, 'timezone');
     }
-    int? rolloverHour;
     if (body.containsKey('business_day_rollover_hour')) {
-      rolloverHour = _requireBodyRolloverHour(
-        body,
-        'business_day_rollover_hour',
-      );
+      _writeJson(response, 410, <String, Object?>{
+        'error': 'legacy_location_rollover_writes_disabled',
+        'message':
+            'Business Timing owns business-day start. Edit timing profiles '
+            'instead of the legacy location rollover field.',
+      });
+      return;
     }
     await _runAdminIdempotent(
       response: response,
@@ -16197,7 +16245,7 @@ Future<void> _routeOperatorLocationAdmin({
           name: _optionalBodyString(body, 'name'),
           address: _optionalBodyString(body, 'address'),
           timezone: timezone,
-          businessDayRolloverHour: rolloverHour,
+          businessDayRolloverHour: null,
           adminReason: adminReason!,
         );
         if (patched == null) {
@@ -16330,6 +16378,7 @@ bool _isAdminIntegrationsPath(String path) {
       path == adminIntegrationsRotateVoyagePath ||
       path == adminIntegrationsRotateAzureDbPath ||
       path == adminIntegrationsRotateGeminiPath ||
+      path == adminIntegrationsRotateSendgridPath ||
       path == adminIntegrationsStatusPath;
 }
 
@@ -16352,7 +16401,8 @@ bool _isAdminIntegrationsOperation(String path, String method) {
       (path == adminIntegrationsRotateAnthropicPath ||
           path == adminIntegrationsRotateVoyagePath ||
           path == adminIntegrationsRotateAzureDbPath ||
-          path == adminIntegrationsRotateGeminiPath)) {
+          path == adminIntegrationsRotateGeminiPath ||
+          path == adminIntegrationsRotateSendgridPath)) {
     return true;
   }
   return false;
@@ -16441,6 +16491,7 @@ String? _integrationKeyKindForRoute(String path) {
   if (path == adminIntegrationsRotateVoyagePath) return 'voyage';
   if (path == adminIntegrationsRotateAzureDbPath) return 'azure_db';
   if (path == adminIntegrationsRotateGeminiPath) return 'gemini';
+  if (path == adminIntegrationsRotateSendgridPath) return 'sendgrid';
   return null;
 }
 
@@ -17649,6 +17700,20 @@ Future<void> _routeMobileOperationalSync({
       _nonBlankString(params['modified_since']) ??
       _nonBlankString(params['cursor']);
   if (!_mobileSyncCursorValidOrWrite(response, modifiedSince)) return;
+  final includeHierarchy = _optionalQueryBool(
+    params['include_hierarchy'],
+    defaultValue: false,
+  );
+  final businessDate = _nonBlankString(params['business_date']);
+  if (target.resource == 'timing/resolved' &&
+      businessDate != null &&
+      !_isYyyyMmDdCalendarDate(businessDate)) {
+    _writeJson(response, 400, <String, Object?>{
+      'error': 'invalid_business_date',
+      'message': 'business_date must be an ISO calendar date (YYYY-MM-DD)',
+    });
+    return;
+  }
 
   try {
     final payload = switch (target.resource) {
@@ -17670,7 +17735,7 @@ Future<void> _routeMobileOperationalSync({
         scope: scope,
         operatorId: target.operatorId,
         locationId: target.locationId,
-        businessDate: _nonBlankString(params['business_date']),
+        businessDate: businessDate,
       ),
       'demo_mode_states' => await gateway.fetchDemoModeStates(
         scope: scope,
@@ -17694,6 +17759,7 @@ Future<void> _routeMobileOperationalSync({
         locationId: target.locationId,
         modifiedSince: modifiedSince,
         pageSize: pageSize,
+        includeHierarchy: includeHierarchy,
       ),
       'polling_tier_assignment' => await gateway.fetchPollingTierAssignment(
         scope: scope,
@@ -17733,10 +17799,7 @@ Future<void> _routeMobileOperationalSync({
   }
 }
 
-const Set<String> _operatorDataAccuracyWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-};
+const Set<String> _operatorDataAccuracyWriteRoles = <String>{'operator_owner'};
 
 Future<void> _routeOperatorDataAccuracySettingsWrite({
   required HttpRequest request,
@@ -17744,6 +17807,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   required ProxyRequestGuard authGuard,
   required MobileOperationalSyncProxyGateway? gateway,
   required BusinessScopeProxyGateway? businessScopeGateway,
+  required AdminRequestIdempotencyStore? idempotencyStore,
   required _MobileOperationalPath target,
 }) async {
   if (gateway == null) {
@@ -17764,7 +17828,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   if (!_rolesIntersect(claims.roles, _operatorDataAccuracyWriteRoles)) {
     _writeJson(response, 403, <String, Object?>{
       'error': 'permission_denied',
-      'message': 'operator data accuracy writes require owner or admin role',
+      'message': 'operator data accuracy writes require owner role',
     });
     return;
   }
@@ -17819,6 +17883,12 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       _writeJson(response, keyError.$1, keyError.$2);
       return;
     }
+  } else if (target.resource == 'data_accuracy_settings/manual_covers') {
+    final keyError = _validateManualCoversWriteBody(bodyResult.body!);
+    if (keyError != null) {
+      _writeJson(response, keyError.$1, keyError.$2);
+      return;
+    }
   }
 
   try {
@@ -17827,20 +17897,69 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       operatorId: target.operatorId,
       locationId: target.locationId,
     );
-    final result = target.resource == 'data_accuracy_service_period_settings'
-        ? await gateway.upsertDataAccuracyServicePeriodSettings(
+    final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+    if (idempotencyKey == null || idempotencyKey.isEmpty) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'idempotency_key_missing',
+        'message': 'Idempotency-Key header is required',
+      });
+      return;
+    }
+    if (idempotencyKey.length > 200) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'idempotency_key_too_long',
+        'message': 'Idempotency-Key header must be 200 characters or fewer',
+      });
+      return;
+    }
+    final requestType = switch (target.resource) {
+      'data_accuracy_service_period_settings' =>
+        'operator.data_accuracy.service_period.patch',
+      'data_accuracy_settings/manual_covers' =>
+        'operator.data_accuracy.manual_covers.patch',
+      _ => 'operator.data_accuracy.settings.patch',
+    };
+    final scopedIdempotencyKey =
+        'operator:${target.operatorId}:location:${target.locationId}:'
+        '$idempotencyKey';
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: scopedIdempotencyKey,
+      requestType: requestType,
+      actorUserId: claims.userId,
+      requestBody: bodyResult.body!,
+      compute: () async {
+        final result = switch (target.resource) {
+          'data_accuracy_service_period_settings' =>
+            await gateway.upsertDataAccuracyServicePeriodSettings(
+              scope: writeScope,
+              operatorId: target.operatorId,
+              locationId: target.locationId,
+              body: bodyResult.body!,
+            ),
+          'data_accuracy_settings/manual_covers' =>
+            await gateway.upsertDataAccuracyManualCovers(
+              scope: writeScope,
+              operatorId: target.operatorId,
+              locationId: target.locationId,
+              body: bodyResult.body!,
+            ),
+          _ => await gateway.upsertDataAccuracySettings(
             scope: writeScope,
             operatorId: target.operatorId,
             locationId: target.locationId,
             body: bodyResult.body!,
-          )
-        : await gateway.upsertDataAccuracySettings(
-            scope: writeScope,
-            operatorId: target.operatorId,
-            locationId: target.locationId,
-            body: bodyResult.body!,
-          );
-    _writeJson(response, 200, result);
+          ),
+        };
+        return (statusCode: 200, payload: result);
+      },
+    );
+  } on AdminIdempotencyKeyConflict catch (error) {
+    _writeJson(response, 409, <String, Object?>{
+      'error': 'idempotency_key_conflict',
+      'message': error.message,
+    });
   } on MobileOperationalSyncProxyGatewayException catch (error) {
     _writeJson(response, error.statusCode, <String, Object?>{
       'error': error.code,
@@ -17888,7 +18007,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     );
   }
   final dateRaw = body['effective_at_business_date'];
-  if (dateRaw is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+  if (dateRaw is! String || !_isYyyyMmDdCalendarDate(dateRaw)) {
     return (
       400,
       <String, Object?>{
@@ -17939,6 +18058,84 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     }
   }
   return null;
+}
+
+(int, Map<String, Object?>)? _validateManualCoversWriteBody(
+  Map<String, Object?> body,
+) {
+  final keyRaw = body['service_period_key'];
+  if (keyRaw is! String ||
+      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_service_period_key',
+        'message':
+            'service_period_key must start with a lowercase letter and contain '
+            'only lowercase letters, numbers, or underscores',
+      },
+    );
+  }
+  final dateRaw = body['business_date'];
+  if (dateRaw is! String || !_isYyyyMmDdCalendarDate(dateRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_business_date',
+        'message': 'business_date must be a YYYY-MM-DD business date',
+      },
+    );
+  }
+  final clearRaw = body['clear'];
+  if (clearRaw != null && clearRaw is! bool) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_clear',
+        'message': 'clear must be true or false',
+      },
+    );
+  }
+  if (clearRaw == true) {
+    if (body.containsKey('covers')) {
+      return (
+        400,
+        <String, Object?>{
+          'error': 'invalid_manual_covers_clear',
+          'message': 'clear manual covers requests must not include covers',
+        },
+      );
+    }
+    return null;
+  }
+  final coversRaw = body['covers'];
+  final covers = coversRaw is int
+      ? coversRaw
+      : coversRaw is num && coversRaw == coversRaw.roundToDouble()
+      ? coversRaw.toInt()
+      : coversRaw is String
+      ? int.tryParse(coversRaw.trim())
+      : null;
+  if (covers == null || covers < 0) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_covers',
+        'message': 'covers must be a non-negative integer',
+      },
+    );
+  }
+  return null;
+}
+
+bool _isYyyyMmDdCalendarDate(String value) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
+  final parsed = DateTime.tryParse('${value}T00:00:00Z');
+  if (parsed == null) return false;
+  final year = int.parse(value.substring(0, 4));
+  final month = int.parse(value.substring(5, 7));
+  final day = int.parse(value.substring(8, 10));
+  return parsed.year == year && parsed.month == month && parsed.day == day;
 }
 
 Future<bool> _operatorLocationScopeAllowed({
@@ -17996,6 +18193,7 @@ _MobileOperationalPath? _mobileOperationalPath(String path) {
     case 'timing/resolved':
     case 'demo_mode_states':
     case 'data_accuracy_settings':
+    case 'data_accuracy_settings/manual_covers':
     case 'data_accuracy_service_period_settings':
     case 'wage_role_rows':
     case 'polling_tier_assignment':

@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'auth/auth_session.dart';
 import 'auth/permission_effect.dart';
+import 'auth/permission_keys.dart';
 import 'domain/models/restaurant_location.dart';
 import 'domain/models/business_scope.dart';
 import 'services/app_notification_service.dart';
@@ -1451,29 +1452,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     AuthSession session,
     Set<String> permissions,
   ) {
-    final roles = session.roles.toSet();
-    if (!roles.contains('super_admin') &&
-        !roles.contains('ff_support') &&
-        !roles.contains('operator_owner') &&
-        !roles.contains('operator_manager')) {
-      if (permissions.contains('team.roles.create_custom') ||
-          permissions.contains('team.users.soft_delete')) {
-        roles.add('operator_owner');
-      } else if (permissions.contains('team.users.view')) {
-        roles.add('operator_manager');
-      }
-    }
-    final isOperatorWide =
-        roles.contains('operator_owner') ||
-        roles.contains('super_admin') ||
-        roles.contains('ff_support');
-    return TeamScopeActor(
-      actorRoles: roles,
-      actorOperatorId: session.operatorId,
-      actorAssignedLocationIds: isOperatorWide
-          ? const <String>{}
-          : <String>{session.locationId},
-      actorPermissions: permissions,
+    return projectSettingsTeamActorFromSession(
+      session: session,
+      permissions: permissions,
     );
   }
 
@@ -1664,6 +1645,41 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+TeamScopeActor projectSettingsTeamActorFromSession({
+  required AuthSession session,
+  required Set<String> permissions,
+}) {
+  final roles = session.roles.toSet();
+  final hasCurrentScopeRole =
+      roles.contains(PermissionKeys.roleSuperAdmin) ||
+      roles.contains(PermissionKeys.roleFfSupport) ||
+      roles.contains(PermissionKeys.roleOperatorOwner) ||
+      roles.contains(PermissionKeys.roleOperatorGeneralManager) ||
+      roles.contains(PermissionKeys.roleLocationManager) ||
+      roles.contains(PermissionKeys.roleSupervisor);
+  if (!hasCurrentScopeRole) {
+    if (permissions.contains(PermissionKeys.teamRolesCreateCustom) ||
+        permissions.contains(PermissionKeys.teamUsersSoftDelete)) {
+      roles.add(PermissionKeys.roleOperatorOwner);
+    } else if (permissions.contains(PermissionKeys.teamUsersView)) {
+      roles.add(PermissionKeys.roleOperatorGeneralManager);
+    }
+  }
+  final isOperatorWide =
+      roles.contains(PermissionKeys.roleOperatorOwner) ||
+      roles.contains(PermissionKeys.roleOperatorGeneralManager) ||
+      roles.contains(PermissionKeys.roleSuperAdmin) ||
+      roles.contains(PermissionKeys.roleFfSupport);
+  return TeamScopeActor(
+    actorRoles: roles,
+    actorOperatorId: session.operatorId,
+    actorAssignedLocationIds: isOperatorWide
+        ? const <String>{}
+        : <String>{session.locationId},
+    actorPermissions: permissions,
+  );
 }
 
 class _AppBottomNav extends StatelessWidget {

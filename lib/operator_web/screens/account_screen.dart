@@ -2,7 +2,9 @@
 //
 // Sibling to MyAccountScreen (sign-in identity / MFA / password / T&Cs).
 // This screen owns the business-identity surface: business name, logo,
-// currency, locale, week-start day, rollover hour. Every write goes
+// currency, locale, and week-start day. Legacy rollover values remain
+// readable for compatibility, but Business Timing owns edits to
+// business-day start. Every write goes
 // through `WebAccountGateway.patchAccount` against the operator-scoped
 // PATCH /v1/operator/account route. NO admin gateways; per-operator
 // isolation is enforced both client-side (only the current scope's
@@ -178,7 +180,7 @@ class AccountScreen extends StatefulWidget {
   ///     business default value the operator is reading.
   ///
   /// [businessDefaultDisplay] is the rendered string for the cluster
-  /// (e.g. "USD / en-US" for region; "04:00 local" for rollover; an
+  /// (e.g. "USD / en-US" for region; "04:00 local" for legacy rollover; an
   /// "ops@example.com" line for identity contact).
   /// [overrideIsSet] is true when at least one column in the field
   /// cluster has a non-null override in the loaded envelope.
@@ -274,16 +276,6 @@ class _AccountScreenState extends State<AccountScreen> {
     _OptionPair('es-MX', 'Spanish (Mexico)'),
   ];
 
-  static const List<_OptionPair> _weekStartDays = <_OptionPair>[
-    _OptionPair('monday', 'Monday'),
-    _OptionPair('tuesday', 'Tuesday'),
-    _OptionPair('wednesday', 'Wednesday'),
-    _OptionPair('thursday', 'Thursday'),
-    _OptionPair('friday', 'Friday'),
-    _OptionPair('saturday', 'Saturday'),
-    _OptionPair('sunday', 'Sunday'),
-  ];
-
   // Wave 2 W-6 — North American + common European shortlist. Operators
   // outside this list can type any IANA tz name in the custom field;
   // the backend validates against the full tz database.
@@ -323,14 +315,15 @@ class _AccountScreenState extends State<AccountScreen> {
     // text field depending on whether it appears in
     // [_timezoneShortlist].
     final initialTimezone = widget.session.primaryLocationTimezone?.trim();
-    final hasInShortlist = initialTimezone != null &&
+    final hasInShortlist =
+        initialTimezone != null &&
         initialTimezone.isNotEmpty &&
         _timezoneShortlist.any((opt) => opt.value == initialTimezone);
     _selectedTimezone = hasInShortlist
         ? initialTimezone
         : (initialTimezone == null || initialTimezone.isEmpty
-            ? null
-            : _timezoneCustomSentinel);
+              ? null
+              : _timezoneCustomSentinel);
     _timezoneCustomController = TextEditingController(
       text: hasInShortlist ? '' : (initialTimezone ?? ''),
     );
@@ -386,19 +379,24 @@ class _AccountScreenState extends State<AccountScreen> {
         // Seed the form controllers with the current override values
         // (fall back to business defaults so the operator can edit
         // from the inherited starting point).
-        _currencyCode = envelope.override.currencyCode ??
+        _currencyCode =
+            envelope.override.currencyCode ??
             envelope.businessDefault.currencyCode ??
             _currencyCode;
-        _localeTag = envelope.override.localeCode ??
+        _localeTag =
+            envelope.override.localeCode ??
             envelope.businessDefault.localeCode ??
             _localeTag;
-        _rolloverHour = envelope.override.businessDayRolloverHour ??
+        _rolloverHour =
+            envelope.override.businessDayRolloverHour ??
             envelope.businessDefault.businessDayRolloverHour ??
             _rolloverHour;
-        _contactEmail.text = envelope.override.contactEmail ??
+        _contactEmail.text =
+            envelope.override.contactEmail ??
             envelope.businessDefault.contactEmail ??
             '';
-        _contactPhone.text = envelope.override.contactPhone ??
+        _contactPhone.text =
+            envelope.override.contactPhone ??
             envelope.businessDefault.contactPhone ??
             '';
       });
@@ -450,13 +448,14 @@ class _AccountScreenState extends State<AccountScreen> {
         final envelope = await gateway.patchLocationAccountOverrides(
           locationId: locationId,
           patch: LocationAccountOverridesPatchPayload(
-            // Currency / locale / rollover ride along when set.
+            // Currency / locale ride along when set. Business-day
+            // start now lives in Business Timing, so Account saves do
+            // not write rollover overrides.
             // Business display name + logo are operator-wide; the
             // Identity card disables those fields at Location scope so
             // they would not have changed.
             currencyCode: _currencyCode,
             localeCode: _localeTag,
-            businessDayRolloverHour: _rolloverHour,
             contactEmail: _contactEmail.text.trim().isEmpty
                 ? null
                 : _contactEmail.text.trim(),
@@ -476,13 +475,10 @@ class _AccountScreenState extends State<AccountScreen> {
           businessName: _businessName.text.trim().isEmpty
               ? null
               : _businessName.text.trim(),
-          logoUrl:
-              _logoUrl.text.trim().isEmpty ? null : _logoUrl.text.trim(),
+          logoUrl: _logoUrl.text.trim().isEmpty ? null : _logoUrl.text.trim(),
           clearLogo: _logoUrl.text.trim().isEmpty,
           currencyCode: _currencyCode,
           localeTag: _localeTag,
-          weekStartDay: _weekStartDay,
-          rolloverHour: _rolloverHour,
         );
         await gateway.patchAccount(patch);
       }
@@ -590,50 +586,50 @@ class _AccountScreenState extends State<AccountScreen> {
     // identity surface.
     final identityNameEnabled =
         widget.canEdit && !_submitting && !scopeBelowBusiness;
-    final identityContactEnabled = widget.canEdit &&
+    final identityContactEnabled =
+        widget.canEdit &&
         !_submitting &&
         (scopeIsLocation || !scopeBelowBusiness);
-    final regionEnabled = widget.canEdit &&
-        !_submitting &&
-        (scopeIsLocation || !scopeBelowBusiness);
-    final businessDayEnabled = widget.canEdit &&
+    final regionEnabled =
+        widget.canEdit &&
         !_submitting &&
         (scopeIsLocation || !scopeBelowBusiness);
     // Helpers for the new per-card inheritance line. At Business scope
     // the helper returns null (no inheritance), so the notice falls
     // back to "Set here. Does not inherit from a higher scope."
     final overrides = _locationOverrides;
-    final regionOverrideSet = overrides != null &&
+    final regionOverrideSet =
+        overrides != null &&
         (overrides.override.currencyCode != null ||
             overrides.override.localeCode != null);
     // `U-FU-hp11-account-demo-defaults` (2026-05-14): defend against
     // null session values so a brand-new operator (no projected
-    // currency / locale / rollover yet) sees "no currency" / "no
-    // rollover hour" instead of literal "null". The non-overrides
+    // currency / locale / legacy rollover yet) sees "no currency" /
+    // "no rollover hour" instead of literal "null". The non-overrides
     // branch above already handles this via `?? "no currency"`; mirror
     // it here for the session-fallback branch.
     final regionBusinessDefault = overrides == null
         ? '${widget.session.currencyCode ?? "no currency"} / '
-            '${widget.session.localeTag ?? "no locale"}'
+              '${widget.session.localeTag ?? "no locale"}'
         : '${overrides.businessDefault.currencyCode ?? "no currency"} / '
-            '${overrides.businessDefault.localeCode ?? "no locale"}';
-    final businessDayOverrideSet = overrides != null &&
-        overrides.override.businessDayRolloverHour != null;
+              '${overrides.businessDefault.localeCode ?? "no locale"}';
+    final businessDayOverrideSet =
+        overrides != null && overrides.override.businessDayRolloverHour != null;
     final businessDayBusinessDefault = overrides == null
         ? (widget.session.rolloverHour == null
-            ? 'no rollover hour'
-            : '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00 local')
+              ? 'no rollover hour'
+              : '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00 local')
         : (overrides.businessDefault.businessDayRolloverHour == null
-            ? 'no rollover hour'
-            : '${overrides.businessDefault.businessDayRolloverHour!
-                .toString()
-                .padLeft(2, '0')}:00 local');
-    final identityOverrideSet = overrides != null &&
+              ? 'no rollover hour'
+              : '${overrides.businessDefault.businessDayRolloverHour!.toString().padLeft(2, '0')}:00 local');
+    final identityOverrideSet =
+        overrides != null &&
         (overrides.override.contactEmail != null ||
             overrides.override.contactPhone != null);
     final identityBusinessDefault = overrides == null
         ? widget.session.businessName
-        : (overrides.businessDefault.contactEmail ?? widget.session.businessName);
+        : (overrides.businessDefault.contactEmail ??
+              widget.session.businessName);
     final identityInheritedLabel = widget.inheritedLabelFor(
       overrideIsSet: identityOverrideSet,
       businessDefaultDisplay: identityBusinessDefault,
@@ -692,8 +688,8 @@ class _AccountScreenState extends State<AccountScreen> {
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
             inheritedLabel: identityInheritedLabel,
-            backendOnlyExplainer:
-                widget.backendOnlyExplainerForBusinessDefault(),
+            backendOnlyExplainer: widget
+                .backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _RegionSection(
@@ -707,28 +703,18 @@ class _AccountScreenState extends State<AccountScreen> {
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
             inheritedLabel: regionInheritedLabel,
-            backendOnlyExplainer:
-                widget.backendOnlyExplainerForBusinessDefault(),
+            backendOnlyExplainer: widget
+                .backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _BusinessDaySection(
             weekStartDay: _weekStartDay,
             rolloverHour: _rolloverHour,
-            weekStartDays: _weekStartDays,
-            enabled: businessDayEnabled,
-            // Wave 2 U-FU-hp11-account: week-start-day stays operator-
-            // wide (it has no override column in this slice); disable
-            // the picker at Location scope so the operator does not
-            // think they can edit it there.
-            weekStartEnabled: businessDayEnabled && !scopeIsLocation,
-            onWeekStartChanged: (value) =>
-                setState(() => _weekStartDay = value),
-            onRolloverChanged: (value) => setState(() => _rolloverHour = value),
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
             inheritedLabel: businessDayInheritedLabel,
-            backendOnlyExplainer:
-                widget.backendOnlyExplainerForBusinessDefault(),
+            backendOnlyExplainer: widget
+                .backendOnlyExplainerForBusinessDefault(),
           ),
           const SizedBox(height: 14),
           _LocationTimezoneSection(
@@ -811,7 +797,8 @@ class _AccountScreenState extends State<AccountScreen> {
               height: 42,
               child: FilledButton(
                 key: const Key('operator_web_account_save'),
-                onPressed: widget.canEdit &&
+                onPressed:
+                    widget.canEdit &&
                         _hasGateway &&
                         !_submitting &&
                         (scopeIsLocation || !scopeBelowBusiness)
@@ -938,18 +925,12 @@ class _LocationOverridesErrorBanner extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: AppColors.negative.withValues(alpha: 0.10),
-        border: Border.all(
-          color: AppColors.negative.withValues(alpha: 0.45),
-        ),
+        border: Border.all(color: AppColors.negative.withValues(alpha: 0.45)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: <Widget>[
-          const Icon(
-            Icons.error_outline,
-            size: 16,
-            color: AppColors.negative,
-          ),
+          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1328,11 +1309,6 @@ class _BusinessDaySection extends StatelessWidget {
   const _BusinessDaySection({
     required this.weekStartDay,
     required this.rolloverHour,
-    required this.weekStartDays,
-    required this.enabled,
-    required this.weekStartEnabled,
-    required this.onWeekStartChanged,
-    required this.onRolloverChanged,
     required this.scopeLevel,
     required this.scopeName,
     this.inheritedLabel,
@@ -1341,20 +1317,6 @@ class _BusinessDaySection extends StatelessWidget {
 
   final String? weekStartDay;
   final int? rolloverHour;
-  final List<_OptionPair> weekStartDays;
-
-  /// Rollover-hour picker enabled state. The rollover hour is the one
-  /// business-day field this slice exposes a per-location override
-  /// for, so it follows the same enable rules as Region.
-  final bool enabled;
-
-  /// Week-start-day picker enabled state. Tighter than [enabled]
-  /// because this slice does not (yet) add a per-location override
-  /// column for the first day of the week. At Location scope this
-  /// stays disabled with the implicit "inherits from Business" copy.
-  final bool weekStartEnabled;
-  final ValueChanged<String?> onWeekStartChanged;
-  final ValueChanged<int?> onRolloverChanged;
 
   /// HP #11 plumbing — see [_BusinessIdentitySection] for the long
   /// rationale.
@@ -1372,17 +1334,16 @@ class _BusinessDaySection extends StatelessWidget {
         ? 'no rollover hour on file'
         : '${rolloverHour!.toString().padLeft(2, '0')}:00 local';
     final businessDayValueSummary =
-        'Week starts $weekStartDisplay; business day rolls over at '
+        'Week starts $weekStartDisplay. Legacy rollover is '
         '$rolloverDisplay.';
     return _Card(
       cardKey: const Key('operator_web_account_section_business_day'),
       icon: Icons.calendar_today_outlined,
-      title: 'Business week and rollover',
+      title: 'Business week',
       subtitle:
-          'Forge & Flow groups your data by business day, not '
-          'calendar day. The rollover hour sets when one business '
-          'day ends and the next begins. Most restaurants set this '
-          'to 04:00 so late-night service stays on the right day.',
+          'Forge & Flow groups your data by business day. Business '
+          'Timing now owns the business-day start, so edit that timing '
+          'profile there when late-night service needs a different day.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1395,49 +1356,65 @@ class _BusinessDaySection extends StatelessWidget {
             backendOnlyExplainer: backendOnlyExplainer,
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          Container(
             key: const Key('operator_web_account_week_start'),
-            initialValue: weekStartDay,
-            decoration: const InputDecoration(
-              labelText: 'First day of the business week',
-              border: OutlineInputBorder(),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
             ),
-            items: <DropdownMenuItem<String>>[
-              for (final option in weekStartDays)
-                DropdownMenuItem<String>(
-                  value: option.value,
-                  child: Text(option.label),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Business week start',
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
                 ),
-            ],
-            onChanged: weekStartEnabled ? onWeekStartChanged : null,
+                const SizedBox(height: 4),
+                Text(
+                  'Week starts $weekStartDisplay. Edit this in Business '
+                  'Timing so week start, business-day start, and service '
+                  'periods stay together.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<int>(
-            key: const Key('operator_web_account_rollover_hour'),
-            initialValue: rolloverHour,
-            decoration: const InputDecoration(
-              labelText: 'Rollover hour (local)',
-              border: OutlineInputBorder(),
+          Container(
+            key: const Key('operator_web_account_legacy_rollover_readonly'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
             ),
-            items: <DropdownMenuItem<int>>[
-              for (var hour = 0; hour < 24; hour++)
-                DropdownMenuItem<int>(
-                  value: hour,
-                  child: Text(_formatHour(hour)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Legacy rollover',
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
                 ),
-            ],
-            onChanged: enabled ? onRolloverChanged : null,
+                const SizedBox(height: 4),
+                Text(
+                  '$rolloverDisplay. Edit business-day start in Business '
+                  'Timing.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
           ),
         ],
       ),
     );
-  }
-
-  String _formatHour(int hour) {
-    final hh = hour.toString().padLeft(2, '0');
-    if (hour == 0) return '$hh:00 (midnight)';
-    if (hour == 4) return '$hh:00 (recommended)';
-    return '$hh:00';
   }
 
   /// Title-cases a single lowercase day token ("monday" → "Monday").
@@ -1573,10 +1550,7 @@ class _LocationTimezoneSection extends StatelessWidget {
             const SizedBox(height: 12),
             Container(
               key: const Key('operator_web_account_timezone_error'),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.negative.withValues(alpha: 0.10),
                 border: Border.all(
@@ -1595,8 +1569,7 @@ class _LocationTimezoneSection extends StatelessWidget {
                   Expanded(
                     child: Text(
                       errorMessage!,
-                      style:
-                          AppTextStyles.body13(color: AppColors.negative),
+                      style: AppTextStyles.body13(color: AppColors.negative),
                     ),
                   ),
                 ],
@@ -1607,10 +1580,7 @@ class _LocationTimezoneSection extends StatelessWidget {
             const SizedBox(height: 12),
             Container(
               key: const Key('operator_web_account_timezone_success'),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.positive.withValues(alpha: 0.10),
                 border: Border.all(
@@ -1629,8 +1599,7 @@ class _LocationTimezoneSection extends StatelessWidget {
                   Expanded(
                     child: Text(
                       successMessage!,
-                      style:
-                          AppTextStyles.body13(color: AppColors.positive),
+                      style: AppTextStyles.body13(color: AppColors.positive),
                     ),
                   ),
                 ],
@@ -1651,10 +1620,7 @@ class _LocationTimezoneSection extends StatelessWidget {
                     : null,
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppColors.sunsetDark,
-                  side: const BorderSide(
-                    color: AppColors.sunsetDark,
-                    width: 1,
-                  ),
+                  side: const BorderSide(color: AppColors.sunsetDark, width: 1),
                   padding: const EdgeInsets.symmetric(horizontal: 18),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(6),

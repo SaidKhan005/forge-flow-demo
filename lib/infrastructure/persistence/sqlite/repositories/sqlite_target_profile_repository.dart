@@ -47,6 +47,14 @@ class SqliteTargetProfileRepository implements TargetProfileRepository {
     return dao.getTargetProfileVersion(restaurantId, versionId);
   }
 
+  Future<TargetProfileVersion?> getTargetProfileVersionForCycle(
+    String restaurantId,
+    String targetCycleId,
+  ) async {
+    final dao = await _daoReady;
+    return dao.getTargetProfileVersionForCycle(restaurantId, targetCycleId);
+  }
+
   Future<void> wipeForOtherScopes(String keepRestaurantId) async {
     final dao = await _daoReady;
     return dao.wipeForOtherScopes(keepRestaurantId);

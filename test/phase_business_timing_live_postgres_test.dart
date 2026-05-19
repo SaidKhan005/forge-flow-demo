@@ -12,6 +12,8 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/open_shift_snapshots_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/business_timing/business_timing_profile_validator.dart';
+import 'package:forge_and_flow/services/business_timing/repository_operator_write_gateways.dart';
 
 import '../tool/rls_policy_lint.dart';
 
@@ -298,6 +300,63 @@ on public.open_shift_snapshots (
                 as Map<String, dynamic>;
         expect(afterSnapshot['service_periods'], hasLength(2));
         expect(tx.commitCount, equals(1));
+      },
+    );
+
+    test(
+      'operator write gateway preserves validated service period metadata',
+      () async {
+        final pool = _RecordingPool(onQuery: _businessTimingCreateQuery);
+        final repo = BusinessTimingProfilesRepository(
+          TenantTransactionWrapper(pool),
+        );
+        final gateway = RepositoryOperatorBusinessTimingWriteGateway(
+          repository: repo,
+        );
+        final validated = validateNewBusinessTimingProfile(
+          <String, Object?>{
+            'scopeKind': 'org_unit',
+            'scopeId': _orgUnitId,
+            'effectiveAtBusinessDate': '2026-05-06',
+            'ianaTimezone': 'America/St_Johns',
+            'weekStartDay': 'monday',
+            'businessDayStartLocal': '04:00',
+            'servicePeriods': <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'brunch',
+                'label': 'Weekend Brunch',
+                'startLocal': '09:00',
+                'endLocal': '13:00',
+                'applicableDays': <int>[6, 7],
+                'shortLabel': 'WB',
+                'sortOrder': 2,
+              },
+            ],
+          },
+        );
+
+        await gateway.createProfile(
+          operatorId: _operatorId,
+          actorUserId: _userId,
+          idempotencyKey: 'idem-metadata',
+          validated: validated,
+          adminReason: 'operator timing setup',
+        );
+
+        final tx = pool.transactions.single;
+        final periodInsert = tx.executedSql.firstWhere(
+          (sql) => sql.contains(
+            'insert into public.business_timing_service_periods',
+          ),
+        );
+        final periodParams = tx.parameters[tx.executedSql.indexOf(
+          periodInsert,
+        )];
+        expect(periodParams['service_period_key'], equals('brunch'));
+        expect(periodParams['label'], equals('Weekend Brunch'));
+        expect(periodParams['applicable_weekdays'], equals(<int>[6, 7]));
+        expect(periodParams['short_label'], equals('WB'));
+        expect(periodParams['sort_order'], equals(2));
       },
     );
 

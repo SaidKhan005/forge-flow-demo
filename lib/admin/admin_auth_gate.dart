@@ -48,9 +48,9 @@ import 'services/admin_sessions_gateway.dart';
 /// Roles that are admitted to the admin console. Mirrors the
 /// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
 /// `super_admin` + `ff_support`. Operator roles
-/// (`operator_owner` / `operator_manager`) are explicitly NOT
-/// admitted here - the admin console is F&F-internal, not operator
-/// self-service.
+/// (`operator_owner` / `operator_general_manager`, for example) are
+/// explicitly NOT admitted here - the admin console is F&F-internal,
+/// not operator self-service.
 const Set<String> kAdminConsoleRoles = <String>{
   PermissionKeys.roleSuperAdmin,
   PermissionKeys.roleFfSupport,

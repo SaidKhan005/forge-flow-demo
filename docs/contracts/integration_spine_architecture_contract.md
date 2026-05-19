@@ -1,7 +1,7 @@
 # Integration Spine Architecture Contract
 
 Status: Active
-Updated: 2026-05-04
+Updated: 2026-05-19
 Owner: Phase 8 spine-bridge sprint
 Authority: Tier-2 contract (binds every `8.spine-bridge.*` sub-lane and the
 `8.integration-mobile-proof` re-run)
@@ -265,10 +265,15 @@ binds to this shape:
           dollars source = `target_wage_substituted` using the operator-
           set wage_role_rows mix unconditionally.
        2. else, vendor in `LaborWageSourceClass.perEmployeeWithDollars`
-          (7shifts, QBT, ADP, Push Operations) AND adapter populated
+          (7shifts after the hours-and-wages upgrade) AND adapter populated
           per-shift dollars -> aggregator sums to FOH/BOH dollars;
           provenance = `vendor_<id>_per_employee_actual_dollars`.
-       3. else, vendor in `LaborWageSourceClass.perPositionWithRates`
+       3. else, vendor in `LaborWageSourceClass.perEmployeeWithRates`
+          (QuickBooks Time) AND adapter populated per-employee pay rate
+          plus duration -> aggregator computes actual dollars via
+          rate × duration; provenance =
+          `vendor_<id>_per_employee_actual_dollars_per_employee_rates`.
+       4. else, vendor in `LaborWageSourceClass.perPositionWithRates`
           (Humanity, Agendrix) AND vendor exposed per-position pay
           rates + scheduled hours -> aggregator computes actual dollars
           via rate × scheduled_hours per role; provenance =
@@ -276,7 +281,7 @@ binds to this shape:
           maps 1:1 to `wage_role_rows` (the Jim Taylor model's
           weighted-up FOH/BOH input). Wage editor "review/override" UX
           is post-spine-bridge follow-up `8.wage-editor-seed`.
-       4. else, vendor exposes neither dollars nor rates -> fall back
+       5. else, vendor exposes neither dollars nor rates -> fall back
           to target wage × hours; provenance =
           `vendor_<id>_dollars_unavailable_target_wage_substituted`.
    - Resolves service_period_key per the server-side effective
@@ -546,9 +551,10 @@ Files MODIFY:
   every setting reads as if training the user.
 - Vendor relativity labels per
   `data_accuracy_settings_contract.md` (covers settings apply to
-  Square + Clover; wage settings apply to QBT + Humanity + Agendrix +
-  any labor vendor not exposing dollars; polling cadence is display-only
-  and applies only to poll-only vendors).
+  Square + Clover; wage settings are required for ADP / Push when no
+  rates or dollars are exposed and optional for rate-backed vendors
+  such as 7shifts, QuickBooks Time, Humanity, and Agendrix; polling
+  cadence is display-only and applies only to poll-only vendors).
 - No operator cadence picker. The polling card may request a tier change;
   actual cadence/cost/margin controls live in F&F Ops Console.
 

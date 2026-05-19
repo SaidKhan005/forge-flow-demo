@@ -830,9 +830,7 @@ void main() {
       // (the same shape `_readDataAccuracySettings` projects via
       // jsonb_object_agg). The deprecated legacy columns are no longer
       // consulted by fromRow.
-      'covers_source_per_service_period': <String, Object?>{
-        'dinner': 'manual',
-      },
+      'covers_source_per_service_period': <String, Object?>{'dinner': 'manual'},
       'covers_manual_entries': <String, Map<String, int>>{
         _businessDateIso: <String, int>{'dinner': 187},
       },
@@ -1328,6 +1326,7 @@ class _SmokeSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async => null;
 
   @override

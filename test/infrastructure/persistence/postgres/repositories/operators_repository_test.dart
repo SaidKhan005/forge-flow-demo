@@ -42,6 +42,7 @@ const String _opA = '11111111-1111-1111-1111-111111111111';
 const String _opB = '44444444-4444-4444-4444-444444444444';
 const String _locA = '22222222-2222-2222-2222-222222222222';
 const String _ouRoot = '33333333-3333-3333-3333-333333333333';
+const String _timingProfileId = '55555555-5555-5555-5555-555555555555';
 
 DateTime _instant(int hour) => DateTime.utc(2026, 4, 30, hour);
 
@@ -342,9 +343,9 @@ void main() {
 
   group('OperatorsRepository.onboardOperatorAtomically', () {
     test(
-      'four statements in ONE withSystem transaction: insert operator '
-      'then root org_unit, location, and primary_location_id update. '
-      'The hierarchy and cloud-foundation FKs require this exact ordering',
+      'one withSystem transaction inserts operator, root org_unit, location, '
+      'starter Business Timing, and primary_location_id update in the '
+      'load-bearing order',
       () async {
         final pool = _OperatorsPool(
           onboardOperatorInsertRows: <PostgresRow>[
@@ -360,7 +361,7 @@ void main() {
               'name': 'Main',
               'address': '123 Main St',
               'timezone': 'America/Toronto',
-              'business_day_rollover_hour': 4,
+              'business_day_rollover_hour': 5,
               'created_at': _instant(10),
               'updated_at': _instant(11),
             },
@@ -378,7 +379,7 @@ void main() {
           locationName: 'Main',
           locationAddress: '123 Main St',
           locationTimezone: 'America/Toronto',
-          locationRolloverHour: 4,
+          locationRolloverHour: 5,
           adminReason: 'admin.operators.onboard',
         );
         expect(result.operator.operatorId, equals(_opA));
@@ -386,7 +387,7 @@ void main() {
         expect(result.location.locationId, equals(_locA));
         expect(result.location.timezone, equals('America/Toronto'));
 
-        // ONE transaction, four writes in load-bearing order.
+        // ONE transaction, with writes in load-bearing bootstrap order.
         expect(pool.transactions, hasLength(1));
         final tx = pool.transactions.single;
         final dataStatements = tx.executedSql
@@ -395,14 +396,37 @@ void main() {
                   s.contains('insert into operators') ||
                   s.contains('insert into org_units') ||
                   s.contains('insert into locations') ||
+                  s.contains('insert into public.business_timing_profiles') ||
+                  s.contains(
+                    'insert into public.business_timing_service_periods',
+                  ) ||
+                  s.contains(
+                    'insert into public.business_timing_audit_events',
+                  ) ||
                   s.contains('update operators set'),
             )
             .toList();
-        expect(dataStatements, hasLength(4));
+        expect(dataStatements, hasLength(8));
         expect(dataStatements[0], contains('insert into operators'));
         expect(dataStatements[1], contains('insert into org_units'));
         expect(dataStatements[2], contains('insert into locations'));
-        expect(dataStatements[3], contains('update operators set'));
+        expect(
+          dataStatements[3],
+          contains('insert into public.business_timing_profiles'),
+        );
+        expect(
+          dataStatements[4],
+          contains('insert into public.business_timing_service_periods'),
+        );
+        expect(
+          dataStatements[5],
+          contains('insert into public.business_timing_service_periods'),
+        );
+        expect(
+          dataStatements[6],
+          contains('insert into public.business_timing_audit_events'),
+        );
+        expect(dataStatements[7], contains('update operators set'));
         expect(dataStatements[1], contains('regexp_replace(@business_name'));
         expect(dataStatements[2], contains('parent_org_unit_id'));
         final rootParams = tx.parameters.firstWhere(
@@ -418,6 +442,49 @@ void main() {
         );
         expect(locationParams['operator_id'], equals(_opA));
         expect(locationParams['parent_org_unit_id'], equals(_ouRoot));
+        final timingProfileSql = dataStatements[3];
+        expect(timingProfileSql, contains("scope_type"));
+        expect(timingProfileSql, contains('now() at time zone'));
+        expect(timingProfileSql, isNot(contains('current_date')));
+        expect(timingProfileSql, isNot(contains('iana_timezone')));
+        final timingProfileParams =
+            tx.parameters[tx.executedSql.indexOf(timingProfileSql)];
+        expect(timingProfileParams['operator_id'], equals(_opA));
+        expect(timingProfileParams['scope_id'], isNull);
+        expect(
+          timingProfileParams['business_timezone'],
+          equals('America/Toronto'),
+        );
+        expect(
+          timingProfileParams['business_day_start_local_time'],
+          equals('05:00'),
+        );
+        expect(timingProfileParams['week_start_day'], equals(DateTime.monday));
+        expect(
+          timingProfileParams['close_authority'],
+          equals('vendor_finalization'),
+        );
+        final periodParams = tx.parameters
+            .where((p) => p.containsKey('service_period_key'))
+            .toList();
+        expect(periodParams, hasLength(2));
+        expect(periodParams[0]['service_period_key'], equals('lunch'));
+        expect(periodParams[0]['sort_order'], equals(1));
+        expect(
+          periodParams[0]['applicable_weekdays'],
+          equals(<int>[1, 2, 3, 4, 5, 6, 7]),
+        );
+        expect(periodParams[1]['service_period_key'], equals('dinner'));
+        expect(periodParams[1]['sort_order'], equals(2));
+        final auditParams = tx.parameters.firstWhere(
+          (p) =>
+              p['metadata']?.toString().contains(
+                'admin_operator_onboarding_bootstrap',
+              ) ??
+              false,
+        );
+        expect(auditParams['profile_id'], equals(_timingProfileId));
+        expect(auditParams['reason'], equals('admin.operators.onboard'));
         // Final update binds primary_location_id with operator_id.
         final finalUpdateParams = tx.parameters.firstWhere(
           (p) =>
@@ -535,6 +602,110 @@ void main() {
       },
     );
 
+    test(
+      'when the starter Business Timing profile INSERT returns no rows, '
+      'throws StateError and rolls back before primary_location_id update',
+      () async {
+        final pool = _OperatorsPool(
+          onboardOperatorInsertRows: <PostgresRow>[
+            <String, Object?>{'operator_id': _opA},
+          ],
+          onboardRootOrgUnitRows: <PostgresRow>[
+            <String, Object?>{'id': _ouRoot},
+          ],
+          onboardLocationRows: <PostgresRow>[
+            <String, Object?>{
+              'location_id': _locA,
+              'operator_id': _opA,
+              'name': 'Main',
+              'address': '123 Main St',
+              'timezone': 'America/Toronto',
+              'business_day_rollover_hour': 4,
+              'created_at': _instant(10),
+              'updated_at': _instant(11),
+            },
+          ],
+          failOnboardTimingProfileInsert: true,
+        );
+        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+        await expectLater(
+          repo.onboardOperatorAtomically(
+            businessName: 'Timing Fail Co',
+            ownerEmail: 'timing@onboard.example',
+            subscriptionTier: 'pro',
+            preferredCurrency: 'USD',
+            locationName: 'Main',
+            locationAddress: '123 Main St',
+            locationTimezone: 'America/Toronto',
+            locationRolloverHour: 4,
+            adminReason: 'admin.operators.onboard',
+          ),
+          throwsStateError,
+        );
+        final tx = pool.transactions.single;
+        expect(
+          tx.executedSql.where((s) => s.contains('update operators set')),
+          isEmpty,
+          reason:
+              'rollback prevents the operator from completing without '
+              'canonical Business Timing',
+        );
+        expect(tx.rollbackCount, equals(1));
+      },
+    );
+
+    test(
+      'when a starter service period INSERT returns no rows, throws '
+      'StateError and rolls back before primary_location_id update',
+      () async {
+        final pool = _OperatorsPool(
+          onboardOperatorInsertRows: <PostgresRow>[
+            <String, Object?>{'operator_id': _opA},
+          ],
+          onboardRootOrgUnitRows: <PostgresRow>[
+            <String, Object?>{'id': _ouRoot},
+          ],
+          onboardLocationRows: <PostgresRow>[
+            <String, Object?>{
+              'location_id': _locA,
+              'operator_id': _opA,
+              'name': 'Main',
+              'address': '123 Main St',
+              'timezone': 'America/Toronto',
+              'business_day_rollover_hour': 4,
+              'created_at': _instant(10),
+              'updated_at': _instant(11),
+            },
+          ],
+          failOnboardTimingServicePeriodInsert: true,
+        );
+        final repo = OperatorsRepository(TenantTransactionWrapper(pool));
+        await expectLater(
+          repo.onboardOperatorAtomically(
+            businessName: 'Timing Period Fail Co',
+            ownerEmail: 'timing-period@onboard.example',
+            subscriptionTier: 'pro',
+            preferredCurrency: 'USD',
+            locationName: 'Main',
+            locationAddress: '123 Main St',
+            locationTimezone: 'America/Toronto',
+            locationRolloverHour: 4,
+            adminReason: 'admin.operators.onboard',
+          ),
+          throwsStateError,
+        );
+        final tx = pool.transactions.single;
+        expect(
+          tx.executedSql.where((s) => s.contains('update operators set')),
+          isEmpty,
+          reason:
+              'rollback prevents the operator from completing with a '
+              'partial Business Timing service-period set',
+        );
+        expect(tx.rollbackCount, equals(1));
+      },
+    );
+
     test('when the final operator UPDATE returns no rows, throws '
         'StateError (the operator row vanished mid-transaction — '
         'shouldn\'t happen, but the guard surfaces the violation)', () async {
@@ -593,6 +764,8 @@ class _OperatorsPool implements PostgresPool {
     this.onboardRootOrgUnitRows = const <PostgresRow>[],
     this.onboardLocationRows = const <PostgresRow>[],
     this.onboardFinalOperatorRows = const <PostgresRow>[],
+    this.failOnboardTimingProfileInsert = false,
+    this.failOnboardTimingServicePeriodInsert = false,
   });
 
   final List<PostgresRow> listRows;
@@ -603,6 +776,8 @@ class _OperatorsPool implements PostgresPool {
   final List<PostgresRow> onboardRootOrgUnitRows;
   final List<PostgresRow> onboardLocationRows;
   final List<PostgresRow> onboardFinalOperatorRows;
+  final bool failOnboardTimingProfileInsert;
+  final bool failOnboardTimingServicePeriodInsert;
 
   final List<_OperatorsTransaction> transactions = <_OperatorsTransaction>[];
 
@@ -617,6 +792,9 @@ class _OperatorsPool implements PostgresPool {
       onboardRootOrgUnitRows: onboardRootOrgUnitRows,
       onboardLocationRows: onboardLocationRows,
       onboardFinalOperatorRows: onboardFinalOperatorRows,
+      failOnboardTimingProfileInsert: failOnboardTimingProfileInsert,
+      failOnboardTimingServicePeriodInsert:
+          failOnboardTimingServicePeriodInsert,
     );
     transactions.add(tx);
     return tx;
@@ -633,6 +811,8 @@ class _OperatorsTransaction extends PostgresTransaction {
     required this.onboardRootOrgUnitRows,
     required this.onboardLocationRows,
     required this.onboardFinalOperatorRows,
+    required this.failOnboardTimingProfileInsert,
+    required this.failOnboardTimingServicePeriodInsert,
   });
 
   final List<PostgresRow> listRows;
@@ -643,6 +823,8 @@ class _OperatorsTransaction extends PostgresTransaction {
   final List<PostgresRow> onboardRootOrgUnitRows;
   final List<PostgresRow> onboardLocationRows;
   final List<PostgresRow> onboardFinalOperatorRows;
+  final bool failOnboardTimingProfileInsert;
+  final bool failOnboardTimingServicePeriodInsert;
 
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
@@ -663,6 +845,15 @@ class _OperatorsTransaction extends PostgresTransaction {
     final isOperatorUpdate = sql.contains('update operators set');
     final isRootOrgUnitInsert = sql.contains('insert into org_units');
     final isLocationInsert = sql.contains('insert into locations');
+    final isTimingProfileInsert = sql.contains(
+      'insert into public.business_timing_profiles',
+    );
+    final isTimingServicePeriodInsert = sql.contains(
+      'insert into public.business_timing_service_periods',
+    );
+    final isTimingAuditInsert = sql.contains(
+      'insert into public.business_timing_audit_events',
+    );
 
     // Onboarding path: detected by the RETURNING shape — onboarding
     // INSERT returns ONLY `operator_id::text as operator_id`, while
@@ -685,6 +876,32 @@ class _OperatorsTransaction extends PostgresTransaction {
     }
     if (isLocationInsert) {
       return onboardLocationRows;
+    }
+    if (isTimingProfileInsert) {
+      if (failOnboardTimingProfileInsert) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': _timingProfileId,
+          'effective_from_business_date': '2026-04-30',
+        },
+      ];
+    }
+    if (isTimingServicePeriodInsert) {
+      if (failOnboardTimingServicePeriodInsert) {
+        return const <PostgresRow>[];
+      }
+      return <PostgresRow>[
+        <String, Object?>{
+          'service_period_id': parameters['service_period_key'],
+        },
+      ];
+    }
+    if (isTimingAuditInsert) {
+      return <PostgresRow>[
+        <String, Object?>{
+          'audit_event_id': '66666666-6666-6666-6666-666666666666',
+        },
+      ];
     }
     if (isOnboardOperatorUpdate) {
       return onboardFinalOperatorRows;

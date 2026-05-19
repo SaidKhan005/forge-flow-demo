@@ -33,8 +33,9 @@
 //
 // Role-gate divergence from operator-web (deliberate, documented): the
 // operator-web screen hides catalog rows whose role gate is not
-// satisfied by the operator's roles (`operator_owner`, `operator_admin`,
-// `operator_manager`, ...). The admin console actor carries F&F-internal
+// satisfied by the operator's active roles (`operator_owner`,
+// `operator_general_manager`, `location_manager`, `supervisor`, ...).
+// The admin console actor carries F&F-internal
 // roles only (`super_admin` / `ff_support`), which are NOT operator
 // roles, so applying the operator role gate here would hide every
 // admin-only / manager-only row (the gate would never match). The
@@ -99,15 +100,14 @@ const Map<_NotifEventState, String> _kStateLabel = <_NotifEventState, String>{
   _NotifEventState.backendOnly: 'Always on',
 };
 
-const Map<_NotifEventState, String> _kStateSubcopy =
-    <_NotifEventState, String>{
+const Map<_NotifEventState, String> _kStateSubcopy = <_NotifEventState, String>{
   _NotifEventState.available: '',
   _NotifEventState.comingSoon:
       "We'll turn this on once the team launches it. "
-          "You can come back later to set how you'd like to be notified.",
+      "You can come back later to set how you'd like to be notified.",
   _NotifEventState.backendOnly:
       "Forge & Flow sends this no matter what. It's part of how we "
-          "keep your data safe. Open the audit log to see recent activity.",
+      "keep your data safe. Open the audit log to see recent activity.",
 };
 
 /// Admin notification-preferences screen. Pure render +
@@ -184,7 +184,8 @@ class _AdminNotificationPreferencesScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = "We couldn't load your notification settings. "
+        _loadError =
+            "We couldn't load your notification settings. "
             'Refresh the page, or try again in a minute.';
       });
     }
@@ -205,10 +206,8 @@ class _AdminNotificationPreferencesScreenState
   }
 
   bool _resolveEnabled(NotificationCatalogEntry event, String channel) {
-    final explicit = _explicit[_PrefKey(
-      eventKey: event.eventKey,
-      channel: channel,
-    )];
+    final explicit =
+        _explicit[_PrefKey(eventKey: event.eventKey, channel: channel)];
     if (explicit != null) return explicit;
     return event.defaultChannels.contains(channel);
   }
@@ -446,7 +445,8 @@ class _CategorySection extends StatelessWidget {
     required NotificationCatalogEntry event,
     required String channel,
     required bool currentlyEnabled,
-  })? onToggle;
+  })?
+  onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -500,7 +500,8 @@ class _EventRow extends StatelessWidget {
     required NotificationCatalogEntry event,
     required String channel,
     required bool currentlyEnabled,
-  })? onToggle;
+  })?
+  onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -544,8 +545,7 @@ class _EventRow extends StatelessWidget {
                     'admin_notification_preferences_subcopy_'
                     '${event.eventKey}',
                   ),
-                  style:
-                      AppTextStyles.body12(color: AppColors.textSecondary),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
             ],
@@ -578,17 +578,17 @@ class _StateBadge extends StatelessWidget {
     final label = _kStateLabel[state] ?? '';
     final (Color bg, Color fg) = switch (state) {
       _NotifEventState.available => (
-          AppColors.sunsetDark.withValues(alpha: 0.10),
-          AppColors.sunsetDark,
-        ),
+        AppColors.sunsetDark.withValues(alpha: 0.10),
+        AppColors.sunsetDark,
+      ),
       _NotifEventState.comingSoon => (
-          AppColors.warningBadgeBg,
-          AppColors.warning,
-        ),
+        AppColors.warningBadgeBg,
+        AppColors.warning,
+      ),
       _NotifEventState.backendOnly => (
-          AppColors.borderSubtle.withValues(alpha: 0.55),
-          AppColors.textSecondary,
-        ),
+        AppColors.borderSubtle.withValues(alpha: 0.55),
+        AppColors.textSecondary,
+      ),
     };
     return Container(
       key: Key('admin_notification_preferences_state_badge_$eventKey'),
@@ -599,8 +599,9 @@ class _StateBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono10(color: fg)
-            .copyWith(fontWeight: FontWeight.w700),
+        style: AppTextStyles.mono10(
+          color: fg,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -621,7 +622,8 @@ class _ChannelToggle extends StatelessWidget {
     required NotificationCatalogEntry event,
     required String channel,
     required bool currentlyEnabled,
-  })? onToggle;
+  })?
+  onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -640,10 +642,10 @@ class _ChannelToggle extends StatelessWidget {
           onChanged: onToggle == null
               ? null
               : (_) => onToggle!(
-                    event: event,
-                    channel: channel,
-                    currentlyEnabled: enabled,
-                  ),
+                  event: event,
+                  channel: channel,
+                  currentlyEnabled: enabled,
+                ),
           activeThumbColor: AppColors.sunsetDark,
         ),
       ],

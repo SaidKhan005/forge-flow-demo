@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'dart:convert';
 
 import 'package:provider/provider.dart';
@@ -11,8 +11,10 @@ import '../services/auth/account_info_gateway.dart';
 import '../services/auth/auth_operations_gateway.dart';
 import '../services/auth/handoff_code_gateway.dart';
 import '../services/auth/password_change_gateway.dart';
+import '../services/manual_covers_write_service.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
+import '../services/sync/sync_proxy_client.dart';
 import '../state/app_refresh_coordinator.dart';
 import '../state/auth_session_notifier.dart';
 import '../state/permission_context.dart';
@@ -197,6 +199,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final session = authNotifier?.session;
     final showAccount = session != null;
+    final syncProxyClient = _syncProxyClientFromContext(context);
+    final manualCoversWriteActions = _manualCoversWriteActionsFor(
+      session: session,
+      syncProxyClient: syncProxyClient,
+    );
     // MO-1 — read the production permission snapshot (when wired by
     // AuthPermissionContextBridge). `listen: true` so a session-driven
     // re-load of the snapshot re-runs the Data tab gate without
@@ -212,7 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // the read-only essentials in 3 tabs.
     final effectiveTeamActor = widget.teamActor;
     // Non-admin signed-in users see only the Account tab. Admin tier
-    // (operator_owner / operator_manager / super_admin / ff_support)
+    // (operator_owner / operator_general_manager / super_admin / ff_support)
     // sees the rest. The gate is opt-in: a null teamActor (e.g.
     // demo / unauth flows or pre-Phase-9 test setups) keeps admin
     // tabs visible. Once the Phase 9 permission snapshot bridge
@@ -274,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // "Demo vs live data" per MO-1-FU; the long-term home is here),
       // and a B11.1 short-opaque-code handoff link to operator-web's
       // Vendor Connections screen. Gated by `showAdminTabs` so every
-      // operator admin (owner / manager / super_admin / ff_support)
+      // operator admin (owner / general manager / super_admin / ff_support)
       // reaches it; the Data tab keeps its tighter F&F gate.
       if (showAdminTabs) _integrationsSettingsTab,
       if (showDataTab) _dataSettingsTab,
@@ -354,14 +361,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // the Setup tab per debug.md:287-289. Manual entry
                     // is the primary path when the active POS does
                     // not expose covers (Square / Clover) and a
-                    // manual override otherwise. Demo + live both
-                    // write to the same `manual_cover_entries` table
-                    // (HP #2 — no kDemoMode reader branch).
+                    // manual entry otherwise. Signed-in live paths write
+                    // through the canonical proxy first, then mirror
+                    // locally for recent-entry display. Demo / unauth
+                    // widget paths keep the local fallback.
                     _settingsSection(
                       title: 'Covers setup',
                       child: SettingsCoversSetupSection(
                         restaurantId: restaurant.restaurantId,
                         scopeLabel: restaurant.displayName,
+                        writer: manualCoversWriteActions?.save,
+                        clearer: manualCoversWriteActions?.clear,
                         onAfterSave: _refreshAfterWrite,
                       ),
                     ),
@@ -373,6 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Business timing',
                       child: TimingAuthoritySection(
                         restaurantId: restaurant.restaurantId,
+                        scopeLabel: restaurant.displayName,
                       ),
                     ),
                     SliverToBoxAdapter(
@@ -394,6 +405,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: WageAuthoritySection(
                       onChanged: _refreshAppState,
                       viewOnly: true,
+                      scopeLabel: restaurant?.displayName,
                     ),
                   ),
                   SliverToBoxAdapter(
@@ -585,24 +597,65 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 /// Tabs other than Account are only visible to admin-tier roles.
-/// Operator owners, operator managers, super_admin, and ff_support
-/// qualify. operator_supervisor / operator_staff / null actors do not.
+/// Operator owners, operator_general_manager, super_admin, and ff_support
+/// qualify. Retired v1 roles and null actors do not.
 bool _isAdminTier(TeamScopeActor? actor) {
   if (actor == null) return false;
   return actor.actorRoles.contains('operator_owner') ||
-      actor.actorRoles.contains('operator_manager') ||
+      actor.actorRoles.contains('operator_general_manager') ||
       actor.actorRoles.contains('super_admin') ||
       actor.actorRoles.contains('ff_support');
 }
 
 /// W3.A â€” F&F support gate. The Data alignment section in the Data tab
 /// surfaces canonical-fact diagnostics that only super_admin /
-/// ff_support actors should see. Operators (owner / manager / etc.)
+/// ff_support actors should see. Operators (owner / general manager / etc.)
 /// stay out â€” the section is removed from their Data tab.
 bool _isFFAccount(TeamScopeActor? actor) {
   if (actor == null) return false;
   return actor.actorRoles.contains('super_admin') ||
       actor.actorRoles.contains('ff_support');
+}
+
+SyncProxyClient? _syncProxyClientFromContext(BuildContext context) {
+  try {
+    return Provider.of<SyncProxyClient?>(context, listen: false);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+_ManualCoversWriteActions? _manualCoversWriteActionsFor({
+  required AuthSession? session,
+  required SyncProxyClient? syncProxyClient,
+}) {
+  if (session == null) return null;
+  if (syncProxyClient is! ManualCoversWriteClient) {
+    Future<void> throwUnavailable(_) async {
+      throw const ManualCoversWriteException(
+        code: 'manual_covers_proxy_unavailable',
+        message:
+            'Manual covers need a live Forge & Flow connection before saving.',
+      );
+    }
+
+    return _ManualCoversWriteActions(
+      save: throwUnavailable,
+      clear: throwUnavailable,
+    );
+  }
+  final writer = AuthSessionManualCoversWriter(
+    client: syncProxyClient as ManualCoversWriteClient,
+    authSessionProvider: () => session,
+  );
+  return _ManualCoversWriteActions(save: writer.save, clear: writer.clear);
+}
+
+class _ManualCoversWriteActions {
+  const _ManualCoversWriteActions({required this.save, required this.clear});
+
+  final ManualCoverEntryWriter save;
+  final ManualCoverEntryClearer clear;
 }
 
 /// MO-1 (Wave 2) â€” gate for the mobile Settings Data tab.

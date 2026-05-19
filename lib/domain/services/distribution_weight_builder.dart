@@ -12,7 +12,13 @@
 //   resolvedShare = baselineShare + ((recentShare - baselineShare) / 2)
 
 import 'package:forge_and_flow/domain/models/schedule_distribution_weights.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
+
+import 'shift_boundary_resolver.dart';
+
+typedef DistributionShiftCloseAuthorityResolver =
+    ShiftCloseAuthority Function(ShiftRecord shift);
 
 class DistributionWeightBuilder {
   /// Build distribution weights from a list of ShiftRecords.
@@ -27,9 +33,15 @@ class DistributionWeightBuilder {
   static ScheduleDistributionWeights fromClosedShifts(
     List<ShiftRecord> shifts, {
     int minClosedBusinessDays = 14,
+    String? currentOperationalBusinessDate,
+    DistributionShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
-    // 1. Filter to closed shifts only.
-    final closed = shifts.where((s) => s.isClosed).toList();
+    // 1. Filter to closed-truth-eligible shifts only.
+    final closed = _eligibleClosedShifts(
+      shifts,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+      shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
+    );
     final closedShiftCount = closed.length;
 
     // 2. Count distinct business days (weekId|dayLabel).
@@ -61,7 +73,8 @@ class DistributionWeightBuilder {
     }
 
     // 4. Determine availability.
-    final isAvailable = closedBusinessDayCount >= minClosedBusinessDays &&
+    final isAvailable =
+        closedBusinessDayCount >= minClosedBusinessDays &&
         totalCovers > 0 &&
         dayWeights.isNotEmpty;
 
@@ -105,11 +118,15 @@ class DistributionWeightBuilder {
     required List<ShiftRecord> baselineShifts,
     required List<ShiftRecord> recentShifts,
     int minClosedBusinessDays = 14,
+    String? currentOperationalBusinessDate,
+    DistributionShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
     // ── Count closed shifts and distinct business days ────────────────────
-    final allClosed = <ShiftRecord>[
-      ...baselineShifts.where((s) => s.isClosed),
-    ];
+    final allClosed = _eligibleClosedShifts(
+      baselineShifts,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+      shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
+    );
     final closedShiftCount = allClosed.length;
 
     final businessDateKeys = <String>{};
@@ -156,7 +173,11 @@ class DistributionWeightBuilder {
     }
 
     // ── Recent day-of-week totals (21-day) ───────────────────────────────
-    final recentClosed = recentShifts.where((s) => s.isClosed).toList();
+    final recentClosed = _eligibleClosedShifts(
+      recentShifts,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+      shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
+    );
     final recentDayTotals = <String, int>{};
     var recentTotalCovers = 0;
 
@@ -179,8 +200,7 @@ class DistributionWeightBuilder {
         final recentShare = recentTotalCovers > 0
             ? (recentDayTotals[day] ?? 0) / recentTotalCovers
             : 0.0;
-        resolvedShare =
-            baselineShare + ((recentShare - baselineShare) / 2);
+        resolvedShare = baselineShare + ((recentShare - baselineShare) / 2);
       } else {
         resolvedShare = baselineShare;
       }
@@ -199,5 +219,27 @@ class DistributionWeightBuilder {
       closedBusinessDayCount: closedBusinessDayCount,
       totalCovers: baselineTotalCovers,
     );
+  }
+
+  static List<ShiftRecord> _eligibleClosedShifts(
+    Iterable<ShiftRecord> shifts, {
+    required String? currentOperationalBusinessDate,
+    required DistributionShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
+  }) {
+    if (currentOperationalBusinessDate == null) {
+      return shifts.where((s) => s.isClosed).toList(growable: false);
+    }
+    return shifts
+        .where(
+          (s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
+            rowStatus: s.status,
+            shiftCloseAuthority:
+                shiftCloseAuthorityForRow?.call(s) ??
+                ShiftCloseAuthority.appLocalCutoffFallback,
+            rowBusinessDate: s.businessDate,
+            currentOperationalBusinessDate: currentOperationalBusinessDate,
+          ),
+        )
+        .toList(growable: false);
   }
 }

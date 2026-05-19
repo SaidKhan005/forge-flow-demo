@@ -25,7 +25,8 @@ Map<String, Object?> _validBody({
     'ianaTimezone': iana,
     'weekStartDay': weekStart,
     'businessDayStartLocal': businessDayStart,
-    'servicePeriods': servicePeriods ??
+    'servicePeriods':
+        servicePeriods ??
         const <Map<String, Object?>>[
           <String, Object?>{
             'key': 'lunch',
@@ -54,6 +55,61 @@ void main() {
       expect(result.servicePeriods, hasLength(2));
       expect(result.servicePeriods[0].rollsPastMidnight, isFalse);
       expect(result.servicePeriods[0].startMinute, equals(11 * 60));
+      expect(
+        result.servicePeriods[0].applicableDays,
+        equals(<int>[1, 2, 3, 4, 5, 6, 7]),
+      );
+      expect(result.servicePeriods[0].shortLabel, isEmpty);
+      expect(result.servicePeriods[0].sortOrder, equals(1));
+    });
+
+    test('preserves service-period metadata on complete profile', () {
+      final result = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '10:00',
+              'endLocal': '14:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ],
+        ),
+      );
+      final period = result.servicePeriods.single;
+      expect(period.applicableDays, equals(<int>[6, 7]));
+      expect(period.shortLabel, equals('B'));
+      expect(period.sortOrder, equals(2));
+    });
+
+    test('allows same clock window when applicable days do not overlap', () {
+      final result = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'lunch',
+              'label': 'Lunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[1, 2, 3, 4, 5],
+              'sortOrder': 1,
+            },
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ],
+        ),
+      );
+      expect(result.servicePeriods, hasLength(2));
     });
 
     test('detects past-midnight period', () {
@@ -80,8 +136,11 @@ void main() {
           _validBody(servicePeriods: const <Map<String, Object?>>[]),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_period_count'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_period_count',
+          ),
         ),
       );
     });
@@ -125,8 +184,11 @@ void main() {
           ),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_period_count'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_period_count',
+          ),
         ),
       );
     });
@@ -137,8 +199,11 @@ void main() {
           _validBody(businessDayStart: '04:07'),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_quarter_hour_boundary'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_quarter_hour_boundary',
+          ),
         ),
       );
     });
@@ -158,8 +223,11 @@ void main() {
           ),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_quarter_hour_boundary'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_quarter_hour_boundary',
+          ),
         ),
       );
     });
@@ -185,8 +253,11 @@ void main() {
           ),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'service_period_overlap'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'service_period_overlap',
+          ),
         ),
       );
     });
@@ -258,8 +329,11 @@ void main() {
           _validBody(iana: 'America/Atlantis'),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_iana_timezone'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_iana_timezone',
+          ),
         ),
       );
     });
@@ -285,30 +359,95 @@ void main() {
           ),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'duplicate_service_period_key'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'duplicate_service_period_key',
+          ),
         ),
       );
     });
 
     test('invalid_scope on bad UUID', () {
       expect(
-        () => validateNewBusinessTimingProfile(_validBody(scopeId: 'not-a-uuid')),
+        () =>
+            validateNewBusinessTimingProfile(_validBody(scopeId: 'not-a-uuid')),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_scope'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_scope',
+          ),
         ),
       );
     });
 
     test('invalid_week_start_day', () {
       expect(
+        () => validateNewBusinessTimingProfile(_validBody(weekStart: 'fryday')),
+        throwsA(
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_week_start_day',
+          ),
+        ),
+      );
+    });
+
+    test('invalid_applicable_days on duplicate weekday', () {
+      expect(
         () => validateNewBusinessTimingProfile(
-          _validBody(weekStart: 'fryday'),
+          _validBody(
+            servicePeriods: const <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'brunch',
+                'label': 'Brunch',
+                'startLocal': '10:00',
+                'endLocal': '14:00',
+                'applicableDays': <int>[6, 6],
+              },
+            ],
+          ),
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_week_start_day'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_applicable_days',
+          ),
+        ),
+      );
+    });
+
+    test('duplicate_sort_order', () {
+      expect(
+        () => validateNewBusinessTimingProfile(
+          _validBody(
+            servicePeriods: const <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'lunch',
+                'label': 'Lunch',
+                'startLocal': '11:00',
+                'endLocal': '15:00',
+                'sortOrder': 1,
+              },
+              <String, Object?>{
+                'key': 'dinner',
+                'label': 'Dinner',
+                'startLocal': '17:00',
+                'endLocal': '22:00',
+                'sortOrder': 1,
+              },
+            ],
+          ),
+        ),
+        throwsA(
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'duplicate_sort_order',
+          ),
         ),
       );
     });
@@ -332,104 +471,128 @@ void main() {
 
     test('invalid_business_name on empty string', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'businessName': '   '},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'businessName': '   ',
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_business_name'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_business_name',
+          ),
         ),
       );
     });
 
     test('invalid_business_name on null', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'businessName': null},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'businessName': null,
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_business_name'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_business_name',
+          ),
         ),
       );
     });
 
     test('invalid_logo_url on http URL', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'logoUrl': 'http://example.com/logo.png'},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'logoUrl': 'http://example.com/logo.png',
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_logo_url'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_logo_url',
+          ),
         ),
       );
     });
 
     test('logoUrl null is allowed (clears the field)', () {
-      final result = validateOperatorAccountPatch(
-        const <String, Object?>{'logoUrl': null},
-      );
+      final result = validateOperatorAccountPatch(const <String, Object?>{
+        'logoUrl': null,
+      });
       expect(result.fields['logo_url'], isNull);
       expect(result.changedFieldNames, contains('logoUrl'));
     });
 
     test('invalid_currency_code on lowercase', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'currencyCode': 'usd'},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'currencyCode': 'usd',
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_currency_code'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_currency_code',
+          ),
         ),
       );
     });
 
     test('invalid_locale_tag on bad shape', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'localeTag': 'EN_US'},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'localeTag': 'EN_US',
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_locale_tag'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_locale_tag',
+          ),
         ),
       );
     });
 
     test('invalid_week_start_day', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'weekStartDay': 'satturday'},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'weekStartDay': 'satturday',
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_week_start_day'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_week_start_day',
+          ),
         ),
       );
     });
 
     test('invalid_rollover_hour on out of range', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'rolloverHour': 24},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'rolloverHour': 24,
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_rollover_hour'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_rollover_hour',
+          ),
         ),
       );
     });
 
     test('invalid_field on unknown key', () {
       expect(
-        () => validateOperatorAccountPatch(
-          const <String, Object?>{'mysteryField': 'oops'},
-        ),
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'mysteryField': 'oops',
+        }),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_field'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_field',
+          ),
         ),
       );
     });
@@ -462,6 +625,42 @@ void main() {
       expect(outcome.merged, hasLength(2));
     });
 
+    test('preserves existing and added metadata in merged set', () {
+      final existing = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'lunch',
+              'label': 'Lunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[1, 2, 3, 4, 5],
+              'shortLabel': 'L',
+              'sortOrder': 1,
+            },
+          ],
+        ),
+      );
+      final outcome = validateAddServicePeriod(
+        body: const <String, Object?>{
+          'key': 'brunch',
+          'label': 'Weekend Brunch',
+          'startLocal': '10:00',
+          'endLocal': '14:00',
+          'applicableDays': <int>[6, 7],
+          'shortLabel': 'B',
+          'sortOrder': 2,
+        },
+        existing: existing,
+      );
+      expect(outcome.merged[0].applicableDays, equals(<int>[1, 2, 3, 4, 5]));
+      expect(outcome.merged[0].shortLabel, equals('L'));
+      expect(outcome.merged[0].sortOrder, equals(1));
+      expect(outcome.merged[1].applicableDays, equals(<int>[6, 7]));
+      expect(outcome.merged[1].shortLabel, equals('B'));
+      expect(outcome.merged[1].sortOrder, equals(2));
+    });
+
     test('duplicate_service_period_key', () {
       final existing = validateNewBusinessTimingProfile(_validBody());
       expect(
@@ -475,14 +674,46 @@ void main() {
           existing: existing,
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'duplicate_service_period_key'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'duplicate_service_period_key',
+          ),
         ),
       );
     });
   });
 
   group('validateUpdateServicePeriod', () {
+    test(
+      'partial profile patch preserves existing service-period metadata',
+      () {
+        final existing = validateNewBusinessTimingProfile(
+          _validBody(
+            servicePeriods: const <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'brunch',
+                'label': 'Weekend Brunch',
+                'startLocal': '10:00',
+                'endLocal': '14:00',
+                'applicableDays': <int>[6, 7],
+                'shortLabel': 'B',
+                'sortOrder': 2,
+              },
+            ],
+          ),
+        );
+        final patched = validateProfilePatch(
+          body: const <String, Object?>{'businessDayStartLocal': '04:30'},
+          existing: existing,
+        );
+        final period = patched.servicePeriods.single;
+        expect(period.applicableDays, equals(<int>[6, 7]));
+        expect(period.shortLabel, equals('B'));
+        expect(period.sortOrder, equals(2));
+      },
+    );
+
     test('rejects key rename via PATCH', () {
       final existing = validateNewBusinessTimingProfile(_validBody());
       expect(
@@ -492,8 +723,11 @@ void main() {
           existing: existing,
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'invalid_field'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_field',
+          ),
         ),
       );
     });
@@ -507,10 +741,58 @@ void main() {
           existing: existing,
         ),
         throwsA(
-          isA<BusinessTimingValidationError>()
-              .having((e) => e.code, 'code', 'service_period_not_found'),
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'service_period_not_found',
+          ),
         ),
       );
     });
+
+    test(
+      'service-period PATCH can update metadata and keep untouched rows',
+      () {
+        final existing = validateNewBusinessTimingProfile(
+          _validBody(
+            servicePeriods: const <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'lunch',
+                'label': 'Lunch',
+                'startLocal': '11:00',
+                'endLocal': '15:00',
+                'applicableDays': <int>[1, 2, 3, 4, 5],
+                'shortLabel': 'L',
+                'sortOrder': 1,
+              },
+              <String, Object?>{
+                'key': 'brunch',
+                'label': 'Weekend Brunch',
+                'startLocal': '10:00',
+                'endLocal': '14:00',
+                'applicableDays': <int>[6, 7],
+                'shortLabel': 'B',
+                'sortOrder': 2,
+              },
+            ],
+          ),
+        );
+        final merged = validateUpdateServicePeriod(
+          body: const <String, Object?>{
+            'applicableDays': <int>[1, 2, 3],
+            'shortLabel': 'M',
+            'sortOrder': 1,
+          },
+          urlKey: 'lunch',
+          existing: existing,
+        );
+        expect(merged[0].applicableDays, equals(<int>[1, 2, 3]));
+        expect(merged[0].shortLabel, equals('M'));
+        expect(merged[0].sortOrder, equals(1));
+        expect(merged[1].applicableDays, equals(<int>[6, 7]));
+        expect(merged[1].shortLabel, equals('B'));
+        expect(merged[1].sortOrder, equals(2));
+      },
+    );
   });
 }

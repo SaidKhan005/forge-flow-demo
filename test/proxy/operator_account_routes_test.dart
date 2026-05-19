@@ -177,7 +177,7 @@ void main() {
       });
     });
 
-    test('403 when caller lacks operator_owner / operator_admin', () async {
+    test('403 when caller lacks operator_owner', () async {
       await withRealHttp(() async {
         final ctx = await spinUp(
           initialClaims: const ProxyJwtClaims(

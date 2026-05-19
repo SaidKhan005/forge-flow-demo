@@ -27,6 +27,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/models/data_accuracy_service_period_setting.dart';
+import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
 
 /// Pure value object the card emits when the operator submits the
@@ -89,6 +90,7 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
     required this.editingEnabled,
     required this.onAddOrEdit,
     required this.onRetry,
+    this.configuredServicePeriods = const <ServicePeriodDefinition>[],
     this.defaultEffectiveAtBusinessDateIso,
   });
 
@@ -106,9 +108,15 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
   /// Most recent save error, if any. Surfaces inline below the table.
   final String? saveError;
 
-  /// Mirrors the screen-level role gate: `operator_owner` /
-  /// `operator_admin` only. False for `location_manager`.
+  /// Mirrors the screen-level role gate: `operator_owner` only.
+  /// False for `location_manager`.
   final bool editingEnabled;
+
+  /// Operator-configured service periods already loaded by the screen.
+  /// New rows prefer this list so operators choose a known period id
+  /// instead of typing a raw key. Existing rows still keep their key
+  /// verbatim, including legacy or now-unknown ids.
+  final List<ServicePeriodDefinition> configuredServicePeriods;
 
   /// Submit callback. Returns the saved row from the gateway or
   /// `null` if the dialog was cancelled.
@@ -158,10 +166,7 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
                   key: kKeyedServicePeriodAccuracyAddButtonKey,
                   onPressed: busy
                       ? null
-                      : () => _openDialog(
-                          context,
-                          existing: null,
-                        ),
+                      : () => _openDialog(context, existing: null),
                   icon: const Icon(Icons.add, size: 14),
                   label: const Text('Add or supersede'),
                 ),
@@ -198,25 +203,17 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
                   _RowSummary(
                     row: rows[i],
                     editingEnabled: editingEnabled,
-                    onEdit: () => _openDialog(
-                      context,
-                      existing: rows[i],
-                    ),
+                    onEdit: () => _openDialog(context, existing: rows[i]),
                   ),
                   if (i != rows.length - 1)
-                    const Divider(
-                      color: AppColors.borderSubtle,
-                      height: 14,
-                    ),
+                    const Divider(color: AppColors.borderSubtle, height: 14),
                 ],
               ],
             ),
           if (saveError != null) ...[
             const SizedBox(height: 12),
             Container(
-              key: const Key(
-                'data_accuracy_keyed_service_period_save_error',
-              ),
+              key: const Key('data_accuracy_keyed_service_period_save_error'),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.warningBadgeBg,
@@ -242,6 +239,7 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
       context: context,
       builder: (_) => _KeyedServicePeriodDialog(
         existing: existing,
+        configuredServicePeriods: configuredServicePeriods,
         defaultEffectiveAtBusinessDateIso: defaultEffectiveAtBusinessDateIso,
       ),
     );
@@ -340,9 +338,7 @@ class _LoadErrorBlock extends StatelessWidget {
             ),
           ),
           TextButton(
-            key: const Key(
-              'data_accuracy_keyed_service_period_retry',
-            ),
+            key: const Key('data_accuracy_keyed_service_period_retry'),
             onPressed: onRetry,
             child: const Text('Retry'),
           ),
@@ -355,10 +351,12 @@ class _LoadErrorBlock extends StatelessWidget {
 class _KeyedServicePeriodDialog extends StatefulWidget {
   const _KeyedServicePeriodDialog({
     required this.existing,
+    required this.configuredServicePeriods,
     required this.defaultEffectiveAtBusinessDateIso,
   });
 
   final DataAccuracyServicePeriodSetting? existing;
+  final List<ServicePeriodDefinition> configuredServicePeriods;
   final String? defaultEffectiveAtBusinessDateIso;
 
   @override
@@ -383,9 +381,16 @@ class _KeyedServicePeriodDialogState extends State<_KeyedServicePeriodDialog> {
       widget.existing?.coversSource ?? ServicePeriodCoversSource.vendor;
   late ServicePeriodWageSource _wage =
       widget.existing?.wageSource ?? ServicePeriodWageSource.vendorPerEmployee;
+  late String? _selectedConfiguredKey =
+      widget.existing?.servicePeriodKey ??
+      (widget.configuredServicePeriods.isEmpty
+          ? null
+          : widget.configuredServicePeriods.first.id);
   String? _errorText;
 
   bool get _editingExisting => widget.existing != null;
+  bool get _useConfiguredPicker =>
+      !_editingExisting && widget.configuredServicePeriods.isNotEmpty;
 
   @override
   void dispose() {
@@ -395,9 +400,10 @@ class _KeyedServicePeriodDialogState extends State<_KeyedServicePeriodDialog> {
   }
 
   void _submit() {
-    final key = _keyCtl.text.trim();
+    final key = (_useConfiguredPicker ? _selectedConfiguredKey : _keyCtl.text)
+        ?.trim();
     final date = _dateCtl.text.trim();
-    if (!_keyPattern.hasMatch(key)) {
+    if (key == null || !_keyPattern.hasMatch(key)) {
       setState(() {
         _errorText =
             'Use lowercase letters, numbers, or underscores only. Start with '
@@ -407,8 +413,7 @@ class _KeyedServicePeriodDialogState extends State<_KeyedServicePeriodDialog> {
     }
     if (!_datePattern.hasMatch(date)) {
       setState(() {
-        _errorText =
-            'Effective date must be YYYY-MM-DD (e.g. 2026-06-01).';
+        _errorText = 'Effective date must be YYYY-MM-DD (e.g. 2026-06-01).';
       });
       return;
     }
@@ -438,17 +443,40 @@ class _KeyedServicePeriodDialogState extends State<_KeyedServicePeriodDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                key: kKeyedServicePeriodAccuracyKeyFieldKey,
-                controller: _keyCtl,
-                enabled: !_editingExisting,
-                decoration: const InputDecoration(
-                  labelText: 'Service period key',
-                  helperText:
-                      'Lowercase. Examples: lunch, dinner, breakfast, brunch.',
-                  border: OutlineInputBorder(),
+              if (_useConfiguredPicker)
+                DropdownButtonFormField<String>(
+                  key: kKeyedServicePeriodAccuracyKeyFieldKey,
+                  initialValue: _selectedConfiguredKey,
+                  decoration: const InputDecoration(
+                    labelText: 'Service period',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: widget.configuredServicePeriods
+                      .map(
+                        (period) => DropdownMenuItem<String>(
+                          value: period.id,
+                          child: Text('${period.label} (${period.id})'),
+                        ),
+                      )
+                      .toList(growable: false),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() => _selectedConfiguredKey = value);
+                    }
+                  },
+                )
+              else
+                TextField(
+                  key: kKeyedServicePeriodAccuracyKeyFieldKey,
+                  controller: _keyCtl,
+                  enabled: !_editingExisting,
+                  decoration: const InputDecoration(
+                    labelText: 'Service period key',
+                    helperText:
+                        'Lowercase. Examples: lunch, dinner, breakfast, brunch.',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-              ),
               const SizedBox(height: 12),
               TextField(
                 key: kKeyedServicePeriodAccuracyEffectiveDateFieldKey,

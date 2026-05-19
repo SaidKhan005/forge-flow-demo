@@ -22,7 +22,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../services/integration/iana_timezone_converter.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../auth/operator_web_handoff_redeem_gateway.dart';
@@ -66,6 +68,7 @@ import '../screens/settings_notifications_screen.dart';
 import '../screens/schedule_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/vendor_connections_screen.dart';
+import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
 
@@ -292,7 +295,7 @@ class OperatorWebRouter extends StatefulWidget {
   State<OperatorWebRouter> createState() => _OperatorWebRouterState();
 }
 
-String _dataAccuracyBusinessDateIso({
+String _fallbackDataAccuracyBusinessDateIso({
   required OperatorWebSession session,
   required DateTime instantUtc,
 }) {
@@ -317,6 +320,34 @@ String _dataAccuracyBusinessDateIso({
       ? utc.subtract(const Duration(days: 1))
       : utc;
   return _isoDate(adjusted);
+}
+
+Future<String> _dataAccuracyBusinessDateIso({
+  required OperatorWebSession session,
+  required String locationId,
+  required DateTime instantUtc,
+  required WebBusinessTimingGateway? timingGateway,
+  required bool isLiveSource,
+}) async {
+  if (timingGateway == null) {
+    if (isLiveSource) {
+      throw StateError(
+        'Data Accuracy needs Business Timing to resolve the current '
+        'business date.',
+      );
+    }
+    return _fallbackDataAccuracyBusinessDateIso(
+      session: session,
+      instantUtc: instantUtc,
+    );
+  }
+  final resolution = await timingGateway.resolveForLocation(
+    locationId: locationId,
+  );
+  return HttpBusinessTimingReadGateway.businessDateForInstant(
+    resolution: resolution,
+    instantUtc: instantUtc,
+  );
 }
 
 int? _validRolloverHour(int? value) {
@@ -366,6 +397,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   bool _managementScopeLoading = false;
   String? _managementScopeError;
   int _managementScopeGeneration = 0;
+
+  /// Count of vendor connections in `status == error` for the current
+  /// location scope. Drives the red attention chip on the Vendor
+  /// integrations nav item so an operator who is not on the
+  /// integrations screen still sees that a connection broke.
+  /// `0` when no location scope is active or the gateway has not
+  /// resolved yet.
+  int _vendorOutageCount = 0;
+
+  /// Key (`operatorId|locationId`) the current [_vendorOutageCount]
+  /// reflects. Used to skip a refetch when the scope hasn't changed
+  /// and to force one when it has.
+  String? _vendorOutageCountKey;
+
+  /// In-flight guard so a rebuild storm cannot stack overlapping
+  /// fetches against the gateway.
+  bool _vendorOutageFetching = false;
 
   @override
   void initState() {
@@ -595,6 +643,47 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     unawaited(_loadManagementScopes(session, gateway, generation));
   }
 
+  /// Refresh [_vendorOutageCount] from the connections gateway for the
+  /// supplied (operatorId, locationId). Idempotent and best-effort — a
+  /// gateway throw leaves the previous count in place and is swallowed
+  /// (the dot is a hint, not a critical surface). Called from
+  /// [_buildPostOnboardingShell] via a post-frame callback when the
+  /// location scope changes; production triggers it once per scope
+  /// switch.
+  Future<void> _refreshVendorOutageCount({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    if (_vendorOutageFetching) return;
+    final key = '$operatorId|$locationId';
+    final gateway = _vendorConnectionsGateway;
+    if (gateway == null) return;
+    _vendorOutageFetching = true;
+    try {
+      final bundle = await gateway.loadBundle(
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (!mounted) return;
+      final errorRows = <VendorConnectionRow?>[
+        bundle.posConnection,
+        bundle.laborConnection,
+        bundle.reservationConnection,
+      ].where((row) => row?.status == VendorConnectionStatus.error).length;
+      setState(() {
+        _vendorOutageCount = errorRows;
+        _vendorOutageCountKey = key;
+      });
+    } catch (_) {
+      // Best-effort hint surface — leave the prior count and key in
+      // place so a transient gateway error doesn't clear the dot.
+      if (!mounted) return;
+      _vendorOutageCountKey = key;
+    } finally {
+      _vendorOutageFetching = false;
+    }
+  }
+
   Future<void> _loadManagementScopes(
     OperatorWebSession session,
     WebTeamHierarchyGateway gateway,
@@ -789,6 +878,80 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     );
   }
 
+  OperatorWebManagementScopeOption? _businessTimingLocationContext(
+    OperatorWebSession session,
+    OperatorWebManagementScopeOption managementScope,
+  ) {
+    if (managementScope.kind == OperatorWebManagementScopeKind.location) {
+      return managementScope;
+    }
+    if (managementScope.kind == OperatorWebManagementScopeKind.orgUnit) {
+      for (final option in _managementScopeOptions) {
+        if (option.kind == OperatorWebManagementScopeKind.location &&
+            _locationHasOrgUnitAncestor(option, managementScope.id)) {
+          return option;
+        }
+      }
+    }
+    final primaryLocationId = session.primaryLocationId;
+    if (primaryLocationId == null || primaryLocationId.trim().isEmpty) {
+      return null;
+    }
+    final primaryKey = _scopeKey(
+      OperatorWebManagementScopeKind.location,
+      primaryLocationId,
+    );
+    for (final option in _managementScopeOptions) {
+      if (option.key == primaryKey) return option;
+    }
+    return _locationScopeOption(
+      locationId: primaryLocationId,
+      label: session.primaryLocationName,
+    );
+  }
+
+  OperatorWebManagementScopeOption? _businessTimingOrgUnitContext(
+    OperatorWebManagementScopeOption managementScope,
+    OperatorWebManagementScopeOption? locationScope,
+  ) {
+    if (managementScope.kind == OperatorWebManagementScopeKind.orgUnit) {
+      return managementScope;
+    }
+    if (locationScope == null) return null;
+    final ancestors = _wageAncestorOrgUnitIdsNearestFirst(locationScope);
+    if (ancestors.isEmpty) return null;
+    return _orgUnitScopeById(ancestors.first);
+  }
+
+  OperatorWebManagementScopeOption? _orgUnitScopeById(String orgUnitId) {
+    for (final option in _managementScopeOptions) {
+      if (option.kind == OperatorWebManagementScopeKind.orgUnit &&
+          option.id == orgUnitId) {
+        return option;
+      }
+    }
+    return null;
+  }
+
+  bool _locationHasOrgUnitAncestor(
+    OperatorWebManagementScopeOption locationScope,
+    String orgUnitId,
+  ) {
+    final orgUnitById = <String, OperatorWebManagementScopeOption>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
+          option.id: option,
+    };
+    var current = locationScope.parentOrgUnitId;
+    final seen = <String>{};
+    while (current != null && current.isNotEmpty) {
+      if (!seen.add(current)) return false;
+      if (current == orgUnitId) return true;
+      current = orgUnitById[current]?.parentOrgUnitId;
+    }
+    return false;
+  }
+
   List<DemoTeamLocationFixture> _locationFixturesForMembers(
     OperatorWebSession session,
   ) {
@@ -814,6 +977,94 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         orgUnitId: '',
       ),
     ];
+  }
+
+  List<HierarchyMapNode> _wageHierarchyNodes() {
+    String? operatorKey;
+    for (final option in _managementScopeOptions) {
+      if (option.kind == OperatorWebManagementScopeKind.operator) {
+        operatorKey = option.key;
+        break;
+      }
+    }
+    final orgUnitKeys = <String>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit) option.key,
+    };
+    return <HierarchyMapNode>[
+      for (final option in _managementScopeOptions)
+        HierarchyMapNode(
+          id: option.key,
+          label: option.label,
+          helper: option.helper,
+          kind: _wageHierarchyNodeKind(option.kind),
+          parentId: _wageHierarchyParentId(option, operatorKey, orgUnitKeys),
+          inheritanceBreadcrumb: _wageHierarchyBreadcrumb(option.kind),
+        ),
+    ];
+  }
+
+  List<String> _wageAncestorOrgUnitIdsNearestFirst(
+    OperatorWebManagementScopeOption locationScope,
+  ) {
+    final ancestors = <String>[];
+    final orgUnitById = <String, OperatorWebManagementScopeOption>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
+          option.id: option,
+    };
+    var current = locationScope.parentOrgUnitId;
+    final seen = <String>{};
+    while (current != null && current.isNotEmpty) {
+      if (!seen.add(current)) break;
+      ancestors.add(current);
+      current = orgUnitById[current]?.parentOrgUnitId;
+    }
+    return ancestors;
+  }
+
+  static HierarchyMapNodeKind _wageHierarchyNodeKind(
+    OperatorWebManagementScopeKind kind,
+  ) {
+    switch (kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return HierarchyMapNodeKind.business;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return HierarchyMapNodeKind.orgUnit;
+      case OperatorWebManagementScopeKind.location:
+        return HierarchyMapNodeKind.location;
+    }
+  }
+
+  static String? _wageHierarchyParentId(
+    OperatorWebManagementScopeOption option,
+    String? operatorKey,
+    Set<String> orgUnitKeys,
+  ) {
+    switch (option.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return null;
+      case OperatorWebManagementScopeKind.orgUnit:
+      case OperatorWebManagementScopeKind.location:
+        final parent = option.parentOrgUnitId;
+        if (parent == null || parent.isEmpty) return operatorKey;
+        final parentKey = _scopeKey(
+          OperatorWebManagementScopeKind.orgUnit,
+          parent,
+        );
+        return orgUnitKeys.contains(parentKey) ? parentKey : operatorKey;
+    }
+  }
+
+  static String? _wageHierarchyBreadcrumb(OperatorWebManagementScopeKind kind) {
+    switch (kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return 'Business-wide. Every location inherits these defaults.';
+      case OperatorWebManagementScopeKind.orgUnit:
+        return 'Locations under this group inherit values set here.';
+      case OperatorWebManagementScopeKind.location:
+        return null;
+    }
   }
 
   static String _scopeKey(OperatorWebManagementScopeKind kind, String id) =>
@@ -971,6 +1222,14 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         managementScope.kind == OperatorWebManagementScopeKind.location
         ? managementScope
         : null;
+    final businessTimingLocationScope = _businessTimingLocationContext(
+      session,
+      managementScope,
+    );
+    final businessTimingOrgUnitScope = _businessTimingOrgUnitContext(
+      managementScope,
+      businessTimingLocationScope,
+    );
     // Wave 2 OW-4 — the Locations nav row mounts the per-operator
     // hierarchy CRUD (`HierarchyScreen`: add / rename / move org
     // units, attach locations as leaves). That surface only makes
@@ -984,6 +1243,37 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     // already-selected Locations route back to the default nav when
     // the operator drops into location scope.
     final isLocationScope = locationScope != null;
+
+    // Vendor outage attention chip — refresh the count when the
+    // location scope changes (or first becomes active). The fetch is
+    // post-framed so we don't mutate state inside build; the chip
+    // shows the previous count until the new one resolves. Clearing
+    // the count when location scope goes away keeps the chip from
+    // stale-rendering at business / org-unit scope where the Vendor
+    // integrations row already shows a "Choose a location" body.
+    final outageKey = locationScope == null
+        ? null
+        : '${session.operatorId}|${locationScope.id}';
+    if (locationScope == null && _vendorOutageCount > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _vendorOutageCount = 0;
+          _vendorOutageCountKey = null;
+        });
+      });
+    } else if (locationScope != null && _vendorOutageCountKey != outageKey) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(
+          _refreshVendorOutageCount(
+            operatorId: session.operatorId,
+            locationId: locationScope.id,
+          ),
+        );
+      });
+    }
+
     final navItems = <OperatorWebNavItem>[
       const OperatorWebNavItem(
         id: kOperatorWebNavSchedule,
@@ -1043,11 +1333,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.fact_check_outlined,
         group: 'Access',
       ),
-      const OperatorWebNavItem(
+      OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor integrations',
         icon: Icons.cable_outlined,
         group: 'Data & integrations',
+        // Red chip when ≥1 connection on the current location is in
+        // `status == error`. Only fires under location scope (the
+        // Vendor integrations screen itself only mounts there); the
+        // post-frame fetch above keeps the count fresh on scope switch.
+        alertCount: locationScope == null ? 0 : _vendorOutageCount,
+        alertTooltip: _vendorOutageCount == 0
+            ? null
+            : '$_vendorOutageCount vendor ${_vendorOutageCount == 1 ? "connection is" : "connections are"} '
+                  'in an error state. Open Vendor integrations to reconnect.',
       ),
       const OperatorWebNavItem(
         id: kOperatorWebNavDataAccuracy,
@@ -1092,6 +1391,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         if (businessSetupWiringError != null) {
           body = businessSetupWiringError;
+        } else if (managementScope.kind ==
+                OperatorWebManagementScopeKind.orgUnit &&
+            _webBusinessTimingGateway != null) {
+          body = BusinessTimingEditorScreen(
+            session: session,
+            locationId: businessTimingLocationScope?.id,
+            locationName: businessTimingLocationScope?.label,
+            orgUnitId: managementScope.id,
+            orgUnitName: managementScope.label,
+            orgUnitHelper: managementScope.helper,
+            initialScopeKind: 'org_unit',
+            gateway: _webBusinessTimingGateway,
+            existingProfile: _resolvedExistingTimingProfileForScope(
+              scopeKind: 'org_unit',
+              scopeId: managementScope.id,
+            ),
+          );
         } else if (locationScope == null) {
           body = _RequiresLocationScopeSurface(
             key: const Key('operator_web_business_setup_requires_location'),
@@ -1107,6 +1423,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             session: session,
             locationId: locationScope.id,
             locationName: locationScope.label,
+            orgUnitId: businessTimingOrgUnitScope?.id,
+            orgUnitName: businessTimingOrgUnitScope?.label,
+            orgUnitHelper: businessTimingOrgUnitScope?.helper,
             gateway: _webBusinessTimingGateway,
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             onClose: () => setState(() => _editingBusinessTiming = false),
@@ -1283,7 +1602,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         final dataAccuracyWiringError = _liveSurfaceMissingGateway(
           hasLiveProvider:
               widget.source is OperatorWebDataAccuracyGatewayProvider &&
-              widget.source is OperatorWebVendorApplicabilityGatewayProvider,
+              widget.source is OperatorWebVendorApplicabilityGatewayProvider &&
+              widget.source is OperatorWebBusinessTimingWriteGatewayProvider,
           surfaceTitle: 'Data accuracy',
         );
         if (dataAccuracyWiringError != null) {
@@ -1300,26 +1620,49 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             selectedScopeLabel: managementScope.label,
           );
         } else {
-          body = DataAccuracyScreen(
-            session: session,
-            locationId: locationScope.id,
-            locationName: locationScope.label,
-            dataAccuracyGateway: _dataAccuracyGateway,
-            vendorApplicabilityGateway: _vendorApplicabilityGateway,
-            businessDateIso: _dataAccuracyBusinessDateIso(
-              session: session,
-              instantUtc: (widget.nowUtc ?? DateTime.now)().toUtc(),
+          final instantUtc = (widget.nowUtc ?? DateTime.now)().toUtc();
+          body = FutureBuilder<String>(
+            key: ValueKey(
+              'operator_web_data_accuracy_business_date_${locationScope.id}',
             ),
-            // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
-            // Authority section now mounts inside Data Accuracy.
-            // Re-use the same gateway resolution the standalone
-            // Wage Authority case below uses so the embedded
-            // section saves through the live proxy when wired and
-            // the in-memory demo gateway otherwise.
-            wageAuthorityGateway:
-                _wageAuthorityGateway ??
-                (_routerOwnedDemoWageAuthorityGateway ??=
-                    OperatorWebDemoWageAuthorityGateway()),
+            future: _dataAccuracyBusinessDateIso(
+              session: session,
+              locationId: locationScope.id,
+              instantUtc: instantUtc,
+              timingGateway: _webBusinessTimingGateway,
+              isLiveSource: !_isDemoAuthSource,
+            ),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const _DataAccuracyBusinessDateError();
+              }
+              final businessDateIso = snapshot.data;
+              if (businessDateIso == null) {
+                return const _DataAccuracyBusinessDateLoading();
+              }
+              return DataAccuracyScreen(
+                session: session,
+                locationId: locationScope.id,
+                locationName: locationScope.label,
+                dataAccuracyGateway: _dataAccuracyGateway,
+                vendorApplicabilityGateway: _vendorApplicabilityGateway,
+                businessDateIso: businessDateIso,
+                // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
+                // Authority section now mounts inside Data Accuracy.
+                // Re-use the same gateway resolution the standalone
+                // Wage Authority case below uses so the embedded
+                // section saves through the live proxy when wired and
+                // the in-memory demo gateway otherwise.
+                wageAuthorityGateway:
+                    _wageAuthorityGateway ??
+                    (_routerOwnedDemoWageAuthorityGateway ??=
+                        OperatorWebDemoWageAuthorityGateway()),
+                hierarchyNodes: _wageHierarchyNodes(),
+                ancestorOrgUnitIdsNearestFirst:
+                    _wageAncestorOrgUnitIdsNearestFirst(locationScope),
+                businessName: session.businessName,
+              );
+            },
           );
         }
         break;
@@ -1443,6 +1786,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           session: session,
           gateway: _teamRolesGateway,
           existing: _rolesEditTarget,
+          roleScope: RoleScope.business,
           onSaved: (_) => _closeRolesSubRoute(reload: true),
           onClose: () => _closeRolesSubRoute(),
         );
@@ -1560,9 +1904,28 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   BusinessTimingProfileWriteResult? _resolvedExistingTimingProfile(
     String locationId,
   ) {
+    final exact = _resolvedExistingTimingProfileForScope(
+      scopeKind: 'location',
+      scopeId: locationId,
+    );
+    if (exact != null) return exact;
     final gateway = _businessTimingGateway;
     if (gateway is HttpBusinessTimingReadGateway) {
       return gateway.selectProfileForLocation(locationId);
+    }
+    return null;
+  }
+
+  BusinessTimingProfileWriteResult? _resolvedExistingTimingProfileForScope({
+    required String scopeKind,
+    required String scopeId,
+  }) {
+    final gateway = _businessTimingGateway;
+    if (gateway is! HttpBusinessTimingReadGateway) return null;
+    for (final profile in gateway.lastProfiles) {
+      if (profile.scopeKind == scopeKind && profile.scopeId == scopeId) {
+        return profile;
+      }
     }
     return null;
   }
@@ -1877,6 +2240,74 @@ class _RequiresBusinessScopeSurface extends StatelessWidget {
 /// honest-failure copy (`_maybeStartHandoffRedeem`) and the visual
 /// shape of [_RequiresBusinessScopeSurface], but uses an error tone
 /// because this is a defect, not a scope-picker nudge.
+// Loading state while Data Accuracy resolves the location business date.
+class _DataAccuracyBusinessDateLoading extends StatelessWidget {
+  const _DataAccuracyBusinessDateLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: SizedBox(
+        width: 28,
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.sunsetDark,
+        ),
+      ),
+    );
+  }
+}
+
+class _DataAccuracyBusinessDateError extends StatelessWidget {
+  const _DataAccuracyBusinessDateError();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 22,
+                    color: AppColors.sunsetDark,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Data accuracy needs Business Timing',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'We could not resolve the current business date for this '
+                'location. To protect your settings, this page is not '
+                'showing or saving data accuracy changes until Business '
+                'Timing is available.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Honest fail-loud surface for a live source missing a required gateway.
 class _SurfaceWiringError extends StatelessWidget {
   const _SurfaceWiringError({super.key, required this.surfaceTitle});
 
@@ -2118,8 +2549,8 @@ class _ForbiddenScreen extends StatelessWidget {
                         'Signed in as '
                         '${session.email.isEmpty ? session.uid : session.email}, '
                         'but the Forge & Flow Operator Web Console is for '
-                        'operator owners, operator admins, and location '
-                        'managers. Floor staff and other roles can keep '
+                        'operator owners, general managers, and location '
+                        'managers. Other roles can keep '
                         'using the Forge & Flow mobile app. Most '
                         'day-to-day actions live there.',
                         style: AppTextStyles.body13(

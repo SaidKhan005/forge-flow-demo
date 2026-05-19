@@ -27,6 +27,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../services/business_timing/business_timing_starter_profile.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
@@ -43,6 +44,10 @@ class BusinessTimingEditorScreen extends StatefulWidget {
     required this.session,
     this.locationId,
     this.locationName,
+    this.orgUnitId,
+    this.orgUnitName,
+    this.orgUnitHelper,
+    this.initialScopeKind,
     this.gateway,
     this.existingProfile,
     this.onClose,
@@ -51,6 +56,10 @@ class BusinessTimingEditorScreen extends StatefulWidget {
   final OperatorWebSession session;
   final String? locationId;
   final String? locationName;
+  final String? orgUnitId;
+  final String? orgUnitName;
+  final String? orgUnitHelper;
+  final String? initialScopeKind;
   final WebBusinessTimingGateway? gateway;
   final BusinessTimingProfileWriteResult? existingProfile;
   final VoidCallback? onClose;
@@ -71,7 +80,6 @@ class BusinessTimingEditorScreen extends StatefulWidget {
 class _BusinessTimingEditorScreenState
     extends State<BusinessTimingEditorScreen> {
   late ServicePeriodEditorController _periods;
-  late TextEditingController _ianaTimezone;
   late TextEditingController _businessDayStartLocal;
   late DateTime _effectiveAt;
 
@@ -80,7 +88,7 @@ class _BusinessTimingEditorScreenState
   /// operator default. Location overrides come later. Matches the
   /// dropdown copy that labels operator scope as "(default)".
   String _scopeKind = 'operator';
-  String _weekStartDay = 'monday';
+  String _weekStartDay = kStarterBusinessTimingWeekStartDayWire;
 
   bool _submitting = false;
   String? _error;
@@ -93,20 +101,19 @@ class _BusinessTimingEditorScreenState
     final existing = widget.existingProfile;
     _periods = ServicePeriodEditorController(
       initial: existing == null
-          ? const <ServicePeriodDraft>[
-              ServicePeriodDraft(
-                key: 'lunch',
-                label: 'Lunch',
-                startLocal: '11:00',
-                endLocal: '15:00',
-              ),
-              ServicePeriodDraft(
-                key: 'dinner',
-                label: 'Dinner',
-                startLocal: '17:00',
-                endLocal: '22:00',
-              ),
-            ]
+          ? kStarterBusinessTimingServicePeriods
+                .map(
+                  (p) => ServicePeriodDraft(
+                    key: p.key,
+                    label: p.label,
+                    startLocal: p.startLocal,
+                    endLocal: p.endLocal,
+                    applicableDays: List<int>.from(p.applicableDays),
+                    shortLabel: p.shortLabel,
+                    sortOrder: p.sortOrder,
+                  ),
+                )
+                .toList()
           // Slice 2.5 / Gap 28: carry the three editor-side fields
           // through from the existing profile. The gateway's
           // ServicePeriod already defaults applicableDays /
@@ -126,14 +133,11 @@ class _BusinessTimingEditorScreenState
                 )
                 .toList(),
     );
-    _ianaTimezone = TextEditingController(
-      text: existing?.ianaTimezone ?? 'America/Toronto',
-    );
     final initialDayStart =
         existing?.businessDayStartLocal ??
         (widget.session.rolloverHour != null
             ? '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00'
-            : '04:00');
+            : kStarterBusinessTimingDayStartLocal);
     _businessDayStartLocal = TextEditingController(text: initialDayStart);
     _businessDayStartLocal.addListener(_handleDayStartChanged);
     // Seed the controller's day-start so the validator picks up rule
@@ -146,9 +150,12 @@ class _BusinessTimingEditorScreenState
     if (existing != null) {
       _scopeKind = existing.scopeKind;
       _weekStartDay = existing.weekStartDay;
+    } else if (_isSupportedScopeKind(widget.initialScopeKind)) {
+      _scopeKind = widget.initialScopeKind!;
     } else if (widget.session.weekStartDay != null) {
       _weekStartDay = widget.session.weekStartDay!;
     }
+    _scopeKind = _normalizedScopeKind(_scopeKind);
     _periods.addListener(_handleEditorChange);
   }
 
@@ -156,7 +163,6 @@ class _BusinessTimingEditorScreenState
   void dispose() {
     _periods.removeListener(_handleEditorChange);
     _periods.dispose();
-    _ianaTimezone.dispose();
     _businessDayStartLocal.removeListener(_handleDayStartChanged);
     _businessDayStartLocal.dispose();
     _successTimer?.cancel();
@@ -174,22 +180,80 @@ class _BusinessTimingEditorScreenState
 
   bool get _hasGateway => widget.gateway != null;
 
+  bool get _hasOrgUnitScope => _orgUnitId != null;
+
+  String? get _orgUnitId {
+    final provided = widget.orgUnitId?.trim();
+    if (provided != null && provided.isNotEmpty) return provided;
+    final existing = widget.existingProfile;
+    if (existing != null && existing.scopeKind == 'org_unit') {
+      final id = existing.scopeId.trim();
+      if (id.isNotEmpty) return id;
+    }
+    return null;
+  }
+
+  String get _orgUnitLabel {
+    final label = widget.orgUnitName?.trim();
+    if (label != null && label.isNotEmpty) return label;
+    final existing = widget.existingProfile;
+    if (existing != null && existing.scopeKind == 'org_unit') {
+      return 'Selected group';
+    }
+    return 'Selected group';
+  }
+
+  String get _orgUnitHelper {
+    final helper = widget.orgUnitHelper?.trim();
+    if (helper != null && helper.isNotEmpty) return helper;
+    return 'Group';
+  }
+
+  String _normalizedScopeKind(String value) {
+    if (value == 'org_unit' && _hasOrgUnitScope) return value;
+    if (value == 'location' && _locationId.isNotEmpty) return value;
+    return 'operator';
+  }
+
+  bool _isSupportedScopeKind(String? value) {
+    if (value == null) return false;
+    return value == 'operator' ||
+        (value == 'org_unit' && _hasOrgUnitScope) ||
+        (value == 'location' && _locationId.isNotEmpty);
+  }
+
   String get _scopeId {
     switch (_scopeKind) {
       case 'operator':
         return widget.session.operatorId;
+      case 'org_unit':
+        return _orgUnitId ?? '';
       case 'location':
       default:
-        return widget.locationId?.trim().isNotEmpty == true
-            ? widget.locationId!.trim()
-            : (widget.session.primaryLocationId ?? '');
+        return _locationId;
     }
+  }
+
+  String get _locationId {
+    final provided = widget.locationId?.trim();
+    if (provided != null && provided.isNotEmpty) return provided;
+    return widget.session.primaryLocationId?.trim() ?? '';
   }
 
   String get _locationLabel {
     final label = widget.locationName?.trim();
     if (label != null && label.isNotEmpty) return label;
     return widget.session.primaryLocationName;
+  }
+
+  String get _effectiveTimezone {
+    final existing = widget.existingProfile?.ianaTimezone.trim();
+    if (existing != null && existing.isNotEmpty) return existing;
+    final sessionTimezone = widget.session.primaryLocationTimezone?.trim();
+    if (sessionTimezone != null && sessionTimezone.isNotEmpty) {
+      return sessionTimezone;
+    }
+    return 'UTC';
   }
 
   /// Wave 2 H-2 — builds the visual hierarchy tree's node list from
@@ -207,8 +271,9 @@ class _BusinessTimingEditorScreenState
   /// plain English (HP #11 final clause).
   List<HierarchyTreeNodeView> _buildEditorHierarchyNodes() {
     final operatorIsCurrent = _scopeKind == 'operator';
+    final orgUnitIsCurrent = _scopeKind == 'org_unit';
     final locationIsCurrent = _scopeKind == 'location';
-    return <HierarchyTreeNodeView>[
+    final nodes = <HierarchyTreeNodeView>[
       HierarchyTreeNodeView(
         level: HierarchyTreeLevel.business,
         name: widget.session.businessName,
@@ -217,18 +282,46 @@ class _BusinessTimingEditorScreenState
             ? 'This profile becomes the default for every location.'
             : 'Default settings every location inherits from.',
         // When the operator is writing a location override, the
-        // location row "inherits from" the business row above it.
-        inheritsFromHere: locationIsCurrent,
-      ),
-      HierarchyTreeNodeView(
-        level: HierarchyTreeLevel.location,
-        name: _locationLabel,
-        isCurrentScope: locationIsCurrent,
-        subtitle: locationIsCurrent
-            ? 'This profile overrides the business default here only.'
-            : 'Inherits the business default. No local override yet.',
+        // deeper row "inherits from" the business row above it.
+        inheritsFromHere: !_hasOrgUnitScope && locationIsCurrent,
       ),
     ];
+    if (_hasOrgUnitScope) {
+      nodes.add(
+        HierarchyTreeNodeView(
+          level: HierarchyTreeLevel.region,
+          name: _orgUnitLabel,
+          isCurrentScope: orgUnitIsCurrent,
+          subtitle: orgUnitIsCurrent
+              ? 'Locations in this group inherit this profile.'
+              : 'Group settings between the business and location.',
+          inheritsFromHere: locationIsCurrent,
+        ),
+      );
+    }
+    if (_locationId.isNotEmpty) {
+      nodes.add(
+        HierarchyTreeNodeView(
+          level: HierarchyTreeLevel.location,
+          name: _locationLabel,
+          isCurrentScope: locationIsCurrent,
+          subtitle: locationIsCurrent
+              ? 'This profile overrides the business default here only.'
+              : _hasOrgUnitScope
+              ? 'Location context for this timing profile.'
+              : 'Inherits the business default. No local override yet.',
+        ),
+      );
+    }
+    return nodes;
+  }
+
+  BusinessTimingProfileWriteResult? get _existingProfileForSelectedScope {
+    final existing = widget.existingProfile;
+    if (existing == null) return null;
+    return existing.scopeKind == _scopeKind && existing.scopeId == _scopeId
+        ? existing
+        : null;
   }
 
   Future<void> _save() async {
@@ -247,13 +340,14 @@ class _BusinessTimingEditorScreenState
       _success = null;
     });
     try {
-      if (widget.existingProfile == null) {
+      final existingForScope = _existingProfileForSelectedScope;
+      if (existingForScope == null) {
         await gateway.createProfile(
           BusinessTimingProfileCreate(
             scopeKind: _scopeKind,
             scopeId: _scopeId,
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
-            ianaTimezone: _ianaTimezone.text.trim(),
+            ianaTimezone: _effectiveTimezone,
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
             // Slice 2.5 / Gap 28: carry applicableDays / shortLabel /
@@ -276,10 +370,12 @@ class _BusinessTimingEditorScreenState
         );
       } else {
         await gateway.updateProfile(
-          profileId: widget.existingProfile!.profileId,
+          profileId: existingForScope.profileId,
           patch: BusinessTimingProfilePatch(
+            scopeKind: _scopeKind,
+            scopeId: _scopeId,
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
-            ianaTimezone: _ianaTimezone.text.trim(),
+            ianaTimezone: _effectiveTimezone,
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
             // Slice 2.5 / Gap 28: same as createProfile above — the
@@ -402,10 +498,12 @@ class _BusinessTimingEditorScreenState
             keyName: 'operator_web_business_timing_editor_hierarchy_tree',
             headline: 'Where this profile will land',
             nodes: _buildEditorHierarchyNodes(),
-            dataGapExplainer:
-                'Regions and brands will appear here once your hierarchy is '
-                'connected. Today the tree shows the business and the location '
-                'this profile applies to.',
+            dataGapExplainer: _hasOrgUnitScope
+                ? 'This tree shows the business, selected group, and location '
+                      'this profile applies to.'
+                : 'Groups will appear here once your hierarchy is connected. '
+                      'Today the tree shows the business and the location this '
+                      'profile applies to.',
           ),
           const SizedBox(height: 14),
           if (!_hasGateway) const _UnavailableBanner(),
@@ -414,14 +512,19 @@ class _BusinessTimingEditorScreenState
           if (!widget.canEdit) const SizedBox(height: 14),
           _ScopeAndEffectiveSection(
             scopeKind: _scopeKind,
+            hasOrgUnitScope: _hasOrgUnitScope,
+            orgUnitLabel: _orgUnitLabel,
+            orgUnitHelper: _orgUnitHelper,
             locationLabel: _locationLabel,
+            hasLocationScope: _locationId.isNotEmpty,
             effectiveAt: _effectiveAt,
-            ianaTimezoneController: _ianaTimezone,
+            timezoneLabel: _effectiveTimezone,
             businessDayStartController: _businessDayStartLocal,
             weekStartDay: _weekStartDay,
             enabled: widget.canEdit && !_submitting,
-            onScopeChanged: (next) =>
-                setState(() => _scopeKind = next ?? _scopeKind),
+            onScopeChanged: (next) => setState(
+              () => _scopeKind = _normalizedScopeKind(next ?? _scopeKind),
+            ),
             onPickEffectiveDate: _pickEffectiveDate,
             onWeekStartChanged: (next) =>
                 setState(() => _weekStartDay = next ?? _weekStartDay),
@@ -552,9 +655,13 @@ class _BusinessTimingEditorScreenState
 class _ScopeAndEffectiveSection extends StatelessWidget {
   const _ScopeAndEffectiveSection({
     required this.scopeKind,
+    required this.hasOrgUnitScope,
+    required this.orgUnitLabel,
+    required this.orgUnitHelper,
     required this.locationLabel,
+    required this.hasLocationScope,
     required this.effectiveAt,
-    required this.ianaTimezoneController,
+    required this.timezoneLabel,
     required this.businessDayStartController,
     required this.weekStartDay,
     required this.enabled,
@@ -566,9 +673,13 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
   });
 
   final String scopeKind;
+  final bool hasOrgUnitScope;
+  final String orgUnitLabel;
+  final String orgUnitHelper;
   final String locationLabel;
+  final bool hasLocationScope;
   final DateTime effectiveAt;
-  final TextEditingController ianaTimezoneController;
+  final String timezoneLabel;
   final TextEditingController businessDayStartController;
   final String weekStartDay;
   final bool enabled;
@@ -580,6 +691,27 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scopeItems = <DropdownMenuItem<String>>[
+      const DropdownMenuItem<String>(
+        value: 'operator',
+        child: Text('Across all locations (business default)'),
+      ),
+      if (hasOrgUnitScope)
+        DropdownMenuItem<String>(
+          value: 'org_unit',
+          child: Text('$orgUnitLabel ($orgUnitHelper defaults)'),
+        ),
+      if (hasLocationScope)
+        DropdownMenuItem<String>(
+          value: 'location',
+          child: Text('Just $locationLabel (location override)'),
+        ),
+    ];
+    final selectedItems = <Widget>[
+      const Text('Across all locations (business default)'),
+      if (hasOrgUnitScope) Text('$orgUnitLabel ($orgUnitHelper defaults)'),
+      if (hasLocationScope) Text('Just $locationLabel (location override)'),
+    ];
     return Container(
       key: const Key('operator_web_business_timing_editor_scope_card'),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -603,20 +735,8 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
                     labelText: 'Where does this profile apply?',
                     border: OutlineInputBorder(),
                   ),
-                  items: <DropdownMenuItem<String>>[
-                    const DropdownMenuItem<String>(
-                      value: 'operator',
-                      child: Text('Across all locations (default)'),
-                    ),
-                    DropdownMenuItem<String>(
-                      value: 'location',
-                      child: Text('Just $locationLabel (override)'),
-                    ),
-                  ],
-                  selectedItemBuilder: (context) => [
-                    const Text('Across all locations (default)'),
-                    Text('Just $locationLabel (override)'),
-                  ],
+                  items: scopeItems,
+                  selectedItemBuilder: (context) => selectedItems,
                   onChanged: enabled ? onScopeChanged : null,
                 ),
               ),
@@ -647,15 +767,20 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  key: const Key('operator_web_business_timing_editor_iana'),
-                  controller: ianaTimezoneController,
-                  enabled: enabled,
-                  decoration: const InputDecoration(
-                    labelText: 'Timezone (IANA, e.g. America/Toronto)',
-                    border: OutlineInputBorder(),
+                child: InputDecorator(
+                  key: const Key(
+                    'operator_web_business_timing_editor_timezone_readonly',
                   ),
-                  onChanged: (_) => onAnyTextChanged(),
+                  decoration: const InputDecoration(
+                    labelText: 'Location timezone',
+                    border: OutlineInputBorder(),
+                    helperText:
+                        'Change this in Account or the location record.',
+                  ),
+                  child: Text(
+                    timezoneLabel,
+                    style: AppTextStyles.body13(color: AppColors.textPrimary),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),

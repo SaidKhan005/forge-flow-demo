@@ -25,15 +25,14 @@
 //      a nested tenant transaction and double the SET LOCAL round-trip,
 //      so the aggregator inlines a small read against the same
 //      executor).
-//   2a. Hardening Wave B1 — reads `data_accuracy_service_period_settings`
-//       via inline SELECT under the same tenant transaction for
-//       `(operator_id, location_id, service_period_key=daypart.wire,
-//       business_date)`. The lookup picks the most recent row at-or-
-//       before the closed shift's business date so historical closes
-//       resolve under the setting in force on the day the shift
-//       closed. When a keyed row exists its `covers_source` wins;
-//       otherwise the legacy `covers_source_lunch` / `_dinner` /
-//       `_late_night` column on `data_accuracy_settings` is read.
+//   2a. Reads `effective_data_accuracy_settings_v` as the effective
+//       hierarchy answer for Covers source values and source metadata.
+//       When the effective source metadata says the winning value is
+//       the location keyed base row, the aggregator performs a second,
+//       date-aware lookup against `data_accuracy_service_period_settings`
+//       so historical closed shifts resolve under the keyed setting in
+//       force on the closed shift's business date. Scoped overrides
+//       from the effective hierarchy answer remain authoritative.
 //       Manual covers VALUES still come from the legacy
 //       `covers_manual_entries` jsonb (manual-entry storage migration
 //       is a future slice).
@@ -305,19 +304,19 @@ class CanonicalFactToClosedShiftInputAggregator
         locationId: locationId,
       );
 
-      // Hardening Wave B1 — prefer the keyed
-      // `data_accuracy_service_period_settings` row for this
-      // (operator, location, service_period_key, business_date).
-      // Falls back to the legacy hardcoded `covers_source_*` columns
-      // on `data_accuracy_settings` when no keyed row exists for this
-      // service period at-or-before the closed shift's business date.
-      final keyedServicePeriodSetting = await _readKeyedServicePeriodSetting(
-        exec,
-        operatorId: operatorId,
-        locationId: locationId,
-        servicePeriodKey: servicePeriodId,
-        businessDate: businessDate,
+      final useDateAwareKeyedBase = _effectiveCoversSourceIsKeyedBase(
+        settings,
+        servicePeriodId,
       );
+      final keyedServicePeriodSetting = useDateAwareKeyedBase
+          ? await _readDateAwareKeyedServicePeriodSetting(
+              exec,
+              operatorId: operatorId,
+              locationId: locationId,
+              servicePeriodKey: servicePeriodId,
+              businessDate: businessDate,
+            )
+          : null;
 
       final locationMeta = await _readLocationMeta(
         exec,
@@ -416,6 +415,7 @@ class CanonicalFactToClosedShiftInputAggregator
       final coversResolution = _resolveCovers(
         settings: settings,
         keyedServicePeriodSetting: keyedServicePeriodSetting,
+        useDateAwareKeyedBase: useDateAwareKeyedBase,
         businessDate: businessDate,
         dayLabel: dayLabel,
         servicePeriodId: servicePeriodId,
@@ -528,6 +528,7 @@ class CanonicalFactToClosedShiftInputAggregator
   _CoversResolution? _resolveCovers({
     required DataAccuracySettings settings,
     required DataAccuracyServicePeriodSetting? keyedServicePeriodSetting,
+    required bool useDateAwareKeyedBase,
     required DateTime businessDate,
     required String dayLabel,
     required String servicePeriodId,
@@ -540,19 +541,17 @@ class CanonicalFactToClosedShiftInputAggregator
     required ScheduleDistributionWeights? distributionWeights,
     required ReservationWalkInOverride? walkInOverride,
   }) {
-    // Hardening Wave B1 — prefer the keyed setting; legacy column is
-    // the read-only fallback until every read path migrates and the
-    // legacy column drop ships.
     final operatorPreference = _resolveOperatorCoversPreference(
       settings: settings,
       keyedServicePeriodSetting: keyedServicePeriodSetting,
+      useDateAwareKeyedBase: useDateAwareKeyedBase,
       servicePeriodId: servicePeriodId,
     );
     final isoBusinessDate = _isoDate(businessDate);
 
     // Stage 1 — operator manual entry (overrides everything when
     // the operator picked manual + entered a value for the slot).
-    if (operatorPreference == CoversSource.manual) {
+    if (operatorPreference == _OperatorCoversPreference.manual) {
       final manual = settings.manualCoversFor(isoBusinessDate, servicePeriodId);
       if (manual != null) {
         return _CoversResolution(
@@ -561,19 +560,40 @@ class CanonicalFactToClosedShiftInputAggregator
           sourceSystem: 'operator_manual_entry',
         );
       }
-      // Manual preferred but no value — fall through to vendor/forecast.
+      return null;
     }
 
-    // Stage 2 — vendor-supplied covers (POS adapter declared
+    if (operatorPreference == _OperatorCoversPreference.forecast) {
+      return _resolveForecastCovers(
+        dayLabel: dayLabel,
+        posVendorId: posVendorId,
+        forecastContext: forecastContext,
+        periodDefinition: periodDefinition,
+        periodDefinitions: periodDefinitions,
+        distributionWeights: distributionWeights,
+        explicitOperatorForecast: true,
+      );
+    }
+
+    // Stage 2: vendor-supplied covers (POS adapter declared
     // coversFieldExposed=true AND vendor fact populated covers).
-    if (posVendorId != null) {
+    if (operatorPreference == _OperatorCoversPreference.vendor &&
+        posVendorId != null &&
+        posVendorExposesCovers(posVendorId) == true) {
+      var hasVendorCovers = false;
       final summed = coverFacts.fold<int>(0, (acc, row) {
         final raw = row['covers'];
-        if (raw is int) return acc + raw;
-        if (raw is num) return acc + raw.toInt();
+        if (raw is int) {
+          hasVendorCovers = true;
+          return acc + raw;
+        }
+        if (raw is num) {
+          hasVendorCovers = true;
+          return acc + raw.toInt();
+        }
         return acc;
       });
-      if (summed > 0) {
+      if (hasVendorCovers) {
         return _CoversResolution(
           covers: summed,
           provenance: 'vendor_$posVendorId',
@@ -582,29 +602,32 @@ class CanonicalFactToClosedShiftInputAggregator
       }
     }
 
-    // Stage 3 — reservation+walk-in (Pattern A: seated_at sum +
-    // operator walk-in count). Skips Tock when seated_at absent;
-    // bucketing already filtered to slot via reservation_at.
-    final resolvedWalkInOverride =
-        walkInOverride ??
-        _walkInOverrideFromSettings(settings, isoBusinessDate);
-    if (reservationFacts.isNotEmpty && resolvedWalkInOverride != null) {
-      final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
-        final raw = row['party_size'];
-        if (raw is int) return acc + raw;
-        if (raw is num) return acc + raw.toInt();
-        return acc;
-      });
-      final reservationVendorId =
-          reservationFacts.first['vendor_id'] as String? ?? '';
-      if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
-        return _CoversResolution(
-          covers: seatedSum + resolvedWalkInOverride.operatorWalkInCount,
-          provenance:
-              'vendor_${reservationVendorId}_seated_plus_operator_walk_in_count',
-          sourceSystem: reservationVendorId,
-        );
+    // Stage 3 — reservation+walk-in (Pattern A: seated party_size +
+    // operator walk-in count). Bucketing already filtered to this slot
+    // via reservation_at / seated_at according to vendor availability.
+    if (operatorPreference == _OperatorCoversPreference.reservationPlusWalkin) {
+      final resolvedWalkInOverride =
+          walkInOverride ??
+          _walkInOverrideFromSettings(settings, isoBusinessDate);
+      if (reservationFacts.isNotEmpty && resolvedWalkInOverride != null) {
+        final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
+          final raw = row['party_size'];
+          if (raw is int) return acc + raw;
+          if (raw is num) return acc + raw.toInt();
+          return acc;
+        });
+        final reservationVendorId =
+            reservationFacts.first['vendor_id'] as String? ?? '';
+        if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
+          return _CoversResolution(
+            covers: seatedSum + resolvedWalkInOverride.operatorWalkInCount,
+            provenance:
+                'vendor_${reservationVendorId}_seated_plus_operator_walk_in_count',
+            sourceSystem: reservationVendorId,
+          );
+        }
       }
+      return null;
     }
 
     // Stage 3.5 — Wave 2 MO-2-FU (Option A, fallback-only) — operator
@@ -649,6 +672,26 @@ class CanonicalFactToClosedShiftInputAggregator
     // the operator's full configured period list + optional
     // distribution weights, instead of pretending every restaurant
     // has exactly three uniformly-weighted dayparts.
+    return _resolveForecastCovers(
+      dayLabel: dayLabel,
+      posVendorId: posVendorId,
+      forecastContext: forecastContext,
+      periodDefinition: periodDefinition,
+      periodDefinitions: periodDefinitions,
+      distributionWeights: distributionWeights,
+      explicitOperatorForecast: false,
+    );
+  }
+
+  _CoversResolution? _resolveForecastCovers({
+    required String dayLabel,
+    required String? posVendorId,
+    required DemandForecastContext? forecastContext,
+    required ServicePeriodDefinition periodDefinition,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required ScheduleDistributionWeights? distributionWeights,
+    required bool explicitOperatorForecast,
+  }) {
     final resolvedWeekly = forecastContext?.resolvedWeeklyForecastCovers;
     if (resolvedWeekly != null && resolvedWeekly > 0) {
       final dailyShare = (resolvedWeekly / 7).round();
@@ -677,6 +720,13 @@ class CanonicalFactToClosedShiftInputAggregator
         ),
       );
       final daypartShare = allocation.forecastCovers;
+      if (explicitOperatorForecast) {
+        return _CoversResolution(
+          covers: daypartShare,
+          provenance: 'app_forecast_60_day_avg',
+          sourceSystem: 'app_forecast',
+        );
+      }
       final vendorBase = posVendorId ?? 'unknown';
       return _CoversResolution(
         covers: daypartShare,
@@ -869,41 +919,51 @@ class CanonicalFactToClosedShiftInputAggregator
 
   // ─── Operator covers-source preference (keyed by service period) ─
   //
-  // Per-Daypart V1 Slice R5 (Gap 27/36): when a row exists in
-  // `data_accuracy_service_period_settings` for this service period
-  // at-or-before the closed shift's business date, that row's
-  // `covers_source` wins. Otherwise the per-period covers source
-  // projected onto `settings` (also sourced from the keyed table) is
-  // read; an unconfigured period resolves to the `vendor` default via
-  // [DataAccuracySettings.coversSourceFor]. The legacy hardcoded
-  // `covers_source_lunch` / `_dinner` / `_late_night` columns are
-  // deprecated and no longer read here.
-  CoversSource _resolveOperatorCoversPreference({
+  // The effective hierarchy answer is authoritative. Raw keyed rows
+  // are only considered when the effective view's source metadata says
+  // this service period is sourced from the keyed base row. In that
+  // case, the raw lookup is used only to preserve the closed shift's
+  // historical business-date semantics; a keyed row that was not yet
+  // effective on the closed date resolves back to the vendor default.
+  _OperatorCoversPreference _resolveOperatorCoversPreference({
     required DataAccuracySettings settings,
     required DataAccuracyServicePeriodSetting? keyedServicePeriodSetting,
+    required bool useDateAwareKeyedBase,
     required String servicePeriodId,
   }) {
-    if (keyedServicePeriodSetting != null) {
+    if (useDateAwareKeyedBase) {
+      if (keyedServicePeriodSetting == null) {
+        return _OperatorCoversPreference.vendor;
+      }
       switch (keyedServicePeriodSetting.coversSource) {
         case ServicePeriodCoversSource.vendor:
-          return CoversSource.vendor;
+          return _OperatorCoversPreference.vendor;
         case ServicePeriodCoversSource.forecast:
-          return CoversSource.forecast;
+          return _OperatorCoversPreference.forecast;
         case ServicePeriodCoversSource.manual:
-          return CoversSource.manual;
+          return _OperatorCoversPreference.manual;
         case ServicePeriodCoversSource.reservationPlusWalkin:
-          // The reservation+walk-in path runs at stage 3 of
-          // `_resolveCovers` whenever reservation_facts are present
-          // and a walk-in override is supplied. The legacy
-          // CoversSource enum has no equivalent value, so we map
-          // back to `vendor` (the default preference) and let the
-          // existing stage 3 logic flow. A future slice will
-          // promote `reservation_plus_walkin` to a first-class
-          // operator preference at stage 3.
-          return CoversSource.vendor;
+          return _OperatorCoversPreference.reservationPlusWalkin;
       }
     }
-    return settings.coversSourceFor(servicePeriodId);
+    switch (settings.coversSourceFor(servicePeriodId)) {
+      case CoversSource.vendor:
+        return _OperatorCoversPreference.vendor;
+      case CoversSource.forecast:
+        return _OperatorCoversPreference.forecast;
+      case CoversSource.manual:
+        return _OperatorCoversPreference.manual;
+      case CoversSource.reservationPlusWalkin:
+        return _OperatorCoversPreference.reservationPlusWalkin;
+    }
+  }
+
+  static bool _effectiveCoversSourceIsKeyedBase(
+    DataAccuracySettings settings,
+    String servicePeriodId,
+  ) {
+    final source = settings.coversSourceSourceFor(servicePeriodId);
+    return source?.sourceKind == 'service_period_setting';
   }
 
   // ─── DAS read (inline, same tenant transaction) ────────────────────
@@ -913,34 +973,27 @@ class CanonicalFactToClosedShiftInputAggregator
     required String operatorId,
     required String locationId,
   }) async {
-    // Per-Daypart V1 Slice R5 (Gap 27/36): per-period covers source is
-    // projected from the keyed `data_accuracy_service_period_settings`
-    // table as a `{service_period_key: covers_source}` jsonb, NOT from
-    // the deprecated legacy columns. The keyed row this aggregate run
-    // already resolved (`_readKeyedServicePeriodSetting`) still wins at
-    // `_resolveOperatorCoversPreference`; this projection is the
-    // settings-level fallback for periods without a keyed row.
+    // R7f: the hierarchy view is the source of truth for effective
+    // Covers values and source metadata. Date-aware raw keyed rows are
+    // read separately only when this effective answer says the keyed
+    // base row is the winning source for the requested service period.
     final rows = await exec.query(
       'select '
-      'das.setting_id::text as setting_id, '
-      'das.operator_id::text as operator_id, '
-      'das.location_id::text as location_id, '
-      "coalesce((select jsonb_object_agg(k.service_period_key, "
-      'k.covers_source) from (select distinct on (sp.service_period_key) '
-      'sp.service_period_key, sp.covers_source '
-      'from public.data_accuracy_service_period_settings sp '
-      'where sp.operator_id = das.operator_id '
-      'and sp.location_id = das.location_id '
-      'and sp.effective_at_business_date <= '
-      "(now() at time zone 'utc')::date "
-      'order by sp.service_period_key, sp.effective_at_business_date desc '
-      ") k), '{}'::jsonb) as covers_source_per_service_period, "
-      'das.covers_manual_entries, das.wage_source, '
-      'das.walk_in_handling_mode, das.walk_in_manual_entries, '
-      'das.created_at, das.updated_at, das.updated_by '
-      'from data_accuracy_settings das '
-      'where das.operator_id = @operator_id::uuid '
-      'and das.location_id = @location_id::uuid',
+      'setting_id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'covers_source_per_service_period, '
+      'covers_source_per_service_period_source, '
+      'covers_manual_entries, '
+      'wage_source, '
+      'wage_source_source, '
+      'walk_in_handling_mode, '
+      'walk_in_handling_mode_source, '
+      'walk_in_manual_entries, '
+      'created_at, updated_at, updated_by '
+      'from public.effective_data_accuracy_settings_v '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid',
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
@@ -968,15 +1021,17 @@ class CanonicalFactToClosedShiftInputAggregator
 
   // ─── Keyed service-period setting (inline, same tenant transaction) ─
   //
-  // Hardening Wave B1: composing
+  // R7f date-aware base preservation: composing
   // `DataAccuracyServicePeriodSettingsRepository.readEffectiveAt`
   // would open a nested tenant transaction and double the SET LOCAL
   // round-trip; the aggregator inlines a small SELECT against the
   // same executor for the same reason `_readDataAccuracySettings`
-  // does. Returns null when no row exists for this service period
-  // at-or-before the supplied business date — caller falls back to
-  // the legacy column.
-  Future<DataAccuracyServicePeriodSetting?> _readKeyedServicePeriodSetting(
+  // does. This is only called after the effective hierarchy view says
+  // the service period's winning source is the keyed base row. Returns
+  // null when no raw keyed row exists at-or-before the closed shift's
+  // business date.
+  Future<DataAccuracyServicePeriodSetting?>
+  _readDateAwareKeyedServicePeriodSetting(
     PostgresExecutor exec, {
     required String operatorId,
     required String locationId,
@@ -1597,6 +1652,13 @@ class CanonicalFactToClosedShiftInputAggregator
 }
 
 // ─── Internal value classes ─────────────────────────────────────────
+
+enum _OperatorCoversPreference {
+  vendor,
+  forecast,
+  manual,
+  reservationPlusWalkin,
+}
 
 class _CoversResolution {
   const _CoversResolution({

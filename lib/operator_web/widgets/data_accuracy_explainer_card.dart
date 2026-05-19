@@ -19,6 +19,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
 
 /// Static "What this page is for" explainer card. Renders 5
@@ -26,10 +27,16 @@ import '../../theme/app_theme.dart';
 /// historical seed, polling tier) — each with a short heading,
 /// 1-sentence body, and 1-sentence concrete example.
 class DataAccuracyExplainerCard extends StatelessWidget {
-  const DataAccuracyExplainerCard({super.key});
+  const DataAccuracyExplainerCard({
+    super.key,
+    this.servicePeriods = const <ServicePeriodDefinition>[],
+  });
+
+  final List<ServicePeriodDefinition> servicePeriods;
 
   @override
   Widget build(BuildContext context) {
+    final servicePeriodLabels = _servicePeriodLabels();
     return Container(
       key: const Key('data_accuracy_explainer_card'),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -76,24 +83,22 @@ class DataAccuracyExplainerCard extends StatelessWidget {
                 'F&F uses those. If not, F&F can substitute your wage '
                 'editor mix or your TargetCycle wage × hours.',
             example:
-                'Example: QuickBooks Time reports per-employee dollars, '
-                'so F&F uses them. If you switch to Humanity, F&F '
-                'multiplies Humanity\'s pay rates by scheduled hours '
-                'instead. Same outcome, different path.',
+                'Example: QuickBooks Time reports hours and configured '
+                'rates, so F&F multiplies rate by duration. If you '
+                'switch to Humanity, F&F multiplies Humanity\'s pay '
+                'rates by scheduled hours instead. Same outcome, '
+                'different path.',
           ),
           const SizedBox(height: 12),
-          const _ExplainerSection(
+          _ExplainerSection(
             slug: 'covers',
             heading: 'Where covers come from',
             body:
                 'Covers (guest counts) drive every per-cover metric. '
                 'F&F reads them from your POS by default; if your POS '
                 'does not track them, you pick forecast or manual per '
-                'daypart.',
-            example:
-                'Example: Square does not track covers. Set lunch and '
-                'dinner to Manual, type your numbers nightly, and CPLH '
-                'stays trustworthy.',
+                'service period.',
+            example: _coversExample(servicePeriodLabels),
           ),
           const SizedBox(height: 12),
           const _ExplainerSection(
@@ -111,17 +116,14 @@ class DataAccuracyExplainerCard extends StatelessWidget {
                 'for total covers.',
           ),
           const SizedBox(height: 12),
-          const _ExplainerSection(
+          _ExplainerSection(
             slug: 'historical_seed',
             heading: '60-day backfill',
             body:
                 'F&F\'s forecast learns from your last 60 days. If '
                 'your POS does not expose covers, this is where you '
                 'give F&F a starting point.',
-            example:
-                'Example: Paste a CSV with date, lunch, dinner, '
-                'late_night columns and F&F uses it to forecast next '
-                'week. You can edit any cell later.',
+            example: _historicalSeedExample(servicePeriodLabels),
           ),
           const SizedBox(height: 12),
           const _ExplainerSection(
@@ -141,6 +143,43 @@ class DataAccuracyExplainerCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  List<String> _servicePeriodLabels() {
+    return servicePeriods
+        .map((period) => period.label.trim())
+        .where((label) => label.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  static String _coversExample(List<String> labels) {
+    if (labels.isEmpty) {
+      return 'Example: Square does not track covers. Set any service '
+          'period that needs a hand-entered count to Manual, type your '
+          'numbers nightly, and CPLH stays trustworthy.';
+    }
+    final manualTargets = labels.length == 1
+        ? labels.first
+        : '${labels[0]} and ${labels[1]}';
+    return 'Example: Square does not track covers. Set $manualTargets '
+        'to Manual, type your numbers nightly, and CPLH stays trustworthy.';
+  }
+
+  static String _historicalSeedExample(List<String> labels) {
+    return 'Example: Paste a CSV with ${_csvColumnDescription(labels)}. '
+        'F&F uses it to forecast next week. You can edit any cell later.';
+  }
+
+  static String _csvColumnDescription(List<String> labels) {
+    if (labels.isEmpty) {
+      return 'one date column and one column for each service period';
+    }
+    final visibleLabels = labels.take(3).toList(growable: false);
+    if (labels.length <= 3) {
+      return 'date, ${visibleLabels.join(', ')} columns';
+    }
+    return 'date, ${visibleLabels.join(', ')}, and one column for each '
+        'remaining service period';
   }
 }
 
@@ -175,10 +214,7 @@ class _ExplainerSection extends StatelessWidget {
             style: AppTextStyles.mono11(color: AppColors.sunsetDark),
           ),
           const SizedBox(height: 6),
-          Text(
-            body,
-            style: AppTextStyles.body13(color: AppColors.textPrimary),
-          ),
+          Text(body, style: AppTextStyles.body13(color: AppColors.textPrimary)),
           const SizedBox(height: 6),
           Text(
             example,

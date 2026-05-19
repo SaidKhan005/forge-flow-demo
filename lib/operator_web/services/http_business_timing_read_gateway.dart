@@ -31,8 +31,11 @@
 import '../../domain/models/business_timing_profile.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/business_date_resolver.dart';
 import '../../domain/services/business_timing_profile_resolver.dart';
+import '../../services/integration/iana_timezone_converter.dart';
 import 'business_timing_gateway.dart';
+import 'operator_web_proxy_client.dart';
 import 'web_business_timing_gateway.dart';
 
 /// Live read adapter that resolves the operator's business-timing
@@ -41,9 +44,8 @@ import 'web_business_timing_gateway.dart';
 /// Implements [BusinessTimingGateway] so the existing screen surface
 /// stays untouched - only the wiring changes.
 class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
-  HttpBusinessTimingReadGateway({
-    required WebBusinessTimingGateway gateway,
-  }) : _gateway = gateway;
+  HttpBusinessTimingReadGateway({required WebBusinessTimingGateway gateway})
+    : _gateway = gateway;
 
   final WebBusinessTimingGateway _gateway;
 
@@ -117,6 +119,52 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     );
   }
 
+  /// Resolves the restaurant-local business date for [instantUtc]
+  /// using the same effective Business Timing profile that the
+  /// Business setup surface renders.
+  ///
+  /// Data Accuracy uses this so its default effective date follows
+  /// `businessDayStartLocalTime` exactly, including sub-hour values
+  /// such as `04:30`; it no longer rounds through the legacy
+  /// integer rollover-hour session field.
+  static String businessDateForInstant({
+    required BusinessTimingResolutionResult resolution,
+    required DateTime instantUtc,
+    IanaTimezoneConverter? timezoneConverter,
+  }) {
+    final effective = effectiveProfileForResolution(resolution);
+    final local = (timezoneConverter ?? IanaTimezoneConverter.shared)
+        .toBusinessLocal(
+          restaurantTimezone: effective.businessTimezone,
+          instant: instantUtc.toUtc(),
+        );
+    return BusinessDateResolver.resolve(
+      localTimestamp: local,
+      businessDayStartLocalTime: effective.businessDayStartLocalTime,
+    );
+  }
+
+  /// Public resolver for callers that need the effective timing values
+  /// without duplicating the S1 candidate-to-domain mapping.
+  static EffectiveBusinessTimingProfile effectiveProfileForResolution(
+    BusinessTimingResolutionResult resolution,
+  ) {
+    if (resolution.candidates.isEmpty) {
+      throw const OperatorWebProxyException(
+        code: 'missing_business_timing_profile',
+        message: 'Business timing is not configured for the selected location.',
+      );
+    }
+    return BusinessTimingProfileResolver.resolve(<BusinessTimingProfile>[
+      for (var i = 0; i < resolution.candidates.length; i++)
+        _toBusinessTimingProfile(
+          resolution.candidates[i],
+          fallbackTimezone: resolution.ianaTimezone,
+          seedCloseAuthority: i == 0,
+        ),
+    ]);
+  }
+
   BusinessTimingBundle _projectBundle({
     required String operatorId,
     required String locationId,
@@ -165,24 +213,8 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     // the blessed `sink_business_date_projector` row->profile shape)
     // and run the ONE canonical resolver. No resolver fork; no
     // client-side same-value heuristic.
-    final domainCandidates = <BusinessTimingProfile>[
-      for (var i = 0; i < candidates.length; i++)
-        _toBusinessTimingProfile(
-          candidates[i],
-          fallbackTimezone: resolution.ianaTimezone,
-          // Only the top (operator default) rung carries the
-          // resolver-required shiftCloseAuthority constant. The S1
-          // wire does not carry close authority (Gap 31 deletes it
-          // as an operator setting) and the operator-web Business
-          // setup surface never displays it, so a fixed value on the
-          // root rung satisfies the resolver without affecting any
-          // shown value.
-          seedCloseAuthority: i == 0,
-        ),
-    ];
-
     final EffectiveBusinessTimingProfile effective =
-        BusinessTimingProfileResolver.resolve(domainCandidates);
+        effectiveProfileForResolution(resolution);
 
     // Per-field provenance from the resolver's resolved scope.
     //
@@ -201,6 +233,8 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     // to the location (operator / org-unit), i.e. NOT a
     // location-specific override.
     final provenance = _provenanceForResolvedScope(effective);
+    final locationTimezone =
+        _clean(resolution.ianaTimezone) ?? effective.businessTimezone;
 
     final inheritance = <BusinessTimingScopeSummary>[
       for (final candidate in candidates)
@@ -220,9 +254,9 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     final fields = <BusinessTimingInheritedValue>[
       BusinessTimingInheritedValue(
         label: 'Timezone',
-        value: effective.businessTimezone,
-        sourceLabel: provenance.sourceLabel,
-        inherited: provenance.inheritedFromAncestor,
+        value: locationTimezone,
+        sourceLabel: 'Location timezone',
+        inherited: false,
       ),
       BusinessTimingInheritedValue(
         label: 'Business day starts',
@@ -252,12 +286,11 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
         ),
     ];
 
-    final hasLocationOverride = effective.resolvedScope ==
-            BusinessTimingScope.location ||
+    final hasLocationOverride =
+        effective.resolvedScope == BusinessTimingScope.location ||
         candidates.any((c) => c.scopeType == 'location');
     final deepest = candidates.last;
-    final effectiveDateLabel =
-        'Effective ${deepest.effectiveAtBusinessDate}';
+    final effectiveDateLabel = 'Effective ${deepest.effectiveAtBusinessDate}';
 
     return BusinessTimingBundle(
       operatorId: operatorId,
@@ -314,8 +347,9 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
       // shiftCloseAuthority after inheritance — does not throw. This
       // is never surfaced on the operator-web Business setup screen,
       // so the constant is display-neutral.
-      shiftCloseAuthority:
-          seedCloseAuthority ? ShiftCloseAuthority.vendorFinalization : null,
+      shiftCloseAuthority: seedCloseAuthority
+          ? ShiftCloseAuthority.vendorFinalization
+          : null,
     );
   }
 
@@ -426,7 +460,8 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
         return DateTime.sunday;
     }
     final parsed = int.tryParse(value.trim());
-    if (parsed != null && parsed >= DateTime.monday &&
+    if (parsed != null &&
+        parsed >= DateTime.monday &&
         parsed <= DateTime.sunday) {
       return parsed;
     }
@@ -456,15 +491,7 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     final days = applicableDays.toSet().toList()..sort();
     if (days.length >= 7) return null;
     if (days.isEmpty) return null;
-    const short = <String>[
-      'Mon',
-      'Tue',
-      'Wed',
-      'Thu',
-      'Fri',
-      'Sat',
-      'Sun',
-    ];
+    const short = <String>['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     return days
         .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
         .map((d) => short[d - 1])

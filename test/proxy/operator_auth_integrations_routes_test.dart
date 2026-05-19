@@ -30,7 +30,7 @@ Future<({HttpServer server, HttpClient client, Uri baseUri})> _spinUp({
         userId: 'user-1',
         operatorId: 'op-1',
         locationId: 'loc-1',
-        roles: <String>['operator_admin'],
+        roles: <String>['operator_owner'],
       ),
     ),
   );

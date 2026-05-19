@@ -84,6 +84,7 @@ import '../../../integrations/reservation/tock_webhook_signature_verifier.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -111,16 +112,20 @@ class TockReservationPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Tock no longer
   // reads `locations.business_day_rollover_hour`. The cutoff is
@@ -129,6 +134,7 @@ class TockReservationPostgresSink extends OperatorScopedRepository
   // `IanaTimezoneConverter`; Slice 7b routes through the projector
   // (the projector internally uses `IanaTimezoneConverter.shared`).
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── TockFactSink: canonical fact upsert ───────────────────────────
@@ -150,15 +156,17 @@ class TockReservationPostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalFact,
     required Map<String, Object?> rawPayload,
     String? connectionId,
-  }) {
+  }) async {
     final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
-    return withTenant(ctx, (exec) async {
+    String? committedConnectionId;
+    final inserted = await withTenant(ctx, (exec) async {
       final resolvedConnectionId = await _resolveConnectionIdInTx(
         exec: exec,
         operatorId: operatorId,
         locationId: locationId,
         explicitConnectionId: connectionId,
       );
+      committedConnectionId = resolvedConnectionId;
       return _insertReservationFact(
         exec: exec,
         operatorId: operatorId,
@@ -168,6 +176,19 @@ class TockReservationPostgresSink extends OperatorScopedRepository
         rawPayload: rawPayload,
       );
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedReservationFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalReservation: <String, Object?>{
+          ...canonicalFact,
+          'connection_id': committedConnectionId,
+          'vendor_id': kTockVendorId,
+          'raw_payload': rawPayload,
+        },
+      );
+    }
+    return inserted;
   }
 
   Future<bool> _insertReservationFact({
@@ -511,7 +532,7 @@ class TockReservationPostgresSink extends OperatorScopedRepository
   /// this view; they differ only in the input shape.
   CanonicalSink asCanonicalSink({
     required String Function(String operatorId, String locationId)
-        connectionIdResolver,
+    connectionIdResolver,
   }) {
     return _TockCanonicalSinkView(
       sink: this,
@@ -536,7 +557,7 @@ class _TockCanonicalSinkView implements CanonicalSink {
 
   final TockReservationPostgresSink sink;
   final String Function(String operatorId, String locationId)
-      connectionIdResolver;
+  connectionIdResolver;
 
   @override
   Future<bool> upsertCoverFact({

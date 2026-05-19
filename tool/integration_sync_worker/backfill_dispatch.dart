@@ -4,12 +4,15 @@
 // calls `adapter.backfill`, and persists completion/resume/failure through the
 // Lane 0 job repository plus the existing CanonicalSink observability seams.
 
+import 'dart:async';
+
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/labor_adapter.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import '../advisor_proxy/labor_adapter_registry.dart';
@@ -18,7 +21,7 @@ import '../advisor_proxy/reservation_adapter_registry.dart';
 import 'dispatch.dart' show kSyncWorkerServicePrincipalId;
 
 typedef BackfillAdapterFactory =
-    Object Function(FirstConnectionBackfillJob job);
+    FutureOr<Object> Function(FirstConnectionBackfillJob job);
 
 abstract class BackfillJobStore {
   Future<FirstConnectionBackfillJob?> claimNext({
@@ -177,16 +180,15 @@ class BackfillBatchDispatchResult {
 /// Hooks are best-effort -- the dispatcher swallows exceptions from
 /// the hook so a notification-side failure never strands a
 /// backfill outcome.
-typedef BackfillTerminalHook = Future<void> Function({
-  required FirstConnectionBackfillJob job,
-  required BackfillDispatchOutcome outcome,
-  String? errorMessage,
-});
+typedef BackfillTerminalHook =
+    Future<void> Function({
+      required FirstConnectionBackfillJob job,
+      required BackfillDispatchOutcome outcome,
+      String? errorMessage,
+    });
 
 class IntegrationSyncWorkerBackfillDispatch {
-  const IntegrationSyncWorkerBackfillDispatch({
-    this.onTerminalOutcome,
-  });
+  const IntegrationSyncWorkerBackfillDispatch({this.onTerminalOutcome});
 
   /// Optional hook fired AFTER `markSucceeded` / `markFailed` lands
   /// the row's terminal state. Production binds this to the
@@ -207,6 +209,7 @@ class IntegrationSyncWorkerBackfillDispatch {
     required BackfillJobStore jobStore,
     required BackfillAdapterFactory adapterFactory,
     required CanonicalSink canonicalSink,
+    CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
     VendorSanityHook? sanityHook,
     String? actorUserId,
     Duration claimStaleAfter =
@@ -295,6 +298,13 @@ class IntegrationSyncWorkerBackfillDispatch {
           eventKind: 'backfill_success',
           recordsCount: result.recordsWritten,
         );
+        await projectionCommitDrainer?.drainIfCommitEvent(
+          vendorId: job.vendorId,
+          operatorId: job.operatorId,
+          locationId: job.locationId,
+          connectionId: job.connectionId,
+          eventKind: 'backfill_success',
+        );
         await _fireTerminalHook(
           job: job,
           outcome: BackfillDispatchOutcome.succeeded,
@@ -321,6 +331,13 @@ class IntegrationSyncWorkerBackfillDispatch {
         eventKind: 'backfill_partial',
         recordsCount: result.recordsWritten,
       );
+      await projectionCommitDrainer?.drainIfCommitEvent(
+        vendorId: job.vendorId,
+        operatorId: job.operatorId,
+        locationId: job.locationId,
+        connectionId: job.connectionId,
+        eventKind: 'backfill_partial',
+      );
       return BackfillDispatchResult(
         outcome: BackfillDispatchOutcome.resumable,
         job: job,
@@ -334,6 +351,13 @@ class IntegrationSyncWorkerBackfillDispatch {
         job: job,
         errorMessage: message,
         actorUserId: effectiveActorUserId,
+        eventKind: 'backfill_error',
+      );
+      await projectionCommitDrainer?.drainIfCommitEvent(
+        vendorId: job.vendorId,
+        operatorId: job.operatorId,
+        locationId: job.locationId,
+        connectionId: job.connectionId,
         eventKind: 'backfill_error',
       );
       await _fireTerminalHook(
@@ -360,11 +384,7 @@ class IntegrationSyncWorkerBackfillDispatch {
     final hook = onTerminalOutcome;
     if (hook == null) return;
     try {
-      await hook(
-        job: job,
-        outcome: outcome,
-        errorMessage: errorMessage,
-      );
+      await hook(job: job, outcome: outcome, errorMessage: errorMessage);
     } catch (_) {
       // Swallow -- the row is already in its terminal state and the
       // CanonicalSink sync log captured the primary outcome.
@@ -378,6 +398,7 @@ class IntegrationSyncWorkerBackfillDispatch {
     required BackfillJobStore jobStore,
     required BackfillAdapterFactory adapterFactory,
     required CanonicalSink canonicalSink,
+    CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
     VendorSanityHook? sanityHook,
     String? actorUserId,
     int maxJobs = 10,
@@ -401,6 +422,7 @@ class IntegrationSyncWorkerBackfillDispatch {
         jobStore: jobStore,
         adapterFactory: adapterFactory,
         canonicalSink: canonicalSink,
+        projectionCommitDrainer: projectionCommitDrainer,
         sanityHook: sanityHook,
         actorUserId: actorUserId,
         claimStaleAfter: claimStaleAfter,
@@ -488,8 +510,8 @@ class IntegrationSyncWorkerBackfillDispatch {
     FirstConnectionBackfillJob job,
     BackfillAdapterFactory adapterFactory,
     BackfillCommand command,
-  ) {
-    final adapter = adapterFactory(job);
+  ) async {
+    final adapter = await adapterFactory(job);
     switch (job.category) {
       case IntegrationCategory.pos:
         if (adapter is! PosAdapter) {

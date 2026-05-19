@@ -10,6 +10,7 @@ import 'package:forge_and_flow/services/integration/first_connection_backfill_jo
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/labor_adapter.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 
 import '../../../tool/integration_sync_worker/backfill_dispatch.dart';
 import '../../../tool/integration_sync_worker/dispatch.dart'
@@ -88,6 +89,57 @@ void main() {
         expect(sink.demoFlips.single.backfillRecordsWritten, 7);
       },
     );
+
+    test('success drains projection tap after backfill_success', () async {
+      final tap = _RecordingProjectionTap();
+      final drainer = CanonicalFactProjectionCommitDrainer(
+        tapsByVendor: <String, CanonicalFactProjectionTap>{_vendorId: tap},
+      );
+      adapter.backfillResult = BackfillResult(
+        batchesCommitted: 1,
+        recordsWritten: 4,
+        cursorToken: 'cursor-done',
+        lastModifiedSeen: DateTime.utc(2026, 5, 6, 13),
+      );
+      jobStore.enqueueClaim(_job());
+
+      await dispatcher.dispatchNext(
+        operatorId: _opId,
+        locationId: _locId,
+        workerId: _workerId,
+        jobStore: jobStore,
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+        projectionCommitDrainer: drainer,
+      );
+
+      expect(tap.drains, hasLength(1));
+      expect(tap.drains.single.connectionId, _connId);
+      expect(sink.syncLogs.single.eventKind, 'backfill_success');
+    });
+
+    test('awaits async adapter factory before category type-check', () async {
+      adapter.backfillResult = BackfillResult(
+        batchesCommitted: 1,
+        recordsWritten: 4,
+        cursorToken: 'cursor-done',
+        lastModifiedSeen: DateTime.utc(2026, 5, 6, 13),
+      );
+      jobStore.enqueueClaim(_job());
+
+      final result = await dispatcher.dispatchNext(
+        operatorId: _opId,
+        locationId: _locId,
+        workerId: _workerId,
+        jobStore: jobStore,
+        adapterFactory: (_) async => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(result.outcome, BackfillDispatchOutcome.succeeded);
+      expect(adapter.backfillCalls, 1);
+      expect(sink.syncLogs.single.eventKind, 'backfill_success');
+    });
 
     test('sanity hook is forced to isDeliberateBackfill true', () async {
       final seenFlags = <bool>[];
@@ -196,6 +248,30 @@ void main() {
       expect(sink.watermarkAdvances, isEmpty);
       expect(sink.demoFlips, isEmpty);
       expect(sink.syncLogs.single.eventKind, 'backfill_error');
+    });
+
+    test('adapter throw drains projection tap after backfill_error', () async {
+      final tap = _RecordingProjectionTap();
+      final drainer = CanonicalFactProjectionCommitDrainer(
+        tapsByVendor: <String, CanonicalFactProjectionTap>{_vendorId: tap},
+      );
+      adapter.throwOnBackfill = StateError('vendor 503 after page write');
+      jobStore.enqueueClaim(_job(cursorToken: 'cursor-before-error'));
+
+      final result = await dispatcher.dispatchNext(
+        operatorId: _opId,
+        locationId: _locId,
+        workerId: _workerId,
+        jobStore: jobStore,
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+        projectionCommitDrainer: drainer,
+      );
+
+      expect(result.outcome, BackfillDispatchOutcome.failed);
+      expect(sink.syncLogs.single.eventKind, 'backfill_error');
+      expect(tap.drains, hasLength(1));
+      expect(tap.drains.single.connectionId, _connId);
     });
 
     test(
@@ -616,6 +692,58 @@ class _SyncLogEntry {
   final String eventKind;
   final String? errorMessage;
   final int? recordsCount;
+}
+
+class _RecordingProjectionTap implements CanonicalFactProjectionTap {
+  final List<_ProjectionDrain> drains = <_ProjectionDrain>[];
+
+  @override
+  void recordCommittedCoverFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+  }) {}
+
+  @override
+  void recordCommittedLaborPunch({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  }) {}
+
+  @override
+  void recordCommittedReservationFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalReservation,
+  }) {}
+
+  @override
+  Future<void> drainCommittedFacts({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+  }) async {
+    drains.add(
+      _ProjectionDrain(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+      ),
+    );
+  }
+}
+
+class _ProjectionDrain {
+  const _ProjectionDrain({
+    required this.operatorId,
+    required this.locationId,
+    required this.connectionId,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String connectionId;
 }
 
 class _DemoFlip {

@@ -57,7 +57,7 @@ that resolved each check that failed.
 - [ ] **Disconnect → reconnect.** Watermark preserved across cycle;
       no data gap on reconnect; webhook re-registers cleanly.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200 on the connect / disconnect routes.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
@@ -112,7 +112,7 @@ prod passing — vendor sandboxes sometimes lie).
       Test: `<test_path>:<line>`
 - [ ] **Disconnect → reconnect.** Watermark preserved; no data gap.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit

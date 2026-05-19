@@ -11,6 +11,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/closed_timing_label_resolver.dart';
 import 'package:forge_and_flow/services/learn_repeatable_wins_read_service.dart';
@@ -52,6 +53,49 @@ ShiftRecord _shift({
 );
 
 // ── Tests ────────────────────────────────────────────────────────────────────
+
+const _configuredServicePeriods = <ServicePeriodDefinition>[
+  ServicePeriodDefinition(
+    id: 'supper',
+    label: 'Supper',
+    shortLabel: 'S',
+    sortOrder: 10,
+    startLocalTime: '17:00',
+    endLocalTime: '22:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'brunch',
+    label: 'Brunch',
+    shortLabel: 'B',
+    sortOrder: 20,
+    startLocalTime: '09:00',
+    endLocalTime: '14:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'dinner',
+    label: 'Supper',
+    shortLabel: 'S',
+    sortOrder: 0,
+    startLocalTime: '17:00',
+    endLocalTime: '22:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'lunch',
+    label: 'Brunch',
+    shortLabel: 'B',
+    sortOrder: 1,
+    startLocalTime: '09:00',
+    endLocalTime: '14:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+];
 
 void main() {
   const service = LearnRepeatableWinsReadService();
@@ -296,6 +340,103 @@ void main() {
       ], timingLabelResolver: resolver);
 
       expect(results.single.label, 'Mon Lunch');
+    });
+
+    test('saved timing label and sort order beat current active config', () {
+      final resolver = ClosedTimingLabelResolver(const [
+        ClosedTimingLabelSnapshot(
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'supper',
+          label: 'Old Supper',
+          sortOrder: 1,
+        ),
+        ClosedTimingLabelSnapshot(
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'brunch',
+          label: 'Old Brunch',
+          sortOrder: 0,
+        ),
+      ]);
+
+      final results = service.build(
+        [
+          _shift(
+            dayLabel: 'Fri',
+            daypart: 'supper',
+            businessTimingProfileId: 'profile-v1',
+            businessTimingProfileVersionId: 'profile-v1',
+            servicePeriodKey: 'supper',
+          ),
+          _shift(
+            dayLabel: 'Fri',
+            daypart: 'brunch',
+            businessTimingProfileId: 'profile-v1',
+            businessTimingProfileVersionId: 'profile-v1',
+            servicePeriodKey: 'brunch',
+          ),
+        ],
+        timingLabelResolver: resolver,
+        servicePeriodDefinitions: _configuredServicePeriods,
+      );
+
+      expect(results.map((r) => r.label), ['Fri Old Brunch', 'Fri Old Supper']);
+    });
+
+    test(
+      'saved timing identity without a snapshot uses configured label/order',
+      () {
+        final results = service.build(
+          [
+            _shift(
+              dayLabel: 'Fri',
+              daypart: 'dinner',
+              businessTimingProfileId: 'profile-v2',
+              businessTimingProfileVersionId: 'profile-v2',
+              servicePeriodKey: 'brunch',
+            ),
+            _shift(
+              dayLabel: 'Fri',
+              daypart: 'dinner',
+              businessTimingProfileId: 'profile-v2',
+              businessTimingProfileVersionId: 'profile-v2',
+              servicePeriodKey: 'supper',
+            ),
+          ],
+          servicePeriodDefinitions: _configuredServicePeriods,
+        );
+
+        expect(results.map((r) => r.label), ['Fri Supper', 'Fri Brunch']);
+      },
+    );
+  });
+
+  group('I - configured service periods', () {
+    test('configured service periods drive keyed row labels and order', () {
+      final results = service.build([
+        _shift(
+          dayLabel: 'Fri',
+          daypart: 'dinner',
+          servicePeriodKey: 'brunch',
+          primaryLever: 'PPA_UP',
+        ),
+        _shift(
+          dayLabel: 'Fri',
+          daypart: 'dinner',
+          servicePeriodKey: 'supper',
+          primaryLever: 'PPA_UP',
+        ),
+      ], servicePeriodDefinitions: _configuredServicePeriods);
+
+      expect(results.map((r) => r.label), ['Fri Supper', 'Fri Brunch']);
+    });
+
+    test('legacy rows keep fallback labels and legacy order', () {
+      final results = service.build([
+        _shift(dayLabel: 'Fri', daypart: 'dinner', primaryLever: 'PPA_UP'),
+        _shift(dayLabel: 'Fri', daypart: 'lunch', primaryLever: 'PPA_UP'),
+      ], servicePeriodDefinitions: _configuredServicePeriods);
+
+      expect(results.map((r) => r.label), ['Fri Lunch', 'Fri Dinner']);
     });
   });
 }

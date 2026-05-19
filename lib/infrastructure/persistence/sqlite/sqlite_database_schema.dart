@@ -97,6 +97,8 @@ Future<void> _createAllTables(Database db) async {
     CREATE TABLE active_target_profiles (
       restaurant_id              TEXT PRIMARY KEY NOT NULL,
       target_profile_id          TEXT NOT NULL,
+      target_cycle_id            TEXT,
+      target_profile_version_id  TEXT,
       source_type                TEXT NOT NULL,
       target_cplh                REAL NOT NULL,
       target_splh                REAL NOT NULL,
@@ -117,6 +119,7 @@ Future<void> _createAllTables(Database db) async {
       target_profile_version_id  TEXT PRIMARY KEY NOT NULL,
       target_profile_id          TEXT NOT NULL,
       restaurant_id              TEXT NOT NULL,
+      target_cycle_id            TEXT,
       source_type                TEXT NOT NULL,
       target_cplh                REAL NOT NULL,
       target_splh                REAL NOT NULL,
@@ -130,6 +133,11 @@ Future<void> _createAllTables(Database db) async {
       theoretical_labor_pct      REAL NOT NULL,
       created_at                 TEXT NOT NULL
     )
+  ''');
+  await db.execute('''
+    CREATE INDEX ix_target_profile_versions_cycle
+    ON target_profile_versions(restaurant_id, target_cycle_id)
+    WHERE target_cycle_id IS NOT NULL
   ''');
 
   // ── Canonical operational layer ───────────────────────────────────────
@@ -464,6 +472,12 @@ Future<void> _createAllTables(Database db) async {
       business_day_start_local_time    TEXT NOT NULL,
       week_start_day                   INTEGER NOT NULL,
       service_period_definitions_json  TEXT NOT NULL,
+      selected_scope_type              TEXT,
+      selected_scope_id                TEXT,
+      source_scope_type                TEXT,
+      source_scope_id                  TEXT,
+      source_scope_label               TEXT,
+      inherited_from_ancestor          INTEGER,
       created_at                       TEXT NOT NULL,
       updated_at                       TEXT NOT NULL
     )
@@ -570,6 +584,11 @@ Future<void> _createAllTables(Database db) async {
       operator_id                TEXT NOT NULL,
       location_id                TEXT NOT NULL,
       covers_source              TEXT NOT NULL,
+      covers_source_scope_type   TEXT,
+      covers_source_source_kind  TEXT,
+      covers_source_scope_id     TEXT,
+      covers_source_setting_id   TEXT,
+      covers_source_override_id  TEXT,
       wage_source                TEXT NOT NULL,
       created_at                 TEXT NOT NULL,
       updated_at                 TEXT NOT NULL,

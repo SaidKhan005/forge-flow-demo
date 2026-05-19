@@ -67,11 +67,7 @@ void main() {
         onCursorViolation: violations.add,
       );
 
-      await sync.sync(
-        operatorId: _opId,
-        locationId: _locId,
-        restaurantId: rid,
-      );
+      await sync.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
 
       // Exactly one violation should have been emitted.
       expect(violations, hasLength(1));
@@ -87,42 +83,35 @@ void main() {
     },
   );
 
-  test(
-    'SY2-b: monotone nextCursor emits no violation',
-    () async {
-      const rid = 'rest_sy2_b';
-      final violations = <CursorViolationEvent>[];
+  test('SY2-b: monotone nextCursor emits no violation', () async {
+    const rid = 'rest_sy2_b';
+    final violations = <CursorViolationEvent>[];
 
-      const inputCursor = '2026-01-10T12:00:00.000Z';
-      const laterCursor = '2026-01-10T13:00:00.000Z';
+    const inputCursor = '2026-01-10T12:00:00.000Z';
+    const laterCursor = '2026-01-10T13:00:00.000Z';
 
-      final client = _FakeSyncProxyClient()
-        ..scriptShiftPages([
-          _ShiftPage(records: [], nextCursor: laterCursor),
-          _ShiftPage(records: [], nextCursor: null),
-        ]);
+    final client = _FakeSyncProxyClient()
+      ..scriptShiftPages([
+        _ShiftPage(records: [], nextCursor: laterCursor),
+        _ShiftPage(records: [], nextCursor: null),
+      ]);
 
-      await watermarkDao.upsertWatermark(
-        _watermark(rid, _opId, _locId, inputCursor),
-      );
+    await watermarkDao.upsertWatermark(
+      _watermark(rid, _opId, _locId, inputCursor),
+    );
 
-      final sync = PostgresShiftRecordToMobileSync(
-        client: client,
-        shiftRepository: _NullShiftRepo(),
-        watermarkDao: watermarkDao,
-        invalidationBus: bus,
-        onCursorViolation: violations.add,
-      );
+    final sync = PostgresShiftRecordToMobileSync(
+      client: client,
+      shiftRepository: _NullShiftRepo(),
+      watermarkDao: watermarkDao,
+      invalidationBus: bus,
+      onCursorViolation: violations.add,
+    );
 
-      await sync.sync(
-        operatorId: _opId,
-        locationId: _locId,
-        restaurantId: rid,
-      );
+    await sync.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
 
-      expect(violations, isEmpty);
-    },
-  );
+    expect(violations, isEmpty);
+  });
 
   test(
     'SY2-c: null inputCursor (first sweep) never triggers violation',
@@ -147,11 +136,7 @@ void main() {
         onCursorViolation: violations.add,
       );
 
-      await sync.sync(
-        operatorId: _opId,
-        locationId: _locId,
-        restaurantId: rid,
-      );
+      await sync.sync(operatorId: _opId, locationId: _locId, restaurantId: rid);
 
       expect(violations, isEmpty);
     },
@@ -209,60 +194,53 @@ class _FakeSyncProxyClient implements SyncProxyClient {
     required String locationId,
     String? cursor,
     int pageSize = 200,
-  }) async =>
-      const OpenShiftSnapshotPage(snapshots: [], nextCursor: null);
+  }) async => const OpenShiftSnapshotPage(snapshots: [], nextCursor: null);
 
   @override
   Future<List<DemoModeRecord>> fetchDemoModeStates({
     required String operatorId,
     required String locationId,
-  }) async =>
-      const <DemoModeRecord>[];
+  }) async => const <DemoModeRecord>[];
 
   @override
   Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
     required String operatorId,
     required String locationId,
-  }) async =>
-      null;
+  }) async => null;
 
   @override
   Future<List<DataAccuracyServicePeriodSetting>>
   fetchDataAccuracyServicePeriodSettings({
     required String operatorId,
     required String locationId,
-  }) async =>
-      const <DataAccuracyServicePeriodSetting>[];
+  }) async => const <DataAccuracyServicePeriodSetting>[];
 
   @override
   Future<List<WageRoleRow>> fetchWageRoleRows({
     required String operatorId,
     required String locationId,
-  }) async =>
-      const <WageRoleRow>[];
+  }) async => const <WageRoleRow>[];
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
   fetchForgeFlowPollingTierAssignment({
     required String operatorId,
     required String locationId,
-  }) async =>
-      null;
+  }) async => null;
 
   @override
   Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
     required String operatorId,
     required String locationId,
-  }) async =>
-      null;
+  }) async => null;
 
   @override
   Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
     required String operatorId,
     required String locationId,
     required String restaurantId,
-  }) async =>
-      null;
+    String? businessDate,
+  }) async => null;
 }
 
 /// No-op shift repository for tests that don't need actual SQLite writes.
@@ -274,23 +252,20 @@ class _NullShiftRepo implements ShiftRecordRepository {
   Future<List<ShiftRecord>> getShiftsForWeek(
     String restaurantId,
     String weekId,
-  ) async =>
-      const <ShiftRecord>[];
+  ) async => const <ShiftRecord>[];
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
     String restaurantId,
     List<String> weekIds,
-  ) async =>
-      const <ShiftRecord>[];
+  ) async => const <ShiftRecord>[];
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
     String restaurantId,
     String startDate,
     String endDate,
-  ) async =>
-      const <ShiftRecord>[];
+  ) async => const <ShiftRecord>[];
 
   @override
   Future<String?> getLatestClosedBusinessDate(String restaurantId) async =>

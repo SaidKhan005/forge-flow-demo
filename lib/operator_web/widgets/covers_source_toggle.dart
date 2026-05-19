@@ -103,10 +103,10 @@ class CoversSourceToggle extends StatelessWidget {
               _PeriodRow(
                 period: period,
                 source: settings.coversSourceFor(period.id),
+                sourceMetadata: settings.coversSourceSourceFor(period.id),
                 onChanged: (source) => onChanged(period.id, source),
               ),
-              if (period != servicePeriods.last)
-                const SizedBox(height: 10),
+              if (period != servicePeriods.last) const SizedBox(height: 10),
             ],
           const SizedBox(height: 14),
           VendorRelativityLabel(
@@ -123,11 +123,13 @@ class _PeriodRow extends StatelessWidget {
   const _PeriodRow({
     required this.period,
     required this.source,
+    required this.sourceMetadata,
     required this.onChanged,
   });
 
   final ServicePeriodDefinition period;
   final CoversSource source;
+  final DataAccuracySettingSource? sourceMetadata;
   final ValueChanged<CoversSource> onChanged;
 
   @override
@@ -140,33 +142,46 @@ class _PeriodRow extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 96,
-            child: Text(
-              period.label,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
-            ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 96,
+                child: Text(
+                  period.label,
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
+                ),
+              ),
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (final option in CoversSource.values)
+                      _ChoiceChip(
+                        chipKey: Key(
+                          'covers_source_chip_${period.id}_${option.wire}',
+                        ),
+                        label: _sourceLabel(option),
+                        selected: option == source,
+                        onTap: () => onChanged(option),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          Expanded(
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final option in CoversSource.values)
-                  _ChoiceChip(
-                    chipKey: Key(
-                      'covers_source_chip_${period.id}_${option.wire}',
-                    ),
-                    label: _sourceLabel(option),
-                    selected: option == source,
-                    onTap: () => onChanged(option),
-                  ),
-              ],
+          if (sourceMetadata != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Source: ${sourceMetadata!.label}',
+              key: Key('covers_source_source_${period.id}'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -180,6 +195,8 @@ class _PeriodRow extends StatelessWidget {
         return 'Forecast';
       case CoversSource.manual:
         return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
     }
   }
 }

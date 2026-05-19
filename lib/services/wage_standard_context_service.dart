@@ -15,6 +15,7 @@
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/target_cycle.dart';
+import '../domain/models/target_profile_version.dart';
 import '../domain/models/wage_role_row.dart';
 import '../domain/models/wage_standard_context.dart';
 import '../domain/models/wage_standard_source.dart';
@@ -46,10 +47,8 @@ class WageStandardContextService {
       restaurantId,
     );
     if (rows.isNotEmpty) {
-      final fohRows =
-          rows.where((r) => r.laborBucket == 'foh').toList();
-      final bohRows =
-          rows.where((r) => r.laborBucket == 'boh').toList();
+      final fohRows = rows.where((r) => r.laborBucket == 'foh').toList();
+      final bohRows = rows.where((r) => r.laborBucket == 'boh').toList();
 
       final fohWage = _weightedAvgRate(fohRows);
       final bohWage = _weightedAvgRate(bohRows);
@@ -123,12 +122,15 @@ class WageStandardContextService {
     final fohPct = (profile.targetCPLH > 0 && profile.targetPPA > 0)
         ? fohWage / (profile.targetCPLH * profile.targetPPA) * 100
         : 0.0;
-    final bohPct =
-        profile.targetSPLH > 0 ? bohWage / profile.targetSPLH * 100 : 0.0;
+    final bohPct = profile.targetSPLH > 0
+        ? bohWage / profile.targetSPLH * 100
+        : 0.0;
 
     final updated = ActiveTargetProfile(
       targetProfileId: profile.targetProfileId,
       restaurantId: profile.restaurantId,
+      targetCycleId: profile.targetCycleId,
+      targetProfileVersionId: profile.targetProfileVersionId,
       sourceType: profile.sourceType,
       targetCPLH: profile.targetCPLH,
       targetSPLH: profile.targetSPLH,
@@ -141,10 +143,12 @@ class WageStandardContextService {
       theoreticalBohLaborPct: bohPct,
       theoreticalLaborPct: fohPct + bohPct,
       builtAt: DateTime.now().toUtc().toIso8601String(),
+      dayparts: profile.dayparts,
     );
 
-    await SqliteTargetProfileRepository.instance
-        .upsertActiveTargetProfile(updated);
+    await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+      updated,
+    );
   }
 
   // ── Wage-aware bootstrap ────────────────────────────────────────────
@@ -158,18 +162,45 @@ class WageStandardContextService {
   /// order: prefer the active cycle when present, otherwise fall back
   /// to an honest config-default profile with resolved wages.
   Future<ActiveTargetProfile> loadOrBootstrapProfile(
-      String restaurantId) async {
-    final cycle = await SqliteTargetCycleRepository.instance
-        .getActiveCycle(restaurantId);
+    String restaurantId,
+  ) async {
+    final existing = await SqliteTargetProfileRepository.instance
+        .getActiveTargetProfile(restaurantId);
+    final pinnedCycleId = _nonBlank(existing?.targetCycleId);
+    if (existing != null && pinnedCycleId != null) {
+      final pinnedCycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(pinnedCycleId);
+      if (pinnedCycle == null) return existing;
+
+      final projected = TargetCycleActiveTargetProfileProjector.project(
+        pinnedCycle,
+        targetProfileId: existing.targetProfileId,
+        targetProfileVersionId: _nonBlank(existing.targetProfileVersionId),
+      );
+      if (!_matchesCycleProjection(existing, projected)) {
+        await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+          projected,
+        );
+        await _persistProjectedVersion(projected, pinnedCycle);
+        return _reattachCycleDayparts(projected, pinnedCycle);
+      }
+      return _reattachCycleDayparts(existing, pinnedCycle);
+    }
+
+    final cycle = await SqliteTargetCycleRepository.instance.getActiveCycle(
+      restaurantId,
+    );
     if (cycle != null) {
-      final projected =
-          TargetCycleActiveTargetProfileProjector.project(cycle);
-      final existing = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-      if (existing == null ||
-          !_matchesCycleProjection(existing, projected)) {
-        await SqliteTargetProfileRepository.instance
-            .upsertActiveTargetProfile(projected);
+      final projected = TargetCycleActiveTargetProfileProjector.project(
+        cycle,
+        targetProfileId: existing?.targetProfileId,
+        targetProfileVersionId: _matchingProfileVersionId(existing, cycle),
+      );
+      if (existing == null || !_matchesCycleProjection(existing, projected)) {
+        await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+          projected,
+        );
+        await _persistProjectedVersion(projected, cycle);
         // Reattach the cycle's per-period rows onto the returned profile
         // so per-period consumers (Shift daypart lens) read real
         // `daypartFor(...)` rows instead of the Gap-42 whole-day pool.
@@ -187,8 +218,6 @@ class WageStandardContextService {
       return _reattachCycleDayparts(existing, cycle);
     }
 
-    final existing = await SqliteTargetProfileRepository.instance
-        .getActiveTargetProfile(restaurantId);
     if (existing != null) return existing;
 
     final wageCtx = await resolve(restaurantId);
@@ -203,8 +232,9 @@ class WageStandardContextService {
       opzFloorCPLH: MeridianConfig.opzFloorCPLH,
       opzCeilingCPLH: MeridianConfig.opzCeilingCPLH,
     );
-    await SqliteTargetProfileRepository.instance
-        .upsertActiveTargetProfile(profile);
+    await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+      profile,
+    );
     return profile;
   }
 
@@ -221,17 +251,47 @@ class WageStandardContextService {
     if (cycle.dayparts.isEmpty) return profile;
     return profile.withDayparts(
       cycle.dayparts
-          .map((d) => ActiveTargetProfileDaypart(
-                servicePeriodId: d.servicePeriodId,
-                daypartTargetCPLH: d.targetCPLH,
-                daypartTargetSPLH: d.targetSPLH,
-                daypartTargetPPA: d.targetPPA,
-                daypartOpzFloorCPLH: d.opzFloorCPLH,
-                daypartOpzCeilingCPLH: d.opzCeilingCPLH,
-                verdict: d.verdict,
-                verdictReason: d.verdictReason,
-              ))
+          .map(
+            (d) => ActiveTargetProfileDaypart(
+              servicePeriodId: d.servicePeriodId,
+              daypartTargetCPLH: d.targetCPLH,
+              daypartTargetSPLH: d.targetSPLH,
+              daypartTargetPPA: d.targetPPA,
+              daypartOpzFloorCPLH: d.opzFloorCPLH,
+              daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+              verdict: d.verdict,
+              verdictReason: d.verdictReason,
+            ),
+          )
           .toList(),
+    );
+  }
+
+  static Future<void> _persistProjectedVersion(
+    ActiveTargetProfile profile,
+    TargetCycle cycle,
+  ) async {
+    final versionId = _nonBlank(profile.targetProfileVersionId);
+    if (versionId == null) return;
+    await SqliteTargetProfileRepository.instance.insertTargetProfileVersion(
+      TargetProfileVersion(
+        targetProfileVersionId: versionId,
+        targetProfileId: profile.targetProfileId,
+        restaurantId: profile.restaurantId,
+        targetCycleId: cycle.cycleId,
+        sourceType: profile.sourceType,
+        targetCPLH: profile.targetCPLH,
+        targetSPLH: profile.targetSPLH,
+        targetPPA: profile.targetPPA,
+        fohWage: profile.fohWage,
+        bohWage: profile.bohWage,
+        opzFloorCPLH: profile.opzFloorCPLH,
+        opzCeilingCPLH: profile.opzCeilingCPLH,
+        theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
+        theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+        theoreticalLaborPct: profile.theoreticalLaborPct,
+        createdAt: cycle.createdAt,
+      ),
     );
   }
 
@@ -242,6 +302,8 @@ class WageStandardContextService {
     bool same(double a, double b) => (a - b).abs() < 0.001;
 
     return existing.restaurantId == projected.restaurantId &&
+        existing.targetCycleId == projected.targetCycleId &&
+        existing.targetProfileVersionId == projected.targetProfileVersionId &&
         existing.sourceType == projected.sourceType &&
         same(existing.targetCPLH, projected.targetCPLH) &&
         same(existing.targetSPLH, projected.targetSPLH) &&
@@ -250,24 +312,43 @@ class WageStandardContextService {
         same(existing.bohWage, projected.bohWage) &&
         same(existing.opzFloorCPLH, projected.opzFloorCPLH) &&
         same(existing.opzCeilingCPLH, projected.opzCeilingCPLH) &&
-        same(existing.theoreticalFohLaborPct,
-            projected.theoreticalFohLaborPct) &&
-        same(existing.theoreticalBohLaborPct,
-            projected.theoreticalBohLaborPct) &&
+        same(
+          existing.theoreticalFohLaborPct,
+          projected.theoreticalFohLaborPct,
+        ) &&
+        same(
+          existing.theoreticalBohLaborPct,
+          projected.theoreticalBohLaborPct,
+        ) &&
         same(existing.theoreticalLaborPct, projected.theoreticalLaborPct);
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
+  static String? _matchingProfileVersionId(
+    ActiveTargetProfile? existing,
+    TargetCycle cycle,
+  ) {
+    if (existing == null) return null;
+    if (_nonBlank(existing.targetCycleId) != cycle.cycleId) return null;
+    return _nonBlank(existing.targetProfileVersionId);
+  }
+
+  static String? _nonBlank(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
   /// Weighted average hourly rate from a list of role rows.
   /// Returns null if no rows or total hours is zero.
   static double? _weightedAvgRate(List<WageRoleRow> rows) {
     if (rows.isEmpty) return null;
-    final totalHours =
-        rows.fold<double>(0, (s, r) => s + r.weightedHours);
+    final totalHours = rows.fold<double>(0, (s, r) => s + r.weightedHours);
     if (totalHours <= 0) return null;
-    final totalDollars =
-        rows.fold<double>(0, (s, r) => s + r.hourlyRate * r.weightedHours);
+    final totalDollars = rows.fold<double>(
+      0,
+      (s, r) => s + r.hourlyRate * r.weightedHours,
+    );
     return totalDollars / totalHours;
   }
 
@@ -290,10 +371,11 @@ class WageStandardContextService {
     final boh = rows.where((r) => r.laborBucket == 'boh').toList();
     final mgr = rows.where((r) => r.laborBucket == 'manager').toList();
 
-    final totalHours =
-        rows.fold<double>(0, (s, r) => s + r.weightedHours);
-    final totalCost =
-        rows.fold<double>(0, (s, r) => s + r.hourlyRate * r.weightedHours);
+    final totalHours = rows.fold<double>(0, (s, r) => s + r.weightedHours);
+    final totalCost = rows.fold<double>(
+      0,
+      (s, r) => s + r.hourlyRate * r.weightedHours,
+    );
 
     return WageMixSetupSummary(
       fohRows: foh,
@@ -330,6 +412,5 @@ class WageMixSetupSummary {
     required this.hasCompleteFohBoh,
   });
 
-  bool get isEmpty =>
-      fohRows.isEmpty && bohRows.isEmpty && managerRows.isEmpty;
+  bool get isEmpty => fohRows.isEmpty && bohRows.isEmpty && managerRows.isEmpty;
 }

@@ -131,8 +131,7 @@ class _TrackingWeekDataNotifier extends WeekDataNotifier {
 }
 
 class _TrackingShiftDashboardNotifier extends ShiftDashboardNotifier {
-  _TrackingShiftDashboardNotifier()
-      : super.emptyForTest(AppDataStatus.noData);
+  _TrackingShiftDashboardNotifier() : super.emptyForTest(AppDataStatus.noData);
   @override
   Future<void> refresh() async {}
 }
@@ -157,11 +156,9 @@ class _TestBus extends ChangeNotifier implements AppRuntimeInvalidationBus {
 /// `switchScope` re-runs `didChangeDependencies` exactly as the real
 /// location picker does.
 class _ScopeSwitchableNotifier extends RestaurantScopeNotifier {
-  _ScopeSwitchableNotifier(
-    super.restaurant, {
-    BusinessScope? activeScope,
-  })  : _scope = activeScope,
-        super.fromRestaurant();
+  _ScopeSwitchableNotifier(super.restaurant, {BusinessScope? activeScope})
+    : _scope = activeScope,
+      super.fromRestaurant();
 
   BusinessScope? _scope;
 
@@ -202,8 +199,7 @@ class _StubSyncProxyClient implements SyncProxyClient {
     required String locationId,
     required String? cursor,
     required int pageSize,
-  }) =>
-      throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<OpenShiftSnapshotPage> fetchOpenShiftSnapshots({
@@ -211,53 +207,47 @@ class _StubSyncProxyClient implements SyncProxyClient {
     required String locationId,
     required String? cursor,
     required int pageSize,
-  }) =>
-      throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
     required String operatorId,
     required String locationId,
     required String restaurantId,
-  }) =>
-      throw UnimplementedError('not needed in this test');
+    String? businessDate,
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
     required String operatorId,
     required String locationId,
-  }) =>
-      throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<List<DataAccuracyServicePeriodSetting>>
-      fetchDataAccuracyServicePeriodSettings({
+  fetchDataAccuracyServicePeriodSettings({
     required String operatorId,
     required String locationId,
-  }) =>
-          throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<List<WageRoleRow>> fetchWageRoleRows({
     required String operatorId,
     required String locationId,
-  }) =>
-      throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
-      fetchForgeFlowPollingTierAssignment({
+  fetchForgeFlowPollingTierAssignment({
     required String operatorId,
     required String locationId,
-  }) =>
-          throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 
   @override
   Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
     required String operatorId,
     required String locationId,
-  }) =>
-      throw UnimplementedError('not needed in this test');
+  }) => throw UnimplementedError('not needed in this test');
 }
 
 BusinessScope _locationScope(String operatorId, String locationId) =>
@@ -274,7 +264,8 @@ BusinessScope _locationScope(String operatorId, String locationId) =>
   _ScopeSwitchableNotifier scope,
   DemoModeStateNotifier demo,
   _StubSyncProxyClient client,
-}) _buildHarness() {
+})
+_buildHarness() {
   final scope = _ScopeSwitchableNotifier(
     const RestaurantLocation(
       restaurantId: 'test',
@@ -358,50 +349,50 @@ BusinessScope _locationScope(String operatorId, String locationId) =>
 }
 
 void main() {
-  testWidgets(
-    'location switch defers demo-mode scope notify out of build '
-    '(no markNeedsBuild-during-build, scope semantics preserved)',
-    (tester) async {
-      final harness = _buildHarness();
+  testWidgets('location switch defers demo-mode scope notify out of build '
+      '(no markNeedsBuild-during-build, scope semantics preserved)', (
+    tester,
+  ) async {
+    final harness = _buildHarness();
 
-      await tester.pumpWidget(harness.widget);
-      // First-mount bind is itself post-frame deferred; pump to let
-      // the post-frame callback + coalesced refresh settle.
-      await tester.pump();
-      await tester.pump();
+    await tester.pumpWidget(harness.widget);
+    // First-mount bind is itself post-frame deferred; pump to let
+    // the post-frame callback + coalesced refresh settle.
+    await tester.pump();
+    await tester.pump();
 
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'initial demo-mode bind must not throw during first build',
-      );
-      expect(harness.demo.snapshot.operatorId, 'op-1');
-      expect(harness.demo.snapshot.locationId, 'loc-1');
-      expect(find.byType(AppShell), findsOneWidget);
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'initial demo-mode bind must not throw during first build',
+    );
+    expect(harness.demo.snapshot.operatorId, 'op-1');
+    expect(harness.demo.snapshot.locationId, 'loc-1');
+    expect(find.byType(AppShell), findsOneWidget);
 
-      // Operator switches the active location. AppShell `context.watch`es
-      // RestaurantScopeNotifier (business-scope drawer), so this re-runs
-      // `_AppShellState.didChangeDependencies` -> the demo-mode bind path
-      // exactly like the real picker. Pre-fix this threw
-      // "markNeedsBuild() called during build"; post-fix the notifier
-      // mutation is post-frame.
-      harness.scope.switchScope(_locationScope('op-2', 'loc-2'));
-      await tester.pump();
-      await tester.pump();
+    // Operator switches the active location. AppShell `context.watch`es
+    // RestaurantScopeNotifier (business-scope drawer), so this re-runs
+    // `_AppShellState.didChangeDependencies` -> the demo-mode bind path
+    // exactly like the real picker. Pre-fix this threw
+    // "markNeedsBuild() called during build"; post-fix the notifier
+    // mutation is post-frame.
+    harness.scope.switchScope(_locationScope('op-2', 'loc-2'));
+    await tester.pump();
+    await tester.pump();
 
-      expect(
-        tester.takeException(),
-        isNull,
-        reason: 'location switch must not throw setState/markNeedsBuild '
-            'called during build',
-      );
-      // Semantics preserved: the notifier was driven to the new scope.
-      expect(harness.demo.snapshot.operatorId, 'op-2');
-      expect(harness.demo.snapshot.locationId, 'loc-2');
-      expect(harness.client.fetchedScopes, contains('op-2:loc-2'));
-      // The scope-dependent screen is still mounted — the screen
-      // was not torn down / blanked by the transient.
-      expect(find.byType(AppShell), findsOneWidget);
-    },
-  );
+    expect(
+      tester.takeException(),
+      isNull,
+      reason:
+          'location switch must not throw setState/markNeedsBuild '
+          'called during build',
+    );
+    // Semantics preserved: the notifier was driven to the new scope.
+    expect(harness.demo.snapshot.operatorId, 'op-2');
+    expect(harness.demo.snapshot.locationId, 'loc-2');
+    expect(harness.client.fetchedScopes, contains('op-2:loc-2'));
+    // The scope-dependent screen is still mounted — the screen
+    // was not torn down / blanked by the transient.
+    expect(find.byType(AppShell), findsOneWidget);
+  });
 }

@@ -224,6 +224,7 @@ void main() {
         final profile = ActiveTargetProfile(
           targetProfileId: 'test_active',
           restaurantId: 'demo_restaurant_001',
+          targetProfileVersionId: 'tpv-open-current-week',
           sourceType: 'system_baseline',
           targetCPLH: 4.58,
           targetSPLH: 180.0,
@@ -264,6 +265,7 @@ void main() {
         expect(record.targetCPLH, 4.58);
         expect(record.targetPPA, 42.0);
         expect(record.targetFohWage, 16.50);
+        expect(record.targetProfileVersionId, 'tpv-open-current-week');
       },
     );
 

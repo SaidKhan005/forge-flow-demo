@@ -36,9 +36,11 @@ import 'package:flutter/services.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../domain/models/wage_role_row_record.dart';
+import '../../services/wage/wage_role_row_scope_resolver.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
-import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/hierarchy_map_picker.dart';
+import '../widgets/hierarchy_tree_picker.dart';
 import '../../theme/app_theme.dart';
 import 'wage_authority/blended_wage_calculator.dart';
 import 'wage_authority/blended_wage_summary_card.dart';
@@ -100,6 +102,9 @@ class WageAuthorityScreen extends StatelessWidget {
     this.gateway,
     this.idempotencyKeyFactory,
     this.connectedLaborVendorIds = const <String>{},
+    this.hierarchyNodes = const <HierarchyMapNode>[],
+    this.ancestorOrgUnitIdsNearestFirst = const <String>[],
+    this.businessName,
   });
 
   final OperatorWebSession session;
@@ -110,6 +115,21 @@ class WageAuthorityScreen extends StatelessWidget {
   /// scope.
   final String locationId;
   final String locationName;
+
+  /// GAP B2 HP #11 — the operator's hierarchy (Business root, org
+  /// units, locations) used to drive the scope selector. When empty
+  /// the screen degrades to a single Location scope (the pre-GAP-B2
+  /// behaviour) with no regression.
+  final List<HierarchyMapNode> hierarchyNodes;
+
+  /// The selected location's org-unit ancestors, nearest first. Drives
+  /// inheritance resolution so a row set at an org-unit ancestor (or
+  /// Business) shows as inherited at this location.
+  final List<String> ancestorOrgUnitIdsNearestFirst;
+
+  /// Plain-English business name for the Business ("operator-wide")
+  /// scope row in the selector. Falls back to "the whole business".
+  final String? businessName;
 
   /// Live gateway. When null the screen renders honest read-only
   /// state with snackbar copy explaining the disconnect.
@@ -137,6 +157,9 @@ class WageAuthorityScreen extends StatelessWidget {
         gateway: gateway,
         idempotencyKeyFactory: idempotencyKeyFactory,
         connectedLaborVendorIds: connectedLaborVendorIds,
+        hierarchyNodes: hierarchyNodes,
+        ancestorOrgUnitIdsNearestFirst: ancestorOrgUnitIdsNearestFirst,
+        businessName: businessName,
         showHeader: true,
       ),
     );
@@ -162,6 +185,9 @@ class WageAuthoritySection extends StatefulWidget {
     this.gateway,
     this.idempotencyKeyFactory,
     this.connectedLaborVendorIds = const <String>{},
+    this.hierarchyNodes = const <HierarchyMapNode>[],
+    this.ancestorOrgUnitIdsNearestFirst = const <String>[],
+    this.businessName,
     this.showHeader = true,
   });
 
@@ -171,6 +197,16 @@ class WageAuthoritySection extends StatefulWidget {
   final OperatorWebWageAuthorityGateway? gateway;
   final String Function()? idempotencyKeyFactory;
   final Set<String> connectedLaborVendorIds;
+
+  /// GAP B2 — operator hierarchy for the scope selector. Empty = the
+  /// pre-GAP-B2 single-Location behaviour.
+  final List<HierarchyMapNode> hierarchyNodes;
+
+  /// Selected location's org-unit ancestors, nearest first.
+  final List<String> ancestorOrgUnitIdsNearestFirst;
+
+  /// Plain-English business name for the Business scope.
+  final String? businessName;
 
   /// Whether to render the inline "Wage authority" header row inside
   /// the section. The standalone screen passes `true` so the page
@@ -185,7 +221,8 @@ class WageAuthoritySection extends StatefulWidget {
 class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   /// Current rows, keyed by `wage_role_row_id`. Mirrors what the
   /// gateway returned on the most recent list call.
-  final Map<String, WageRoleRowRecord> _rowsById = <String, WageRoleRowRecord>{};
+  final Map<String, WageRoleRowRecord> _rowsById =
+      <String, WageRoleRowRecord>{};
 
   bool _loading = true;
   String? _loadError;
@@ -202,14 +239,27 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   /// every time the operator types in the edit form so the blended-
   /// wage summary card recomputes without waiting for a save round-
   /// trip. Cleared when the form closes (save / cancel).
-  final Map<String, _DraftRowValues> _draftEdits =
-      <String, _DraftRowValues>{};
+  final Map<String, _DraftRowValues> _draftEdits = <String, _DraftRowValues>{};
 
   /// In-flight values for an open add-row form, keyed by `laborBucket`.
   /// Updated by the same typing seam as [_draftEdits] so newly typed
   /// rows roll into the blended-wage summary immediately.
-  final Map<String, _DraftRowValues> _draftAdds =
-      <String, _DraftRowValues>{};
+  final Map<String, _DraftRowValues> _draftAdds = <String, _DraftRowValues>{};
+
+  /// GAP B2 — the effective wage rows at this location after HP #11
+  /// inheritance is walked, keyed by `'<bucket> <role>'`. Drives the
+  /// per-row inherited-source / effective-value badge. Recomputed off
+  /// `_rowsById` on every load + save so the badge stays truthful.
+  Map<String, WageRoleRowResolvedValue> _effectiveByKey =
+      <String, WageRoleRowResolvedValue>{};
+
+  /// GAP B2 — the scope the operator is currently editing AT. New rows
+  /// the operator adds are written at this scope so a Business-scoped
+  /// rate inherits down to every location. Defaults to Location (the
+  /// pre-GAP-B2 behaviour).
+  WageRoleRowScopeType _editScopeType = WageRoleRowScopeType.location;
+  String? _editScopeOrgUnitId;
+  String? _editScopeOrgUnitLabel;
 
   int _idemCounter = 0;
 
@@ -251,6 +301,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           ..addEntries(<MapEntry<String, WageRoleRowRecord>>[
             for (final r in rows) MapEntry(r.wageRoleRowId, r),
           ]);
+        _recomputeEffective();
         _loading = false;
       });
     } catch (_) {
@@ -263,13 +314,41 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
     }
   }
 
+  /// Recompute the per-(role, bucket) effective resolution off the
+  /// current `_rowsById`. Must run inside a `setState` (the badges
+  /// derive from `_effectiveByKey`). Pure projection — reuses the
+  /// gateway's resolver helper so the screen and the resolver never
+  /// disagree.
+  void _recomputeEffective() {
+    final effective = resolveEffectiveWageRows(
+      rows: _rowsById.values.toList(growable: false),
+      operatorId: widget.session.operatorId,
+      locationId: widget.locationId,
+      ancestorOrgUnitIdsNearestFirst: widget.ancestorOrgUnitIdsNearestFirst,
+    );
+    _effectiveByKey = <String, WageRoleRowResolvedValue>{
+      for (final e in effective)
+        '${e.record.laborBucket} ${e.record.roleName}': e.resolved,
+    };
+  }
+
+  /// The resolved scope provenance for a row, or null when the row is
+  /// not the one that supplies the effective value (e.g. a shadowed
+  /// lower-precedence row). Keyed the same way [_recomputeEffective]
+  /// keys the map.
+  WageRoleRowResolvedValue? _resolvedFor(WageRoleRowRecord row) {
+    return _effectiveByKey['${row.laborBucket} ${row.roleName}'];
+  }
+
   List<WageRoleRowRecord> _rowsForBucket(String wireBucket) {
-    final list = _rowsById.values
-        .where((r) => r.laborBucket == wireBucket && r.isActive)
-        .toList()
-      ..sort((a, b) => a.roleName.toLowerCase().compareTo(
-            b.roleName.toLowerCase(),
-          ));
+    final list =
+        _rowsById.values
+            .where((r) => r.laborBucket == wireBucket && r.isActive)
+            .toList()
+          ..sort(
+            (a, b) =>
+                a.roleName.toLowerCase().compareTo(b.roleName.toLowerCase()),
+          );
     return list;
   }
 
@@ -287,6 +366,20 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
         // entered an explicit value. Keeps the editor usable for
         // operators who don't carry a separate restaurant_id concept.
         : widget.locationId;
+    // GAP B2: write the row at the scope the operator is editing AT.
+    // A row edited from an inherited badge keeps its source scope (so
+    // editing a Business-inherited row updates the Business row, not a
+    // new shadow location row); a fresh add lands at the selected
+    // edit scope.
+    final existing = existingRowId == null ? null : _rowsById[existingRowId];
+    final scopeType = existing != null
+        ? WageRoleRowScopeType.parse(existing.scopeType)
+        : _editScopeType;
+    final orgUnitId = existing != null
+        ? existing.orgUnitId
+        : (_editScopeType == WageRoleRowScopeType.orgUnit
+              ? _editScopeOrgUnitId
+              : null);
     final request = WageRoleRowUpsert(
       restaurantId: restaurantId,
       roleName: form.roleName,
@@ -296,6 +389,8 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       jobCode: form.jobCode,
       vendorId: form.vendorId,
       vendorRoleId: form.vendorRoleId,
+      scopeType: scopeType.wire,
+      orgUnitId: orgUnitId,
     );
     try {
       final saved = await gateway.upsert(
@@ -313,6 +408,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
         _addingForBuckets.remove(laborBucket);
         if (existingRowId != null) _draftEdits.remove(existingRowId);
         _draftAdds.remove(laborBucket);
+        _recomputeEffective();
       });
       _showSnackBar('Saved just now', isError: false);
     } catch (_) {
@@ -354,7 +450,10 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
     if (confirmed != true) return;
     // Optimistic remove.
     final snapshot = _rowsById[row.wageRoleRowId];
-    setState(() => _rowsById.remove(row.wageRoleRowId));
+    setState(() {
+      _rowsById.remove(row.wageRoleRowId);
+      _recomputeEffective();
+    });
     try {
       await gateway.delete(
         wageRoleRowId: row.wageRoleRowId,
@@ -367,6 +466,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       // Roll back the optimistic remove.
       setState(() {
         if (snapshot != null) _rowsById[row.wageRoleRowId] = snapshot;
+        _recomputeEffective();
       });
       _showSnackBar(
         "Couldn't remove - try again",
@@ -389,28 +489,34 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       if (!row.isActive) continue;
       final draft = _draftEdits[row.wageRoleRowId];
       if (draft != null) {
-        inputs.add(BlendedWageInputRow(
-          laborBucket: row.laborBucket,
-          hourlyRate: draft.hourlyRate ?? row.hourlyRate,
-          weightedHours: draft.weightedHours ?? row.weightedHours,
-        ));
+        inputs.add(
+          BlendedWageInputRow(
+            laborBucket: row.laborBucket,
+            hourlyRate: draft.hourlyRate ?? row.hourlyRate,
+            weightedHours: draft.weightedHours ?? row.weightedHours,
+          ),
+        );
       } else {
-        inputs.add(BlendedWageInputRow(
-          laborBucket: row.laborBucket,
-          hourlyRate: row.hourlyRate,
-          weightedHours: row.weightedHours,
-        ));
+        inputs.add(
+          BlendedWageInputRow(
+            laborBucket: row.laborBucket,
+            hourlyRate: row.hourlyRate,
+            weightedHours: row.weightedHours,
+          ),
+        );
       }
     }
     for (final entry in _draftAdds.entries) {
       final hr = entry.value.hourlyRate;
       final wh = entry.value.weightedHours;
       if (hr == null || wh == null) continue;
-      inputs.add(BlendedWageInputRow(
-        laborBucket: entry.key,
-        hourlyRate: hr,
-        weightedHours: wh,
-      ));
+      inputs.add(
+        BlendedWageInputRow(
+          laborBucket: entry.key,
+          hourlyRate: hr,
+          weightedHours: wh,
+        ),
+      );
     }
     return inputs;
   }
@@ -431,11 +537,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
     return widget.connectedLaborVendorIds;
   }
 
-  void _showSnackBar(
-    String message, {
-    required bool isError,
-    String? keyName,
-  }) {
+  void _showSnackBar(String message, {required bool isError, String? keyName}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         key: keyName != null ? Key(keyName) : null,
@@ -464,39 +566,32 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           const _Header(),
           const SizedBox(height: 14),
         ],
-        // HP #11 (`CLAUDE.md`): every settings / pricing / accuracy
-        // surface declares its selected scope, inherited source, and
-        // effective value. Wage authority writes the operator-scoped
-        // `wage_role_rows` fact table; rows are keyed by
-        // (operator_id, location_id, restaurant_id, role_name) per
-        // db/migrations/202605080200_phase_8_wage_role_rows_server_
-        // truth.sql, so the scope is Location with no higher-level
-        // inheritance yet.
-        //
-        // When the wage table grows hierarchy-aware columns (e.g.
-        // `scope_kind` + `inherited_from_scope_id`) each row will
-        // carry its own inheritance badge inside the bucket section
-        // — the same pattern Business setup's `_EffectiveFieldRow`
-        // already follows. Until then the surface renders the scope
-        // triple at the top of the screen and each bucket row stays
-        // value-only.
-        // TODO(wave-3+ hierarchy wages): replace the screen-level
-        // notice with per-row inheritance badges once `wage_role_
-        // rows` carries hierarchy columns.
-        HierarchyScopeNotice(
-          keyName: 'wage_authority_hierarchy_scope',
-          selectedScope: HierarchyScopeLevel.location,
-          scopeName: widget.locationName,
-          inheritedFromLabel: null,
-          effectiveValueSummary:
-              "These wage rows apply only to ${widget.locationName}. "
-              "Other locations carry their own wage rows.",
-          backendOnlyExplainer:
-              "Wage rows are set per location by design. Each "
-              "restaurant keeps its own pay rates, so there is no "
-              "region or brand wage floor that locations inherit. If "
-              "you run several locations, set wages separately for "
-              "each one.",
+        // GAP B2 HP #11: `wage_role_rows` now carries scope_type /
+        // org_unit_id / inherited_from_scope_id
+        // (db/migrations/202605191200_wage_role_rows_hierarchy_scope_
+        // refresh.sql). The screen no longer claims "Location only" - it
+        // (a) lets the operator pick the scope they are editing AT and
+        // (b) shows each row's real inherited-source / effective-value
+        // badge from WageRoleRowScopeResolver. When no hierarchy is
+        // supplied the selector degrades to a single Location scope
+        // (no regression vs the pre-GAP-B2 behaviour).
+        _ScopeEditorBar(
+          keyName: 'wage_authority_scope_editor',
+          locationId: widget.locationId,
+          locationName: widget.locationName,
+          businessName: widget.businessName,
+          hierarchyNodes: widget.hierarchyNodes,
+          selectedScopeType: _editScopeType,
+          selectedOrgUnitId: _editScopeOrgUnitId,
+          selectedOrgUnitLabel: _editScopeOrgUnitLabel,
+          canWrite: _canWrite,
+          onScopeChanged: (scopeType, orgUnitId, orgUnitLabel) {
+            setState(() {
+              _editScopeType = scopeType;
+              _editScopeOrgUnitId = orgUnitId;
+              _editScopeOrgUnitLabel = orgUnitLabel;
+            });
+          },
         ),
         if (_loadError != null) ...<Widget>[
           const SizedBox(height: 12),
@@ -506,7 +601,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           const SizedBox(height: 12),
           _ReadOnlyBanner(
             message:
-                'Only operator owners and operator admins can change wage rows. '
+                'Only operator owners can change wage rows. '
                 'Ask one of them to make the change for you.',
           ),
         ],
@@ -526,9 +621,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
         BlendedWageSummaryCard(
           summary: computeBlendedWageSummary(
             rows: _summaryInputs(),
-            bucketOrder: <String>[
-              for (final b in _kBuckets) b.wire,
-            ],
+            bucketOrder: <String>[for (final b in _kBuckets) b.wire],
           ),
         ),
         const SizedBox(height: 18),
@@ -537,6 +630,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
             bucket: bucket,
             rows: _rowsForBucket(bucket.wire),
             canWrite: _canWrite,
+            resolvedFor: _resolvedFor,
             isEditing: (id) => _editingIds.contains(id),
             isAdding: _addingForBuckets.contains(bucket.wire),
             connectedLaborVendorIds: _effectiveLaborVendorIds(),
@@ -579,10 +673,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
               form: form,
               existingRowId: row.wageRoleRowId,
             ),
-            onSaveAdd: (form) => _saveRow(
-              laborBucket: bucket.wire,
-              form: form,
-            ),
+            onSaveAdd: (form) => _saveRow(laborBucket: bucket.wire, form: form),
             onDelete: _confirmAndDelete,
           ),
           const SizedBox(height: 14),
@@ -690,6 +781,7 @@ class _BucketSection extends StatelessWidget {
     required this.bucket,
     required this.rows,
     required this.canWrite,
+    required this.resolvedFor,
     required this.isEditing,
     required this.isAdding,
     required this.connectedLaborVendorIds,
@@ -707,6 +799,12 @@ class _BucketSection extends StatelessWidget {
   final _BucketSpec bucket;
   final List<WageRoleRowRecord> rows;
   final bool canWrite;
+
+  /// GAP B2 — resolves a row to its effective scope provenance so the
+  /// display row can render the inherited-source / effective-value
+  /// badge. Returns null when the row is not the effective source.
+  final WageRoleRowResolvedValue? Function(WageRoleRowRecord) resolvedFor;
+
   final bool Function(String) isEditing;
   final bool isAdding;
   final Set<String> connectedLaborVendorIds;
@@ -771,17 +869,19 @@ class _BucketSection extends StatelessWidget {
               child: Text(
                 canWrite
                     ? "No wage rates set at this scope yet. Add rates and "
-                        "Forge & Flow will inherit them down to lower scopes."
-                    : "No roles yet for this group. An operator owner or "
-                        "admin can add one so Forge & Flow knows the typical "
-                        "hourly cost.",
+                          "Forge & Flow will inherit them down to lower scopes."
+                    : "No roles yet for this group. An operator owner "
+                          "can add one so Forge & Flow knows the typical "
+                          "hourly cost.",
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
             ),
           for (var i = 0; i < rows.length; i++) ...<Widget>[
             isEditing(rows[i].wageRoleRowId)
                 ? _WageRowForm(
-                    key: Key('wage_authority_row_edit_${rows[i].wageRoleRowId}'),
+                    key: Key(
+                      'wage_authority_row_edit_${rows[i].wageRoleRowId}',
+                    ),
                     initial: rows[i],
                     onCancel: () => onCancelEdit(rows[i].wageRoleRowId),
                     onSave: (form) => onSaveEdit(rows[i], form),
@@ -791,6 +891,7 @@ class _BucketSection extends StatelessWidget {
                 : _WageRowDisplay(
                     row: rows[i],
                     canWrite: canWrite,
+                    resolved: resolvedFor(rows[i]),
                     connectedLaborVendorIds: connectedLaborVendorIds,
                     onEdit: () => onStartEdit(rows[i].wageRoleRowId),
                     onDelete: () => onDelete(rows[i]),
@@ -825,6 +926,7 @@ class _WageRowDisplay extends StatelessWidget {
   const _WageRowDisplay({
     required this.row,
     required this.canWrite,
+    required this.resolved,
     required this.connectedLaborVendorIds,
     required this.onEdit,
     required this.onDelete,
@@ -832,6 +934,11 @@ class _WageRowDisplay extends StatelessWidget {
 
   final WageRoleRowRecord row;
   final bool canWrite;
+
+  /// GAP B2 — the row's resolved scope provenance. Drives the
+  /// inherited-source / set-at-scope badge under the rate crumb.
+  final WageRoleRowResolvedValue? resolved;
+
   final Set<String> connectedLaborVendorIds;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
@@ -883,6 +990,14 @@ class _WageRowDisplay extends StatelessWidget {
                   color: _toneColor(vendorLabel.tone),
                 ),
               ),
+              if (resolved != null) ...<Widget>[
+                const SizedBox(height: 6),
+                _ScopeBadge(
+                  keyName:
+                      'wage_authority_row_scope_badge_${row.wageRoleRowId}',
+                  resolved: resolved!,
+                ),
+              ],
             ],
           ),
         ),
@@ -915,6 +1030,255 @@ class _WageRowDisplay extends StatelessWidget {
       case WageVendorApplicabilityTone.manualOnly:
         return AppColors.textMuted;
     }
+  }
+}
+
+/// GAP B2 HP #11 — compact per-row provenance badge. Renders one of:
+///   * "Set at this location" (the row is owned here)
+///   * "Inherited from the whole business" / "Inherited from <org
+///     unit>" (a higher scope supplies the effective value)
+/// so every wage row shows its selected scope + inherited source +
+/// effective value inline, the same shape Business setup's
+/// `_EffectiveFieldRow` follows.
+class _ScopeBadge extends StatelessWidget {
+  const _ScopeBadge({required this.keyName, required this.resolved});
+
+  final String keyName;
+  final WageRoleRowResolvedValue resolved;
+
+  @override
+  Widget build(BuildContext context) {
+    final inherited = resolved.inherited;
+    final label = switch (resolved.sourceScopeType) {
+      WageRoleRowScopeType.location => 'Set at this location',
+      WageRoleRowScopeType.orgUnit => 'Inherited from ${resolved.sourceLabel}',
+      WageRoleRowScopeType.operatorWide => 'Inherited from the whole business',
+      WageRoleRowScopeType.fallback => 'No wage set yet',
+    };
+    final color = inherited ? AppColors.sunsetDark : AppColors.textSecondary;
+    return Container(
+      key: Key(keyName),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.40), width: 1),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(
+            inherited ? Icons.account_tree_outlined : Icons.place_outlined,
+            size: 12,
+            color: color,
+          ),
+          const SizedBox(width: 5),
+          Text(label, style: AppTextStyles.mono8(color: color)),
+        ],
+      ),
+    );
+  }
+}
+
+/// GAP B2 HP #11 — scope selector. When the operator's hierarchy is
+/// supplied it reuses [HierarchyTreePicker] (the same tree the invite +
+/// grant dialogs use — no new picker invented) so the operator can
+/// choose whether new rows are set at the whole Business, an org unit,
+/// or this Location. Rows already set at a higher scope still inherit
+/// down; this only controls where a NEW row lands. When no hierarchy is
+/// supplied the bar degrades to a plain Location notice (no regression
+/// vs the pre-GAP-B2 screen).
+class _ScopeEditorBar extends StatelessWidget {
+  const _ScopeEditorBar({
+    required this.keyName,
+    required this.locationId,
+    required this.locationName,
+    required this.businessName,
+    required this.hierarchyNodes,
+    required this.selectedScopeType,
+    required this.selectedOrgUnitId,
+    required this.selectedOrgUnitLabel,
+    required this.canWrite,
+    required this.onScopeChanged,
+  });
+
+  final String keyName;
+  final String locationId;
+  final String locationName;
+  final String? businessName;
+  final List<HierarchyMapNode> hierarchyNodes;
+  final WageRoleRowScopeType selectedScopeType;
+  final String? selectedOrgUnitId;
+  final String? selectedOrgUnitLabel;
+  final bool canWrite;
+
+  /// (scopeType, orgUnitId, orgUnitLabel). orgUnitId/label are non-null
+  /// only when scopeType is org_unit.
+  final void Function(
+    WageRoleRowScopeType scopeType,
+    String? orgUnitId,
+    String? orgUnitLabel,
+  )
+  onScopeChanged;
+
+  String get _selectedNodeId {
+    switch (selectedScopeType) {
+      case WageRoleRowScopeType.operatorWide:
+        final biz = hierarchyNodes.where(
+          (n) => n.kind == HierarchyMapNodeKind.business,
+        );
+        return biz.isEmpty ? '' : biz.first.id;
+      case WageRoleRowScopeType.orgUnit:
+        final match = hierarchyNodes.where(
+          (n) =>
+              n.kind == HierarchyMapNodeKind.orgUnit &&
+              (_nodeScopeId(n.id) == selectedOrgUnitId ||
+                  n.label == selectedOrgUnitLabel),
+        );
+        return match.isEmpty ? '' : match.first.id;
+      case WageRoleRowScopeType.location:
+      case WageRoleRowScopeType.fallback:
+        final loc = hierarchyNodes.where(
+          (n) =>
+              n.kind == HierarchyMapNodeKind.location &&
+              _nodeScopeId(n.id) == locationId,
+        );
+        return loc.isEmpty ? '' : loc.first.id;
+    }
+  }
+
+  static String _nodeScopeId(String nodeId) {
+    if (nodeId.startsWith('org_unit:')) {
+      return nodeId.substring('org_unit:'.length);
+    }
+    if (nodeId.startsWith('orgUnit:')) {
+      return nodeId.substring('orgUnit:'.length);
+    }
+    if (nodeId.startsWith('location:')) {
+      return nodeId.substring('location:'.length);
+    }
+    if (nodeId.startsWith('operator:')) {
+      return nodeId.substring('operator:'.length);
+    }
+    return nodeId;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // No hierarchy → degrade to the plain Location notice. This keeps
+    // single-location operators (and embed hosts that do not pass a
+    // hierarchy) on the exact pre-GAP-B2 behaviour: scope is Location,
+    // honestly stated, no misleading "coming in a later wave" copy
+    // because the capability now exists — it just has nothing to pick.
+    if (hierarchyNodes.length < 2) {
+      return Container(
+        key: Key('${keyName}_location_only'),
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: AppColors.cardGlow,
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: <Widget>[
+            const Icon(
+              Icons.place_outlined,
+              size: 16,
+              color: AppColors.sunsetDark,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'These wage rows are set for $locationName. When you '
+                'add regions or more locations you can set a wage once '
+                'at the business and every location inherits it.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      key: Key(keyName),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              const Icon(
+                Icons.account_tree_outlined,
+                size: 18,
+                color: AppColors.sunsetDark,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Where new wage rows are set',
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            canWrite
+                ? 'Pick the level a new rate belongs to. A rate set at '
+                      'the whole business or a region flows down to every '
+                      'location underneath unless that location sets its '
+                      'own. Each row below shows where its rate comes from.'
+                : 'Each row below shows where its rate comes from: set '
+                      'at this location, inherited from the business, or '
+                      'inherited from a region.',
+            style: AppTextStyles.body12(color: AppColors.textSecondary),
+          ),
+          if (canWrite) ...<Widget>[
+            const SizedBox(height: 10),
+            IgnorePointer(
+              ignoring: !canWrite,
+              child: HierarchyTreePicker(
+                key: Key('${keyName}_picker'),
+                keyPrefix: '${keyName}_picker',
+                nodes: hierarchyNodes,
+                selectedId: _selectedNodeId.isEmpty ? null : _selectedNodeId,
+                allowNonLocationSelection: true,
+                label: 'New wage rows are set at',
+                helper:
+                    'Higher levels include everything beneath. A '
+                    'location keeps its own rate when it sets one.',
+                onSelected: (node) {
+                  switch (node.kind) {
+                    case HierarchyMapNodeKind.business:
+                      onScopeChanged(
+                        WageRoleRowScopeType.operatorWide,
+                        null,
+                        null,
+                      );
+                    case HierarchyMapNodeKind.orgUnit:
+                      onScopeChanged(
+                        WageRoleRowScopeType.orgUnit,
+                        _nodeScopeId(node.id),
+                        node.label,
+                      );
+                    case HierarchyMapNodeKind.location:
+                      onScopeChanged(WageRoleRowScopeType.location, null, null);
+                  }
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -1023,10 +1387,12 @@ class _WageRowFormState extends State<_WageRowForm> {
   void _emitDraft() {
     final cb = widget.onDraftChanged;
     if (cb == null) return;
-    cb(_DraftRowValues(
-      hourlyRate: double.tryParse(_hourlyRate.text.trim()),
-      weightedHours: double.tryParse(_weightedHours.text.trim()),
-    ));
+    cb(
+      _DraftRowValues(
+        hourlyRate: double.tryParse(_hourlyRate.text.trim()),
+        weightedHours: double.tryParse(_weightedHours.text.trim()),
+      ),
+    );
   }
 
   Future<void> _onSave() async {
@@ -1054,15 +1420,17 @@ class _WageRowFormState extends State<_WageRowForm> {
       _saving = true;
     });
     try {
-      await widget.onSave(_WageRowFormResult(
-        restaurantId: restaurantId,
-        roleName: roleName,
-        hourlyRate: hourlyRate,
-        weightedHours: weightedHours,
-        jobCode: jobCode.isEmpty ? null : jobCode,
-        vendorId: vendorId.isEmpty ? null : vendorId,
-        vendorRoleId: vendorRoleId.isEmpty ? null : vendorRoleId,
-      ));
+      await widget.onSave(
+        _WageRowFormResult(
+          restaurantId: restaurantId,
+          roleName: roleName,
+          hourlyRate: hourlyRate,
+          weightedHours: weightedHours,
+          jobCode: jobCode.isEmpty ? null : jobCode,
+          vendorId: vendorId.isEmpty ? null : vendorId,
+          vendorRoleId: vendorRoleId.isEmpty ? null : vendorRoleId,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }

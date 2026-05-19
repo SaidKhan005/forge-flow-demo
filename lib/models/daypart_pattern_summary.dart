@@ -28,6 +28,12 @@ class DaypartPatternSummary {
   /// to the legacy daypart formatter.
   final String? servicePeriodLabel;
 
+  /// Optional configured display order for the service period.
+  ///
+  /// Null for legacy rows and older callers; sorters then fall back to the
+  /// legacy fixed daypart order.
+  final int? servicePeriodSortOrder;
+
   // ── Counts ──────────────────────────────────────────────────────────────
 
   /// Total closed shifts in this bucket.
@@ -72,6 +78,7 @@ class DaypartPatternSummary {
     required this.dayLabel,
     required this.daypart,
     this.servicePeriodLabel,
+    this.servicePeriodSortOrder,
     required this.closedShiftCount,
     required this.benchmarkCount,
     required this.leakCount,

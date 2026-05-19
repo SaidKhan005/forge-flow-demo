@@ -26,6 +26,8 @@ class OperatorWebNavItem {
     required this.icon,
     required this.group,
     this.placeholder = false,
+    this.alertCount = 0,
+    this.alertTooltip,
   });
 
   final String id;
@@ -33,6 +35,18 @@ class OperatorWebNavItem {
   final IconData icon;
   final String group;
   final bool placeholder;
+
+  /// Number of attention-needed items associated with this nav surface.
+  /// When > 0, the tile renders a red dot + count chip on the right
+  /// edge so the operator sees something needs their attention without
+  /// having to open the screen. Today this is wired only for Vendor
+  /// integrations (count of connections in `status == error`); other
+  /// surfaces leave it at 0.
+  final int alertCount;
+
+  /// Tooltip shown on hover over the alert chip. Defaults to a generic
+  /// "needs attention" line when null and [alertCount] > 0.
+  final String? alertTooltip;
 }
 
 /// Management scope surfaced in the shell header. The hierarchy tab
@@ -736,6 +750,31 @@ class _NavItemTile extends StatelessWidget {
                     child: Text(
                       'Soon',
                       style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    ),
+                  )
+                else if (item.alertCount > 0)
+                  Tooltip(
+                    key: Key('operator_web_nav_alert_tooltip_${item.id}'),
+                    message: item.alertTooltip ??
+                        '${item.alertCount} ${item.alertCount == 1 ? "item needs" : "items need"} your attention',
+                    child: Container(
+                      key: Key('operator_web_nav_alert_chip_${item.id}'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.negative.withValues(alpha: 0.16),
+                        border: Border.all(
+                          color: AppColors.negative.withValues(alpha: 0.55),
+                        ),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        item.alertCount.toString(),
+                        style: AppTextStyles.mono8(color: AppColors.negative)
+                            .copyWith(fontWeight: FontWeight.w700),
+                      ),
                     ),
                   ),
               ],

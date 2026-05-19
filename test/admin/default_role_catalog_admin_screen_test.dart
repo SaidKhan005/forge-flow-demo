@@ -26,10 +26,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> seedOneVersion(
     InMemoryDefaultRoleCatalogAdminGateway gateway,
@@ -43,9 +43,9 @@ void main() {
           'permissions': <Object?>[],
         },
         <String, Object?>{
-          'role_key': 'operator_admin',
-          'display_name': 'Operator Admin',
-          'description': 'Admin role.',
+          'role_key': 'operator_general_manager',
+          'display_name': 'General Manager',
+          'description': 'General manager role.',
           'permissions': <Object?>[],
         },
       ],
@@ -81,10 +81,7 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_current_empty')),
       findsOneWidget,
     );
-    expect(
-      find.text('No default catalog published yet'),
-      findsOneWidget,
-    );
+    expect(find.text('No default catalog published yet'), findsOneWidget);
 
     // Empty draft.
     expect(
@@ -106,64 +103,66 @@ void main() {
   });
 
   testWidgets(
-      'after publish: current version panel, history row, draft matches current',
-      (tester) async {
-    tester.view.physicalSize = const Size(1280, 1000);
-    tester.view.devicePixelRatio = 1;
-    addTearDown(() {
-      tester.view.resetPhysicalSize();
-      tester.view.resetDevicePixelRatio();
-    });
+    'after publish: current version panel, history row, draft matches current',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
 
-    final gateway = InMemoryDefaultRoleCatalogAdminGateway(
-      now: () => DateTime.utc(2026, 5, 13, 12, 0),
-      versionIdGenerator: () => 'v1-id',
-    );
-    await seedOneVersion(gateway);
+      final gateway = InMemoryDefaultRoleCatalogAdminGateway(
+        now: () => DateTime.utc(2026, 5, 13, 12, 0),
+        versionIdGenerator: () => 'v1-id',
+      );
+      await seedOneVersion(gateway);
 
-    await tester.pumpWidget(
-      wrap(DefaultRoleCatalogAdminScreen(gateway: gateway)),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        wrap(DefaultRoleCatalogAdminScreen(gateway: gateway)),
+      );
+      await tester.pumpAndSettle();
 
-    // Current version panel renders.
-    expect(
-      find.byKey(const Key('admin_default_role_catalog_current_panel')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_default_role_catalog_current_version')),
-      findsOneWidget,
-    );
-    // History row exists.
-    expect(
-      find.byKey(const Key('admin_default_role_catalog_history_row_v1-id')),
-      findsOneWidget,
-    );
+      // Current version panel renders.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_current_panel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_current_version')),
+        findsOneWidget,
+      );
+      // History row exists.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_history_row_v1-id')),
+        findsOneWidget,
+      );
 
-    // Draft has 2 rows pre-loaded.
-    expect(
-      find.byKey(const Key('admin_default_role_catalog_draft_row_0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_default_role_catalog_draft_row_1')),
-      findsOneWidget,
-    );
+      // Draft has 2 rows pre-loaded.
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_draft_row_0')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_draft_row_1')),
+        findsOneWidget,
+      );
 
-    // Draft equals current → publish disabled + "Matches current" pill.
-    final publish = tester.widget<FilledButton>(
-      find.byKey(const Key('admin_default_role_catalog_publish_button')),
-    );
-    expect(publish.onPressed, isNull);
-    expect(
-      find.byKey(const Key('admin_default_role_catalog_draft_clean_pill')),
-      findsOneWidget,
-    );
-  });
+      // Draft equals current → publish disabled + "Matches current" pill.
+      final publish = tester.widget<FilledButton>(
+        find.byKey(const Key('admin_default_role_catalog_publish_button')),
+      );
+      expect(publish.onPressed, isNull);
+      expect(
+        find.byKey(const Key('admin_default_role_catalog_draft_clean_pill')),
+        findsOneWidget,
+      );
+    },
+  );
 
-  testWidgets('editor: add role enables publish; remove restores prior state',
-      (tester) async {
+  testWidgets('editor: add role enables publish; remove restores prior state', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1280, 1200);
     tester.view.devicePixelRatio = 1;
     addTearDown(() {
@@ -204,13 +203,13 @@ void main() {
     );
     await tester.ensureVisible(roleKeyField);
     await tester.pumpAndSettle();
-    await tester.enterText(roleKeyField, 'operator_manager');
+    await tester.enterText(roleKeyField, 'location_manager');
     final displayNameField = find.byKey(
       const Key('admin_default_role_catalog_draft_display_name_2'),
     );
     await tester.ensureVisible(displayNameField);
     await tester.pumpAndSettle();
-    await tester.enterText(displayNameField, 'Operator Manager');
+    await tester.enterText(displayNameField, 'Location Manager');
     await tester.pump();
 
     // Now publish is enabled.
@@ -260,9 +259,7 @@ void main() {
 
     // Initially the payload pane is collapsed.
     expect(
-      find.byKey(
-        const Key('admin_default_role_catalog_history_payload_v1-id'),
-      ),
+      find.byKey(const Key('admin_default_role_catalog_history_payload_v1-id')),
       findsNothing,
     );
 
@@ -276,9 +273,7 @@ void main() {
     await tester.tap(historyToggle);
     await tester.pumpAndSettle();
     expect(
-      find.byKey(
-        const Key('admin_default_role_catalog_history_payload_v1-id'),
-      ),
+      find.byKey(const Key('admin_default_role_catalog_history_payload_v1-id')),
       findsOneWidget,
     );
   });
@@ -297,10 +292,9 @@ void main() {
     await seedOneVersion(gateway);
 
     await tester.pumpWidget(
-      wrap(DefaultRoleCatalogAdminScreen(
-        gateway: gateway,
-        editingEnabled: false,
-      )),
+      wrap(
+        DefaultRoleCatalogAdminScreen(gateway: gateway, editingEnabled: false),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -361,13 +355,13 @@ void main() {
     );
     await tester.ensureVisible(roleKeyField);
     await tester.pumpAndSettle();
-    await tester.enterText(roleKeyField, 'operator_manager');
+    await tester.enterText(roleKeyField, 'location_manager');
     final displayNameField = find.byKey(
       const Key('admin_default_role_catalog_draft_display_name_2'),
     );
     await tester.ensureVisible(displayNameField);
     await tester.pumpAndSettle();
-    await tester.enterText(displayNameField, 'Operator Manager');
+    await tester.enterText(displayNameField, 'Location Manager');
     await tester.pump();
 
     // Tap Publish → dialog opens.
@@ -445,54 +439,47 @@ void main() {
     );
   });
 
-  testWidgets(
-    'Wave 2 S-3 (RP-14): each draft row renders the product/category '
-    'permission picker',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 4000);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+  testWidgets('Wave 2 S-3 (RP-14): each draft row renders the product/category '
+      'permission picker', (tester) async {
+    tester.view.physicalSize = const Size(1280, 4000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
-      final gateway = InMemoryDefaultRoleCatalogAdminGateway(
-        now: () => DateTime.utc(2026, 5, 13, 12, 0),
-        versionIdGenerator: () => 'v1-id',
-      );
-      await seedOneVersion(gateway);
+    final gateway = InMemoryDefaultRoleCatalogAdminGateway(
+      now: () => DateTime.utc(2026, 5, 13, 12, 0),
+      versionIdGenerator: () => 'v1-id',
+    );
+    await seedOneVersion(gateway);
 
-      await tester.pumpWidget(
-        wrap(DefaultRoleCatalogAdminScreen(gateway: gateway)),
-      );
-      await tester.pumpAndSettle();
+    await tester.pumpWidget(
+      wrap(DefaultRoleCatalogAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
 
-      // Picker mounts inside the first draft row.
-      expect(
-        find.byKey(
-          const Key('admin_default_role_catalog_draft_permissions_0'),
+    // Picker mounts inside the first draft row.
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_draft_permissions_0')),
+      findsOneWidget,
+    );
+    // Picker exposes the Forge & Flow product section keyed with
+    // the per-row prefix.
+    expect(
+      find.byKey(
+        const Key(
+          'admin_default_role_catalog_draft_picker_0_product_forgeflow',
         ),
-        findsOneWidget,
-      );
-      // Picker exposes the Forge & Flow product section keyed with
-      // the per-row prefix.
-      expect(
-        find.byKey(
-          const Key(
-            'admin_default_role_catalog_draft_picker_0_product_forgeflow',
-          ),
-        ),
-        findsOneWidget,
-      );
-      // Search box rendered per row.
-      expect(
-        find.byKey(
-          const Key('admin_default_role_catalog_draft_picker_0_search'),
-        ),
-        findsOneWidget,
-      );
-    },
-  );
+      ),
+      findsOneWidget,
+    );
+    // Search box rendered per row.
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_draft_picker_0_search')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'Wave 2 S-3 (RP-14): admin picker is business-scoped (no scope notice)',
@@ -519,9 +506,7 @@ void main() {
       // notice does not render in the admin surface.
       expect(
         find.byKey(
-          const Key(
-            'admin_default_role_catalog_draft_picker_0_scope_notice',
-          ),
+          const Key('admin_default_role_catalog_draft_picker_0_scope_notice'),
         ),
         findsNothing,
       );
@@ -552,7 +537,9 @@ void main() {
 
     test('defaultRoleCatalogScreenCanEdit grants super_admin', () {
       expect(
-        defaultRoleCatalogScreenCanEdit(actorRoles: const <String>['super_admin']),
+        defaultRoleCatalogScreenCanEdit(
+          actorRoles: const <String>['super_admin'],
+        ),
         isTrue,
       );
     });
@@ -560,7 +547,9 @@ void main() {
     test('defaultRoleCatalogScreenCanEdit denies ff_support', () {
       // ff_support holds the view key (read-only branch) but not edit.
       expect(
-        defaultRoleCatalogScreenCanEdit(actorRoles: const <String>['ff_support']),
+        defaultRoleCatalogScreenCanEdit(
+          actorRoles: const <String>['ff_support'],
+        ),
         isFalse,
       );
     });
@@ -585,70 +574,64 @@ void main() {
       );
     });
 
-    test(
-      'defaultRoleCatalogScreenCanEdit honours role-tier check when the '
-      'resolver hint disagrees (defense-in-depth)',
-      () {
-        // The role-tier check is authoritative until the admin console
-        // threads a PermissionResolver. A future resolver verdict that
-        // disagrees with the role-tier check MUST NOT silently widen
-        // the gate.
-        expect(
-          defaultRoleCatalogScreenCanEdit(
-            actorRoles: const <String>['operator_owner'],
-            actorHasEditKeyHint: true,
-          ),
-          isFalse,
-        );
-        expect(
-          defaultRoleCatalogScreenCanEdit(
-            actorRoles: const <String>['super_admin'],
-            actorHasEditKeyHint: false,
-          ),
-          isTrue,
-        );
-      },
-    );
+    test('defaultRoleCatalogScreenCanEdit honours role-tier check when the '
+        'resolver hint disagrees (defense-in-depth)', () {
+      // The role-tier check is authoritative until the admin console
+      // threads a PermissionResolver. A future resolver verdict that
+      // disagrees with the role-tier check MUST NOT silently widen
+      // the gate.
+      expect(
+        defaultRoleCatalogScreenCanEdit(
+          actorRoles: const <String>['operator_owner'],
+          actorHasEditKeyHint: true,
+        ),
+        isFalse,
+      );
+      expect(
+        defaultRoleCatalogScreenCanEdit(
+          actorRoles: const <String>['super_admin'],
+          actorHasEditKeyHint: false,
+        ),
+        isTrue,
+      );
+    });
   });
 
-  testWidgets(
-    'Wave 2 RP-9: edit affordances render when editingEnabled=true '
-    '(super_admin tier)',
-    (tester) async {
-      tester.view.physicalSize = const Size(1280, 1200);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(() {
-        tester.view.resetPhysicalSize();
-        tester.view.resetDevicePixelRatio();
-      });
+  testWidgets('Wave 2 RP-9: edit affordances render when editingEnabled=true '
+      '(super_admin tier)', (tester) async {
+    tester.view.physicalSize = const Size(1280, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
 
-      final gateway = InMemoryDefaultRoleCatalogAdminGateway();
-      await seedOneVersion(gateway);
+    final gateway = InMemoryDefaultRoleCatalogAdminGateway();
+    await seedOneVersion(gateway);
 
-      await tester.pumpWidget(
-        wrap(
-          DefaultRoleCatalogAdminScreen(
-            gateway: gateway,
-            // Mirrors the admin route's resolved verdict when an actor
-            // carries the `team.roles.default_catalog.edit` permission
-            // key (super_admin role tier).
-            editingEnabled: true,
-          ),
+    await tester.pumpWidget(
+      wrap(
+        DefaultRoleCatalogAdminScreen(
+          gateway: gateway,
+          // Mirrors the admin route's resolved verdict when an actor
+          // carries the `team.roles.default_catalog.edit` permission
+          // key (super_admin role tier).
+          editingEnabled: true,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      // Read-only banner absent; add-role affordance present.
-      expect(
-        find.byKey(const Key('admin_default_role_catalog_readonly_banner')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('admin_default_role_catalog_add_role')),
-        findsOneWidget,
-      );
-    },
-  );
+    // Read-only banner absent; add-role affordance present.
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_readonly_banner')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_add_role')),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'Wave 2 RP-9: ff_support read branch lands when editingEnabled=false',
@@ -710,10 +693,7 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_load_error')),
       findsOneWidget,
     );
-    expect(
-      find.textContaining('upstream_failure'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('upstream_failure'), findsOneWidget);
   });
 }
 

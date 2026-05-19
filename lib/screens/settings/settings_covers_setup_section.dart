@@ -6,34 +6,32 @@
 // underneath the form so the round trip is visible without leaving
 // the screen.
 //
-// Vendor-fallback framing (per debug.md:287-289 + integration spine
-// contract):
-//   * When the active POS does NOT expose a covers field (Square,
-//     Clover) — manual entry is the **primary path**. The header
-//     copy and explainer surface that. F&F cannot recover covers any
-//     other way for these POS vendors.
-//   * When the active POS DOES expose a covers field (Toast, Aloha,
-//     Lightspeed K-Series, Oracle MICROS Simphony, Revel) — the form
-//     is still available but framed as a **manual override**, so the
-//     operator can correct a per-day count without re-syncing.
+// Covers-source framing:
+//   Manual entries are stored for the selected business date and
+//   service period. They become operative when Covers source is set to
+//   Manual, or when the POS connection does not send cover counts.
 //
 // Hierarchy-scope surfacing (HP #11): the section header shows the
 // active restaurant scope so the operator knows which location their
 // entry is landing against.
 //
-// Demo-mode invariant (HP #2): the writer here is the same DAO call
-// whether the restaurant is in demo or live mode. No `kDemoMode`
-// reader branch. The new `manual_cover_entries` table is the same
-// in both worlds.
+// Demo-mode invariant (HP #2): the section accepts an injected writer. Signed-
+// in live Settings wires the canonical proxy writer and then mirrors locally;
+// demo/unauth tests can keep the SQLite-only fallback without a `kDemoMode`
+// reader branch.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
+import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
+import '../../infrastructure/persistence/sqlite/dao/data_accuracy_service_period_settings_cache_dao.dart';
 import '../../infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
-import '../../services/integration/pos_covers_capability.dart';
+import '../../services/business_date_authority_service.dart';
+import '../../services/integration/iana_timezone_converter.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
@@ -48,6 +46,15 @@ import 'settings_shared_widgets.dart';
 typedef ServicePeriodDefinitionsLoader =
     Future<List<ServicePeriodDefinition>> Function(String restaurantId);
 
+typedef TimingConfigLoader =
+    Future<RestaurantTimingConfig?> Function(String restaurantId);
+
+/// Loads the most recent synced per-service-period data accuracy rows.
+typedef ServicePeriodCoversSourceLoader =
+    Future<List<DataAccuracyServicePeriodSetting>> Function(
+      String restaurantId,
+    );
+
 /// Loader abstraction. Production reads from SQLite; widget tests
 /// inject a fake to skip database setup.
 typedef ManualCoverEntryLoader =
@@ -55,6 +62,17 @@ typedef ManualCoverEntryLoader =
 
 /// Writer abstraction with the same separation of concerns.
 typedef ManualCoverEntryWriter = Future<void> Function(ManualCoverEntry entry);
+
+typedef ManualCoverEntryClearer = Future<void> Function(ManualCoverEntry entry);
+
+typedef ManualCoverEntryFinder =
+    Future<ManualCoverEntry?> Function({
+      required String restaurantId,
+      required String businessDate,
+      required String daypart,
+    });
+
+typedef CoversSetupClock = DateTime Function();
 
 class SettingsCoversSetupSection extends StatefulWidget {
   const SettingsCoversSetupSection({
@@ -64,9 +82,14 @@ class SettingsCoversSetupSection extends StatefulWidget {
     this.posVendorId,
     this.loader,
     this.writer,
+    this.clearer,
+    this.finder,
     this.servicePeriodsLoader,
+    this.timingConfigLoader,
+    this.coversSourceLoader,
     this.initialBusinessDate,
     this.initialDaypart = 'dinner',
+    this.clock,
     this.onAfterSave,
   });
 
@@ -79,9 +102,9 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// the section header per HP #11 (hierarchy-scoped settings).
   final String? scopeLabel;
 
-  /// Active POS vendor id (`'square'`, `'toast'`, …) used to decide
-  /// whether the form is framed as the primary path (POS missing
-  /// covers) or as a manual override.
+  /// Active POS vendor id retained for Settings host compatibility.
+  /// This section does not change copy by vendor because the host does
+  /// not reliably know the active POS connection today.
   final String? posVendorId;
 
   /// Loader hook. Production passes a SQLite-backed closure; tests
@@ -92,17 +115,37 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// pass a fake.
   final ManualCoverEntryWriter? writer;
 
-  /// Service-period loader hook. Production resolves the operator's
-  /// persisted timing config; tests pass a fake. Falls back to the
-  /// canonical fixture-era definitions only when no config exists.
+  /// Clear hook. Signed-in production passes the canonical proxy clear
+  /// route; tests and unauth/demo fallback use the local mirror only.
+  final ManualCoverEntryClearer? clearer;
+
+  /// Current-slot lookup used to decide whether a blank covers field is a
+  /// harmless no-op or an explicit clear of a saved manual cover.
+  final ManualCoverEntryFinder? finder;
+
+  /// Service-period loader hook. Tests can pass a fake; production
+  /// resolves periods from [timingConfigLoader] so labels/order and the
+  /// initial business date share the same Timing config.
   final ServicePeriodDefinitionsLoader? servicePeriodsLoader;
 
-  /// Optional initial date for the picker. When null, falls back to
-  /// today (restaurant-local approximation = device-local date).
+  /// Timing config loader hook. Production reads the active local
+  /// Timing cache; tests pass a fake config to avoid SQLite setup.
+  final TimingConfigLoader? timingConfigLoader;
+
+  /// Optional loader for the synced keyed Covers-source settings. The
+  /// default reads the local proxy-sync cache.
+  final ServicePeriodCoversSourceLoader? coversSourceLoader;
+
+  /// Optional initial date for the picker. When null, the section uses
+  /// the restaurant-local business date from Timing config when
+  /// available, with a device-local fallback.
   final DateTime? initialBusinessDate;
 
   /// Optional initial daypart selection. Default is dinner.
   final String initialDaypart;
+
+  /// Clock hook for deterministic business-date tests.
+  final CoversSetupClock? clock;
 
   /// Fires after a successful save so the host can refresh other
   /// surfaces (Variance / Plan / Benchmark) that read the same SQLite
@@ -123,26 +166,33 @@ class _SettingsCoversSetupSectionState
   String? _confirmation;
   bool _saving = false;
   bool _loadingRecent = true;
+  bool _operatorPickedDate = false;
   List<ManualCoverEntry> _recentEntries = const <ManualCoverEntry>[];
   List<ServicePeriodDefinition> _servicePeriods =
       const <ServicePeriodDefinition>[];
+  List<DataAccuracyServicePeriodSetting> _servicePeriodSettings =
+      const <DataAccuracyServicePeriodSetting>[];
 
   @override
   void initState() {
     super.initState();
     _coversController = TextEditingController();
-    _selectedDate = widget.initialBusinessDate ?? _todayLocal();
+    _selectedDate = widget.initialBusinessDate ?? _deviceLocalDate();
     _selectedDaypart = widget.initialDaypart;
     _loadRecent();
     _loadServicePeriods();
+    _loadCoversSourceSettings();
   }
 
   @override
   void didUpdateWidget(covariant SettingsCoversSetupSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.restaurantId != widget.restaurantId) {
+      _operatorPickedDate = false;
+      _selectedDate = widget.initialBusinessDate ?? _deviceLocalDate();
       _loadRecent();
       _loadServicePeriods();
+      _loadCoversSourceSettings();
     }
   }
 
@@ -154,12 +204,23 @@ class _SettingsCoversSetupSectionState
   }
 
   Future<void> _loadServicePeriods() async {
-    final loader = widget.servicePeriodsLoader ?? _defaultServicePeriodsLoader;
+    final periodsLoader = widget.servicePeriodsLoader;
+    final timingLoader =
+        widget.timingConfigLoader ?? _defaultTimingConfigLoader;
     try {
-      final periods = await loader(widget.restaurantId);
+      final timingConfig = await timingLoader(widget.restaurantId);
+      final periods = periodsLoader == null
+          ? _definitionsFromConfig(timingConfig)
+          : await periodsLoader(widget.restaurantId);
+      final restaurantBusinessDate = _restaurantBusinessDate(timingConfig);
       if (!mounted) return;
       setState(() {
         _servicePeriods = periods;
+        if (widget.initialBusinessDate == null &&
+            !_operatorPickedDate &&
+            restaurantBusinessDate != null) {
+          _selectedDate = restaurantBusinessDate;
+        }
         // Keep the selection valid if the operator's configured set
         // does not include the previous (or default) selection.
         if (periods.isNotEmpty &&
@@ -171,6 +232,9 @@ class _SettingsCoversSetupSectionState
       if (!mounted) return;
       setState(() {
         _servicePeriods = ServicePeriodDefinitionResolver.demoDefinitions;
+        if (widget.initialBusinessDate == null && !_operatorPickedDate) {
+          _selectedDate = _deviceLocalDate();
+        }
         if (!_servicePeriods.any((p) => p.id == _selectedDaypart)) {
           _selectedDaypart = _servicePeriods.first.id;
         }
@@ -178,16 +242,43 @@ class _SettingsCoversSetupSectionState
     }
   }
 
-  static Future<List<ServicePeriodDefinition>> _defaultServicePeriodsLoader(
+  Future<void> _loadCoversSourceSettings() async {
+    final loader = widget.coversSourceLoader ?? _defaultCoversSourceLoader;
+    try {
+      final rows = await loader(widget.restaurantId);
+      if (!mounted) return;
+      setState(() => _servicePeriodSettings = rows);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _servicePeriodSettings = const <DataAccuracyServicePeriodSetting>[];
+      });
+    }
+  }
+
+  static Future<List<DataAccuracyServicePeriodSetting>>
+  _defaultCoversSourceLoader(String restaurantId) async {
+    final db = await SqliteDatabase.instance.database;
+    final dao = DataAccuracyServicePeriodSettingsCacheDao(db);
+    return dao.getRows(restaurantId);
+  }
+
+  static Future<RestaurantTimingConfig?> _defaultTimingConfigLoader(
     String restaurantId,
-  ) async {
+  ) {
+    return RestaurantTimingConfigReadService.instance.getTimingConfig(
+      restaurantId,
+    );
+  }
+
+  static List<ServicePeriodDefinition> _definitionsFromConfig(
+    RestaurantTimingConfig? config,
+  ) {
     // Canonical pattern (benchmark_tracker_read_service.dart): period
     // set + labels + ordering come from the operator's persisted timing
     // config, never a hardcoded daypart list. Falls back to the
     // canonical fixture-era definitions only when no config is
     // persisted yet.
-    final config = await RestaurantTimingConfigReadService.instance
-        .getTimingConfig(restaurantId);
     final defs = (config?.servicePeriodDefinitions.isNotEmpty ?? false)
         ? config!.servicePeriodDefinitions
         : ServicePeriodDefinitionResolver.demoDefinitions;
@@ -200,9 +291,38 @@ class _SettingsCoversSetupSectionState
     super.dispose();
   }
 
-  DateTime _todayLocal() {
-    final now = DateTime.now();
+  DateTime _deviceLocalDate() {
+    final now = _now().toLocal();
     return DateTime(now.year, now.month, now.day);
+  }
+
+  DateTime _now() => widget.clock?.call() ?? DateTime.now().toUtc();
+
+  DateTime? _restaurantBusinessDate(RestaurantTimingConfig? config) {
+    if (config == null) return null;
+    try {
+      final localNow = IanaTimezoneConverter.shared.toBusinessLocal(
+        restaurantTimezone: config.businessTimezone,
+        instant: _now().toUtc(),
+      );
+      final iso = BusinessDateAuthorityService.resolveBusinessDateFromConfig(
+        localTimestamp: localNow,
+        config: config,
+      );
+      return _dateFromIso(iso);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime? _dateFromIso(String isoDate) {
+    final parts = isoDate.split('-');
+    if (parts.length != 3) return null;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final day = int.tryParse(parts[2]);
+    if (year == null || month == null || day == null) return null;
+    return DateTime(year, month, day);
   }
 
   String _isoDate(DateTime date) {
@@ -245,8 +365,70 @@ class _SettingsCoversSetupSectionState
     await dao.upsert(entry);
   }
 
+  static Future<void> _defaultClearer(ManualCoverEntry entry) async {
+    final db = await SqliteDatabase.instance.database;
+    await db.delete(
+      'manual_cover_entries',
+      where: 'restaurant_id = ? AND business_date = ? AND daypart = ?',
+      whereArgs: [entry.restaurantId, entry.businessDate, entry.daypart],
+    );
+  }
+
+  static Future<ManualCoverEntry?> _defaultFinder({
+    required String restaurantId,
+    required String businessDate,
+    required String daypart,
+  }) async {
+    final db = await SqliteDatabase.instance.database;
+    final dao = ManualCoverEntryDao(db);
+    return dao.findEntry(
+      restaurantId: restaurantId,
+      businessDate: businessDate,
+      daypart: daypart,
+    );
+  }
+
+  _CoversSourceStatus _coversSourceStatusFor(String servicePeriodId) {
+    final selectedDate = _isoDate(_selectedDate);
+    DataAccuracyServicePeriodSetting? best;
+    for (final row in _servicePeriodSettings) {
+      if (row.servicePeriodKey != servicePeriodId) continue;
+      if (row.effectiveAtBusinessDate.compareTo(selectedDate) > 0) continue;
+      if (best == null ||
+          row.effectiveAtBusinessDate.compareTo(best.effectiveAtBusinessDate) >
+              0) {
+        best = row;
+      }
+    }
+    if (best == null) {
+      return const _CoversSourceStatus(
+        label: 'Vendor feed',
+        sourceLabel: null,
+        effectiveAtBusinessDate: null,
+      );
+    }
+    return _CoversSourceStatus(
+      label: _coversSourceLabel(best.coversSource),
+      sourceLabel: best.coversSourceSource?.label,
+      effectiveAtBusinessDate: best.effectiveAtBusinessDate,
+    );
+  }
+
+  static String _coversSourceLabel(ServicePeriodCoversSource source) {
+    switch (source) {
+      case ServicePeriodCoversSource.vendor:
+        return 'Vendor feed';
+      case ServicePeriodCoversSource.forecast:
+        return 'Forecast';
+      case ServicePeriodCoversSource.manual:
+        return 'Manual entry';
+      case ServicePeriodCoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
+    }
+  }
+
   Future<void> _onPickDate() async {
-    final now = DateTime.now();
+    final now = _now().toLocal();
     final firstDate = DateTime(now.year - 1, now.month, now.day);
     final lastDate = DateTime(now.year + 1, now.month, now.day);
     final picked = await showDatePicker(
@@ -258,6 +440,7 @@ class _SettingsCoversSetupSectionState
     );
     if (picked == null) return;
     setState(() {
+      _operatorPickedDate = true;
       _selectedDate = DateTime(picked.year, picked.month, picked.day);
       _confirmation = null;
     });
@@ -266,10 +449,7 @@ class _SettingsCoversSetupSectionState
   Future<void> _onSave() async {
     final raw = _coversController.text.trim();
     if (raw.isEmpty) {
-      setState(() {
-        _error = 'Type how many guests you served.';
-        _confirmation = null;
-      });
+      await _clearSavedManualCoverIfPresent();
       return;
     }
     final parsed = int.tryParse(raw);
@@ -290,7 +470,7 @@ class _SettingsCoversSetupSectionState
       businessDate: _isoDate(_selectedDate),
       daypart: _selectedDaypart,
       covers: parsed,
-      recordedAt: DateTime.now().toUtc().toIso8601String(),
+      recordedAt: _now().toUtc().toIso8601String(),
     );
     try {
       await writer(entry);
@@ -312,11 +492,46 @@ class _SettingsCoversSetupSectionState
     }
   }
 
+  Future<void> _clearSavedManualCoverIfPresent() async {
+    final businessDate = _isoDate(_selectedDate);
+    final finder = widget.finder ?? _defaultFinder;
+    setState(() {
+      _error = null;
+      _saving = true;
+      _confirmation = null;
+    });
+    try {
+      final existing = await finder(
+        restaurantId: widget.restaurantId,
+        businessDate: businessDate,
+        daypart: _selectedDaypart,
+      );
+      if (existing == null) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        return;
+      }
+      final clearer = widget.clearer ?? _defaultClearer;
+      await clearer(existing);
+      if (!mounted) return;
+      setState(() {
+        _confirmation =
+            'Cleared manual covers for ${_periodLabel(existing.daypart)} on ${existing.businessDate}.';
+        _saving = false;
+      });
+      await _loadRecent();
+      widget.onAfterSave?.call();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = "Could not clear: $error";
+        _saving = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final exposes = posVendorExposesCovers(widget.posVendorId);
-    final primaryPath = exposes == false || exposes == null;
-
     // Styled to match the Business timing card on the same Setup tab:
     // plain SettingsCard (no left accent stripe), 14px inset on all
     // sides, and the section host (`_settingsSection`) supplies the
@@ -329,11 +544,7 @@ class _SettingsCoversSetupSectionState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Header(
-                scopeLabel: widget.scopeLabel,
-                primaryPath: primaryPath,
-                posVendorId: widget.posVendorId,
-              ),
+              _Header(scopeLabel: widget.scopeLabel),
               const SizedBox(height: 12),
               _FormRow(
                 label: 'Business date',
@@ -355,6 +566,12 @@ class _SettingsCoversSetupSectionState
                       _confirmation = null;
                     });
                   },
+                ),
+              ),
+              _FormRow(
+                label: 'Covers source',
+                child: _CoversSourcePill(
+                  status: _coversSourceStatusFor(_selectedDaypart),
                 ),
               ),
               _FormRow(
@@ -458,29 +675,27 @@ class _SettingsCoversSetupSectionState
 }
 
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.scopeLabel,
-    required this.primaryPath,
-    required this.posVendorId,
-  });
+  const _Header({required this.scopeLabel});
 
   final String? scopeLabel;
-  final bool primaryPath;
-  final String? posVendorId;
 
   @override
   Widget build(BuildContext context) {
-    final title = primaryPath ? "Type today's covers" : 'Manual cover override';
-    final accent = primaryPath ? AppColors.sunset : AppColors.positive;
-    final explainer = primaryPath
-        ? _explainerWhenPrimary(posVendorId)
-        : _explainerWhenOverride(posVendorId);
+    const title = 'Record cover counts';
+    const explainer =
+        'Save manual covers for this business date and service '
+        'period. F&F uses them when Covers source is set to Manual, or when '
+        'your POS does not send cover counts.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.edit_note_outlined, size: 18, color: accent),
+            const Icon(
+              Icons.edit_note_outlined,
+              size: 18,
+              color: AppColors.sunset,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -509,46 +724,61 @@ class _Header extends StatelessWidget {
       ],
     );
   }
+}
 
-  static String _explainerWhenPrimary(String? posVendorId) {
-    if (posVendorId == null) {
-      return "Your point-of-sale isn't connected yet, so F&F has no "
-          'covers to read. Type the count here and F&F will use it for '
-          "today's targets and benchmarks.";
-    }
-    return "Your point-of-sale (${_humanizeVendor(posVendorId)}) doesn't "
-        'send a cover count to F&F. Type the number of guests you '
-        "served and it lands here. F&F will use it where covers feed "
-        'today\'s targets.';
-  }
+class _CoversSourceStatus {
+  const _CoversSourceStatus({
+    required this.label,
+    required this.effectiveAtBusinessDate,
+    this.sourceLabel,
+  });
 
-  static String _explainerWhenOverride(String? posVendorId) {
-    final vendor = posVendorId == null
-        ? 'your point-of-sale'
-        : _humanizeVendor(posVendorId);
-    return "$vendor already sends covers to F&F. Use this form only "
-        'when you need to override a count for a specific shift.';
-  }
+  final String label;
+  final String? sourceLabel;
+  final String? effectiveAtBusinessDate;
+}
 
-  static String _humanizeVendor(String posVendorId) {
-    switch (posVendorId) {
-      case 'aloha':
-        return 'Aloha';
-      case 'clover':
-        return 'Clover';
-      case 'lightspeed_lsk':
-        return 'Lightspeed K-Series';
-      case 'oracle_micros_simphony':
-        return 'Oracle MICROS Simphony';
-      case 'revel':
-        return 'Revel';
-      case 'square':
-        return 'Square';
-      case 'toast':
-        return 'Toast';
-      default:
-        return posVendorId;
-    }
+class _CoversSourcePill extends StatelessWidget {
+  const _CoversSourcePill({required this.status});
+
+  final _CoversSourceStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final effective = status.effectiveAtBusinessDate;
+    final sourceLabel = status.sourceLabel;
+    final detail = sourceLabel == null
+        ? null
+        : effective == null
+        ? sourceLabel
+        : '$sourceLabel since $effective';
+    return Container(
+      key: const Key('settings_covers_setup_effective_source'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            status.label,
+            key: const Key('settings_covers_setup_effective_source_label'),
+            style: AppTextStyles.body14(color: AppColors.textPrimary),
+          ),
+          if (detail != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              detail,
+              key: const Key('settings_covers_setup_effective_source_detail'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 

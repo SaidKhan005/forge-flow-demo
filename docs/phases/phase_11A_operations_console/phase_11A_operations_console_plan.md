@@ -91,7 +91,7 @@ CONCURRENTLY-rekeys five Phase 8 / Phase 9.8 fact-table indexes to lead with
 `operator_id` (preserves UNIQUE constraints + partial WHERE clauses), and
 `202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the
 `team.audit_log.export` permission key plus default grants for
-`operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+`operator_owner` so the 11W.5 audit-log export gate has
 catalog parity. Apply both on staging before claiming index hygiene parity or
 live audit-log export readiness, then carry into the next Production1 apply.
 The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds
@@ -152,11 +152,13 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
-(Per-Daypart V1 R7d FINAL covers-source step: atomic view re-create
-minus the 3 legacy scalar outputs, then drop the legacy covers
-columns on data_accuracy_settings + data_accuracy_scoped_overrides;
-no cascade, idempotent, zero remaining readers proven), including the
+`202605191900_canonical_fact_projection_retry_evidence.sql`
+(projection retry evidence hardening: explicit pre-input/post-input stage
+metadata plus immutable original location/connection ids so hard-delete
+cleanup does not erase terminal retry evidence), including the prior Data
+Accuracy covers-truth migration, canonical fact projection retry ledger,
+R7f precedence/source-parity view, R7e
+provenance view, and R7d hard drop plus the
 later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
 lifecycle, scoped Data Accuracy/Polling, lifecycle access hardening,

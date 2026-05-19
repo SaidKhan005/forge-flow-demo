@@ -11,8 +11,8 @@
 //
 // Auth:
 //   * Bearer token resolves to OperatorContext (operatorId required).
-//   * Caller must hold an operator-write role (operator_owner /
-//     operator_admin); the dispatcher in advisor_proxy.dart checks
+//   * Caller must hold an operator-write role (`operator_owner`);
+//     the dispatcher in advisor_proxy.dart checks
 //     `kOperatorWriteRoles` before delegating here.
 //   * RLS on the table is the backup defense; the repository pattern
 //     SET LOCALs the operator + location every transaction.
@@ -53,6 +53,13 @@ const String wageRoleRowsPrefix = '$wageRoleRowsPath/';
 
 /// Labor-bucket values admitted by the migration's CHECK constraint.
 const Set<String> _kAdmittedLaborBuckets = <String>{'foh', 'boh', 'manager'};
+
+/// Hierarchy scope values admitted by the migration's CHECK constraint.
+const Set<String> _kAdmittedScopeTypes = <String>{
+  'operator_wide',
+  'org_unit',
+  'location',
+};
 
 /// Source values admitted by the migration's CHECK constraint.
 const Set<String> _kAdmittedSources = <String>{
@@ -103,6 +110,8 @@ abstract class WageRoleRowsGateway {
     bool isActive,
     Map<String, Object?> metadata,
     String? actorUserId,
+    String scopeType = 'location',
+    String? orgUnitId,
   });
 
   Future<bool> softDelete({
@@ -135,23 +144,26 @@ class RepositoryWageRoleRowsGateway implements WageRoleRowsGateway {
     bool isActive = true,
     Map<String, Object?> metadata = const <String, Object?>{},
     String? actorUserId,
-  }) =>
-      repository.upsert(
-        operatorId: operatorId,
-        locationId: locationId,
-        restaurantId: restaurantId,
-        roleName: roleName,
-        laborBucket: laborBucket,
-        hourlyRate: hourlyRate,
-        weightedHours: weightedHours,
-        jobCode: jobCode,
-        vendorId: vendorId,
-        vendorRoleId: vendorRoleId,
-        source: source,
-        isActive: isActive,
-        metadata: metadata,
-        actorUserId: actorUserId,
-      );
+    String scopeType = 'location',
+    String? orgUnitId,
+  }) => repository.upsert(
+    operatorId: operatorId,
+    locationId: locationId,
+    restaurantId: restaurantId,
+    roleName: roleName,
+    laborBucket: laborBucket,
+    hourlyRate: hourlyRate,
+    weightedHours: weightedHours,
+    jobCode: jobCode,
+    vendorId: vendorId,
+    vendorRoleId: vendorRoleId,
+    source: source,
+    isActive: isActive,
+    metadata: metadata,
+    actorUserId: actorUserId,
+    scopeType: scopeType,
+    orgUnitId: orgUnitId,
+  );
 
   @override
   Future<bool> softDelete({
@@ -159,13 +171,12 @@ class RepositoryWageRoleRowsGateway implements WageRoleRowsGateway {
     required String locationId,
     required String wageRoleRowId,
     String? actorUserId,
-  }) =>
-      repository.softDelete(
-        operatorId: operatorId,
-        locationId: locationId,
-        wageRoleRowId: wageRoleRowId,
-        actorUserId: actorUserId,
-      );
+  }) => repository.softDelete(
+    operatorId: operatorId,
+    locationId: locationId,
+    wageRoleRowId: wageRoleRowId,
+    actorUserId: actorUserId,
+  );
 }
 
 /// In-memory replay cache for POST / DELETE routes. Mirrors
@@ -192,7 +203,7 @@ class WageRoleRowsIdempotencyCache {
     required String idempotencyKey,
     required String requestBodyHash,
     required Future<({int statusCode, Map<String, Object?> body})> Function()
-        compute,
+    compute,
   }) async {
     _gc();
     final key = '$operatorId|$locationId|$route|$idempotencyKey';
@@ -294,6 +305,8 @@ abstract class WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   });
 
@@ -327,6 +340,8 @@ class NoopWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   }) async {}
 
@@ -349,9 +364,9 @@ class WageRoleRowsRouter {
     WageRoleRowsIdempotencyCache? idempotencyCache,
     WageRoleRowsAuditSink? auditSink,
     DateTime Function()? now,
-  })  : _idempotencyCache = idempotencyCache ?? WageRoleRowsIdempotencyCache(),
-        _auditSink = auditSink ?? const NoopWageRoleRowsAuditSink(),
-        _now = now ?? DateTime.now;
+  }) : _idempotencyCache = idempotencyCache ?? WageRoleRowsIdempotencyCache(),
+       _auditSink = auditSink ?? const NoopWageRoleRowsAuditSink(),
+       _now = now ?? DateTime.now;
 
   final WageRoleRowsGateway gateway;
   final WageRoleRowsIdempotencyCache _idempotencyCache;
@@ -458,7 +473,7 @@ class WageRoleRowsRouter {
     required String idempotencyKey,
     required Map<String, Object?> body,
     required Future<({int statusCode, Map<String, Object?> body})> Function()
-        compute,
+    compute,
   }) {
     final bodyHash = hashWageRoleRowsRequest(body);
     return _idempotencyCache.runOrReplay(
@@ -501,8 +516,11 @@ class WageRoleRowsRouter {
 
     final jobCode = _optionalString(body, 'job_code', maxLength: 128);
     final vendorId = _optionalString(body, 'vendor_id', maxLength: 64);
-    final vendorRoleId =
-        _optionalString(body, 'vendor_role_id', maxLength: 128);
+    final vendorRoleId = _optionalString(
+      body,
+      'vendor_role_id',
+      maxLength: 128,
+    );
 
     final sourceWire = body['source'];
     WageRoleRowSource source = WageRoleRowSource.operatorManual;
@@ -530,6 +548,40 @@ class WageRoleRowsRouter {
       metadata = Map<String, Object?>.from(metadataRaw);
     }
 
+    final scopeType =
+        _optionalString(body, 'scope_type', maxLength: 32) ?? 'location';
+    if (!_kAdmittedScopeTypes.contains(scopeType)) {
+      throw WageRoleRowsRouteRejected(
+        code: 'invalid_scope_type',
+        message:
+            'scope_type must be one of '
+            '${_kAdmittedScopeTypes.join(' / ')}',
+        statusCode: 400,
+      );
+    }
+    final orgUnitId = _optionalString(body, 'org_unit_id', maxLength: 36);
+    if (orgUnitId != null && !_kUuidPattern.hasMatch(orgUnitId)) {
+      throw const WageRoleRowsRouteRejected(
+        code: 'invalid_org_unit_id',
+        message: 'org_unit_id must be a UUID',
+        statusCode: 400,
+      );
+    }
+    if (scopeType == 'org_unit' && orgUnitId == null) {
+      throw const WageRoleRowsRouteRejected(
+        code: 'missing_org_unit_id',
+        message: 'org_unit_id is required when scope_type is org_unit',
+        statusCode: 400,
+      );
+    }
+    if (scopeType != 'org_unit' && orgUnitId != null) {
+      throw const WageRoleRowsRouteRejected(
+        code: 'invalid_org_unit_id',
+        message: 'org_unit_id is only used when scope_type is org_unit',
+        statusCode: 400,
+      );
+    }
+
     final record = await gateway.upsert(
       operatorId: operatorId,
       locationId: locationId,
@@ -544,6 +596,8 @@ class WageRoleRowsRouter {
       source: source,
       metadata: metadata,
       actorUserId: actorUserId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
     );
     // Hash-chained audit log (Hard Contract 7). The sink swallows
     // failures so a downstream observability outage cannot 5xx a
@@ -560,6 +614,8 @@ class WageRoleRowsRouter {
       hourlyRate: record.hourlyRate,
       weightedHours: record.weightedHours,
       source: record.source.wire,
+      scopeType: record.scopeType,
+      orgUnitId: record.orgUnitId,
       occurredAt: _now().toUtc(),
     );
     return (statusCode: 200, body: record.toJson());

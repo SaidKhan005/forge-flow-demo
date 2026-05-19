@@ -55,7 +55,7 @@ typedef RolesHierarchySessionsBearerTokenProvider = Future<String> Function();
 
 /// One role row visible in the Roles tab. `isSeeded == true` rows are
 /// `super_admin` / `ff_support` / `operator_owner` /
-/// `operator_manager` / `operator_supervisor` / `operator_staff` per
+/// `operator_general_manager` / `location_manager` / `supervisor` per
 /// the parity contract § "Seeded roles". Seeded rows render
 /// view-only by default; the admin can edit them only with
 /// `admin.roles.edit_seeded` (MFA-required).
@@ -1165,10 +1165,10 @@ DateTime? _optionalDateTime(Object? value) {
 const Map<String, String> kRoleDisplayNamesForAdmin = <String, String>{
   'super_admin': 'F&F super admin',
   'ff_support': 'F&F support',
-  'operator_owner': 'Operator owner',
-  'operator_manager': 'Operator manager',
-  'operator_supervisor': 'Operator supervisor',
-  'operator_staff': 'Operator staff',
+  'operator_owner': 'Owner',
+  'operator_general_manager': 'General Manager',
+  'location_manager': 'Location Manager',
+  'supervisor': 'Supervisor',
 };
 
 String roleAdminDisplayLabel(RoleAdminRow row) {

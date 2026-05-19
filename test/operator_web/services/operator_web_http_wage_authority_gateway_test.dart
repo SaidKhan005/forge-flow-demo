@@ -64,9 +64,7 @@ void main() {
               'next_cursor': null,
             }),
             200,
-            headers: const <String, String>{
-              'content-type': 'application/json',
-            },
+            headers: const <String, String>{'content-type': 'application/json'},
           );
         }
         final list = responses();
@@ -94,6 +92,7 @@ void main() {
         request.url.path,
         '/v1/operators/op-1/locations/loc-1/wage_role_rows',
       );
+      expect(request.url.queryParameters['include_hierarchy'], 'true');
       expect(request.headers['authorization'], 'Bearer demo-id-token');
     });
 
@@ -103,9 +102,7 @@ void main() {
           http.Response(
             jsonEncode(rowPayload()),
             200,
-            headers: const <String, String>{
-              'content-type': 'application/json',
-            },
+            headers: const <String, String>{'content-type': 'application/json'},
           ),
         ],
       );
@@ -130,6 +127,7 @@ void main() {
       expect(body['labor_bucket'], 'foh');
       expect(body['hourly_rate'], 18.50);
       expect(body['weighted_hours'], 32);
+      expect(body['scope_type'], 'location');
     });
 
     test('delete sends Idempotency-Key', () async {
@@ -141,9 +139,7 @@ void main() {
               'removed': true,
             }),
             200,
-            headers: const <String, String>{
-              'content-type': 'application/json',
-            },
+            headers: const <String, String>{'content-type': 'application/json'},
           ),
         ],
       );
@@ -167,9 +163,7 @@ void main() {
               'message': 'role_name must not be blank',
             }),
             400,
-            headers: const <String, String>{
-              'content-type': 'application/json',
-            },
+            headers: const <String, String>{'content-type': 'application/json'},
           ),
         ],
       );
@@ -207,9 +201,7 @@ void main() {
           http.Response(
             jsonEncode(rowPayload()),
             200,
-            headers: const <String, String>{
-              'content-type': 'application/json',
-            },
+            headers: const <String, String>{'content-type': 'application/json'},
           ),
         ],
       );
@@ -223,8 +215,8 @@ void main() {
         ),
         idempotencyKey: 'idem-1',
       );
-      final body = jsonDecode(capturedRequests.single.body)
-          as Map<String, Object?>;
+      final body =
+          jsonDecode(capturedRequests.single.body) as Map<String, Object?>;
       // Optional fields missing → omitted from the wire body.
       expect(body.containsKey('job_code'), isFalse);
       expect(body.containsKey('vendor_id'), isFalse);
