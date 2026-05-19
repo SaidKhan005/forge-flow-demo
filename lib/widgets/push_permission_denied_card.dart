@@ -46,7 +46,7 @@ class _DeniedCard extends StatelessWidget {
       color: AppColors.backgroundMid,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
+        side: const BorderSide(
           color: AppColors.borderSubtle,
           width: 1,
         ),
@@ -56,7 +56,7 @@ class _DeniedCard extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
+            const Icon(
               Icons.notifications_off_outlined,
               size: 22,
               color: AppColors.textMuted,
@@ -66,7 +66,7 @@ class _DeniedCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
+                  const Text(
                     'Notifications are off',
                     style: TextStyle(
                       color: AppColors.textPrimary,
@@ -75,7 +75,7 @@ class _DeniedCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'Open Settings to turn on notifications for Forge & Flow.',
                     style: TextStyle(
                       color: AppColors.textSecondary,
@@ -86,7 +86,7 @@ class _DeniedCard extends StatelessWidget {
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.sunsetDark,
-                      side: BorderSide(color: AppColors.sunsetDark),
+                      side: const BorderSide(color: AppColors.sunsetDark),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
                         vertical: 6,

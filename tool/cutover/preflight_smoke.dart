@@ -725,7 +725,6 @@ class _GcpSecretManagerSecretReadProbe {
     required this.projectId,
     required OAuthAccessTokenProvider accessTokenProvider,
     required http.Client httpClient,
-    this.timeout = const Duration(seconds: 10),
   })  : _accessTokenProvider = accessTokenProvider,
         _httpClient = httpClient;
 

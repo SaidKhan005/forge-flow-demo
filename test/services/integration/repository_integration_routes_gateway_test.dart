@@ -1049,7 +1049,6 @@ class _FakeCredential {
     required this.vendorId,
     this.module,
     this.lastAccessTokenPlaintext,
-    this.lastWebhookSigningSecretPlaintext,
     this.isActive = true,
   })  : accessTokenCiphertextNulled = false,
         webhookSigningSecretCiphertextNulled = true;

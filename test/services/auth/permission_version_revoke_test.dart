@@ -34,7 +34,7 @@ void main() {
     // permission_version in the JWT payload, a ProxyRequestGuard wrapping it,
     // and an InMemoryPermissionVersionChecker that holds the DB-side value.
 
-    ProxyJwtVerifier _verifierWith({
+    ProxyJwtVerifier verifierWith({
       required String userId,
       required int permissionVersion,
     }) {
@@ -49,7 +49,7 @@ void main() {
       );
     }
 
-    Future<HttpResponse?> _issueGet({
+    Future<HttpResponse?> issueGet({
       required int jwtVersion,
       required int dbVersion,
     }) async {
@@ -57,7 +57,7 @@ void main() {
       await routeRequest(
         _buildFakeRequest('/v1/scope', 'GET'),
         ProxyRequestGuard(
-          verifier: _verifierWith(userId: 'user-1', permissionVersion: jwtVersion),
+          verifier: verifierWith(userId: 'user-1', permissionVersion: jwtVersion),
         ),
         permissionVersionChecker: InMemoryPermissionVersionChecker(
           <String, int>{'user-1': dbVersion},
@@ -74,7 +74,7 @@ void main() {
       await routeRequest(
         _buildFakeRequest('/v1/scope', 'GET'),
         ProxyRequestGuard(
-          verifier: _verifierWith(userId: 'user-1', permissionVersion: 1),
+          verifier: verifierWith(userId: 'user-1', permissionVersion: 1),
         ),
         permissionVersionChecker: InMemoryPermissionVersionChecker(
           <String, int>{'user-1': 2},

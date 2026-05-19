@@ -22,7 +22,6 @@ class _FakeAccountGateway implements WebAccountGateway {
   _FakeAccountGateway({
     this.failWith,
     this.timezoneFailWith,
-    this.overridesFailWith,
     this.initialOverrides,
   });
 

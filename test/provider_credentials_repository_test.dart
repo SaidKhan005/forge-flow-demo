@@ -1071,8 +1071,6 @@ class _TupleRowState {
   _TupleRowState({
     required this.ciphertext,
     required this.expiresAt,
-    this.rotatedAt,
-    this.rotationCount = 0,
   });
   String ciphertext;
   DateTime expiresAt;

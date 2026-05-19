@@ -51,6 +51,7 @@ import 'services/realtime/realtime_event.dart';
 import 'services/realtime/realtime_subscription.dart';
 import 'services/sync/sync_proxy_client.dart';
 import 'widgets/operator_brand_mark.dart';
+import 'widgets/demo_mode_banner.dart';
 import 'widgets/peer_edit_toast.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/settings_screen.dart';
@@ -1641,12 +1642,19 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         drawer: _buildBusinessScopeDrawer(context),
         body: SafeArea(
           top: !widget.embeddedInBarrio,
-          child: IndexedStack(
-            index: _selectedIndex,
-            children: List<Widget>.generate(
-              4,
-              (index) => _buildTab(index, revision),
-            ),
+          child: Column(
+            children: <Widget>[
+              const DemoModeBanner(),
+              Expanded(
+                child: IndexedStack(
+                  index: _selectedIndex,
+                  children: List<Widget>.generate(
+                    4,
+                    (index) => _buildTab(index, revision),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         bottomNavigationBar: _AppBottomNav(

@@ -6,13 +6,11 @@
 //   3. Receives notifications on the correct channel when a row is inserted.
 //   4. Properly starts and stops all subscriptions.
 
-import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart' as pg;
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
-import 'package:forge_and_flow/infrastructure/persistence/postgres/outbox_notification_listener.dart';
 
 void main() {
   group('PackagePostgresOutboxListener channel split (PF5)', () {

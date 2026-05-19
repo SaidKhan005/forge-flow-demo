@@ -292,7 +292,6 @@ class _ErasurePool implements PostgresPool {
   _ErasurePool({
     this.userRow,
     this.insertedRow,
-    this.dueRows = const <PostgresRow>[],
     this.updateAffectedRows = 0,
   });
 

@@ -88,6 +88,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/weekly_plan_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 
@@ -197,73 +198,70 @@ void main() {
       },
     );
 
-    test(
-      'replay with same idempotency_key returns the cached snapshot '
-      'verbatim and does NOT insert a duplicate row',
-      () async {
-        await withTestPostgres((pool, wrapper) async {
-          await seedOperator(pool, operatorId: _opA, locationId: _locA1);
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            cycleId: _cycleA1,
-            restaurantId: _restaurantA,
-          );
+    test('replay with same idempotency_key returns the cached snapshot '
+        'verbatim and does NOT insert a duplicate row', () async {
+      await withTestPostgres((pool, wrapper) async {
+        await seedOperator(pool, operatorId: _opA, locationId: _locA1);
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA1,
+          restaurantId: _restaurantA,
+        );
 
-          final repo = WeeklyPlanSnapshotRepository(wrapper);
-          final write = _buildSnapshotWrite(
-            operatorId: _opA,
-            locationId: _locA1,
-            restaurantId: _restaurantA,
-            targetCycleId: _cycleA1,
-            idempotencyKey: 'phase6-test:replay-1',
-          );
+        final repo = WeeklyPlanSnapshotRepository(wrapper);
+        final write = _buildSnapshotWrite(
+          operatorId: _opA,
+          locationId: _locA1,
+          restaurantId: _restaurantA,
+          targetCycleId: _cycleA1,
+          idempotencyKey: 'phase6-test:replay-1',
+        );
 
-          final first = await repo.lockOrReplaceSnapshot(
-            snapshot: write,
-            reason: 'phase6-test:replay-first',
-          );
-          final second = await repo.lockOrReplaceSnapshot(
-            snapshot: write,
-            reason: 'phase6-test:replay-second',
-          );
-          expect(
-            second.snapshotId,
-            equals(first.snapshotId),
-            reason:
-                'idempotency replay returns the cached row; no duplicate '
-                'insert against the unique (operator, location, idempotency_key)',
-          );
+        final first = await repo.lockOrReplaceSnapshot(
+          snapshot: write,
+          reason: 'phase6-test:replay-first',
+        );
+        final second = await repo.lockOrReplaceSnapshot(
+          snapshot: write,
+          reason: 'phase6-test:replay-second',
+        );
+        expect(
+          second.snapshotId,
+          equals(first.snapshotId),
+          reason:
+              'idempotency replay returns the cached row; no duplicate '
+              'insert against the unique (operator, location, idempotency_key)',
+        );
 
-          final rowCount = await _countSnapshots(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            restaurantId: _restaurantA,
-          );
-          expect(
-            rowCount,
-            equals(1),
-            reason: 'idempotency replay must not double-insert',
-          );
+        final rowCount = await _countSnapshots(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          restaurantId: _restaurantA,
+        );
+        expect(
+          rowCount,
+          equals(1),
+          reason: 'idempotency replay must not double-insert',
+        );
 
-          final auditCount = await _countAuditEvents(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            eventType: 'weekly_plan_locked',
-          );
-          expect(
-            auditCount,
-            equals(1),
-            reason:
-                'idempotency replay short-circuits before audit emission; '
-                'only the original lock is recorded',
-          );
-        });
-      },
-    );
+        final auditCount = await _countAuditEvents(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          eventType: 'weekly_plan_locked',
+        );
+        expect(
+          auditCount,
+          equals(1),
+          reason:
+              'idempotency replay short-circuits before audit emission; '
+              'only the original lock is recorded',
+        );
+      });
+    });
 
     test(
       'second lockOrReplaceSnapshot for same (operator, location, week) '
@@ -397,7 +395,10 @@ void main() {
           expect(unlocked!.snapshotStatus, equals('unlocked'));
           expect(unlocked.unlockedAt, isNotNull);
           expect(unlocked.unlockedByUserId, equals(_actorA));
-          expect(unlocked.replacementReason, equals('phase6-test:unlock-action'));
+          expect(
+            unlocked.replacementReason,
+            equals('phase6-test:unlock-action'),
+          );
 
           final auditCount = await _countAuditEvents(
             pool,
@@ -440,72 +441,68 @@ void main() {
   // Phase 6 covers `_spine`. The fixture loader is intentionally simple.
   // ────────────────────────────────────────────────────────────────────
   group('Group 2 — fixture-grounded read-back consistency', () {
-    test(
-      'POS vendor totals (toast + square + clover happy paths) round-trip '
-      'through lockOrReplaceSnapshot → loadActiveSnapshot',
-      () async {
-        await withTestPostgres((pool, wrapper) async {
-          await seedOperator(pool, operatorId: _opA, locationId: _locA1);
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            cycleId: _cycleA1,
-            restaurantId: _restaurantA,
-          );
+    test('POS vendor totals (toast + square + clover happy paths) round-trip '
+        'through lockOrReplaceSnapshot → loadActiveSnapshot', () async {
+      await withTestPostgres((pool, wrapper) async {
+        await seedOperator(pool, operatorId: _opA, locationId: _locA1);
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA1,
+          restaurantId: _restaurantA,
+        );
 
-          final projection = _projectPosFixtures();
-          // Net sales drives forecast_sales; covers fall back to the
-          // `forecast_fallback` source because POS adapters do not supply
-          // covers (per Phase 1 README — Square explicitly so).
-          expect(
-            projection.coversSource,
-            equals('forecast_fallback'),
-            reason:
-                'POS-only projection cannot supply covers; source must '
-                'be `forecast_fallback` per Phase 1 vendor README',
-          );
+        final projection = _projectPosFixtures();
+        // Net sales drives forecast_sales; covers fall back to the
+        // `forecast_fallback` source because POS adapters do not supply
+        // covers (per Phase 1 README — Square explicitly so).
+        expect(
+          projection.coversSource,
+          equals('forecast_fallback'),
+          reason:
+              'POS-only projection cannot supply covers; source must '
+              'be `forecast_fallback` per Phase 1 vendor README',
+        );
 
-          final repo = WeeklyPlanSnapshotRepository(wrapper);
-          final row = await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opA,
-              locationId: _locA1,
-              restaurantId: _restaurantA,
-              targetCycleId: _cycleA1,
-              forecastCovers: projection.coverCount,
-              forecastSales: projection.netSalesDollars,
-              requiredFohHours: 240.0,
-              requiredBohHours: 170.0,
-              theoreticalFohLaborDollars: 5400.0,
-              theoreticalBohLaborDollars: 4100.0,
-              coversSource: projection.coversSource,
-              salesSource: 'pos_aggregate',
-              idempotencyKey: 'phase6-test:pos-fixture-1',
-            ),
-            reason: 'phase6-test:pos-fixture-lock',
-          );
-
-          final reread = await repo.loadActiveSnapshot(
+        final repo = WeeklyPlanSnapshotRepository(wrapper);
+        final row = await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opA,
             locationId: _locA1,
             restaurantId: _restaurantA,
-            weekStartDate: _weekStart,
-          );
-          expect(reread, isNotNull);
-          expect(reread!.snapshotId, equals(row.snapshotId));
-          expect(
-            reread.forecastSales,
-            closeTo(projection.netSalesDollars, 0.001),
-            reason:
-                'POS net-sales total round-trips through numeric(14,4)',
-          );
-          expect(reread.forecastCovers, equals(projection.coverCount));
-          expect(reread.coversSource, equals('forecast_fallback'));
-          expect(reread.salesSource, equals('pos_aggregate'));
-        });
-      },
-    );
+            targetCycleId: _cycleA1,
+            forecastCovers: projection.coverCount,
+            forecastSales: projection.netSalesDollars,
+            requiredFohHours: 240.0,
+            requiredBohHours: 170.0,
+            theoreticalFohLaborDollars: 5400.0,
+            theoreticalBohLaborDollars: 4100.0,
+            coversSource: projection.coversSource,
+            salesSource: 'pos_aggregate',
+            idempotencyKey: 'phase6-test:pos-fixture-1',
+          ),
+          reason: 'phase6-test:pos-fixture-lock',
+        );
+
+        final reread = await repo.loadActiveSnapshot(
+          operatorId: _opA,
+          locationId: _locA1,
+          restaurantId: _restaurantA,
+          weekStartDate: _weekStart,
+        );
+        expect(reread, isNotNull);
+        expect(reread!.snapshotId, equals(row.snapshotId));
+        expect(
+          reread.forecastSales,
+          closeTo(projection.netSalesDollars, 0.001),
+          reason: 'POS net-sales total round-trips through numeric(14,4)',
+        );
+        expect(reread.forecastCovers, equals(projection.coverCount));
+        expect(reread.coversSource, equals('forecast_fallback'));
+        expect(reread.salesSource, equals('pos_aggregate'));
+      });
+    });
 
     test(
       'labor punch totals (adp + 7shifts + quickbooks_time happy paths) '
@@ -536,7 +533,13 @@ void main() {
                 restaurantId: _restaurantA,
                 dayIndex: i,
                 dayLabel: const [
-                  'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+                  'Mon',
+                  'Tue',
+                  'Wed',
+                  'Thu',
+                  'Fri',
+                  'Sat',
+                  'Sun',
                 ][i],
                 businessDate: _businessDateForDayIndex(_weekStart, i),
                 forecastCovers: 60 + i * 5,
@@ -675,199 +678,186 @@ void main() {
   // production code path with operator B's parameters.
   // ────────────────────────────────────────────────────────────────────
   group('Group 3 — operator-scoped read isolation', () {
-    test(
-      'tenant A read for tenant B parameters returns null — repository '
-      'pattern wraps every read in withTenant(opA, locA), and RLS folds '
-      'the predicate on top so no cross-tenant data surfaces',
-      () async {
-        await withTestPostgres((pool, wrapper) async {
-          // Seed two operators with their own locations + cycles + snapshots.
-          await seedOperator(pool, operatorId: _opA, locationId: _locA1);
-          await seedOperator(pool, operatorId: _opB, locationId: _locB1);
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            cycleId: _cycleA1,
-            restaurantId: _restaurantA,
-          );
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opB,
-            locationId: _locB1,
-            cycleId: _cycleB1,
-            restaurantId: _restaurantB,
-          );
+    test('tenant A read for tenant B parameters returns null — repository '
+        'pattern wraps every read in withTenant(opA, locA), and RLS folds '
+        'the predicate on top so no cross-tenant data surfaces', () async {
+      await withTestPostgres((pool, wrapper) async {
+        // Seed two operators with their own locations + cycles + snapshots.
+        await seedOperator(pool, operatorId: _opA, locationId: _locA1);
+        await seedOperator(pool, operatorId: _opB, locationId: _locB1);
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA1,
+          restaurantId: _restaurantA,
+        );
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opB,
+          locationId: _locB1,
+          cycleId: _cycleB1,
+          restaurantId: _restaurantB,
+        );
 
-          final repo = WeeklyPlanSnapshotRepository(wrapper);
-          await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opA,
-              locationId: _locA1,
-              restaurantId: _restaurantA,
-              targetCycleId: _cycleA1,
-              forecastCovers: 400,
-              idempotencyKey: 'phase6-test:isolation-A',
-            ),
-            reason: 'phase6-test:isolation-seed-A',
-          );
-          await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opB,
-              locationId: _locB1,
-              restaurantId: _restaurantB,
-              targetCycleId: _cycleB1,
-              forecastCovers: 600,
-              idempotencyKey: 'phase6-test:isolation-B',
-            ),
-            reason: 'phase6-test:isolation-seed-B',
-          );
-
-          // Tenant A reads tenant A's row with tenant A SET LOCAL.
-          final aActive = await repo.loadActiveSnapshot(
+        final repo = WeeklyPlanSnapshotRepository(wrapper);
+        await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opA,
             locationId: _locA1,
             restaurantId: _restaurantA,
-            weekStartDate: _weekStart,
-          );
-          expect(aActive, isNotNull);
-          expect(aActive!.forecastCovers, equals(400));
-
-          // Tenant B reads tenant B's row with tenant B SET LOCAL.
-          final bActive = await repo.loadActiveSnapshot(
+            targetCycleId: _cycleA1,
+            forecastCovers: 400,
+            idempotencyKey: 'phase6-test:isolation-A',
+          ),
+          reason: 'phase6-test:isolation-seed-A',
+        );
+        await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opB,
             locationId: _locB1,
             restaurantId: _restaurantB,
-            weekStartDate: _weekStart,
-          );
-          expect(bActive, isNotNull);
-          expect(bActive!.forecastCovers, equals(600));
-        });
-      },
-    );
+            targetCycleId: _cycleB1,
+            forecastCovers: 600,
+            idempotencyKey: 'phase6-test:isolation-B',
+          ),
+          reason: 'phase6-test:isolation-seed-B',
+        );
 
-    test(
-      'tenant A SET LOCAL cannot reach into tenant B rows even via a '
-      'crafted SQL count() through the same tx — RLS predicate '
-      '`operator_id = app_current_operator()` blocks the leak',
-      () async {
-        await withTestPostgres((pool, wrapper) async {
-          await seedOperator(pool, operatorId: _opA, locationId: _locA1);
-          await seedOperator(pool, operatorId: _opB, locationId: _locB1);
-          await _seedTargetCycle(
-            pool,
+        // Tenant A reads tenant A's row with tenant A SET LOCAL.
+        final aActive = await repo.loadActiveSnapshot(
+          operatorId: _opA,
+          locationId: _locA1,
+          restaurantId: _restaurantA,
+          weekStartDate: _weekStart,
+        );
+        expect(aActive, isNotNull);
+        expect(aActive!.forecastCovers, equals(400));
+
+        // Tenant B reads tenant B's row with tenant B SET LOCAL.
+        final bActive = await repo.loadActiveSnapshot(
+          operatorId: _opB,
+          locationId: _locB1,
+          restaurantId: _restaurantB,
+          weekStartDate: _weekStart,
+        );
+        expect(bActive, isNotNull);
+        expect(bActive!.forecastCovers, equals(600));
+      });
+    });
+
+    test('tenant A SET LOCAL cannot reach into tenant B rows even via a '
+        'crafted SQL count() through the same tx — RLS predicate '
+        '`operator_id = app_current_operator()` blocks the leak', () async {
+      await withTestPostgres((pool, wrapper) async {
+        await seedOperator(pool, operatorId: _opA, locationId: _locA1);
+        await seedOperator(pool, operatorId: _opB, locationId: _locB1);
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA1,
+          restaurantId: _restaurantA,
+        );
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opB,
+          locationId: _locB1,
+          cycleId: _cycleB1,
+          restaurantId: _restaurantB,
+        );
+        final repo = WeeklyPlanSnapshotRepository(wrapper);
+        await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
+            operatorId: _opB,
+            locationId: _locB1,
+            restaurantId: _restaurantB,
+            targetCycleId: _cycleB1,
+            idempotencyKey: 'phase6-test:cross-tenant-victim',
+          ),
+          reason: 'phase6-test:cross-tenant-seed-B',
+        );
+
+        // Run a hand-rolled count() through tenant A context, filtering
+        // for operator B explicitly. RLS folds the
+        // `operator_id = app_current_operator()` predicate on top, so
+        // operator B rows never surface even with raw SQL.
+        await wrapper.runInTenantContext(
+          TenantContext(operatorId: _opA, locationId: _locA1, userId: _actorA),
+          (exec) async {
+            final rows = await exec.query(
+              'select count(*)::int as n '
+              'from public.weekly_plan_snapshots '
+              "where operator_id = '$_opB'::uuid",
+            );
+            final n = (rows.single['n'] as num).toInt();
+            expect(
+              n,
+              isZero,
+              reason:
+                  'tenant A SET LOCAL forces RLS to fold the per-tenant '
+                  'predicate over the WHERE clause; operator B rows are '
+                  'invisible regardless of explicit filter',
+            );
+          },
+        );
+      });
+    });
+
+    test('listUpdatedSince returns only the calling tenant\'s rows ordered '
+        'by updated_at asc — operator-leading index ensures the read is '
+        'index-bounded per (operator_id, location_id, updated_at)', () async {
+      await withTestPostgres((pool, wrapper) async {
+        await seedOperator(pool, operatorId: _opA, locationId: _locA1);
+        await seedOperator(pool, operatorId: _opB, locationId: _locB1);
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA1,
+          restaurantId: _restaurantA,
+        );
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opB,
+          locationId: _locB1,
+          cycleId: _cycleB1,
+          restaurantId: _restaurantB,
+        );
+        final repo = WeeklyPlanSnapshotRepository(wrapper);
+        await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opA,
             locationId: _locA1,
-            cycleId: _cycleA1,
             restaurantId: _restaurantA,
-          );
-          await _seedTargetCycle(
-            pool,
+            targetCycleId: _cycleA1,
+            idempotencyKey: 'phase6-test:list-A',
+          ),
+          reason: 'phase6-test:list-seed-A',
+        );
+        await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opB,
             locationId: _locB1,
-            cycleId: _cycleB1,
             restaurantId: _restaurantB,
-          );
-          final repo = WeeklyPlanSnapshotRepository(wrapper);
-          await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opB,
-              locationId: _locB1,
-              restaurantId: _restaurantB,
-              targetCycleId: _cycleB1,
-              idempotencyKey: 'phase6-test:cross-tenant-victim',
-            ),
-            reason: 'phase6-test:cross-tenant-seed-B',
-          );
+            targetCycleId: _cycleB1,
+            idempotencyKey: 'phase6-test:list-B',
+          ),
+          reason: 'phase6-test:list-seed-B',
+        );
 
-          // Run a hand-rolled count() through tenant A context, filtering
-          // for operator B explicitly. RLS folds the
-          // `operator_id = app_current_operator()` predicate on top, so
-          // operator B rows never surface even with raw SQL.
-          await wrapper.runInTenantContext(
-            TenantContext(
-              operatorId: _opA,
-              locationId: _locA1,
-              userId: _actorA,
-            ),
-            (exec) async {
-              final rows = await exec.query(
-                'select count(*)::int as n '
-                'from public.weekly_plan_snapshots '
-                "where operator_id = '$_opB'::uuid",
-              );
-              final n = (rows.single['n'] as num).toInt();
-              expect(
-                n,
-                isZero,
-                reason:
-                    'tenant A SET LOCAL forces RLS to fold the per-tenant '
-                    'predicate over the WHERE clause; operator B rows are '
-                    'invisible regardless of explicit filter',
-              );
-            },
-          );
-        });
-      },
-    );
-
-    test(
-      'listUpdatedSince returns only the calling tenant\'s rows ordered '
-      'by updated_at asc — operator-leading index ensures the read is '
-      'index-bounded per (operator_id, location_id, updated_at)',
-      () async {
-        await withTestPostgres((pool, wrapper) async {
-          await seedOperator(pool, operatorId: _opA, locationId: _locA1);
-          await seedOperator(pool, operatorId: _opB, locationId: _locB1);
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            cycleId: _cycleA1,
-            restaurantId: _restaurantA,
-          );
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opB,
-            locationId: _locB1,
-            cycleId: _cycleB1,
-            restaurantId: _restaurantB,
-          );
-          final repo = WeeklyPlanSnapshotRepository(wrapper);
-          await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opA,
-              locationId: _locA1,
-              restaurantId: _restaurantA,
-              targetCycleId: _cycleA1,
-              idempotencyKey: 'phase6-test:list-A',
-            ),
-            reason: 'phase6-test:list-seed-A',
-          );
-          await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opB,
-              locationId: _locB1,
-              restaurantId: _restaurantB,
-              targetCycleId: _cycleB1,
-              idempotencyKey: 'phase6-test:list-B',
-            ),
-            reason: 'phase6-test:list-seed-B',
-          );
-
-          // Tenant A's updated-since list must NOT contain tenant B's row.
-          final aRows = await repo.listUpdatedSince(
-            operatorId: _opA,
-            locationId: _locA1,
-            updatedAfter: DateTime.utc(2020, 1, 1),
-            userId: _actorA,
-          );
-          expect(aRows, hasLength(1));
-          expect(aRows.single.operatorId, equals(_opA));
-          expect(aRows.single.locationId, equals(_locA1));
-        });
-      },
-    );
+        // Tenant A's updated-since list must NOT contain tenant B's row.
+        final aRows = await repo.listUpdatedSince(
+          operatorId: _opA,
+          locationId: _locA1,
+          updatedAfter: DateTime.utc(2020, 1, 1),
+          userId: _actorA,
+        );
+        expect(aRows, hasLength(1));
+        expect(aRows.single.operatorId, equals(_opA));
+        expect(aRows.single.locationId, equals(_locA1));
+      });
+    });
   });
 
   // ────────────────────────────────────────────────────────────────────
@@ -891,139 +881,132 @@ void main() {
   // group pins both halves.
   // ────────────────────────────────────────────────────────────────────
   group('Group 4 — cycle supersession + read-after-supersession', () {
-    test(
-      'replacing the active snapshot with a different target_cycle_id '
-      'leaves the prior row pointing at its original cycle (audit-trail '
-      'guarantee for the closed week)',
-      () async {
-        await withTestPostgres((pool, wrapper) async {
-          await seedOperator(pool, operatorId: _opA, locationId: _locA1);
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            cycleId: _cycleA1,
-            restaurantId: _restaurantA,
-          );
-          await _seedTargetCycle(
-            pool,
-            operatorId: _opA,
-            locationId: _locA1,
-            cycleId: _cycleA2,
-            restaurantId: _restaurantA,
-            // Non-overlapping calibration window so the two cycles
-            // coexist for FK purposes; no temporal validity check on
-            // the snapshot side.
-            effectiveStart: '2026-04-13',
-            effectiveEnd: '2026-06-12',
-            calibrationStart: '2026-02-01',
-            calibrationEnd: '2026-04-01',
-            idempotencyKey: 'phase6-test:cycle-2-seed',
-          );
+    test('replacing the active snapshot with a different target_cycle_id '
+        'leaves the prior row pointing at its original cycle (audit-trail '
+        'guarantee for the closed week)', () async {
+      await withTestPostgres((pool, wrapper) async {
+        await seedOperator(pool, operatorId: _opA, locationId: _locA1);
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA1,
+          restaurantId: _restaurantA,
+        );
+        await _seedTargetCycle(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+          cycleId: _cycleA2,
+          restaurantId: _restaurantA,
+          // Non-overlapping calibration window so the two cycles
+          // coexist for FK purposes; no temporal validity check on
+          // the snapshot side.
+          effectiveStart: '2026-04-13',
+          effectiveEnd: '2026-06-12',
+          calibrationStart: '2026-02-01',
+          calibrationEnd: '2026-04-01',
+          idempotencyKey: 'phase6-test:cycle-2-seed',
+        );
 
-          final repo = WeeklyPlanSnapshotRepository(wrapper);
-          final firstSnapshot = await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opA,
-              locationId: _locA1,
-              restaurantId: _restaurantA,
-              targetCycleId: _cycleA1,
-              forecastCovers: 400,
-              idempotencyKey: 'phase6-test:supersession-1',
-            ),
-            reason: 'phase6-test:supersession-first-lock',
-          );
-          final secondSnapshot = await repo.lockOrReplaceSnapshot(
-            snapshot: _buildSnapshotWrite(
-              operatorId: _opA,
-              locationId: _locA1,
-              restaurantId: _restaurantA,
-              // Caller switched to the new cycle.
-              targetCycleId: _cycleA2,
-              forecastCovers: 500,
-              idempotencyKey: 'phase6-test:supersession-2',
-            ),
-            reason: 'phase6-test:supersession-replacement',
-          );
-
-          // Active row points at the NEW cycle.
-          final active = await repo.loadActiveSnapshot(
+        final repo = WeeklyPlanSnapshotRepository(wrapper);
+        final firstSnapshot = await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opA,
             locationId: _locA1,
             restaurantId: _restaurantA,
-            weekStartDate: _weekStart,
-          );
-          expect(active, isNotNull);
-          expect(active!.snapshotId, equals(secondSnapshot.snapshotId));
-          expect(
-            active.targetCycleId,
-            equals(_cycleA2),
-            reason:
-                'active snapshot for the week pins the NEW cycle id the '
-                'replacement caller supplied',
-          );
-          // And reports the supersession back-link.
-          expect(active.supersedesSnapshotId, equals(firstSnapshot.snapshotId));
-
-          // Prior superseded snapshot — addressable by snapshot_id and
-          // STILL pointing at the original cycle. Use `runInTenantContext`
-          // since the repo has no public "fetchBySnapshotId" (used only
-          // by unlockActiveSnapshot's idempotency replay).
-          await wrapper.runInTenantContext(
-            TenantContext(
-              operatorId: _opA,
-              locationId: _locA1,
-              userId: _actorA,
-            ),
-            (exec) async {
-              final rows = await exec.query(
-                'select snapshot_status, target_cycle_id::text as cyc, '
-                'superseded_by_snapshot_id::text as sup '
-                'from public.weekly_plan_snapshots '
-                "where operator_id = '$_opA'::uuid "
-                "  and snapshot_id = '${firstSnapshot.snapshotId}'::uuid",
-              );
-              expect(rows, hasLength(1));
-              expect(
-                rows.single['snapshot_status'],
-                equals('superseded'),
-                reason: 'prior snapshot transitioned to `superseded`',
-              );
-              expect(
-                rows.single['cyc'],
-                equals(_cycleA1),
-                reason:
-                    'superseded row keeps its original cycle id — audit '
-                    'trail for the closed-snapshot week',
-              );
-              expect(
-                rows.single['sup'],
-                equals(secondSnapshot.snapshotId),
-                reason:
-                    'forward-link superseded_by_snapshot_id wired to the '
-                    'replacement',
-              );
-            },
-          );
-
-          // Audit trail captured both events with the right cycle ids in
-          // before/after JSON.
-          final auditRows = await _readAuditEvents(
-            pool,
+            targetCycleId: _cycleA1,
+            forecastCovers: 400,
+            idempotencyKey: 'phase6-test:supersession-1',
+          ),
+          reason: 'phase6-test:supersession-first-lock',
+        );
+        final secondSnapshot = await repo.lockOrReplaceSnapshot(
+          snapshot: _buildSnapshotWrite(
             operatorId: _opA,
             locationId: _locA1,
-          );
-          expect(
-            auditRows.where((e) => e['event_type'] == 'weekly_plan_locked'),
-            hasLength(1),
-          );
-          expect(
-            auditRows.where((e) => e['event_type'] == 'weekly_plan_replaced'),
-            hasLength(1),
-          );
-        });
-      },
-    );
+            restaurantId: _restaurantA,
+            // Caller switched to the new cycle.
+            targetCycleId: _cycleA2,
+            forecastCovers: 500,
+            idempotencyKey: 'phase6-test:supersession-2',
+          ),
+          reason: 'phase6-test:supersession-replacement',
+        );
+
+        // Active row points at the NEW cycle.
+        final active = await repo.loadActiveSnapshot(
+          operatorId: _opA,
+          locationId: _locA1,
+          restaurantId: _restaurantA,
+          weekStartDate: _weekStart,
+        );
+        expect(active, isNotNull);
+        expect(active!.snapshotId, equals(secondSnapshot.snapshotId));
+        expect(
+          active.targetCycleId,
+          equals(_cycleA2),
+          reason:
+              'active snapshot for the week pins the NEW cycle id the '
+              'replacement caller supplied',
+        );
+        // And reports the supersession back-link.
+        expect(active.supersedesSnapshotId, equals(firstSnapshot.snapshotId));
+
+        // Prior superseded snapshot — addressable by snapshot_id and
+        // STILL pointing at the original cycle. Use `runInTenantContext`
+        // since the repo has no public "fetchBySnapshotId" (used only
+        // by unlockActiveSnapshot's idempotency replay).
+        await wrapper.runInTenantContext(
+          TenantContext(operatorId: _opA, locationId: _locA1, userId: _actorA),
+          (exec) async {
+            final rows = await exec.query(
+              'select snapshot_status, target_cycle_id::text as cyc, '
+              'superseded_by_snapshot_id::text as sup '
+              'from public.weekly_plan_snapshots '
+              "where operator_id = '$_opA'::uuid "
+              "  and snapshot_id = '${firstSnapshot.snapshotId}'::uuid",
+            );
+            expect(rows, hasLength(1));
+            expect(
+              rows.single['snapshot_status'],
+              equals('superseded'),
+              reason: 'prior snapshot transitioned to `superseded`',
+            );
+            expect(
+              rows.single['cyc'],
+              equals(_cycleA1),
+              reason:
+                  'superseded row keeps its original cycle id — audit '
+                  'trail for the closed-snapshot week',
+            );
+            expect(
+              rows.single['sup'],
+              equals(secondSnapshot.snapshotId),
+              reason:
+                  'forward-link superseded_by_snapshot_id wired to the '
+                  'replacement',
+            );
+          },
+        );
+
+        // Audit trail captured both events with the right cycle ids in
+        // before/after JSON.
+        final auditRows = await _readAuditEvents(
+          pool,
+          operatorId: _opA,
+          locationId: _locA1,
+        );
+        expect(
+          auditRows.where((e) => e['event_type'] == 'weekly_plan_locked'),
+          hasLength(1),
+        );
+        expect(
+          auditRows.where((e) => e['event_type'] == 'weekly_plan_replaced'),
+          hasLength(1),
+        );
+      });
+    });
 
     test(
       'supersession does not violate the partial unique index '
@@ -1327,17 +1310,22 @@ class _ReservationProjection {
 ///     becomes `forecast_fallback`. Per Phase 1 README — Square Order
 ///     resource exposes no covers, every fact records `forecast_fallback`.
 _PosProjection _projectPosFixtures() {
-  final toast = jsonDecode(
-    File('test/fixtures/vendor_payloads/toast/happy_path_order_closed.json')
-        .readAsStringSync(),
-  ) as Map<String, Object?>;
+  final toast =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/toast/happy_path_order_closed.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   final toastDollars = (toast['totalAmount'] as num).toDouble();
 
-  final square = jsonDecode(
-    File(
-      'test/fixtures/vendor_payloads/square/happy_path_payment_completed.json',
-    ).readAsStringSync(),
-  ) as Map<String, Object?>;
+  final square =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/square/happy_path_payment_completed.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   final squareData = square['data'] as Map<String, Object?>;
   final squareObj = squareData['object'] as Map<String, Object?>;
   final squarePayment = squareObj['payment'] as Map<String, Object?>;
@@ -1345,16 +1333,18 @@ _PosProjection _projectPosFixtures() {
   final squareCents = (squareMoney['amount'] as num).toInt();
   final squareDollars = squareCents / 100.0;
 
-  final clover = jsonDecode(
-    File('test/fixtures/vendor_payloads/clover/happy_path_order_paid.json')
-        .readAsStringSync(),
-  ) as Map<String, Object?>;
+  final clover =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/clover/happy_path_order_paid.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   // Clover happy_path_order_paid.json shape: top-level `total` in cents.
   // CONTRACT GAP: if the actual fixture nests differently, fall back to 0
   // so the projection is still deterministic.
   final cloverCents =
-      (clover['total'] as num?)?.toInt() ??
-      _findFirstIntInMap(clover, 'total');
+      (clover['total'] as num?)?.toInt() ?? _findFirstIntInMap(clover, 'total');
   final cloverDollars = cloverCents / 100.0;
 
   final total = toastDollars + squareDollars + cloverDollars;
@@ -1373,10 +1363,13 @@ _LaborProjection _projectLaborFixtures() {
   double hours = 0.0;
 
   // ADP — entry_date_time + exit_date_time + breaks[].
-  final adp = jsonDecode(
-    File('test/fixtures/vendor_payloads/adp/happy_path_time_card_approved.json')
-        .readAsStringSync(),
-  ) as Map<String, Object?>;
+  final adp =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/adp/happy_path_time_card_approved.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   final adpEvent = adp['time_event'] as Map<String, Object?>;
   final adpStart = DateTime.parse(adpEvent['entry_date_time']! as String);
   final adpEnd = DateTime.parse(adpEvent['exit_date_time']! as String);
@@ -1396,21 +1389,25 @@ _LaborProjection _projectLaborFixtures() {
 
   // 7shifts — happy_path_time_punch_clock_out.json. Look for
   // clocked_in/clocked_out span; fall back to 8h if shape is unfamiliar.
-  final svn = jsonDecode(
-    File(
-      'test/fixtures/vendor_payloads/seven_shifts/'
-      'happy_path_time_punch_clock_out.json',
-    ).readAsStringSync(),
-  ) as Map<String, Object?>;
+  final svn =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/seven_shifts/'
+              'happy_path_time_punch_clock_out.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   hours += _laborHoursFromMap(svn, 8.0);
 
   // quickbooks_time — happy_path_timesheet_approved.json. Same heuristic.
-  final qbt = jsonDecode(
-    File(
-      'test/fixtures/vendor_payloads/quickbooks_time/'
-      'happy_path_timesheet_approved.json',
-    ).readAsStringSync(),
-  ) as Map<String, Object?>;
+  final qbt =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/quickbooks_time/'
+              'happy_path_timesheet_approved.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   hours += _laborHoursFromMap(qbt, 8.0);
 
   return _LaborProjection(totalLaborHours: hours);
@@ -1423,23 +1420,28 @@ _LaborProjection _projectLaborFixtures() {
 _ReservationProjection _projectReservationFixtures() {
   var covers = 0;
 
-  final libro = jsonDecode(
-    File(
-      'test/fixtures/vendor_payloads/libro/happy_path_reservation_seated.json',
-    ).readAsStringSync(),
-  ) as Map<String, Object?>;
+  final libro =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/libro/happy_path_reservation_seated.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   final libroRes = libro['reservation'] as Map<String, Object?>;
   covers += (libroRes['size'] as num?)?.toInt() ?? 0;
 
-  final ot = jsonDecode(
-    File(
-      'test/fixtures/vendor_payloads/opentable/happy_path_reservation_booked.json',
-    ).readAsStringSync(),
-  ) as Map<String, Object?>;
+  final ot =
+      jsonDecode(
+            File(
+              'test/fixtures/vendor_payloads/opentable/happy_path_reservation_booked.json',
+            ).readAsStringSync(),
+          )
+          as Map<String, Object?>;
   // OpenTable shape: `reservation.party_size` per field_mapping.md.
   final otRes = ot['reservation'] as Map<String, Object?>?;
   if (otRes != null) {
-    covers += (otRes['party_size'] as num?)?.toInt() ??
+    covers +=
+        (otRes['party_size'] as num?)?.toInt() ??
         (otRes['size'] as num?)?.toInt() ??
         0;
   } else {
