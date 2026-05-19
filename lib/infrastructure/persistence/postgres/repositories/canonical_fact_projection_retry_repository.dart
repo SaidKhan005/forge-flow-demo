@@ -18,6 +18,7 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
       'vendor_id, '
       'category, '
       'status, '
+      'failure_stage, '
       'changed_periods::text as changed_periods, '
       'open_current_fact_maps::text as open_current_fact_maps, '
       'input_hash, '
@@ -67,14 +68,16 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
       await exec.execute(
         'insert into public.canonical_fact_projection_retry_jobs ('
         'operator_id, location_id, restaurant_id, connection_id, '
-        'vendor_id, category, status, changed_periods, '
+        'original_location_id, original_connection_id, '
+        'vendor_id, category, status, failure_stage, changed_periods, '
         'open_current_fact_maps, input_hash, fact_count, '
         'last_error_class, last_error_message, stack_first_frame, user_id, '
         'dead_lettered_at'
         ') values ('
         '@operator_id::uuid, @location_id::uuid, @restaurant_id, '
-        '@connection_id::uuid, @vendor_id, @category, '
-        '@status, @changed_periods::jsonb, '
+        '@connection_id::uuid, @location_id::uuid, @connection_id::uuid, '
+        '@vendor_id, @category, @status, @failure_stage, '
+        '@changed_periods::jsonb, '
         '@open_current_fact_maps::jsonb, @input_hash, @fact_count, '
         '@last_error_class, @last_error_message, @stack_first_frame, '
         '@user_id::uuid, '
@@ -87,6 +90,7 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
           'vendor_id': record.vendorId,
           'category': record.integrationCategory.backfillWire,
           'status': status.wire,
+          'failure_stage': record.failureStage.wire,
           'changed_periods': jsonEncode(record.changedPeriods),
           'open_current_fact_maps': jsonEncode(record.openCurrentFactMaps),
           'input_hash': record.inputHash,
@@ -130,6 +134,8 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
         '  from public.canonical_fact_projection_retry_jobs '
         '  where operator_id = @operator_id::uuid '
         '    and location_id = @location_id::uuid '
+        '    and location_id is not null '
+        '    and connection_id is not null '
         "    and (status = 'pending' "
         "      or (status = 'running' "
         '        and (claimed_at is null '
@@ -266,6 +272,9 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
       errorClass: _requiredString(row, 'last_error_class'),
       errorMessage: _requiredString(row, 'last_error_message'),
       stackFirstFrame: _optionalString(row['stack_first_frame']),
+      failureStage: CanonicalFactProjectionRetryFailureStage.fromWire(
+        _requiredString(row, 'failure_stage'),
+      ),
       userId: _optionalString(row['user_id']),
       workerId: _optionalString(row['worker_id']),
       claimedAt: _optionalDateTime(row['claimed_at']),

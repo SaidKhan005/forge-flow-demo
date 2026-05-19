@@ -57,6 +57,7 @@ class CanonicalFactProjectionRetryRecord {
     required this.errorClass,
     required this.errorMessage,
     required this.stackFirstFrame,
+    required this.failureStage,
     this.userId,
   });
 
@@ -98,6 +99,7 @@ class CanonicalFactProjectionRetryRecord {
       errorClass: error.runtimeType.toString(),
       errorMessage: error.toString(),
       stackFirstFrame: stackFirstFrame,
+      failureStage: CanonicalFactProjectionRetryFailureStage.postInput,
       userId: input.userId,
     );
   }
@@ -115,6 +117,7 @@ class CanonicalFactProjectionRetryRecord {
   final String errorClass;
   final String errorMessage;
   final String? stackFirstFrame;
+  final CanonicalFactProjectionRetryFailureStage failureStage;
   final String? userId;
 
   CanonicalFactPostCommitInput toInput() {
@@ -225,8 +228,24 @@ class CanonicalFactProjectionPreInputFailureRecord {
       errorClass: errorClass,
       errorMessage: errorMessage,
       stackFirstFrame: stackFirstFrame,
+      failureStage: CanonicalFactProjectionRetryFailureStage.preInput,
       userId: userId,
     );
+  }
+}
+
+enum CanonicalFactProjectionRetryFailureStage {
+  postInput('post_input'),
+  preInput('pre_input');
+
+  const CanonicalFactProjectionRetryFailureStage(this.wire);
+  final String wire;
+
+  static CanonicalFactProjectionRetryFailureStage fromWire(String value) {
+    for (final stage in CanonicalFactProjectionRetryFailureStage.values) {
+      if (stage.wire == value) return stage;
+    }
+    throw ArgumentError.value(value, 'value', 'unknown retry failure stage');
   }
 }
 
@@ -250,6 +269,7 @@ class CanonicalFactProjectionRetryJob
     required super.errorClass,
     required super.errorMessage,
     required super.stackFirstFrame,
+    required super.failureStage,
     super.userId,
     this.workerId,
     this.claimedAt,

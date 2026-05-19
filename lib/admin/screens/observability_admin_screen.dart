@@ -2141,7 +2141,8 @@ class _ProjectionRetryRowCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final stage = _projectionRetryPayloadLabel(row);
+    final inputShape = _projectionRetryPayloadLabel(row);
+    final failurePoint = _projectionRetryFailurePointLabel(row.failureStage);
     final statusColor = row.isDeadLettered
         ? AppColors.negative
         : row.status == 'running'
@@ -2196,11 +2197,12 @@ class _ProjectionRetryRowCard extends StatelessWidget {
                 label: 'Connection',
                 value: _compactId(row.connectionId),
               ),
+              _ProjectionRetryFact(label: 'Failure point', value: failurePoint),
               _ProjectionRetryFact(
                 label: 'Attempts',
                 value: '${row.attemptCount}',
               ),
-              _ProjectionRetryFact(label: 'Input', value: stage),
+              _ProjectionRetryFact(label: 'Input', value: inputShape),
               if (row.nextAttemptAt != null)
                 _ProjectionRetryFact(
                   label: 'Next attempt',
@@ -2512,6 +2514,17 @@ String _projectionRetryPayloadLabel(ProjectionRetryRow row) {
     return '${row.factCount} facts';
   }
   return '${closed ?? 0} closed / ${open ?? 0} open';
+}
+
+String _projectionRetryFailurePointLabel(String failureStage) {
+  switch (failureStage) {
+    case 'pre_input':
+      return 'Before projector input';
+    case 'post_input':
+      return 'After projector input';
+    default:
+      return failureStage.replaceAll('_', ' ');
+  }
 }
 
 /// Stable cost-row key. Uses an explicit `none` placeholder when an

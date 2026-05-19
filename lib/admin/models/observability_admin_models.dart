@@ -552,11 +552,14 @@ class ProjectionRetryRow {
     required this.jobId,
     required this.operatorId,
     required this.locationId,
+    required this.originalLocationId,
     required this.restaurantId,
     required this.connectionId,
+    required this.originalConnectionId,
     required this.vendorId,
     required this.category,
     required this.status,
+    required this.failureStage,
     required this.factCount,
     required this.attemptCount,
     required this.changedPeriodCount,
@@ -577,11 +580,14 @@ class ProjectionRetryRow {
   final String jobId;
   final String operatorId;
   final String locationId;
+  final String originalLocationId;
   final String restaurantId;
   final String connectionId;
+  final String originalConnectionId;
   final String vendorId;
   final String category;
   final String status;
+  final String failureStage;
   final int factCount;
   final int attemptCount;
   final int? changedPeriodCount;
@@ -605,11 +611,14 @@ class ProjectionRetryRow {
       jobId: (json['job_id'] as String?) ?? '',
       operatorId: (json['operator_id'] as String?) ?? '',
       locationId: (json['location_id'] as String?) ?? '',
+      originalLocationId: (json['original_location_id'] as String?) ?? '',
       restaurantId: (json['restaurant_id'] as String?) ?? '',
       connectionId: (json['connection_id'] as String?) ?? '',
+      originalConnectionId: (json['original_connection_id'] as String?) ?? '',
       vendorId: (json['vendor_id'] as String?) ?? '',
       category: (json['category'] as String?) ?? '',
       status: (json['status'] as String?) ?? '',
+      failureStage: (json['failure_stage'] as String?) ?? 'post_input',
       factCount: _parseInt(json['fact_count']) ?? 0,
       attemptCount: _parseInt(json['attempt_count']) ?? 0,
       changedPeriodCount: _parseInt(json['changed_period_count']),

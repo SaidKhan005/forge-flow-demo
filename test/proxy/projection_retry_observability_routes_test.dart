@@ -179,10 +179,18 @@ class _RecordingObservabilityGateway implements ObservabilityAdminProxyGateway {
           'dead_lettered': 1,
         },
         'recent_active': const <Map<String, Object?>>[
-          <String, Object?>{'job_id': 'job-active', 'status': 'pending'},
+          <String, Object?>{
+            'job_id': 'job-active',
+            'status': 'pending',
+            'failure_stage': 'post_input',
+          },
         ],
         'dead_lettered': const <Map<String, Object?>>[
-          <String, Object?>{'job_id': 'job-dead', 'status': 'dead_lettered'},
+          <String, Object?>{
+            'job_id': 'job-dead',
+            'status': 'dead_lettered',
+            'failure_stage': 'pre_input',
+          },
         ],
       },
     };
