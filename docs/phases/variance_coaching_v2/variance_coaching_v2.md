@@ -135,7 +135,7 @@ this phase delivers, by lane:
 
 Per HP #2 the demo path uses the same tables / reads / UI. Each
 visible lane's PR carries a demo-mode walkthrough at the click-path
-bar set by `docs/archive/_walkthroughs/7.58.UX.5.md` (per
+bar set by `docs/_walkthroughs/7.58.UX.5.md` (per
 `docs/CODEX_PROMPT_GENERATION_STANDARD.md` Walkthrough Specificity).
 The shared walkthrough spine:
 
