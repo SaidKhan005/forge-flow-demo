@@ -8532,6 +8532,22 @@ abstract class OperatorLocationAdminProxyGateway {
   });
 }
 
+class OperatorLocationAdminRejected implements Exception {
+  const OperatorLocationAdminRejected({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'OperatorLocationAdminRejected($statusCode/$code): $message';
+}
+
 enum AdminLocationRemovalResult { removed, notFound, primaryLocationProtected }
 
 // Phase 9 live-closeout B6 — auth-session ledger endpoints. The Flutter
@@ -15182,6 +15198,13 @@ Future<void> routeRequest(
                 'error': error.code,
                 'message': error.message,
                 if (error.details.isNotEmpty) ...error.details,
+              });
+              return;
+            }
+            if (error is OperatorLocationAdminRejected) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
               });
               return;
             }

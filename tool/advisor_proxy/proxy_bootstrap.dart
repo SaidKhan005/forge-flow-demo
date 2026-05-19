@@ -4822,15 +4822,26 @@ class RepositoryOperatorLocationAdminProxyGateway
     required int businessDayRolloverHour,
     required String adminReason,
   }) async {
-    final created = await _locations.insertLocation(
-      operatorId: operatorId,
-      parentOrgUnitId: parentOrgUnitId,
-      name: name,
-      address: address,
-      timezone: timezone,
-      businessDayRolloverHour: businessDayRolloverHour,
-      adminReason: adminReason,
-    );
+    final LocationAdminRow created;
+    try {
+      created = await _locations.insertLocation(
+        operatorId: operatorId,
+        parentOrgUnitId: parentOrgUnitId,
+        name: name,
+        address: address,
+        timezone: timezone,
+        businessDayRolloverHour: businessDayRolloverHour,
+        adminReason: adminReason,
+      );
+    } on MissingOperatorBusinessTimingProfileException {
+      throw const OperatorLocationAdminRejected(
+        statusCode: 409,
+        code: 'operator_business_timing_profile_missing',
+        message:
+            'Create an operator Business Timing profile before adding a '
+            'location.',
+      );
+    }
     await _audit(
       actorUserId: actorUserId,
       operatorId: created.operatorId,

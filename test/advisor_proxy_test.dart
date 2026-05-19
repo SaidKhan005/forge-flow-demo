@@ -5840,6 +5840,63 @@ void main() {
     });
 
     test(
+      '11A.1 POST /v1/admin/locations surfaces missing operator timing',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.addLocationError = const OperatorLocationAdminRejected(
+            statusCode: 409,
+            code: 'operator_business_timing_profile_missing',
+            message:
+                'Create an operator Business Timing profile before adding a location.',
+          );
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminLocationsPath),
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-add-location-missing-timing',
+              body: <String, Object?>{
+                'admin_reason': 'Add location requested by operator',
+                'operator_id': 'op-1',
+                'parent_org_unit_id': 'org-unit-east',
+                'name': 'West Coast',
+                'timezone': 'America/Vancouver',
+                'business_day_rollover_hour': 5,
+              },
+            );
+            expect(response.statusCode, equals(409));
+            expect(gateway.lastAddLocationOperatorId, equals('op-1'));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['error'],
+              equals('operator_business_timing_profile_missing'),
+            );
+            expect(
+              body['message'],
+              equals(
+                'Create an operator Business Timing profile before adding a location.',
+              ),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
       '11A.1 POST /v1/admin/locations requires parent_org_unit_id',
       () async {
         await withRealHttp(() async {
@@ -6991,6 +7048,7 @@ class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
   Map<String, Object?>? suspendResult = <String, Object?>{};
   Map<String, Object?>? reactivateResult = <String, Object?>{};
   Map<String, Object?> addLocationResult = <String, Object?>{};
+  Object? addLocationError;
   Map<String, Object?>? patchLocationResult = <String, Object?>{};
   AdminLocationRemovalResult removeLocationResult =
       AdminLocationRemovalResult.removed;
@@ -7103,6 +7161,8 @@ class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
     lastAddLocationParentOrgUnitId = parentOrgUnitId;
     lastAddLocationTimezone = timezone;
     lastReason = adminReason;
+    final error = addLocationError;
+    if (error != null) throw error;
     return addLocationResult;
   }
 
