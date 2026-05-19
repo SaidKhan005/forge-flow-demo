@@ -883,6 +883,19 @@ void main() {
           findsOneWidget,
         );
 
+        // Scroll the cancel button into view before tapping. The
+        // members admin screen grew vertically (new rows above the
+        // pending-invite block) so the row's cancel affordance lives
+        // just below the default 1600x1200 test viewport; without
+        // ensureVisible the tap() resolves to an offset outside the
+        // root render tree and silently misses the widget, leaving
+        // the confirm dialog unmounted on the next step.
+        await tester.ensureVisible(
+          find.byKey(
+            const Key('admin_members_invite_cancel_demo-invite-diner-1'),
+          ),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(
           find.byKey(
             const Key('admin_members_invite_cancel_demo-invite-diner-1'),

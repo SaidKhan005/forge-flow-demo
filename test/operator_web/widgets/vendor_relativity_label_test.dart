@@ -197,8 +197,11 @@ void main() {
       );
       expect(_anyLineContains(lines, 'QuickBooks Time'), isTrue,
           reason: 'expected QuickBooks Time mentioned, got $lines');
+      // Tier-control copy was rewritten to plain English per the UX
+      // writing standard. The line that used to say "F&F controls
+      // cadence" now reads "Your tier sets how often." — same intent.
       expect(
-        _anyLineContains(lines, 'F&F controls cadence'),
+        _anyLineContains(lines, 'Your tier sets'),
         isTrue,
         reason: 'expected tier-control copy, got $lines',
       );
