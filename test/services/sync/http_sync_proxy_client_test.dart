@@ -169,6 +169,52 @@ void main() {
     },
   );
 
+  test('submitManualCovers patches scoped canonical covers route', () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'setting_id': 'setting-1'},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.submitManualCovers(
+      operatorId: 'op',
+      locationId: 'loc',
+      restaurantId: 'restaurant-1',
+      businessDate: '2026-05-10',
+      servicePeriodKey: 'brunch',
+      covers: 84,
+      recordedAt: '2026-05-10T18:00:00Z',
+      idempotencyKey: 'manual-covers-idem-1',
+    );
+
+    expect(seen.method, 'PATCH');
+    expect(
+      seen.url.path,
+      '/base/v1/operators/op/locations/loc/'
+      'data_accuracy_settings/manual_covers',
+    );
+    expect(seen.headers['authorization'], 'Bearer token-1');
+    expect(seen.headers['idempotency-key'], 'manual-covers-idem-1');
+    final body = jsonDecode(seen.body) as Map<String, Object?>;
+    expect(body, <String, Object?>{
+      'restaurant_id': 'restaurant-1',
+      'business_date': '2026-05-10',
+      'service_period_key': 'brunch',
+      'covers': 84,
+      'recorded_at': '2026-05-10T18:00:00Z',
+    });
+  });
+
   test(
     'switchDemoModeToLive posts scoped route with idempotency key',
     () async {
@@ -673,7 +719,10 @@ void main() {
     expect(selected.nextCursor, 'selected-next');
     expect(cycles.cycles.single.cycle.cycleId, 'cycle-1');
     expect(cycles.cycles.single.cycle.managerOverrideUsed, isTrue);
-    expect(cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH, 0);
+    expect(
+      cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH,
+      0,
+    );
     expect(cycles.cycles.single.cycle.daypartFor('supper_rush')!.targetPPA, 48);
     expect(cycles.cycles.single.cycle.daypartFor('legacy_lunch'), isNull);
     expect(cycles.nextCursor, 'cycle-next');
@@ -690,10 +739,7 @@ void main() {
           .daypartTargetPPA,
       48,
     );
-    expect(
-      profiles.profiles.single.profile.daypartFor('legacy_lunch'),
-      isNull,
-    );
+    expect(profiles.profiles.single.profile.daypartFor('legacy_lunch'), isNull);
     expect(versions.isUnavailable, isTrue);
     expect(versions.unavailableReason, 'target_profile_versions_not_projected');
     expect(requests.first.queryParameters['modified_since'], 'selected-cursor');

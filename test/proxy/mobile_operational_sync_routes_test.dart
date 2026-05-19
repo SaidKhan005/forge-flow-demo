@@ -441,6 +441,39 @@ void main() {
       },
     );
 
+    test('PATCH manual covers merges one canonical cover entry', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_settings/manual_covers',
+            ),
+            body: const <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-05-06',
+              'service_period_key': 'dinner',
+              'covers': 84,
+            },
+          );
+          expect(response.statusCode, 200);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final data = body['data'] as Map<String, Object?>;
+          final entries = data['covers_manual_entries'] as Map<String, Object?>;
+          expect(entries['2026-05-06'], <String, Object?>{'dinner': 84});
+          expect(ctx.gateway.calls, <String>[
+            'manual_covers_write:op-1:loc-1:2026-05-06:dinner:84',
+          ]);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('PATCH data accuracy settings rejects location manager', () async {
       await withRealHttp(() async {
         final ctx = await spinUp(
@@ -912,6 +945,41 @@ class _FakeMobileOperationalSyncGateway
             body['walk_in_handling_mode'] ?? 'reservations_only',
         'walk_in_manual_entries':
             body['walk_in_manual_entries'] ?? const <String, Object?>{},
+        'created_at': '2026-05-06T12:00:00Z',
+        'updated_at': '2026-05-06T12:01:00Z',
+        'updated_by': scope.userId,
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async {
+    final businessDate = body['business_date']! as String;
+    final servicePeriodKey = body['service_period_key']! as String;
+    calls.add(
+      'manual_covers_write:$operatorId:$locationId:'
+      '$businessDate:$servicePeriodKey:'
+      '${body['covers']}',
+    );
+    return <String, Object?>{
+      'data': <String, Object?>{
+        'setting_id': 'setting-1',
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'covers_source_lunch': 'vendor',
+        'covers_source_dinner': 'manual',
+        'covers_source_late_night': 'vendor',
+        'covers_manual_entries': <String, Object?>{
+          businessDate: <String, Object?>{servicePeriodKey: body['covers']},
+        },
+        'wage_source': 'manual_mix',
+        'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+        'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
         'created_at': '2026-05-06T12:00:00Z',
         'updated_at': '2026-05-06T12:01:00Z',
         'updated_by': scope.userId,
