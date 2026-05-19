@@ -393,7 +393,7 @@ void main() {
     test('manual entry overrides everything; provenance + sourceSystem '
         'reflect operator origin', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
-      // Seed operator preference: dinner = manual, value 187.
+      // Seed keyed operator preference: dinner = manual, value 187.
       pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
         'setting_id': 'das_001',
         'operator_id': _opA,
@@ -409,6 +409,19 @@ void main() {
         'updated_at': DateTime.utc(2026, 5, 4),
         'updated_by': null,
       };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': '99999999-9999-9999-9999-999999999991',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'manual',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': null,
+          };
       // POS row exists but operator preference wins.
       pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
         <String, Object?>{
@@ -460,75 +473,69 @@ void main() {
   group(
     'aggregator — D-FU. POS-fallback manual entries (Option A, MO-2-FU)',
     () {
-      test(
-        'POS exposes covers (Toast) + manual entries present -> manual '
-        'IGNORED; vendor wins',
-        () async {
-          final pool = _FakePool()..seedLocation(_opA, _locA);
-          // Toast row carries covers; capability mirror says Toast
-          // exposes covers, so stage 2 must win even though the
-          // operator typed a manual entry for the same slot.
-          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
-            <String, Object?>{
-              'vendor_id': 'toast',
-              'vendor_entity_id': 'check_toast_001',
-              'vendor_modified_at': _dinnerInstantUtc,
-              'covers': 92,
-              'covers_source': 'direct',
-              'opened_at': _dinnerInstantUtc.subtract(
-                const Duration(hours: 1),
-              ),
-              'closed_at': _dinnerInstantUtc,
-              'business_date': _businessDateIso,
-              'actual_sales': 2310.50,
-            },
-          ];
-          // Operator typed a manual entry for the same slot. Operator
-          // preference is the default ('vendor'), so stage 1 does not
-          // fire. The new stage 3.5 also does not fire because Toast
-          // exposes covers (capability mirror).
-          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] =
-              <String, Object?>{
-                'setting_id': 'das_002',
-                'operator_id': _opA,
-                'location_id': _locA,
-                'covers_source_lunch': 'vendor',
-                'covers_source_dinner': 'vendor',
-                'covers_source_late_night': 'vendor',
-                'covers_manual_entries': <String, Map<String, int>>{
-                  _businessDateIso: <String, int>{'dinner': 500},
-                },
-                'wage_source': 'vendor',
-                'created_at': DateTime.utc(2026, 5, 1),
-                'updated_at': DateTime.utc(2026, 5, 4),
-                'updated_by': null,
-              };
+      test('POS exposes covers (Toast) + manual entries present -> manual '
+          'IGNORED; vendor wins', () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // Toast row carries covers; capability mirror says Toast
+        // exposes covers, so stage 2 must win even though the
+        // operator typed a manual entry for the same slot.
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'toast',
+            'vendor_entity_id': 'check_toast_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 92,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc.subtract(const Duration(hours: 1)),
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 2310.50,
+          },
+        ];
+        // Operator typed a manual entry for the same slot. Operator
+        // preference is the default ('vendor'), so stage 1 does not
+        // fire. The new stage 3.5 also does not fire because Toast
+        // exposes covers (capability mirror).
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_002',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_lunch': 'vendor',
+          'covers_source_dinner': 'vendor',
+          'covers_source_late_night': 'vendor',
+          'covers_manual_entries': <String, Map<String, int>>{
+            _businessDateIso: <String, int>{'dinner': 500},
+          },
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
 
-          final aggregator = CanonicalFactToClosedShiftInputAggregator(
-            TenantTransactionWrapper(pool),
-          );
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
 
-          final result = await aggregator.aggregate(
-            operatorId: _opA,
-            locationId: _locA,
-            restaurantId: _restaurantA,
-            businessDate: _businessDate,
-            weekId: '2026-W18',
-            dayLabel: 'Mon',
-            servicePeriodId: 'dinner',
-            periodDefinition: _dinnerPeriod,
-          );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          servicePeriodId: 'dinner',
+          periodDefinition: _dinnerPeriod,
+        );
 
-          expect(result, isNotNull);
-          expect(
-            result!.input.covers,
-            92,
-            reason: 'Toast (coversFieldExposed=true) wins; manual ignored',
-          );
-          expect(result.input.sourceSystem, 'toast');
-          expect(result.provenance.coversProvenance, 'vendor_toast');
-        },
-      );
+        expect(result, isNotNull);
+        expect(
+          result!.input.covers,
+          92,
+          reason: 'Toast (coversFieldExposed=true) wins; manual ignored',
+        );
+        expect(result.input.sourceSystem, 'toast');
+        expect(result.provenance.coversProvenance, 'vendor_toast');
+      });
 
       test(
         'POS does NOT expose covers (Square) + manual entries present -> '
@@ -539,35 +546,35 @@ void main() {
           // (coversFieldExposed=false); stage 2 short-circuits because
           // summed covers == 0. Stage 3.5 (new) fires because the
           // operator typed a manual entry for the slot.
-          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
-            <String, Object?>{
-              'vendor_id': 'square',
-              'vendor_entity_id': 'order_sq_001',
-              'vendor_modified_at': _dinnerInstantUtc,
-              'covers': 0,
-              'covers_source': 'forecast_fallback',
-              'opened_at': _dinnerInstantUtc,
-              'closed_at': _dinnerInstantUtc,
-              'business_date': _businessDateIso,
-              'actual_sales': 850.00,
-            },
-          ];
-          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] =
-              <String, Object?>{
-                'setting_id': 'das_003',
-                'operator_id': _opA,
-                'location_id': _locA,
-                'covers_source_lunch': 'vendor',
-                'covers_source_dinner': 'vendor',
-                'covers_source_late_night': 'vendor',
-                'covers_manual_entries': <String, Map<String, int>>{
-                  _businessDateIso: <String, int>{'dinner': 73},
+          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+              [
+                <String, Object?>{
+                  'vendor_id': 'square',
+                  'vendor_entity_id': 'order_sq_001',
+                  'vendor_modified_at': _dinnerInstantUtc,
+                  'covers': 0,
+                  'covers_source': 'forecast_fallback',
+                  'opened_at': _dinnerInstantUtc,
+                  'closed_at': _dinnerInstantUtc,
+                  'business_date': _businessDateIso,
+                  'actual_sales': 850.00,
                 },
-                'wage_source': 'vendor',
-                'created_at': DateTime.utc(2026, 5, 1),
-                'updated_at': DateTime.utc(2026, 5, 4),
-                'updated_by': null,
-              };
+              ];
+          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+            'setting_id': 'das_003',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'covers_source_lunch': 'vendor',
+            'covers_source_dinner': 'vendor',
+            'covers_source_late_night': 'vendor',
+            'covers_manual_entries': <String, Map<String, int>>{
+              _businessDateIso: <String, int>{'dinner': 73},
+            },
+            'wage_source': 'vendor',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 4),
+            'updated_by': null,
+          };
 
           final aggregator = CanonicalFactToClosedShiftInputAggregator(
             TenantTransactionWrapper(pool),
@@ -586,8 +593,7 @@ void main() {
             recentThreeWeekWeeklyAvgCovers: 175,
             recentTrendDeltaCovers: 0,
             resolvedWeeklyForecastCovers: 210,
-            coversSource:
-                ForecastDemandSource.appDerivedFromHistoricalAverage,
+            coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
             builtAt: _businessDateIso,
           );
 
@@ -618,68 +624,64 @@ void main() {
         },
       );
 
-      test(
-        'POS does NOT expose covers (Square) + NO manual entries -> '
-        'existing forecast substitution still wins',
-        () async {
-          final pool = _FakePool()..seedLocation(_opA, _locA);
-          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
-            <String, Object?>{
-              'vendor_id': 'square',
-              'vendor_entity_id': 'order_sq_002',
-              'vendor_modified_at': _dinnerInstantUtc,
-              'covers': 0,
-              'covers_source': 'forecast_fallback',
-              'opened_at': _dinnerInstantUtc,
-              'closed_at': _dinnerInstantUtc,
-              'business_date': _businessDateIso,
-              'actual_sales': 612.40,
-            },
-          ];
-          // No manual entries seeded; default DataAccuracySettings
-          // (covers_manual_entries empty) is constructed by the
-          // aggregator when no row exists for the tenant.
-          final forecast = DemandForecastContext(
-            restaurantId: _restaurantA,
-            anchorBusinessDate: _businessDateIso,
-            baselineTotalCovers: 1500,
-            baselineWeeklyAvgCovers: 175,
-            baselineWeeksRepresented: 60 / 7,
-            recentThreeWeekTotalCovers: 525,
-            recentThreeWeekWeeklyAvgCovers: 175,
-            recentTrendDeltaCovers: 0,
-            resolvedWeeklyForecastCovers: 210,
-            coversSource:
-                ForecastDemandSource.appDerivedFromHistoricalAverage,
-            builtAt: _businessDateIso,
-          );
+      test('POS does NOT expose covers (Square) + NO manual entries -> '
+          'existing forecast substitution still wins', () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'square',
+            'vendor_entity_id': 'order_sq_002',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 0,
+            'covers_source': 'forecast_fallback',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 612.40,
+          },
+        ];
+        // No manual entries seeded; default DataAccuracySettings
+        // (covers_manual_entries empty) is constructed by the
+        // aggregator when no row exists for the tenant.
+        final forecast = DemandForecastContext(
+          restaurantId: _restaurantA,
+          anchorBusinessDate: _businessDateIso,
+          baselineTotalCovers: 1500,
+          baselineWeeklyAvgCovers: 175,
+          baselineWeeksRepresented: 60 / 7,
+          recentThreeWeekTotalCovers: 525,
+          recentThreeWeekWeeklyAvgCovers: 175,
+          recentTrendDeltaCovers: 0,
+          resolvedWeeklyForecastCovers: 210,
+          coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+          builtAt: _businessDateIso,
+        );
 
-          final aggregator = CanonicalFactToClosedShiftInputAggregator(
-            TenantTransactionWrapper(pool),
-          );
+        final aggregator = CanonicalFactToClosedShiftInputAggregator(
+          TenantTransactionWrapper(pool),
+        );
 
-          final result = await aggregator.aggregate(
-            operatorId: _opA,
-            locationId: _locA,
-            restaurantId: _restaurantA,
-            businessDate: _businessDate,
-            weekId: '2026-W18',
-            dayLabel: 'Mon',
-            servicePeriodId: 'dinner',
-            periodDefinition: _dinnerPeriod,
-            forecastContext: forecast,
-          );
+        final result = await aggregator.aggregate(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: _restaurantA,
+          businessDate: _businessDate,
+          weekId: '2026-W18',
+          dayLabel: 'Mon',
+          servicePeriodId: 'dinner',
+          periodDefinition: _dinnerPeriod,
+          forecastContext: forecast,
+        );
 
-          expect(result, isNotNull);
-          // Forecast substitution still wins when no manual entries
-          // are present.
-          expect(
-            result!.provenance.coversProvenance,
-            'vendor_square_covers_unavailable_app_forecast_substituted',
-          );
-          expect(result.input.sourceSystem, 'square');
-        },
-      );
+        expect(result, isNotNull);
+        // Forecast substitution still wins when no manual entries
+        // are present.
+        expect(
+          result!.provenance.coversProvenance,
+          'vendor_square_covers_unavailable_app_forecast_substituted',
+        );
+        expect(result.input.sourceSystem, 'square');
+      });
 
       test(
         'Unknown POS vendor (no cover_facts rows) + manual entries -> '
@@ -689,22 +691,21 @@ void main() {
           // No cover_facts seeded — posVendorId resolves to null;
           // capability lookup returns null which the aggregator treats
           // as "lacks coverage" (safer assumption).
-          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] =
-              <String, Object?>{
-                'setting_id': 'das_004',
-                'operator_id': _opA,
-                'location_id': _locA,
-                'covers_source_lunch': 'vendor',
-                'covers_source_dinner': 'vendor',
-                'covers_source_late_night': 'vendor',
-                'covers_manual_entries': <String, Map<String, int>>{
-                  _businessDateIso: <String, int>{'dinner': 41},
-                },
-                'wage_source': 'vendor',
-                'created_at': DateTime.utc(2026, 5, 1),
-                'updated_at': DateTime.utc(2026, 5, 4),
-                'updated_by': null,
-              };
+          pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+            'setting_id': 'das_004',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'covers_source_lunch': 'vendor',
+            'covers_source_dinner': 'vendor',
+            'covers_source_late_night': 'vendor',
+            'covers_manual_entries': <String, Map<String, int>>{
+              _businessDateIso: <String, int>{'dinner': 41},
+            },
+            'wage_source': 'vendor',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 4),
+            'updated_by': null,
+          };
 
           final aggregator = CanonicalFactToClosedShiftInputAggregator(
             TenantTransactionWrapper(pool),
@@ -1680,539 +1681,513 @@ void main() {
   //   5. Close-authority auto-derive — reliable vendor returns
   //      `vendor_<id>_reliable_finalization`; unknown / unreliable
   //      vendor returns the business-day-start fallback shape (Gap 31).
-  group(
-    'aggregator — O. Per-Daypart V1 Slice 1.5 regressions',
-    () {
-      const ServicePeriodDefinition lunchPeriod = ServicePeriodDefinition(
-        id: 'lunch',
-        label: 'Lunch',
-        shortLabel: 'L',
-        sortOrder: 1,
-        startLocalTime: '11:00',
-        endLocalTime: '15:00',
-        rollsPastMidnight: false,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      );
-      const ServicePeriodDefinition dinnerPeriodFull = ServicePeriodDefinition(
-        id: 'dinner',
-        label: 'Dinner',
-        shortLabel: 'D',
-        sortOrder: 2,
-        startLocalTime: '17:00',
-        endLocalTime: '22:00',
-        rollsPastMidnight: false,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      );
+  group('aggregator — O. Per-Daypart V1 Slice 1.5 regressions', () {
+    const ServicePeriodDefinition lunchPeriod = ServicePeriodDefinition(
+      id: 'lunch',
+      label: 'Lunch',
+      shortLabel: 'L',
+      sortOrder: 1,
+      startLocalTime: '11:00',
+      endLocalTime: '15:00',
+      rollsPastMidnight: false,
+      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+    );
+    const ServicePeriodDefinition dinnerPeriodFull = ServicePeriodDefinition(
+      id: 'dinner',
+      label: 'Dinner',
+      shortLabel: 'D',
+      sortOrder: 2,
+      startLocalTime: '17:00',
+      endLocalTime: '22:00',
+      rollsPastMidnight: false,
+      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+    );
 
-      test(
-        '1. POS check at exact period boundary (15:00:00) buckets to '
+    test('1. POS check at exact period boundary (15:00:00) buckets to '
         'lunch via both DaypartBucketer.bucketPosLine AND the closed-'
-        'shift aggregator path',
-        () async {
-          // 19:00 UTC = 15:00 EDT (May 2026, America/Toronto). The
-          // canonical bucketer treats period end inclusive at full
-          // sub-minute precision: 15:00:00.000 belongs to Lunch
-          // (Lunch 11:00–15:00). The pre-1.5 aggregator's inline
-          // `_bucketsToDaypart` used `[start, end)` half-open which
-          // would have classified this as "no period". Both paths
-          // must now agree.
-          final boundaryUtc = DateTime.utc(2026, 5, 4, 19, 0, 0);
+        'shift aggregator path', () async {
+      // 19:00 UTC = 15:00 EDT (May 2026, America/Toronto). The
+      // canonical bucketer treats period end inclusive at full
+      // sub-minute precision: 15:00:00.000 belongs to Lunch
+      // (Lunch 11:00–15:00). The pre-1.5 aggregator's inline
+      // `_bucketsToDaypart` used `[start, end)` half-open which
+      // would have classified this as "no period". Both paths
+      // must now agree.
+      final boundaryUtc = DateTime.utc(2026, 5, 4, 19, 0, 0);
 
-          // Path 1 — canonical bucketer with the operator's full
-          // period list.
-          const location = BucketingLocationContext(
-            iana: 'America/Toronto',
-            businessDayStartLocalTime: '04:00',
-          );
-          final localBoundary = DateTime(2026, 5, 4, 15, 0, 0);
-          final bucketedByDaypartBucketer = DaypartBucketer.bucketPosLine(
-            BucketingPosLine(
-              sourceId: 'check_boundary',
-              eventLocalTimestamp: localBoundary,
-            ),
-            location,
-            const <ServicePeriodDefinition>[lunchPeriod, dinnerPeriodFull],
-          );
-          expect(
-            bucketedByDaypartBucketer,
-            'lunch',
-            reason: 'DaypartBucketer.bucketPosLine treats period end '
-                'inclusive — 15:00:00 belongs to lunch.',
-          );
-
-          // Path 2 — closed-shift aggregator. The cover_facts row at
-          // closed_at=15:00:00 local must surface to the lunch
-          // aggregator call (covers > 0) and produce non-null result.
-          final pool = _FakePool()..seedLocation(_opA, _locA);
-          pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
-              [
-                <String, Object?>{
-                  'vendor_id': 'oracle_micros_simphony',
-                  'vendor_entity_id': 'check_boundary',
-                  'vendor_modified_at': boundaryUtc,
-                  'covers': 12,
-                  'covers_source': 'direct',
-                  'opened_at': boundaryUtc.subtract(const Duration(hours: 1)),
-                  'closed_at': boundaryUtc,
-                  'business_date': _businessDateIso,
-                  'actual_sales': 240.00,
-                },
-              ];
-          final aggregator = CanonicalFactToClosedShiftInputAggregator(
-            TenantTransactionWrapper(pool),
-          );
-          final result = await aggregator.aggregate(
-            operatorId: _opA,
-            locationId: _locA,
-            restaurantId: _restaurantA,
-            businessDate: _businessDate,
-            weekId: '2026-W18',
-            dayLabel: 'Mon',
-            servicePeriodId: 'lunch',
-            periodDefinition: lunchPeriod,
-            allServicePeriodDefinitions: const <ServicePeriodDefinition>[
-              lunchPeriod,
-              dinnerPeriodFull,
-            ],
-          );
-          expect(
-            result,
-            isNotNull,
-            reason: 'closed-shift aggregator must keep the 15:00:00 '
-                'check inside lunch — byte-identical to live read.',
-          );
-          expect(result!.input.covers, 12);
-          expect(result.input.daypart, 'lunch');
-        },
+      // Path 1 — canonical bucketer with the operator's full
+      // period list.
+      const location = BucketingLocationContext(
+        iana: 'America/Toronto',
+        businessDayStartLocalTime: '04:00',
+      );
+      final localBoundary = DateTime(2026, 5, 4, 15, 0, 0);
+      final bucketedByDaypartBucketer = DaypartBucketer.bucketPosLine(
+        BucketingPosLine(
+          sourceId: 'check_boundary',
+          eventLocalTimestamp: localBoundary,
+        ),
+        location,
+        const <ServicePeriodDefinition>[lunchPeriod, dinnerPeriodFull],
+      );
+      expect(
+        bucketedByDaypartBucketer,
+        'lunch',
+        reason:
+            'DaypartBucketer.bucketPosLine treats period end '
+            'inclusive — 15:00:00 belongs to lunch.',
       );
 
-      test(
-        '2. A FOH punch 10:00–18:00 with lunch 11:00–15:00 / dinner '
+      // Path 2 — closed-shift aggregator. The cover_facts row at
+      // closed_at=15:00:00 local must surface to the lunch
+      // aggregator call (covers > 0) and produce non-null result.
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'oracle_micros_simphony',
+          'vendor_entity_id': 'check_boundary',
+          'vendor_modified_at': boundaryUtc,
+          'covers': 12,
+          'covers_source': 'direct',
+          'opened_at': boundaryUtc.subtract(const Duration(hours: 1)),
+          'closed_at': boundaryUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 240.00,
+        },
+      ];
+      final aggregator = CanonicalFactToClosedShiftInputAggregator(
+        TenantTransactionWrapper(pool),
+      );
+      final result = await aggregator.aggregate(
+        operatorId: _opA,
+        locationId: _locA,
+        restaurantId: _restaurantA,
+        businessDate: _businessDate,
+        weekId: '2026-W18',
+        dayLabel: 'Mon',
+        servicePeriodId: 'lunch',
+        periodDefinition: lunchPeriod,
+        allServicePeriodDefinitions: const <ServicePeriodDefinition>[
+          lunchPeriod,
+          dinnerPeriodFull,
+        ],
+      );
+      expect(
+        result,
+        isNotNull,
+        reason:
+            'closed-shift aggregator must keep the 15:00:00 '
+            'check inside lunch — byte-identical to live read.',
+      );
+      expect(result!.input.covers, 12);
+      expect(result.input.daypart, 'lunch');
+    });
+
+    test('2. A FOH punch 10:00–18:00 with lunch 11:00–15:00 / dinner '
         '17:00–22:00 contributes 4h to lunch and 1h to dinner '
-        '(per-period interval splitting)',
-        () async {
-          // 14:00 UTC = 10:00 EDT; 22:00 UTC = 18:00 EDT.
-          final startUtc = DateTime.utc(2026, 5, 4, 14, 0, 0);
-          final endUtc = DateTime.utc(2026, 5, 4, 22, 0, 0);
-          final punchRow = <String, Object?>{
-            'vendor_id': 'quickbooks_time',
-            'vendor_entity_id': 'ts_split',
-            'employee_source_id': 'emp_split',
-            'role_name': 'server',
-            'shift_start': startUtc,
-            'shift_end': endUtc,
-            'hours_worked': 8,
-            'pay_rate': 20.0,
+        '(per-period interval splitting)', () async {
+      // 14:00 UTC = 10:00 EDT; 22:00 UTC = 18:00 EDT.
+      final startUtc = DateTime.utc(2026, 5, 4, 14, 0, 0);
+      final endUtc = DateTime.utc(2026, 5, 4, 22, 0, 0);
+      final punchRow = <String, Object?>{
+        'vendor_id': 'quickbooks_time',
+        'vendor_entity_id': 'ts_split',
+        'employee_source_id': 'emp_split',
+        'role_name': 'server',
+        'shift_start': startUtc,
+        'shift_end': endUtc,
+        'hours_worked': 8,
+        'pay_rate': 20.0,
+        'business_date': _businessDateIso,
+      };
+
+      // Lunch run — expect 4 hours and 4×20 = 80 dollars.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_lunch',
+            'vendor_modified_at': DateTime.utc(2026, 5, 4, 17, 0, 0),
+            'covers': 10,
+            'covers_source': 'direct',
+            'opened_at': DateTime.utc(2026, 5, 4, 16, 0, 0),
+            'closed_at': DateTime.utc(2026, 5, 4, 17, 0, 0),
             'business_date': _businessDateIso,
-          };
-
-          // Lunch run — expect 4 hours and 4×20 = 80 dollars.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
-                [
-                  <String, Object?>{
-                    'vendor_id': 'oracle_micros_simphony',
-                    'vendor_entity_id': 'check_lunch',
-                    'vendor_modified_at': DateTime.utc(2026, 5, 4, 17, 0, 0),
-                    'covers': 10,
-                    'covers_source': 'direct',
-                    'opened_at': DateTime.utc(2026, 5, 4, 16, 0, 0),
-                    'closed_at': DateTime.utc(2026, 5, 4, 17, 0, 0),
-                    'business_date': _businessDateIso,
-                    'actual_sales': 200.0,
-                  },
-                ];
-            pool.laborPunchesByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
-                [punchRow];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: _businessDate,
-                  weekId: '2026-W18',
-                  dayLabel: 'Mon',
-                  servicePeriodId: 'lunch',
-                  periodDefinition: lunchPeriod,
-                  allServicePeriodDefinitions: const <ServicePeriodDefinition>[
-                    lunchPeriod,
-                    dinnerPeriodFull,
-                  ],
-                );
-            expect(result, isNotNull);
-            expect(result!.input.actualFohHours, 4);
-            expect(
-              result.input.actualFohLaborDollars,
-              closeTo(4 * 20.0, 0.001),
+            'actual_sales': 200.0,
+          },
+        ];
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+            [punchRow];
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'lunch',
+              periodDefinition: lunchPeriod,
+              allServicePeriodDefinitions: const <ServicePeriodDefinition>[
+                lunchPeriod,
+                dinnerPeriodFull,
+              ],
             );
-          }
+        expect(result, isNotNull);
+        expect(result!.input.actualFohHours, 4);
+        expect(result.input.actualFohLaborDollars, closeTo(4 * 20.0, 0.001));
+      }
 
-          // Dinner run — expect 1 hour and 1×20 = 20 dollars.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
-                [
-                  <String, Object?>{
-                    'vendor_id': 'oracle_micros_simphony',
-                    'vendor_entity_id': 'check_dinner',
-                    'vendor_modified_at': DateTime.utc(2026, 5, 4, 22, 0, 0),
-                    'covers': 8,
-                    'covers_source': 'direct',
-                    'opened_at': DateTime.utc(2026, 5, 4, 21, 0, 0),
-                    'closed_at': DateTime.utc(2026, 5, 4, 22, 0, 0),
-                    'business_date': _businessDateIso,
-                    'actual_sales': 160.0,
-                  },
-                ];
-            pool.laborPunchesByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
-                [punchRow];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: _businessDate,
-                  weekId: '2026-W18',
-                  dayLabel: 'Mon',
-                  servicePeriodId: 'dinner',
-                  periodDefinition: dinnerPeriodFull,
-                  allServicePeriodDefinitions: const <ServicePeriodDefinition>[
-                    lunchPeriod,
-                    dinnerPeriodFull,
-                  ],
-                );
-            expect(result, isNotNull);
-            expect(result!.input.actualFohHours, 1);
-            expect(
-              result.input.actualFohLaborDollars,
-              closeTo(1 * 20.0, 0.001),
+      // Dinner run — expect 1 hour and 1×20 = 20 dollars.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_dinner',
+            'vendor_modified_at': DateTime.utc(2026, 5, 4, 22, 0, 0),
+            'covers': 8,
+            'covers_source': 'direct',
+            'opened_at': DateTime.utc(2026, 5, 4, 21, 0, 0),
+            'closed_at': DateTime.utc(2026, 5, 4, 22, 0, 0),
+            'business_date': _businessDateIso,
+            'actual_sales': 160.0,
+          },
+        ];
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+            [punchRow];
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: dinnerPeriodFull,
+              allServicePeriodDefinitions: const <ServicePeriodDefinition>[
+                lunchPeriod,
+                dinnerPeriodFull,
+              ],
             );
-          }
-        },
-      );
+        expect(result, isNotNull);
+        expect(result!.input.actualFohHours, 1);
+        expect(result.input.actualFohLaborDollars, closeTo(1 * 20.0, 0.001));
+      }
+    });
 
-      test(
-        '3. Cross-(business-date) punch — 03:00 -> 11:00 with cutoff '
+    test('3. Cross-(business-date) punch — 03:00 -> 11:00 with cutoff '
         '04:00 splits across Mon (1h before rollover) and Tue (7h '
         'after); each business_date aggregator call sees only its '
-        'own slice',
-        () async {
-          // Local 03:00 Tue → 11:00 Tue, cutoff 04:00 → punch spans
-          // Mon business date (03:00–04:00 = 1h) and Tue business
-          // date (04:00–11:00 = 7h).
-          // 03:00 EDT = 07:00 UTC; 11:00 EDT = 15:00 UTC (May 2026).
-          final startUtc = DateTime.utc(2026, 5, 5, 7, 0, 0);
-          final endUtc = DateTime.utc(2026, 5, 5, 15, 0, 0);
+        'own slice', () async {
+      // Local 03:00 Tue → 11:00 Tue, cutoff 04:00 → punch spans
+      // Mon business date (03:00–04:00 = 1h) and Tue business
+      // date (04:00–11:00 = 7h).
+      // 03:00 EDT = 07:00 UTC; 11:00 EDT = 15:00 UTC (May 2026).
+      final startUtc = DateTime.utc(2026, 5, 5, 7, 0, 0);
+      final endUtc = DateTime.utc(2026, 5, 5, 15, 0, 0);
 
-          // Both the calendar Tue row and the Mon row hold the same
-          // punch in the fake DB (the SQL window is ±1 day around the
-          // queried business_date; the production write path stamps
-          // the punch's `business_date` from its `shift_start`).
-          final monPunchRow = <String, Object?>{
-            'vendor_id': 'quickbooks_time',
-            'vendor_entity_id': 'ts_cross',
-            'employee_source_id': 'emp_cross',
-            'role_name': 'cook',
-            'shift_start': startUtc,
-            'shift_end': endUtc,
-            'hours_worked': 8,
-            'pay_rate': 18.0,
-            'business_date': '2026-05-04',
-          };
+      // Both the calendar Tue row and the Mon row hold the same
+      // punch in the fake DB (the SQL window is ±1 day around the
+      // queried business_date; the production write path stamps
+      // the punch's `business_date` from its `shift_start`).
+      final monPunchRow = <String, Object?>{
+        'vendor_id': 'quickbooks_time',
+        'vendor_entity_id': 'ts_cross',
+        'employee_source_id': 'emp_cross',
+        'role_name': 'cook',
+        'shift_start': startUtc,
+        'shift_end': endUtc,
+        'hours_worked': 8,
+        'pay_rate': 18.0,
+        'business_date': '2026-05-04',
+      };
 
-          // Mon (lunch is 11:00–15:00 by definition; the spillover
-          // 03:00–04:00 is non-service, so the lunch aggregator call
-          // for Mon receives 0 hours for this punch). We assert the
-          // late_night period for Mon picks up the 1h.
-          const lateNightMon = ServicePeriodDefinition(
-            id: 'late_night',
-            label: 'Late night',
-            shortLabel: 'LN',
-            sortOrder: 3,
-            startLocalTime: '22:00',
-            endLocalTime: '04:00',
-            rollsPastMidnight: true,
-            applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-          );
-          final allPeriods = const <ServicePeriodDefinition>[
-            lunchPeriod,
-            dinnerPeriodFull,
-            lateNightMon,
-          ];
-
-          // Mon late_night aggregator call (business_date = 2026-05-04).
-          // Late-night Mon = [2026-05-04 22:00, 2026-05-05 04:00).
-          // Punch 03:00–11:00 Tue calendar overlaps that interval at
-          // 03:00–04:00 → 1 hour.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation['$_opA|$_locA|2026-05-04'] = [
-              <String, Object?>{
-                'vendor_id': 'oracle_micros_simphony',
-                'vendor_entity_id': 'check_late_night',
-                'vendor_modified_at': DateTime.utc(2026, 5, 5, 7, 30, 0),
-                'covers': 2,
-                'covers_source': 'direct',
-                'opened_at': DateTime.utc(2026, 5, 5, 7, 0, 0),
-                'closed_at': DateTime.utc(2026, 5, 5, 7, 30, 0),
-                'business_date': '2026-05-04',
-                'actual_sales': 40.0,
-              },
-            ];
-            // Punch stamped business_date=Mon; the new 3-day window
-            // SQL captures it for the Mon aggregator call.
-            pool.laborPunchesByOperatorLocation['$_opA|$_locA|2026-05-04'] =
-                [monPunchRow];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: DateTime.utc(2026, 5, 4),
-                  weekId: '2026-W18',
-                  dayLabel: 'Mon',
-                  servicePeriodId: 'late_night',
-                  periodDefinition: lateNightMon,
-                  allServicePeriodDefinitions: allPeriods,
-                );
-            expect(result, isNotNull);
-            expect(
-              result!.input.actualBohHours,
-              1,
-              reason: 'Mon late_night picks up the 03:00–04:00 spillover '
-                  'of the Tue-calendar punch.',
-            );
-          }
-
-          // Tue lunch aggregator call (business_date = 2026-05-05).
-          // Lunch Tue = [2026-05-05 11:00, 2026-05-05 15:00].
-          // Punch 03:00–11:00 Tue covers 11:00 endpoint → 0 dinner /
-          // 0 lunch minutes via the half-open Lunch interval seen by
-          // the bucketer's punch splitter
-          // (`[ivStart, ivEnd)`). The slice's worked example is the
-          // 03:00–04:00 split, which Mon late_night captured above.
-          // What this test asserts is the inverse: the Tue lunch
-          // aggregator call must NOT double-count the Mon-stamped row.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation['$_opA|$_locA|2026-05-05'] = [
-              <String, Object?>{
-                'vendor_id': 'oracle_micros_simphony',
-                'vendor_entity_id': 'check_tue_lunch',
-                'vendor_modified_at': DateTime.utc(2026, 5, 5, 17, 0, 0),
-                'covers': 4,
-                'covers_source': 'direct',
-                'opened_at': DateTime.utc(2026, 5, 5, 16, 0, 0),
-                'closed_at': DateTime.utc(2026, 5, 5, 17, 0, 0),
-                'business_date': '2026-05-05',
-                'actual_sales': 80.0,
-              },
-            ];
-            // The punch row's stored business_date = Mon. The 3-day
-            // SQL window for Tue (prior=Mon, next=Wed) captures it.
-            pool.laborPunchesByOperatorLocation['$_opA|$_locA|2026-05-04'] =
-                [monPunchRow];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: DateTime.utc(2026, 5, 5),
-                  weekId: '2026-W19',
-                  dayLabel: 'Tue',
-                  servicePeriodId: 'lunch',
-                  periodDefinition: lunchPeriod,
-                  allServicePeriodDefinitions: allPeriods,
-                );
-            expect(result, isNotNull);
-            // The punch's overlap with Tue lunch period [11:00, 15:00)
-            // is empty because the punch ends exactly at 11:00 local
-            // (bucketer uses half-open punch intervals — the minute
-            // starting at 11:00 is the first minute of lunch, but
-            // the punch end at 11:00 is exclusive).
-            expect(
-              result!.input.actualBohHours,
-              0,
-              reason: 'Tue lunch must NOT double-count the punch that '
-                  'already contributed to Mon late_night.',
-            );
-          }
-        },
+      // Mon (lunch is 11:00–15:00 by definition; the spillover
+      // 03:00–04:00 is non-service, so the lunch aggregator call
+      // for Mon receives 0 hours for this punch). We assert the
+      // late_night period for Mon picks up the 1h.
+      const lateNightMon = ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late night',
+        shortLabel: 'LN',
+        sortOrder: 3,
+        startLocalTime: '22:00',
+        endLocalTime: '04:00',
+        rollsPastMidnight: true,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
       );
+      final allPeriods = const <ServicePeriodDefinition>[
+        lunchPeriod,
+        dinnerPeriodFull,
+        lateNightMon,
+      ];
 
-      test(
-        '4. Stage-4 forecast fallback uses DaypartPlanAllocator with '
+      // Mon late_night aggregator call (business_date = 2026-05-04).
+      // Late-night Mon = [2026-05-04 22:00, 2026-05-05 04:00).
+      // Punch 03:00–11:00 Tue calendar overlaps that interval at
+      // 03:00–04:00 → 1 hour.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|2026-05-04'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_late_night',
+            'vendor_modified_at': DateTime.utc(2026, 5, 5, 7, 30, 0),
+            'covers': 2,
+            'covers_source': 'direct',
+            'opened_at': DateTime.utc(2026, 5, 5, 7, 0, 0),
+            'closed_at': DateTime.utc(2026, 5, 5, 7, 30, 0),
+            'business_date': '2026-05-04',
+            'actual_sales': 40.0,
+          },
+        ];
+        // Punch stamped business_date=Mon; the new 3-day window
+        // SQL captures it for the Mon aggregator call.
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|2026-05-04'] = [
+          monPunchRow,
+        ];
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: DateTime.utc(2026, 5, 4),
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'late_night',
+              periodDefinition: lateNightMon,
+              allServicePeriodDefinitions: allPeriods,
+            );
+        expect(result, isNotNull);
+        expect(
+          result!.input.actualBohHours,
+          1,
+          reason:
+              'Mon late_night picks up the 03:00–04:00 spillover '
+              'of the Tue-calendar punch.',
+        );
+      }
+
+      // Tue lunch aggregator call (business_date = 2026-05-05).
+      // Lunch Tue = [2026-05-05 11:00, 2026-05-05 15:00].
+      // Punch 03:00–11:00 Tue covers 11:00 endpoint → 0 dinner /
+      // 0 lunch minutes via the half-open Lunch interval seen by
+      // the bucketer's punch splitter
+      // (`[ivStart, ivEnd)`). The slice's worked example is the
+      // 03:00–04:00 split, which Mon late_night captured above.
+      // What this test asserts is the inverse: the Tue lunch
+      // aggregator call must NOT double-count the Mon-stamped row.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|2026-05-05'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_tue_lunch',
+            'vendor_modified_at': DateTime.utc(2026, 5, 5, 17, 0, 0),
+            'covers': 4,
+            'covers_source': 'direct',
+            'opened_at': DateTime.utc(2026, 5, 5, 16, 0, 0),
+            'closed_at': DateTime.utc(2026, 5, 5, 17, 0, 0),
+            'business_date': '2026-05-05',
+            'actual_sales': 80.0,
+          },
+        ];
+        // The punch row's stored business_date = Mon. The 3-day
+        // SQL window for Tue (prior=Mon, next=Wed) captures it.
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|2026-05-04'] = [
+          monPunchRow,
+        ];
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: DateTime.utc(2026, 5, 5),
+              weekId: '2026-W19',
+              dayLabel: 'Tue',
+              servicePeriodId: 'lunch',
+              periodDefinition: lunchPeriod,
+              allServicePeriodDefinitions: allPeriods,
+            );
+        expect(result, isNotNull);
+        // The punch's overlap with Tue lunch period [11:00, 15:00)
+        // is empty because the punch ends exactly at 11:00 local
+        // (bucketer uses half-open punch intervals — the minute
+        // starting at 11:00 is the first minute of lunch, but
+        // the punch end at 11:00 is exclusive).
+        expect(
+          result!.input.actualBohHours,
+          0,
+          reason:
+              'Tue lunch must NOT double-count the punch that '
+              'already contributed to Mon late_night.',
+        );
+      }
+    });
+
+    test('4. Stage-4 forecast fallback uses DaypartPlanAllocator with '
         'distribution weights — 3-period config with weights '
         '(0.3, 0.5, 0.2) splits 90-cover daily forecast into 27/45/18, '
-        'NOT the legacy 30/30/30 uniform `/3` divide',
-        () async {
-          // Operator's 3 periods (sum cover_proportions = 1.0).
-          const lunch = lunchPeriod;
-          const dinner = dinnerPeriodFull;
-          const lateNight = ServicePeriodDefinition(
-            id: 'late_night',
-            label: 'Late night',
-            shortLabel: 'LN',
-            sortOrder: 3,
-            startLocalTime: '22:00',
-            endLocalTime: '01:00',
-            rollsPastMidnight: true,
-            applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-          );
-          // Weekly forecast = 90 covers/day × 7 days = 630.
-          const weeklyForecast = 90 * 7;
-          final forecastContext = DemandForecastContext(
-            restaurantId: _restaurantA,
-            anchorBusinessDate: _businessDateIso,
-            baselineTotalCovers: 5400,
-            baselineWeeklyAvgCovers: weeklyForecast,
-            baselineWeeksRepresented: 60 / 7,
-            resolvedWeeklyForecastCovers: weeklyForecast,
-            coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
-            builtAt: DateTime.utc(2026, 5, 4).toIso8601String(),
-          );
-          // Distribution weights — per-day map keyed by daypart id.
-          final weights = ScheduleDistributionWeights.available(
-            dayWeights: const <String, int>{'Mon': 100},
-            daypartWeightsByDay: const <String, Map<String, int>>{
-              'Mon': <String, int>{
-                'lunch': 30,
-                'dinner': 50,
-                'late_night': 20,
-              },
-            },
-            closedShiftCount: 21,
-            closedBusinessDayCount: 7,
-            totalCovers: 100,
-          );
-
-          Future<int?> coversFor(
-            ServicePeriodDefinition target,
-            String targetServicePeriodId,
-          ) async {
-            // Pool has NO POS rows -> stage 4 fallback kicks in.
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: _businessDate,
-                  weekId: '2026-W18',
-                  dayLabel: 'Mon',
-                  servicePeriodId: targetServicePeriodId,
-                  periodDefinition: target,
-                  allServicePeriodDefinitions: const <ServicePeriodDefinition>[
-                    lunch,
-                    dinner,
-                    lateNight,
-                  ],
-                  distributionWeights: weights,
-                  forecastContext: forecastContext,
-                );
-            return result?.input.covers;
-          }
-
-          // 90 × 0.3 = 27, 90 × 0.5 = 45, 90 × 0.2 = 18.
-          expect(await coversFor(lunch, 'lunch'), 27);
-          expect(await coversFor(dinner, 'dinner'), 45);
-          expect(await coversFor(lateNight, 'late_night'), 18);
+        'NOT the legacy 30/30/30 uniform `/3` divide', () async {
+      // Operator's 3 periods (sum cover_proportions = 1.0).
+      const lunch = lunchPeriod;
+      const dinner = dinnerPeriodFull;
+      const lateNight = ServicePeriodDefinition(
+        id: 'late_night',
+        label: 'Late night',
+        shortLabel: 'LN',
+        sortOrder: 3,
+        startLocalTime: '22:00',
+        endLocalTime: '01:00',
+        rollsPastMidnight: true,
+        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+      );
+      // Weekly forecast = 90 covers/day × 7 days = 630.
+      const weeklyForecast = 90 * 7;
+      final forecastContext = DemandForecastContext(
+        restaurantId: _restaurantA,
+        anchorBusinessDate: _businessDateIso,
+        baselineTotalCovers: 5400,
+        baselineWeeklyAvgCovers: weeklyForecast,
+        baselineWeeksRepresented: 60 / 7,
+        resolvedWeeklyForecastCovers: weeklyForecast,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: DateTime.utc(2026, 5, 4).toIso8601String(),
+      );
+      // Distribution weights — per-day map keyed by daypart id.
+      final weights = ScheduleDistributionWeights.available(
+        dayWeights: const <String, int>{'Mon': 100},
+        daypartWeightsByDay: const <String, Map<String, int>>{
+          'Mon': <String, int>{'lunch': 30, 'dinner': 50, 'late_night': 20},
         },
+        closedShiftCount: 21,
+        closedBusinessDayCount: 7,
+        totalCovers: 100,
       );
 
-      test(
-        '5. Close-authority auto-derive — reliable POS vendor emits '
+      Future<int?> coversFor(
+        ServicePeriodDefinition target,
+        String targetServicePeriodId,
+      ) async {
+        // Pool has NO POS rows -> stage 4 fallback kicks in.
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: targetServicePeriodId,
+              periodDefinition: target,
+              allServicePeriodDefinitions: const <ServicePeriodDefinition>[
+                lunch,
+                dinner,
+                lateNight,
+              ],
+              distributionWeights: weights,
+              forecastContext: forecastContext,
+            );
+        return result?.input.covers;
+      }
+
+      // 90 × 0.3 = 27, 90 × 0.5 = 45, 90 × 0.2 = 18.
+      expect(await coversFor(lunch, 'lunch'), 27);
+      expect(await coversFor(dinner, 'dinner'), 45);
+      expect(await coversFor(lateNight, 'late_night'), 18);
+    });
+
+    test('5. Close-authority auto-derive — reliable POS vendor emits '
         '`vendor_<id>_reliable_finalization`; unknown vendor emits '
-        '`no_pos_vendor_business_day_start_fallback`',
-        () async {
-          // Reliable case — Oracle Simphony classifies as
-          // vendorReliableFinalization in the sidecar.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
-                [
-                  <String, Object?>{
-                    'vendor_id': 'oracle_micros_simphony',
-                    'vendor_entity_id': 'check_reliable',
-                    'vendor_modified_at': _dinnerInstantUtc,
-                    'covers': 8,
-                    'covers_source': 'direct',
-                    'opened_at': _dinnerInstantUtc,
-                    'closed_at': _dinnerInstantUtc,
-                    'business_date': _businessDateIso,
-                    'actual_sales': 200.0,
-                  },
-                ];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: _businessDate,
-                  weekId: '2026-W18',
-                  dayLabel: 'Mon',
-                  servicePeriodId: 'dinner',
-                  periodDefinition: dinnerPeriodFull,
-                );
-            expect(
-              result?.provenance.closeAuthorityProvenance,
-              'vendor_oracle_micros_simphony_reliable_finalization',
+        '`no_pos_vendor_business_day_start_fallback`', () async {
+      // Reliable case — Oracle Simphony classifies as
+      // vendorReliableFinalization in the sidecar.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_reliable',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 8,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 200.0,
+          },
+        ];
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: dinnerPeriodFull,
             );
-          }
-          // Unknown / no POS vendor case — close-authority falls back
-          // to the operator's business-day-start.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            // No cover_facts rows -> stage 4 / 5 fallback path. With
-            // a forecast context absent, stage 5 returns null. Use a
-            // forecast context so we hit stage 4 and the result is
-            // non-null with sourceSystem='app_forecast'.
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
-                  TenantTransactionWrapper(pool),
-                ).aggregate(
-                  operatorId: _opA,
-                  locationId: _locA,
-                  restaurantId: _restaurantA,
-                  businessDate: _businessDate,
-                  weekId: '2026-W18',
-                  dayLabel: 'Mon',
-                  servicePeriodId: 'dinner',
-                  periodDefinition: dinnerPeriodFull,
-                  forecastContext: DemandForecastContext(
-                    restaurantId: _restaurantA,
-                    anchorBusinessDate: _businessDateIso,
-                    baselineTotalCovers: 600,
-                    baselineWeeklyAvgCovers: 70,
-                    baselineWeeksRepresented: 60 / 7,
-                    resolvedWeeklyForecastCovers: 70,
-                    coversSource:
-                        ForecastDemandSource.appDerivedFromHistoricalAverage,
-                    builtAt: DateTime.utc(2026, 5, 4).toIso8601String(),
-                  ),
-                );
-            expect(
-              result?.provenance.closeAuthorityProvenance,
-              'no_pos_vendor_business_day_start_fallback',
+        expect(
+          result?.provenance.closeAuthorityProvenance,
+          'vendor_oracle_micros_simphony_reliable_finalization',
+        );
+      }
+      // Unknown / no POS vendor case — close-authority falls back
+      // to the operator's business-day-start.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // No cover_facts rows -> stage 4 / 5 fallback path. With
+        // a forecast context absent, stage 5 returns null. Use a
+        // forecast context so we hit stage 4 and the result is
+        // non-null with sourceSystem='app_forecast'.
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: dinnerPeriodFull,
+              forecastContext: DemandForecastContext(
+                restaurantId: _restaurantA,
+                anchorBusinessDate: _businessDateIso,
+                baselineTotalCovers: 600,
+                baselineWeeklyAvgCovers: 70,
+                baselineWeeksRepresented: 60 / 7,
+                resolvedWeeklyForecastCovers: 70,
+                coversSource:
+                    ForecastDemandSource.appDerivedFromHistoricalAverage,
+                builtAt: DateTime.utc(2026, 5, 4).toIso8601String(),
+              ),
             );
-          }
-        },
-      );
-    },
-  );
+        expect(
+          result?.provenance.closeAuthorityProvenance,
+          'no_pos_vendor_business_day_start_fallback',
+        );
+      }
+    });
+  });
 
   // ──────────────────────────────────────────────────────────────────────
   // P. Operator business-hours scenario — 23:00 Tue → 03:30 Wed
@@ -2241,96 +2216,93 @@ void main() {
   //   02:00 Wed local = 06:00 Wed UTC = DateTime.utc(2026, 5, 13, 6, 0)
   //   03:30 Wed local = 07:30 Wed UTC = DateTime.utc(2026, 5, 13, 7, 30)
   // ──────────────────────────────────────────────────────────────────────
-  group(
-    'P. Operator business-hours scenario — '
-    '23:00 Tue → 03:30 Wed (intent lock)',
-    () {
-      // Tuesday business date anchor.
-      final tuesdayBusinessDate = DateTime.utc(2026, 5, 12);
-      const tuesdayBusinessDateIso = '2026-05-12';
+  group('P. Operator business-hours scenario — '
+      '23:00 Tue → 03:30 Wed (intent lock)', () {
+    // Tuesday business date anchor.
+    final tuesdayBusinessDate = DateTime.utc(2026, 5, 12);
+    const tuesdayBusinessDateIso = '2026-05-12';
 
-      // The operator's stated Late Night period: 22:00–02:00 with
-      // rollsPastMidnight=true. With cutoff 04:00, Late Night on
-      // business date Tue resolves to the calendar interval
-      // [Tue 22:00 local, Wed 02:00 local) per
-      // `DaypartBucketer._periodIntervalsOnBusinessDate`.
-      const lateNightPeriod = ServicePeriodDefinition(
-        id: 'late_night',
-        label: 'Late Night',
-        shortLabel: 'LN',
-        sortOrder: 3,
-        startLocalTime: '22:00',
-        endLocalTime: '02:00',
-        rollsPastMidnight: true,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      );
-      // Carry lunch + dinner so the bucketer iterates the full
-      // operator period list — matches production where
-      // `allServicePeriodDefinitions` is plumbed in by the call site.
-      const lunchPeriod = ServicePeriodDefinition(
-        id: 'lunch',
-        label: 'Lunch',
-        shortLabel: 'L',
-        sortOrder: 1,
-        startLocalTime: '11:00',
-        endLocalTime: '15:00',
-        rollsPastMidnight: false,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      );
-      const dinnerPeriod = ServicePeriodDefinition(
-        id: 'dinner',
-        label: 'Dinner',
-        shortLabel: 'D',
-        sortOrder: 2,
-        startLocalTime: '17:00',
-        endLocalTime: '22:00',
-        rollsPastMidnight: false,
-        applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
-      );
-      const allPeriods = <ServicePeriodDefinition>[
-        lunchPeriod,
-        dinnerPeriod,
-        lateNightPeriod,
-      ];
+    // The operator's stated Late Night period: 22:00–02:00 with
+    // rollsPastMidnight=true. With cutoff 04:00, Late Night on
+    // business date Tue resolves to the calendar interval
+    // [Tue 22:00 local, Wed 02:00 local) per
+    // `DaypartBucketer._periodIntervalsOnBusinessDate`.
+    const lateNightPeriod = ServicePeriodDefinition(
+      id: 'late_night',
+      label: 'Late Night',
+      shortLabel: 'LN',
+      sortOrder: 3,
+      startLocalTime: '22:00',
+      endLocalTime: '02:00',
+      rollsPastMidnight: true,
+      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+    );
+    // Carry lunch + dinner so the bucketer iterates the full
+    // operator period list — matches production where
+    // `allServicePeriodDefinitions` is plumbed in by the call site.
+    const lunchPeriod = ServicePeriodDefinition(
+      id: 'lunch',
+      label: 'Lunch',
+      shortLabel: 'L',
+      sortOrder: 1,
+      startLocalTime: '11:00',
+      endLocalTime: '15:00',
+      rollsPastMidnight: false,
+      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+    );
+    const dinnerPeriod = ServicePeriodDefinition(
+      id: 'dinner',
+      label: 'Dinner',
+      shortLabel: 'D',
+      sortOrder: 2,
+      startLocalTime: '17:00',
+      endLocalTime: '22:00',
+      rollsPastMidnight: false,
+      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+    );
+    const allPeriods = <ServicePeriodDefinition>[
+      lunchPeriod,
+      dinnerPeriod,
+      lateNightPeriod,
+    ];
 
-      // Operator's restaurant timing context — must match what
-      // `_FakePool.seedLocation` writes (timezone='America/Toronto',
-      // business_day_rollover_hour=4 → businessDayStartLocalTime='04:00').
-      const bucketingContext = BucketingLocationContext(
-        iana: 'America/Toronto',
-        businessDayStartLocalTime: '04:00',
-      );
+    // Operator's restaurant timing context — must match what
+    // `_FakePool.seedLocation` writes (timezone='America/Toronto',
+    // business_day_rollover_hour=4 → businessDayStartLocalTime='04:00').
+    const bucketingContext = BucketingLocationContext(
+      iana: 'America/Toronto',
+      businessDayStartLocalTime: '04:00',
+    );
 
-      // ─── P.1 — POS check buckets to Tuesday Late Night ─────────
-      test(
-        'P.1 POS check at 23:00 Tue local AND at 01:30 Wed local both '
-        'bucket to Tuesday business date / late_night daypart',
-        () async {
-          // 23:00 Tue local = 03:00 Wed UTC.
-          final twentyThreeTueUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
-          // 01:30 Wed local = 05:30 Wed UTC.
-          final oneThirtyWedUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
+    // ─── P.1 — POS check buckets to Tuesday Late Night ─────────
+    test('P.1 POS check at 23:00 Tue local AND at 01:30 Wed local both '
+        'bucket to Tuesday business date / late_night daypart', () async {
+      // 23:00 Tue local = 03:00 Wed UTC.
+      final twentyThreeTueUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
+      // 01:30 Wed local = 05:30 Wed UTC.
+      final oneThirtyWedUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
 
-          // Sub-case A — closed_at = 23:00 Tue local.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation[
-                '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+      // Sub-case A — closed_at = 23:00 Tue local.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+            [
               <String, Object?>{
                 'vendor_id': 'oracle_micros_simphony',
                 'vendor_entity_id': 'check_2300_tue',
                 'vendor_modified_at': twentyThreeTueUtc,
                 'covers': 6,
                 'covers_source': 'direct',
-                'opened_at':
-                    twentyThreeTueUtc.subtract(const Duration(hours: 1)),
+                'opened_at': twentyThreeTueUtc.subtract(
+                  const Duration(hours: 1),
+                ),
                 'closed_at': twentyThreeTueUtc,
                 'business_date': tuesdayBusinessDateIso,
                 'actual_sales': 180.0,
               },
             ];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
               TenantTransactionWrapper(pool),
             ).aggregate(
               operatorId: _opA,
@@ -2343,48 +2315,52 @@ void main() {
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
-            expect(
-              result,
-              isNotNull,
-              reason: '23:00 Tue local check must be picked up by the '
-                  'Tuesday late_night aggregator call.',
-            );
-            expect(result!.input.covers, 6);
-            expect(result.input.daypart, 'late_night');
-            // ClosedShiftInput.businessDate is the same DateTime the
-            // call passed in — the aggregator does not re-resolve it.
-            // The truth this assertion locks: the row's `business_date`
-            // anchor is Tuesday because the closed_at 23:00 Tue local
-            // resolved to Tuesday under the cutoff — the aggregator
-            // call would not have surfaced it otherwise.
-            expect(result.input.businessDate, tuesdayBusinessDate);
-            expect(result.input.servicePeriodKey, isNull,
-                reason: 'businessTimingProfileId not supplied → '
-                    'servicePeriodKey is null per aggregator contract; '
-                    'the daypart field already carries the period.');
-          }
+        expect(
+          result,
+          isNotNull,
+          reason:
+              '23:00 Tue local check must be picked up by the '
+              'Tuesday late_night aggregator call.',
+        );
+        expect(result!.input.covers, 6);
+        expect(result.input.daypart, 'late_night');
+        // ClosedShiftInput.businessDate is the same DateTime the
+        // call passed in — the aggregator does not re-resolve it.
+        // The truth this assertion locks: the row's `business_date`
+        // anchor is Tuesday because the closed_at 23:00 Tue local
+        // resolved to Tuesday under the cutoff — the aggregator
+        // call would not have surfaced it otherwise.
+        expect(result.input.businessDate, tuesdayBusinessDate);
+        expect(
+          result.input.servicePeriodKey,
+          isNull,
+          reason:
+              'businessTimingProfileId not supplied → '
+              'servicePeriodKey is null per aggregator contract; '
+              'the daypart field already carries the period.',
+        );
+      }
 
-          // Sub-case B — closed_at = 01:30 Wed local (post-midnight,
-          // pre-cutoff). Must still attribute to Tuesday late_night.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.coverFactsByOperatorLocation[
-                '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+      // Sub-case B — closed_at = 01:30 Wed local (post-midnight,
+      // pre-cutoff). Must still attribute to Tuesday late_night.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+            [
               <String, Object?>{
                 'vendor_id': 'oracle_micros_simphony',
                 'vendor_entity_id': 'check_0130_wed',
                 'vendor_modified_at': oneThirtyWedUtc,
                 'covers': 4,
                 'covers_source': 'direct',
-                'opened_at':
-                    oneThirtyWedUtc.subtract(const Duration(hours: 1)),
+                'opened_at': oneThirtyWedUtc.subtract(const Duration(hours: 1)),
                 'closed_at': oneThirtyWedUtc,
                 'business_date': tuesdayBusinessDateIso,
                 'actual_sales': 120.0,
               },
             ];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
               TenantTransactionWrapper(pool),
             ).aggregate(
               operatorId: _opA,
@@ -2397,107 +2373,168 @@ void main() {
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
-            expect(
-              result,
-              isNotNull,
-              reason: '01:30 Wed local check must attribute to Tuesday '
-                  'late_night because 01:30 < 04:00 cutoff AND falls in '
-                  'the Late Night [Tue 22:00, Wed 02:00) interval.',
-            );
-            expect(result!.input.covers, 4);
-            expect(result.input.daypart, 'late_night');
-            expect(result.input.businessDate, tuesdayBusinessDate);
-          }
+        expect(
+          result,
+          isNotNull,
+          reason:
+              '01:30 Wed local check must attribute to Tuesday '
+              'late_night because 01:30 < 04:00 cutoff AND falls in '
+              'the Late Night [Tue 22:00, Wed 02:00) interval.',
+        );
+        expect(result!.input.covers, 4);
+        expect(result.input.daypart, 'late_night');
+        expect(result.input.businessDate, tuesdayBusinessDate);
+      }
 
-          // Sub-case C — `DaypartBucketer.bucketPosLine` direct check.
-          // Locks the canonical bucketer's behavior at both endpoints
-          // independent of the aggregator wiring. If a future change
-          // breaks the bucketer's classification of either instant,
-          // this assertion fails before the aggregator path does.
-          final localTwentyThreeTue = DateTime(2026, 5, 12, 23, 0, 0);
-          final localOneThirtyWed = DateTime(2026, 5, 13, 1, 30, 0);
-          expect(
-            DaypartBucketer.bucketPosLine(
-              BucketingPosLine(
-                sourceId: 'check_2300_tue',
-                eventLocalTimestamp: localTwentyThreeTue,
-              ),
-              bucketingContext,
-              allPeriods,
-            ),
-            'late_night',
-          );
-          expect(
-            DaypartBucketer.bucketPosLine(
-              BucketingPosLine(
-                sourceId: 'check_0130_wed',
-                eventLocalTimestamp: localOneThirtyWed,
-              ),
-              bucketingContext,
-              allPeriods,
-            ),
-            'late_night',
-          );
-        },
+      // Sub-case C — `DaypartBucketer.bucketPosLine` direct check.
+      // Locks the canonical bucketer's behavior at both endpoints
+      // independent of the aggregator wiring. If a future change
+      // breaks the bucketer's classification of either instant,
+      // this assertion fails before the aggregator path does.
+      final localTwentyThreeTue = DateTime(2026, 5, 12, 23, 0, 0);
+      final localOneThirtyWed = DateTime(2026, 5, 13, 1, 30, 0);
+      expect(
+        DaypartBucketer.bucketPosLine(
+          BucketingPosLine(
+            sourceId: 'check_2300_tue',
+            eventLocalTimestamp: localTwentyThreeTue,
+          ),
+          bucketingContext,
+          allPeriods,
+        ),
+        'late_night',
       );
+      expect(
+        DaypartBucketer.bucketPosLine(
+          BucketingPosLine(
+            sourceId: 'check_0130_wed',
+            eventLocalTimestamp: localOneThirtyWed,
+          ),
+          bucketingContext,
+          allPeriods,
+        ),
+        'late_night',
+      );
+    });
 
-      // ─── P.2 — Labor punch split with non-service tail ─────────
-      test(
-        'P.2 FOH labor punch 23:00 Tue → 03:30 Wed contributes 3h '
+    test('P.1b closed-shift bucketing reads business_timing_profiles '
+        'cutoff, not locations.business_day_rollover_hour', () async {
+      // 04:15 Wed local = 08:15 Wed UTC in America/Toronto.
+      // With canonical cutoff 04:30 this belongs to Tuesday's
+      // business date. With legacy rolloverHour=0 it would be
+      // Wednesday and fail the Tuesday-only applicableDays gate.
+      final fourFifteenWedUtc = DateTime.utc(2026, 5, 13, 8, 15);
+      const earlyBreakfastPeriod = ServicePeriodDefinition(
+        id: 'early_breakfast',
+        label: 'Early Breakfast',
+        shortLabel: 'EB',
+        sortOrder: 1,
+        startLocalTime: '03:00',
+        endLocalTime: '05:00',
+        rollsPastMidnight: false,
+        applicableDays: <int>[DateTime.tuesday],
+      );
+      final pool = _FakePool()
+        ..seedLocation(
+          _opA,
+          _locA,
+          businessDayStartLocalTime: '04:30:00',
+          businessDayRolloverHour: 0,
+        );
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'oracle_micros_simphony',
+              'vendor_entity_id': 'check_0415_wed',
+              'vendor_modified_at': fourFifteenWedUtc,
+              'covers': 7,
+              'covers_source': 'direct',
+              'opened_at': fourFifteenWedUtc.subtract(
+                const Duration(minutes: 45),
+              ),
+              'closed_at': fourFifteenWedUtc,
+              'business_date': tuesdayBusinessDateIso,
+              'actual_sales': 210.0,
+            },
+          ];
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: tuesdayBusinessDate,
+            weekId: '2026-W20',
+            dayLabel: 'Tue',
+            servicePeriodId: 'early_breakfast',
+            periodDefinition: earlyBreakfastPeriod,
+            allServicePeriodDefinitions: const <ServicePeriodDefinition>[
+              earlyBreakfastPeriod,
+            ],
+          );
+
+      expect(result, isNotNull);
+      expect(result!.input.covers, 7);
+      expect(result.input.actualSales, closeTo(210.0, 0.001));
+    });
+
+    // ─── P.2 — Labor punch split with non-service tail ─────────
+    test('P.2 FOH labor punch 23:00 Tue → 03:30 Wed contributes 3h '
         '(180 min) to Tuesday late_night and the 02:00→03:30 sliver '
-        '(90 min non_service) is excluded from the late_night rollup',
-        () async {
-          // shift_start = 23:00 Tue local = 03:00 Wed UTC.
-          // shift_end   = 03:30 Wed local = 07:30 Wed UTC.
-          final shiftStartUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
-          final shiftEndUtc = DateTime.utc(2026, 5, 13, 7, 30, 0);
-          final laborRow = <String, Object?>{
-            'vendor_id': 'quickbooks_time',
-            'vendor_entity_id': 'ts_late_night_cross',
-            'employee_source_id': 'emp_late',
-            'role_name': 'server', // FOH
-            'shift_start': shiftStartUtc,
-            'shift_end': shiftEndUtc,
-            // hours_worked stamped by upstream sink at full duration;
-            // the aggregator MUST NOT use this — it must derive
-            // per-period minutes via DaypartBucketer.bucketLaborPunch.
-            'hours_worked': 4.5,
-            'pay_rate': 22.0,
-            'business_date': tuesdayBusinessDateIso,
-          };
+        '(90 min non_service) is excluded from the late_night rollup', () async {
+      // shift_start = 23:00 Tue local = 03:00 Wed UTC.
+      // shift_end   = 03:30 Wed local = 07:30 Wed UTC.
+      final shiftStartUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
+      final shiftEndUtc = DateTime.utc(2026, 5, 13, 7, 30, 0);
+      final laborRow = <String, Object?>{
+        'vendor_id': 'quickbooks_time',
+        'vendor_entity_id': 'ts_late_night_cross',
+        'employee_source_id': 'emp_late',
+        'role_name': 'server', // FOH
+        'shift_start': shiftStartUtc,
+        'shift_end': shiftEndUtc,
+        // hours_worked stamped by upstream sink at full duration;
+        // the aggregator MUST NOT use this — it must derive
+        // per-period minutes via DaypartBucketer.bucketLaborPunch.
+        'hours_worked': 4.5,
+        'pay_rate': 22.0,
+        'business_date': tuesdayBusinessDateIso,
+      };
 
-          // ── Sub-assertion (a) — proxy for `_businessDatesSpanning`.
-          // The private helper `DaypartBucketer._businessDatesSpanning`
-          // is not exposed for direct call. We assert it returns
-          // `[Tuesday-ISO]` only by proxy: with the punch as the only
-          // labor row anchored to business_date=Tuesday, the
-          // Wednesday business_date aggregator call must see ZERO
-          // labor minutes for late_night (the punch's segments do not
-          // anchor onto Wednesday because every 30-min probe from
-          // [Tue 23:00, Wed 03:30] resolves to Tuesday under the
-          // 04:00 cutoff).
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            // Anchor the punch under business_date=Tuesday only.
-            pool.laborPunchesByOperatorLocation[
-                '$_opA|$_locA|$tuesdayBusinessDateIso'] = [laborRow];
-            // Wednesday cover_fact required so the aggregator returns
-            // a non-null result for the Wed call.
-            pool.coverFactsByOperatorLocation['$_opA|$_locA|2026-05-13'] = [
-              <String, Object?>{
-                'vendor_id': 'oracle_micros_simphony',
-                'vendor_entity_id': 'check_wed_late_night_anchor',
-                'vendor_modified_at': DateTime.utc(2026, 5, 14, 3, 0, 0),
-                'covers': 1,
-                'covers_source': 'direct',
-                'opened_at': DateTime.utc(2026, 5, 14, 2, 0, 0),
-                'closed_at': DateTime.utc(2026, 5, 14, 3, 0, 0),
-                'business_date': '2026-05-13',
-                'actual_sales': 30.0,
-              },
-            ];
-            final wedResult =
-                await CanonicalFactToClosedShiftInputAggregator(
+      // ── Sub-assertion (a) — proxy for `_businessDatesSpanning`.
+      // The private helper `DaypartBucketer._businessDatesSpanning`
+      // is not exposed for direct call. We assert it returns
+      // `[Tuesday-ISO]` only by proxy: with the punch as the only
+      // labor row anchored to business_date=Tuesday, the
+      // Wednesday business_date aggregator call must see ZERO
+      // labor minutes for late_night (the punch's segments do not
+      // anchor onto Wednesday because every 30-min probe from
+      // [Tue 23:00, Wed 03:30] resolves to Tuesday under the
+      // 04:00 cutoff).
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        // Anchor the punch under business_date=Tuesday only.
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+            [laborRow];
+        // Wednesday cover_fact required so the aggregator returns
+        // a non-null result for the Wed call.
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|2026-05-13'] = [
+          <String, Object?>{
+            'vendor_id': 'oracle_micros_simphony',
+            'vendor_entity_id': 'check_wed_late_night_anchor',
+            'vendor_modified_at': DateTime.utc(2026, 5, 14, 3, 0, 0),
+            'covers': 1,
+            'covers_source': 'direct',
+            'opened_at': DateTime.utc(2026, 5, 14, 2, 0, 0),
+            'closed_at': DateTime.utc(2026, 5, 14, 3, 0, 0),
+            'business_date': '2026-05-13',
+            'actual_sales': 30.0,
+          },
+        ];
+        final wedResult =
+            await CanonicalFactToClosedShiftInputAggregator(
               TenantTransactionWrapper(pool),
             ).aggregate(
               operatorId: _opA,
@@ -2510,36 +2547,36 @@ void main() {
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
-            expect(wedResult, isNotNull);
-            expect(
-              wedResult!.input.actualFohHours,
-              0,
-              reason:
-                  '_businessDatesSpanning for the Tue 23:00 → Wed 03:30 '
-                  'punch must return only [Tuesday-ISO] under cutoff '
-                  '04:00; the punch must not bleed onto Wednesday\'s '
-                  'late_night row.',
-            );
-          }
+        expect(wedResult, isNotNull);
+        expect(
+          wedResult!.input.actualFohHours,
+          0,
+          reason:
+              '_businessDatesSpanning for the Tue 23:00 → Wed 03:30 '
+              'punch must return only [Tuesday-ISO] under cutoff '
+              '04:00; the punch must not bleed onto Wednesday\'s '
+              'late_night row.',
+        );
+      }
 
-          // ── Sub-assertion (b) — late_night minutes on Tuesday = 180.
-          // ── Sub-assertion (c) — the 02:00 → 03:30 Wed sliver (90 min
-          // non_service) is excluded from the late_night rollup. The
-          // aggregator does not expose a separate "non_service minutes"
-          // field on ClosedShiftInput; the assertion shape is therefore
-          // "late_night labor hours = 3 (== 180 min / 60), NOT 4
-          // (would be the rounded result of 270 min / 60 if the gap
-          // were included)". This proves the gap was excluded from the
-          // period rollup per the Jim Taylor non_service rule.
-          {
-            final pool = _FakePool()..seedLocation(_opA, _locA);
-            pool.laborPunchesByOperatorLocation[
-                '$_opA|$_locA|$tuesdayBusinessDateIso'] = [laborRow];
-            // Need at least one cover_fact in late_night so the
-            // aggregator returns non-null (POS-supplied covers stage 2
-            // is the simplest path).
-            pool.coverFactsByOperatorLocation[
-                '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+      // ── Sub-assertion (b) — late_night minutes on Tuesday = 180.
+      // ── Sub-assertion (c) — the 02:00 → 03:30 Wed sliver (90 min
+      // non_service) is excluded from the late_night rollup. The
+      // aggregator does not expose a separate "non_service minutes"
+      // field on ClosedShiftInput; the assertion shape is therefore
+      // "late_night labor hours = 3 (== 180 min / 60), NOT 4
+      // (would be the rounded result of 270 min / 60 if the gap
+      // were included)". This proves the gap was excluded from the
+      // period rollup per the Jim Taylor non_service rule.
+      {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.laborPunchesByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+            [laborRow];
+        // Need at least one cover_fact in late_night so the
+        // aggregator returns non-null (POS-supplied covers stage 2
+        // is the simplest path).
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+            [
               <String, Object?>{
                 'vendor_id': 'oracle_micros_simphony',
                 'vendor_entity_id': 'check_anchor',
@@ -2552,8 +2589,8 @@ void main() {
                 'actual_sales': 30.0,
               },
             ];
-            final result =
-                await CanonicalFactToClosedShiftInputAggregator(
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
               TenantTransactionWrapper(pool),
             ).aggregate(
               operatorId: _opA,
@@ -2566,86 +2603,90 @@ void main() {
               periodDefinition: lateNightPeriod,
               allServicePeriodDefinitions: allPeriods,
             );
-            expect(result, isNotNull);
-            expect(
-              result!.input.actualFohHours,
-              3,
-              reason:
-                  'Late Night [Tue 22:00, Wed 02:00) overlapped with '
-                  'punch [Tue 23:00, Wed 03:30) = [Tue 23:00, Wed 02:00) '
-                  '= 180 min = 3h. The 02:00→03:30 Wed sliver (90 min) '
-                  'is non_service per the Jim Taylor rule and must NOT '
-                  'inflate this number to 4h (which would be the '
-                  'rounded result of including the gap).',
-            );
-            // Per-period rate × hours sanity: QuickBooks Time wage
-            // class is perEmployeeWithRates; dollars must reflect 3h
-            // (not 4.5h). 3 × 22.00 = 66.00.
-            expect(
-              result.input.actualFohLaborDollars,
-              closeTo(3 * 22.0, 0.001),
-              reason:
-                  'Labor dollars must scale to the per-period overlap '
-                  'minutes (3h x \$22), not the punch\'s full 4.5h '
-                  'duration. Confirms the gap minutes are excluded '
-                  'from CPLH/SPLH denominators end-to-end.',
-            );
-          }
+        expect(result, isNotNull);
+        expect(
+          result!.input.actualFohHours,
+          3,
+          reason:
+              'Late Night [Tue 22:00, Wed 02:00) overlapped with '
+              'punch [Tue 23:00, Wed 03:30) = [Tue 23:00, Wed 02:00) '
+              '= 180 min = 3h. The 02:00→03:30 Wed sliver (90 min) '
+              'is non_service per the Jim Taylor rule and must NOT '
+              'inflate this number to 4h (which would be the '
+              'rounded result of including the gap).',
+        );
+        // Per-period rate × hours sanity: QuickBooks Time wage
+        // class is perEmployeeWithRates; dollars must reflect 3h
+        // (not 4.5h). 3 × 22.00 = 66.00.
+        expect(
+          result.input.actualFohLaborDollars,
+          closeTo(3 * 22.0, 0.001),
+          reason:
+              'Labor dollars must scale to the per-period overlap '
+              'minutes (3h x \$22), not the punch\'s full 4.5h '
+              'duration. Confirms the gap minutes are excluded '
+              'from CPLH/SPLH denominators end-to-end.',
+        );
+      }
 
-          // ── Sub-assertion (d) — direct call to
-          // `DaypartBucketer.bucketLaborPunch` confirms the segment
-          // shape that drives (b) and (c). The non_service segment
-          // exists, carries 90 minutes, and has servicePeriodId=null
-          // (the canonical sentinel per `LaborPunchSegment`).
-          final localStart = DateTime(2026, 5, 12, 23, 0, 0);
-          final localEnd = DateTime(2026, 5, 13, 3, 30, 0);
-          final segments = DaypartBucketer.bucketLaborPunch(
-            BucketingLaborPunch(
-              sourceId: 'ts_late_night_cross',
-              clockedInLocal: localStart,
-              clockedOutLocal: localEnd,
-            ),
-            bucketingContext,
-            allPeriods,
-          );
-          // Two segments: [Tue 23:00, Wed 02:00) late_night (180 min)
-          // + [Wed 02:00, Wed 03:30) non_service (90 min).
-          expect(segments.length, 2,
-              reason: 'Punch yields one period segment + one trailing '
-                  'non_service segment.');
-          final lateNightSeg = segments
-              .firstWhere((s) => s.servicePeriodId == 'late_night');
-          expect(lateNightSeg.minutes, 180);
-          expect(lateNightSeg.startLocal, localStart);
-          expect(lateNightSeg.endLocal, DateTime(2026, 5, 13, 2, 0, 0));
-          final nonServiceSeg =
-              segments.firstWhere((s) => s.servicePeriodId == null);
-          expect(
-            nonServiceSeg.minutes,
-            90,
-            reason: 'The 02:00 Wed → 03:30 Wed sliver is the Jim Taylor '
-                'non_service gap segment, excluded from per-period CPLH/'
-                'SPLH denominators by the aggregator.',
-          );
-          expect(nonServiceSeg.startLocal, DateTime(2026, 5, 13, 2, 0, 0));
-          expect(nonServiceSeg.endLocal, localEnd);
-        },
+      // ── Sub-assertion (d) — direct call to
+      // `DaypartBucketer.bucketLaborPunch` confirms the segment
+      // shape that drives (b) and (c). The non_service segment
+      // exists, carries 90 minutes, and has servicePeriodId=null
+      // (the canonical sentinel per `LaborPunchSegment`).
+      final localStart = DateTime(2026, 5, 12, 23, 0, 0);
+      final localEnd = DateTime(2026, 5, 13, 3, 30, 0);
+      final segments = DaypartBucketer.bucketLaborPunch(
+        BucketingLaborPunch(
+          sourceId: 'ts_late_night_cross',
+          clockedInLocal: localStart,
+          clockedOutLocal: localEnd,
+        ),
+        bucketingContext,
+        allPeriods,
       );
+      // Two segments: [Tue 23:00, Wed 02:00) late_night (180 min)
+      // + [Wed 02:00, Wed 03:30) non_service (90 min).
+      expect(
+        segments.length,
+        2,
+        reason:
+            'Punch yields one period segment + one trailing '
+            'non_service segment.',
+      );
+      final lateNightSeg = segments.firstWhere(
+        (s) => s.servicePeriodId == 'late_night',
+      );
+      expect(lateNightSeg.minutes, 180);
+      expect(lateNightSeg.startLocal, localStart);
+      expect(lateNightSeg.endLocal, DateTime(2026, 5, 13, 2, 0, 0));
+      final nonServiceSeg = segments.firstWhere(
+        (s) => s.servicePeriodId == null,
+      );
+      expect(
+        nonServiceSeg.minutes,
+        90,
+        reason:
+            'The 02:00 Wed → 03:30 Wed sliver is the Jim Taylor '
+            'non_service gap segment, excluded from per-period CPLH/'
+            'SPLH denominators by the aggregator.',
+      );
+      expect(nonServiceSeg.startLocal, DateTime(2026, 5, 13, 2, 0, 0));
+      expect(nonServiceSeg.endLocal, localEnd);
+    });
 
-      // ─── P.3 — Reservation buckets to Tuesday Late Night ───────
-      test(
-        'P.3 reservation_facts row at 01:30 Wed local buckets to '
-        'Tuesday business date / late_night daypart',
-        () async {
-          // reservation_at = 01:30 Wed local = 05:30 Wed UTC.
-          final reservationAtUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
-          final pool = _FakePool()..seedLocation(_opA, _locA);
-          // Reservation anchored to Tuesday business_date — matches
-          // the canonical write path's `business_date` derivation
-          // (an upstream sink resolves the reservation's business
-          // date from `reservation_at` under the operator's cutoff).
-          pool.reservationFactsByOperatorLocation[
-              '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+    // ─── P.3 — Reservation buckets to Tuesday Late Night ───────
+    test('P.3 reservation_facts row at 01:30 Wed local buckets to '
+        'Tuesday business date / late_night daypart', () async {
+      // reservation_at = 01:30 Wed local = 05:30 Wed UTC.
+      final reservationAtUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      // Reservation anchored to Tuesday business_date — matches
+      // the canonical write path's `business_date` derivation
+      // (an upstream sink resolves the reservation's business
+      // date from `reservation_at` under the operator's cutoff).
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+          [
             <String, Object?>{
               'vendor_id': 'libro',
               'vendor_entity_id': 'res_late_night_001',
@@ -2658,8 +2699,8 @@ void main() {
               'business_date': tuesdayBusinessDateIso,
             },
           ];
-          final result =
-              await CanonicalFactToClosedShiftInputAggregator(
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
             TenantTransactionWrapper(pool),
           ).aggregate(
             operatorId: _opA,
@@ -2673,63 +2714,63 @@ void main() {
             allServicePeriodDefinitions: allPeriods,
             // Pattern A path — operator walk-in count = 0 + seated
             // sum 4 = 4 covers via stage 3 (no POS rows present).
-            walkInOverride:
-                const ReservationWalkInOverride(operatorWalkInCount: 0),
-          );
-          expect(
-            result,
-            isNotNull,
-            reason: 'Reservation at 01:30 Wed local must surface to the '
-                'Tuesday late_night aggregator call.',
-          );
-          // Stage 3 covers = seated party_size + walk-in. Proves the
-          // reservation passed `_readReservationFactsForDaypart`'s
-          // post-filter via `bucketReservation` → 'late_night'.
-          expect(result!.input.covers, 4);
-          expect(result.input.daypart, 'late_night');
-          expect(result.input.businessDate, tuesdayBusinessDate);
-          expect(
-            result.provenance.coversProvenance,
-            'vendor_libro_seated_plus_operator_walk_in_count',
-            reason: 'Stage 3 (Pattern A) provenance confirms the '
-                'reservation row was kept by the period filter — a '
-                'classification miss would have produced a stage 5 '
-                '(unavailable) null result instead.',
-          );
-
-          // Direct bucketer assertion — locks the canonical
-          // classification of the reservation instant independent of
-          // the aggregator wiring.
-          final localOneThirtyWed = DateTime(2026, 5, 13, 1, 30, 0);
-          expect(
-            DaypartBucketer.bucketReservation(
-              BucketingReservation(
-                sourceId: 'res_late_night_001',
-                reservationLocalTimestamp: localOneThirtyWed,
-              ),
-              bucketingContext,
-              allPeriods,
+            walkInOverride: const ReservationWalkInOverride(
+              operatorWalkInCount: 0,
             ),
-            'late_night',
           );
-        },
+      expect(
+        result,
+        isNotNull,
+        reason:
+            'Reservation at 01:30 Wed local must surface to the '
+            'Tuesday late_night aggregator call.',
+      );
+      // Stage 3 covers = seated party_size + walk-in. Proves the
+      // reservation passed `_readReservationFactsForDaypart`'s
+      // post-filter via `bucketReservation` → 'late_night'.
+      expect(result!.input.covers, 4);
+      expect(result.input.daypart, 'late_night');
+      expect(result.input.businessDate, tuesdayBusinessDate);
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_libro_seated_plus_operator_walk_in_count',
+        reason:
+            'Stage 3 (Pattern A) provenance confirms the '
+            'reservation row was kept by the period filter — a '
+            'classification miss would have produced a stage 5 '
+            '(unavailable) null result instead.',
       );
 
-      // ─── P.4 — Composite (all three facts on one Tuesday row) ──
-      test(
-        'P.4 composite: POS check + labor punch + reservation all on '
-        'Tuesday late_night → aggregator emits one ClosedShiftInput '
-        'row keyed (Tuesday, late_night) with rolled-up actuals',
-        () async {
-          final closedAtUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
-          final laterCloseUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
-          final shiftStartUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
-          final shiftEndUtc = DateTime.utc(2026, 5, 13, 7, 30, 0);
-          final reservationAtUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
+      // Direct bucketer assertion — locks the canonical
+      // classification of the reservation instant independent of
+      // the aggregator wiring.
+      final localOneThirtyWed = DateTime(2026, 5, 13, 1, 30, 0);
+      expect(
+        DaypartBucketer.bucketReservation(
+          BucketingReservation(
+            sourceId: 'res_late_night_001',
+            reservationLocalTimestamp: localOneThirtyWed,
+          ),
+          bucketingContext,
+          allPeriods,
+        ),
+        'late_night',
+      );
+    });
 
-          final pool = _FakePool()..seedLocation(_opA, _locA);
-          pool.coverFactsByOperatorLocation[
-              '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+    // ─── P.4 — Composite (all three facts on one Tuesday row) ──
+    test('P.4 composite: POS check + labor punch + reservation all on '
+        'Tuesday late_night → aggregator emits one ClosedShiftInput '
+        'row keyed (Tuesday, late_night) with rolled-up actuals', () async {
+      final closedAtUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
+      final laterCloseUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
+      final shiftStartUtc = DateTime.utc(2026, 5, 13, 3, 0, 0);
+      final shiftEndUtc = DateTime.utc(2026, 5, 13, 7, 30, 0);
+      final reservationAtUtc = DateTime.utc(2026, 5, 13, 5, 30, 0);
+
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+          [
             <String, Object?>{
               'vendor_id': 'oracle_micros_simphony',
               'vendor_entity_id': 'check_2300_tue',
@@ -2753,8 +2794,8 @@ void main() {
               'actual_sales': 120.0,
             },
           ];
-          pool.laborPunchesByOperatorLocation[
-              '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+      pool.laborPunchesByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+          [
             <String, Object?>{
               'vendor_id': 'quickbooks_time',
               'vendor_entity_id': 'ts_composite',
@@ -2767,14 +2808,14 @@ void main() {
               'business_date': tuesdayBusinessDateIso,
             },
           ];
-          // Reservation present so the bucketer must classify it; in
-          // composite POS wins covers (stage 2 > stage 3) but the
-          // reservation MUST still pass the period filter to be a
-          // candidate. The covers assertion below stays POS-driven; a
-          // bucketer regression on reservations would not change
-          // covers but a separate assertion in P.3 covers that path.
-          pool.reservationFactsByOperatorLocation[
-              '$_opA|$_locA|$tuesdayBusinessDateIso'] = [
+      // Reservation present so the bucketer must classify it; in
+      // composite POS wins covers (stage 2 > stage 3) but the
+      // reservation MUST still pass the period filter to be a
+      // candidate. The covers assertion below stays POS-driven; a
+      // bucketer regression on reservations would not change
+      // covers but a separate assertion in P.3 covers that path.
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
+          [
             <String, Object?>{
               'vendor_id': 'libro',
               'vendor_entity_id': 'res_composite',
@@ -2786,8 +2827,8 @@ void main() {
             },
           ];
 
-          final result =
-              await CanonicalFactToClosedShiftInputAggregator(
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
             TenantTransactionWrapper(pool),
           ).aggregate(
             operatorId: _opA,
@@ -2801,42 +2842,37 @@ void main() {
             allServicePeriodDefinitions: allPeriods,
           );
 
-          expect(result, isNotNull);
-          expect(result!.input.businessDate, tuesdayBusinessDate);
-          expect(result.input.daypart, 'late_night');
-          // Covers from POS sum (stage 2): 6 + 4 = 10.
-          expect(result.input.covers, 10);
-          // Sales from POS sum: 180 + 120 = 300.
-          expect(result.input.actualSales, closeTo(300.0, 0.001));
-          // Labor hours from per-period split (180 min late_night,
-          // 90 min non_service excluded): 3h FOH.
-          expect(result.input.actualFohHours, 3);
-          // Per-period rate × hours: 3 × 22 = 66.
-          expect(
-            result.input.actualFohLaborDollars,
-            closeTo(3 * 22.0, 0.001),
-          );
-          expect(result.input.sourceSystem, 'oracle_micros_simphony');
-          expect(
-            result.provenance.coversProvenance,
-            'vendor_oracle_micros_simphony',
-          );
-          expect(
-            result.provenance.laborDollarsProvenance,
-            'vendor_quickbooks_time_per_employee_actual_dollars_'
-            'per_employee_rates',
-          );
-          // Close-authority provenance on a reliable POS vendor:
-          // proves the auto-derive path stamps the per-vendor sidecar
-          // (Slice 1.5 close-authority work) on this row.
-          expect(
-            result.provenance.closeAuthorityProvenance,
-            'vendor_oracle_micros_simphony_reliable_finalization',
-          );
-        },
+      expect(result, isNotNull);
+      expect(result!.input.businessDate, tuesdayBusinessDate);
+      expect(result.input.daypart, 'late_night');
+      // Covers from POS sum (stage 2): 6 + 4 = 10.
+      expect(result.input.covers, 10);
+      // Sales from POS sum: 180 + 120 = 300.
+      expect(result.input.actualSales, closeTo(300.0, 0.001));
+      // Labor hours from per-period split (180 min late_night,
+      // 90 min non_service excluded): 3h FOH.
+      expect(result.input.actualFohHours, 3);
+      // Per-period rate × hours: 3 × 22 = 66.
+      expect(result.input.actualFohLaborDollars, closeTo(3 * 22.0, 0.001));
+      expect(result.input.sourceSystem, 'oracle_micros_simphony');
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_oracle_micros_simphony',
       );
-    },
-  );
+      expect(
+        result.provenance.laborDollarsProvenance,
+        'vendor_quickbooks_time_per_employee_actual_dollars_'
+        'per_employee_rates',
+      );
+      // Close-authority provenance on a reliable POS vendor:
+      // proves the auto-derive path stamps the per-vendor sidecar
+      // (Slice 1.5 close-authority work) on this row.
+      expect(
+        result.provenance.closeAuthorityProvenance,
+        'vendor_oracle_micros_simphony_reliable_finalization',
+      );
+    });
+  });
 }
 
 // ─── Helpers + fakes ──────────────────────────────────────────────────
@@ -2881,10 +2917,18 @@ class _FakePool implements PostgresPool {
 
   final List<_FakeTransaction> transactions = <_FakeTransaction>[];
 
-  void seedLocation(String operatorId, String locationId) {
+  void seedLocation(
+    String operatorId,
+    String locationId, {
+    String timezone = 'America/Toronto',
+    String businessDayStartLocalTime = '04:00:00',
+    int? businessDayRolloverHour = 4,
+  }) {
     _locations['$operatorId|$locationId'] = <String, Object?>{
-      'timezone': 'America/Toronto',
-      'business_day_rollover_hour': 4,
+      'timezone': timezone,
+      'business_day_start_local_time': businessDayStartLocalTime,
+      if (businessDayRolloverHour != null)
+        'business_day_rollover_hour': businessDayRolloverHour,
     };
   }
 
@@ -2932,8 +2976,7 @@ class _FakeTransaction implements PostgresTransaction {
     // by the bound `service_period_key` param (only the standalone
     // keyed at-or-before read carries it) so the DAS read is NOT
     // mis-routed into the keyed-period branch.
-    final hasServicePeriodKeyParam =
-        parameters['service_period_key'] is String;
+    final hasServicePeriodKeyParam = parameters['service_period_key'] is String;
     if (sql.contains('from public.data_accuracy_service_period_settings') &&
         hasServicePeriodKeyParam) {
       final operatorId = parameters['operator_id'] as String;
@@ -2974,9 +3017,55 @@ class _FakeTransaction implements PostgresTransaction {
       projected['covers_source_per_service_period'] = perPeriod;
       return <PostgresRow>[projected];
     }
-    if (sql.contains(
-      'select timezone, business_day_rollover_hour from public.locations',
-    )) {
+    if (sql.contains('from public.business_timing_profiles p')) {
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final row = pool.readLocation(operatorId, locationId);
+      if (row == null) return const <PostgresRow>[];
+      final cutoff =
+          row['business_day_start_local_time'] as String? ?? '04:00:00';
+      final timezone = row['timezone'] as String? ?? 'America/Toronto';
+      return <PostgresRow>[
+        <String, Object?>{
+          'profile_id': '99999999-9999-4999-8999-999999999999',
+          'operator_id': operatorId,
+          'scope_type': 'location',
+          'scope_id': locationId,
+          'display_name': null,
+          'business_day_start_local_time': cutoff,
+          'week_start_day': DateTime.monday,
+          'close_authority': 'app_local_cutoff_fallback',
+          'local_close_fallback_time': null,
+          'effective_from_business_date': '2026-01-01',
+          'effective_until_business_date': null,
+          'supersedes_profile_id': null,
+          'created_by': null,
+          'updated_by': null,
+          'created_at': DateTime.utc(2026, 1, 1),
+          'updated_at': DateTime.utc(2026, 1, 1),
+          'location_timezone': timezone,
+          'service_periods': <Map<String, Object?>>[
+            <String, Object?>{
+              'service_period_id': '88888888-8888-4888-8888-888888888888',
+              'operator_id': operatorId,
+              'profile_id': '99999999-9999-4999-8999-999999999999',
+              'service_period_key': 'lunch',
+              'label': 'Lunch',
+              'short_label': 'L',
+              'sort_order': 1,
+              'start_local_time': '11:00',
+              'end_local_time': '15:00',
+              'rolls_past_midnight': false,
+              'applicable_weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
+            },
+          ],
+        },
+      ];
+    }
+    if (sql.contains('select timezone from public.locations') ||
+        sql.contains(
+          'select timezone, business_day_rollover_hour from public.locations',
+        )) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool.readLocation(operatorId, locationId);
@@ -3005,7 +3094,8 @@ class _FakeTransaction implements PostgresTransaction {
       // before `next`).
       final priorDt = DateTime.parse(prior);
       final mid = priorDt.add(const Duration(days: 1));
-      final midIso = '${mid.year.toString().padLeft(4, '0')}-'
+      final midIso =
+          '${mid.year.toString().padLeft(4, '0')}-'
           '${mid.month.toString().padLeft(2, '0')}-'
           '${mid.day.toString().padLeft(2, '0')}';
       final keys = <String>[
@@ -3015,8 +3105,10 @@ class _FakeTransaction implements PostgresTransaction {
       ];
       final rows = <Map<String, Object?>>[];
       for (final key in keys) {
-        rows.addAll(pool.laborPunchesByOperatorLocation[key] ??
-            const <Map<String, Object?>>[]);
+        rows.addAll(
+          pool.laborPunchesByOperatorLocation[key] ??
+              const <Map<String, Object?>>[],
+        );
       }
       return rows;
     }

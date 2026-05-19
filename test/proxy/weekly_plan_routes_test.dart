@@ -48,6 +48,23 @@ Map<String, Object?> _lockBody({
         'required_boh_hours': 8,
       },
     ],
+    'day_dayparts': <Map<String, Object?>>[
+      const <String, Object?>{
+        'business_date': '2026-05-04',
+        'service_period_id': 'brunch',
+        'forecast_covers': 72,
+        'forecast_sales': 3060.0,
+        'required_foh_hours': 6.5,
+        'required_boh_hours': 5.25,
+        'theoretical_foh_dollars': 117.0,
+        'theoretical_boh_dollars': 105.0,
+      },
+    ],
+    'wage_at_lock_time_json': const <String, Object?>{
+      'foh_wage': 18.0,
+      'boh_wage': 20.0,
+      'blended_wage': 19.0,
+    },
     'reason': 'manager locked current week',
     'metadata': const <String, Object?>{'device_id': 'ipad-1'},
   };
@@ -186,6 +203,19 @@ void main() {
               equals(_targetCycleId),
             );
             expect(
+              (snapshots.single as Map<String, Object?>)['day_dayparts'],
+              isNotEmpty,
+            );
+            expect(
+              (snapshots.single
+                  as Map<String, Object?>)['wage_at_lock_time_json'],
+              equals(<String, Object?>{
+                'foh_wage': 18.0,
+                'boh_wage': 20.0,
+                'blended_wage': 19.0,
+              }),
+            );
+            expect(
               snapshotBody['next_cursor'],
               equals('2026-05-06T18:01:00.000Z'),
             );
@@ -240,11 +270,20 @@ void main() {
           expect(lock.requestHash, isNotEmpty);
           expect(lock.embeddedForecastContext, isNotNull);
           expect(lock.dayRows.single.businessDate, equals('2026-05-04'));
+          expect(lock.dayDayparts.single.servicePeriodId, equals('brunch'));
+          expect(lock.wageAtLockTimeJson!['foh_wage'], equals(18.0));
 
           final body = jsonDecode(response.body) as Map<String, Object?>;
           final snapshot = body['snapshot'] as Map<String, Object?>;
           expect(snapshot['request_hash'], equals(lock.requestHash));
           expect(snapshot['week_key'], equals('2026-05-04_2026-05-10'));
+          expect(snapshot['day_dayparts'], isNotEmpty);
+          final wageAtLock =
+              snapshot['wage_at_lock_time_json'] as Map<String, dynamic>;
+          expect(
+            wageAtLock['blended_wage'],
+            equals(19.0),
+          );
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -540,6 +579,8 @@ class _RecordingWeeklyPlanGateway implements WeeklyPlanGateway {
       idempotencyKey: request.idempotencyKey,
       forecastCovers: request.forecastCovers,
       dayRows: request.dayRows,
+      dayDayparts: request.dayDayparts,
+      wageAtLockTimeJson: request.wageAtLockTimeJson,
       lockReason: request.reason,
     );
   }
@@ -578,6 +619,8 @@ WeeklyPlanSnapshotRow _snapshotRow({
   String idempotencyKey = 'idem-existing',
   int forecastCovers = 840,
   List<WeeklyPlanDayPayload>? dayRows,
+  List<WeeklyPlanDayDaypartPayload>? dayDayparts,
+  Map<String, Object?>? wageAtLockTimeJson,
   String lockReason = 'manager locked current week',
   DateTime? updatedAt,
 }) {
@@ -610,6 +653,27 @@ WeeklyPlanSnapshotRow _snapshotRow({
             requiredBohHours: 8,
           ),
         ],
+    dayDayparts:
+        dayDayparts ??
+        const <WeeklyPlanDayDaypartPayload>[
+          WeeklyPlanDayDaypartPayload(
+            businessDate: '2026-05-04',
+            servicePeriodId: 'brunch',
+            forecastCovers: 72,
+            forecastSales: 3060.0,
+            requiredFohHours: 6.5,
+            requiredBohHours: 5.25,
+            theoreticalFohDollars: 117.0,
+            theoreticalBohDollars: 105.0,
+          ),
+        ],
+    wageAtLockTimeJson:
+        wageAtLockTimeJson ??
+        const <String, Object?>{
+          'foh_wage': 18.0,
+          'boh_wage': 20.0,
+          'blended_wage': 19.0,
+        },
     lockedAt: DateTime.utc(2026, 5, 6, 18),
     lockedByUserId: _userId,
     lockReason: lockReason,

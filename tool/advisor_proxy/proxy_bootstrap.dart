@@ -968,10 +968,10 @@ ProxyProductionBindings buildProxyProductionBindings(
   // `public.location_account_overrides` is the backup defence.
   final locationAccountOverridesHandler =
       OperatorLocationAccountOverridesHandler(
-    gateway: _RepositoryLocationAccountOverridesWriteGateway(
-      repository: LocationAccountOverridesRepository(tenantWrapper),
-    ),
-  );
+        gateway: _RepositoryLocationAccountOverridesWriteGateway(
+          repository: LocationAccountOverridesRepository(tenantWrapper),
+        ),
+      );
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
@@ -997,8 +997,8 @@ ProxyProductionBindings buildProxyProductionBindings(
   // requires `authGuard`, which is a `main.dart`-scope value.
   final operatorBenchmarkOverridesGateway =
       RepositoryOperatorBenchmarkOverridesGateway(
-    repository: BenchmarkOverridesRepository(tenantWrapper),
-  );
+        repository: BenchmarkOverridesRepository(tenantWrapper),
+      );
   // Wave W2.D - operator-scoped read of `connector_backfill_jobs`.
   // Reuses the existing [ConnectorBackfillJobRepository] so the read
   // path rides the same tenant pool + RLS posture as the write path
@@ -1390,27 +1390,27 @@ ProxyProductionBindings buildProxyProductionBindings(
       // F&F operator-web flavor splits).
       factorChangedNoticeDispatcher: MfaFactorChangedNoticeDispatcher(
         outboxEnqueue: postgresMfaFactorChangedNoticeEnqueue,
-        auditEmit: (
-          exec, {
-          required String operatorId,
-          required String locationId,
-          required String userId,
-          required String eventType,
-          required Map<String, Object?> payload,
-        }) async {
-          await adminAudit.insertSystemEventOn(
-            exec,
-            eventType: eventType,
-            actorKind: 'system',
-            operatorId: operatorId,
-            locationId: locationId,
-            targetUserId: userId,
-            payload: payload,
-            adminReason: 'system.mfa_factor_changed_notice_audit',
-          );
-        },
-        accountSecurityUrl:
-            'https://app.forgeflow.app/account/security',
+        auditEmit:
+            (
+              exec, {
+              required String operatorId,
+              required String locationId,
+              required String userId,
+              required String eventType,
+              required Map<String, Object?> payload,
+            }) async {
+              await adminAudit.insertSystemEventOn(
+                exec,
+                eventType: eventType,
+                actorKind: 'system',
+                operatorId: operatorId,
+                locationId: locationId,
+                targetUserId: userId,
+                payload: payload,
+                adminReason: 'system.mfa_factor_changed_notice_audit',
+              );
+            },
+        accountSecurityUrl: 'https://app.forgeflow.app/account/security',
       ),
     ),
     mobilePushTokenGateway: mobilePushTokenGateway,
@@ -1687,8 +1687,8 @@ ProxyProductionBindings buildProxyProductionBindings(
     // where `ProxyRequestGuard` lives.
     operatorWebAuditLogHierarchyGateway:
         RepositoryOperatorWebAuditLogHierarchyGateway(
-      reader: AuditLogsReader(tenantWrapper),
-    ),
+          reader: AuditLogsReader(tenantWrapper),
+        ),
     // Lane C C-1 — SendGrid Event Webhook receiver. Mounted as a
     // pre-check in `main.dart` so the monolithic dispatcher never
     // sees the `/v1/webhooks/sendgrid/events` URL. The router writes
@@ -1986,8 +1986,8 @@ class ProductionHeapSnapshotCaptureAuditSink
   ProductionHeapSnapshotCaptureAuditSink({
     required AuthEventsAuditRepository auditRepository,
     void Function(Object error, StackTrace stackTrace)? onError,
-  })  : _auditRepository = auditRepository,
-        _onError = onError;
+  }) : _auditRepository = auditRepository,
+       _onError = onError;
 
   final AuthEventsAuditRepository _auditRepository;
   final void Function(Object error, StackTrace stackTrace)? _onError;
@@ -2021,8 +2021,7 @@ class ProductionHeapSnapshotCaptureAuditSink
         case 'service_principal':
         case 'service':
           mappedActorKind = 'service_principal';
-          mappedServicePrincipalId =
-              actorUserId.isEmpty ? null : actorUserId;
+          mappedServicePrincipalId = actorUserId.isEmpty ? null : actorUserId;
           break;
         case 'forge_admin':
           mappedActorKind = 'forge_admin';
@@ -2051,8 +2050,7 @@ class ProductionHeapSnapshotCaptureAuditSink
           'event_kind': eventKind,
           'occurred_at': occurredAt.toUtc().toIso8601String(),
         },
-        adminReason:
-            'admin.heap_snapshot_capture:${targetId ?? 'unknown_pod'}',
+        adminReason: 'admin.heap_snapshot_capture:${targetId ?? 'unknown_pod'}',
       );
     } catch (error, stackTrace) {
       _onError?.call(error, stackTrace);
@@ -2620,6 +2618,7 @@ class RepositoryWeeklyPlanGateway implements WeeklyPlanGateway {
         replacementReason: request.reason,
         idempotencyKey: request.idempotencyKey,
         requestHash: request.requestHash,
+        wageAtLockTimeJson: request.wageAtLockTimeJson,
         metadata: request.metadata,
         createdBy: request.actorUserId,
       ),
@@ -2638,10 +2637,29 @@ class RepositoryWeeklyPlanGateway implements WeeklyPlanGateway {
             requiredBohHours: request.dayRows[i].requiredBohHours.toDouble(),
           ),
       ],
+      dayDayparts: <weekly_snapshot.WeeklyPlanSnapshotDayDaypartPostgresWrite>[
+        for (final row in request.dayDayparts)
+          weekly_snapshot.WeeklyPlanSnapshotDayDaypartPostgresWrite(
+            operatorId: request.operatorId,
+            locationId: request.locationId,
+            businessDate: row.businessDate,
+            servicePeriodId: row.servicePeriodId,
+            forecastCovers: row.forecastCovers,
+            forecastSales: row.forecastSales,
+            requiredFohHours: row.requiredFohHours,
+            requiredBohHours: row.requiredBohHours,
+            theoreticalFohDollars: row.theoreticalFohDollars,
+            theoreticalBohDollars: row.theoreticalBohDollars,
+          ),
+      ],
       actorKind: request.actorKind,
       reason: request.reason,
     );
-    return _weeklyPlanSnapshotRouteRow(row, dayRows: request.dayRows);
+    return _weeklyPlanSnapshotRouteRow(
+      row,
+      dayRows: request.dayRows,
+      dayDayparts: request.dayDayparts,
+    );
   }
 
   @override
@@ -2679,6 +2697,16 @@ class RepositoryWeeklyPlanGateway implements WeeklyPlanGateway {
                 requiredBohHours: day.requiredBohHours.round(),
               ),
           ],
+          dayDayparts: <WeeklyPlanDayDaypartPayload>[
+            for (final dayDaypart
+                in await _snapshotRepository.listDayDaypartsForSnapshot(
+                  operatorId: operatorId,
+                  locationId: locationId,
+                  snapshotId: row.snapshotId,
+                  userId: userId,
+                ))
+              _weeklyPlanDayDaypartRouteRow(dayDaypart),
+          ],
         ),
     ];
   }
@@ -2707,6 +2735,8 @@ class RepositoryWeeklyPlanGateway implements WeeklyPlanGateway {
 WeeklyPlanSnapshotRow _weeklyPlanSnapshotRouteRow(
   weekly_snapshot.WeeklyPlanSnapshotPostgresRow row, {
   required List<WeeklyPlanDayPayload> dayRows,
+  List<WeeklyPlanDayDaypartPayload> dayDayparts =
+      const <WeeklyPlanDayDaypartPayload>[],
 }) {
   return WeeklyPlanSnapshotRow(
     snapshotId: row.snapshotId,
@@ -2726,6 +2756,8 @@ WeeklyPlanSnapshotRow _weeklyPlanSnapshotRouteRow(
     coversSource: row.coversSource,
     salesSource: row.salesSource,
     dayRows: dayRows,
+    dayDayparts: dayDayparts,
+    wageAtLockTimeJson: row.wageAtLockTimeJson,
     lockedAt: row.lockedAt,
     lockedByUserId: row.createdBy ?? '',
     lockReason: row.replacementReason ?? row.source,
@@ -2737,6 +2769,21 @@ WeeklyPlanSnapshotRow _weeklyPlanSnapshotRouteRow(
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     supersededAt: row.supersededAt,
+  );
+}
+
+WeeklyPlanDayDaypartPayload _weeklyPlanDayDaypartRouteRow(
+  weekly_snapshot.WeeklyPlanSnapshotDayDaypartPostgresRow row,
+) {
+  return WeeklyPlanDayDaypartPayload(
+    businessDate: row.businessDate,
+    servicePeriodId: row.servicePeriodId,
+    forecastCovers: row.forecastCovers,
+    forecastSales: row.forecastSales,
+    requiredFohHours: row.requiredFohHours,
+    requiredBohHours: row.requiredBohHours,
+    theoreticalFohDollars: row.theoreticalFohDollars,
+    theoreticalBohDollars: row.theoreticalBohDollars,
   );
 }
 
@@ -3037,6 +3084,8 @@ class RepositoryMobileOperationalSyncProxyGateway
         'target_source_type, target_cplh, target_splh, target_ppa, '
         'target_foh_wage, target_boh_wage, '
         'opz_floor_cplh, opz_ceiling_cplh, '
+        'daypart_target_cplh, daypart_target_splh, daypart_target_ppa, '
+        'daypart_opz_floor_cplh, daypart_opz_ceiling_cplh, '
         'theoretical_foh_labor_pct, theoretical_boh_labor_pct, '
         'source_system, source_shift_id, updated_at '
         'from public.shift_records '
@@ -3331,10 +3380,9 @@ class RepositoryMobileOperationalSyncProxyGateway
       );
       final merged = <String, Object?>{
         ...rows.single,
-        'covers_source_per_service_period':
-            coversRow.isEmpty
-                ? null
-                : coversRow.single['covers_source_per_service_period'],
+        'covers_source_per_service_period': coversRow.isEmpty
+            ? null
+            : coversRow.single['covers_source_per_service_period'],
       };
       return <String, Object?>{'data': _dataAccuracyJson(merged)};
     });
@@ -3604,6 +3652,13 @@ class RepositoryMobileOperationalSyncProxyGateway
       'target_boh_wage': _nullableDouble(row['target_boh_wage']),
       'opz_floor_cplh': _nullableDouble(row['opz_floor_cplh']),
       'opz_ceiling_cplh': _nullableDouble(row['opz_ceiling_cplh']),
+      'daypart_target_cplh': _nullableDouble(row['daypart_target_cplh']),
+      'daypart_target_splh': _nullableDouble(row['daypart_target_splh']),
+      'daypart_target_ppa': _nullableDouble(row['daypart_target_ppa']),
+      'daypart_opz_floor_cplh': _nullableDouble(row['daypart_opz_floor_cplh']),
+      'daypart_opz_ceiling_cplh': _nullableDouble(
+        row['daypart_opz_ceiling_cplh'],
+      ),
       'theoretical_foh_labor_pct': _nullableDouble(
         row['theoretical_foh_labor_pct'],
       ),
@@ -5025,8 +5080,7 @@ class RepositoryDataAccuracyAdminProxyGateway
       final suppliedCovers = <String, String>{
         if (coversSourceLunch != null) 'lunch': coversSourceLunch,
         if (coversSourceDinner != null) 'dinner': coversSourceDinner,
-        if (coversSourceLateNight != null)
-          'late_night': coversSourceLateNight,
+        if (coversSourceLateNight != null) 'late_night': coversSourceLateNight,
       };
       if (suppliedCovers.isNotEmpty) {
         await _writeLegacyCoversToKeyed(

@@ -75,12 +75,15 @@
 import 'dart:convert';
 
 import '../../domain/models/aggregator_provenance_context.dart';
+import '../../domain/models/business_timing_profile.dart';
 import '../../domain/models/closed_shift_input.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/demand_forecast_context.dart';
+import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/schedule_distribution_weights.dart';
 import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/business_timing_profile_resolver.dart';
 import '../../domain/services/daypart_bucketer.dart';
 import '../../infrastructure/persistence/postgres/operator_scoped_repository.dart';
 import '../../infrastructure/persistence/postgres/postgres_executor.dart';
@@ -147,6 +150,102 @@ class MultiplePosAdaptersException implements Exception {
 
 class CanonicalFactToClosedShiftInputAggregator
     extends OperatorScopedRepository {
+  static const String _fallbackBusinessDayStartLocalTime = '04:00';
+
+  static const String _timingProfileColumns =
+      'p.profile_id::text as profile_id, '
+      'p.operator_id::text as operator_id, '
+      'p.scope_type, '
+      'p.scope_id::text as scope_id, '
+      'p.display_name, '
+      'p.business_day_start_local_time::text as business_day_start_local_time, '
+      'p.week_start_day, '
+      'p.close_authority, '
+      'p.local_close_fallback_time::text as local_close_fallback_time, '
+      'p.effective_from_business_date::text '
+      'as effective_from_business_date, '
+      'p.effective_until_business_date::text '
+      'as effective_until_business_date, '
+      'p.supersedes_profile_id::text as supersedes_profile_id, '
+      'p.created_by::text as created_by, '
+      'p.updated_by::text as updated_by, '
+      'p.created_at, '
+      'p.updated_at';
+
+  static const String _timingPeriodJson =
+      "coalesce(jsonb_agg(jsonb_build_object("
+      "'service_period_id', sp.service_period_id::text, "
+      "'operator_id', sp.operator_id::text, "
+      "'profile_id', sp.profile_id::text, "
+      "'service_period_key', sp.service_period_key, "
+      "'label', sp.label, "
+      "'short_label', sp.short_label, "
+      "'sort_order', sp.sort_order, "
+      "'start_local_time', sp.start_local_time::text, "
+      "'end_local_time', sp.end_local_time::text, "
+      "'rolls_past_midnight', sp.rolls_past_midnight, "
+      "'applicable_weekdays', sp.applicable_weekdays"
+      ") order by sp.sort_order) filter "
+      "(where sp.service_period_id is not null), '[]'::jsonb) "
+      'as service_periods';
+
+  static const String _timingCandidateChainSql =
+      'with selected_location as ('
+      '  select '
+      '    loc.location_id, '
+      '    loc.timezone as location_timezone, '
+      '    loc.org_unit_path '
+      '  from public.locations loc '
+      '  where loc.operator_id = @operator_id::uuid '
+      '    and loc.location_id = @location_id::uuid'
+      '), candidate_scopes as ('
+      "  select 'operator'::text as scope_type, "
+      '         @operator_id::uuid as scope_id, '
+      '         0::integer as scope_depth '
+      '  union all '
+      "  select 'org_unit'::text as scope_type, "
+      '         ou.id as scope_id, '
+      '         nlevel(ou.path)::integer as scope_depth '
+      '  from public.org_units ou '
+      '  join selected_location loc on ou.path @> loc.org_unit_path '
+      '  where ou.operator_id = @operator_id::uuid '
+      '  union all '
+      "  select 'location'::text as scope_type, "
+      '         loc.location_id as scope_id, '
+      '         100000::integer as scope_depth '
+      '  from selected_location loc'
+      ') '
+      'select $_timingProfileColumns, '
+      '       loc.location_timezone, '
+      '       $_timingPeriodJson '
+      'from public.business_timing_profiles p '
+      'join candidate_scopes scope '
+      '  on scope.scope_type = p.scope_type '
+      ' and scope.scope_id = p.scope_id '
+      'cross join selected_location loc '
+      'left join public.business_timing_service_periods sp '
+      '  on sp.operator_id = p.operator_id '
+      ' and sp.profile_id = p.profile_id '
+      'where p.operator_id = @operator_id::uuid '
+      '  and p.effective_from_business_date <= @business_date::date '
+      '  and ('
+      '    p.effective_until_business_date is null '
+      '    or @business_date::date < p.effective_until_business_date'
+      '  ) '
+      'group by '
+      '  p.profile_id, p.operator_id, p.scope_type, p.scope_id, '
+      '  p.display_name, p.business_day_start_local_time, '
+      '  p.week_start_day, p.close_authority, '
+      '  p.local_close_fallback_time, '
+      '  p.effective_from_business_date, '
+      '  p.effective_until_business_date, '
+      '  p.supersedes_profile_id, p.created_by, p.updated_by, '
+      '  p.created_at, p.updated_at, loc.location_timezone, '
+      '  scope.scope_depth '
+      'order by scope.scope_depth asc, '
+      '         p.effective_from_business_date asc, '
+      '         p.created_at asc';
+
   CanonicalFactToClosedShiftInputAggregator(
     super.tenantWrapper, {
     IanaTimezoneConverter? timezoneConverter,
@@ -171,7 +270,7 @@ class CanonicalFactToClosedShiftInputAggregator
   ///     cross-(business-date) punches contribute the correct minutes
   ///     to each (business_date, service_period_id) slot.
   ///   * The stage-4 forecast-covers fallback now uses
-  ///     [DaypartPlanAllocator] with the operator's full
+  ///     `DaypartPlanAllocator` with the operator's full
   ///     [allServicePeriodDefinitions] list and optional
   ///     [distributionWeights]; the legacy "uniform / 3" divide is
   ///     gone.
@@ -224,6 +323,7 @@ class CanonicalFactToClosedShiftInputAggregator
         exec,
         operatorId: operatorId,
         locationId: locationId,
+        businessDate: businessDate,
       );
 
       // Per-Daypart V1 Slice 1.5: every fact-bucketing call goes
@@ -233,8 +333,7 @@ class CanonicalFactToClosedShiftInputAggregator
       // cross-(business-date) splits.
       final bucketingContext = BucketingLocationContext(
         iana: locationMeta.timezone,
-        businessDayStartLocalTime:
-            locationMeta.businessDayStartLocalTime,
+        businessDayStartLocalTime: locationMeta.businessDayStartLocalTime,
       );
       final periodDefinitions = allServicePeriodDefinitions == null
           ? <ServicePeriodDefinition>[periodDefinition]
@@ -553,6 +652,7 @@ class CanonicalFactToClosedShiftInputAggregator
     final resolvedWeekly = forecastContext?.resolvedWeeklyForecastCovers;
     if (resolvedWeekly != null && resolvedWeekly > 0) {
       final dailyShare = (resolvedWeekly / 7).round();
+      // ignore: deprecated_member_use_from_same_package
       final allocations = DaypartPlanAllocator.allocate(
         day: dayLabel,
         dayCovers: dailyShare,
@@ -917,9 +1017,59 @@ class CanonicalFactToClosedShiftInputAggregator
     PostgresExecutor exec, {
     required String operatorId,
     required String locationId,
+    required DateTime businessDate,
+  }) async {
+    final candidates = await _readBusinessTimingProfilesForLocation(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: _isoDate(businessDate),
+    );
+    if (candidates.isNotEmpty) {
+      final effective = BusinessTimingProfileResolver.resolve(candidates);
+      return _LocationMeta(
+        timezone: effective.businessTimezone,
+        businessDayStartLocalTime: effective.businessDayStartLocalTime,
+      );
+    }
+
+    final timezone = await _readLocationTimezone(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+    return _LocationMeta(
+      timezone: timezone,
+      businessDayStartLocalTime: _fallbackBusinessDayStartLocalTime,
+    );
+  }
+
+  Future<List<BusinessTimingProfile>> _readBusinessTimingProfilesForLocation(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
   }) async {
     final rows = await exec.query(
-      'select timezone, business_day_rollover_hour '
+      _timingCandidateChainSql,
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'business_date': businessDate,
+      },
+    );
+    return <BusinessTimingProfile>[
+      for (final row in rows) _businessTimingProfileFromRow(row),
+    ];
+  }
+
+  Future<String> _readLocationTimezone(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final rows = await exec.query(
+      'select timezone '
       'from public.locations '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid',
@@ -935,13 +1085,89 @@ class CanonicalFactToClosedShiftInputAggregator
       );
     }
     final row = rows.single;
-    final rolloverHour = (row['business_day_rollover_hour'] as int?) ?? 0;
-    return _LocationMeta(
-      timezone: (row['timezone'] as String?) ?? 'UTC',
-      businessDayRolloverHour: rolloverHour,
-      businessDayStartLocalTime:
-          '${rolloverHour.toString().padLeft(2, '0')}:00',
+    final timezone = (row['timezone'] as String?)?.trim();
+    return timezone == null || timezone.isEmpty ? 'UTC' : timezone;
+  }
+
+  BusinessTimingProfile _businessTimingProfileFromRow(PostgresRow row) {
+    final servicePeriods = _timingServicePeriodsFromValue(
+      row['service_periods'],
     );
+    return BusinessTimingProfile(
+      profileId: row['profile_id']! as String,
+      scope: BusinessTimingScope.fromValue(row['scope_type']! as String),
+      scopeId: row['scope_id']! as String,
+      businessTimezone: row['location_timezone'] as String?,
+      businessDayStartLocalTime: _trimTimingTime(
+        row['business_day_start_local_time'],
+      ),
+      weekStartDay: row['week_start_day']! as int,
+      servicePeriodDefinitions: servicePeriods.isEmpty
+          ? null
+          : List<ServicePeriodDefinition>.unmodifiable(servicePeriods),
+      shiftCloseAuthority: ShiftCloseAuthority.fromValue(
+        row['close_authority']! as String,
+      ),
+      localCloseFallback: _trimNullableTimingTime(
+        row['local_close_fallback_time'],
+      ),
+    );
+  }
+
+  List<ServicePeriodDefinition> _timingServicePeriodsFromValue(Object? value) {
+    if (value == null) return const <ServicePeriodDefinition>[];
+    final dynamic decoded = value is String ? jsonDecode(value) : value;
+    if (decoded is! List<dynamic>) {
+      throw StateError('service_periods JSON was not a list');
+    }
+    return <ServicePeriodDefinition>[
+      for (final item in decoded)
+        _timingServicePeriodFromJson(_jsonObjectFromValue(item)),
+    ];
+  }
+
+  ServicePeriodDefinition _timingServicePeriodFromJson(
+    Map<String, Object?> json,
+  ) {
+    return ServicePeriodDefinition(
+      id: json['service_period_key']! as String,
+      label: json['label']! as String,
+      shortLabel: json['short_label'] as String? ?? '',
+      sortOrder: json['sort_order']! as int,
+      startLocalTime: _trimTimingTime(json['start_local_time']),
+      endLocalTime: _trimTimingTime(json['end_local_time']),
+      rollsPastMidnight: json['rolls_past_midnight'] as bool? ?? false,
+      applicableDays: _intListFromValue(json['applicable_weekdays']),
+    );
+  }
+
+  static Map<String, Object?> _jsonObjectFromValue(Object? value) {
+    final dynamic decoded = value is String ? jsonDecode(value) : value;
+    if (decoded is! Map<dynamic, dynamic>) {
+      throw StateError('JSON value was not an object');
+    }
+    return <String, Object?>{
+      for (final entry in decoded.entries) entry.key.toString(): entry.value,
+    };
+  }
+
+  static List<int> _intListFromValue(Object? value) {
+    if (value is List<int>) return value;
+    if (value is List<dynamic>) {
+      return <int>[for (final item in value) (item as num).toInt()];
+    }
+    throw StateError('integer array value was not a list');
+  }
+
+  static String _trimTimingTime(Object? value) {
+    final text = value as String;
+    return text.length >= 5 ? text.substring(0, 5) : text;
+  }
+
+  static String? _trimNullableTimingTime(Object? value) {
+    if (value == null) return null;
+    final text = value as String;
+    return text.length >= 5 ? text.substring(0, 5) : text;
   }
 
   // ─── Canonical fact reads ──────────────────────────────────────────
@@ -1191,8 +1417,7 @@ class CanonicalFactToClosedShiftInputAggregator
         // call's target.
         final segBusinessDate = _businessDateForLocalTime(
           local: seg.startLocal,
-          businessDayStartLocalTime:
-              bucketingContext.businessDayStartLocalTime,
+          businessDayStartLocalTime: bucketingContext.businessDayStartLocalTime,
         );
         if (segBusinessDate != targetBusinessDateIso) continue;
         minutesInPeriod += seg.minutes;
@@ -1402,11 +1627,9 @@ class _LaborResolution {
 class _LocationMeta {
   const _LocationMeta({
     required this.timezone,
-    required this.businessDayRolloverHour,
     required this.businessDayStartLocalTime,
   });
   final String timezone;
-  final int businessDayRolloverHour;
   final String businessDayStartLocalTime;
 }
 

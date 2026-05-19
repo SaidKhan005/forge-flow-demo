@@ -283,11 +283,21 @@ void main() {
                   snapshotId: _snapshotId,
                   supersedesSnapshotId: _oldSnapshotId,
                   source: 'server_replace',
+                  wageAtLockTimeJson: _wageStamp(),
                 ),
               ];
             }
             if (sql.contains('insert into public.weekly_plan_snapshot_days')) {
               return <PostgresRow>[_dayRow()];
+            }
+            if (sql.contains(
+              'insert into public.weekly_plan_snapshot_day_dayparts',
+            )) {
+              expect(parameters['business_date'], equals('2026-05-04'));
+              expect(parameters['service_period_id'], equals('brunch'));
+              expect(parameters['forecast_covers'], equals(8));
+              expect(parameters['theoretical_foh_dollars'], equals(36.5));
+              return <PostgresRow>[_dayDaypartRow()];
             }
             if (sql.contains('insert into public.weekly_plan_audit_events')) {
               return <PostgresRow>[
@@ -302,13 +312,20 @@ void main() {
         );
 
         final row = await repo.lockOrReplaceSnapshot(
-          snapshot: _snapshotWrite(source: 'server_replace'),
+          snapshot: _snapshotWrite(
+            source: 'server_replace',
+            wageAtLockTimeJson: _wageStamp(),
+          ),
           days: <WeeklyPlanSnapshotDayPostgresWrite>[_dayWrite()],
+          dayDayparts: <WeeklyPlanSnapshotDayDaypartPostgresWrite>[
+            _dayDaypartWrite(),
+          ],
           reason: 'manager locked replacement weekly plan',
         );
 
         expect(row.snapshotId, equals(_snapshotId));
         expect(row.supersedesSnapshotId, equals(_oldSnapshotId));
+        expect(row.wageAtLockTimeJson, equals(_wageStamp()));
         final tx = pool.transactions.single;
         expect(
           tx.executedSql.any(
@@ -325,11 +342,23 @@ void main() {
         expect(insertParams['target_cycle_id'], equals(_targetCycleId));
         expect(insertParams['forecast_context_id'], equals(_forecastContextId));
         expect(insertParams['supersedes_snapshot_id'], equals(_oldSnapshotId));
+        expect(
+          jsonDecode(insertParams['wage_at_lock_time_json']! as String),
+          equals(_wageStamp()),
+        );
 
         expect(
           tx.executedSql.any(
             (sql) =>
                 sql.contains('insert into public.weekly_plan_snapshot_days'),
+          ),
+          isTrue,
+        );
+        expect(
+          tx.executedSql.any(
+            (sql) => sql.contains(
+              'insert into public.weekly_plan_snapshot_day_dayparts',
+            ),
           ),
           isTrue,
         );
@@ -342,6 +371,7 @@ void main() {
             jsonDecode(auditParams['after_snapshot']! as String)
                 as Map<String, dynamic>;
         expect(afterSnapshot['target_cycle_id'], equals(_targetCycleId));
+        expect(afterSnapshot['wage_at_lock_time_json'], equals(_wageStamp()));
         expect(tx.commitCount, equals(1));
       },
     );
@@ -454,6 +484,33 @@ void main() {
 
       expect(rows.single.snapshotId, equals(_snapshotId));
     });
+
+    test('listDayDaypartsForSnapshot exposes locked child rows', () async {
+      final pool = _RecordingPool(
+        onQuery: (sql, parameters) {
+          if (sql.contains(
+            'from public.weekly_plan_snapshot_day_dayparts dd',
+          )) {
+            expect(sql, contains('order by dd.business_date asc'));
+            expect(parameters['snapshot_id'], equals(_snapshotId));
+            return <PostgresRow>[_dayDaypartRow()];
+          }
+          return const <PostgresRow>[];
+        },
+      );
+      final repo = WeeklyPlanSnapshotRepository(TenantTransactionWrapper(pool));
+
+      final rows = await repo.listDayDaypartsForSnapshot(
+        operatorId: _operatorId,
+        locationId: _locationId,
+        snapshotId: _snapshotId,
+        userId: _userId,
+      );
+
+      expect(rows.single.servicePeriodId, equals('brunch'));
+      expect(rows.single.requiredFohHours, equals(2.0));
+      expect(rows.single.theoreticalBohDollars, equals(44.0));
+    });
   });
 }
 
@@ -492,6 +549,7 @@ ForecastContextPostgresWrite _forecastContextWrite({
 
 WeeklyPlanSnapshotPostgresWrite _snapshotWrite({
   String source = 'server_lock',
+  Map<String, Object?>? wageAtLockTimeJson,
 }) {
   return WeeklyPlanSnapshotPostgresWrite(
     operatorId: _operatorId,
@@ -517,8 +575,24 @@ WeeklyPlanSnapshotPostgresWrite _snapshotWrite({
     replacementReason: source == 'server_replace' ? 'replacement' : null,
     idempotencyKey: 'snapshot-key-1',
     requestHash: 'snapshot-hash-1',
+    wageAtLockTimeJson: wageAtLockTimeJson,
     metadata: const <String, Object?>{'source': 'test'},
     createdBy: _userId,
+  );
+}
+
+WeeklyPlanSnapshotDayDaypartPostgresWrite _dayDaypartWrite() {
+  return const WeeklyPlanSnapshotDayDaypartPostgresWrite(
+    operatorId: _operatorId,
+    locationId: _locationId,
+    businessDate: '2026-05-04',
+    servicePeriodId: 'brunch',
+    forecastCovers: 8,
+    forecastSales: 340.0,
+    requiredFohHours: 2.0,
+    requiredBohHours: 2.0,
+    theoreticalFohDollars: 36.5,
+    theoreticalBohDollars: 44.0,
   );
 }
 
@@ -584,6 +658,7 @@ PostgresRow _snapshotRow({
   String? supersededBySnapshotId,
   DateTime? unlockedAt,
   String? unlockedByUserId,
+  Map<String, Object?>? wageAtLockTimeJson,
 }) {
   return <String, Object?>{
     'snapshot_id': snapshotId,
@@ -615,12 +690,37 @@ PostgresRow _snapshotRow({
     'replacement_reason': source == 'server_replace' ? 'replacement' : null,
     'idempotency_key': 'snapshot-key-1',
     'request_hash': 'snapshot-hash-1',
+    'wage_at_lock_time_json': wageAtLockTimeJson,
     'metadata': <String, Object?>{'source': 'test'},
     'created_by': _userId,
     'created_at': DateTime.utc(2026, 5, 6, 12),
     'updated_at': DateTime.utc(2026, 5, 6, 12),
   };
 }
+
+PostgresRow _dayDaypartRow() {
+  return <String, Object?>{
+    'snapshot_id': _snapshotId,
+    'operator_id': _operatorId,
+    'location_id': _locationId,
+    'business_date': '2026-05-04',
+    'service_period_id': 'brunch',
+    'forecast_covers': 8,
+    'forecast_sales': 340.0,
+    'required_foh_hours': 2.0,
+    'required_boh_hours': 2.0,
+    'theoretical_foh_dollars': 36.5,
+    'theoretical_boh_dollars': 44.0,
+    'created_at': DateTime.utc(2026, 5, 6, 12),
+    'updated_at': DateTime.utc(2026, 5, 6, 12),
+  };
+}
+
+Map<String, Object?> _wageStamp() => <String, Object?>{
+  'foh_wage': 18.25,
+  'boh_wage': 22.0,
+  'blended_wage': 19.5,
+};
 
 PostgresRow _dayRow() {
   return <String, Object?>{

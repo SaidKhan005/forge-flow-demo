@@ -42,7 +42,27 @@ void main() {
             WeeklyPlanSnapshotSyncRow(
               operatorId: _opId,
               locationId: _locId,
-              snapshot: _snapshot(rid, forecastCovers: 148),
+              snapshot: _snapshot(
+                rid,
+                forecastCovers: 148,
+                dayDayparts: const <WeeklyPlanSnapshotDayDaypart>[
+                  WeeklyPlanSnapshotDayDaypart(
+                    businessDate: '2026-05-04',
+                    servicePeriodId: 'brunch',
+                    forecastCovers: 12,
+                    forecastSales: 528,
+                    requiredFohHours: 2.5,
+                    requiredBohHours: 2,
+                    theoreticalFohDollars: 45,
+                    theoreticalBohDollars: 44,
+                  ),
+                ],
+                wageAtLockTime: const WeeklyPlanSnapshotWagesAtLockTime(
+                  fohWage: 18,
+                  bohWage: 22,
+                  blendedWage: 20,
+                ),
+              ),
             ),
           ],
           nextCursor: 'weekly-cursor-1',
@@ -85,6 +105,9 @@ void main() {
     expect(stored, isNotNull);
     expect(stored!.forecastCovers, 148);
     expect(stored.dayRows.single.businessDate, '2026-05-04');
+    expect(stored.dayDayparts.single.servicePeriodId, 'brunch');
+    expect(stored.dayDayparts.single.theoreticalFohDollars, 45);
+    expect(stored.wageAtLockTime!.fohWage, 18);
     expect(stored.forecastContextId, 'fc-1');
     expect(stored.forecastContext!.baselineTotalCovers, 1200);
     expect(stored.forecastContext!.resolvedWeeklyForecastCovers, 148);
@@ -124,6 +147,44 @@ void main() {
       null,
       'forecast-cursor-1',
     ]);
+  });
+
+  test('weekly-plan sync parser keeps legacy day_rows compatibility', () {
+    final row = WeeklyPlanSnapshotSyncRow.fromJson(<String, dynamic>{
+      'operator_id': _opId,
+      'location_id': _locId,
+      'snapshot_id': 'legacy-wps',
+      'restaurant_id': 'legacy-rest',
+      'week_start_date': '2026-05-04',
+      'week_end_date': '2026-05-10',
+      'target_cycle_id': 'cycle-legacy',
+      'forecast_context_id': 'fc-legacy',
+      'forecast_covers': 148,
+      'forecast_sales': 6512,
+      'required_foh_hours': 32,
+      'required_boh_hours': 28,
+      'theoretical_foh_labor_dollars': 576,
+      'theoretical_boh_labor_dollars': 644,
+      'covers_source': 'historical_average',
+      'sales_source': 'covers_and_ppa',
+      'generated_at': '2026-05-06T12:00:00Z',
+      'locked_at': '2026-05-06T12:01:00Z',
+      'day_rows': <Map<String, Object?>>[
+        <String, Object?>{
+          'day_label': 'Mon',
+          'business_date': '2026-05-04',
+          'covers': 22,
+          'sales': 968,
+          'foh_hours': 5,
+          'boh_hours': 4,
+        },
+      ],
+    });
+
+    expect(row.snapshot.dayRows.single.businessDate, '2026-05-04');
+    expect(row.snapshot.dayRows.single.forecastCovers, 22);
+    expect(row.snapshot.dayDayparts, isEmpty);
+    expect(row.snapshot.wageAtLockTime, isNull);
   });
 
   test(
@@ -351,6 +412,8 @@ WeeklyPlanSnapshot _snapshot(
   String restaurantId, {
   String snapshotId = 'wps-1',
   int forecastCovers = 148,
+  List<WeeklyPlanSnapshotDayDaypart> dayDayparts = const [],
+  WeeklyPlanSnapshotWagesAtLockTime? wageAtLockTime,
 }) => WeeklyPlanSnapshot(
   snapshotId: snapshotId,
   restaurantId: restaurantId,
@@ -378,6 +441,8 @@ WeeklyPlanSnapshot _snapshot(
       requiredBohHours: 4,
     ),
   ],
+  dayDayparts: dayDayparts,
+  wageAtLockTime: wageAtLockTime,
 );
 
 DemandForecastContext _forecastContext(String restaurantId) =>

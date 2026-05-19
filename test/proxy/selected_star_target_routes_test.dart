@@ -66,22 +66,45 @@ Map<String, Object?> _clearBody() {
   };
 }
 
-Map<String, Object?> _projectionBody() {
-  return const <String, Object?>{
+Map<String, Object?> _projectionBody({bool includeDayparts = false}) {
+  final standards = <String, Object?>{
+    'target_cplh': 12.4,
+    'target_splh': 152.0,
+    'target_ppa': 42.5,
+    'foh_wage': 18.0,
+    'boh_wage': 20.0,
+    'opz_floor_cplh': 12.0,
+    'opz_ceiling_cplh': 14.0,
+  };
+  if (includeDayparts) {
+    standards['target_cycle_dayparts'] = <Object?>[
+      <String, Object?>{
+        'service_period_id': 'afternoon_tea',
+        'target_cplh': 0,
+        'target_splh': 0,
+        'target_ppa': 0,
+        'opz_floor_cplh': 0,
+        'opz_ceiling_cplh': 0,
+        'cover_count': 0,
+      },
+      <String, Object?>{
+        'service_period_key': 'supper_rush',
+        'target_cplh': 6.8,
+        'target_splh': 190.0,
+        'target_ppa': 48.0,
+        'opz_floor_cplh': 5.4,
+        'opz_ceiling_cplh': 8.2,
+        'cover_count': 42,
+      },
+    ];
+  }
+  return <String, Object?>{
     'restaurant_id': _restaurantId,
     'effective_start': '2026-05-06',
     'effective_end': '2026-07-04',
     'calibration_window_start': '2026-03-08',
     'calibration_window_end': '2026-05-06',
-    'standards': <String, Object?>{
-      'target_cplh': 12.4,
-      'target_splh': 152.0,
-      'target_ppa': 42.5,
-      'foh_wage': 18.0,
-      'boh_wage': 20.0,
-      'opz_floor_cplh': 12.0,
-      'opz_ceiling_cplh': 14.0,
-    },
+    'standards': standards,
     'reason': 'manager selected star target on mobile',
   };
 }
@@ -417,6 +440,48 @@ void main() {
       },
     );
 
+    test(
+      'POST manager projection accepts arbitrary service-period target rows',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            ctx.gateway.currentRows = <SelectedStarShiftDecisionRow>[
+              _row(
+                decisionType: 'manager_selected',
+                requestHash: 'hash-existing',
+                idempotencyKey: 'idem-existing',
+              ),
+            ];
+            final response = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '$_baseOperatorLocationPath/$targetCyclesResource/'
+                'project_manager_override',
+              ),
+              method: 'POST',
+              idempotencyKey: 'projection-dayparts',
+              body: _projectionBody(includeDayparts: true),
+            );
+
+            expect(response.statusCode, equals(200));
+            final command = ctx.gateway.projectionCommands.single;
+            expect(command.standards.dayparts, hasLength(2));
+            expect(
+              command.standards.dayparts.map((row) => row.servicePeriodId),
+              <String>['afternoon_tea', 'supper_rush'],
+            );
+            expect(command.standards.dayparts.first.targetCplh, 0);
+            expect(command.standards.dayparts.first.coverCount, 0);
+            expect(command.standards.dayparts.last.targetPpa, 48);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test('manager projection maps once-per-cycle denial to 409', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -486,10 +551,16 @@ void main() {
         final ctx = await spinUp();
         try {
           ctx.gateway.targetCycleRows = <TargetCyclePostgresRow>[
-            _targetCycleRow(updatedAt: DateTime.utc(2026, 5, 6, 18, 2)),
+            _targetCycleRow(
+              updatedAt: DateTime.utc(2026, 5, 6, 18, 2),
+              dayparts: _targetCycleDayparts(),
+            ),
           ];
           ctx.gateway.activeProfileRows = <ActiveTargetProfilePostgresRow>[
-            _activeProfileRow(updatedAt: DateTime.utc(2026, 5, 6, 18, 3)),
+            _activeProfileRow(
+              updatedAt: DateTime.utc(2026, 5, 6, 18, 3),
+              dayparts: _activeProfileDayparts(),
+            ),
           ];
           ctx.gateway.targetProfileVersionRows =
               <TargetProfileVersionPostgresRow>[
@@ -534,16 +605,44 @@ void main() {
           final cycleBody =
               jsonDecode(cycleResponse.body) as Map<String, Object?>;
           final cycles = cycleBody[targetCyclesResource] as List<dynamic>;
-          expect((cycles.single as Map<String, Object?>)['cycle_id'], _cycleId);
+          final cycleJson = cycles.single as Map<String, Object?>;
+          expect(cycleJson['cycle_id'], _cycleId);
+          final cycleDayparts = cycleJson['dayparts'] as List<dynamic>;
+          expect(cycleDayparts, hasLength(2));
+          expect(
+            (cycleDayparts.first as Map<String, Object?>)['service_period_id'],
+            'afternoon_tea',
+          );
+          expect(
+            (cycleDayparts.first as Map<String, Object?>)['target_cplh'],
+            0,
+          );
+          expect(
+            (cycleJson['target_cycle_dayparts'] as List<dynamic>),
+            hasLength(2),
+          );
           expect(cycleBody['next_cursor'], equals('2026-05-06T18:02:00.000Z'));
 
           final profileBody =
               jsonDecode(profileResponse.body) as Map<String, Object?>;
           final profiles =
               profileBody[activeTargetProfilesResource] as List<dynamic>;
+          final profileJson = profiles.single as Map<String, Object?>;
           expect(
-            (profiles.single as Map<String, Object?>)['target_cycle_id'],
+            profileJson['target_cycle_id'],
             _cycleId,
+          );
+          final profileDayparts = profileJson['dayparts'] as List<dynamic>;
+          expect(profileDayparts, hasLength(2));
+          expect(
+            (profileDayparts.last as Map<String, Object?>)[
+              'daypart_target_ppa'
+            ],
+            48,
+          );
+          expect(
+            (profileJson['active_target_profile_dayparts'] as List<dynamic>),
+            hasLength(2),
           );
           expect(
             profileBody['next_cursor'],
@@ -850,6 +949,8 @@ TargetCyclePostgresRow _targetCycleRow({
   DateTime? updatedAt,
   String source = 'recommended',
   bool managerOverrideUsed = false,
+  List<TargetCyclePostgresDaypartRow> dayparts =
+      const <TargetCyclePostgresDaypartRow>[],
 }) {
   return TargetCyclePostgresRow(
     cycleId: _cycleId,
@@ -888,12 +989,15 @@ TargetCyclePostgresRow _targetCycleRow({
     createdAt: DateTime.utc(2026, 5, 6, 18),
     updatedAt: updatedAt ?? DateTime.utc(2026, 5, 6, 18),
     deactivatedAt: null,
+    dayparts: dayparts,
   );
 }
 
 ActiveTargetProfilePostgresRow _activeProfileRow({
   DateTime? updatedAt,
   String sourceType = 'cycle_recommended',
+  List<ActiveTargetProfileDaypartRow> dayparts =
+      const <ActiveTargetProfileDaypartRow>[],
 }) {
   return ActiveTargetProfilePostgresRow(
     targetProfileId: _targetProfileId,
@@ -917,8 +1021,67 @@ ActiveTargetProfilePostgresRow _activeProfileRow({
     projectionSource: 'server_target_cycle_projection_service',
     createdAt: DateTime.utc(2026, 5, 6, 18),
     updatedAt: updatedAt ?? DateTime.utc(2026, 5, 6, 18),
+    dayparts: dayparts,
   );
 }
+
+List<TargetCyclePostgresDaypartRow> _targetCycleDayparts() =>
+    <TargetCyclePostgresDaypartRow>[
+      TargetCyclePostgresDaypartRow(
+        cycleId: _cycleId,
+        operatorId: _operatorId,
+        locationId: _locationId,
+        servicePeriodId: 'afternoon_tea',
+        targetCplh: 0,
+        targetSplh: 0,
+        targetPpa: 0,
+        opzFloorCplh: 0,
+        opzCeilingCplh: 0,
+        coverCount: 0,
+        verdict: null,
+        verdictReason: null,
+        createdAt: DateTime.utc(2026, 5, 6, 18),
+        updatedAt: DateTime.utc(2026, 5, 6, 18),
+      ),
+      TargetCyclePostgresDaypartRow(
+        cycleId: _cycleId,
+        operatorId: _operatorId,
+        locationId: _locationId,
+        servicePeriodId: 'supper_rush',
+        targetCplh: 6.8,
+        targetSplh: 190,
+        targetPpa: 48,
+        opzFloorCplh: 5.4,
+        opzCeilingCplh: 8.2,
+        coverCount: 42,
+        verdict: 'teachable',
+        verdictReason: 'period has stable selected evidence',
+        createdAt: DateTime.utc(2026, 5, 6, 18),
+        updatedAt: DateTime.utc(2026, 5, 6, 18),
+      ),
+    ];
+
+List<ActiveTargetProfileDaypartRow> _activeProfileDayparts() =>
+    const <ActiveTargetProfileDaypartRow>[
+      ActiveTargetProfileDaypartRow(
+        servicePeriodId: 'afternoon_tea',
+        daypartTargetCplh: 0,
+        daypartTargetSplh: 0,
+        daypartTargetPpa: 0,
+        daypartOpzFloorCplh: 0,
+        daypartOpzCeilingCplh: 0,
+      ),
+      ActiveTargetProfileDaypartRow(
+        servicePeriodId: 'supper_rush',
+        daypartTargetCplh: 6.8,
+        daypartTargetSplh: 190,
+        daypartTargetPpa: 48,
+        daypartOpzFloorCplh: 5.4,
+        daypartOpzCeilingCplh: 8.2,
+        verdict: 'teachable',
+        verdictReason: 'period has stable selected evidence',
+      ),
+    ];
 
 TargetProfileVersionPostgresRow _targetProfileVersionRow({
   DateTime? updatedAt,

@@ -87,8 +87,10 @@ class BaselineManagerService {
     final businessDate = await BusinessDateAuthorityService.instance
         .resolvePlanningAnchorDate(restaurantId);
     if (businessDate == null) return false;
-    final cycle = await TargetCycleService.instance
-        .getOrCreateActiveCycle(restaurantId, businessDate);
+    final cycle = await TargetCycleService.instance.getOrCreateActiveCycle(
+      restaurantId,
+      businessDate,
+    );
     return TargetCyclePolicy.canManagerOverride(cycle, businessDate);
   }
 
@@ -136,19 +138,29 @@ class BaselineManagerService {
     final selectedKeys = await _baselineRepo.getSelectedRecordKeys(scopedId);
 
     final candidates = closedShifts.map((shift) {
-      final recordKey = '${shift.weekId}|${shift.dayLabel}|${shift.daypart}';
+      final servicePeriodKey = shift.servicePeriodKey ?? shift.daypart;
+      final legacyRecordKey =
+          '${shift.weekId}|${shift.dayLabel}|${shift.daypart}';
+      final recordKey = _stableRecordKeyForShift(
+        businessDate: shift.businessDate,
+        servicePeriodKey: servicePeriodKey,
+        legacyRecordKey: legacyRecordKey,
+      );
       return BaselineCandidateShift(
         recordKey: recordKey,
         weekId: shift.weekId,
         weekLabel: shift.weekId,
         dayLabel: shift.dayLabel,
         daypart: shift.daypart,
+        servicePeriodKey: servicePeriodKey,
         covers: shift.covers,
         cplh: shift.cplh,
         splh: shift.splh,
         ppa: shift.ppa,
         primaryLeverId: shift.normalizedLeverId,
-        isSelected: selectedKeys.contains(recordKey),
+        isSelected:
+            selectedKeys.contains(recordKey) ||
+            selectedKeys.contains(legacyRecordKey),
         businessDate: shift.businessDate,
         actualLaborPct: shift.totalLaborPct,
         hasActualLaborPctTruth: shift.hasSourceBackedTotalLaborPct,
@@ -158,6 +170,19 @@ class BaselineManagerService {
     final defs = await resolveOperatorDefs();
     _sortCandidates(candidates, defs);
     return candidates;
+  }
+
+  static String _stableRecordKeyForShift({
+    required String? businessDate,
+    required String servicePeriodKey,
+    required String legacyRecordKey,
+  }) {
+    final date = businessDate?.trim();
+    final key = servicePeriodKey.trim();
+    if (date != null && date.isNotEmpty && key.isNotEmpty) {
+      return '$date|$key';
+    }
+    return legacyRecordKey;
   }
 
   static void _sortCandidates(

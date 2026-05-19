@@ -385,6 +385,8 @@ class WeeklyPlanLockRequest {
     required this.coversSource,
     required this.salesSource,
     required this.dayRows,
+    this.dayDayparts = const <WeeklyPlanDayDaypartPayload>[],
+    this.wageAtLockTimeJson,
     required this.reason,
     required this.actorUserId,
     required this.actorKind,
@@ -410,6 +412,8 @@ class WeeklyPlanLockRequest {
   final String coversSource;
   final String salesSource;
   final List<WeeklyPlanDayPayload> dayRows;
+  final List<WeeklyPlanDayDaypartPayload> dayDayparts;
+  final Map<String, Object?>? wageAtLockTimeJson;
   final String reason;
   final String actorUserId;
   final String actorKind;
@@ -442,6 +446,39 @@ class WeeklyPlanDayPayload {
     'forecast_sales': forecastSales,
     'required_foh_hours': requiredFohHours,
     'required_boh_hours': requiredBohHours,
+  };
+}
+
+class WeeklyPlanDayDaypartPayload {
+  const WeeklyPlanDayDaypartPayload({
+    required this.businessDate,
+    required this.servicePeriodId,
+    required this.forecastCovers,
+    required this.forecastSales,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+    required this.theoreticalFohDollars,
+    required this.theoreticalBohDollars,
+  });
+
+  final String businessDate;
+  final String servicePeriodId;
+  final int forecastCovers;
+  final double forecastSales;
+  final double requiredFohHours;
+  final double requiredBohHours;
+  final double theoreticalFohDollars;
+  final double theoreticalBohDollars;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'business_date': businessDate,
+    'service_period_id': servicePeriodId,
+    'forecast_covers': forecastCovers,
+    'forecast_sales': forecastSales,
+    'required_foh_hours': requiredFohHours,
+    'required_boh_hours': requiredBohHours,
+    'theoretical_foh_dollars': theoreticalFohDollars,
+    'theoretical_boh_dollars': theoreticalBohDollars,
   };
 }
 
@@ -506,6 +543,8 @@ class WeeklyPlanSnapshotRow {
     required this.coversSource,
     required this.salesSource,
     required this.dayRows,
+    this.dayDayparts = const <WeeklyPlanDayDaypartPayload>[],
+    this.wageAtLockTimeJson,
     required this.lockedAt,
     required this.lockedByUserId,
     required this.lockReason,
@@ -536,6 +575,8 @@ class WeeklyPlanSnapshotRow {
   final String coversSource;
   final String salesSource;
   final List<WeeklyPlanDayPayload> dayRows;
+  final List<WeeklyPlanDayDaypartPayload> dayDayparts;
+  final Map<String, Object?>? wageAtLockTimeJson;
   final DateTime lockedAt;
   final String lockedByUserId;
   final String lockReason;
@@ -569,6 +610,11 @@ class WeeklyPlanSnapshotRow {
     'covers_source': coversSource,
     'sales_source': salesSource,
     'day_rows': <Map<String, Object?>>[for (final row in dayRows) row.toJson()],
+    'day_dayparts': <Map<String, Object?>>[
+      for (final row in dayDayparts) row.toJson(),
+    ],
+    if (wageAtLockTimeJson != null)
+      'wage_at_lock_time_json': wageAtLockTimeJson,
     'locked_at': lockedAt.toUtc().toIso8601String(),
     'locked_by_user_id': lockedByUserId,
     'lock_reason': lockReason,
@@ -749,6 +795,10 @@ WeeklyPlanLockRequest _lockRequestFromBody({
     coversSource: _requiredString(body, 'covers_source'),
     salesSource: _requiredString(body, 'sales_source'),
     dayRows: _requiredDayRows(body['day_rows']),
+    dayDayparts: _optionalDayDayparts(body['day_dayparts']),
+    wageAtLockTimeJson: _optionalWageAtLockTimeJson(
+      body['wage_at_lock_time_json'],
+    ),
     reason: _requiredString(body, 'reason'),
     actorUserId: actorUserId,
     actorKind: _repositoryActorKind(actorKind),
@@ -914,6 +964,70 @@ List<WeeklyPlanDayPayload> _requiredDayRows(Object? raw) {
     );
   }
   return List<WeeklyPlanDayPayload>.unmodifiable(rows);
+}
+
+List<WeeklyPlanDayDaypartPayload> _optionalDayDayparts(Object? raw) {
+  if (raw == null) return const <WeeklyPlanDayDaypartPayload>[];
+  if (raw is! List) {
+    throw const WeeklyPlanRouteRejected(
+      code: 'invalid_day_dayparts',
+      message: 'day_dayparts must be a list',
+      statusCode: 400,
+    );
+  }
+  final rows = <WeeklyPlanDayDaypartPayload>[];
+  for (final item in raw) {
+    if (item is! Map) {
+      throw const WeeklyPlanRouteRejected(
+        code: 'invalid_day_dayparts',
+        message: 'each day_dayparts row must be an object',
+        statusCode: 400,
+      );
+    }
+    final row = <String, Object?>{
+      for (final entry in item.entries) entry.key.toString(): entry.value,
+    };
+    rows.add(
+      WeeklyPlanDayDaypartPayload(
+        businessDate: _requiredDateString(row, 'business_date'),
+        servicePeriodId:
+            _optionalString(row, 'service_period_id') ??
+            _requiredString(row, 'service_period_key'),
+        forecastCovers: _requiredInt(row, 'forecast_covers'),
+        forecastSales: _requiredDouble(row, 'forecast_sales'),
+        requiredFohHours: _requiredDouble(row, 'required_foh_hours'),
+        requiredBohHours: _requiredDouble(row, 'required_boh_hours'),
+        theoreticalFohDollars: _requiredDouble(
+          row,
+          'theoretical_foh_dollars',
+        ),
+        theoreticalBohDollars: _requiredDouble(
+          row,
+          'theoretical_boh_dollars',
+        ),
+      ),
+    );
+  }
+  return List<WeeklyPlanDayDaypartPayload>.unmodifiable(rows);
+}
+
+Map<String, Object?>? _optionalWageAtLockTimeJson(Object? raw) {
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw const WeeklyPlanRouteRejected(
+      code: 'invalid_wage_at_lock_time_json',
+      message: 'wage_at_lock_time_json must be an object',
+      statusCode: 400,
+    );
+  }
+  final row = <String, Object?>{
+    for (final entry in raw.entries) entry.key.toString(): entry.value,
+  };
+  return <String, Object?>{
+    'foh_wage': _requiredDouble(row, 'foh_wage'),
+    'boh_wage': _requiredDouble(row, 'boh_wage'),
+    'blended_wage': _requiredDouble(row, 'blended_wage'),
+  };
 }
 
 ForecastContextPayload? _forecastContextPayload(

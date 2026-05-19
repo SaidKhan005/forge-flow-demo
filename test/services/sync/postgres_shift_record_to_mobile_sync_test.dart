@@ -19,6 +19,7 @@
 // No live HTTP — `_FakeSyncProxyClient` answers every fetch from
 // scripted in-memory state.
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -97,6 +98,100 @@ void main() {
       final stored = await SqliteShiftRecordRepository.instance
           .getShiftsForWeek(rid, '2026-W13');
       expect(stored.map((r) => r.daypart).toSet(), {'lunch', 'dinner'});
+    },
+  );
+
+  test(
+    'A2. server JSON per-period target stamps persist into SQLite',
+    () async {
+      const rid = 'rest_A2';
+      final client = _FakeSyncProxyClient()
+        ..scriptShiftPages([
+          _Page(
+            records: [
+              _shiftFromProxyJson(
+                rid,
+                weekId: '2026-W13',
+                day: 'Tue',
+                daypart: 'brunch',
+                daypartTargetCPLH: 11.5,
+                daypartTargetSPLH: 49.0,
+                daypartTargetPPA: 39.0,
+                daypartOpzFloorCPLH: 9.5,
+                daypartOpzCeilingCPLH: 13.5,
+              ),
+              _shiftFromProxyJson(
+                rid,
+                weekId: '2026-W13',
+                day: 'Tue',
+                daypart: 'dinner',
+              ),
+            ],
+            nextCursor: null,
+          ),
+        ]);
+
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+        invalidationBus: bus,
+      );
+
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+
+      expect(result.recordsWritten, 2);
+      final stored = await SqliteShiftRecordRepository.instance
+          .getShiftsForWeek(rid, '2026-W13');
+      final brunch = stored.singleWhere((row) => row.daypart == 'brunch');
+      expect(brunch.daypartTargetCPLH, 11.5);
+      expect(brunch.daypartTargetSPLH, 49.0);
+      expect(brunch.daypartTargetPPA, 39.0);
+      expect(brunch.daypartOpzFloorCPLH, 9.5);
+      expect(brunch.daypartOpzCeilingCPLH, 13.5);
+
+      final legacyDinner = stored.singleWhere((row) => row.daypart == 'dinner');
+      expect(legacyDinner.daypartTargetCPLH, isNull);
+      expect(legacyDinner.daypartTargetSPLH, isNull);
+      expect(legacyDinner.daypartTargetPPA, isNull);
+      expect(legacyDinner.daypartOpzFloorCPLH, isNull);
+      expect(legacyDinner.daypartOpzCeilingCPLH, isNull);
+
+      final db = await SqliteDatabase.instance.database;
+      final rawRows = await db.query(
+        'shift_records',
+        columns: const <String>[
+          'daypart',
+          'daypart_target_cplh',
+          'daypart_target_splh',
+          'daypart_target_ppa',
+          'daypart_opz_floor_cplh',
+          'daypart_opz_ceiling_cplh',
+        ],
+        where: 'restaurant_id = ? AND week_id = ?',
+        whereArgs: [rid, '2026-W13'],
+      );
+      final rawBrunch = rawRows.singleWhere(
+        (row) => row['daypart'] == 'brunch',
+      );
+      expect(rawBrunch['daypart_target_cplh'], 11.5);
+      expect(rawBrunch['daypart_target_splh'], 49.0);
+      expect(rawBrunch['daypart_target_ppa'], 39.0);
+      expect(rawBrunch['daypart_opz_floor_cplh'], 9.5);
+      expect(rawBrunch['daypart_opz_ceiling_cplh'], 13.5);
+
+      final rawDinner = rawRows.singleWhere(
+        (row) => row['daypart'] == 'dinner',
+      );
+      expect(rawDinner['daypart_target_cplh'], isNull);
+      expect(rawDinner['daypart_target_splh'], isNull);
+      expect(rawDinner['daypart_target_ppa'], isNull);
+      expect(rawDinner['daypart_opz_floor_cplh'], isNull);
+      expect(rawDinner['daypart_opz_ceiling_cplh'], isNull);
     },
   );
 
@@ -1109,6 +1204,46 @@ ShiftRecord _shift(
     sourceSystem: 'oracle_micros_simphony',
     businessDate: '2026-05-04',
   );
+}
+
+ShiftRecord _shiftFromProxyJson(
+  String restaurantId, {
+  required String weekId,
+  required String day,
+  required String daypart,
+  double? daypartTargetCPLH,
+  double? daypartTargetSPLH,
+  double? daypartTargetPPA,
+  double? daypartOpzFloorCPLH,
+  double? daypartOpzCeilingCPLH,
+}) {
+  final row = <String, Object?>{
+    'restaurant_id': restaurantId,
+    'week_id': weekId,
+    'day_label': day,
+    'daypart': daypart,
+    'status': 'closed',
+    'covers': 50,
+    'forecast_covers': 50,
+    'ppa': 22.0,
+    'cplh': 30.0,
+    'splh': 70.0,
+    'foh_hours': 20,
+    'boh_hours': 18,
+    'theoretical_labor_pct': 25.0,
+    'primary_lever': 'ON_MODEL',
+    'business_date': '2026-05-04',
+    'source_system': 'oracle_micros_simphony',
+    if (daypartTargetCPLH != null) 'daypart_target_cplh': daypartTargetCPLH,
+    if (daypartTargetSPLH != null) 'daypart_target_splh': daypartTargetSPLH,
+    if (daypartTargetPPA != null) 'daypart_target_ppa': daypartTargetPPA,
+    if (daypartOpzFloorCPLH != null)
+      'daypart_opz_floor_cplh': daypartOpzFloorCPLH,
+    if (daypartOpzCeilingCPLH != null)
+      'daypart_opz_ceiling_cplh': daypartOpzCeilingCPLH,
+  };
+  final decoded = jsonDecode(jsonEncode(row)) as Map<String, dynamic>;
+  return ShiftRecord.fromMap(decoded);
 }
 
 OpenShiftSnapshot _openSnapshot(

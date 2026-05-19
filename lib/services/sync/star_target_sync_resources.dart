@@ -334,6 +334,7 @@ class TargetCycleSyncRow {
         adminReplacedAt: _readIsoString(json['admin_replaced_at']),
         createdAt: _requiredIsoString(json, 'created_at'),
         deactivatedAt: _readIsoString(json['deactivated_at']),
+        dayparts: _readTargetCycleDayparts(json),
       ),
     );
   }
@@ -384,6 +385,7 @@ class ActiveTargetProfileSyncRow {
         ),
         theoreticalLaborPct: _requiredDouble(json, 'theoretical_labor_pct'),
         builtAt: _requiredIsoString(json, 'built_at'),
+        dayparts: _readActiveTargetProfileDayparts(json),
       ),
     );
   }
@@ -497,6 +499,114 @@ double _requiredDouble(Map<String, dynamic> json, String key) {
   return value;
 }
 
+int _requiredInt(Map<String, dynamic> json, String key) {
+  final value = _readInt(json[key]);
+  if (value == null) {
+    throw FormatException('Star-target sync row was missing "$key".');
+  }
+  return value;
+}
+
+List<TargetCycleDaypart> _readTargetCycleDayparts(
+  Map<String, dynamic> json,
+) {
+  final rows =
+      _readList(json['target_cycle_dayparts']) ?? _readList(json['dayparts']);
+  if (rows == null) return const <TargetCycleDaypart>[];
+  return <TargetCycleDaypart>[
+    for (final row in rows)
+      TargetCycleDaypart(
+        servicePeriodId: _requiredServicePeriodId(row),
+        targetCPLH: _requiredDouble(row, 'target_cplh'),
+        targetSPLH: _requiredDouble(row, 'target_splh'),
+        targetPPA: _requiredDouble(row, 'target_ppa'),
+        opzFloorCPLH: _requiredDouble(row, 'opz_floor_cplh'),
+        opzCeilingCPLH: _requiredDouble(row, 'opz_ceiling_cplh'),
+        coverCount: _requiredInt(row, 'cover_count'),
+        verdict: _readString(row['verdict']),
+        verdictReason: _readString(row['verdict_reason']),
+      ),
+  ];
+}
+
+List<ActiveTargetProfileDaypart> _readActiveTargetProfileDayparts(
+  Map<String, dynamic> json,
+) {
+  final rows =
+      _readList(json['active_target_profile_dayparts']) ??
+      _readList(json['dayparts']);
+  if (rows == null) return const <ActiveTargetProfileDaypart>[];
+  return <ActiveTargetProfileDaypart>[
+    for (final row in rows)
+      ActiveTargetProfileDaypart(
+        servicePeriodId: _requiredServicePeriodId(row),
+        daypartTargetCPLH: _requiredFirstDouble(row, const <String>[
+          'daypart_target_cplh',
+          'target_cplh',
+        ]),
+        daypartTargetSPLH: _requiredFirstDouble(row, const <String>[
+          'daypart_target_splh',
+          'target_splh',
+        ]),
+        daypartTargetPPA: _requiredFirstDouble(row, const <String>[
+          'daypart_target_ppa',
+          'target_ppa',
+        ]),
+        daypartOpzFloorCPLH: _requiredFirstDouble(row, const <String>[
+          'daypart_opz_floor_cplh',
+          'opz_floor_cplh',
+        ]),
+        daypartOpzCeilingCPLH: _requiredFirstDouble(row, const <String>[
+          'daypart_opz_ceiling_cplh',
+          'opz_ceiling_cplh',
+        ]),
+        verdict: _readString(row['verdict']),
+        verdictReason: _readString(row['verdict_reason']),
+      ),
+  ];
+}
+
+double _requiredFirstDouble(Map<String, dynamic> json, List<String> keys) {
+  for (final key in keys) {
+    final value = _readDouble(json[key]);
+    if (value != null) return value;
+  }
+  throw FormatException('Star-target sync row was missing "${keys.first}".');
+}
+
+String _requiredServicePeriodId(Map<String, dynamic> json) {
+  final value =
+      _readString(json['service_period_id']) ??
+      _readString(json['service_period_key']) ??
+      _readString(json['servicePeriodId']);
+  if (value == null) {
+    throw const FormatException(
+      'Star-target sync daypart row was missing "service_period_id".',
+    );
+  }
+  return value;
+}
+
+List<Map<String, dynamic>>? _readList(Object? value) {
+  if (value == null) return null;
+  if (value is! List) {
+    throw const FormatException('Star-target dayparts value was not a list.');
+  }
+  return <Map<String, dynamic>>[
+    for (final item in value) _dynamicMap(item),
+  ];
+}
+
+Map<String, dynamic> _dynamicMap(Object? value) {
+  if (value is Map<String, dynamic>) return value;
+  if (value is Map) {
+    return <String, dynamic>{
+      for (final entry in value.entries) entry.key.toString(): entry.value,
+    };
+  }
+  throw const FormatException('Star-target daypart row was not an object.');
+}
+
 String? _readString(Object? value) {
   if (value == null) return null;
   if (value is String) {
@@ -533,6 +643,16 @@ double? _readDouble(Object? value) {
   if (value == null) return null;
   if (value is num) return value.toDouble();
   if (value is String) return double.tryParse(value);
+  return null;
+}
+
+int? _readInt(Object? value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num && value.roundToDouble() == value.toDouble()) {
+    return value.toInt();
+  }
+  if (value is String) return int.tryParse(value);
   return null;
 }
 

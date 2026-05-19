@@ -43,6 +43,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       'replacement_reason, '
       'idempotency_key, '
       'request_hash, '
+      'wage_at_lock_time_json, '
       'metadata, '
       'created_by::text as created_by, '
       'created_at, '
@@ -78,6 +79,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       's.replacement_reason, '
       's.idempotency_key, '
       's.request_hash, '
+      's.wage_at_lock_time_json, '
       's.metadata, '
       's.created_by::text as created_by, '
       's.created_at, '
@@ -115,15 +117,49 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       'd.created_at, '
       'd.updated_at';
 
+  static const String _dayDaypartColumns =
+      'snapshot_id::text as snapshot_id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'business_date::text as business_date, '
+      'service_period_id, '
+      'forecast_covers, '
+      'forecast_sales, '
+      'required_foh_hours, '
+      'required_boh_hours, '
+      'theoretical_foh_dollars, '
+      'theoretical_boh_dollars, '
+      'created_at, '
+      'updated_at';
+
+  static const String _dayDaypartColumnsWithAlias =
+      'dd.snapshot_id::text as snapshot_id, '
+      'dd.operator_id::text as operator_id, '
+      'dd.location_id::text as location_id, '
+      'dd.business_date::text as business_date, '
+      'dd.service_period_id, '
+      'dd.forecast_covers, '
+      'dd.forecast_sales, '
+      'dd.required_foh_hours, '
+      'dd.required_boh_hours, '
+      'dd.theoretical_foh_dollars, '
+      'dd.theoretical_boh_dollars, '
+      'dd.created_at, '
+      'dd.updated_at';
+
   Future<WeeklyPlanSnapshotPostgresRow> lockOrReplaceSnapshot({
     required WeeklyPlanSnapshotPostgresWrite snapshot,
     List<WeeklyPlanSnapshotDayPostgresWrite> days = const [],
+    List<WeeklyPlanSnapshotDayDaypartPostgresWrite> dayDayparts = const [],
     String actorKind = 'operator_user',
     required String reason,
   }) {
     snapshot.validate();
     for (final day in days) {
       day.validateForSnapshot(snapshot);
+    }
+    for (final dayDaypart in dayDayparts) {
+      dayDaypart.validateForSnapshot(snapshot);
     }
     _validateNonBlank(reason, 'reason');
     final ctx = TenantContext(
@@ -192,6 +228,13 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       for (final day in days) {
         await _insertDayWithExecutor(exec, day, row.snapshotId);
       }
+      for (final dayDaypart in dayDayparts) {
+        await _insertDayDaypartWithExecutor(
+          exec,
+          dayDaypart,
+          row.snapshotId,
+        );
+      }
       await _insertAuditEvent(
         exec,
         operatorId: snapshot.operatorId,
@@ -212,6 +255,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
           'target_cycle_id': row.targetCycleId,
           'forecast_context_id': row.forecastContextId,
           'day_row_count': days.length,
+          'day_daypart_row_count': dayDayparts.length,
         },
       );
       return row;
@@ -395,6 +439,40 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
     });
   }
 
+  Future<List<WeeklyPlanSnapshotDayDaypartPostgresRow>>
+  listDayDaypartsForSnapshot({
+    required String operatorId,
+    required String locationId,
+    required String snapshotId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<WeeklyPlanSnapshotDayDaypartPostgresRow>>(ctx, (
+      exec,
+    ) async {
+      final rows = await exec.query(
+        'select $_dayDaypartColumnsWithAlias '
+        'from public.weekly_plan_snapshot_day_dayparts dd '
+        'where dd.operator_id = @operator_id::uuid '
+        '  and dd.location_id = @location_id::uuid '
+        '  and dd.snapshot_id = @snapshot_id::uuid '
+        'order by dd.business_date asc, dd.service_period_id asc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'snapshot_id': snapshotId,
+        },
+      );
+      return <WeeklyPlanSnapshotDayDaypartPostgresRow>[
+        for (final row in rows) _snapshotDayDaypartRowFromMap(row),
+      ];
+    });
+  }
+
   Future<WeeklyPlanSnapshotPostgresRow?> _fetchActiveSnapshot(
     PostgresExecutor exec, {
     required String operatorId,
@@ -508,7 +586,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       '  covers_source, sales_source, snapshot_status, source, '
       '  generated_at, locked_at, supersedes_snapshot_id, '
       '  replacement_reason, idempotency_key, request_hash, metadata, '
-      '  created_by'
+      '  wage_at_lock_time_json, created_by'
       ') values ('
       '  coalesce(@snapshot_id::uuid, gen_random_uuid()), '
       '  @operator_id::uuid, @location_id::uuid, @restaurant_id, '
@@ -520,7 +598,7 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       "  'active', @source, @generated_at::timestamptz, "
       '  @locked_at::timestamptz, @supersedes_snapshot_id::uuid, '
       '  @replacement_reason, @idempotency_key, @request_hash, '
-      '  @metadata::jsonb, @created_by::uuid'
+      '  @metadata::jsonb, @wage_at_lock_time_json::jsonb, @created_by::uuid'
       ') returning $_columns',
       parameters: snapshot.toSqlParameters(
         sourceOverride: sourceOverride,
@@ -553,6 +631,30 @@ class WeeklyPlanSnapshotRepository extends OperatorScopedRepository {
       'do nothing '
       'returning $_dayColumns',
       parameters: day.toSqlParameters(snapshotId: snapshotId),
+    );
+  }
+
+  Future<void> _insertDayDaypartWithExecutor(
+    PostgresExecutor exec,
+    WeeklyPlanSnapshotDayDaypartPostgresWrite dayDaypart,
+    String snapshotId,
+  ) async {
+    await exec.query(
+      'insert into public.weekly_plan_snapshot_day_dayparts ('
+      '  operator_id, location_id, snapshot_id, business_date, '
+      '  service_period_id, forecast_covers, forecast_sales, '
+      '  required_foh_hours, required_boh_hours, theoretical_foh_dollars, '
+      '  theoretical_boh_dollars'
+      ') values ('
+      '  @operator_id::uuid, @location_id::uuid, @snapshot_id::uuid, '
+      '  @business_date::date, @service_period_id, @forecast_covers, '
+      '  @forecast_sales, @required_foh_hours, @required_boh_hours, '
+      '  @theoretical_foh_dollars, @theoretical_boh_dollars'
+      ') '
+      'on conflict (snapshot_id, business_date, service_period_id) '
+      'do nothing '
+      'returning $_dayDaypartColumns',
+      parameters: dayDaypart.toSqlParameters(snapshotId: snapshotId),
     );
   }
 
@@ -626,6 +728,7 @@ class WeeklyPlanSnapshotPostgresWrite {
     this.replacementReason,
     required this.idempotencyKey,
     required this.requestHash,
+    this.wageAtLockTimeJson,
     this.metadata = const <String, Object?>{},
     this.createdBy,
   });
@@ -654,6 +757,7 @@ class WeeklyPlanSnapshotPostgresWrite {
   final String? replacementReason;
   final String idempotencyKey;
   final String requestHash;
+  final Map<String, Object?>? wageAtLockTimeJson;
   final Map<String, Object?> metadata;
   final String? createdBy;
 
@@ -705,6 +809,9 @@ class WeeklyPlanSnapshotPostgresWrite {
     'replacement_reason': replacementReason,
     'idempotency_key': idempotencyKey,
     'request_hash': requestHash,
+    'wage_at_lock_time_json': wageAtLockTimeJson == null
+        ? null
+        : jsonEncode(wageAtLockTimeJson),
     'metadata': jsonEncode(metadata),
     'created_by': createdBy,
   };
@@ -768,6 +875,59 @@ class WeeklyPlanSnapshotDayPostgresWrite {
       };
 }
 
+class WeeklyPlanSnapshotDayDaypartPostgresWrite {
+  const WeeklyPlanSnapshotDayDaypartPostgresWrite({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDate,
+    required this.servicePeriodId,
+    required this.forecastCovers,
+    required this.forecastSales,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+    required this.theoreticalFohDollars,
+    required this.theoreticalBohDollars,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDate;
+  final String servicePeriodId;
+  final int forecastCovers;
+  final double forecastSales;
+  final double requiredFohHours;
+  final double requiredBohHours;
+  final double theoreticalFohDollars;
+  final double theoreticalBohDollars;
+
+  void validateForSnapshot(WeeklyPlanSnapshotPostgresWrite snapshot) {
+    if (operatorId != snapshot.operatorId || locationId != snapshot.locationId) {
+      throw ArgumentError.value(
+        '$operatorId/$locationId',
+        'dayDaypart scope',
+        'must match snapshot scope',
+      );
+    }
+    _validateNonBlank(businessDate, 'businessDate');
+    _validateNonBlank(servicePeriodId, 'servicePeriodId');
+  }
+
+  PostgresParameters toSqlParameters({required String snapshotId}) =>
+      <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'snapshot_id': snapshotId,
+        'business_date': businessDate,
+        'service_period_id': servicePeriodId,
+        'forecast_covers': forecastCovers,
+        'forecast_sales': forecastSales,
+        'required_foh_hours': requiredFohHours,
+        'required_boh_hours': requiredBohHours,
+        'theoretical_foh_dollars': theoreticalFohDollars,
+        'theoretical_boh_dollars': theoreticalBohDollars,
+      };
+}
+
 class WeeklyPlanSnapshotPostgresRow {
   const WeeklyPlanSnapshotPostgresRow({
     required this.snapshotId,
@@ -799,6 +959,7 @@ class WeeklyPlanSnapshotPostgresRow {
     required this.replacementReason,
     required this.idempotencyKey,
     required this.requestHash,
+    required this.wageAtLockTimeJson,
     required this.metadata,
     required this.createdBy,
     required this.createdAt,
@@ -834,6 +995,7 @@ class WeeklyPlanSnapshotPostgresRow {
   final String? replacementReason;
   final String idempotencyKey;
   final String requestHash;
+  final Map<String, Object?>? wageAtLockTimeJson;
   final Map<String, Object?> metadata;
   final String? createdBy;
   final DateTime createdAt;
@@ -869,6 +1031,7 @@ class WeeklyPlanSnapshotPostgresRow {
     'replacement_reason': replacementReason,
     'idempotency_key': idempotencyKey,
     'request_hash': requestHash,
+    'wage_at_lock_time_json': wageAtLockTimeJson,
     'metadata': metadata,
     'created_by': createdBy,
     'created_at': createdAt.toUtc().toIso8601String(),
@@ -927,6 +1090,54 @@ class WeeklyPlanSnapshotDayPostgresRow {
   };
 }
 
+class WeeklyPlanSnapshotDayDaypartPostgresRow {
+  const WeeklyPlanSnapshotDayDaypartPostgresRow({
+    required this.snapshotId,
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDate,
+    required this.servicePeriodId,
+    required this.forecastCovers,
+    required this.forecastSales,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+    required this.theoreticalFohDollars,
+    required this.theoreticalBohDollars,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  final String snapshotId;
+  final String operatorId;
+  final String locationId;
+  final String businessDate;
+  final String servicePeriodId;
+  final int forecastCovers;
+  final double forecastSales;
+  final double requiredFohHours;
+  final double requiredBohHours;
+  final double theoreticalFohDollars;
+  final double theoreticalBohDollars;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'snapshot_id': snapshotId,
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'business_date': businessDate,
+    'service_period_id': servicePeriodId,
+    'forecast_covers': forecastCovers,
+    'forecast_sales': forecastSales,
+    'required_foh_hours': requiredFohHours,
+    'required_boh_hours': requiredBohHours,
+    'theoretical_foh_dollars': theoreticalFohDollars,
+    'theoretical_boh_dollars': theoreticalBohDollars,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
+}
+
 WeeklyPlanSnapshotPostgresRow _snapshotRowFromMap(PostgresRow row) {
   return WeeklyPlanSnapshotPostgresRow(
     snapshotId: row['snapshot_id']! as String,
@@ -958,8 +1169,31 @@ WeeklyPlanSnapshotPostgresRow _snapshotRowFromMap(PostgresRow row) {
     replacementReason: row['replacement_reason'] as String?,
     idempotencyKey: row['idempotency_key']! as String,
     requestHash: row['request_hash']! as String,
+    wageAtLockTimeJson: _nullableJsonObjectFromValue(
+      row['wage_at_lock_time_json'],
+    ),
     metadata: _jsonObjectFromValue(row['metadata']),
     createdBy: row['created_by'] as String?,
+    createdAt: _toDateTime(row['created_at'])!,
+    updatedAt: _toDateTime(row['updated_at'])!,
+  );
+}
+
+WeeklyPlanSnapshotDayDaypartPostgresRow _snapshotDayDaypartRowFromMap(
+  PostgresRow row,
+) {
+  return WeeklyPlanSnapshotDayDaypartPostgresRow(
+    snapshotId: row['snapshot_id']! as String,
+    operatorId: row['operator_id']! as String,
+    locationId: row['location_id']! as String,
+    businessDate: _dateString(row['business_date'])!,
+    servicePeriodId: row['service_period_id']! as String,
+    forecastCovers: (row['forecast_covers']! as num).toInt(),
+    forecastSales: _toDouble(row['forecast_sales']),
+    requiredFohHours: _toDouble(row['required_foh_hours']),
+    requiredBohHours: _toDouble(row['required_boh_hours']),
+    theoreticalFohDollars: _toDouble(row['theoretical_foh_dollars']),
+    theoreticalBohDollars: _toDouble(row['theoretical_boh_dollars']),
     createdAt: _toDateTime(row['created_at'])!,
     updatedAt: _toDateTime(row['updated_at'])!,
   );
@@ -1002,6 +1236,15 @@ String _replacementSource(String source) {
 
 Map<String, Object?> _jsonObjectFromValue(Object? value) {
   if (value == null) return const <String, Object?>{};
+  return _coerceJsonObject(value);
+}
+
+Map<String, Object?>? _nullableJsonObjectFromValue(Object? value) {
+  if (value == null) return null;
+  return _coerceJsonObject(value);
+}
+
+Map<String, Object?> _coerceJsonObject(Object? value) {
   final dynamic decoded = value is String ? jsonDecode(value) : value;
   if (decoded is! Map<dynamic, dynamic>) {
     throw StateError('JSON value was not an object');

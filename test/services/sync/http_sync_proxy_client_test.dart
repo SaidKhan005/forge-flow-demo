@@ -673,8 +673,27 @@ void main() {
     expect(selected.nextCursor, 'selected-next');
     expect(cycles.cycles.single.cycle.cycleId, 'cycle-1');
     expect(cycles.cycles.single.cycle.managerOverrideUsed, isTrue);
+    expect(cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH, 0);
+    expect(cycles.cycles.single.cycle.daypartFor('supper_rush')!.targetPPA, 48);
+    expect(cycles.cycles.single.cycle.daypartFor('legacy_lunch'), isNull);
     expect(cycles.nextCursor, 'cycle-next');
     expect(profiles.profiles.single.profile.targetProfileId, 'profile-1');
+    expect(
+      profiles.profiles.single.profile
+          .daypartFor('afternoon_tea')!
+          .daypartTargetCPLH,
+      0,
+    );
+    expect(
+      profiles.profiles.single.profile
+          .daypartFor('supper_rush')!
+          .daypartTargetPPA,
+      48,
+    );
+    expect(
+      profiles.profiles.single.profile.daypartFor('legacy_lunch'),
+      isNull,
+    );
     expect(versions.isUnavailable, isTrue);
     expect(versions.unavailableReason, 'target_profile_versions_not_projected');
     expect(requests.first.queryParameters['modified_since'], 'selected-cursor');
@@ -750,6 +769,14 @@ void main() {
         '2026-05-04_2026-05-10',
       );
       expect(snapshots.snapshots.single.snapshot.dayRows.single.day, 'Mon');
+      expect(
+        snapshots.snapshots.single.snapshot.dayDayparts.single.servicePeriodId,
+        'brunch',
+      );
+      expect(
+        snapshots.snapshots.single.snapshot.wageAtLockTime!.blendedWage,
+        20.0,
+      );
       expect(snapshots.nextCursor, 'weekly-next');
       expect(contexts.contexts.single.forecastContextId, 'fc-1');
       expect(contexts.contexts.single.weekStartDate, '2026-05-04');
@@ -963,6 +990,26 @@ Map<String, Object?> _targetCycleRow() => <String, Object?>{
   'manager_override_at': '2026-05-06T12:00:00Z',
   'created_at': '2026-05-06T12:00:00Z',
   'updated_at': '2026-05-06T12:00:00Z',
+  'dayparts': <Object?>[
+    <String, Object?>{
+      'service_period_id': 'afternoon_tea',
+      'target_cplh': 0,
+      'target_splh': 0,
+      'target_ppa': 0,
+      'opz_floor_cplh': 0,
+      'opz_ceiling_cplh': 0,
+      'cover_count': 0,
+    },
+    <String, Object?>{
+      'service_period_key': 'supper_rush',
+      'target_cplh': 6.8,
+      'target_splh': 190.0,
+      'target_ppa': 48.0,
+      'opz_floor_cplh': 5.4,
+      'opz_ceiling_cplh': 8.2,
+      'cover_count': 42,
+    },
+  ],
 };
 
 Map<String, Object?> _activeProfileRow() => <String, Object?>{
@@ -985,6 +1032,24 @@ Map<String, Object?> _activeProfileRow() => <String, Object?>{
   'theoretical_labor_pct': 20.57,
   'built_at': '2026-05-06T12:00:00Z',
   'updated_at': '2026-05-06T12:00:00Z',
+  'active_target_profile_dayparts': <Object?>[
+    <String, Object?>{
+      'service_period_id': 'afternoon_tea',
+      'daypart_target_cplh': 0,
+      'daypart_target_splh': 0,
+      'daypart_target_ppa': 0,
+      'daypart_opz_floor_cplh': 0,
+      'daypart_opz_ceiling_cplh': 0,
+    },
+    <String, Object?>{
+      'service_period_id': 'supper_rush',
+      'target_cplh': 6.8,
+      'target_splh': 190.0,
+      'target_ppa': 48.0,
+      'opz_floor_cplh': 5.4,
+      'opz_ceiling_cplh': 8.2,
+    },
+  ],
 };
 
 Map<String, Object?> _weeklyPlanRow() => <String, Object?>{
@@ -1016,6 +1081,23 @@ Map<String, Object?> _weeklyPlanRow() => <String, Object?>{
       'boh_hours': 4,
     },
   ]),
+  'day_dayparts': <Object?>[
+    <String, Object?>{
+      'business_date': '2026-05-04',
+      'service_period_id': 'brunch',
+      'forecast_covers': 12,
+      'forecast_sales': 528.0,
+      'required_foh_hours': 2.5,
+      'required_boh_hours': 2.0,
+      'theoretical_foh_dollars': 45.0,
+      'theoretical_boh_dollars': 44.0,
+    },
+  ],
+  'wage_at_lock_time_json': <String, Object?>{
+    'foh_wage': 18.0,
+    'boh_wage': 22.0,
+    'blended_wage': 20.0,
+  },
 };
 
 Map<String, Object?> _forecastContextRow() => <String, Object?>{

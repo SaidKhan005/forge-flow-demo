@@ -49,6 +49,11 @@ void main() {
         '44444444-4444-4444-8444-444444444444',
       );
       expect(record.servicePeriodKey, 'lunch');
+      expect(record.daypartTargetCPLH, 11.5);
+      expect(record.daypartTargetSPLH, 49.0);
+      expect(record.daypartTargetPPA, 39.0);
+      expect(record.daypartOpzFloorCPLH, 9.5);
+      expect(record.daypartOpzCeilingCPLH, 13.5);
       // Legacy `daypart` field survives — closed-row resolvers may
       // still rely on it as the bucket key when the triplet is null.
       expect(record.daypart, 'lunch');
@@ -82,6 +87,11 @@ void main() {
         expect(record.businessTimingProfileId, isNull);
         expect(record.businessTimingProfileVersionId, isNull);
         expect(record.servicePeriodKey, isNull);
+        expect(record.daypartTargetCPLH, isNull);
+        expect(record.daypartTargetSPLH, isNull);
+        expect(record.daypartTargetPPA, isNull);
+        expect(record.daypartOpzFloorCPLH, isNull);
+        expect(record.daypartOpzCeilingCPLH, isNull);
         // Legacy daypart still present — the closed timing resolver
         // falls back to it when the triplet is absent.
         expect(record.daypart, 'dinner');
@@ -116,6 +126,11 @@ void main() {
         expect(record.businessTimingProfileId, isNull);
         expect(record.businessTimingProfileVersionId, isNull);
         expect(record.servicePeriodKey, isNull);
+        expect(record.daypartTargetCPLH, isNull);
+        expect(record.daypartTargetSPLH, isNull);
+        expect(record.daypartTargetPPA, isNull);
+        expect(record.daypartOpzFloorCPLH, isNull);
+        expect(record.daypartOpzCeilingCPLH, isNull);
         expect(record.daypart, 'dinner');
       },
     );
@@ -132,6 +147,11 @@ Map<String, Object?> _closedShiftRowWithTriplet() => <String, Object?>{
   'business_timing_profile_id': '44444444-4444-4444-8444-444444444444',
   'business_timing_profile_version_id': '44444444-4444-4444-8444-444444444444',
   'service_period_key': 'lunch',
+  'daypart_target_cplh': 11.5,
+  'daypart_target_splh': 49.0,
+  'daypart_target_ppa': 39.0,
+  'daypart_opz_floor_cplh': 9.5,
+  'daypart_opz_ceiling_cplh': 13.5,
   'covers': 120,
   'forecast_covers': 110,
   'ppa': 42.0,

@@ -15,7 +15,9 @@ class TargetProfileDao {
       whereArgs: [restaurantId],
     );
     if (rows.isEmpty) return null;
-    return ActiveTargetProfile.fromMap(rows.first);
+    return _hydrateWithActiveCycleDayparts(
+      ActiveTargetProfile.fromMap(rows.first),
+    );
   }
 
   Future<void> upsertActiveTargetProfile(ActiveTargetProfile profile) async {
@@ -84,5 +86,43 @@ class TargetProfileDao {
       whereArgs: keep,
     );
     return profiles + versions;
+  }
+
+  Future<ActiveTargetProfile> _hydrateWithActiveCycleDayparts(
+    ActiveTargetProfile parent,
+  ) async {
+    final cycles = await _db.query(
+      'target_cycles',
+      columns: const <String>['cycle_id'],
+      where: 'restaurant_id = ? AND deactivated_at IS NULL',
+      whereArgs: <Object?>[parent.restaurantId],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    if (cycles.isEmpty) return parent;
+    final cycleId = cycles.single['cycle_id'] as String?;
+    if (cycleId == null || cycleId.isEmpty) return parent;
+    final rows = await _db.query(
+      'target_cycle_dayparts',
+      where: 'cycle_id = ?',
+      whereArgs: <Object?>[cycleId],
+      orderBy: 'service_period_id ASC',
+    );
+    if (rows.isEmpty) return parent;
+    return parent.withDayparts(<ActiveTargetProfileDaypart>[
+      for (final row in rows)
+        ActiveTargetProfileDaypart(
+          servicePeriodId: row['service_period_id']! as String,
+          daypartTargetCPLH: (row['target_cplh']! as num).toDouble(),
+          daypartTargetSPLH: (row['target_splh']! as num).toDouble(),
+          daypartTargetPPA: (row['target_ppa']! as num).toDouble(),
+          daypartOpzFloorCPLH:
+              (row['opz_floor_cplh']! as num).toDouble(),
+          daypartOpzCeilingCPLH:
+              (row['opz_ceiling_cplh']! as num).toDouble(),
+          verdict: row['verdict'] as String?,
+          verdictReason: row['verdict_reason'] as String?,
+        ),
+    ]);
   }
 }

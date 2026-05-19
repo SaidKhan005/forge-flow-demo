@@ -817,6 +817,10 @@ ServerTargetCycleProjectionCommand _projectionCommandFromBody({
       bohWage: _requiredDouble(standards, body, 'boh_wage'),
       opzFloorCplh: _requiredDouble(standards, body, 'opz_floor_cplh'),
       opzCeilingCplh: _requiredDouble(standards, body, 'opz_ceiling_cplh'),
+      dayparts: _projectionDaypartsFromBody(
+        standards: standards,
+        body: body,
+      ),
     ),
     actorUserId: actorUserId,
     managerOverrideAt: _optionalDateTime(body, 'manager_override_at'),
@@ -831,6 +835,56 @@ ServerTargetCycleProjectionCommand _projectionCommandFromBody({
     idempotencyKey: idempotencyKey,
     requestHash: requestHash,
     actorKind: _repositoryActorKind(actorKind),
+  );
+}
+
+List<ServerTargetDaypartStandards> _projectionDaypartsFromBody({
+  required Map<String, Object?> standards,
+  required Map<String, Object?> body,
+}) {
+  final rows =
+      _optionalList(standards, 'target_cycle_dayparts') ??
+      _optionalList(standards, 'dayparts') ??
+      _optionalList(body, 'target_cycle_dayparts') ??
+      _optionalList(body, 'dayparts');
+  if (rows == null) return const <ServerTargetDaypartStandards>[];
+  return <ServerTargetDaypartStandards>[
+    for (final row in rows) _projectionDaypartFromObject(row),
+  ];
+}
+
+ServerTargetDaypartStandards _projectionDaypartFromObject(Object? value) {
+  if (value is! Map) {
+    throw const SelectedStarRouteRejected(
+      code: 'invalid_dayparts',
+      message: 'dayparts must be a list of objects',
+      statusCode: 400,
+    );
+  }
+  final row = <String, Object?>{
+    for (final entry in value.entries) entry.key.toString(): entry.value,
+  };
+  final servicePeriodId =
+      _optionalString(row, 'service_period_id') ??
+      _optionalString(row, 'service_period_key') ??
+      _optionalString(row, 'servicePeriodId');
+  if (servicePeriodId == null) {
+    throw const SelectedStarRouteRejected(
+      code: 'missing_service_period_id',
+      message: 'dayparts[].service_period_id is required',
+      statusCode: 400,
+    );
+  }
+  return ServerTargetDaypartStandards(
+    servicePeriodId: servicePeriodId,
+    targetCplh: _requiredRowDouble(row, 'target_cplh'),
+    targetSplh: _requiredRowDouble(row, 'target_splh'),
+    targetPpa: _requiredRowDouble(row, 'target_ppa'),
+    opzFloorCplh: _requiredRowDouble(row, 'opz_floor_cplh'),
+    opzCeilingCplh: _requiredRowDouble(row, 'opz_ceiling_cplh'),
+    coverCount: _requiredRowInt(row, 'cover_count'),
+    verdict: _optionalString(row, 'verdict'),
+    verdictReason: _optionalString(row, 'verdict_reason'),
   );
 }
 
@@ -973,6 +1027,42 @@ Map<String, Object?>? _optionalObject(Map<String, Object?> body, String key) {
     message: '$key must be an object',
     statusCode: 400,
   );
+}
+
+List<Object?>? _optionalList(Map<String, Object?> body, String key) {
+  final value = body[key];
+  if (value == null) return null;
+  if (value is List<Object?>) return value;
+  if (value is List) return value.cast<Object?>();
+  throw SelectedStarRouteRejected(
+    code: 'invalid_$key',
+    message: '$key must be a list',
+    statusCode: 400,
+  );
+}
+
+double _requiredRowDouble(Map<String, Object?> row, String key) {
+  final value = _optionalDouble(row, key);
+  if (value == null) {
+    throw SelectedStarRouteRejected(
+      code: 'missing_$key',
+      message: 'dayparts[].$key is required',
+      statusCode: 400,
+    );
+  }
+  return value;
+}
+
+int _requiredRowInt(Map<String, Object?> row, String key) {
+  final value = _optionalInt(row, key);
+  if (value == null) {
+    throw SelectedStarRouteRejected(
+      code: 'missing_$key',
+      message: 'dayparts[].$key is required',
+      statusCode: 400,
+    );
+  }
+  return value;
 }
 
 bool _boolQuery(String? raw) {

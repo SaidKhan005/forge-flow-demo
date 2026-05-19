@@ -287,6 +287,14 @@ Map<String, dynamic> _snapshotPayload(Map<String, dynamic> json) {
         base['days'] ??
         base['day_rows_json'],
   );
+  final dayDayparts = _readDayDayparts(
+    base['day_dayparts'] ??
+        base['day_dayparts_json'] ??
+        base['weekly_plan_snapshot_day_dayparts'],
+  );
+  final wageAtLockTimeJson = _readMapValue(
+    base['wage_at_lock_time_json'] ?? base['wage_at_lock_time'],
+  );
 
   return <String, dynamic>{
     'snapshot_id': _requiredString(base, const <String>['snapshot_id', 'id']),
@@ -334,6 +342,9 @@ Map<String, dynamic> _snapshotPayload(Map<String, dynamic> json) {
         DateTime.now().toUtc().toIso8601String(),
     'forecast_context': _optionalContextPayload(base),
     'day_rows': dayRows,
+    'day_dayparts': dayDayparts,
+    if (wageAtLockTimeJson != null)
+      'wage_at_lock_time_json': wageAtLockTimeJson,
     // Theme H#6: server-emitted lifecycle fields the mobile snapshot
     // model preserves so closed-truth semantics (which row is in force,
     // which one it superseded, who locked it, why) survive the sync.
@@ -422,6 +433,56 @@ List<Map<String, dynamic>> _readDayRows(Object? raw) {
           'required_boh_hours': _requiredInt(json, const <String>[
             'required_boh_hours',
             'boh_hours',
+          ]),
+        };
+      })
+      .toList(growable: false);
+}
+
+List<Map<String, dynamic>> _readDayDayparts(Object? raw) {
+  final decoded = _decodeIfJson(raw);
+  if (decoded == null) return const <Map<String, dynamic>>[];
+  if (decoded is! List) {
+    throw const FormatException('Weekly-plan day_dayparts was not a list.');
+  }
+  return decoded
+      .map((row) {
+        final json = _stringKeyMap(row);
+        return <String, dynamic>{
+          'business_date': _requiredDateString(json, const <String>[
+            'business_date',
+            'date',
+          ]),
+          'service_period_id': _requiredString(json, const <String>[
+            'service_period_id',
+            'service_period_key',
+            'daypart',
+          ]),
+          'forecast_covers': _requiredInt(json, const <String>[
+            'forecast_covers',
+            'covers',
+          ]),
+          'forecast_sales': _requiredDouble(json, const <String>[
+            'forecast_sales',
+            'sales',
+          ]),
+          'required_foh_hours': _requiredDouble(json, const <String>[
+            'required_foh_hours',
+            'foh_hours',
+          ]),
+          'required_boh_hours': _requiredDouble(json, const <String>[
+            'required_boh_hours',
+            'boh_hours',
+          ]),
+          'theoretical_foh_dollars': _requiredDouble(json, const <String>[
+            'theoretical_foh_dollars',
+            'theoretical_foh_labor_dollars',
+            'foh_labor_dollars',
+          ]),
+          'theoretical_boh_dollars': _requiredDouble(json, const <String>[
+            'theoretical_boh_dollars',
+            'theoretical_boh_labor_dollars',
+            'boh_labor_dollars',
           ]),
         };
       })

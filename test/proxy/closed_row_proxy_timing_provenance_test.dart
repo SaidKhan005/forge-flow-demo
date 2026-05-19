@@ -53,6 +53,11 @@ void main() {
       expect(sql, contains('business_timing_profile_id::text'));
       expect(sql, contains('business_timing_profile_version_id'));
       expect(sql, contains('service_period_key'));
+      expect(sql, contains('daypart_target_cplh'));
+      expect(sql, contains('daypart_target_splh'));
+      expect(sql, contains('daypart_target_ppa'));
+      expect(sql, contains('daypart_opz_floor_cplh'));
+      expect(sql, contains('daypart_opz_ceiling_cplh'));
 
       // The proxy bootstrap routes operator/location parameters
       // through the wrapper as `@operator_id::uuid` and
@@ -100,6 +105,11 @@ void main() {
               'target_boh_wage': null,
               'opz_floor_cplh': null,
               'opz_ceiling_cplh': null,
+              'daypart_target_cplh': 11.5,
+              'daypart_target_splh': 49.0,
+              'daypart_target_ppa': 39.0,
+              'daypart_opz_floor_cplh': 9.5,
+              'daypart_opz_ceiling_cplh': 13.5,
               'theoretical_foh_labor_pct': null,
               'theoretical_boh_labor_pct': null,
               'source_system': 'toast',
@@ -139,6 +149,11 @@ void main() {
           '44444444-4444-4444-8444-444444444444',
         );
         expect(row['service_period_key'], 'lunch');
+        expect(row['daypart_target_cplh'], 11.5);
+        expect(row['daypart_target_splh'], 49.0);
+        expect(row['daypart_target_ppa'], 39.0);
+        expect(row['daypart_opz_floor_cplh'], 9.5);
+        expect(row['daypart_opz_ceiling_cplh'], 13.5);
 
         // The legacy `daypart` column survives alongside the triplet
         // (closed timing label resolver falls back to it for old
@@ -183,6 +198,11 @@ void main() {
               'target_boh_wage': null,
               'opz_floor_cplh': null,
               'opz_ceiling_cplh': null,
+              'daypart_target_cplh': null,
+              'daypart_target_splh': null,
+              'daypart_target_ppa': null,
+              'daypart_opz_floor_cplh': null,
+              'daypart_opz_ceiling_cplh': null,
               'theoretical_foh_labor_pct': null,
               'theoretical_boh_labor_pct': null,
               'source_system': 'toast',
@@ -218,9 +238,19 @@ void main() {
         expect(row.containsKey('business_timing_profile_id'), isTrue);
         expect(row.containsKey('business_timing_profile_version_id'), isTrue);
         expect(row.containsKey('service_period_key'), isTrue);
+        expect(row.containsKey('daypart_target_cplh'), isTrue);
+        expect(row.containsKey('daypart_target_splh'), isTrue);
+        expect(row.containsKey('daypart_target_ppa'), isTrue);
+        expect(row.containsKey('daypart_opz_floor_cplh'), isTrue);
+        expect(row.containsKey('daypart_opz_ceiling_cplh'), isTrue);
         expect(row['business_timing_profile_id'], isNull);
         expect(row['business_timing_profile_version_id'], isNull);
         expect(row['service_period_key'], isNull);
+        expect(row['daypart_target_cplh'], isNull);
+        expect(row['daypart_target_splh'], isNull);
+        expect(row['daypart_target_ppa'], isNull);
+        expect(row['daypart_opz_floor_cplh'], isNull);
+        expect(row['daypart_opz_ceiling_cplh'], isNull);
 
         // Legacy `daypart` survives to power
         // `ClosedTimingLabelResolver`'s fallback path.

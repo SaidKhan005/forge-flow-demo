@@ -158,11 +158,22 @@ void main() {
     expect(cycle!.cycleId, 'cycle-sync-1');
     expect(cycle.source, TargetCycleSource.managerOverride);
     expect(cycle.managerOverrideUsed, isTrue);
+    expect(cycle.daypartFor('afternoon_tea')!.targetCPLH, 0);
+    expect(cycle.daypartFor('afternoon_tea')!.coverCount, 0);
+    expect(cycle.daypartFor('supper_rush')!.targetPPA, 48);
+    expect(cycle.daypartFor('legacy_lunch'), isNull);
 
     final profile = await SqliteTargetProfileRepository.instance
         .getActiveTargetProfile(rid);
     expect(profile!.targetProfileId, 'profile-sync-1');
     expect(profile.sourceType, 'cycle_manager_override');
+    expect(
+      profile.daypartFor('afternoon_tea')!.daypartTargetCPLH,
+      0,
+      reason: 'zero is a real synced target, not a missing-row sentinel',
+    );
+    expect(profile.daypartFor('supper_rush')!.daypartTargetPPA, 48);
+    expect(profile.daypartFor('legacy_lunch'), isNull);
 
     final version = await SqliteTargetProfileRepository.instance
         .getTargetProfileVersion(rid, 'tpv-sync-1');
@@ -266,6 +277,22 @@ void main() {
 
 Future<void> _clearStarTargetRows(String restaurantId) async {
   final db = await SqliteDatabase.instance.database;
+  final cycles = await db.query(
+    'target_cycles',
+    columns: const <String>['cycle_id'],
+    where: 'restaurant_id = ?',
+    whereArgs: <Object?>[restaurantId],
+  );
+  for (final cycle in cycles) {
+    final cycleId = cycle['cycle_id'];
+    if (cycleId != null) {
+      await db.delete(
+        'target_cycle_dayparts',
+        where: 'cycle_id = ?',
+        whereArgs: <Object?>[cycleId],
+      );
+    }
+  }
   for (final table in const <String>[
     'baseline_selected_records',
     'target_cycles',
@@ -299,6 +326,26 @@ TargetCycle _cycle(String restaurantId) => TargetCycle(
   managerOverrideUsed: true,
   managerOverrideAt: '2026-05-06T12:00:00Z',
   createdAt: '2026-05-06T12:00:00Z',
+  dayparts: const <TargetCycleDaypart>[
+    TargetCycleDaypart(
+      servicePeriodId: 'afternoon_tea',
+      targetCPLH: 0,
+      targetSPLH: 0,
+      targetPPA: 0,
+      opzFloorCPLH: 0,
+      opzCeilingCPLH: 0,
+      coverCount: 0,
+    ),
+    TargetCycleDaypart(
+      servicePeriodId: 'supper_rush',
+      targetCPLH: 6.8,
+      targetSPLH: 190,
+      targetPPA: 48,
+      opzFloorCPLH: 5.4,
+      opzCeilingCPLH: 8.2,
+      coverCount: 42,
+    ),
+  ],
 );
 
 ActiveTargetProfile _profile(String restaurantId) => ActiveTargetProfile(
@@ -316,6 +363,24 @@ ActiveTargetProfile _profile(String restaurantId) => ActiveTargetProfile(
   theoreticalBohLaborPct: 12.7,
   theoreticalLaborPct: 20.57,
   builtAt: '2026-05-06T12:01:00Z',
+  dayparts: const <ActiveTargetProfileDaypart>[
+    ActiveTargetProfileDaypart(
+      servicePeriodId: 'afternoon_tea',
+      daypartTargetCPLH: 0,
+      daypartTargetSPLH: 0,
+      daypartTargetPPA: 0,
+      daypartOpzFloorCPLH: 0,
+      daypartOpzCeilingCPLH: 0,
+    ),
+    ActiveTargetProfileDaypart(
+      servicePeriodId: 'supper_rush',
+      daypartTargetCPLH: 6.8,
+      daypartTargetSPLH: 190,
+      daypartTargetPPA: 48,
+      daypartOpzFloorCPLH: 5.4,
+      daypartOpzCeilingCPLH: 8.2,
+    ),
+  ],
 );
 
 TargetProfileVersion _version(String restaurantId) => TargetProfileVersion(

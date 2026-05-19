@@ -103,10 +103,13 @@ import 'realtime_route.dart'
 // reaching into `tool/pressure/` directly.
 import 'session_record_predicate.dart';
 import 'star_target_routes.dart';
-import 'team_users_edit_member_validation.dart' show validateEditMemberRouteBody;
-import 'auth_self_profile_routes.dart' show SelfProfileRouter, authSelfProfilePath, authSelfProfilePermissionKey;
+import 'team_users_edit_member_validation.dart'
+    show validateEditMemberRouteBody;
+import 'auth_self_profile_routes.dart'
+    show SelfProfileRouter, authSelfProfilePath, authSelfProfilePermissionKey;
 import 'org_unit_rename_route.dart' show OrgUnitRenameRouter;
-import 'auth_operations_route_paths.dart' show canonicalAuthOperationPath, AuthOperationPathTranslationEntry;
+import 'auth_operations_route_paths.dart'
+    show canonicalAuthOperationPath, AuthOperationPathTranslationEntry;
 import 'vendor_lifecycle_recently_available_routes.dart';
 import 'weekly_plan_routes.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
@@ -235,6 +238,7 @@ export 'weekly_plan_routes.dart'
     show
         ForecastContextPayload,
         ForecastContextRow,
+        WeeklyPlanDayDaypartPayload,
         WeeklyPlanDayPayload,
         WeeklyPlanGateway,
         WeeklyPlanLockRequest,
@@ -11486,8 +11490,10 @@ Future<void> routeRequest(
               if (!await requirePermission('team.users.invite')) return;
               // W-1 — Members edit-user write path. Pre-flight + body shaping live in `team_users_edit_member_validation.dart`.
               final inputs = validateEditMemberRouteBody(
-                targetUserId:
-                    _pathSuffix(authOperationPath, adminAuthUsersPrefix),
+                targetUserId: _pathSuffix(
+                  authOperationPath,
+                  adminAuthUsersPrefix,
+                ),
                 nonBlankString: _nonBlankString,
                 rawDisplayName: body['display_name'],
                 rawEmail: body['email'],
@@ -11495,15 +11501,22 @@ Future<void> routeRequest(
                 rawAdminReason: body['admin_reason'],
               );
               if (inputs.rejection != null) {
-                _writeJson(response, inputs.rejection!.statusCode,
-                    <String, Object?>{'error': inputs.rejection!.error,
-                      'message': inputs.rejection!.message});
+                _writeJson(
+                  response,
+                  inputs.rejection!.statusCode,
+                  <String, Object?>{
+                    'error': inputs.rejection!.error,
+                    'message': inputs.rejection!.message,
+                  },
+                );
                 return;
               }
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
-              final targetUserId =
-                  _pathSuffix(authOperationPath, adminAuthUsersPrefix)!;
+              final targetUserId = _pathSuffix(
+                authOperationPath,
+                adminAuthUsersPrefix,
+              )!;
               final cached = await authOpsCache.runOrReplay(
                 route: '$adminAuthUsersPrefix$targetUserId',
                 key: idempotencyKey,
@@ -11516,11 +11529,16 @@ Future<void> routeRequest(
                       targetUserId: targetUserId,
                       displayName: inputs.displayName,
                       email: inputs.email,
-                      reason: inputs.reason!),
+                      reason: inputs.reason!,
+                    ),
                   );
-                  return CachedProxyResponse(statusCode: 200, body:
-                      <String, Object?>{'ok': true,
-                        'user': _teamUserToJson(patched.user)});
+                  return CachedProxyResponse(
+                    statusCode: 200,
+                    body: <String, Object?>{
+                      'ok': true,
+                      'user': _teamUserToJson(patched.user),
+                    },
+                  );
                 },
               );
               _writeJson(response, cached.statusCode, cached.body);
@@ -11531,24 +11549,29 @@ Future<void> routeRequest(
                 authOperationPath == authSelfProfilePath) {
               // W-3 — self-service profile editor. Validation + dispatch
               // live in `auth_self_profile_routes.dart`.
-              if (!await requirePermission(authSelfProfilePermissionKey)) return;
+              if (!await requirePermission(authSelfProfilePermissionKey)) {
+                return;
+              }
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
               final cached = await authOpsCache.runOrReplay(
                 route: authSelfProfilePath,
                 key: idempotencyKey,
                 compute: () async {
-                  final r = await SelfProfileRouter(
-                    authOperationsGateway: authOperationsGateway,
-                  ).handleRequest(
-                    actorUserId: scope.userId,
-                    operatorId: scope.operatorId,
-                    locationId: scope.locationId,
-                    body: body,
-                    nonBlankString: _nonBlankString,
-                  );
+                  final r =
+                      await SelfProfileRouter(
+                        authOperationsGateway: authOperationsGateway,
+                      ).handleRequest(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        body: body,
+                        nonBlankString: _nonBlankString,
+                      );
                   return CachedProxyResponse(
-                      statusCode: r.statusCode, body: r.body);
+                    statusCode: r.statusCode,
+                    body: r.body,
+                  );
                 },
               );
               _writeJson(response, cached.statusCode, cached.body);
@@ -11843,8 +11866,10 @@ Future<void> routeRequest(
             if (request.method == 'DELETE' &&
                 authOperationPath.startsWith(adminAuthInvitePrefix)) {
               if (!await requirePermission('team.users.invite')) return;
-              final inviteId =
-                  _pathSuffix(authOperationPath, adminAuthInvitePrefix);
+              final inviteId = _pathSuffix(
+                authOperationPath,
+                adminAuthInvitePrefix,
+              );
               if (inviteId == null) {
                 _writeJson(response, 404, <String, Object?>{
                   'error': 'not found',
@@ -12568,24 +12593,27 @@ Future<void> routeRequest(
                 authOperationPath.endsWith('/name')) {
               if (!await requirePermission('team.roles.assign')) return;
               final renameId = OrgUnitRenameRouter.orgUnitIdFromNamePath(
-                  authOperationPath, adminAuthOrgUnitPrefix);
+                authOperationPath,
+                adminAuthOrgUnitPrefix,
+              );
               final idempotencyKey = readIdempotencyKeyOrFail();
               if (idempotencyKey == null) return;
-              final cached = await OrgUnitRenameRouter(
-                authOperationsGateway: authOperationsGateway,
-                orgUnitToJson: _teamOrgUnitToJson,
-              ).dispatch(
-                targetOrgUnitId: renameId,
-                isSelfService: path.startsWith(authTeamOrgUnitPrefix),
-                scopeUserId: scope.userId,
-                operatorId: scope.operatorId,
-                locationId: scope.locationId,
-                body: body,
-                nonBlankString: _nonBlankString,
-                cache: authOpsCache,
-                idempotencyKey: idempotencyKey,
-                route: '$adminAuthOrgUnitPrefix$renameId/name',
-              );
+              final cached =
+                  await OrgUnitRenameRouter(
+                    authOperationsGateway: authOperationsGateway,
+                    orgUnitToJson: _teamOrgUnitToJson,
+                  ).dispatch(
+                    targetOrgUnitId: renameId,
+                    isSelfService: path.startsWith(authTeamOrgUnitPrefix),
+                    scopeUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    body: body,
+                    nonBlankString: _nonBlankString,
+                    cache: authOpsCache,
+                    idempotencyKey: idempotencyKey,
+                    route: '$adminAuthOrgUnitPrefix$renameId/name',
+                  );
               _writeJson(response, cached.statusCode, cached.body);
               return;
             }
@@ -15231,8 +15259,9 @@ Future<void> routeRequest(
             });
             return;
           }
-          final locationId =
-              operatorLocationBusinessTimingResolutionIdOf(path)!;
+          final locationId = operatorLocationBusinessTimingResolutionIdOf(
+            path,
+          )!;
           if (scope.operatorId.isEmpty || scope.locationId.isEmpty) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'permission_denied',
@@ -15263,12 +15292,12 @@ Future<void> routeRequest(
             return;
           }
           try {
-            final result =
-                await operatorWriteRouter.handleBusinessTimingResolution(
-              operatorId: scope.operatorId,
-              locationId: locationId,
-              businessDate: businessDateParam,
-            );
+            final result = await operatorWriteRouter
+                .handleBusinessTimingResolution(
+                  operatorId: scope.operatorId,
+                  locationId: locationId,
+                  businessDate: businessDateParam,
+                );
             // Stamp the verified scope on the response so the gateway
             // cannot leak another tenant's identifiers (defense in
             // depth alongside RLS + the repository SET LOCAL).
@@ -15446,8 +15475,7 @@ Future<void> routeRequest(
             return;
           }
           try {
-            final result =
-                await adminBusinessTimingRouter.handleResolution(
+            final result = await adminBusinessTimingRouter.handleResolution(
               operatorId: scope.operatorId,
               locationId: scope.locationId,
               businessDate: businessDateParam,
@@ -18063,41 +18091,84 @@ String _freshAuthProofId({
 bool _isAdminAuthOperation(String path, String method) {
   // Wave 2 W-3 — self-service profile editor. Same dispatch as the
   // admin auth-ops routes; permission gate is `team.users.self_update`.
-  if (method == 'PATCH' && path == authSelfProfilePath) { return true; }
+  if (method == 'PATCH' && path == authSelfProfilePath) {
+    return true;
+  }
   final p = _canonicalAuthOperationPath(path);
-  if (method == 'GET' && p == adminAuthRolesPath) { return true; }
-  if (method == 'POST' && p == adminAuthRolesPath) { return true; }
-  if (method == 'PATCH' && p.startsWith(adminAuthRolePrefix)) { return true; }
-  if (method == 'DELETE' && p.startsWith(adminAuthRolePrefix)) { return true; }
-  if (method == 'GET' && p == adminAuthUsersPath) { return true; }
-  if (method == 'PATCH' && p.startsWith(adminAuthUsersPrefix)) { return true; }
+  if (method == 'GET' && p == adminAuthRolesPath) {
+    return true;
+  }
+  if (method == 'POST' && p == adminAuthRolesPath) {
+    return true;
+  }
+  if (method == 'PATCH' && p.startsWith(adminAuthRolePrefix)) {
+    return true;
+  }
+  if (method == 'DELETE' && p.startsWith(adminAuthRolePrefix)) {
+    return true;
+  }
+  if (method == 'GET' && p == adminAuthUsersPath) {
+    return true;
+  }
+  if (method == 'PATCH' && p.startsWith(adminAuthUsersPrefix)) {
+    return true;
+  }
   // CODE_OPS_DEBT Theme B#1 — GET .../erase-pii for status read.
-  if (method == 'GET' && p.startsWith(adminAuthUsersPrefix) &&
-      _piiErasurePathFromAdminAuthUsersPrefix(p) != null) { return true; }
-  if (method == 'GET' && p == adminAuthSessionsPath) { return true; }
-  if (method == 'GET' && p == adminAuthAuditLogPath) { return true; }
-  if (method == 'GET' && p == adminAuthInvitesPath) { return true; }
-  if (method == 'POST' && p == adminAuthInvitesPath) { return true; }
-  if (method == 'DELETE' && p.startsWith(adminAuthInvitePrefix)) { return true; }
-  if (method == 'POST' && p.startsWith(adminAuthUsersPrefix)) { return true; }
-  if (method == 'POST' && p.startsWith(adminAuthSessionsPrefix)) { return true; }
-  if (method == 'POST' && p == adminAuthRoleGrantsPath) { return true; }
+  if (method == 'GET' &&
+      p.startsWith(adminAuthUsersPrefix) &&
+      _piiErasurePathFromAdminAuthUsersPrefix(p) != null) {
+    return true;
+  }
+  if (method == 'GET' && p == adminAuthSessionsPath) {
+    return true;
+  }
+  if (method == 'GET' && p == adminAuthAuditLogPath) {
+    return true;
+  }
+  if (method == 'GET' && p == adminAuthInvitesPath) {
+    return true;
+  }
+  if (method == 'POST' && p == adminAuthInvitesPath) {
+    return true;
+  }
+  if (method == 'DELETE' && p.startsWith(adminAuthInvitePrefix)) {
+    return true;
+  }
+  if (method == 'POST' && p.startsWith(adminAuthUsersPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && p.startsWith(adminAuthSessionsPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && p == adminAuthRoleGrantsPath) {
+    return true;
+  }
   if (method == 'DELETE' && p.startsWith(adminAuthRoleGrantPrefix)) {
     return true;
   }
-  if (method == 'GET' && p == adminAuthOrgUnitsPath) { return true; }
-  if (method == 'POST' && p == adminAuthOrgUnitsPath) { return true; }
+  if (method == 'GET' && p == adminAuthOrgUnitsPath) {
+    return true;
+  }
+  if (method == 'POST' && p == adminAuthOrgUnitsPath) {
+    return true;
+  }
   // `/parent` = move, `/name` = GAP A1 rename (both PATCH).
-  if (method == 'PATCH' && p.startsWith(adminAuthOrgUnitPrefix) &&
-      (p.endsWith('/parent') || p.endsWith('/name'))) { return true; }
+  if (method == 'PATCH' &&
+      p.startsWith(adminAuthOrgUnitPrefix) &&
+      (p.endsWith('/parent') || p.endsWith('/name'))) {
+    return true;
+  }
   if (p.startsWith(adminAuthOrgUnitPrefix) &&
       ((method == 'PATCH' &&
               (p.endsWith('/suspend') || p.endsWith('/reactivate'))) ||
           (method == 'POST' && p.endsWith('/delete')))) {
     return true;
   }
-  if (method == 'PATCH' && p.startsWith(adminAuthLocationsPrefix) &&
-      p.endsWith('/org-unit')) { return true; }
+  if (method == 'PATCH' &&
+      p.startsWith(adminAuthLocationsPrefix) &&
+      p.endsWith('/org-unit')) {
+    return true;
+  }
   if (p.startsWith(adminAuthLocationsPrefix) &&
       ((method == 'PATCH' &&
               (p.endsWith('/suspend') || p.endsWith('/reactivate'))) ||
@@ -18107,19 +18178,55 @@ bool _isAdminAuthOperation(String path, String method) {
   return false;
 }
 
-final List<AuthOperationPathTranslationEntry> _authOpsPathTable = <
-    AuthOperationPathTranslationEntry>[
+final List<AuthOperationPathTranslationEntry>
+_authOpsPathTable = <AuthOperationPathTranslationEntry>[
   (teamPath: authTeamRolesPath, adminPath: adminAuthRolesPath, isPrefix: false),
-  (teamPath: authTeamRolePrefix, adminPath: adminAuthRolePrefix, isPrefix: true),
-  (teamPath: authTeamRoleGrantsPath, adminPath: adminAuthRoleGrantsPath, isPrefix: false),
-  (teamPath: authTeamRoleGrantPrefix, adminPath: adminAuthRoleGrantPrefix, isPrefix: true),
+  (
+    teamPath: authTeamRolePrefix,
+    adminPath: adminAuthRolePrefix,
+    isPrefix: true,
+  ),
+  (
+    teamPath: authTeamRoleGrantsPath,
+    adminPath: adminAuthRoleGrantsPath,
+    isPrefix: false,
+  ),
+  (
+    teamPath: authTeamRoleGrantPrefix,
+    adminPath: adminAuthRoleGrantPrefix,
+    isPrefix: true,
+  ),
   (teamPath: authTeamUsersPath, adminPath: adminAuthUsersPath, isPrefix: false),
-  (teamPath: authTeamUsersPrefix, adminPath: adminAuthUsersPrefix, isPrefix: true),
-  (teamPath: authTeamInvitesPath, adminPath: adminAuthInvitesPath, isPrefix: false),
-  (teamPath: authTeamInvitePrefix, adminPath: adminAuthInvitePrefix, isPrefix: true),
-  (teamPath: authTeamOrgUnitsPath, adminPath: adminAuthOrgUnitsPath, isPrefix: false),
-  (teamPath: authTeamOrgUnitPrefix, adminPath: adminAuthOrgUnitPrefix, isPrefix: true),
-  (teamPath: authTeamLocationsPrefix, adminPath: adminAuthLocationsPrefix, isPrefix: true),
+  (
+    teamPath: authTeamUsersPrefix,
+    adminPath: adminAuthUsersPrefix,
+    isPrefix: true,
+  ),
+  (
+    teamPath: authTeamInvitesPath,
+    adminPath: adminAuthInvitesPath,
+    isPrefix: false,
+  ),
+  (
+    teamPath: authTeamInvitePrefix,
+    adminPath: adminAuthInvitePrefix,
+    isPrefix: true,
+  ),
+  (
+    teamPath: authTeamOrgUnitsPath,
+    adminPath: adminAuthOrgUnitsPath,
+    isPrefix: false,
+  ),
+  (
+    teamPath: authTeamOrgUnitPrefix,
+    adminPath: adminAuthOrgUnitPrefix,
+    isPrefix: true,
+  ),
+  (
+    teamPath: authTeamLocationsPrefix,
+    adminPath: adminAuthLocationsPrefix,
+    isPrefix: true,
+  ),
 ];
 
 String _canonicalAuthOperationPath(String path) =>
