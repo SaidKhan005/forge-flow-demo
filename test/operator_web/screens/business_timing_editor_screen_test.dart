@@ -134,6 +134,7 @@ OperatorWebSession sessionWithRole(String role) => OperatorWebSession(
   roles: <String>[role],
   weekStartDay: 'monday',
   rolloverHour: 4,
+  primaryLocationTimezone: 'America/Vancouver',
 );
 
 Widget wrap(Widget child) => MaterialApp(
@@ -308,6 +309,21 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_editor_save')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(
+        const Key('operator_web_business_timing_editor_timezone_readonly'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('operator_web_business_timing_editor_iana')),
+      findsNothing,
+    );
+    expect(find.text('America/Vancouver'), findsOneWidget);
+    expect(
+      find.textContaining('Account or the location record'),
+      findsOneWidget,
+    );
   });
 
   testWidgets('Wave 2 H-2: hierarchy tree mounts and highlights default scope', (
@@ -392,6 +408,7 @@ void main() {
     final create = gateway.creates.single;
     expect(create.scopeKind, 'operator');
     expect(create.scopeId, 'op-1');
+    expect(create.ianaTimezone, 'America/Vancouver');
     expect(create.weekStartDay, 'monday');
     expect(create.servicePeriods, isNotEmpty);
     expect(

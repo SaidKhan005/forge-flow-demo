@@ -444,12 +444,17 @@ void main() {
         expect(locationParams['parent_org_unit_id'], equals(_ouRoot));
         final timingProfileSql = dataStatements[3];
         expect(timingProfileSql, contains("scope_type"));
-        expect(timingProfileSql, contains("current_date"));
-        expect(timingProfileSql, isNot(contains('timezone')));
+        expect(timingProfileSql, contains('now() at time zone'));
+        expect(timingProfileSql, isNot(contains('current_date')));
+        expect(timingProfileSql, isNot(contains('iana_timezone')));
         final timingProfileParams =
             tx.parameters[tx.executedSql.indexOf(timingProfileSql)];
         expect(timingProfileParams['operator_id'], equals(_opA));
         expect(timingProfileParams['scope_id'], isNull);
+        expect(
+          timingProfileParams['business_timezone'],
+          equals('America/Toronto'),
+        );
         expect(
           timingProfileParams['business_day_start_local_time'],
           equals('05:00'),
