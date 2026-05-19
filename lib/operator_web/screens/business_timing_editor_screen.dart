@@ -27,6 +27,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../services/business_timing/business_timing_starter_profile.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
@@ -88,7 +89,7 @@ class _BusinessTimingEditorScreenState
   /// operator default. Location overrides come later. Matches the
   /// dropdown copy that labels operator scope as "(default)".
   String _scopeKind = 'operator';
-  String _weekStartDay = 'monday';
+  String _weekStartDay = kStarterBusinessTimingWeekStartDayWire;
 
   bool _submitting = false;
   String? _error;
@@ -101,22 +102,19 @@ class _BusinessTimingEditorScreenState
     final existing = widget.existingProfile;
     _periods = ServicePeriodEditorController(
       initial: existing == null
-          ? const <ServicePeriodDraft>[
-              ServicePeriodDraft(
-                key: 'lunch',
-                label: 'Lunch',
-                startLocal: '11:00',
-                endLocal: '15:00',
-                sortOrder: 1,
-              ),
-              ServicePeriodDraft(
-                key: 'dinner',
-                label: 'Dinner',
-                startLocal: '17:00',
-                endLocal: '22:00',
-                sortOrder: 2,
-              ),
-            ]
+          ? kStarterBusinessTimingServicePeriods
+                .map(
+                  (p) => ServicePeriodDraft(
+                    key: p.key,
+                    label: p.label,
+                    startLocal: p.startLocal,
+                    endLocal: p.endLocal,
+                    applicableDays: List<int>.from(p.applicableDays),
+                    shortLabel: p.shortLabel,
+                    sortOrder: p.sortOrder,
+                  ),
+                )
+                .toList()
           // Slice 2.5 / Gap 28: carry the three editor-side fields
           // through from the existing profile. The gateway's
           // ServicePeriod already defaults applicableDays /
@@ -143,7 +141,7 @@ class _BusinessTimingEditorScreenState
         existing?.businessDayStartLocal ??
         (widget.session.rolloverHour != null
             ? '${widget.session.rolloverHour!.toString().padLeft(2, '0')}:00'
-            : '04:00');
+            : kStarterBusinessTimingDayStartLocal);
     _businessDayStartLocal = TextEditingController(text: initialDayStart);
     _businessDayStartLocal.addListener(_handleDayStartChanged);
     // Seed the controller's day-start so the validator picks up rule

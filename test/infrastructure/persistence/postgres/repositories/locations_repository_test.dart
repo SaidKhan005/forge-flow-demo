@@ -237,6 +237,51 @@ void main() {
       );
       expect(insertSql, contains('@timezone'));
       expect(insertSql, isNot(contains("'Pacific/Auckland'")));
+      final timingGuardSql = tx.executedSql.firstWhere(
+        (s) => s.contains('from public.business_timing_profiles'),
+      );
+      expect(timingGuardSql, contains("scope_type = 'operator'"));
+      expect(timingGuardSql, contains('current_date'));
+      expect(
+        tx.executedSql.where(
+          (s) => s.contains('insert into public.business_timing_profiles'),
+        ),
+        isEmpty,
+        reason:
+            'new locations inherit operator timing; location creation must '
+            'not duplicate it with a location-scoped profile',
+      );
+    });
+
+    test('throws a clear precondition when the operator has no active '
+        'operator-scope Business Timing profile', () async {
+      final pool = _LocationsPool(
+        operatorTimingRows: const <PostgresRow>[],
+        insertedRows: <PostgresRow>[_locationRow()],
+      );
+      final repo = LocationsRepository(TenantTransactionWrapper(pool));
+
+      await expectLater(
+        repo.insertLocation(
+          operatorId: _opA,
+          parentOrgUnitId: _parentOrgUnitA,
+          name: 'No Timing',
+          address: 'addr',
+          timezone: 'UTC',
+          businessDayRolloverHour: 4,
+          adminReason: 'admin.locations.create',
+        ),
+        throwsA(isA<MissingOperatorBusinessTimingProfileException>()),
+      );
+      final tx = pool.transactions.single;
+      expect(
+        tx.executedSql.where((s) => s.contains('insert into locations')),
+        isEmpty,
+        reason:
+            'location insert is blocked until canonical operator timing '
+            'exists',
+      );
+      expect(tx.rollbackCount, equals(1));
     });
 
     test('business_day_rollover_hour boundary: 0 (midnight rollover) and '
@@ -520,6 +565,9 @@ class _LocationsPool implements PostgresPool {
     this.listForOperatorRows = const <PostgresRow>[],
     this.listAllRows = const <PostgresRow>[],
     this.insertedRows = const <PostgresRow>[],
+    this.operatorTimingRows = const <PostgresRow>[
+      <String, Object?>{'profile_id': 'profile-1'},
+    ],
     this.updatedRows = const <PostgresRow>[],
     this.activeTargetRows = const <PostgresRow>[],
     this.deleteAffectedRows = 0,
@@ -528,6 +576,7 @@ class _LocationsPool implements PostgresPool {
   final List<PostgresRow> listForOperatorRows;
   final List<PostgresRow> listAllRows;
   final List<PostgresRow> insertedRows;
+  final List<PostgresRow> operatorTimingRows;
   final List<PostgresRow> updatedRows;
   final List<PostgresRow> activeTargetRows;
   final int deleteAffectedRows;
@@ -539,6 +588,7 @@ class _LocationsPool implements PostgresPool {
       listForOperatorRows: listForOperatorRows,
       listAllRows: listAllRows,
       insertedRows: insertedRows,
+      operatorTimingRows: operatorTimingRows,
       updatedRows: updatedRows,
       activeTargetRows: activeTargetRows,
       deleteAffectedRows: deleteAffectedRows,
@@ -553,6 +603,7 @@ class _LocationsTransaction extends PostgresTransaction {
     required this.listForOperatorRows,
     required this.listAllRows,
     required this.insertedRows,
+    required this.operatorTimingRows,
     required this.updatedRows,
     required this.activeTargetRows,
     required this.deleteAffectedRows,
@@ -561,6 +612,7 @@ class _LocationsTransaction extends PostgresTransaction {
   final List<PostgresRow> listForOperatorRows;
   final List<PostgresRow> listAllRows;
   final List<PostgresRow> insertedRows;
+  final List<PostgresRow> operatorTimingRows;
   final List<PostgresRow> updatedRows;
   final List<PostgresRow> activeTargetRows;
   final int deleteAffectedRows;
@@ -579,6 +631,9 @@ class _LocationsTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
+    if (sql.contains('from public.business_timing_profiles')) {
+      return operatorTimingRows;
+    }
     if (sql.contains('insert into locations')) {
       return insertedRows;
     }

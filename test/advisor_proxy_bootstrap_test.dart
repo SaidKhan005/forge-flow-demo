@@ -463,6 +463,41 @@ void main() {
       expect(audit.targetId, equals('loc-1'));
     });
 
+    test('addLocation maps a missing operator timing profile to a clear '
+        'admin precondition error', () async {
+      final auditRepository = _RecordingSystemAuditRepository();
+      final locationsRepository = _FakeLocationsRepository(
+        missingTimingProfile: true,
+      );
+      final gateway = _operatorLocationGateway(
+        locationsRepository: locationsRepository,
+        auditRepository: auditRepository,
+      );
+
+      await expectLater(
+        gateway.addLocation(
+          actorUserId: 'admin-user',
+          operatorId: 'op-1',
+          parentOrgUnitId: 'org-1',
+          name: 'North',
+          address: '1 Main',
+          timezone: 'America/Toronto',
+          businessDayRolloverHour: 4,
+          adminReason: 'Adding a reopened location',
+        ),
+        throwsA(
+          isA<OperatorLocationAdminRejected>()
+              .having((e) => e.statusCode, 'statusCode', 409)
+              .having(
+                (e) => e.code,
+                'code',
+                'operator_business_timing_profile_missing',
+              ),
+        ),
+      );
+      expect(auditRepository.events, isEmpty);
+    });
+
     // Slice B1.b regression — the operator-location admin gateway is
     // only reachable through the `super_admin`-gated proxy routes
     // (`kFfOperatorLocationAdminRoles` in `advisor_proxy.dart`). Per
@@ -815,10 +850,13 @@ class _FakeOperatorsRepository extends OperatorsRepository {
 }
 
 class _FakeLocationsRepository extends LocationsRepository {
-  _FakeLocationsRepository({this.insertedLocation})
-    : super(_dummyTenantWrapper());
+  _FakeLocationsRepository({
+    this.insertedLocation,
+    this.missingTimingProfile = false,
+  }) : super(_dummyTenantWrapper());
 
   final LocationAdminRow? insertedLocation;
+  final bool missingTimingProfile;
 
   @override
   Future<LocationAdminRow> insertLocation({
@@ -830,6 +868,9 @@ class _FakeLocationsRepository extends LocationsRepository {
     required int businessDayRolloverHour,
     required String adminReason,
   }) async {
+    if (missingTimingProfile) {
+      throw const MissingOperatorBusinessTimingProfileException('op-1');
+    }
     final row = insertedLocation;
     if (row == null) throw StateError('insertedLocation not configured');
     return row;

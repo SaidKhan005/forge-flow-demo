@@ -83,6 +83,10 @@ class LocationsRepository extends OperatorScopedRepository {
     required String adminReason,
   }) {
     return withSystem<LocationAdminRow>((exec) async {
+      await _assertOperatorBusinessTimingProfileExists(
+        exec,
+        operatorId: operatorId,
+      );
       final rows = await exec.query(
         'insert into locations ('
         'operator_id, parent_org_unit_id, name, address, timezone, '
@@ -234,8 +238,7 @@ class LocationsRepository extends OperatorScopedRepository {
       return LocationTimezoneUpdateRow(
         locationId: row['location_id']! as String,
         operatorId: row['operator_id']! as String,
-        previousIanaTimezone:
-            (row['previous_timezone'] as String?) ?? '',
+        previousIanaTimezone: (row['previous_timezone'] as String?) ?? '',
         ianaTimezone: row['new_timezone']! as String,
         updatedAt: _toDateTime(row['updated_at'])!,
         locationFound: true,
@@ -301,6 +304,41 @@ class LocationsRepository extends OperatorScopedRepository {
         },
       );
     }, reason: adminReason);
+  }
+}
+
+class MissingOperatorBusinessTimingProfileException implements Exception {
+  const MissingOperatorBusinessTimingProfileException(this.operatorId);
+
+  final String operatorId;
+
+  @override
+  String toString() =>
+      'MissingOperatorBusinessTimingProfileException: operator '
+      '$operatorId has no active operator-scope Business Timing profile';
+}
+
+Future<void> _assertOperatorBusinessTimingProfileExists(
+  PostgresExecutor exec, {
+  required String operatorId,
+}) async {
+  final rows = await exec.query(
+    'select profile_id::text as profile_id '
+    'from public.business_timing_profiles '
+    'where operator_id = @operator_id::uuid '
+    "and scope_type = 'operator' "
+    'and scope_id = @operator_id::uuid '
+    'and effective_from_business_date <= current_date '
+    'and ('
+    'effective_until_business_date is null '
+    'or current_date < effective_until_business_date'
+    ') '
+    'order by effective_from_business_date desc, created_at desc '
+    'limit 1',
+    parameters: <String, Object?>{'operator_id': operatorId},
+  );
+  if (rows.isEmpty) {
+    throw MissingOperatorBusinessTimingProfileException(operatorId);
   }
 }
 
