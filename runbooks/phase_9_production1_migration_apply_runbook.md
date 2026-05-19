@@ -7,10 +7,14 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605191845_data_accuracy_cover_facts_nullable_covers.sql`
+(Data Accuracy covers truth: drops default/not-null from
+`public.cover_facts.covers` so NULL means the POS did not expose cover
+count and zero means a cover-capable POS sent zero). The prior cutoff
 `202605191830_canonical_fact_projection_retry_jobs.sql`
 (canonical fact projection retry ledger: tenant-scoped durable retry rows
 for post-commit projection failures, with operator-leading indexes,
-bounded status, and replay payload checks). The prior cutoff
+bounded status, and replay payload checks). The earlier cutoff
 `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
 (Per-Daypart V1 / R7f Data Accuracy precedence and source parity:
 view repair that treats keyed service-period rows as base defaults,
@@ -82,7 +86,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (52 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (63 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -146,6 +150,7 @@ Pending follow-up scope (52 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
 - `db/migrations/202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
 - `db/migrations/202605191830_canonical_fact_projection_retry_jobs.sql`
+- `db/migrations/202605191845_data_accuracy_cover_facts_nullable_covers.sql`
 
 Out of scope:
 
@@ -156,7 +161,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605191830_canonical_fact_projection_retry_jobs.sql`
+  `202605191845_data_accuracy_cover_facts_nullable_covers.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

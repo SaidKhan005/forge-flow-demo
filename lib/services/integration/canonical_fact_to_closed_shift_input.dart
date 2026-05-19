@@ -578,14 +578,22 @@ class CanonicalFactToClosedShiftInputAggregator
     // Stage 2: vendor-supplied covers (POS adapter declared
     // coversFieldExposed=true AND vendor fact populated covers).
     if (operatorPreference == _OperatorCoversPreference.vendor &&
-        posVendorId != null) {
+        posVendorId != null &&
+        posVendorExposesCovers(posVendorId) == true) {
+      var hasVendorCovers = false;
       final summed = coverFacts.fold<int>(0, (acc, row) {
         final raw = row['covers'];
-        if (raw is int) return acc + raw;
-        if (raw is num) return acc + raw.toInt();
+        if (raw is int) {
+          hasVendorCovers = true;
+          return acc + raw;
+        }
+        if (raw is num) {
+          hasVendorCovers = true;
+          return acc + raw.toInt();
+        }
         return acc;
       });
-      if (summed > 0) {
+      if (hasVendorCovers) {
         return _CoversResolution(
           covers: summed,
           provenance: 'vendor_$posVendorId',

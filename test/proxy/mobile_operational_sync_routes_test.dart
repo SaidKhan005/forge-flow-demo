@@ -754,6 +754,67 @@ void main() {
       },
     );
 
+    test('PATCH data accuracy settings scopes idempotency by operator and '
+        'location before using the shared ledger', () async {
+      await withRealHttp(() async {
+        final sharedStore = _FakeAdminRequestIdempotencyStore();
+        final firstCtx = await spinUp(idempotencyStore: sharedStore);
+        try {
+          final first = await _httpRequest(
+            firstCtx.client,
+            'PATCH',
+            firstCtx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+            ),
+            body: const <String, Object?>{
+              'covers_source_lunch': 'manual',
+              'wage_source': 'manual_mix',
+            },
+            idempotencyKey: 'same-visible-key',
+          );
+          expect(first.statusCode, 200);
+        } finally {
+          firstCtx.client.close(force: true);
+          await firstCtx.server.close(force: true);
+        }
+
+        final secondCtx = await spinUp(
+          claims: const ProxyJwtClaims(
+            userId: 'user-2',
+            operatorId: 'op-1',
+            locationId: 'loc-2',
+            roles: <String>['operator_owner'],
+          ),
+          idempotencyStore: sharedStore,
+        );
+        try {
+          final second = await _httpRequest(
+            secondCtx.client,
+            'PATCH',
+            secondCtx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-2/data_accuracy_settings',
+            ),
+            body: const <String, Object?>{
+              'covers_source_lunch': 'vendor',
+              'wage_source': 'vendor',
+            },
+            idempotencyKey: 'same-visible-key',
+          );
+          expect(second.statusCode, 200);
+          expect(secondCtx.gateway.calls, <String>[
+            'data_accuracy_settings_write:op-1:loc-2:vendor:vendor',
+          ]);
+          expect(sharedStore.reserveIdempotencyKeys, <String>[
+            'operator:op-1:location:loc-1:same-visible-key',
+            'operator:op-1:location:loc-2:same-visible-key',
+          ]);
+        } finally {
+          secondCtx.client.close(force: true);
+          await secondCtx.server.close(force: true);
+        }
+      });
+    });
+
     test('PATCH manual covers rejects missing Idempotency-Key', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -1305,6 +1366,7 @@ class _FakeAdminRequestIdempotencyStore
   final Map<String, _FakeAdminRequestIdempotencyRow> _rows =
       <String, _FakeAdminRequestIdempotencyRow>{};
   final List<String?> reserveActorUserIds = <String?>[];
+  final List<String> reserveIdempotencyKeys = <String>[];
   int reserveCalls = 0;
 
   @override
@@ -1339,6 +1401,7 @@ class _FakeAdminRequestIdempotencyStore
     required String requestBodyHash,
   }) async {
     reserveCalls += 1;
+    reserveIdempotencyKeys.add(idempotencyKey);
     reserveActorUserIds.add(actorUserId);
     if (_rows.containsKey(idempotencyKey)) return false;
     _rows[idempotencyKey] = _FakeAdminRequestIdempotencyRow(

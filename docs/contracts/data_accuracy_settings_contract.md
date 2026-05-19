@@ -347,12 +347,16 @@ or by the old canonical trio. The hardcoded `covers_source_lunch` /
 `covers_source_dinner` / `covers_source_late_night` shape is now a rejected
 legacy compatibility shape for new implementation work.
 
-The V1 implementation target is a keyed child table:
-`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source, covers_manual_entries)`.
-That table supports 1-4 configured service periods without schema churn.
-Closed and live aggregators must persist/use the stable key captured from the
-timing profile in force at bucket time. Labels may change; keys and provenance
-must remain stable.
+The V1 implementation target for covers-source selection is a keyed child
+table:
+`data_accuracy_service_period_settings(operator_id, location_id, service_period_key, covers_source)`.
+That table supports operator-configured service periods without schema churn.
+Manual cover VALUES still live in
+`data_accuracy_settings.covers_manual_entries` as a sparse
+`business_date -> service_period_key -> covers` map until a future storage
+migration moves them. Closed and live aggregators must persist/use the stable
+key captured from the timing profile in force at bucket time. Labels may
+change; keys and provenance must remain stable.
 
 ## Effective Source Metadata
 

@@ -133,7 +133,20 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         '@walk_in_handling_mode, @walk_in_manual_entries::jsonb, '
         '@updated_by) '
         'on conflict (operator_id, location_id) do update set '
-        'covers_manual_entries = excluded.covers_manual_entries, '
+        'covers_manual_entries = ('
+        'select coalesce(jsonb_object_agg('
+        'coalesce(existing_day.key, incoming_day.key), '
+        "coalesce(existing_day.value, '{}'::jsonb) || "
+        "coalesce(incoming_day.value, '{}'::jsonb)"
+        "), '{}'::jsonb) "
+        'from jsonb_each(coalesce('
+        'data_accuracy_settings.covers_manual_entries, '
+        "'{}'::jsonb)) existing_day "
+        'full join jsonb_each(coalesce('
+        'excluded.covers_manual_entries, '
+        "'{}'::jsonb)) incoming_day "
+        'on existing_day.key = incoming_day.key'
+        '), '
         'wage_source = excluded.wage_source, '
         'walk_in_handling_mode = excluded.walk_in_handling_mode, '
         'walk_in_manual_entries = excluded.walk_in_manual_entries, '

@@ -717,14 +717,74 @@ void main() {
         expect(result.provenance.coversProvenance, 'vendor_toast');
       });
 
+      test('POS exposes covers (Toast) + vendor reports zero -> zero is '
+          'closed truth, not a manual or forecast fallback', () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'toast',
+            'vendor_entity_id': 'check_toast_zero',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 0,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc.subtract(const Duration(hours: 1)),
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 0.0,
+          },
+        ];
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_zero_truth',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_manual_entries': <String, Map<String, int>>{
+            _businessDateIso: <String, int>{'dinner': 500},
+          },
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        final forecast = DemandForecastContext(
+          restaurantId: _restaurantA,
+          anchorBusinessDate: _businessDateIso,
+          baselineTotalCovers: 1500,
+          baselineWeeklyAvgCovers: 175,
+          baselineWeeksRepresented: 60 / 7,
+          resolvedWeeklyForecastCovers: 210,
+          coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+          builtAt: _businessDateIso,
+        );
+
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: _dinnerPeriod,
+              forecastContext: forecast,
+            );
+
+        expect(result, isNotNull);
+        expect(result!.input.covers, 0);
+        expect(result.input.sourceSystem, 'toast');
+        expect(result.provenance.coversProvenance, 'vendor_toast');
+      });
+
       test(
         'POS does NOT expose covers (Square) + manual entries present -> '
         'manual projected with operator_manual_entry_fallback_pos_not_exposed',
         () async {
           final pool = _FakePool()..seedLocation(_opA, _locA);
           // Square row exists but POS does not expose covers
-          // (coversFieldExposed=false); stage 2 short-circuits because
-          // summed covers == 0. Stage 3.5 (new) fires because the
+          // (coversFieldExposed=false); stage 2 ignores the row before
+          // looking at the numeric value. Stage 3.5 fires because the
           // operator typed a manual entry for the slot.
           pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
               [

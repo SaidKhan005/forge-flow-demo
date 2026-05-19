@@ -17896,10 +17896,13 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
         'operator.data_accuracy.manual_covers.patch',
       _ => 'operator.data_accuracy.settings.patch',
     };
+    final scopedIdempotencyKey =
+        'operator:${target.operatorId}:location:${target.locationId}:'
+        '$idempotencyKey';
     await _runAdminIdempotent(
       response: response,
       store: idempotencyStore,
-      idempotencyKey: idempotencyKey,
+      idempotencyKey: scopedIdempotencyKey,
       requestType: requestType,
       actorUserId: claims.userId,
       requestBody: bodyResult.body!,
