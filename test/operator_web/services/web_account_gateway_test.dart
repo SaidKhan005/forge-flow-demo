@@ -191,10 +191,7 @@ void main() {
             request.headers['idempotency-key'],
             startsWith('op-web-session-revoke-'),
           );
-          expect(
-            request.headers['idempotency-key'],
-            isNot('idem-key-fixture'),
-          );
+          expect(request.headers['idempotency-key'], isNot('idem-key-fixture'));
           expect(request.headers['authorization'], 'Bearer $token');
           final json = jsonDecode(request.body) as Map<String, Object?>;
           expect(json['reason'], 'my_account.sign_out_other_sessions');
@@ -282,7 +279,7 @@ void main() {
       expect(json['currencyCode'], 'USD');
       expect(json['localeTag'], 'en-US');
       expect(json['weekStartDay'], 'monday');
-      expect(json['rolloverHour'], 4);
+      expect(json.containsKey('rolloverHour'), isFalse);
     });
 
     test('partial patch only includes non-null fields', () async {
@@ -416,61 +413,50 @@ void main() {
 
     // Wave 2 W-6 — location timezone PATCH.
 
-    test(
-      'patchLocationTimezone hits /v1/operator/location-timezone with '
-      'Bearer + Idempotency-Key + JSON body',
-      () async {
-        sequenceStatuses = <int>[200];
-        sequenceBodies = <Map<String, Object?>>[
-          <String, Object?>{
-            'operatorId': 'op-1',
-            'locationId': 'loc-1',
-            'ianaTimezone': 'America/Toronto',
-            'updatedAt': '2026-05-14T12:00:00.000Z',
-          },
-        ];
-        final gateway = buildGateway();
-        final result = await gateway.patchLocationTimezone(
-          const AccountLocationTimezonePatch(ianaTimezone: 'America/Toronto'),
-        );
-        expect(capturedRequests, hasLength(1));
-        final request = capturedRequests.single;
-        expect(request.method, 'PATCH');
-        expect(request.url.path, '/v1/operator/location-timezone');
-        expect(request.headers['authorization'], 'Bearer demo-id-token');
-        // G60 — caller-STABLE derived key (not the minted fixture key).
-        expect(
-          request.headers['idempotency-key'],
-          startsWith('op-web-location-timezone-patch-'),
-        );
-        expect(
-          request.headers['idempotency-key'],
-          isNot('idem-key-fixture'),
-        );
-        final json = jsonDecode(request.body) as Map<String, Object?>;
-        expect(json['ianaTimezone'], 'America/Toronto');
-        expect(result.operatorId, 'op-1');
-        expect(result.locationId, 'loc-1');
-        expect(result.ianaTimezone, 'America/Toronto');
-        expect(result.updatedAt.isUtc, isTrue);
-      },
-    );
+    test('patchLocationTimezone hits /v1/operator/location-timezone with '
+        'Bearer + Idempotency-Key + JSON body', () async {
+      sequenceStatuses = <int>[200];
+      sequenceBodies = <Map<String, Object?>>[
+        <String, Object?>{
+          'operatorId': 'op-1',
+          'locationId': 'loc-1',
+          'ianaTimezone': 'America/Toronto',
+          'updatedAt': '2026-05-14T12:00:00.000Z',
+        },
+      ];
+      final gateway = buildGateway();
+      final result = await gateway.patchLocationTimezone(
+        const AccountLocationTimezonePatch(ianaTimezone: 'America/Toronto'),
+      );
+      expect(capturedRequests, hasLength(1));
+      final request = capturedRequests.single;
+      expect(request.method, 'PATCH');
+      expect(request.url.path, '/v1/operator/location-timezone');
+      expect(request.headers['authorization'], 'Bearer demo-id-token');
+      // G60 — caller-STABLE derived key (not the minted fixture key).
+      expect(
+        request.headers['idempotency-key'],
+        startsWith('op-web-location-timezone-patch-'),
+      );
+      expect(request.headers['idempotency-key'], isNot('idem-key-fixture'));
+      final json = jsonDecode(request.body) as Map<String, Object?>;
+      expect(json['ianaTimezone'], 'America/Toronto');
+      expect(result.operatorId, 'op-1');
+      expect(result.locationId, 'loc-1');
+      expect(result.ianaTimezone, 'America/Toronto');
+      expect(result.updatedAt.isUtc, isTrue);
+    });
 
-    test(
-      'patchLocationTimezone path is operator-scoped (never /admin/)',
-      () {
-        expect(
-          HttpWebAccountGateway.operatorLocationTimezonePath,
-          '/v1/operator/location-timezone',
-        );
-        expect(
-          HttpWebAccountGateway.operatorLocationTimezonePath.contains(
-            '/admin/',
-          ),
-          isFalse,
-        );
-      },
-    );
+    test('patchLocationTimezone path is operator-scoped (never /admin/)', () {
+      expect(
+        HttpWebAccountGateway.operatorLocationTimezonePath,
+        '/v1/operator/location-timezone',
+      );
+      expect(
+        HttpWebAccountGateway.operatorLocationTimezonePath.contains('/admin/'),
+        isFalse,
+      );
+    });
 
     test(
       'patchLocationTimezone surfaces malformed proxy response as code',
@@ -516,28 +502,24 @@ void main() {
       },
     );
     // Wave 2 U-FU-hp11-account — per-location override gateway methods.
-    test(
-      'operatorLocationAccountOverridesPath uses the prefix '
-      'and never /admin/',
-      () {
-        expect(
-          HttpWebAccountGateway.operatorLocationAccountOverridesPathPrefix,
-          equals('/v1/operator/location-account-overrides/'),
-        );
-        final path = HttpWebAccountGateway
-            .operatorLocationAccountOverridesPath(
+    test('operatorLocationAccountOverridesPath uses the prefix '
+        'and never /admin/', () {
+      expect(
+        HttpWebAccountGateway.operatorLocationAccountOverridesPathPrefix,
+        equals('/v1/operator/location-account-overrides/'),
+      );
+      final path = HttpWebAccountGateway.operatorLocationAccountOverridesPath(
+        '55555555-5555-5555-5555-555555555555',
+      );
+      expect(
+        path,
+        equals(
+          '/v1/operator/location-account-overrides/'
           '55555555-5555-5555-5555-555555555555',
-        );
-        expect(
-          path,
-          equals(
-            '/v1/operator/location-account-overrides/'
-            '55555555-5555-5555-5555-555555555555',
-          ),
-        );
-        expect(path.contains('/admin/'), isFalse);
-      },
-    );
+        ),
+      );
+      expect(path.contains('/admin/'), isFalse);
+    });
 
     test(
       'getLocationAccountOverrides issues a GET to the operator path',
@@ -579,88 +561,82 @@ void main() {
         );
         expect(envelope.operatorId, equals('op-1'));
         expect(envelope.locationId, equals('loc-1'));
-        expect(
-          envelope.effective.ianaTimezone,
-          equals('America/Toronto'),
-        );
+        expect(envelope.effective.ianaTimezone, equals('America/Toronto'));
         expect(envelope.businessDefault.currencyCode, equals('USD'));
         // Confirm the HTTP call shape.
         expect(capturedRequests.single.method, equals('GET'));
         expect(
           capturedRequests.single.url.path,
-          equals(
-            '/v1/operator/location-account-overrides/loc-1',
-          ),
+          equals('/v1/operator/location-account-overrides/loc-1'),
         );
       },
     );
 
-    test(
-      'patchLocationAccountOverrides serialises the patch + carries '
-      'Idempotency-Key',
-      () async {
-        sequenceBodies = <Map<String, Object?>>[
-          <String, Object?>{
-            'operatorId': 'op-1',
-            'locationId': 'loc-1',
-            'effective': <String, Object?>{
-              'ianaTimezone': 'Europe/London',
-              'localeCode': 'en-GB',
-              'currencyCode': 'GBP',
-              'businessDayRolloverHour': 4,
-              'contactEmail': null,
-              'contactPhone': null,
-            },
-            'override': <String, Object?>{
-              'ianaTimezone': 'Europe/London',
-              'localeCode': 'en-GB',
-              'currencyCode': 'GBP',
-              'businessDayRolloverHour': null,
-              'contactEmail': null,
-              'contactPhone': null,
-            },
-            'businessDefault': <String, Object?>{
-              'ianaTimezone': 'America/Toronto',
-              'localeCode': 'en-US',
-              'currencyCode': 'USD',
-              'businessDayRolloverHour': 4,
-              'contactEmail': null,
-              'contactPhone': null,
-            },
-            'updatedAt': '2026-05-14T12:00:00.000Z',
+    test('patchLocationAccountOverrides serialises the patch + carries '
+        'Idempotency-Key', () async {
+      sequenceBodies = <Map<String, Object?>>[
+        <String, Object?>{
+          'operatorId': 'op-1',
+          'locationId': 'loc-1',
+          'effective': <String, Object?>{
+            'ianaTimezone': 'Europe/London',
+            'localeCode': 'en-GB',
+            'currencyCode': 'GBP',
+            'businessDayRolloverHour': 4,
+            'contactEmail': null,
+            'contactPhone': null,
           },
-        ];
-        final gateway = buildGateway();
-        await gateway.patchLocationAccountOverrides(
-          locationId: 'loc-1',
-          patch: const LocationAccountOverridesPatchPayload(
-            ianaTimezone: 'Europe/London',
-            localeCode: 'en-GB',
-            currencyCode: 'GBP',
-            clearContactPhone: true,
-          ),
-        );
-        expect(capturedRequests.single.method, equals('PATCH'));
-        final body = jsonDecode(capturedRequests.single.body)
-            as Map<String, Object?>;
-        expect(body['ianaTimezone'], equals('Europe/London'));
-        expect(body['localeCode'], equals('en-GB'));
-        expect(body['currencyCode'], equals('GBP'));
-        // Clear flag triggers explicit null on the wire.
-        expect(body.containsKey('contactPhone'), isTrue);
-        expect(body['contactPhone'], isNull);
-        // G60 — Idempotency-Key must be present (every write) AND be
-        // the caller-STABLE derived key, not the minted fixture key.
-        expect(
-          capturedRequests.single.headers['idempotency-key'],
-          startsWith('op-web-location-account-overrides-patch-'),
-        );
-        expect(
-          capturedRequests.single.headers['idempotency-key'],
-          isNot('idem-key-fixture'),
-        );
-      },
-    );
+          'override': <String, Object?>{
+            'ianaTimezone': 'Europe/London',
+            'localeCode': 'en-GB',
+            'currencyCode': 'GBP',
+            'businessDayRolloverHour': null,
+            'contactEmail': null,
+            'contactPhone': null,
+          },
+          'businessDefault': <String, Object?>{
+            'ianaTimezone': 'America/Toronto',
+            'localeCode': 'en-US',
+            'currencyCode': 'USD',
+            'businessDayRolloverHour': 4,
+            'contactEmail': null,
+            'contactPhone': null,
+          },
+          'updatedAt': '2026-05-14T12:00:00.000Z',
+        },
+      ];
+      final gateway = buildGateway();
+      await gateway.patchLocationAccountOverrides(
+        locationId: 'loc-1',
+        patch: const LocationAccountOverridesPatchPayload(
+          ianaTimezone: 'Europe/London',
+          localeCode: 'en-GB',
+          currencyCode: 'GBP',
+          businessDayRolloverHour: 4,
+          clearContactPhone: true,
+        ),
+      );
+      expect(capturedRequests.single.method, equals('PATCH'));
+      final body =
+          jsonDecode(capturedRequests.single.body) as Map<String, Object?>;
+      expect(body['ianaTimezone'], equals('Europe/London'));
+      expect(body['localeCode'], equals('en-GB'));
+      expect(body['currencyCode'], equals('GBP'));
+      expect(body.containsKey('businessDayRolloverHour'), isFalse);
+      // Clear flag triggers explicit null on the wire.
+      expect(body.containsKey('contactPhone'), isTrue);
+      expect(body['contactPhone'], isNull);
+      // G60 — Idempotency-Key must be present (every write) AND be
+      // the caller-STABLE derived key, not the minted fixture key.
+      expect(
+        capturedRequests.single.headers['idempotency-key'],
+        startsWith('op-web-location-account-overrides-patch-'),
+      );
+      expect(
+        capturedRequests.single.headers['idempotency-key'],
+        isNot('idem-key-fixture'),
+      );
+    });
   });
 
   group('OperatorWebAccountActions session freshness', () {
