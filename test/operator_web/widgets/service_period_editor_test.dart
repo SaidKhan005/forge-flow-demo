@@ -78,6 +78,84 @@ void main() {
       );
     });
 
+    test('same clock window accepted when weekdays do not overlap', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'weekday_lunch',
+          label: 'Weekday Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          applicableDays: <int>[1, 2, 3, 4, 5],
+          sortOrder: 1,
+        ),
+        ServicePeriodDraft(
+          key: 'weekend_brunch',
+          label: 'Weekend Brunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          applicableDays: <int>[6, 7],
+          sortOrder: 2,
+        ),
+      ]);
+      expect(
+        result.errors.any((e) => e.code == 'service_period_overlap'),
+        isFalse,
+      );
+      expect(result.isValid, isTrue);
+    });
+
+    test('long short label rejected with invalid_short_label', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'brunch',
+          label: 'Brunch',
+          startLocal: '10:00',
+          endLocal: '14:00',
+          shortLabel: 'WeekendBrunch',
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(result.errors.any((e) => e.code == 'invalid_short_label'), isTrue);
+    });
+
+    test('sort order outside 1..4 rejected with invalid_sort_order', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'brunch',
+          label: 'Brunch',
+          startLocal: '10:00',
+          endLocal: '14:00',
+          sortOrder: 0,
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(result.errors.any((e) => e.code == 'invalid_sort_order'), isTrue);
+    });
+
+    test('duplicate sort order rejected with duplicate_sort_order', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          sortOrder: 1,
+        ),
+        ServicePeriodDraft(
+          key: 'dinner',
+          label: 'Dinner',
+          startLocal: '17:00',
+          endLocal: '22:00',
+          sortOrder: 1,
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(
+        result.errors.any((e) => e.code == 'duplicate_sort_order'),
+        isTrue,
+      );
+    });
+
     test('two past-midnight rejected with multiple_past_midnight_periods', () {
       final result = validateServicePeriods(const <ServicePeriodDraft>[
         ServicePeriodDraft(
@@ -113,24 +191,28 @@ void main() {
           label: 'Breakfast',
           startLocal: '07:00',
           endLocal: '11:00',
+          sortOrder: 1,
         ),
         ServicePeriodDraft(
           key: 'lunch',
           label: 'Lunch',
           startLocal: '11:15',
           endLocal: '15:00',
+          sortOrder: 2,
         ),
         ServicePeriodDraft(
           key: 'dinner',
           label: 'Dinner',
           startLocal: '17:00',
           endLocal: '22:00',
+          sortOrder: 3,
         ),
         ServicePeriodDraft(
           key: 'late',
           label: 'Late night',
           startLocal: '22:15',
           endLocal: '01:30',
+          sortOrder: 4,
         ),
       ]);
       expect(result.errors, isEmpty);
@@ -144,12 +226,14 @@ void main() {
           label: 'Dinner',
           startLocal: '17:00',
           endLocal: '22:00',
+          sortOrder: 1,
         ),
         ServicePeriodDraft(
           key: 'late',
           label: 'Late night',
           startLocal: '22:00',
           endLocal: '01:00',
+          sortOrder: 2,
         ),
       ]);
       expect(result.isValid, isTrue);

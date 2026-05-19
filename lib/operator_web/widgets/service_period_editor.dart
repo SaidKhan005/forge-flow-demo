@@ -190,6 +190,31 @@ ServicePeriodValidation validateServicePeriods(
       );
     }
 
+    final shortLabel = period.shortLabel.trim();
+    if (shortLabel.length > 8) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'invalid_short_label',
+          message:
+              'Short label for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'must be 8 characters or fewer.',
+          periodIndex: i,
+        ),
+      );
+    }
+
+    if (period.sortOrder < 1 || period.sortOrder > 4) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'invalid_sort_order',
+          message:
+              'Sort order for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'must be 1 to 4.',
+          periodIndex: i,
+        ),
+      );
+    }
+
     // Slice 2.5 / Gap 28: at least one weekday must be selected, and
     // every entry must be a valid ISO weekday (1=Mon..7=Sun). The
     // server enforces the same rule; surfacing it client-side avoids
@@ -249,6 +274,23 @@ ServicePeriodValidation validateServicePeriods(
     }
   }
 
+  final sortOrders = <int>{};
+  for (var i = 0; i < draft.length; i++) {
+    final sortOrder = draft[i].sortOrder;
+    if (sortOrder < 1 || sortOrder > 4) continue;
+    if (!sortOrders.add(sortOrder)) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'duplicate_sort_order',
+          message:
+              'Two service periods share sort order $sortOrder. Give each '
+              'period a unique order.',
+          periodIndex: i,
+        ),
+      );
+    }
+  }
+
   final pastMidnight = draft.where((p) => p.rollsPastMidnight).toList();
   if (pastMidnight.length > 1) {
     errors.add(
@@ -274,7 +316,7 @@ ServicePeriodValidation validateServicePeriods(
           !_isQuarterHour(b.endLocal)) {
         continue;
       }
-      if (_periodsOverlap(a, b)) {
+      if (_daysOverlap(a, b) && _periodsOverlap(a, b)) {
         errors.add(
           ServicePeriodValidationError(
             code: 'service_period_overlap',
@@ -349,6 +391,14 @@ int? _minutesOrNull(String hhmm) {
   if (h < 0 || h > 23) return null;
   if (m < 0 || m > 59) return null;
   return h * 60 + m;
+}
+
+bool _daysOverlap(ServicePeriodDraft a, ServicePeriodDraft b) {
+  final left = a.applicableDays.toSet();
+  for (final day in b.applicableDays) {
+    if (left.contains(day)) return true;
+  }
+  return false;
 }
 
 bool _periodsOverlap(ServicePeriodDraft a, ServicePeriodDraft b) {
@@ -715,8 +765,9 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                   ),
                   onChanged: (value) {
                     final parsed = int.tryParse(value.trim());
-                    if (parsed == null) return;
-                    widget.onChanged(widget.period.copyWith(sortOrder: parsed));
+                    widget.onChanged(
+                      widget.period.copyWith(sortOrder: parsed ?? 0),
+                    );
                   },
                 ),
               ),
