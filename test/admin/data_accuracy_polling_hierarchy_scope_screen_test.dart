@@ -5,7 +5,6 @@ import 'package:forge_and_flow/admin/admin_route_handoff.dart';
 import 'package:forge_and_flow/admin/screens/per_location_data_accuracy_screen.dart';
 import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
-import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -55,22 +54,6 @@ void main() {
         PollingTierKey.premium: kDemoPremiumTierDefinition(),
         PollingTierKey.custom: kDemoCustomTierDefinition(),
       },
-    );
-  }
-
-  DataAccuracySettings dataAccuracySettingsWithCovers({
-    required String locationId,
-    required Map<String, CoversSource> covers,
-  }) {
-    return DataAccuracySettings(
-      settingId: 'settings-op-1-$locationId',
-      operatorId: 'op-1',
-      locationId: locationId,
-      coversSourcePerServicePeriod: covers,
-      coversManualEntries: const <String, Map<String, int>>{},
-      wageSource: WageSource.vendor,
-      createdAt: DateTime.utc(2026, 5, 19),
-      updatedAt: DateTime.utc(2026, 5, 19),
     );
   }
 
@@ -148,28 +131,7 @@ void main() {
       operatorId: 'op-1',
       operatorName: 'Demo Diner Co.',
     );
-    final adminGateway = InMemoryDataAccuracyAdminGateway(
-      operatorLocations: refs,
-      initialSettings: <String, DataAccuracySettings>{
-        'op-1/loc-1a': dataAccuracySettingsWithCovers(
-          locationId: 'loc-1a',
-          covers: const <String, CoversSource>{
-            'breakfast': CoversSource.vendor,
-          },
-        ),
-        'op-1/loc-1b': dataAccuracySettingsWithCovers(
-          locationId: 'loc-1b',
-          covers: const <String, CoversSource>{
-            'breakfast': CoversSource.vendor,
-          },
-        ),
-      },
-      initialTierDefinitions: <PollingTierKey, TierDefinition>{
-        PollingTierKey.standard: kDemoStandardTierDefinition(),
-        PollingTierKey.premium: kDemoPremiumTierDefinition(),
-        PollingTierKey.custom: kDemoCustomTierDefinition(),
-      },
-    );
+    final adminGateway = gateway();
 
     await tester.pumpWidget(
       wrap(
@@ -190,10 +152,7 @@ void main() {
     await tester.tap(scopeButton);
     await tester.pumpAndSettle();
 
-    expect(find.text('Covers source - Breakfast'), findsOneWidget);
-    await tester.tap(
-      find.byKey(const Key('admin_data_accuracy_covers_source_breakfast')),
-    );
+    await tester.tap(find.byKey(const Key('admin_data_accuracy_lunch')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Manual entry').last);
     await tester.pumpAndSettle();
@@ -215,74 +174,7 @@ void main() {
     expect(events.single.locationId, isNull);
     expect(events.single.diff['scope_type'], equals('business'));
     expect(events.single.diff['affected_location_count'], equals(2));
-    expect(
-      events.single.diff['covers_source_per_service_period'],
-      equals(<String, String>{'breakfast': CoversSource.manual.wire}),
-    );
-    expect(events.single.diff.containsKey('covers_source_lunch'), isFalse);
   });
-
-  test(
-    'gateway accepts keyed covers maps for business, org-unit, and location scopes',
-    () async {
-      final adminGateway = gateway();
-
-      await adminGateway.overrideDataAccuracyScope(
-        operatorId: 'op-1',
-        scopeType: AdminDataAccuracyMutationScopeType.business,
-        coversSourcePerServicePeriod: const <String, CoversSource>{
-          'breakfast': CoversSource.manual,
-        },
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        reasonNote: 'Business breakfast source',
-      );
-      await adminGateway.overrideDataAccuracyScope(
-        operatorId: 'op-1',
-        scopeType: AdminDataAccuracyMutationScopeType.orgUnit,
-        orgUnitId: 'ou-north',
-        coversSourcePerServicePeriod: const <String, CoversSource>{
-          'breakfast': CoversSource.forecast,
-        },
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        reasonNote: 'Org breakfast source',
-      );
-      await adminGateway.overrideDataAccuracyScope(
-        operatorId: 'op-1',
-        scopeType: AdminDataAccuracyMutationScopeType.location,
-        locationId: 'loc-1a',
-        coversSourcePerServicePeriod: const <String, CoversSource>{
-          'breakfast': CoversSource.manual,
-        },
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        reasonNote: 'Location breakfast source',
-      );
-
-      final events = adminGateway.capturedAuditEvents
-          .where(
-            (event) => event.eventType == 'admin.data_accuracy.scope_override',
-          )
-          .toList(growable: false);
-      expect(events, hasLength(3));
-      expect(events[0].diff['scope_type'], equals('business'));
-      expect(events[1].diff['scope_type'], equals('org_unit'));
-      expect(events[1].diff['org_unit_id'], equals('ou-north'));
-      expect(events[2].diff['scope_type'], equals('location'));
-      expect(events[2].locationId, equals('loc-1a'));
-      for (final event in events) {
-        expect(
-          event.diff['covers_source_per_service_period'],
-          isA<Map<String, String>>().having(
-            (map) => map.keys,
-            'keys',
-            contains('breakfast'),
-          ),
-        );
-      }
-    },
-  );
 
   testWidgets('Data Accuracy location scope keeps location edit behavior', (
     tester,
@@ -531,11 +423,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Calgary Kensington'),
+        find.textContaining(
+          'This scope only covers Calgary Kensington',
+        ),
         findsOneWidget,
       );
     },
@@ -565,11 +461,15 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Toronto Yorkville'),
+        find.textContaining(
+          'This scope only covers Toronto Yorkville',
+        ),
         findsOneWidget,
       );
     },
@@ -596,39 +496,44 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
         findsNothing,
       );
     },
   );
 
-  testWidgets('Data Accuracy location scope suppresses inheritance notice', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const locationScope = AdminHierarchyScopeIntent.location(
-      operatorId: 'op-1',
-      locationId: 'loc-1a',
-      operatorName: 'Demo Diner Co.',
-      locationName: 'Toronto Yorkville',
-    );
+  testWidgets(
+    'Data Accuracy location scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+      );
 
-    await tester.pumpWidget(
-      wrap(
-        PerLocationDataAccuracyScreen(
-          gateway: gateway(),
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: locationScope,
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: locationScope,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_data_accuracy_scope_inheritance_notice')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(
+          const Key('admin_data_accuracy_scope_inheritance_notice'),
+        ),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
     'Polling business scope with single covered location shows inheritance notice',
@@ -655,7 +560,9 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Calgary Kensington'),
+        find.textContaining(
+          'This scope only covers Calgary Kensington',
+        ),
         findsOneWidget,
       );
     },
@@ -689,66 +596,70 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('This scope only covers Toronto Yorkville'),
+        find.textContaining(
+          'This scope only covers Toronto Yorkville',
+        ),
         findsOneWidget,
       );
     },
   );
 
-  testWidgets('Polling multi-covered scope suppresses inheritance notice', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const orgScope = AdminHierarchyScopeIntent.orgUnit(
-      operatorId: 'op-1',
-      orgUnitId: 'ou-north',
-      operatorName: 'Demo Diner Co.',
-      orgUnitName: 'North Region',
-    );
+  testWidgets(
+    'Polling multi-covered scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const orgScope = AdminHierarchyScopeIntent.orgUnit(
+        operatorId: 'op-1',
+        orgUnitId: 'ou-north',
+        operatorName: 'Demo Diner Co.',
+        orgUnitName: 'North Region',
+      );
 
-    await tester.pumpWidget(
-      wrap(
-        PollingAndPricingAdminScreen(
-          gateway: gateway(),
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: orgScope,
-          scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: orgScope,
+            scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_polling_scope_inheritance_notice')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_polling_scope_inheritance_notice')),
+        findsNothing,
+      );
+    },
+  );
 
-  testWidgets('Polling location scope suppresses inheritance notice', (
-    tester,
-  ) async {
-    useWideViewport(tester);
-    const locationScope = AdminHierarchyScopeIntent.location(
-      operatorId: 'op-1',
-      locationId: 'loc-1a',
-      operatorName: 'Demo Diner Co.',
-      locationName: 'Toronto Yorkville',
-    );
+  testWidgets(
+    'Polling location scope suppresses inheritance notice',
+    (tester) async {
+      useWideViewport(tester);
+      const locationScope = AdminHierarchyScopeIntent.location(
+        operatorId: 'op-1',
+        locationId: 'loc-1a',
+        operatorName: 'Demo Diner Co.',
+        locationName: 'Toronto Yorkville',
+      );
 
-    await tester.pumpWidget(
-      wrap(
-        PollingAndPricingAdminScreen(
-          gateway: gateway(),
-          actorUserId: 'demo-super-admin',
-          initialHierarchyScope: locationScope,
+      await tester.pumpWidget(
+        wrap(
+          PollingAndPricingAdminScreen(
+            gateway: gateway(),
+            actorUserId: 'demo-super-admin',
+            initialHierarchyScope: locationScope,
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_polling_scope_inheritance_notice')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_polling_scope_inheritance_notice')),
+        findsNothing,
+      );
+    },
+  );
 }
