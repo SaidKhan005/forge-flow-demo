@@ -8,7 +8,7 @@
 # Platform: Google Cloud Monitoring.
 # Severity: P1 for audit_anchor; P2 for all others.
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#audit-anchor-crash
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#audit-anchor-crash
 ---
 apiVersion: monitoring.googleapis.com/v3
 kind: AlertPolicy
@@ -19,7 +19,7 @@ metadata:
     severity: P1
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md
 spec:
   displayName: "[P1/P2] Cron Job / Scheduled Job Non-Zero Exit"
   documentation:
@@ -42,7 +42,7 @@ spec:
       2. Identify the job command: SELECT jobid, command, schedule FROM cron.job WHERE jobid = <id>;
       3. Fix the underlying cause and manually trigger if needed: SELECT cron.schedule_in_database(...)
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+      Runbook: runbooks/cutover_4_stabilization_runbook.md
     mimeType: text/markdown
   conditions:
     # Cloud Run Job failure condition

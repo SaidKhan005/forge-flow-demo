@@ -9,7 +9,7 @@
 # Platform: Google Cloud Monitoring.
 # Severity: P2 (P1 if count > 50K — field-level threshold variant below).
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
 ---
 apiVersion: monitoring.googleapis.com/v3
 kind: AlertPolicy
@@ -20,7 +20,7 @@ metadata:
     severity: P2
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
     forge-flow.dev/slo: docs/contracts/v1_launch_slos.md#vendor-adapter-success-slo
 spec:
   displayName: "[P2] Event Outbox Backlog > 10K rows"
@@ -39,7 +39,7 @@ spec:
       3. If a single vendor is overrepresented, consider pausing that vendor's poller temporarily.
       4. If total > 50K, escalate to P1 immediately.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+      Runbook: runbooks/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
     mimeType: text/markdown
   conditions:
     - displayName: Outbox row count > 10K

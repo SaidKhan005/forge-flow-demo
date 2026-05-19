@@ -8,7 +8,7 @@
 # Platform: Google Cloud Monitoring.
 # Severity: P2 (P1 if error rate > 25%).
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
 # SLO: docs/contracts/v1_launch_slos.md#vendor-adapter-success-slo (>95% per vendor/day)
 ---
 apiVersion: monitoring.googleapis.com/v3
@@ -20,7 +20,7 @@ metadata:
     severity: P2
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
     forge-flow.dev/slo: docs/contracts/v1_launch_slos.md#vendor-adapter-success-slo
 spec:
   displayName: "[P2] Vendor Adapter Error Rate > 5% (per vendor, 10 min)"
@@ -41,7 +41,7 @@ spec:
       4. If 429 errors: check polling tier and reduce poll frequency.
       5. If 5xx errors: confirm vendor status page; may be a vendor-side outage.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
+      Runbook: runbooks/cutover_4_stabilization_runbook.md#vendor-adapter-wedged
     mimeType: text/markdown
   conditions:
     - displayName: Per-vendor error rate > 5% over 10 min

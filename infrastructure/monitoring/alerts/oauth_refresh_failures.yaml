@@ -10,7 +10,7 @@
 # Platform: Google Cloud Monitoring.
 # Severity: P1 (mass revocation is a silent data-loss risk).
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#oauth-mass-revocation
 ---
 apiVersion: monitoring.googleapis.com/v3
 kind: AlertPolicy
@@ -21,7 +21,7 @@ metadata:
     severity: P1
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md#oauth-mass-revocation
 spec:
   displayName: "[P1] OAuth Refresh Failures > 5 in 1h (cross-operator)"
   documentation:
@@ -39,7 +39,7 @@ spec:
       4. Re-authenticate via the F&F vendor OAuth app registration in the affected vendor's developer portal.
       5. Once new credentials are provisioned, update Secret Manager and redeploy.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation
+      Runbook: runbooks/cutover_4_stabilization_runbook.md#oauth-mass-revocation
     mimeType: text/markdown
   conditions:
     - displayName: Cumulative OAuth refresh failures > 5 in 60 min

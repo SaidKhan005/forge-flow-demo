@@ -8,7 +8,7 @@
 # Platform: Google Cloud Monitoring.
 # Severity: P2.
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#cost-controls
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#cost-controls
 # Authority: CLAUDE.md Hard Promise 9 — AI cost metered by class; 75–95% margin target.
 ---
 apiVersion: monitoring.googleapis.com/v3
@@ -20,7 +20,7 @@ metadata:
     severity: P2
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#cost-controls
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md#cost-controls
     forge-flow.dev/slo: docs/contracts/v1_launch_slos.md
 spec:
   displayName: "[P2] AI Cost Spike: Operator Usage > 10x 7-day Average"
@@ -42,7 +42,7 @@ spec:
       4. Check audit_logs for anomalous call patterns from the operator's sessions.
       5. Notify the operator if the spike is legitimate; adjust their tier cap proactively.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#cost-controls
+      Runbook: runbooks/cutover_4_stabilization_runbook.md#cost-controls
     mimeType: text/markdown
   conditions:
     - displayName: Operator hourly AI cost > 10x 7-day average

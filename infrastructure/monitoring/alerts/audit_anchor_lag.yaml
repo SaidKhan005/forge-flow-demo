@@ -8,7 +8,7 @@
 #
 # Platform: Google Cloud Monitoring.
 # Notification channel: PagerDuty (P1 — compliance-critical).
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#audit-anchor-crash
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#audit-anchor-crash
 # SLO: docs/contracts/v1_launch_slos.md (audit-anchor success SLO: 100%)
 ---
 apiVersion: monitoring.googleapis.com/v3
@@ -39,7 +39,7 @@ spec:
       5. If rerun succeeds, confirm audit_chain_anchors row inserted for yesterday.
 
       Runbook: runbooks/audit_chain_verify_runbook.md
-      Stabilization: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#audit-anchor-crash
+      Stabilization: runbooks/cutover_4_stabilization_runbook.md#audit-anchor-crash
     mimeType: text/markdown
   conditions:
     - displayName: No successful anchor sweep in 26h

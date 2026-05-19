@@ -81,12 +81,12 @@ Use these runbooks for active incidents. The cutover stabilization runbook cover
 
 | Incident type | Runbook |
 |---------------|---------|
-| Any `cutover.4` incident | `runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md` |
+| Any `cutover.4` incident | `runbooks/cutover_4_stabilization_runbook.md` |
 | Audit anchor failure | `runbooks/audit_chain_verify_runbook.md` |
 | Postgres PITR | `runbooks/postgres_pitr_drill_runbook.md` |
 | Pre-flight gate | `runbooks/cutover_0_preflight_runbook.md` |
 | KMS pepper rotation | `runbooks/admin_provider_credentials_kms_rollout_runbook.md` |
 | GDPR erasure | `runbooks/gdpr_erasure_runbook.md` |
-| Mobile push failures | `runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation` |
-| OAuth mass revocation | `runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#oauth-mass-revocation` |
+| Mobile push failures | `runbooks/cutover_4_stabilization_runbook.md#fcm-mass-revocation` |
+| OAuth mass revocation | `runbooks/cutover_4_stabilization_runbook.md#oauth-mass-revocation` |
 | Status page | `runbooks/status_page_setup.md` |

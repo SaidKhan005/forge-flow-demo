@@ -13,7 +13,7 @@
 # Platform: Google Cloud Monitoring (log-based alert).
 # Severity: P1 — this is a silent-degrade detector.
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+# Runbook: runbooks/cutover_4_stabilization_runbook.md
 ---
 apiVersion: monitoring.googleapis.com/v3
 kind: AlertPolicy
@@ -24,7 +24,7 @@ metadata:
     severity: P1
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md
 spec:
   displayName: "[P1] Proxy Boot Without FIREBASE_PROJECT_ID (Silent Degrade)"
   documentation:
@@ -45,7 +45,7 @@ spec:
          gcloud run services update forge-flow-proxy --update-secrets=FIREBASE_PROJECT_ID=FIREBASE_PROJECT_ID:latest --region=__REGION__
       5. Confirm the new revision boots clean before routing traffic to it.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+      Runbook: runbooks/cutover_4_stabilization_runbook.md
     mimeType: text/markdown
   conditions:
     - displayName: Proxy startup failure — firebase_project_id_required_in_prod
