@@ -14336,6 +14336,13 @@ Future<void> routeRequest(
 
           final idempotencyKey =
               (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (dataAccuracyMethod != 'GET' && idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_missing',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
           if (idempotencyKey.length > 200) {
             _writeJson(response, 400, <String, Object?>{
               'error': 'idempotency_key_too_long',
@@ -17952,7 +17959,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     );
   }
   final dateRaw = body['effective_at_business_date'];
-  if (dateRaw is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+  if (dateRaw is! String || !_isYyyyMmDdCalendarDate(dateRaw)) {
     return (
       400,
       <String, Object?>{
@@ -18022,7 +18029,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     );
   }
   final dateRaw = body['business_date'];
-  if (dateRaw is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+  if (dateRaw is! String || !_isYyyyMmDdCalendarDate(dateRaw)) {
     return (
       400,
       <String, Object?>{
@@ -18049,6 +18056,16 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
     );
   }
   return null;
+}
+
+bool _isYyyyMmDdCalendarDate(String value) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
+  final parsed = DateTime.tryParse('${value}T00:00:00Z');
+  if (parsed == null) return false;
+  final year = int.parse(value.substring(0, 4));
+  final month = int.parse(value.substring(5, 7));
+  final day = int.parse(value.substring(8, 10));
+  return parsed.year == year && parsed.month == month && parsed.day == day;
 }
 
 Future<bool> _operatorLocationScopeAllowed({

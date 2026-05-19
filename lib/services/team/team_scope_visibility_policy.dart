@@ -8,12 +8,12 @@
 // Locked decisions from the slice prompt:
 //
 //   * operator_owner: manage own operator across all locations.
-//   * operator_manager: see/manage assigned locations only when
-//     granted team.* perms. operator_manager.scope_type =
-//     'location' (per 9.0a) means the manager only manages users
-//     whose user_roles row also has scope_type = 'location' AND
-//     matches the manager's assigned location_id.
-//   * operator_supervisor / operator_staff: cannot see Team nav.
+//   * operator_general_manager: current v2 GM role; business-scope
+//     staff admin and audit access when granted team.* perms.
+//   * location_manager: see/manage assigned locations only when
+//     granted team.* perms.
+//   * retired v1 roles (operator_manager / operator_supervisor /
+//     operator_staff): cannot see Team nav.
 
 /// Per-actor scope context the policy consumes. Built from the
 /// verified session + the actor's `user_roles` rows.
@@ -26,13 +26,14 @@ class TeamScopeActor {
   });
 
   /// Role keys held by the actor (e.g. `super_admin`, `operator_owner`,
-  /// `operator_manager`).
+  /// `operator_general_manager`).
   final Set<String> actorRoles;
   final String actorOperatorId;
 
   /// Location_ids this actor is granted on (location-scope grants
-  /// from `user_roles`). Empty for operator_owner (who is
-  /// operator-wide and manages every location).
+  /// from `user_roles`). Empty for operator_owner and
+  /// operator_general_manager (business-scope roles that manage every
+  /// location).
   final Set<String> actorAssignedLocationIds;
 
   /// Resolved permission keys the actor holds (allow effects). The
@@ -60,16 +61,18 @@ abstract class TeamScopeVisibilityPolicy {
   TeamScopeVisibilityPolicy._();
 
   /// True iff the actor should see the Team nav entrypoint at all.
-  /// Gated by `team.users.view` AND a non-zero scope (operator_owner
-  /// or operator_manager with at least one assigned location).
-  /// `operator_supervisor` and `operator_staff` are refused even if
-  /// they hold the permission key for some reason.
+  /// Gated by `team.users.view` AND a valid v2 role/scope. Business
+  /// roles (operator_owner / operator_general_manager) cover the
+  /// operator. location_manager needs at least one assigned location.
+  /// Retired v1 roles are refused even if they hold the permission key
+  /// for some reason.
   static bool canSeeTeamNav(TeamScopeActor actor) {
     if (!actor.actorPermissions.contains('team.users.view')) return false;
     if (_isAdminTier(actor)) return true;
     if (actor.actorRoles.contains('operator_owner')) return true;
-    if (actor.actorRoles.contains('operator_manager')) {
-      // Manager needs at least one assigned location to have
+    if (actor.actorRoles.contains('operator_general_manager')) return true;
+    if (actor.actorRoles.contains('location_manager')) {
+      // Location manager needs at least one assigned location to have
       // anything to manage.
       return actor.actorAssignedLocationIds.isNotEmpty;
     }
@@ -89,9 +92,11 @@ abstract class TeamScopeVisibilityPolicy {
     }
     if (_isAdminTier(actor)) return true;
     if (actor.actorRoles.contains('operator_owner')) return true;
+    if (actor.actorRoles.contains('operator_general_manager')) return true;
+    if (!actor.actorRoles.contains('location_manager')) return false;
     final loc = target.targetLocationId;
     if (loc == null) {
-      // Operator-wide target — only operator_owner sees these.
+      // Operator-wide target: only business-scope actors see these.
       return false;
     }
     return actor.actorAssignedLocationIds.contains(loc);

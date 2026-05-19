@@ -2824,6 +2824,16 @@ String _datePlusDays(String yyyyMmDd, int days) {
   return parsed.add(Duration(days: days)).toIso8601String().substring(0, 10);
 }
 
+bool _isYyyyMmDdCalendarDate(String value) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return false;
+  final parsed = DateTime.tryParse('${value}T00:00:00Z');
+  if (parsed == null) return false;
+  final year = int.parse(value.substring(0, 4));
+  final month = int.parse(value.substring(5, 7));
+  final day = int.parse(value.substring(8, 10));
+  return parsed.year == year && parsed.month == month && parsed.day == day;
+}
+
 String? _optionalStringFromObject(Object? value) {
   if (value is String && value.trim().isNotEmpty) return value.trim();
   return null;
@@ -3279,21 +3289,26 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
     required Map<String, Object?> body,
   }) {
-    final coversLunch = _bodyCoversSource(
-      body,
-      'covers_source_lunch',
-      defaultValue: 'vendor',
-    );
-    final coversDinner = _bodyCoversSource(
-      body,
-      'covers_source_dinner',
-      defaultValue: 'vendor',
-    );
-    final coversLateNight = _bodyCoversSource(
-      body,
-      'covers_source_late_night',
-      defaultValue: 'vendor',
-    );
+    final legacyCovers = <String, String>{
+      if (body.containsKey('covers_source_lunch'))
+        'lunch': _bodyCoversSource(
+          body,
+          'covers_source_lunch',
+          defaultValue: 'vendor',
+        ),
+      if (body.containsKey('covers_source_dinner'))
+        'dinner': _bodyCoversSource(
+          body,
+          'covers_source_dinner',
+          defaultValue: 'vendor',
+        ),
+      if (body.containsKey('covers_source_late_night'))
+        'late_night': _bodyCoversSource(
+          body,
+          'covers_source_late_night',
+          defaultValue: 'vendor',
+        ),
+    };
     final coversPerServicePeriod = _bodyCoversSourcePerServicePeriod(body);
     final wageSource = _bodyWageSource(
       body,
@@ -3355,13 +3370,15 @@ class RepositoryMobileOperationalSyncProxyGateway
           message: 'data accuracy settings write returned no row',
         );
       }
-      // Route the keyed covers map into the keyed table. The legacy
-      // triplet is still accepted as compatibility input and then
-      // overlaid by covers_source_per_service_period so explicit keyed
-      // values win. effective_at_business_date is the 1970-01-01
-      // sentinel (matching the R5 backfill row identity) so this lands
-      // on the operator's per-location baseline keyed row and stays
-      // idempotent via the keyed UNIQUE
+      // Route only supplied covers keys into the keyed table. The
+      // legacy triplet is still accepted as compatibility input and
+      // then overlaid by covers_source_per_service_period so explicit
+      // keyed values win. Missing legacy keys are not synthesized, so
+      // keyed-only clients do not recreate hidden lunch/dinner/late_night
+      // rows. effective_at_business_date is the 1970-01-01 sentinel
+      // (matching the R5 backfill row identity) so this lands on the
+      // operator's per-location baseline keyed row and stays idempotent
+      // via the keyed UNIQUE
       // (operator_id, location_id, service_period_key,
       // effective_at_business_date) ON CONFLICT — only covers_source is
       // touched so an operator-set keyed wage_source is never clobbered.
@@ -3369,12 +3386,7 @@ class RepositoryMobileOperationalSyncProxyGateway
         exec,
         operatorId: operatorId,
         locationId: locationId,
-        covers: <String, String>{
-          'lunch': coversLunch,
-          'dinner': coversDinner,
-          'late_night': coversLateNight,
-          ...coversPerServicePeriod,
-        },
+        covers: <String, String>{...legacyCovers, ...coversPerServicePeriod},
         updatedBy: scope.userId,
       );
       final effectiveRows = await _fetchEffectiveDataAccuracyRows(
@@ -4055,7 +4067,7 @@ class RepositoryMobileOperationalSyncProxyGateway
 
   static String _bodyBusinessDate(Map<String, Object?> body, String field) {
     final value = _bodyString(body, field);
-    if (value != null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) {
+    if (value != null && _isYyyyMmDdCalendarDate(value)) {
       return value;
     }
     throw MobileOperationalSyncProxyGatewayException(
@@ -5070,7 +5082,9 @@ class RepositoryDataAccuracyAdminProxyGateway
         's.covers_source_per_service_period, s.covers_manual_entries, '
         's.wage_source, s.walk_in_handling_mode, '
         's.walk_in_manual_entries, '
-        's.created_at, s.updated_at, s.updated_by '
+        's.created_at, s.updated_at, s.updated_by, '
+        's.covers_source_per_service_period_source, '
+        's.wage_source_source, s.walk_in_handling_mode_source '
         'from operators o '
         'join locations l on l.operator_id = o.operator_id '
         'left join effective_data_accuracy_settings_v s '
@@ -6142,7 +6156,9 @@ class RepositoryDataAccuracyAdminProxyGateway
       's.covers_source_per_service_period, s.covers_manual_entries, '
       's.wage_source, s.walk_in_handling_mode, '
       's.walk_in_manual_entries, '
-      's.created_at, s.updated_at, s.updated_by '
+      's.created_at, s.updated_at, s.updated_by, '
+      's.covers_source_per_service_period_source, '
+      's.wage_source_source, s.walk_in_handling_mode_source '
       'from operators o '
       'join locations l on l.operator_id = o.operator_id '
       'left join effective_data_accuracy_settings_v s '
@@ -6305,6 +6321,13 @@ class RepositoryDataAccuracyAdminProxyGateway
       'updated_at':
           _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
       'updated_by': row['updated_by'],
+      'covers_source_per_service_period_source': _jsonMap(
+        row['covers_source_per_service_period_source'],
+      ),
+      'wage_source_source': _jsonMap(row['wage_source_source']),
+      'walk_in_handling_mode_source': _jsonMap(
+        row['walk_in_handling_mode_source'],
+      ),
     };
   }
 
@@ -6675,7 +6698,7 @@ class RepositoryDataAccuracyAdminProxyGateway
   }
 
   static void _validateBusinessDate(String value) {
-    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return;
+    if (_isYyyyMmDdCalendarDate(value)) return;
     throw const DataAccuracyAdminGatewayValidationError(
       statusCode: 400,
       code: 'invalid_effective_at_business_date',

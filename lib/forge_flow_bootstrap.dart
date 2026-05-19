@@ -131,8 +131,7 @@ Future<void> bootstrapAndRunApp(
                   syncClient: syncProxyClient,
                   // Unset (production) -> the constructor default
                   // `defaultCrossTenantWipe` applies, byte-unchanged.
-                  crossTenantWipe:
-                      crossTenantWipe ?? defaultCrossTenantWipe,
+                  crossTenantWipe: crossTenantWipe ?? defaultCrossTenantWipe,
                   child: app,
                 ),
               ),
@@ -222,7 +221,66 @@ Future<StarTargetProjectionContext?> _buildStarTargetProjectionContext({
     opzFloorCplh: floor,
     opzCeilingCplh: ceiling,
     reason: 'manager selected star target on mobile',
+    dayparts: buildStarTargetProjectionDayparts(selected),
   );
+}
+
+List<StarTargetProjectionDaypart> buildStarTargetProjectionDayparts(
+  Iterable<BaselineCandidateShift> selectedCandidates,
+) {
+  final groups = <String, _ProjectionDaypartAccumulator>{};
+  for (final candidate in selectedCandidates) {
+    final servicePeriodKey = candidate.stableServicePeriodKey;
+    final bucket = groups.putIfAbsent(
+      servicePeriodKey,
+      () => _ProjectionDaypartAccumulator(servicePeriodKey),
+    );
+    bucket.add(candidate);
+  }
+  return <StarTargetProjectionDaypart>[
+    for (final bucket in groups.values) bucket.toDaypart(),
+  ];
+}
+
+class _ProjectionDaypartAccumulator {
+  _ProjectionDaypartAccumulator(this.servicePeriodKey);
+
+  final String servicePeriodKey;
+  var _count = 0;
+  var _coverCount = 0;
+  double _cplh = 0;
+  double _splh = 0;
+  double _ppa = 0;
+  double? _floor;
+  double? _ceiling;
+
+  void add(BaselineCandidateShift candidate) {
+    _count += 1;
+    _coverCount += candidate.covers;
+    _cplh += candidate.cplh;
+    _splh += candidate.splh;
+    _ppa += candidate.ppa;
+    final floor = _floor;
+    final ceiling = _ceiling;
+    _floor = floor == null || candidate.cplh < floor ? candidate.cplh : floor;
+    _ceiling = ceiling == null || candidate.cplh > ceiling
+        ? candidate.cplh
+        : ceiling;
+  }
+
+  StarTargetProjectionDaypart toDaypart() {
+    final count = _count.toDouble();
+    return StarTargetProjectionDaypart(
+      servicePeriodId: servicePeriodKey,
+      servicePeriodKey: servicePeriodKey,
+      targetCplh: _cplh / count,
+      targetSplh: _splh / count,
+      targetPpa: _ppa / count,
+      opzFloorCplh: _floor!,
+      opzCeilingCplh: _ceiling!,
+      coverCount: _coverCount,
+    );
+  }
 }
 
 String _addIsoDays(String isoDate, int days) {

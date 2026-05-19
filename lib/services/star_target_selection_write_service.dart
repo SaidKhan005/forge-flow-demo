@@ -50,6 +50,7 @@ class StarTargetProjectionContext {
     required this.opzFloorCplh,
     required this.opzCeilingCplh,
     required this.reason,
+    this.dayparts = const <StarTargetProjectionDaypart>[],
   });
 
   final String effectiveStart;
@@ -64,24 +65,66 @@ class StarTargetProjectionContext {
   final double opzFloorCplh;
   final double opzCeilingCplh;
   final String reason;
+  final List<StarTargetProjectionDaypart> dayparts;
 
   Map<String, Object?> toBody({required String restaurantId}) {
+    final standards = <String, Object?>{
+      'target_cplh': targetCplh,
+      'target_splh': targetSplh,
+      'target_ppa': targetPpa,
+      'foh_wage': fohWage,
+      'boh_wage': bohWage,
+      'opz_floor_cplh': opzFloorCplh,
+      'opz_ceiling_cplh': opzCeilingCplh,
+    };
+    if (dayparts.isNotEmpty) {
+      standards['target_cycle_dayparts'] = <Map<String, Object?>>[
+        for (final daypart in dayparts) daypart.toBody(),
+      ];
+    }
     return <String, Object?>{
       'restaurant_id': restaurantId,
       'effective_start': effectiveStart,
       'effective_end': effectiveEnd,
       'calibration_window_start': calibrationWindowStart,
       'calibration_window_end': calibrationWindowEnd,
-      'standards': <String, Object?>{
-        'target_cplh': targetCplh,
-        'target_splh': targetSplh,
-        'target_ppa': targetPpa,
-        'foh_wage': fohWage,
-        'boh_wage': bohWage,
-        'opz_floor_cplh': opzFloorCplh,
-        'opz_ceiling_cplh': opzCeilingCplh,
-      },
+      'standards': standards,
       'reason': reason,
+    };
+  }
+}
+
+class StarTargetProjectionDaypart {
+  const StarTargetProjectionDaypart({
+    required this.servicePeriodId,
+    String? servicePeriodKey,
+    required this.targetCplh,
+    required this.targetSplh,
+    required this.targetPpa,
+    required this.opzFloorCplh,
+    required this.opzCeilingCplh,
+    required this.coverCount,
+  }) : servicePeriodKey = servicePeriodKey ?? servicePeriodId;
+
+  final String servicePeriodId;
+  final String servicePeriodKey;
+  final double targetCplh;
+  final double targetSplh;
+  final double targetPpa;
+  final double opzFloorCplh;
+  final double opzCeilingCplh;
+  final int coverCount;
+
+  Map<String, Object?> toBody() {
+    return <String, Object?>{
+      'service_period_id': servicePeriodId,
+      'service_period_key': servicePeriodKey,
+      'target_cplh': targetCplh,
+      'target_splh': targetSplh,
+      'target_ppa': targetPpa,
+      'opz_floor_cplh': opzFloorCplh,
+      'opz_ceiling_cplh': opzCeilingCplh,
+      'cover_count': coverCount,
     };
   }
 }

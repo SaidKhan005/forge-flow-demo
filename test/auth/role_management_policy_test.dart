@@ -11,7 +11,7 @@
 //   1. operator_owner attempting to grant `super_admin` is denied.
 //   2. operator_owner attempting to grant `ff_support` is denied.
 //   3. operator_owner granting a normal operator-scoped role
-//      (e.g. `operator_staff`) within their own tenant is still
+//      (e.g. `supervisor`) within their own tenant is still
 //      allowed - the fix is targeted, not a regression to the
 //      operator-self-management surface.
 
@@ -25,19 +25,19 @@ const String _ownerUserId = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 const String _targetUserId = 'dddddddd-dddd-dddd-dddd-dddddddddddd';
 
 ActorContext _operatorOwnerActor() => const ActorContext(
-      actorUserId: _ownerUserId,
-      actorOperatorId: _ownerOperatorId,
-      actorLocationId: _ownerLocationId,
-      actorRoles: <String>{'operator_owner'},
-      actorAssignedOperatorIds: <String>{},
-    );
+  actorUserId: _ownerUserId,
+  actorOperatorId: _ownerOperatorId,
+  actorLocationId: _ownerLocationId,
+  actorRoles: <String>{'operator_owner'},
+  actorAssignedOperatorIds: <String>{},
+);
 
 TargetGrant _grantOf(String roleKey) => TargetGrant(
-      targetUserId: _targetUserId,
-      targetOperatorId: _ownerOperatorId,
-      targetLocationId: _ownerLocationId,
-      targetRoleKey: roleKey,
-    );
+  targetUserId: _targetUserId,
+  targetOperatorId: _ownerOperatorId,
+  targetLocationId: _ownerLocationId,
+  targetRoleKey: roleKey,
+);
 
 void main() {
   group('operator_owner cannot escalate to F&F platform roles', () {
@@ -48,8 +48,11 @@ void main() {
         grant: _grantOf('super_admin'),
       );
 
-      expect(decision.allowed, isFalse,
-          reason: 'operator_owner must never grant super_admin');
+      expect(
+        decision.allowed,
+        isFalse,
+        reason: 'operator_owner must never grant super_admin',
+      );
       expect(
         decision.reason,
         contains('platform'),
@@ -64,8 +67,11 @@ void main() {
         grant: _grantOf('ff_support'),
       );
 
-      expect(decision.allowed, isFalse,
-          reason: 'operator_owner must never grant ff_support');
+      expect(
+        decision.allowed,
+        isFalse,
+        reason: 'operator_owner must never grant ff_support',
+      );
       expect(
         decision.reason,
         contains('platform'),
@@ -88,25 +94,28 @@ void main() {
   });
 
   group('operator_owner still manages legitimate in-tenant grants', () {
-    test('granting operator_staff within own tenant is allowed', () {
+    test('granting supervisor within own tenant is allowed', () {
       final decision = RoleManagementPolicy.evaluateGrantAction(
         actor: _operatorOwnerActor(),
         action: RoleManagementAction.grantRole,
-        grant: _grantOf('operator_staff'),
+        grant: _grantOf('supervisor'),
       );
 
-      expect(decision.allowed, isTrue,
-          reason:
-              'operator_owner must keep the ability to grant operator-scoped '
-              'roles within their own tenant');
+      expect(
+        decision.allowed,
+        isTrue,
+        reason:
+            'operator_owner must keep the ability to grant operator-scoped '
+            'roles within their own tenant',
+      );
       expect(decision.reason, contains('operator_owner'));
     });
 
-    test('granting operator_supervisor within own tenant is allowed', () {
+    test('granting operator_general_manager within own tenant is allowed', () {
       final decision = RoleManagementPolicy.evaluateGrantAction(
         actor: _operatorOwnerActor(),
         action: RoleManagementAction.grantRole,
-        grant: _grantOf('operator_supervisor'),
+        grant: _grantOf('operator_general_manager'),
       );
 
       expect(decision.allowed, isTrue);

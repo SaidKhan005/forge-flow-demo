@@ -14,7 +14,12 @@ void main() {
     late List<http.Request> capturedRequests;
 
     Map<String, Object?> settingsPayload({
-      String coversSourceLunch = 'manual',
+      Map<String, Object?> coversSourcePerServicePeriod =
+          const <String, Object?>{
+            'lunch': 'manual',
+            'dinner': 'vendor',
+            'late_night': 'forecast',
+          },
       String wageSource = 'manual_mix',
     }) {
       return <String, Object?>{
@@ -22,14 +27,32 @@ void main() {
           'setting_id': 'setting-1',
           'operator_id': 'op-1',
           'location_id': 'loc-1',
-          'covers_source_lunch': coversSourceLunch,
-          'covers_source_dinner': 'vendor',
-          'covers_source_late_night': 'forecast',
+          'covers_source_per_service_period': coversSourcePerServicePeriod,
+          'covers_source_per_service_period_source': <String, Object?>{
+            'lunch': <String, Object?>{
+              'scope_type': 'location',
+              'source_kind': 'service_period_setting',
+              'scope_id': 'loc-1',
+              'setting_id': 'period-setting-lunch',
+            },
+          },
           'covers_manual_entries': <String, Object?>{
             '2026-05-06': <String, Object?>{'lunch': 42},
           },
           'wage_source': wageSource,
+          'wage_source_source': <String, Object?>{
+            'scope_type': 'business',
+            'source_kind': 'scoped_override',
+            'scope_id': 'op-1',
+            'override_id': 'override-wage',
+          },
           'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+          'walk_in_handling_mode_source': <String, Object?>{
+            'scope_type': 'location',
+            'source_kind': 'base_setting',
+            'scope_id': 'loc-1',
+            'setting_id': 'setting-1',
+          },
           'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
           'created_at': '2026-05-06T12:00:00Z',
           'updated_at': '2026-05-06T12:01:00Z',
@@ -97,6 +120,12 @@ void main() {
       expect(settings!.coversSourceFor('lunch'), CoversSource.manual);
       expect(settings.wageSource, WageSource.manualMix);
       expect(settings.walkInCountFor('2026-05-06'), 8);
+      expect(
+        settings.coversSourceSourceFor('lunch')?.label,
+        'Location setting',
+      );
+      expect(settings.wageSourceSource?.label, 'Business');
+      expect(settings.walkInHandlingModeSource?.label, 'Location setting');
       final request = capturedRequests.single;
       expect(request.method, 'GET');
       expect(
@@ -178,10 +207,67 @@ void main() {
         '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
       );
       final json = jsonDecode(request.body) as Map<String, Object?>;
-      expect(json['covers_source_lunch'], 'manual');
+      expect(json['covers_source_per_service_period'], <String, Object?>{
+        'lunch': 'manual',
+        'dinner': 'vendor',
+        'late_night': 'forecast',
+      });
+      expect(json.containsKey('covers_source_lunch'), isFalse);
+      expect(json.containsKey('covers_source_dinner'), isFalse);
+      expect(json.containsKey('covers_source_late_night'), isFalse);
       expect(json['wage_source'], 'manual_mix');
       expect(json['walk_in_handling_mode'], 'walk_ins_added_to_reservations');
       expect(request.headers['idempotency-key'], isNotNull);
+    });
+
+    test('saves custom service periods without legacy trio keys', () async {
+      final gateway = buildGateway(
+        responses: <Map<String, Object?>>[
+          settingsPayload(
+            coversSourcePerServicePeriod: const <String, Object?>{
+              'breakfast': 'vendor',
+              'lunch': 'manual',
+              'dinner': 'forecast',
+              'late_service': 'manual',
+            },
+          ),
+        ],
+      );
+
+      await gateway.saveSettings(
+        DataAccuracySettings(
+          settingId: 'setting-1',
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          coversSourcePerServicePeriod: const <String, CoversSource>{
+            'breakfast': CoversSource.vendor,
+            'lunch': CoversSource.manual,
+            'dinner': CoversSource.forecast,
+            'late_service': CoversSource.manual,
+          },
+          coversManualEntries: const <String, Map<String, int>>{
+            '2026-05-06': <String, int>{'lunch': 42, 'late_service': 18},
+          },
+          wageSource: WageSource.vendor,
+          walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+          walkInManualEntries: const <String, int>{},
+          createdAt: DateTime.utc(2026, 5, 6, 12),
+          updatedAt: DateTime.utc(2026, 5, 6, 12, 1),
+          updatedBy: 'user-1',
+        ),
+      );
+
+      final json =
+          jsonDecode(capturedRequests.single.body) as Map<String, Object?>;
+      expect(json['covers_source_per_service_period'], <String, Object?>{
+        'breakfast': 'vendor',
+        'lunch': 'manual',
+        'dinner': 'forecast',
+        'late_service': 'manual',
+      });
+      expect(json.containsKey('covers_source_lunch'), isFalse);
+      expect(json.containsKey('covers_source_dinner'), isFalse);
+      expect(json.containsKey('covers_source_late_night'), isFalse);
     });
 
     test('saves service-period settings through PATCH', () async {
