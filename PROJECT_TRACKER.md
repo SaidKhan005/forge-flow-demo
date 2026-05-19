@@ -36,12 +36,12 @@ Phases retired to `docs/archive/phases/` 2026-05-13: `phase_10b`,
    `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 6. `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape, parallel-lane rules.
 7. `runbooks/deploy_runbook.md` ·
-   `docs/frameworks/PERFORMANCE_FRAMEWORK.md` ·
-   `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md` ·
-   `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — applied per slice when relevant.
+   `runbooks/performance_audit_runbook.md` ·
+   `runbooks/ux_adjustment_runbook.md` ·
+   `runbooks/mobile_web_console_e2e_runbook.md` — applied per slice when relevant.
 
 Feature implementation work also uses
-`docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` whenever a
+`runbooks/feature_implementation_lens_audit_runbook.md` whenever a
 slice edits or adds product functionality, route/schema behavior, runtime
 behavior, settings, permissions, or any feature with hidden plumbing risk.
 
@@ -211,7 +211,7 @@ arrive.
   slices use Codex-driven Browser Use evidence per
   `runbooks/browser_use_codex_acceptance_workflow.md` (out-of-repo automation,
   not a binary in this tree) and full E2E uses
-  `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
+  `runbooks/mobile_web_console_e2e_runbook.md`.
 - Before staging console perf claims:
   `dart run tool/perf_gate/staging_console_probe.dart --run
   --admin-url=<url> --proxy-url=<url>` and attach JSON.

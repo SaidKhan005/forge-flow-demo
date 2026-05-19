@@ -35,7 +35,7 @@ If any link is missing, report the missing proof precisely.
 Read this framework with:
 
 - `docs/contracts/slice_runtime_acceptance_contract.md`
-- `docs/frameworks/PERFORMANCE_FRAMEWORK.md`
+- `runbooks/performance_audit_runbook.md`
 - `runbooks/browser_use_codex_acceptance_workflow.md` (Codex-driven, out-of-repo)
 - `runbooks/admin_console_browser_qa_runbook.md`
 - the active phase doc for the slice
@@ -433,8 +433,8 @@ actions without action-time approval.
 
 Authority:
 - PROJECT_TRACKER.md
-- docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md
-- docs/frameworks/PERFORMANCE_FRAMEWORK.md
+- runbooks/mobile_web_console_e2e_runbook.md
+- runbooks/performance_audit_runbook.md
 - docs/contracts/slice_runtime_acceptance_contract.md
 - runbooks/browser_use_codex_acceptance_workflow.md
 - runbooks/admin_console_browser_qa_runbook.md

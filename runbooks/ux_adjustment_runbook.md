@@ -430,7 +430,7 @@ called out and tested.
 
 Authority:
 - PROJECT_TRACKER.md
-- docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md
+- runbooks/ux_adjustment_runbook.md
 - docs/contracts/slice_runtime_acceptance_contract.md
 - <active phase doc, if this belongs to a phase>
 

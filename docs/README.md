@@ -15,16 +15,16 @@ These stay at the top level because they are the fastest-entry authority docs:
 
 ## 2. Frameworks
 
-`docs/frameworks/`
+`runbooks/`
 
 Repeatable execution frameworks for cross-cutting work that applies across
 phases and surfaces.
 
 Current active frameworks:
 
-- `docs/frameworks/PERFORMANCE_FRAMEWORK.md`
-- `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`
-- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
+- `runbooks/performance_audit_runbook.md`
+- `runbooks/ux_adjustment_runbook.md`
+- `runbooks/mobile_web_console_e2e_runbook.md`
 
 The deploy procedure is operational and lives under
 `runbooks/deploy_runbook.md`.
@@ -90,7 +90,7 @@ If a doc is:
 
 - an active architecture rule -> put it in `docs/contracts/`
 - a repeatable cross-surface execution framework -> put it in
-  `docs/frameworks/`
+  `runbooks/`
 - an active planning lane doc -> put it in `docs/phases/<lane>/`
 - completed and no longer part of the live working spine -> move it to
   `docs/archive/`
