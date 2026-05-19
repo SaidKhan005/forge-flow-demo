@@ -426,6 +426,9 @@ class AdminBusinessTimingRouter {
             startMinute: _hhmmToMinute(p.startLocal),
             endMinute: _hhmmToMinute(p.endLocal),
             rollsPastMidnight: p.rollsPastMidnight,
+            applicableDays: p.applicableDays,
+            shortLabel: p.shortLabel,
+            sortOrder: p.sortOrder,
           ),
       ],
     );

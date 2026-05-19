@@ -115,8 +115,8 @@ class RepositoryOperatorBusinessTimingWriteGateway
       reason: adminReason,
       idempotencyKey: idempotencyKey,
       servicePeriods: <BusinessTimingServicePeriodWrite>[
-        for (var i = 0; i < validated.servicePeriods.length; i++)
-          _toServicePeriodWrite(validated.servicePeriods[i], i + 1),
+        for (final period in validated.servicePeriods)
+          _toServicePeriodWrite(period),
       ],
     );
     return _toRecord(row);
@@ -302,8 +302,8 @@ class RepositoryOperatorBusinessTimingWriteGateway
       locationId: operatorId,
       profileId: profileId,
       servicePeriods: <BusinessTimingServicePeriodWrite>[
-        for (var i = 0; i < validated.servicePeriods.length; i++)
-          _toServicePeriodWrite(validated.servicePeriods[i], i + 1),
+        for (final period in validated.servicePeriods)
+          _toServicePeriodWrite(period),
       ],
       actorUserId: actorUserId,
       reason: adminReason,
@@ -328,8 +328,7 @@ class RepositoryOperatorBusinessTimingWriteGateway
       locationId: operatorId,
       profileId: profileId,
       servicePeriods: <BusinessTimingServicePeriodWrite>[
-        for (var i = 0; i < mergedSet.length; i++)
-          _toServicePeriodWrite(mergedSet[i], i + 1),
+        for (final period in mergedSet) _toServicePeriodWrite(period),
       ],
       actorUserId: actorUserId,
       reason: adminReason,
@@ -348,33 +347,19 @@ class RepositoryOperatorBusinessTimingWriteGateway
 
   BusinessTimingServicePeriodWrite _toServicePeriodWrite(
     ValidatedServicePeriod period,
-    int sortOrder,
   ) {
-    // Fix #4 / S1 / G45: stop fabricating an empty short label. The
-    // canonical column is NOT NULL-friendly but a blank string is
-    // lossy — every read surface then has to invent one. Derive the
-    // short label from the operator-supplied label so it round-trips
-    // instead of vanishing.
-    //
-    // `applicableWeekdays` stays the all-days mask here on purpose:
-    // the operator-web write *validator* (`ValidatedServicePeriod`)
-    // does not yet carry a day restriction, so there is genuinely no
-    // day data to persist on this write path. Per the Fix #4 spec
-    // that day-restriction capture lands in per-daypart Slice 2.5
-    // (the `ServicePeriodDraft` / editor change, Gap 28); forcing a
-    // non-all-days value here without validator support would be
-    // scope creep into S3/Slice 2.5 and could not be honestly
-    // populated. The READ round-trip (the S1 deliverable) surfaces
-    // whatever days are already stored via the resolution route.
+    // Metadata is validated before it reaches the repository adapter.
+    // Use it directly so custom service periods do not save back as
+    // all-week, label-derived, list-order rows.
     return BusinessTimingServicePeriodWrite(
       servicePeriodKey: period.key,
       label: period.label,
-      shortLabel: period.label,
-      sortOrder: sortOrder,
+      shortLabel: period.shortLabel,
+      sortOrder: period.sortOrder,
       startLocalTime: period.startLocal,
       endLocalTime: period.endLocal,
       rollsPastMidnight: period.rollsPastMidnight,
-      applicableWeekdays: const <int>[1, 2, 3, 4, 5, 6, 7],
+      applicableWeekdays: period.applicableDays,
     );
   }
 

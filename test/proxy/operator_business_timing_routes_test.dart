@@ -141,6 +141,43 @@ void main() {
       });
     });
 
+    test('POST profile preserves service-period metadata', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final body = _validProfileBody();
+          body['servicePeriods'] = const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '10:00',
+              'endLocal': '14:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ];
+          final response = await _httpJson(
+            ctx.client,
+            ctx.baseUri.resolve(operatorBusinessTimingProfilesPath),
+            method: 'POST',
+            idempotencyKey: 'idem-create-metadata',
+            body: body,
+          );
+          expect(response.statusCode, equals(201));
+          final json = jsonDecode(response.body) as Map<String, Object?>;
+          final periods = json['servicePeriods'] as List<Object?>;
+          final period = periods.single as Map<String, Object?>;
+          expect(period['applicableDays'], equals(<int>[6, 7]));
+          expect(period['shortLabel'], equals('B'));
+          expect(period['sortOrder'], equals(2));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('POST profile - 400 on overlap', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
@@ -362,6 +399,12 @@ void main() {
             },
           );
           expect(response.statusCode, equals(200));
+          final json = jsonDecode(response.body) as Map<String, Object?>;
+          final periods = json['servicePeriods'] as List<Object?>;
+          final lunch = (periods.first as Map<String, Object?>);
+          expect(lunch['applicableDays'], equals(<int>[1, 2, 3, 4, 5]));
+          expect(lunch['shortLabel'], equals('L'));
+          expect(lunch['sortOrder'], equals(1));
           expect(ctx.gateway.replaceCalls, equals(1));
           expect(ctx.audit.records, hasLength(1));
           expect(
@@ -549,6 +592,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
           startLocal: '11:00',
           endLocal: '15:00',
           rollsPastMidnight: false,
+          applicableDays: <int>[1, 2, 3, 4, 5],
+          shortLabel: 'L',
+          sortOrder: 1,
         ),
         OperatorBusinessTimingServicePeriodRecord(
           key: 'dinner',
@@ -556,6 +602,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
           startLocal: '17:00',
           endLocal: '22:00',
           rollsPastMidnight: false,
+          applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+          shortLabel: 'D',
+          sortOrder: 2,
         ),
       ],
       createdAt: DateTime.utc(2026, 5, 1),
@@ -584,6 +633,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
             startLocal: p.startLocal,
             endLocal: p.endLocal,
             rollsPastMidnight: p.rollsPastMidnight,
+            applicableDays: p.applicableDays,
+            shortLabel: p.shortLabel,
+            sortOrder: p.sortOrder,
           ),
       ],
       createdAt: DateTime.utc(2026, 5, 1),
@@ -693,6 +745,9 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
             startLocal: p.startLocal,
             endLocal: p.endLocal,
             rollsPastMidnight: p.rollsPastMidnight,
+            applicableDays: p.applicableDays,
+            shortLabel: p.shortLabel,
+            sortOrder: p.sortOrder,
           ),
       ],
       createdAt: existing.createdAt,

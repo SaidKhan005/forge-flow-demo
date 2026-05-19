@@ -31,7 +31,7 @@ import '../../theme/app_theme.dart';
 /// only) and have full parity with what the mobile app reads:
 ///   - [applicableDays]  ISO weekdays (1=Mon..7=Sun); default = all 7.
 ///   - [shortLabel]      compact label for tight UI (e.g. "L"); default = ''.
-///   - [sortOrder]       display order; lower sorts first; default = 0.
+///   - [sortOrder]       display order; lower sorts first; default = 1.
 @immutable
 class ServicePeriodDraft {
   const ServicePeriodDraft({
@@ -41,7 +41,7 @@ class ServicePeriodDraft {
     required this.endLocal,
     this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.shortLabel = '',
-    this.sortOrder = 0,
+    this.sortOrder = 1,
   });
 
   final String key;
@@ -59,8 +59,8 @@ class ServicePeriodDraft {
   /// falls back to the long [label] when this is empty.
   final String shortLabel;
 
-  /// Display sort order. Lower values sort first. 0 is a legitimate
-  /// value (canonical model treats it as the first slot).
+  /// Display sort order. Lower values sort first. Values persist as
+  /// 1..4 to match the timing profile table.
   final int sortOrder;
 
   /// True when the end time is at or before the start time (mod 24h),
@@ -955,7 +955,7 @@ class ServicePeriodEditorController extends ChangeNotifier {
     if (_periods.length >= 4) return;
     // Slice 2.5: a brand-new period defaults to all 7 weekdays
     // (matches pre-2.5 implicit behavior — every period applied every
-    // day), an empty short label, and a sortOrder equal to its index
+    // day), an empty short label, and a sortOrder equal to its slot
     // in the list at insert time. The operator can adjust any of the
     // three after add via the chip row + auxiliary fields.
     _periods.add(
@@ -967,7 +967,7 @@ class ServicePeriodEditorController extends ChangeNotifier {
             endLocal: '00:00',
             applicableDays: const <int>[1, 2, 3, 4, 5, 6, 7],
             shortLabel: '',
-            sortOrder: _periods.length,
+            sortOrder: _periods.length + 1,
           ),
     );
     notifyListeners();

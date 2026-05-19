@@ -283,7 +283,7 @@ void main() {
       expect(json['sortOrder'], 2);
     });
 
-    test('ServicePeriodCreate.toJson defaults all 7 weekdays + 0 sort + empty short',
+    test('ServicePeriodCreate.toJson defaults all 7 weekdays + 1 sort + empty short',
         () {
       const create = ServicePeriodCreate(
         key: 'lunch',
@@ -294,7 +294,7 @@ void main() {
       final json = create.toJson();
       expect(json['applicableDays'], <int>[1, 2, 3, 4, 5, 6, 7]);
       expect(json['shortLabel'], '');
-      expect(json['sortOrder'], 0);
+      expect(json['sortOrder'], 1);
     });
 
     test('ServicePeriodPatch.toJson emits only present fields', () {
@@ -362,7 +362,7 @@ void main() {
                 endLocal: '14:00',
                 applicableDays: <int>[6, 7],
                 shortLabel: 'B',
-                sortOrder: 0,
+                sortOrder: 2,
               ),
             ],
           ),
@@ -373,7 +373,7 @@ void main() {
         final first = periods.single as Map<String, Object?>;
         expect(first['applicableDays'], <int>[6, 7]);
         expect(first['shortLabel'], 'B');
-        expect(first['sortOrder'], 0);
+        expect(first['sortOrder'], 2);
       },
     );
   });

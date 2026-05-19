@@ -72,6 +72,8 @@ const Set<String> kBusinessTimingAllowedIanaTimezones = <String>{
   'UTC',
 };
 
+const List<int> _kDefaultApplicableDays = <int>[1, 2, 3, 4, 5, 6, 7];
+
 /// Single named validation failure. The proxy translates this into a
 /// 400 JSON envelope with `{ "error": code, "message": message,
 /// "path": path }`. `path` is JSON-pointer-ish so the frontend can
@@ -112,6 +114,9 @@ class ValidatedServicePeriod {
     required this.startMinute,
     required this.endMinute,
     required this.rollsPastMidnight,
+    required this.applicableDays,
+    required this.shortLabel,
+    required this.sortOrder,
   });
 
   final String key;
@@ -121,6 +126,9 @@ class ValidatedServicePeriod {
   final int startMinute;
   final int endMinute;
   final bool rollsPastMidnight;
+  final List<int> applicableDays;
+  final String shortLabel;
+  final int sortOrder;
 }
 
 /// Result of a successful POST/PATCH validation. The repository
@@ -237,6 +245,9 @@ ValidatedBusinessTimingProfile validateProfilePatch({
           'label': p.label,
           'startLocal': p.startLocal,
           'endLocal': p.endLocal,
+          'applicableDays': p.applicableDays,
+          'shortLabel': p.shortLabel,
+          'sortOrder': p.sortOrder,
         },
     ];
     periods = _validateServicePeriodSet(raw, businessDayStart: businessDayStart);
@@ -278,12 +289,18 @@ ValidatedBusinessTimingProfile validateProfilePatch({
         'label': p.label,
         'startLocal': p.startLocal,
         'endLocal': p.endLocal,
+        'applicableDays': p.applicableDays,
+        'shortLabel': p.shortLabel,
+        'sortOrder': p.sortOrder,
       },
     <String, Object?>{
       'key': period.key,
       'label': period.label,
       'startLocal': period.startLocal,
       'endLocal': period.endLocal,
+      'applicableDays': period.applicableDays,
+      'shortLabel': period.shortLabel,
+      'sortOrder': period.sortOrder,
     },
   ];
   final mergedValidated = _validateServicePeriodSet(
@@ -333,6 +350,15 @@ List<ValidatedServicePeriod> validateUpdateServicePeriod({
   final mergedEnd = body.containsKey('endLocal')
       ? _requireQuarterHour(body, 'endLocal')
       : target.endLocal;
+  final mergedApplicableDays = body.containsKey('applicableDays')
+      ? _requireApplicableDays(body, 'applicableDays')
+      : target.applicableDays;
+  final mergedShortLabel = body.containsKey('shortLabel')
+      ? _requireShortLabel(body, 'shortLabel')
+      : target.shortLabel;
+  final mergedSortOrder = body.containsKey('sortOrder')
+      ? _requireSortOrder(body, 'sortOrder', fallback: target.sortOrder)
+      : target.sortOrder;
   final raw = <Map<String, Object?>>[
     for (final p in existing.servicePeriods)
       if (p.key == urlKey)
@@ -341,6 +367,9 @@ List<ValidatedServicePeriod> validateUpdateServicePeriod({
           'label': mergedLabel,
           'startLocal': mergedStart,
           'endLocal': mergedEnd,
+          'applicableDays': mergedApplicableDays,
+          'shortLabel': mergedShortLabel,
+          'sortOrder': mergedSortOrder,
         }
       else
         <String, Object?>{
@@ -348,6 +377,9 @@ List<ValidatedServicePeriod> validateUpdateServicePeriod({
           'label': p.label,
           'startLocal': p.startLocal,
           'endLocal': p.endLocal,
+          'applicableDays': p.applicableDays,
+          'shortLabel': p.shortLabel,
+          'sortOrder': p.sortOrder,
         },
   ];
   return _validateServicePeriodSet(
@@ -372,6 +404,7 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
   }
   final periods = <ValidatedServicePeriod>[];
   final keys = <String>{};
+  final sortOrders = <int>{};
   var rollingCount = 0;
   for (var i = 0; i < raw.length; i++) {
     final item = raw[i];
@@ -395,6 +428,14 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
       );
     }
     if (period.rollsPastMidnight) rollingCount += 1;
+    if (!sortOrders.add(period.sortOrder)) {
+      throw BusinessTimingValidationError(
+        code: 'duplicate_sort_order',
+        message: 'service period sortOrder values must be unique',
+        path: '/servicePeriods/$i/sortOrder',
+        extras: <String, Object?>{'sortOrder': period.sortOrder},
+      );
+    }
     periods.add(period);
   }
   if (rollingCount > 1) {
@@ -407,7 +448,8 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
   // Pairwise overlap check.
   for (var i = 0; i < periods.length; i++) {
     for (var j = i + 1; j < periods.length; j++) {
-      if (_periodsOverlap(periods[i], periods[j])) {
+      if (_daysOverlap(periods[i], periods[j]) &&
+          _periodsOverlap(periods[i], periods[j])) {
         throw BusinessTimingValidationError(
           code: 'service_period_overlap',
           message: 'service periods overlap',
@@ -454,6 +496,22 @@ ValidatedServicePeriod _validateServicePeriodEntry(
   final label = _requireLabel(body, 'label', index: index);
   final start = _requireQuarterHour(body, 'startLocal', index: index);
   final end = _requireQuarterHour(body, 'endLocal', index: index);
+  final applicableDays = _requireApplicableDays(
+    body,
+    'applicableDays',
+    index: index,
+  );
+  final shortLabel = _requireShortLabel(
+    body,
+    'shortLabel',
+    index: index,
+  );
+  final sortOrder = _requireSortOrder(
+    body,
+    'sortOrder',
+    index: index,
+    fallback: index + 1,
+  );
   final startMinute = _quarterHourToMinute(start);
   final endMinute = _quarterHourToMinute(end);
   // Reject zero-length periods. start == end can either mean
@@ -481,7 +539,18 @@ ValidatedServicePeriod _validateServicePeriodEntry(
     startMinute: startMinute,
     endMinute: endMinute,
     rollsPastMidnight: rolls,
+    applicableDays: applicableDays,
+    shortLabel: shortLabel,
+    sortOrder: sortOrder,
   );
+}
+
+bool _daysOverlap(ValidatedServicePeriod a, ValidatedServicePeriod b) {
+  final left = a.applicableDays.toSet();
+  for (final day in b.applicableDays) {
+    if (left.contains(day)) return true;
+  }
+  return false;
 }
 
 bool _periodsOverlap(ValidatedServicePeriod a, ValidatedServicePeriod b) {
@@ -648,6 +717,104 @@ String _requireLabel(
     );
   }
   return trimmed;
+}
+
+List<int> _requireApplicableDays(
+  Map<String, Object?> body,
+  String field, {
+  int? index,
+}) {
+  if (!body.containsKey(field)) return _kDefaultApplicableDays;
+  final raw = body[field];
+  final path = index == null
+      ? '/$field'
+      : '/servicePeriods/$index/$field';
+  if (raw is! List) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_applicable_days',
+      message: '$field must be a non-empty array of ISO weekdays 1..7',
+      path: path,
+    );
+  }
+  final days = <int>[];
+  final seen = <int>{};
+  for (final value in raw) {
+    final day = value is int ? value : (value is num ? value.toInt() : null);
+    if (day == null || day < 1 || day > 7 || !seen.add(day)) {
+      throw BusinessTimingValidationError(
+        code: 'invalid_applicable_days',
+        message: '$field must contain unique ISO weekdays 1..7',
+        path: path,
+      );
+    }
+    days.add(day);
+  }
+  if (days.isEmpty) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_applicable_days',
+      message: '$field must contain at least one weekday',
+      path: path,
+    );
+  }
+  return List<int>.unmodifiable(days);
+}
+
+String _requireShortLabel(
+  Map<String, Object?> body,
+  String field, {
+  int? index,
+}) {
+  if (!body.containsKey(field)) return '';
+  final raw = body[field];
+  final path = index == null
+      ? '/$field'
+      : '/servicePeriods/$index/$field';
+  if (raw is! String) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_short_label',
+      message: '$field must be a string of at most 8 characters',
+      path: path,
+    );
+  }
+  final trimmed = raw.trim();
+  if (trimmed.length > 8) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_short_label',
+      message: '$field must be at most 8 characters',
+      path: path,
+    );
+  }
+  return trimmed;
+}
+
+int _requireSortOrder(
+  Map<String, Object?> body,
+  String field, {
+  int? index,
+  required int fallback,
+}) {
+  if (!body.containsKey(field)) return fallback;
+  final raw = body[field];
+  final path = index == null
+      ? '/$field'
+      : '/servicePeriods/$index/$field';
+  final parsed = raw is int ? raw : (raw is num ? raw.toInt() : null);
+  if (parsed == null) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_sort_order',
+      message: '$field must be an integer between 1 and 4',
+      path: path,
+    );
+  }
+  if (parsed == 0) return fallback;
+  if (parsed < 1 || parsed > 4) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_sort_order',
+      message: '$field must be an integer between 1 and 4',
+      path: path,
+    );
+  }
+  return parsed;
 }
 
 int _quarterHourToMinute(String hhmm) {

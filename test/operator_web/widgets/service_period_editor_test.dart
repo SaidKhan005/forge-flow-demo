@@ -309,7 +309,7 @@ void main() {
 
   // Slice 2.5 / Gap 28 — pure value-object behavior on the new fields.
   group('ServicePeriodDraft (Slice 2.5 fields)', () {
-    test('default constructor seeds all 7 weekdays + empty short label + 0 sort',
+    test('default constructor seeds all 7 weekdays + empty short label + 1 sort',
         () {
       const draft = ServicePeriodDraft(
         key: 'lunch',
@@ -319,7 +319,7 @@ void main() {
       );
       expect(draft.applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
       expect(draft.shortLabel, '');
-      expect(draft.sortOrder, 0);
+      expect(draft.sortOrder, 1);
     });
 
     test('copyWith round-trips the three new fields without mutating others',
@@ -380,7 +380,7 @@ void main() {
       expect(controller.periods.last.shortLabel, '');
     });
 
-    test('addPeriod defaults sortOrder to current period count', () {
+    test('addPeriod defaults sortOrder to next slot number', () {
       final controller = ServicePeriodEditorController(
         initial: const <ServicePeriodDraft>[
           ServicePeriodDraft(
@@ -392,7 +392,7 @@ void main() {
         ],
       );
       controller.addPeriod();
-      expect(controller.periods.last.sortOrder, 1);
+      expect(controller.periods.last.sortOrder, 2);
     });
 
     test('updateAt with copyWith propagates day-chip toggles', () {

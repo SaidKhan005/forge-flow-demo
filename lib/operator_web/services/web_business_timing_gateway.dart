@@ -385,7 +385,7 @@ class ServicePeriodCreate {
     required this.endLocal,
     this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.shortLabel = '',
-    this.sortOrder = 0,
+    this.sortOrder = 1,
   });
 
   final String key;

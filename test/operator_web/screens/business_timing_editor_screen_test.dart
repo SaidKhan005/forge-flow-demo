@@ -57,6 +57,9 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
               startLocal: p.startLocal,
               endLocal: p.endLocal,
               rollsPastMidnight: false,
+              applicableDays: p.applicableDays,
+              shortLabel: p.shortLabel,
+              sortOrder: p.sortOrder,
             ),
           )
           .toList(),
@@ -272,7 +275,7 @@ void main() {
                 rollsPastMidnight: false,
                 applicableDays: <int>[6, 7],
                 shortLabel: 'B',
-                sortOrder: 0,
+                sortOrder: 1,
               ),
             ]),
           ),
@@ -331,6 +334,7 @@ void main() {
       expect(firstPeriod.containsKey('applicableDays'), isTrue);
       expect(firstPeriod.containsKey('shortLabel'), isTrue);
       expect(firstPeriod.containsKey('sortOrder'), isTrue);
+      expect(firstPeriod['sortOrder'], 1);
     },
   );
 

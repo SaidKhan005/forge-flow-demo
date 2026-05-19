@@ -54,6 +54,59 @@ void main() {
       expect(result.servicePeriods, hasLength(2));
       expect(result.servicePeriods[0].rollsPastMidnight, isFalse);
       expect(result.servicePeriods[0].startMinute, equals(11 * 60));
+      expect(result.servicePeriods[0].applicableDays,
+          equals(<int>[1, 2, 3, 4, 5, 6, 7]));
+      expect(result.servicePeriods[0].shortLabel, isEmpty);
+      expect(result.servicePeriods[0].sortOrder, equals(1));
+    });
+
+    test('preserves service-period metadata on complete profile', () {
+      final result = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '10:00',
+              'endLocal': '14:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ],
+        ),
+      );
+      final period = result.servicePeriods.single;
+      expect(period.applicableDays, equals(<int>[6, 7]));
+      expect(period.shortLabel, equals('B'));
+      expect(period.sortOrder, equals(2));
+    });
+
+    test('allows same clock window when applicable days do not overlap', () {
+      final result = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'lunch',
+              'label': 'Lunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[1, 2, 3, 4, 5],
+              'sortOrder': 1,
+            },
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ],
+        ),
+      );
+      expect(result.servicePeriods, hasLength(2));
     });
 
     test('detects past-midnight period', () {
@@ -312,6 +365,57 @@ void main() {
         ),
       );
     });
+
+    test('invalid_applicable_days on duplicate weekday', () {
+      expect(
+        () => validateNewBusinessTimingProfile(
+          _validBody(
+            servicePeriods: const <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'brunch',
+                'label': 'Brunch',
+                'startLocal': '10:00',
+                'endLocal': '14:00',
+                'applicableDays': <int>[6, 6],
+              },
+            ],
+          ),
+        ),
+        throwsA(
+          isA<BusinessTimingValidationError>()
+              .having((e) => e.code, 'code', 'invalid_applicable_days'),
+        ),
+      );
+    });
+
+    test('duplicate_sort_order', () {
+      expect(
+        () => validateNewBusinessTimingProfile(
+          _validBody(
+            servicePeriods: const <Map<String, Object?>>[
+              <String, Object?>{
+                'key': 'lunch',
+                'label': 'Lunch',
+                'startLocal': '11:00',
+                'endLocal': '15:00',
+                'sortOrder': 1,
+              },
+              <String, Object?>{
+                'key': 'dinner',
+                'label': 'Dinner',
+                'startLocal': '17:00',
+                'endLocal': '22:00',
+                'sortOrder': 1,
+              },
+            ],
+          ),
+        ),
+        throwsA(
+          isA<BusinessTimingValidationError>()
+              .having((e) => e.code, 'code', 'duplicate_sort_order'),
+        ),
+      );
+    });
   });
 
   group('validateOperatorAccountPatch', () {
@@ -462,6 +566,42 @@ void main() {
       expect(outcome.merged, hasLength(2));
     });
 
+    test('preserves existing and added metadata in merged set', () {
+      final existing = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'lunch',
+              'label': 'Lunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[1, 2, 3, 4, 5],
+              'shortLabel': 'L',
+              'sortOrder': 1,
+            },
+          ],
+        ),
+      );
+      final outcome = validateAddServicePeriod(
+        body: const <String, Object?>{
+          'key': 'brunch',
+          'label': 'Weekend Brunch',
+          'startLocal': '10:00',
+          'endLocal': '14:00',
+          'applicableDays': <int>[6, 7],
+          'shortLabel': 'B',
+          'sortOrder': 2,
+        },
+        existing: existing,
+      );
+      expect(outcome.merged[0].applicableDays, equals(<int>[1, 2, 3, 4, 5]));
+      expect(outcome.merged[0].shortLabel, equals('L'));
+      expect(outcome.merged[0].sortOrder, equals(1));
+      expect(outcome.merged[1].applicableDays, equals(<int>[6, 7]));
+      expect(outcome.merged[1].shortLabel, equals('B'));
+      expect(outcome.merged[1].sortOrder, equals(2));
+    });
+
     test('duplicate_service_period_key', () {
       final existing = validateNewBusinessTimingProfile(_validBody());
       expect(
@@ -483,6 +623,33 @@ void main() {
   });
 
   group('validateUpdateServicePeriod', () {
+    test('partial profile patch preserves existing service-period metadata',
+        () {
+      final existing = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '10:00',
+              'endLocal': '14:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ],
+        ),
+      );
+      final patched = validateProfilePatch(
+        body: const <String, Object?>{'businessDayStartLocal': '04:30'},
+        existing: existing,
+      );
+      final period = patched.servicePeriods.single;
+      expect(period.applicableDays, equals(<int>[6, 7]));
+      expect(period.shortLabel, equals('B'));
+      expect(period.sortOrder, equals(2));
+    });
+
     test('rejects key rename via PATCH', () {
       final existing = validateNewBusinessTimingProfile(_validBody());
       expect(
@@ -511,6 +678,49 @@ void main() {
               .having((e) => e.code, 'code', 'service_period_not_found'),
         ),
       );
+    });
+
+    test('service-period PATCH can update metadata and keep untouched rows',
+        () {
+      final existing = validateNewBusinessTimingProfile(
+        _validBody(
+          servicePeriods: const <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'lunch',
+              'label': 'Lunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'applicableDays': <int>[1, 2, 3, 4, 5],
+              'shortLabel': 'L',
+              'sortOrder': 1,
+            },
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '10:00',
+              'endLocal': '14:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'B',
+              'sortOrder': 2,
+            },
+          ],
+        ),
+      );
+      final merged = validateUpdateServicePeriod(
+        body: const <String, Object?>{
+          'applicableDays': <int>[1, 2, 3],
+          'shortLabel': 'M',
+          'sortOrder': 1,
+        },
+        urlKey: 'lunch',
+        existing: existing,
+      );
+      expect(merged[0].applicableDays, equals(<int>[1, 2, 3]));
+      expect(merged[0].shortLabel, equals('M'));
+      expect(merged[0].sortOrder, equals(1));
+      expect(merged[1].applicableDays, equals(<int>[6, 7]));
+      expect(merged[1].shortLabel, equals('B'));
+      expect(merged[1].sortOrder, equals(2));
     });
   });
 }
