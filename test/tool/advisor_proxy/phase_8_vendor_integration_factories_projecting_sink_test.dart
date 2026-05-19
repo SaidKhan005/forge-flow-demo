@@ -5,15 +5,10 @@
 // adapter wiring (see `phase_8_vendor_integration_factories.dart`).
 // This file pins the contract that when the projector + period
 // resolver + restaurant-id resolver triple is supplied, the bundle's
-// `projectingSinksByVendor` map is populated with one
-// [ProjectingCanonicalSink] per vendor postgres sink that directly
-// implements [CanonicalSink] (the 13 of 17). When any of the three is
-// null the map is empty.
-//
-// The 4 view-based vendors (Libro, OpenTable, Tock, SevenRooms) expose
-// `CanonicalSink` only via `asCanonicalSink(connectionIdResolver: ...)`
-// which requires per-tenant context the binder lacks at boot, so they
-// are out of scope here.
+// `projectingSinksByVendor` map is populated for direct CanonicalSink
+// wrappers, and `projectionTapsByVendor` is populated for direct
+// adapter writes. When any of the three projector dependencies is null
+// both projection surfaces stay empty.
 
 import 'dart:async';
 
@@ -37,8 +32,7 @@ import '../../../tool/advisor_proxy/proxy_bootstrap.dart';
 
 void main() {
   group('Phase8VendorIntegrationFactories projecting-sink wiring', () {
-    test(
-        'projector triple supplied → wrappers populated for the 7 always-on '
+    test('projector triple supplied → wrappers populated for the 7 always-on '
         'directly-CanonicalSink-implementing vendors (Toast, Lightspeed LSK, '
         'Oracle MICROS, Revel, ADP, Agendrix, Push Operations)', () {
       final config = _buildConfig();
@@ -74,13 +68,16 @@ void main() {
         expect(
           factories.projectingSinksByVendor.containsKey(vendor),
           isTrue,
-          reason: '$vendor sink must be wrapped — its postgres sink '
+          reason:
+              '$vendor sink must be wrapped — its postgres sink '
               'directly implements CanonicalSink and is built outside '
               'any optional-credential gate',
         );
-        expect(factories.projectingSinksByVendor[vendor],
-            isA<ProjectingCanonicalSink>(),
-            reason: '$vendor wrapper must be a ProjectingCanonicalSink');
+        expect(
+          factories.projectingSinksByVendor[vendor],
+          isA<ProjectingCanonicalSink>(),
+          reason: '$vendor wrapper must be a ProjectingCanonicalSink',
+        );
       }
 
       // Sanity: the 4 view-based vendors stay out of the wrap map even
@@ -94,14 +91,14 @@ void main() {
         expect(
           factories.projectingSinksByVendor.containsKey(outOfScope),
           isFalse,
-          reason: '$outOfScope exposes CanonicalSink only via asCanonicalSink '
+          reason:
+              '$outOfScope exposes CanonicalSink only via asCanonicalSink '
               'and is wrapped per-tenant downstream, not at boot',
         );
       }
     });
 
-    test(
-        'all three projector deps null → projectingSinksByVendor stays empty '
+    test('all three projector deps null → projectingSinksByVendor stays empty '
         '(caller has not surfaced a production-wired projector yet)', () {
       final config = _buildConfig();
       final factories = _buildFactoriesWithProjector(
@@ -109,28 +106,37 @@ void main() {
         // Pass nothing — wiring inactive.
       );
 
-      expect(factories.projectingSinksByVendor, isEmpty,
-          reason:
-              'when any of the three projector deps is null the wrapper map '
-              'must be empty — no partial wiring');
+      expect(factories.projectionTapsByVendor, isEmpty);
+      expect(
+        factories.projectingSinksByVendor,
+        isEmpty,
+        reason:
+            'when any of the three projector deps is null the wrapper map '
+            'must be empty — no partial wiring',
+      );
     });
 
     test(
-        'partial projector dep (only projector) → wrapper map empty: all three '
-        'must be present together', () {
-      final config = _buildConfig();
-      final factories = _buildFactoriesWithProjector(
-        config,
-        canonicalFactPostCommitProjector: _stubProjector,
-        // resolvers null
-      );
+      'partial projector dep (only projector) → wrapper map empty: all three '
+      'must be present together',
+      () {
+        final config = _buildConfig();
+        final factories = _buildFactoriesWithProjector(
+          config,
+          canonicalFactPostCommitProjector: _stubProjector,
+          // resolvers null
+        );
 
-      expect(factories.projectingSinksByVendor, isEmpty,
+        expect(
+          factories.projectingSinksByVendor,
+          isEmpty,
           reason:
               'incomplete projector wiring (projector without resolvers) must '
               'short-circuit to empty rather than silently constructing a '
-              'half-wired wrapper');
-    });
+              'half-wired wrapper',
+        );
+      },
+    );
 
     test('each wrapper exposes the underlying CanonicalSink', () {
       final config = _buildConfig();
@@ -144,10 +150,62 @@ void main() {
       // Toast is always wired (no optional credentials needed).
       final toastWrapper = factories.projectingSinksByVendor['toast'];
       expect(toastWrapper, isNotNull);
-      expect(toastWrapper!.underlying, isNotNull,
-          reason: 'wrapper must expose the underlying CanonicalSink so '
-              'downstream consumers can introspect the wired stack');
+      expect(
+        toastWrapper!.underlying,
+        isNotNull,
+        reason:
+            'wrapper must expose the underlying CanonicalSink so '
+            'downstream consumers can introspect the wired stack',
+      );
     });
+
+    test(
+      'projection taps cover direct adapter sinks, including reservations',
+      () {
+        final config = _buildConfig();
+        final factories = _buildFactoriesWithProjector(
+          config,
+          canonicalFactPostCommitProjector: _stubProjector,
+          canonicalFactPeriodResolver: _stubPeriodResolver,
+          canonicalRestaurantIdResolver: _stubRestaurantIdResolver,
+        );
+
+        const expectedNoCredentialTapVendors = <String>{
+          'toast',
+          'aloha_ncr_voyix',
+          'lightspeed_lsk',
+          'oracle_micros_simphony',
+          'revel',
+          'adp',
+          'agendrix',
+          'humanity',
+          'push_operations',
+          'quickbooks_time',
+          'seven_shifts',
+          'libro',
+          'opentable',
+          'sevenrooms',
+          'tock',
+        };
+
+        expect(
+          factories.projectionTapsByVendor.keys.toSet(),
+          containsAll(expectedNoCredentialTapVendors),
+          reason:
+              'direct adapter writes must have a tap, including the 4 '
+              'reservation sinks whose CanonicalSink view is built per tenant',
+        );
+        expect(factories.projectionTapsByVendor, isNot(contains('clover')));
+        expect(factories.projectionTapsByVendor, isNot(contains('square')));
+        for (final vendor in expectedNoCredentialTapVendors) {
+          expect(
+            factories.projectionTapsByVendor[vendor],
+            isA<CanonicalFactProjectionTap>(),
+            reason: '$vendor must expose a drainable direct-write tap',
+          );
+        }
+      },
+    );
   });
 }
 
@@ -208,11 +266,11 @@ class _StubPostgresPool implements PostgresPool {
 /// a non-null sentinel so the wrap-each-sink branch fires.
 final CanonicalFactPostCommitProjector _stubProjector =
     CanonicalFactPostCommitProjector(
-  closedAggregator: _UnreachableClosedAggregator(),
-  targetSnapshotResolver: _UnreachableTargetSnapshotResolver(),
-  closedWriter: _UnreachableClosedWriter(),
-  openProjector: _UnreachableOpenProjector(),
-);
+      closedAggregator: _UnreachableClosedAggregator(),
+      targetSnapshotResolver: _UnreachableTargetSnapshotResolver(),
+      closedWriter: _UnreachableClosedWriter(),
+      openProjector: _UnreachableOpenProjector(),
+    );
 
 FutureOr<CanonicalFactCommittedPeriod?> _stubPeriodResolver({
   required String operatorId,
@@ -221,14 +279,12 @@ FutureOr<CanonicalFactCommittedPeriod?> _stubPeriodResolver({
   required String vendorId,
   required String connectionId,
   required Map<String, Object?> canonicalFact,
-}) =>
-    null;
+}) => null;
 
 FutureOr<String> _stubRestaurantIdResolver({
   required String operatorId,
   required String locationId,
-}) =>
-    operatorId;
+}) => operatorId;
 
 class _UnreachableClosedAggregator implements ClosedShiftPostCommitAggregator {
   @override
@@ -246,7 +302,8 @@ class _UnreachableTargetSnapshotResolver
     required AggregatorResult aggregateResult,
   }) {
     throw StateError(
-        'wiring-shape test must never invoke the target-snapshot resolver');
+      'wiring-shape test must never invoke the target-snapshot resolver',
+    );
   }
 }
 
@@ -259,7 +316,8 @@ class _UnreachableClosedWriter implements ClosedShiftPostCommitWriter {
     required AggregatorProvenanceContext provenance,
   }) {
     throw StateError(
-        'wiring-shape test must never invoke the closed-shift writer');
+      'wiring-shape test must never invoke the closed-shift writer',
+    );
   }
 }
 
@@ -270,6 +328,7 @@ class _UnreachableOpenProjector implements OpenShiftPostCommitProjector {
     required Iterable<CanonicalFactCommittedPeriod> periods,
   }) {
     throw StateError(
-        'wiring-shape test must never invoke the open-shift projector');
+      'wiring-shape test must never invoke the open-shift projector',
+    );
   }
 }

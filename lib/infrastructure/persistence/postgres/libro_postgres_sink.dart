@@ -48,6 +48,7 @@ import 'dart:convert';
 import '../../../integrations/reservation/libro_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -82,14 +83,18 @@ class LibroPostgresSink extends OperatorScopedRepository
     required TenantTransactionWrapper tenantWrapper,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Libro no longer
   // reads `locations.business_day_rollover_hour` from its connection
@@ -102,6 +107,7 @@ class LibroPostgresSink extends OperatorScopedRepository
   // matching `'04:00'`) instead of the deprecated location column.
   // ignore: unused_field
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   /// Mirror of [SinkBusinessDateProjector] fallback hour for adapter
@@ -158,10 +164,8 @@ class LibroPostgresSink extends OperatorScopedRepository
         connectionId: row['connection_id']! as String,
         venueId: venueId,
         credential: VendorCredentialHandle(credentialId: credentialId),
-        webhookSubscriptionId:
-            metadata['webhook_subscription_id'] as String?,
-        restaurantTimezone:
-            (row['iana_timezone'] as String?) ?? 'UTC',
+        webhookSubscriptionId: metadata['webhook_subscription_id'] as String?,
+        restaurantTimezone: (row['iana_timezone'] as String?) ?? 'UTC',
         businessDayRolloverHour: _kLibroFallbackBusinessDayRolloverHour,
       );
     });
@@ -270,9 +274,9 @@ class LibroPostgresSink extends OperatorScopedRepository
     required String locationId,
     required String connectionId,
     required CanonicalReservationFact fact,
-  }) {
+  }) async {
     final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
-    return withTenant(ctx, (exec) async {
+    final outcome = await withTenant(ctx, (exec) async {
       return _insertReservationFact(
         exec: exec,
         operatorId: operatorId,
@@ -281,6 +285,17 @@ class LibroPostgresSink extends OperatorScopedRepository
         fact: fact,
       );
     });
+    if (outcome.wrote) {
+      _projectionTap?.recordCommittedReservationFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalReservation: _canonicalReservationMap(
+          connectionId: connectionId,
+          fact: fact,
+        ),
+      );
+    }
+    return outcome;
   }
 
   Future<ReservationUpsertOutcome> _insertReservationFact({
@@ -324,8 +339,7 @@ class LibroPostgresSink extends OperatorScopedRepository
         'vendor_entity_id': fact.vendorEntityId,
         'vendor_modified_at': fact.vendorModifiedAt,
         'reservation_at': fact.reservationAt,
-        'business_date':
-            fact.businessDate.toIso8601String().substring(0, 10),
+        'business_date': fact.businessDate.toIso8601String().substring(0, 10),
         'party_size': fact.partySize,
         'status': _columnStatusFor(fact.status),
         'seated_at':
@@ -521,7 +535,7 @@ class LibroPostgresSink extends OperatorScopedRepository
   /// the bespoke [LibroReservationGateway] surface and this view.
   CanonicalSink asCanonicalSink({
     required String Function(String operatorId, String locationId)
-        connectionIdResolver,
+    connectionIdResolver,
   }) {
     return _LibroCanonicalSinkView(
       sink: this,
@@ -546,7 +560,7 @@ class _LibroCanonicalSinkView implements CanonicalSink {
 
   final LibroPostgresSink sink;
   final String Function(String operatorId, String locationId)
-      connectionIdResolver;
+  connectionIdResolver;
 
   @override
   Future<bool> upsertCoverFact({
@@ -671,6 +685,24 @@ String _columnStatusFor(CanonicalReservationStatus status) {
     case CanonicalReservationStatus.completed:
       return 'unknown';
   }
+}
+
+Map<String, Object?> _canonicalReservationMap({
+  required String connectionId,
+  required CanonicalReservationFact fact,
+}) {
+  return <String, Object?>{
+    'connection_id': connectionId,
+    'vendor_id': fact.vendorId,
+    'vendor_entity_id': fact.vendorEntityId,
+    'vendor_modified_at': fact.vendorModifiedAt,
+    'reservation_at': fact.reservationAt,
+    'business_date': fact.businessDate.toIso8601String().substring(0, 10),
+    'party_size': fact.partySize,
+    'status': fact.status.name,
+    'status_transitions': fact.statusTransitions,
+    'raw_payload': fact.rawPayload,
+  };
 }
 
 /// Re-materialise a [CanonicalReservationFact] from a `Map<String, Object?>`

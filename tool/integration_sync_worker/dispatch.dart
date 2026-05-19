@@ -28,6 +28,7 @@ import 'package:forge_and_flow/services/integration/labor_adapter.dart';
 import 'package:forge_and_flow/services/integration/polling_cadence_resolver.dart';
 import 'package:forge_and_flow/services/integration/polling_tier_presets.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import '../advisor_proxy/labor_adapter_registry.dart';
@@ -107,11 +108,11 @@ const Duration kDefaultPollCadence = Duration(seconds: 60);
 /// assignment for `(operatorId, locationId)`, or null when none has
 /// been assigned yet. Lane `.A`'s `ForgeFlowPollingTierRepository`
 /// satisfies this signature; tests inject an in-memory closure.
-typedef PollingTierAssignmentLookup
-    = Future<ForgeFlowPollingTierAssignment?> Function(
-  String operatorId,
-  String locationId,
-);
+typedef PollingTierAssignmentLookup =
+    Future<ForgeFlowPollingTierAssignment?> Function(
+      String operatorId,
+      String locationId,
+    );
 
 /// Lookup signature: returns the vendor-documented minimum poll cadence
 /// (in seconds) for `vendorId`. Sourced from each vendor's
@@ -129,13 +130,14 @@ typedef VendorMinimumCadenceLookup = int Function(String vendorId);
 /// resolvedCadenceSeconds)`. Default null keeps the dispatcher
 /// backward-compatible — callers that have not opted in see the same
 /// surface as before, and the resolved-int is simply not delivered.
-typedef ResolvedCadenceSink = void Function({
-  required String connectionId,
-  required String vendorId,
-  required String operatorId,
-  required String locationId,
-  required int resolvedCadenceSeconds,
-});
+typedef ResolvedCadenceSink =
+    void Function({
+      required String connectionId,
+      required String vendorId,
+      required String operatorId,
+      required String locationId,
+      required int resolvedCadenceSeconds,
+    });
 
 /// Pure-logic dispatcher exercised under fakes by
 /// `test/tool/integration_sync_worker/dispatch_test.dart`. The only
@@ -202,6 +204,7 @@ class IntegrationSyncWorkerDispatch {
     required ConnectorConnectionRow connectorConnectionRow,
     required AdapterFactory adapterFactory,
     required CanonicalSink canonicalSink,
+    CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
   }) async {
     final row = connectorConnectionRow;
 
@@ -279,6 +282,13 @@ class IntegrationSyncWorkerDispatch {
         connectionId: row.connectionId,
         eventKind: 'poll_success',
         recordsCount: result.recordsWritten,
+      );
+      await projectionCommitDrainer?.drainIfCommitEvent(
+        vendorId: row.vendorId,
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        connectionId: row.connectionId,
+        eventKind: 'poll_success',
       );
     } catch (error) {
       // Adapter-thrown errors become a durable poll_error sync_log
@@ -416,13 +426,15 @@ class IntegrationSyncWorkerDispatch {
       vendorMinimumCadenceSeconds: vendorMinLookup(row.vendorId),
       frameworkMaximumCadenceSeconds: kFrameworkMaximumCadenceSeconds,
       onSyncLog: (eventKind, payload) {
-        pendingLogs.add(canonicalSink.appendSyncLog(
-          operatorId: row.operatorId,
-          locationId: row.locationId,
-          connectionId: row.connectionId,
-          eventKind: eventKind,
-          payloadPreview: payload,
-        ));
+        pendingLogs.add(
+          canonicalSink.appendSyncLog(
+            operatorId: row.operatorId,
+            locationId: row.locationId,
+            connectionId: row.connectionId,
+            eventKind: eventKind,
+            payloadPreview: payload,
+          ),
+        );
       },
     );
     // Forward the resolved cadence to the scheduling-layer consumer.

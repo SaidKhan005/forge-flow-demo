@@ -95,6 +95,7 @@ import '../../../integrations/pos/clover_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -131,21 +132,26 @@ class CloverPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? clock,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _clock = clock ?? DateTime.now;
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _clock = clock ?? DateTime.now;
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Clover no longer
   // reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _clock;
 
   // ─── upsert ───────────────────────────────────────────────────────
@@ -189,12 +195,11 @@ class CloverPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) =>
-      _upsertCoverFact(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalFact: canonicalFact,
-      );
+  }) => _upsertCoverFact(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalFact: canonicalFact,
+  );
 
   /// Shared private writer. Handles tenant context wrap, location
   /// timezone resolution, business-date projection (Rule 11), the
@@ -205,10 +210,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalFact,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final inserted = await withTenant<bool>(ctx, (exec) async {
       final closedAt = _coerceUtc(canonicalFact['closed_at']);
       if (closedAt == null) {
@@ -324,6 +326,13 @@ class CloverPostgresSink extends OperatorScopedRepository
       return rows.isNotEmpty;
     });
 
+    if (inserted) {
+      _projectionTap?.recordCommittedCoverFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalFact: canonicalFact,
+      );
+    }
     return inserted;
   }
 
@@ -336,8 +345,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   /// POS sink — reservations are the LB lane's job. See the
   /// [upsertLaborPunch] note.
@@ -346,8 +354,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      false;
+  }) async => false;
 
   // ─── watermark + sync log ─────────────────────────────────────────
 
@@ -361,13 +368,12 @@ class CloverPostgresSink extends OperatorScopedRepository
     required String locationId,
     required String cursorToken,
     required DateTime lastModifiedSeen,
-  }) =>
-      advanceWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: cursorToken,
-        lastModifiedSeen: lastModifiedSeen,
-      );
+  }) => advanceWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: cursorToken,
+    lastModifiedSeen: lastModifiedSeen,
+  );
 
   @override
   Future<void> advanceWatermark({
@@ -377,10 +383,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -434,8 +437,7 @@ class CloverPostgresSink extends OperatorScopedRepository
       );
       if (dmsRows.isNotEmpty) {
         final dmsRow = dmsRows.single;
-        final pendingCount =
-            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final pendingCount = (dmsRow['pending_inserts_count'] as int? ?? 0);
         final isDemo = dmsRow['is_demo'] as bool? ?? true;
         if (pendingCount >= 1 && isDemo) {
           await exec.execute(
@@ -472,10 +474,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -522,10 +521,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     if (!firstBackfillCommitted) return;
     if (backfillRecordsWritten < 1) return;
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       // Read-or-create the row with default `is_demo = true`. The
       // `INSERT ... ON CONFLICT DO NOTHING` is idempotent: if the row
@@ -578,15 +574,14 @@ class CloverPostgresSink extends OperatorScopedRepository
   /// repository-side teardown that the adapter cannot reach (the
   /// `vendor_credentials` ciphertext columns + the `connector_connection`
   /// row's status / disconnect_reason / webhook flag).
-  Future<({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})>
-      wipeCredentialsPreserveWatermark({
+  Future<
+    ({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})
+  >
+  wipeCredentialsPreserveWatermark({
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final credentialsWiped = await withTenant<bool>(ctx, (exec) async {
       final wiped = await exec.execute(
         'update public.vendor_credentials set '
@@ -656,10 +651,7 @@ class CloverPostgresSink extends OperatorScopedRepository
     if (explicitConnectionId != null && explicitConnectionId.isNotEmpty) {
       return explicitConnectionId;
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id '

@@ -85,6 +85,7 @@ import '../../../integrations/labor/push_operations_labor_adapter.dart'
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -124,22 +125,27 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Push Operations
   // no longer reads `locations.business_day_rollover_hour`. The cutoff
   // is resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── CanonicalSink: covers / reservations are unsupported ─────────
@@ -180,12 +186,11 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) =>
-      _upsert(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalFact: canonicalFact,
-      );
+  }) => _upsert(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalFact: canonicalFact,
+  );
 
   /// Unified [CanonicalSink] entry point. Consumed by the spine-bridge
   /// sync worker dispatcher when it routes a labor batch. Delegates to
@@ -195,12 +200,11 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) =>
-      _upsert(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalFact: canonicalPunch,
-      );
+  }) => _upsert(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalFact: canonicalPunch,
+  );
 
   /// Shared writer behind [upsertShift] and [upsertLaborPunch].
   ///
@@ -235,10 +239,12 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) {
+  }) async {
     final vendorEntityId = _requireString(canonicalFact, 'vendor_entity_id');
-    final vendorModifiedAt =
-        _requireUtcInstant(canonicalFact, 'vendor_modified_at');
+    final vendorModifiedAt = _requireUtcInstant(
+      canonicalFact,
+      'vendor_modified_at',
+    );
     final shiftStart = _requireUtcInstant(canonicalFact, 'shift_start');
     final shiftEnd = _readUtcInstant(canonicalFact, 'shift_end');
     final employeeSourceId = _requireString(canonicalFact, 'employee_id');
@@ -246,13 +252,14 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     final hoursWorked = _hoursWorkedSeconds(shiftStart, shiftEnd);
     final rawPayload = _readPayload(canonicalFact, 'raw_payload');
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    return withTenant<bool>(ctx, (exec) async {
-      final businessDate =
-          await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
+    final inserted = await withTenant<bool>(ctx, (exec) async {
+      final businessDate = await _resolveBusinessDate(
+        exec,
+        operatorId,
+        locationId,
+        shiftStart,
+      );
       final affected = await exec.execute(
         'insert into public.labor_punches ('
         'operator_id, location_id, '
@@ -299,6 +306,14 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
       );
       return affected > 0;
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: canonicalFact,
+      );
+    }
+    return inserted;
   }
 
   // ─── Watermark advance ────────────────────────────────────────────
@@ -325,10 +340,7 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -375,10 +387,7 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -433,10 +442,7 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
         backfillRecordsWritten < 1) {
       return Future<void>.value();
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       // INSERT default-live row when missing, then flip is_demo only
       // when the row is still demo. The WHERE clause on the UPDATE
@@ -474,15 +480,14 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
   /// `connector_sync_watermark` rows are intentionally preserved so
   /// reconnect resumes from the last successful cursor.
   @override
-  Future<({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})>
-      wipeCredentialsPreserveWatermark({
+  Future<
+    ({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})
+  >
+  wipeCredentialsPreserveWatermark({
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final credentialsWiped = await withTenant<bool>(ctx, (exec) async {
       final wiped = await exec.execute(
         'update public.vendor_credentials set '
@@ -549,10 +554,7 @@ class PushOperationsPostgresSink extends OperatorScopedRepository
     if (explicitConnectionId != null && explicitConnectionId.isNotEmpty) {
       return explicitConnectionId;
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id '

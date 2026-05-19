@@ -87,6 +87,7 @@ import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/per_tenant_location_config_resolver.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 
 import '../advisor_proxy/advisor_proxy.dart'
     show CloverAppCredentials, SquareAppCredentials;
@@ -107,7 +108,8 @@ import '../advisor_proxy/email_dispatch/notification_event_fanout.dart';
 import '../advisor_proxy/email_dispatch/notification_event_hooks.dart';
 import '../advisor_proxy/email_dispatch/postgres_notification_fanout_bindings.dart';
 import '../integration_sync_worker/backfill_dispatch.dart';
-import '../integration_sync_worker/dispatch.dart' show kSyncWorkerServicePrincipalId;
+import '../integration_sync_worker/dispatch.dart'
+    show kSyncWorkerServicePrincipalId;
 
 // Default clock — top-level so it survives in field initializer
 // expressions where `() => DateTime.now().toUtc()` would parse as
@@ -408,8 +410,8 @@ class WorkerRuntimeConfig {
     final alohaOrganizationId = optionalSecret(
       FirstConnectBackfillWorkerEnvNames.alohaNcrVoyixOrganizationId,
     );
-    final AlohaNcrVoyixOauthClientCredentials? alohaCreds = (alohaClientId !=
-                null &&
+    final AlohaNcrVoyixOauthClientCredentials? alohaCreds =
+        (alohaClientId != null &&
             alohaClientSecret != null &&
             alohaApplicationKey != null &&
             alohaOrganizationId != null)
@@ -430,7 +432,8 @@ class WorkerRuntimeConfig {
     final squareNotificationUrlHost = optionalSecret(
       FirstConnectBackfillWorkerEnvNames.squareNotificationUrlHost,
     );
-    final SquareAppCredentials? squareCreds = (squareClientId != null &&
+    final SquareAppCredentials? squareCreds =
+        (squareClientId != null &&
             squareClientSecret != null &&
             squareNotificationUrlHost != null)
         ? SquareAppCredentials(
@@ -446,12 +449,9 @@ class WorkerRuntimeConfig {
     final cloverAppId = optionalSecret(
       FirstConnectBackfillWorkerEnvNames.cloverAppId,
     );
-    final CloverAppCredentials? cloverCreds = (cloverAppToken != null &&
-            cloverAppId != null)
-        ? CloverAppCredentials(
-            appToken: cloverAppToken,
-            appId: cloverAppId,
-          )
+    final CloverAppCredentials? cloverCreds =
+        (cloverAppToken != null && cloverAppId != null)
+        ? CloverAppCredentials(appToken: cloverAppToken, appId: cloverAppId)
         : null;
 
     return WorkerRuntimeConfig(
@@ -510,34 +510,31 @@ class PostgresWorkerScopeReader implements WorkerScopeReader {
   Future<List<WorkerJobScope>> listClaimableScopes({
     required Duration claimStaleAfter,
   }) {
-    return _wrapper.runAsSystem<List<WorkerJobScope>>(
-      (exec) async {
-        final rows = await exec.query(
-          'select distinct operator_id::text as operator_id, '
-          'location_id::text as location_id '
-          'from public.connector_backfill_jobs '
-          "where mode = 'first_backfill' "
-          "and (status = 'pending' "
-          "  or (status = 'running' "
-          '    and (claimed_at is null '
-          "      or claimed_at < now() - (@stale_seconds * interval '1 second'))"
-          '  )'
-          ') '
-          'order by operator_id, location_id',
-          parameters: <String, Object?>{
-            'stale_seconds': claimStaleAfter.inSeconds,
-          },
-        );
-        return <WorkerJobScope>[
-          for (final row in rows)
-            WorkerJobScope(
-              operatorId: row['operator_id']! as String,
-              locationId: row['location_id']! as String,
-            ),
-        ];
-      },
-      reason: 'first_connect_backfill_worker.list_scopes',
-    );
+    return _wrapper.runAsSystem<List<WorkerJobScope>>((exec) async {
+      final rows = await exec.query(
+        'select distinct operator_id::text as operator_id, '
+        'location_id::text as location_id '
+        'from public.connector_backfill_jobs '
+        "where mode = 'first_backfill' "
+        "and (status = 'pending' "
+        "  or (status = 'running' "
+        '    and (claimed_at is null '
+        "      or claimed_at < now() - (@stale_seconds * interval '1 second'))"
+        '  )'
+        ') '
+        'order by operator_id, location_id',
+        parameters: <String, Object?>{
+          'stale_seconds': claimStaleAfter.inSeconds,
+        },
+      );
+      return <WorkerJobScope>[
+        for (final row in rows)
+          WorkerJobScope(
+            operatorId: row['operator_id']! as String,
+            locationId: row['location_id']! as String,
+          ),
+      ];
+    }, reason: 'first_connect_backfill_worker.list_scopes');
   }
 }
 
@@ -722,10 +719,9 @@ class RetryCappingBackfillJobStore implements BackfillJobStore {
         locationId: locationId,
         occurredAt: _clock(),
         actorKind: 'service',
-        actorPrincipalId:
-            actorUserId == null
-                ? 'sp:first_connect_backfill_worker'
-                : 'sp:$actorUserId',
+        actorPrincipalId: actorUserId == null
+            ? 'sp:first_connect_backfill_worker'
+            : 'sp:$actorUserId',
         targetKind: 'connector_backfill_job',
         targetId: jobId,
         action: deadLetterAuditAction,
@@ -759,10 +755,8 @@ class RetryCappingBackfillJobStore implements BackfillJobStore {
 /// surface, the failure points at the wrong layer rather than
 /// silently no-op'ing.
 class WorkerCanonicalSink implements CanonicalSink {
-  WorkerCanonicalSink({
-    required this.tenantWrapper,
-    DateTime Function()? clock,
-  }) : _clock = clock ?? _defaultUtcClock;
+  WorkerCanonicalSink({required this.tenantWrapper, DateTime Function()? clock})
+    : _clock = clock ?? _defaultUtcClock;
 
   final TenantTransactionWrapper tenantWrapper;
   final DateTime Function() _clock;
@@ -876,8 +870,9 @@ class WorkerCanonicalSink implements CanonicalSink {
           'event_kind': eventKind,
           'records_count': recordsCount,
           'error_message': errorMessage,
-          'payload_preview':
-              payloadPreview == null ? null : jsonEncode(payloadPreview),
+          'payload_preview': payloadPreview == null
+              ? null
+              : jsonEncode(payloadPreview),
           'occurred_at': _clock(),
         },
       );
@@ -995,6 +990,7 @@ Future<WorkerTickResult> runWorkerTick({
   required Duration claimStaleAfter,
   IntegrationSyncWorkerBackfillDispatch dispatcher =
       const IntegrationSyncWorkerBackfillDispatch(),
+  CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
   bool Function()? shouldStop,
 }) async {
   final scopes = await scopeReader.listClaimableScopes(
@@ -1030,6 +1026,7 @@ Future<WorkerTickResult> runWorkerTick({
       jobStore: jobStore,
       adapterFactory: adapterFactory,
       canonicalSink: canonicalSink,
+      projectionCommitDrainer: projectionCommitDrainer,
       maxJobs: maxJobsPerTick,
       claimStaleAfter: claimStaleAfter,
     );
@@ -1063,9 +1060,11 @@ class BackfillWorkerLoop {
     required this.config,
     IntegrationSyncWorkerBackfillDispatch dispatcher =
         const IntegrationSyncWorkerBackfillDispatch(),
+    CanonicalFactProjectionCommitDrainer? projectionCommitDrainer,
     IOSink? out,
     IOSink? err,
   }) : _dispatcher = dispatcher,
+       _projectionCommitDrainer = projectionCommitDrainer,
        _out = out ?? stdout,
        _err = err ?? stderr;
 
@@ -1076,6 +1075,7 @@ class BackfillWorkerLoop {
   final String workerId;
   final WorkerRuntimeConfig config;
   final IntegrationSyncWorkerBackfillDispatch _dispatcher;
+  final CanonicalFactProjectionCommitDrainer? _projectionCommitDrainer;
   // ignore: unused_field, close_sinks
   final IOSink _out;
   final IOSink _err;
@@ -1105,6 +1105,7 @@ class BackfillWorkerLoop {
             maxJobsPerTick: config.maxJobsPerTick,
             claimStaleAfter: config.claimStaleAfter,
             dispatcher: _dispatcher,
+            projectionCommitDrainer: _projectionCommitDrainer,
             shouldStop: () => _stopRequested,
           );
           _out.writeln(
@@ -1115,9 +1116,7 @@ class BackfillWorkerLoop {
           // dispatcher; this top-level catch handles only catastrophic
           // failures of the scope-enumeration path. Don't crash the
           // loop — log and sleep before the next tick.
-          _err.writeln(
-            'first_connect_backfill_worker tick error: $error',
-          );
+          _err.writeln('first_connect_backfill_worker tick error: $error');
           _err.writeln(stack.toString());
         }
         if (_stopRequested) break;
@@ -1140,8 +1139,7 @@ class BackfillWorkerLoop {
   }
 
   /// Visible for tests: future that completes after `run()` exits.
-  Future<void> get stopped =>
-      _stoppedCompleter?.future ?? Future<void>.value();
+  Future<void> get stopped => _stoppedCompleter?.future ?? Future<void>.value();
 }
 
 // ─── Entry point ────────────────────────────────────────────────────
@@ -1166,6 +1164,7 @@ class WorkerRuntime {
     required this.canonicalSink,
     required this.adapterFactory,
     required this.config,
+    this.projectionCommitDrainer,
     this.notificationEventFanout,
   });
 
@@ -1179,6 +1178,7 @@ class WorkerRuntime {
   /// factory through `runCli(adapterFactoryOverride:)`.
   final WorkerBackfillAdapterFactory adapterFactory;
   final WorkerRuntimeConfig config;
+  final CanonicalFactProjectionCommitDrainer? projectionCommitDrainer;
 
   /// Wave 2 EN-3-FU - production [NotificationEventFanout] wired
   /// against the four Postgres seam adapters in
@@ -1243,6 +1243,11 @@ WorkerRuntime buildWorkerRuntime({
     squareAppCredentials: config.squareAppCredentials,
     cloverAppCredentials: config.cloverAppCredentials,
   );
+  final projectionCommitDrainer = CanonicalFactProjectionCommitDrainer(
+    tapsByVendor: Map<String, CanonicalFactProjectionTap>.unmodifiable(
+      factories.projectionTapsByVendor,
+    ),
+  );
   final adapterFactory = BinderBackedAdapterFactory(factories: factories);
 
   // Wave 2 EN-3-FU - NotificationEventFanout production binding.
@@ -1263,6 +1268,7 @@ WorkerRuntime buildWorkerRuntime({
     canonicalSink: canonicalSink,
     adapterFactory: adapterFactory.call,
     config: config,
+    projectionCommitDrainer: projectionCommitDrainer,
     notificationEventFanout: notificationEventFanout,
   );
 }
@@ -1293,7 +1299,10 @@ class BinderBackedAdapterFactory {
       case IntegrationCategory.pos:
         final factory = factories.posAdapterFactories[job.vendorId];
         if (factory != null) {
-          return factory(operatorId: job.operatorId, locationId: job.locationId);
+          return factory(
+            operatorId: job.operatorId,
+            locationId: job.locationId,
+          );
         }
         if (disabledReason != null) {
           throw BackfillVendorDisabledException(
@@ -1309,7 +1318,10 @@ class BinderBackedAdapterFactory {
       case IntegrationCategory.labor:
         final factory = factories.laborAdapterFactories[job.vendorId];
         if (factory != null) {
-          return factory(operatorId: job.operatorId, locationId: job.locationId);
+          return factory(
+            operatorId: job.operatorId,
+            locationId: job.locationId,
+          );
         }
         if (disabledReason != null) {
           throw BackfillVendorDisabledException(
@@ -1325,7 +1337,10 @@ class BinderBackedAdapterFactory {
       case IntegrationCategory.reservation:
         final factory = factories.reservationAdapterFactories[job.vendorId];
         if (factory != null) {
-          return factory(operatorId: job.operatorId, locationId: job.locationId);
+          return factory(
+            operatorId: job.operatorId,
+            locationId: job.locationId,
+          );
         }
         if (disabledReason != null) {
           throw BackfillVendorDisabledException(
@@ -1450,6 +1465,7 @@ Future<int> runCli(
 
   WorkerBackfillAdapterFactory? productionAdapterFactory;
   NotificationEventFanout? productionNotificationEventFanout;
+  CanonicalFactProjectionCommitDrainer? productionProjectionCommitDrainer;
 
   if (hasOverrides) {
     // Tests path: skip env config and pool wiring entirely.
@@ -1493,13 +1509,15 @@ Future<int> runCli(
     canonicalSink = runtime.canonicalSink;
     productionAdapterFactory = runtime.adapterFactory;
     productionNotificationEventFanout = runtime.notificationEventFanout;
+    productionProjectionCommitDrainer = runtime.projectionCommitDrainer;
     stdoutSink.writeln(
       'first_connect_backfill_worker starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
     );
   }
 
-  final adapterFactory = adapterFactoryOverride ??
+  final adapterFactory =
+      adapterFactoryOverride ??
       productionAdapterFactory ??
       kScaffoldRejectingAdapterFactory;
   final workerId =
@@ -1516,11 +1534,11 @@ Future<int> runCli(
   // surfaces a structured warning line in Cloud Logging.
   final BackfillTerminalHook productionTerminalHook =
       productionNotificationEventFanout != null
-          ? _buildFanoutBackedBackfillTerminalHook(
-              productionNotificationEventFanout,
-            )
-          // ignore: deprecated_member_use_from_same_package
-          : buildBackfillTerminalTelemetryHook();
+      ? _buildFanoutBackedBackfillTerminalHook(
+          productionNotificationEventFanout,
+        )
+      // ignore: deprecated_member_use_from_same_package
+      : buildBackfillTerminalTelemetryHook();
   final productionDispatcher = IntegrationSyncWorkerBackfillDispatch(
     onTerminalOutcome: productionTerminalHook,
   );
@@ -1537,6 +1555,7 @@ Future<int> runCli(
           maxJobsPerTick: config.maxJobsPerTick,
           claimStaleAfter: config.claimStaleAfter,
           dispatcher: dispatcherOverride ?? productionDispatcher,
+          projectionCommitDrainer: productionProjectionCommitDrainer,
         );
         stdoutSink.writeln(
           'first_connect_backfill_worker runOnce: '
@@ -1558,6 +1577,7 @@ Future<int> runCli(
         workerId: workerId,
         config: config,
         dispatcher: dispatcherOverride ?? productionDispatcher,
+        projectionCommitDrainer: productionProjectionCommitDrainer,
         out: stdoutSink,
         err: stderrSink,
       );

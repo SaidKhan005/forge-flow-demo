@@ -73,6 +73,7 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -111,22 +112,27 @@ class HumanityPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Humanity no
   // longer reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── HumanityGateway: connect lifecycle ───────────────────────────
@@ -428,22 +434,24 @@ class HumanityPostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalPunch,
   }) {
     final vendorEntityId = _requireString(canonicalPunch, 'vendor_entity_id');
-    final vendorModifiedAt =
-        _requireUtcInstant(canonicalPunch, 'vendor_modified_at');
+    final vendorModifiedAt = _requireUtcInstant(
+      canonicalPunch,
+      'vendor_modified_at',
+    );
     final shiftStart = _requireUtcInstant(canonicalPunch, 'shift_start');
     final shiftEnd = _readUtcInstant(canonicalPunch, 'shift_end');
-    final employeeSourceId =
-        _requireString(canonicalPunch, 'employee_source_id');
+    final employeeSourceId = _requireString(
+      canonicalPunch,
+      'employee_source_id',
+    );
     final roleName = _requireString(canonicalPunch, 'role_name');
-    final hoursWorked = _readNumber(canonicalPunch, 'hours_worked') ??
+    final hoursWorked =
+        _readNumber(canonicalPunch, 'hours_worked') ??
         _deriveHoursWorked(shiftStart, shiftEnd);
     final payRate = _readNumber(canonicalPunch, 'pay_rate');
     final rawPayload = _readPayload(canonicalPunch, 'raw_payload');
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<bool>(ctx, (exec) async {
       return _upsertLaborPunch(
         exec: exec,
@@ -603,8 +611,12 @@ class HumanityPostgresSink extends OperatorScopedRepository
     required num? payRate,
     required Map<String, Object?> rawPayload,
   }) async {
-    final businessDate =
-        await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
+    final businessDate = await _resolveBusinessDate(
+      exec,
+      operatorId,
+      locationId,
+      shiftStart,
+    );
     final affected = await exec.execute(
       'insert into public.labor_punches ('
       'operator_id, location_id, '
@@ -651,7 +663,25 @@ class HumanityPostgresSink extends OperatorScopedRepository
         'business_date': _formatDate(businessDate),
       },
     );
-    return affected > 0;
+    final inserted = affected > 0;
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: <String, Object?>{
+          'vendor_entity_id': vendorEntityId,
+          'vendor_modified_at': vendorModifiedAt,
+          'shift_start': shiftStart,
+          'shift_end': shiftEnd,
+          'employee_id': employeeSourceId,
+          'role_name': roleName,
+          'hours_worked': hoursWorked,
+          'pay_rate': payRate,
+          'raw_payload': rawPayload,
+        },
+      );
+    }
+    return inserted;
   }
 
   Future<void> _writeWatermark({
@@ -698,9 +728,7 @@ class HumanityPostgresSink extends OperatorScopedRepository
       'and location_id = public.app_current_location() '
       'and vendor_id = @vendor_id '
       'limit 1',
-      parameters: <String, Object?>{
-        'vendor_id': kHumanityVendorId,
-      },
+      parameters: <String, Object?>{'vendor_id': kHumanityVendorId},
     );
     if (rows.isEmpty) return null;
     final value = rows.single['connection_id'];

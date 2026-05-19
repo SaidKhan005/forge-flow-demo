@@ -278,6 +278,12 @@ Future<void> bindPhase8IntegrationsForProduction(
   final signatureVerifiers = factories.signatureVerifiers;
   final disabledVendors = factories.disabledVendors;
   final projectingSinks = factories.projectingSinksByVendor;
+  final projectionTaps = factories.projectionTapsByVendor;
+  final projectionCommitDrainer = CanonicalFactProjectionCommitDrainer(
+    tapsByVendor: Map<String, CanonicalFactProjectionTap>.unmodifiable(
+      projectionTaps,
+    ),
+  );
 
   // Step 5 — InboundWebhookHandler.
   //
@@ -316,6 +322,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     signatureVerifiers: signatureVerifiers,
     bindingExtractor: WebhookBindingExtractor(),
     signingSecretCache: signingSecretCache,
+    projectionCommitDrainer: projectionCommitDrainer,
   );
 
   // Step 6 — Adapt the tool-side admin actor types into the lib-side
@@ -370,6 +377,7 @@ Future<void> bindPhase8IntegrationsForProduction(
       'projector_wiring_active': projectorWiring.isActive,
       'projector_wiring_source': projectorWiring.source,
       'projecting_sinks_wired': projectingSinks.keys.toList()..sort(),
+      'projection_taps_wired': projectionTaps.keys.toList()..sort(),
     },
   );
 }

@@ -77,6 +77,7 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -123,22 +124,27 @@ class AdpPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): ADP no longer
   // reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── CanonicalSink: covers / reservations are unsupported ─────────
@@ -212,12 +218,9 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    return withTenant<bool>(ctx, (exec) async {
+  }) async {
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
+    final inserted = await withTenant<bool>(ctx, (exec) async {
       return _upsertLaborPunchInternal(
         exec: exec,
         operatorId: operatorId,
@@ -225,6 +228,14 @@ class AdpPostgresSink extends OperatorScopedRepository
         canonicalPunch: canonicalPunch,
       );
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    }
+    return inserted;
   }
 
   // ─── AdpGateway: time-punch fact write ────────────────────────────
@@ -233,28 +244,37 @@ class AdpPostgresSink extends OperatorScopedRepository
   /// gateway shape. Translates an [AdpCanonicalTimePunchFact] into
   /// the canonical-fact dict and shares the same private writer.
   @override
-  Future<bool> writeTimePunchFact(AdpCanonicalTimePunchFact fact) {
+  Future<bool> writeTimePunchFact(AdpCanonicalTimePunchFact fact) async {
+    final canonicalPunch = <String, Object?>{
+      'vendor_entity_id': fact.vendorEntityId,
+      'vendor_modified_at': fact.vendorModifiedAt,
+      'shift_start': fact.shiftStart,
+      'shift_end': fact.shiftEnd,
+      'employee_source_id': fact.employeeId,
+      'role_name': fact.roleName,
+      'hours_worked': _deriveSeconds(fact.shiftStart, fact.shiftEnd),
+      'raw_payload': fact.rawPayload,
+    };
     final ctx = TenantContext(
       operatorId: fact.operatorId,
       locationId: fact.locationId,
     );
-    return withTenant<bool>(ctx, (exec) async {
+    final inserted = await withTenant<bool>(ctx, (exec) async {
       return _upsertLaborPunchInternal(
         exec: exec,
         operatorId: fact.operatorId,
         locationId: fact.locationId,
-        canonicalPunch: <String, Object?>{
-          'vendor_entity_id': fact.vendorEntityId,
-          'vendor_modified_at': fact.vendorModifiedAt,
-          'shift_start': fact.shiftStart,
-          'shift_end': fact.shiftEnd,
-          'employee_source_id': fact.employeeId,
-          'role_name': fact.roleName,
-          'hours_worked': _deriveSeconds(fact.shiftStart, fact.shiftEnd),
-          'raw_payload': fact.rawPayload,
-        },
+        canonicalPunch: canonicalPunch,
       );
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: fact.operatorId,
+        locationId: fact.locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    }
+    return inserted;
   }
 
   // ─── Shared private writer ────────────────────────────────────────
@@ -266,19 +286,28 @@ class AdpPostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalPunch,
   }) async {
     final vendorEntityId = _requireString(canonicalPunch, 'vendor_entity_id');
-    final vendorModifiedAt =
-        _requireUtcInstant(canonicalPunch, 'vendor_modified_at');
+    final vendorModifiedAt = _requireUtcInstant(
+      canonicalPunch,
+      'vendor_modified_at',
+    );
     final shiftStart = _requireUtcInstant(canonicalPunch, 'shift_start');
     final shiftEnd = _readUtcInstant(canonicalPunch, 'shift_end');
-    final employeeSourceId =
-        _requireString(canonicalPunch, 'employee_source_id');
+    final employeeSourceId = _requireString(
+      canonicalPunch,
+      'employee_source_id',
+    );
     final roleName = _requireString(canonicalPunch, 'role_name');
-    final hoursWorked = _readNumber(canonicalPunch, 'hours_worked') ??
+    final hoursWorked =
+        _readNumber(canonicalPunch, 'hours_worked') ??
         _deriveSeconds(shiftStart, shiftEnd);
     final rawPayload = _readPayload(canonicalPunch, 'raw_payload');
 
-    final businessDate =
-        await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
+    final businessDate = await _resolveBusinessDate(
+      exec,
+      operatorId,
+      locationId,
+      shiftStart,
+    );
     final affected = await exec.execute(
       // V1 wage class = hoursOnly (per spine-contract 2026-05-05
       // correction #7): the column list intentionally omits the
@@ -348,10 +377,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String cursorToken,
     required DateTime lastModifiedSeen,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       await _writeWatermarkInternal(
         exec: exec,
@@ -377,10 +403,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String locationId,
     required AdpWatermarkRow row,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       final connectionId = await _resolveConnectionId(exec);
       if (connectionId == null) {
@@ -407,10 +430,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<AdpWatermarkRow?>(ctx, (exec) async {
       final rows = await exec.query(
         'select cursor_token, last_modified_seen '
@@ -420,9 +440,7 @@ class AdpPostgresSink extends OperatorScopedRepository
         'and resource = @resource '
         'order by updated_at desc '
         'limit 1',
-        parameters: <String, Object?>{
-          'resource': adpWatermarkResource,
-        },
+        parameters: <String, Object?>{'resource': adpWatermarkResource},
       );
       if (rows.isEmpty) return null;
       final row = rows.single;
@@ -483,10 +501,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     int? recordsCount,
     Map<String, Object?>? payloadPreview,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       await exec.execute(
         'insert into public.connector_sync_log ('
@@ -536,10 +551,7 @@ class AdpPostgresSink extends OperatorScopedRepository
         backfillRecordsWritten < 1) {
       return Future<void>.value();
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       await exec.execute(
         'insert into public.demo_mode_state ('
@@ -568,9 +580,7 @@ class AdpPostgresSink extends OperatorScopedRepository
   // ─── AdpGateway: connection / credential lookup + wipe ────────────
 
   @override
-  Future<AdpConnectionRow> upsertConnection({
-    required AdpConnectionRow row,
-  }) {
+  Future<AdpConnectionRow> upsertConnection({required AdpConnectionRow row}) {
     final ctx = TenantContext(
       operatorId: row.operatorId,
       locationId: row.locationId,
@@ -617,10 +627,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       // Wipe the credential ciphertext only; the watermark and
       // canonical-fact rows are intentionally preserved so reconnect
@@ -631,9 +638,7 @@ class AdpPostgresSink extends OperatorScopedRepository
         'and (location_id = public.app_current_location() '
         '  or location_id is null) '
         'and vendor_id = @vendor_id',
-        parameters: <String, Object?>{
-          'vendor_id': kAdpVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kAdpVendorId},
       );
     });
   }
@@ -643,10 +648,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select access_token_ciphertext '
@@ -658,9 +660,7 @@ class AdpPostgresSink extends OperatorScopedRepository
         'and is_active = true '
         'order by updated_at desc '
         'limit 1',
-        parameters: <String, Object?>{
-          'vendor_id': kAdpVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kAdpVendorId},
       );
       if (rows.isEmpty) return null;
       final value = rows.single['access_token_ciphertext'];
@@ -674,10 +674,7 @@ class AdpPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String?>(ctx, (exec) async {
       final rows = await exec.query(
         'select module from public.connector_connection '
@@ -685,9 +682,7 @@ class AdpPostgresSink extends OperatorScopedRepository
         'and location_id = public.app_current_location() '
         'and vendor_id = @vendor_id '
         'limit 1',
-        parameters: <String, Object?>{
-          'vendor_id': kAdpVendorId,
-        },
+        parameters: <String, Object?>{'vendor_id': kAdpVendorId},
       );
       if (rows.isEmpty) return null;
       final value = rows.single['module'];
@@ -706,9 +701,7 @@ class AdpPostgresSink extends OperatorScopedRepository
       'and vendor_id = @vendor_id '
       'order by updated_at desc '
       'limit 1',
-      parameters: <String, Object?>{
-        'vendor_id': kAdpVendorId,
-      },
+      parameters: <String, Object?>{'vendor_id': kAdpVendorId},
     );
     if (rows.isEmpty) return null;
     final value = rows.single['connection_id'];
