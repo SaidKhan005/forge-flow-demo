@@ -386,7 +386,7 @@ Reference count outside the frameworks/ directory itself (filename grep, MD file
 
 | Framework | Total refs (`-c`) | Files referencing | Adoption pattern |
 |---|---|---|---|
-| `FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` | 7 refs / 6 files | `CLAUDE.md`, `PROJECT_TRACKER.md`, `docs/README.md`, `docs/CODEX_PROMPT_GENERATION_STANDARD.md`, `docs/_execution/admin_hierarchy_ux_cleanup/README.md`, plus its own README. | Most adopted. Quoted from CLAUDE.md (`:39`) as the canonical pre-feature check. |
+| `FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` | 7 refs / 6 files | `CLAUDE.md`, `PROJECT_TRACKER.md`, `docs/README.md`, `docs/CODEX_PROMPT_GENERATION_STANDARD.md`, `docs/archive/_execution/admin_hierarchy_ux_cleanup/README.md`, plus its own README. | Most adopted. Quoted from CLAUDE.md (`:39`) as the canonical pre-feature check. |
 | `UX_ADJUSTMENT_FRAMEWORK.md` | 16 refs / 14 files | PROJECT_TRACKER, README, CODEX_PROMPT_GENERATION_STANDARD, 3 walkthroughs (`11A.12/13/14`), 4 execution docs, parity contract. | Well-adopted in execution docs + walkthroughs. |
 | `PERFORMANCE_FRAMEWORK.md` | 15 refs / 11 files | PROJECT_TRACKER, README, CODEX_PROMPT_GENERATION_STANDARD (`x3`), 2 execution docs, plus 2 references from inside other frameworks (E2E + deploy). | Well-adopted. |
 | `MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` | 13 refs / 11 files | PROJECT_TRACKER (`x2`), README, 4 execution docs, plus 2 self-refs. | Well-adopted in 2026-05 execution docs. |
