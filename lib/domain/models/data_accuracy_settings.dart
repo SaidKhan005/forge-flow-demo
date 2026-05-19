@@ -132,6 +132,64 @@ extension DataAccuracyWalkInHandlingModeWire on DataAccuracyWalkInHandlingMode {
 /// pre-de-hardcode 'vendor' default did.
 const CoversSource kDefaultCoversSource = CoversSource.vendor;
 
+class DataAccuracySettingSource {
+  const DataAccuracySettingSource({
+    required this.scopeType,
+    required this.sourceKind,
+    this.scopeId,
+    this.settingId,
+    this.overrideId,
+  });
+
+  final String scopeType;
+  final String sourceKind;
+  final String? scopeId;
+  final String? settingId;
+  final String? overrideId;
+
+  String get label {
+    switch (sourceKind) {
+      case 'default':
+        return 'Default';
+      case 'service_period_setting':
+      case 'base_setting':
+        return 'Location setting';
+    }
+    switch (scopeType) {
+      case 'business':
+        return 'Business';
+      case 'org_unit':
+        return 'Org unit';
+      case 'location':
+        return 'Location';
+      case 'default':
+        return 'Default';
+      default:
+        return 'Configured setting';
+    }
+  }
+
+  static DataAccuracySettingSource? fromMap(Object? raw) {
+    if (raw is! Map) return null;
+    final scopeType = _string(raw['scope_type']);
+    final sourceKind = _string(raw['source_kind']);
+    if (scopeType == null || sourceKind == null) return null;
+    return DataAccuracySettingSource(
+      scopeType: scopeType,
+      sourceKind: sourceKind,
+      scopeId: _string(raw['scope_id']),
+      settingId: _string(raw['setting_id']),
+      overrideId: _string(raw['override_id']),
+    );
+  }
+
+  static String? _string(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+}
+
 class DataAccuracySettings {
   DataAccuracySettings({
     required this.settingId,
@@ -142,6 +200,10 @@ class DataAccuracySettings {
     required this.wageSource,
     required this.createdAt,
     required this.updatedAt,
+    this.coversSourcePerServicePeriodSources =
+        const <String, DataAccuracySettingSource>{},
+    this.wageSourceSource,
+    this.walkInHandlingModeSource,
     this.walkInHandlingMode = DataAccuracyWalkInHandlingMode.reservationsOnly,
     this.walkInManualEntries = const <String, int>{},
     this.updatedBy,
@@ -162,6 +224,12 @@ class DataAccuracySettings {
   /// [kDefaultCoversSource] via [coversSourceFor].
   final Map<String, CoversSource> coversSourcePerServicePeriod;
 
+  /// Server-emitted winning source for each configured covers source.
+  /// Missing keys mean older proxy responses or no configured source
+  /// metadata; callers must not guess a label in that case.
+  final Map<String, DataAccuracySettingSource>
+  coversSourcePerServicePeriodSources;
+
   /// Sparse map keyed by ISO `YYYY-MM-DD` business_date string ->
   /// `{service_period_id: covers_int}`. Only populated dates need
   /// entries; missing date + manual setting = aggregator returns null
@@ -169,10 +237,12 @@ class DataAccuracySettings {
   final Map<String, Map<String, int>> coversManualEntries;
 
   final WageSource wageSource;
+  final DataAccuracySettingSource? wageSourceSource;
 
   /// How server-side reservation demand should treat operator-entered
   /// walk-in counts when POS covers are unavailable.
   final DataAccuracyWalkInHandlingMode walkInHandlingMode;
+  final DataAccuracySettingSource? walkInHandlingModeSource;
 
   /// Sparse map keyed by ISO `YYYY-MM-DD` business_date string ->
   /// walk-in count for that day. Used when [walkInHandlingMode] is
@@ -191,6 +261,10 @@ class DataAccuracySettings {
   CoversSource coversSourceFor(String servicePeriodId) {
     return coversSourcePerServicePeriod[servicePeriodId] ??
         kDefaultCoversSource;
+  }
+
+  DataAccuracySettingSource? coversSourceSourceFor(String servicePeriodId) {
+    return coversSourcePerServicePeriodSources[servicePeriodId];
   }
 
   /// Resolve the manual covers entry for a (business_date,
@@ -247,6 +321,9 @@ class DataAccuracySettings {
     final perPeriod = _parseCoversSourcePerServicePeriod(
       row['covers_source_per_service_period'],
     );
+    final perPeriodSources = _parseSourcePerServicePeriod(
+      row['covers_source_per_service_period_source'],
+    );
 
     final manualEntries = _parseManualEntries(manualEntriesRaw);
     final walkInMode = walkInModeRaw is String
@@ -260,9 +337,16 @@ class DataAccuracySettings {
       operatorId: operatorId,
       locationId: locationId,
       coversSourcePerServicePeriod: perPeriod,
+      coversSourcePerServicePeriodSources: perPeriodSources,
       coversManualEntries: manualEntries,
       wageSource: WageSourceWire.fromWire(wageSourceRaw),
+      wageSourceSource: DataAccuracySettingSource.fromMap(
+        row['wage_source_source'],
+      ),
       walkInHandlingMode: walkInMode,
+      walkInHandlingModeSource: DataAccuracySettingSource.fromMap(
+        row['walk_in_handling_mode_source'],
+      ),
       walkInManualEntries: walkInManualEntries,
       createdAt: createdAt,
       updatedAt: updatedAt,
@@ -290,6 +374,20 @@ class DataAccuracySettings {
         // operator-facing 3-way enum has no slot for; skip it so the
         // period falls back to the vendor default rather than crash.
       }
+    });
+    return out;
+  }
+
+  static Map<String, DataAccuracySettingSource> _parseSourcePerServicePeriod(
+    Object? raw,
+  ) {
+    final out = <String, DataAccuracySettingSource>{};
+    if (raw is! Map) return out;
+    raw.forEach((key, value) {
+      if (key is! String || key.isEmpty) return;
+      final source = DataAccuracySettingSource.fromMap(value);
+      if (source == null) return;
+      out[key] = source;
     });
     return out;
   }

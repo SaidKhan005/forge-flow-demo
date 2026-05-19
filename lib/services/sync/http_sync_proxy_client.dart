@@ -1012,9 +1012,16 @@ class HttpSyncProxyClient
       operatorId: _requiredString(json, 'operator_id'),
       locationId: _requiredString(json, 'location_id'),
       coversManualEntries: _readManualEntries(json['covers_manual_entries']),
+      coversSourcePerServicePeriodSources: _readNestedMap(
+        json['covers_source_per_service_period_source'],
+      ),
       wageSource: _readString(json['wage_source']) ?? 'vendor',
+      wageSourceSource: _readMap(json['wage_source_source']),
       walkInHandlingMode:
           _readString(json['walk_in_handling_mode']) ?? 'reservations_only',
+      walkInHandlingModeSource: _readMap(
+        json['walk_in_handling_mode_source'],
+      ),
       walkInManualEntries: _readIntMap(json['walk_in_manual_entries']),
       updatedAt: _readDateTime(json['updated_at']) ?? DateTime.now().toUtc(),
     );
@@ -1167,6 +1174,18 @@ class HttpSyncProxyClient
     if (value == null) return const <String, int>{};
     final json = _stringKeyMap(value);
     return json.map((key, val) => MapEntry(key, _readInt(val) ?? 0));
+  }
+
+  static Map<String, Map<String, Object?>> _readNestedMap(Object? value) {
+    final raw = _readMap(value);
+    if (raw == null) return const <String, Map<String, Object?>>{};
+    final out = <String, Map<String, Object?>>{};
+    raw.forEach((key, nested) {
+      final map = _readMap(nested);
+      if (map == null) return;
+      out[key] = map;
+    });
+    return out;
   }
 
   static IntegrationCategory _integrationCategoryFromWire(String value) {

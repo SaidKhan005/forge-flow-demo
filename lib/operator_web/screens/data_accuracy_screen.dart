@@ -859,6 +859,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             value: _wageSource,
             onChanged: _handleWageSourceChanged,
             bundle: _bundle,
+            source: settings.wageSourceSource,
             vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
             vendorApplicabilityLoading: _wageApplicabilityLoading,
             vendorApplicabilityError: _wageApplicabilityError,
