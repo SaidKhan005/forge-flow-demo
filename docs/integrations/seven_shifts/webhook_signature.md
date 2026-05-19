@@ -154,4 +154,4 @@ behavior depends on the operator's plan tier:
 The fallback is logged via the existing `connector_sync_log`
 machinery — no new rotation surface, no new alert path. Verified by
 the slice's plan-tier fallback test (Test 9) and walked through in
-`docs/archive/_walkthroughs/8.S.7S.md`.
+`docs/_walkthroughs/8.S.7S.md`.
