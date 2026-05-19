@@ -22,6 +22,7 @@ import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/models/shift_fact.dart';
 import 'package:forge_and_flow/domain/models/target_snapshot.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
+import 'package:forge_and_flow/services/integration/canonical_fact_projection_retry.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_to_closed_shift_input.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
@@ -268,6 +269,42 @@ void main() {
       },
     );
 
+    test('projector failure records durable retry input', () async {
+      final underlying = _RecordingCanonicalSink();
+      final projector = _RecordingProjector(throwOnNextProject: true);
+      final retryRecorder = _RecordingProjectionRetryRecorder();
+      final wrapper = _wrapper(
+        underlying: underlying,
+        projector: projector,
+        retryRecorder: retryRecorder,
+      );
+
+      await wrapper.upsertCoverFact(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        canonicalFact: _coverFact(connectionId: _connectionA),
+      );
+      await expectLater(
+        wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'backfill_success',
+        ),
+        completes,
+      );
+
+      expect(retryRecorder.records, hasLength(1));
+      final record = retryRecorder.records.single;
+      expect(record.operatorId, _operatorA);
+      expect(record.locationId, _locationA);
+      expect(record.connectionId, _connectionA);
+      expect(record.changedPeriods, hasLength(1));
+      expect(record.openCurrentFactMaps, isEmpty);
+      expect(record.errorMessage, contains('projector blew up'));
+      expect(record.toInput().changedPeriods.single.servicePeriodKey, 'dinner');
+    });
+
     test(
       'per-tenant buffers do not cross operator/location/connection',
       () async {
@@ -373,14 +410,14 @@ void main() {
           operatorId: _operatorA,
           locationId: _locationA,
           connectionId: _connectionA,
-          eventKind: 'poll_error',
-          errorMessage: 'transient timeout',
+          eventKind: 'tier_assignment_lookup_failed',
+          errorMessage: 'tier lookup failed',
         );
 
         expect(
           projector.invocations,
           isEmpty,
-          reason: 'poll_error is not a commit signal',
+          reason: 'tier_assignment_lookup_failed is not a commit signal',
         );
 
         // Subsequent commit signal still flushes the buffered fact.
@@ -501,6 +538,7 @@ ProjectingCanonicalSink _wrapper({
   required CanonicalSink underlying,
   required _RecordingProjector projector,
   CanonicalFactPeriodResolver? periodResolver,
+  CanonicalFactProjectionRetryRecorder? retryRecorder,
 }) {
   return ProjectingCanonicalSink(
     underlying: underlying,
@@ -509,6 +547,7 @@ ProjectingCanonicalSink _wrapper({
     vendorId: 'toast',
     periodResolver: periodResolver ?? _stubResolver,
     restaurantIdResolver: _stubRestaurantResolver,
+    retryRecorder: retryRecorder,
   );
 }
 
@@ -757,6 +796,18 @@ class _RecordingProjector implements CanonicalFactPostCommitProjector {
       ],
       openPeriodKeys: const <String>[],
     );
+  }
+}
+
+class _RecordingProjectionRetryRecorder
+    implements CanonicalFactProjectionRetryRecorder {
+  final records = <CanonicalFactProjectionRetryRecord>[];
+
+  @override
+  Future<void> recordProjectionFailure(
+    CanonicalFactProjectionRetryRecord record,
+  ) async {
+    records.add(record);
   }
 }
 

@@ -34,6 +34,7 @@ import 'dart:async';
 
 import '../observability/log.dart';
 import 'canonical_fact_post_commit_projector.dart';
+import 'canonical_fact_projection_retry.dart';
 import 'canonical_sink.dart';
 import 'integration_adapter_common.dart';
 
@@ -148,12 +149,14 @@ class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
     required String vendorId,
     required CanonicalFactPeriodResolver periodResolver,
     required CanonicalRestaurantIdResolver restaurantIdResolver,
+    CanonicalFactProjectionRetryRecorder? retryRecorder,
     String? userIdOverride,
   }) : _projector = projector,
        _category = category,
        _vendorId = vendorId,
        _periodResolver = periodResolver,
        _restaurantIdResolver = restaurantIdResolver,
+       _retryRecorder = retryRecorder,
        _userIdOverride = userIdOverride;
 
   final CanonicalFactPostCommitProjector _projector;
@@ -161,6 +164,7 @@ class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
   final String _vendorId;
   final CanonicalFactPeriodResolver _periodResolver;
   final CanonicalRestaurantIdResolver _restaurantIdResolver;
+  final CanonicalFactProjectionRetryRecorder? _retryRecorder;
   final String? _userIdOverride;
 
   final Map<_BufferKey, _PendingFactBuffer> _buffers =
@@ -239,6 +243,7 @@ class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
     final facts = <Map<String, Object?>>[
       for (final buffer in buffers) ...buffer.facts,
     ];
+    CanonicalFactPostCommitInput? input;
     try {
       final periods = <CanonicalFactCommittedPeriod>[];
       final openCurrentFacts = <Map<String, Object?>>[];
@@ -265,19 +270,18 @@ class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
         operatorId: operatorId,
         locationId: locationId,
       );
-      await _projector.project(
-        CanonicalFactPostCommitInput(
-          operatorId: operatorId,
-          locationId: locationId,
-          restaurantId: restaurantId,
-          integrationCategory: _category,
-          vendorId: _vendorId,
-          connectionId: connectionId,
-          changedPeriods: periods,
-          openCurrentFactMaps: openCurrentFacts,
-          userId: _userIdOverride,
-        ),
+      input = CanonicalFactPostCommitInput(
+        operatorId: operatorId,
+        locationId: locationId,
+        restaurantId: restaurantId,
+        integrationCategory: _category,
+        vendorId: _vendorId,
+        connectionId: connectionId,
+        changedPeriods: periods,
+        openCurrentFactMaps: openCurrentFacts,
+        userId: _userIdOverride,
       );
+      await _projector.project(input);
     } catch (error, stack) {
       log(
         LogSeverity.warning,
@@ -294,6 +298,15 @@ class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
           'fact_count': facts.length,
         },
       );
+      if (input != null) {
+        await _recordRetry(
+          recorder: _retryRecorder,
+          input: input,
+          factCount: facts.length,
+          error: error,
+          stack: stack,
+        );
+      }
     }
   }
 
@@ -335,6 +348,7 @@ class ProjectingCanonicalSink
     required String vendorId,
     required CanonicalFactPeriodResolver periodResolver,
     required CanonicalRestaurantIdResolver restaurantIdResolver,
+    CanonicalFactProjectionRetryRecorder? retryRecorder,
     String? userIdOverride,
   }) : _underlying = underlying,
        _projector = projector,
@@ -342,6 +356,7 @@ class ProjectingCanonicalSink
        _vendorId = vendorId,
        _periodResolver = periodResolver,
        _restaurantIdResolver = restaurantIdResolver,
+       _retryRecorder = retryRecorder,
        _userIdOverride = userIdOverride;
 
   final CanonicalSink _underlying;
@@ -350,6 +365,7 @@ class ProjectingCanonicalSink
   final String _vendorId;
   final CanonicalFactPeriodResolver _periodResolver;
   final CanonicalRestaurantIdResolver _restaurantIdResolver;
+  final CanonicalFactProjectionRetryRecorder? _retryRecorder;
   final String? _userIdOverride;
 
   /// Per-(operator, location, connection) accumulator buffers. The
@@ -620,6 +636,7 @@ class ProjectingCanonicalSink
     final facts = <Map<String, Object?>>[
       for (final buffer in buffers) ...buffer.facts,
     ];
+    CanonicalFactPostCommitInput? input;
     try {
       final periods = <CanonicalFactCommittedPeriod>[];
       final openCurrentFacts = <Map<String, Object?>>[];
@@ -648,7 +665,7 @@ class ProjectingCanonicalSink
         operatorId: operatorId,
         locationId: locationId,
       );
-      final input = CanonicalFactPostCommitInput(
+      input = CanonicalFactPostCommitInput(
         operatorId: operatorId,
         locationId: locationId,
         restaurantId: restaurantId,
@@ -678,7 +695,51 @@ class ProjectingCanonicalSink
           'fact_count': facts.length,
         },
       );
+      if (input != null) {
+        await _recordRetry(
+          recorder: _retryRecorder,
+          input: input,
+          factCount: facts.length,
+          error: error,
+          stack: stack,
+        );
+      }
     }
+  }
+}
+
+Future<void> _recordRetry({
+  required CanonicalFactProjectionRetryRecorder? recorder,
+  required CanonicalFactPostCommitInput input,
+  required int factCount,
+  required Object error,
+  required StackTrace stack,
+}) async {
+  if (recorder == null) return;
+  try {
+    await recorder.recordProjectionFailure(
+      CanonicalFactProjectionRetryRecord.fromFailure(
+        input: input,
+        factCount: factCount,
+        error: error,
+        stackFirstFrame: firstStackFrame(stack),
+      ),
+    );
+  } catch (retryError, retryStack) {
+    log(
+      LogSeverity.warning,
+      'projecting_canonical_sink.retry_record_failed',
+      fields: <String, Object?>{
+        'operator_id': input.operatorId,
+        'location_id': input.locationId,
+        'connection_id': input.connectionId,
+        'integration_category': input.integrationCategory.name,
+        'vendor_id': input.vendorId,
+        'error_class': retryError.runtimeType.toString(),
+        'error_message': retryError.toString(),
+        'stack_first_frame': firstStackFrame(retryStack),
+      },
+    );
   }
 }
 
