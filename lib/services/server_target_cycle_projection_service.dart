@@ -130,15 +130,18 @@ class ServerTargetCycleProjectionService {
       reason: command.reason,
     );
     final domainCycle = cycle.toDomainCycle();
+    final targetProfileVersionId = _profileVersionIdForCycle(cycle.cycleId);
     final projected = TargetCycleActiveTargetProfileProjector.project(
       domainCycle,
+      targetProfileVersionId: targetProfileVersionId,
     );
     final profileWrite = active_profile_pg.ActiveTargetProfileProjectionWrite(
       operatorId: cycle.operatorId,
       locationId: cycle.locationId,
       restaurantId: cycle.restaurantId,
       targetCycleId: cycle.cycleId,
-      targetProfileVersionId: _profileVersionIdForCycle(cycle.cycleId),
+      targetProfileVersionId:
+          projected.targetProfileVersionId ?? targetProfileVersionId,
       sourceType: projected.sourceType,
       targetCplh: projected.targetCPLH,
       targetSplh: projected.targetSPLH,
@@ -404,11 +407,9 @@ class ServerTargetStandards {
 
   ServerTargetStandards rollupFromDayparts() {
     if (dayparts.isEmpty) return this;
-    final pool = TargetCycleDaypartPool.fromDayparts(
-      <TargetCycleDaypart>[
-        for (final daypart in dayparts) daypart.toDomainDaypart(),
-      ],
-    );
+    final pool = TargetCycleDaypartPool.fromDayparts(<TargetCycleDaypart>[
+      for (final daypart in dayparts) daypart.toDomainDaypart(),
+    ]);
     return ServerTargetStandards(
       targetCplh: pool.targetCPLH,
       targetSplh: pool.targetSPLH,

@@ -42,6 +42,7 @@ import '../domain/services/shift_boundary_resolver.dart';
 import '../domain/services/utc_metadata_timestamp.dart';
 import '../state/app_runtime_invalidation_bus.dart';
 import 'business_date_authority_service.dart';
+import 'closed_truth_eligibility.dart';
 import 'restaurant_timing_config_read_service.dart';
 import 'schedule_plan_read_service.dart';
 import 'weekly_plan_snapshot_service.dart';
@@ -64,7 +65,6 @@ import '../models/week_data.dart';
 import '../models/week_record.dart';
 import 'daypart_plan_allocator.dart';
 import 'history_pattern_builder.dart';
-import 'integration/close_authority_capability.dart';
 import 'integration/shift_vendor_source_resolver.dart';
 import 'labor_model.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
@@ -272,7 +272,15 @@ class ShiftService {
       restaurantId,
       weekIds,
     );
-    return HistoryPatternBuilder.fromClosedShifts(closedShifts, weekLabelsById);
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    return HistoryPatternBuilder.fromClosedShifts(
+      closedShifts,
+      weekLabelsById,
+      currentOperationalBusinessDate: operationalBusinessDate,
+      shiftCloseAuthorityForRow: ClosedTruthEligibility.closeAuthorityForShift,
+    );
   }
 
   // ── Historical closed shifts (for benchmark daypart evidence) ────────────────
@@ -282,7 +290,17 @@ class ShiftService {
     if (weeks.isEmpty) return [];
     final weekIds = weeks.map((w) => w.weekId).toList();
     final restaurantId = await _activeRestaurantId();
-    return _shiftRepo.getClosedShiftsForWeeks(restaurantId, weekIds);
+    final shifts = await _shiftRepo.getClosedShiftsForWeeks(
+      restaurantId,
+      weekIds,
+    );
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    return ClosedTruthEligibility.filter(
+      shifts,
+      currentOperationalBusinessDate: operationalBusinessDate,
+    );
   }
 
   // ── Close a shift ─────────────────────────────────────────────────────────────
@@ -374,24 +392,6 @@ class ShiftService {
     AppRuntimeInvalidationBus.instance.notifyRuntimeWriteCompleted();
 
     return record;
-  }
-
-  /// Per-Daypart V1 Slice 1.5 — translate a row's `sourceSystem` POS
-  /// vendor id into the [ShiftCloseAuthority] the shift boundary
-  /// resolver expects. Reliable vendor finalization classes (Toast,
-  /// Aloha, Oracle Simphony, Lightspeed K-Series, Revel, Square,
-  /// Clover) map to `vendorFinalization`; everything else (unknown,
-  /// null, demo seeder rows, labor-only inputs) maps to
-  /// `appLocalCutoffFallback` so the operator's business-day-start
-  /// rollover is the close moment.
-  static ShiftCloseAuthority _closeAuthorityForRow(String? sourceSystem) {
-    final capability = resolveCloseAuthorityCapability(sourceSystem);
-    switch (capability) {
-      case CloseAuthorityCapability.vendorReliableFinalization:
-        return ShiftCloseAuthority.vendorFinalization;
-      case CloseAuthorityCapability.unreliableFallbackToBusinessDayStart:
-        return ShiftCloseAuthority.appLocalCutoffFallback;
-    }
   }
 
   /// Per-Daypart V1 Slice 1.5 (Gap 24) — expected closed-shift count
@@ -927,7 +927,8 @@ class ShiftService {
           .where(
             (s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
               rowStatus: s.status,
-              shiftCloseAuthority: _closeAuthorityForRow(s.sourceSystem),
+              shiftCloseAuthority:
+                  ClosedTruthEligibility.closeAuthorityForShift(s),
               rowBusinessDate: s.businessDate,
               currentOperationalBusinessDate: operationalBusinessDate,
             ),

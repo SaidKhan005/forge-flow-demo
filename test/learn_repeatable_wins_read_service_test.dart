@@ -341,6 +341,46 @@ void main() {
 
       expect(results.single.label, 'Mon Lunch');
     });
+
+    test('saved timing label and sort order beat current active config', () {
+      final resolver = ClosedTimingLabelResolver(const [
+        ClosedTimingLabelSnapshot(
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'supper',
+          label: 'Old Supper',
+          sortOrder: 1,
+        ),
+        ClosedTimingLabelSnapshot(
+          businessTimingProfileVersionId: 'profile-v1',
+          servicePeriodKey: 'brunch',
+          label: 'Old Brunch',
+          sortOrder: 0,
+        ),
+      ]);
+
+      final results = service.build(
+        [
+          _shift(
+            dayLabel: 'Fri',
+            daypart: 'supper',
+            businessTimingProfileId: 'profile-v1',
+            businessTimingProfileVersionId: 'profile-v1',
+            servicePeriodKey: 'supper',
+          ),
+          _shift(
+            dayLabel: 'Fri',
+            daypart: 'brunch',
+            businessTimingProfileId: 'profile-v1',
+            businessTimingProfileVersionId: 'profile-v1',
+            servicePeriodKey: 'brunch',
+          ),
+        ],
+        timingLabelResolver: resolver,
+        servicePeriodDefinitions: _configuredServicePeriods,
+      );
+
+      expect(results.map((r) => r.label), ['Fri Old Brunch', 'Fri Old Supper']);
+    });
   });
 
   group('I - configured service periods', () {

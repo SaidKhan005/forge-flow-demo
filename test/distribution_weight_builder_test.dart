@@ -5,6 +5,7 @@
 // when history is insufficient.
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/schedule_distribution_weights.dart';
 import 'package:forge_and_flow/domain/services/distribution_weight_builder.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
@@ -17,21 +18,24 @@ ShiftRecord _shift({
   required String daypart,
   int covers = 100,
   String status = 'closed',
-}) =>
-    ShiftRecord(
-      weekId: weekId,
-      dayLabel: dayLabel,
-      daypart: daypart,
-      status: status,
-      covers: covers,
-      forecastCovers: covers,
-      fohHours: 20,
-      bohHours: 20,
-      ppa: 40.0,
-      cplh: 4.5,
-      splh: 180.0,
-      primaryLever: 'none',
-    );
+  String? businessDate,
+  String? sourceSystem,
+}) => ShiftRecord(
+  weekId: weekId,
+  dayLabel: dayLabel,
+  daypart: daypart,
+  status: status,
+  businessDate: businessDate,
+  sourceSystem: sourceSystem,
+  covers: covers,
+  forecastCovers: covers,
+  fohHours: 20,
+  bohHours: 20,
+  ppa: 40.0,
+  cplh: 4.5,
+  splh: 180.0,
+  primaryLever: 'none',
+);
 
 /// Generate [weekCount] weeks of closed shifts across all 7 days with
 /// [dayparts] per day. Each shift gets [coversPerShift] covers.
@@ -49,12 +53,14 @@ List<ShiftRecord> _generateHistory({
     for (final day in days) {
       for (final dp in dayparts) {
         final key = '$day|$dp';
-        shifts.add(_shift(
-          weekId: weekId,
-          dayLabel: day,
-          daypart: dp,
-          covers: coverOverrides?[key] ?? coversPerShift,
-        ));
+        shifts.add(
+          _shift(
+            weekId: weekId,
+            dayLabel: day,
+            daypart: dp,
+            covers: coverOverrides?[key] ?? coversPerShift,
+          ),
+        );
       }
     }
   }
@@ -106,14 +112,24 @@ void main() {
       final closed = _generateHistory(weekCount: 3); // 21 business days
       final projected = [
         _shift(
-            weekId: '2026-W04', dayLabel: 'Mon', daypart: 'lunch',
-            status: 'projected', covers: 999),
+          weekId: '2026-W04',
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          status: 'projected',
+          covers: 999,
+        ),
         _shift(
-            weekId: '2026-W04', dayLabel: 'Mon', daypart: 'dinner',
-            status: 'open', covers: 888),
+          weekId: '2026-W04',
+          dayLabel: 'Mon',
+          daypart: 'dinner',
+          status: 'open',
+          covers: 888,
+        ),
       ];
-      final w = DistributionWeightBuilder.fromClosedShifts(
-          [...closed, ...projected]);
+      final w = DistributionWeightBuilder.fromClosedShifts([
+        ...closed,
+        ...projected,
+      ]);
 
       expect(w.closedShiftCount, closed.length);
       expect(w.totalCovers, isNot(contains(999)));
@@ -121,27 +137,119 @@ void main() {
       expect(w.dayWeights['Mon'], 600);
     });
 
-    test('zero and negative cover shifts excluded from weights but counted', () {
-      final base = _generateHistory(weekCount: 3);
-      // Add zero-cover and negative-cover closed shifts
-      final extras = [
-        _shift(
-            weekId: '2026-W04', dayLabel: 'Mon', daypart: 'lunch',
-            covers: 0),
-        _shift(
-            weekId: '2026-W04', dayLabel: 'Tue', daypart: 'dinner',
-            covers: -5),
-      ];
-      final all = [...base, ...extras];
-      final w = DistributionWeightBuilder.fromClosedShifts(all);
+    test('app-local same-day closed rows are not closed-truth eligible', () {
+      final eligible = _shift(
+        weekId: '2026-W20',
+        dayLabel: 'Mon',
+        daypart: 'lunch',
+        covers: 100,
+        businessDate: '2026-05-18',
+      );
+      final sameDay = _shift(
+        weekId: '2026-W20',
+        dayLabel: 'Tue',
+        daypart: 'lunch',
+        covers: 999,
+        businessDate: '2026-05-19',
+      );
 
-      // Extras are closed, so they add to closedShiftCount
-      expect(w.closedShiftCount, base.length + 2);
-      // But their covers don't appear in weights
-      expect(w.totalCovers, equals(base.length * 100));
-      // W04 Mon and W04 Tue are new business days
-      expect(w.closedBusinessDayCount, 23); // 21 + 2
+      final weights = DistributionWeightBuilder.fromClosedShifts(
+        [eligible, sameDay],
+        minClosedBusinessDays: 1,
+        currentOperationalBusinessDate: '2026-05-19',
+        shiftCloseAuthorityForRow: (_) =>
+            ShiftCloseAuthority.appLocalCutoffFallback,
+      );
+
+      expect(weights.closedShiftCount, 1);
+      expect(weights.closedBusinessDayCount, 1);
+      expect(weights.totalCovers, 100);
+      expect(weights.dayWeights['Mon'], 100);
+      expect(weights.dayWeights['Tue'], isNull);
     });
+
+    test('date-window smoothing also uses closed-truth eligibility', () {
+      final past = _shift(
+        weekId: '2026-W20',
+        dayLabel: 'Mon',
+        daypart: 'lunch',
+        covers: 100,
+        businessDate: '2026-05-18',
+      );
+      final sameDay = _shift(
+        weekId: '2026-W20',
+        dayLabel: 'Tue',
+        daypart: 'lunch',
+        covers: 999,
+        businessDate: '2026-05-19',
+      );
+
+      final weights = DistributionWeightBuilder.fromDateWindowShifts(
+        baselineShifts: [past, sameDay],
+        recentShifts: [sameDay],
+        minClosedBusinessDays: 1,
+        currentOperationalBusinessDate: '2026-05-19',
+        shiftCloseAuthorityForRow: (_) =>
+            ShiftCloseAuthority.appLocalCutoffFallback,
+      );
+
+      expect(weights.totalCovers, 100);
+      expect(weights.dayWeights['Mon'], 1000);
+      expect(weights.dayWeights['Tue'], isNull);
+    });
+
+    test('vendor-finalized same-day rows remain eligible', () {
+      final sameDay = _shift(
+        weekId: '2026-W20',
+        dayLabel: 'Tue',
+        daypart: 'lunch',
+        covers: 999,
+        businessDate: '2026-05-19',
+      );
+
+      final weights = DistributionWeightBuilder.fromClosedShifts(
+        [sameDay],
+        minClosedBusinessDays: 1,
+        currentOperationalBusinessDate: '2026-05-19',
+        shiftCloseAuthorityForRow: (_) =>
+            ShiftCloseAuthority.vendorFinalization,
+      );
+
+      expect(weights.closedShiftCount, 1);
+      expect(weights.totalCovers, 999);
+      expect(weights.dayWeights['Tue'], 999);
+    });
+
+    test(
+      'zero and negative cover shifts excluded from weights but counted',
+      () {
+        final base = _generateHistory(weekCount: 3);
+        // Add zero-cover and negative-cover closed shifts
+        final extras = [
+          _shift(
+            weekId: '2026-W04',
+            dayLabel: 'Mon',
+            daypart: 'lunch',
+            covers: 0,
+          ),
+          _shift(
+            weekId: '2026-W04',
+            dayLabel: 'Tue',
+            daypart: 'dinner',
+            covers: -5,
+          ),
+        ];
+        final all = [...base, ...extras];
+        final w = DistributionWeightBuilder.fromClosedShifts(all);
+
+        // Extras are closed, so they add to closedShiftCount
+        expect(w.closedShiftCount, base.length + 2);
+        // But their covers don't appear in weights
+        expect(w.totalCovers, equals(base.length * 100));
+        // W04 Mon and W04 Tue are new business days
+        expect(w.closedBusinessDayCount, 23); // 21 + 2
+      },
+    );
   });
 
   // ── C. Day weights ────────────────────────────────────────────────────────
@@ -173,8 +281,10 @@ void main() {
       final ordered = w.orderedDayWeights;
 
       expect(ordered.length, 7);
-      expect(ordered.map((e) => e.$1).toList(),
-          ScheduleDistributionWeights.canonicalDayOrder);
+      expect(
+        ordered.map((e) => e.$1).toList(),
+        ScheduleDistributionWeights.canonicalDayOrder,
+      );
     });
 
     test('orderedDayWeights returns 0 for missing days', () {
@@ -202,10 +312,7 @@ void main() {
     test('Saturday dinner differs from Tuesday dinner', () {
       final shifts = _generateHistory(
         weekCount: 3,
-        coverOverrides: {
-          'Sat|dinner': 300,
-          'Tue|dinner': 120,
-        },
+        coverOverrides: {'Sat|dinner': 300, 'Tue|dinner': 120},
       );
       final w = DistributionWeightBuilder.fromClosedShifts(shifts);
 
@@ -222,46 +329,57 @@ void main() {
       expect(w.daypartWeightsFor('Xmas'), isEmpty);
     });
 
-    test('preserves daypart ids as-is from ShiftRecord (lunch, dinner, late_night)', () {
-      final shifts = _generateHistory(
-        weekCount: 3,
-        dayparts: ['lunch', 'dinner', 'late_night'],
-      );
-      final w = DistributionWeightBuilder.fromClosedShifts(shifts);
+    test(
+      'preserves daypart ids as-is from ShiftRecord (lunch, dinner, late_night)',
+      () {
+        final shifts = _generateHistory(
+          weekCount: 3,
+          dayparts: ['lunch', 'dinner', 'late_night'],
+        );
+        final w = DistributionWeightBuilder.fromClosedShifts(shifts);
 
-      for (final day in ScheduleDistributionWeights.canonicalDayOrder) {
-        final parts = w.daypartWeightsFor(day);
-        expect(parts.keys, containsAll(['lunch', 'dinner', 'late_night']));
-      }
-    });
+        for (final day in ScheduleDistributionWeights.canonicalDayOrder) {
+          final parts = w.daypartWeightsFor(day);
+          expect(parts.keys, containsAll(['lunch', 'dinner', 'late_night']));
+        }
+      },
+    );
   });
 
   // ── E. Immutability ───────────────────────────────────────────────────────
 
   group('E — immutability', () {
-    test('dayWeights, daypartWeightsByDay, and inner maps are unmodifiable', () {
-      final shifts = _generateHistory(weekCount: 3);
-      final w = DistributionWeightBuilder.fromClosedShifts(shifts);
+    test(
+      'dayWeights, daypartWeightsByDay, and inner maps are unmodifiable',
+      () {
+        final shifts = _generateHistory(weekCount: 3);
+        final w = DistributionWeightBuilder.fromClosedShifts(shifts);
 
-      expect(() => w.dayWeights['Mon'] = 0, throwsUnsupportedError);
-      expect(() => w.daypartWeightsByDay['Mon'] = {}, throwsUnsupportedError);
-      expect(
-          () => w.daypartWeightsFor('Mon')['lunch'] = 0, throwsUnsupportedError);
-    });
+        expect(() => w.dayWeights['Mon'] = 0, throwsUnsupportedError);
+        expect(() => w.daypartWeightsByDay['Mon'] = {}, throwsUnsupportedError);
+        expect(
+          () => w.daypartWeightsFor('Mon')['lunch'] = 0,
+          throwsUnsupportedError,
+        );
+      },
+    );
   });
 
   // ── F. Diagnostic counts ──────────────────────────────────────────────────
 
   group('F — diagnostic counts preserved', () {
-    test('closedShiftCount and closedBusinessDayCount correct for available result', () {
-      final shifts = _generateHistory(weekCount: 3); // 42 shifts, 21 days
-      final w = DistributionWeightBuilder.fromClosedShifts(shifts);
+    test(
+      'closedShiftCount and closedBusinessDayCount correct for available result',
+      () {
+        final shifts = _generateHistory(weekCount: 3); // 42 shifts, 21 days
+        final w = DistributionWeightBuilder.fromClosedShifts(shifts);
 
-      expect(w.closedShiftCount, 42);
-      expect(w.closedBusinessDayCount, 21);
-      expect(w.totalCovers, 4200); // 42 × 100
-      expect(w.isAvailable, isTrue);
-    });
+        expect(w.closedShiftCount, 42);
+        expect(w.closedBusinessDayCount, 21);
+        expect(w.totalCovers, 4200); // 42 × 100
+        expect(w.isAvailable, isTrue);
+      },
+    );
 
     test('unavailable result still has accurate counts', () {
       final shifts = _generateHistory(weekCount: 1); // 14 shifts, 7 days
@@ -286,7 +404,8 @@ void main() {
           shifts.add(_shift(weekId: weekId, dayLabel: day, daypart: 'lunch'));
           shifts.add(_shift(weekId: weekId, dayLabel: day, daypart: 'dinner'));
           shifts.add(
-              _shift(weekId: weekId, dayLabel: day, daypart: 'late_night'));
+            _shift(weekId: weekId, dayLabel: day, daypart: 'late_night'),
+          );
         }
       }
       final w = DistributionWeightBuilder.fromClosedShifts(shifts);

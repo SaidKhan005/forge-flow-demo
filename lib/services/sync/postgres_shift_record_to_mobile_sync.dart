@@ -1284,11 +1284,16 @@ class PostgresShiftRecordToMobileSync {
           rowLocationId: row.locationId,
         );
         if (row.profile.restaurantId != restaurantId) continue;
-        final rowCycleId = row.targetCycleId?.trim();
-        final profileCycleId = row.profile.targetCycleId?.trim();
-        if ((rowCycleId == null || rowCycleId.isEmpty) &&
-            (profileCycleId == null || profileCycleId.isEmpty) &&
-            row.profile.dayparts.isNotEmpty) {
+        final rowCycleId = _nonBlank(row.targetCycleId);
+        final profileCycleId = _nonBlank(row.profile.targetCycleId);
+        final cycleId = rowCycleId ?? profileCycleId;
+        final rowVersionId = _nonBlank(row.targetProfileVersionId);
+        final profileVersionId = _nonBlank(row.profile.targetProfileVersionId);
+        if ((rowCycleId != null && rowVersionId == null) ||
+            (profileCycleId != null && profileVersionId == null)) {
+          continue;
+        }
+        if (cycleId == null && row.profile.dayparts.isNotEmpty) {
           continue;
         }
         await targetProfileRepository.upsertActiveTargetProfile(row.profile);
@@ -1386,6 +1391,11 @@ class PostgresShiftRecordToMobileSync {
       pagesPulled: pagesPulled,
       finalCursor: cursor,
     );
+  }
+
+  static String? _nonBlank(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
   }
 
   static void _assertScopedRow({

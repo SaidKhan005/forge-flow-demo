@@ -163,13 +163,37 @@ class WageStandardContextService {
   Future<ActiveTargetProfile> loadOrBootstrapProfile(
     String restaurantId,
   ) async {
+    final existing = await SqliteTargetProfileRepository.instance
+        .getActiveTargetProfile(restaurantId);
+    final pinnedCycleId = _nonBlank(existing?.targetCycleId);
+    if (existing != null && pinnedCycleId != null) {
+      final pinnedCycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(pinnedCycleId);
+      if (pinnedCycle == null) return existing;
+
+      final projected = TargetCycleActiveTargetProfileProjector.project(
+        pinnedCycle,
+        targetProfileId: existing.targetProfileId,
+        targetProfileVersionId: _nonBlank(existing.targetProfileVersionId),
+      );
+      if (!_matchesCycleProjection(existing, projected)) {
+        await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+          projected,
+        );
+        return _reattachCycleDayparts(projected, pinnedCycle);
+      }
+      return _reattachCycleDayparts(existing, pinnedCycle);
+    }
+
     final cycle = await SqliteTargetCycleRepository.instance.getActiveCycle(
       restaurantId,
     );
     if (cycle != null) {
-      final projected = TargetCycleActiveTargetProfileProjector.project(cycle);
-      final existing = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
+      final projected = TargetCycleActiveTargetProfileProjector.project(
+        cycle,
+        targetProfileId: existing?.targetProfileId,
+        targetProfileVersionId: _matchingProfileVersionId(existing, cycle),
+      );
       if (existing == null || !_matchesCycleProjection(existing, projected)) {
         await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
           projected,
@@ -191,8 +215,6 @@ class WageStandardContextService {
       return _reattachCycleDayparts(existing, cycle);
     }
 
-    final existing = await SqliteTargetProfileRepository.instance
-        .getActiveTargetProfile(restaurantId);
     if (existing != null) return existing;
 
     final wageCtx = await resolve(restaurantId);
@@ -249,6 +271,8 @@ class WageStandardContextService {
     bool same(double a, double b) => (a - b).abs() < 0.001;
 
     return existing.restaurantId == projected.restaurantId &&
+        existing.targetCycleId == projected.targetCycleId &&
+        existing.targetProfileVersionId == projected.targetProfileVersionId &&
         existing.sourceType == projected.sourceType &&
         same(existing.targetCPLH, projected.targetCPLH) &&
         same(existing.targetSPLH, projected.targetSPLH) &&
@@ -269,6 +293,20 @@ class WageStandardContextService {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
+
+  static String? _matchingProfileVersionId(
+    ActiveTargetProfile? existing,
+    TargetCycle cycle,
+  ) {
+    if (existing == null) return null;
+    if (_nonBlank(existing.targetCycleId) != cycle.cycleId) return null;
+    return _nonBlank(existing.targetProfileVersionId);
+  }
+
+  static String? _nonBlank(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
 
   /// Weighted average hourly rate from a list of role rows.
   /// Returns null if no rows or total hours is zero.

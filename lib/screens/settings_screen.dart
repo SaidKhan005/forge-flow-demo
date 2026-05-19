@@ -382,6 +382,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       title: 'Business timing',
                       child: TimingAuthoritySection(
                         restaurantId: restaurant.restaurantId,
+                        scopeLabel: restaurant.displayName,
                       ),
                     ),
                     SliverToBoxAdapter(
@@ -403,6 +404,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: WageAuthoritySection(
                       onChanged: _refreshAppState,
                       viewOnly: true,
+                      scopeLabel: restaurant?.displayName,
                     ),
                   ),
                   SliverToBoxAdapter(

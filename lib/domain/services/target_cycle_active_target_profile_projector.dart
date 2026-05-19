@@ -19,7 +19,12 @@ class TargetCycleActiveTargetProfileProjector {
   /// Maps all standards fields directly. Derives `sourceType` from the
   /// cycle source. Computes theoretical labor percentages using the
   /// standard formulas.
-  static ActiveTargetProfile project(TargetCycle cycle) {
+  static ActiveTargetProfile project(
+    TargetCycle cycle, {
+    String? targetProfileId,
+    String? targetProfileVersionId,
+    String? builtAt,
+  }) {
     final fohPct = (cycle.targetCPLH > 0 && cycle.targetPPA > 0)
         ? cycle.fohWage / (cycle.targetCPLH * cycle.targetPPA) * 100
         : 0.0;
@@ -28,9 +33,10 @@ class TargetCycleActiveTargetProfileProjector {
         : 0.0;
 
     return ActiveTargetProfile(
-      targetProfileId: '${cycle.restaurantId}_active',
+      targetProfileId: targetProfileId ?? '${cycle.restaurantId}_active',
       restaurantId: cycle.restaurantId,
       targetCycleId: cycle.cycleId,
+      targetProfileVersionId: targetProfileVersionId,
       sourceType: _sourceType(cycle.source),
       targetCPLH: cycle.targetCPLH,
       targetSPLH: cycle.targetSPLH,
@@ -42,7 +48,7 @@ class TargetCycleActiveTargetProfileProjector {
       theoreticalFohLaborPct: fohPct,
       theoreticalBohLaborPct: bohPct,
       theoreticalLaborPct: fohPct + bohPct,
-      builtAt: DateTime.now().toUtc().toIso8601String(),
+      builtAt: builtAt ?? DateTime.now().toUtc().toIso8601String(),
     );
   }
 

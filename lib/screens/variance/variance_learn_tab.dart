@@ -472,14 +472,36 @@ String? _winCoverageCaption(LearnRepeatableWinSummary win) {
       '${win.closedShiftCount} $daypartLabel';
 }
 
-/// Pluralizes the trailing daypart noun on a `fullLabel` like
-/// `Tue Lunch` -> `Tue Lunches`. The three canonical daypart labels
-/// (`Lunch` / `Dinner` / `Late Night`) cover the plural rules: `Lunch`
-/// takes `es`, the others take `s`.
+/// Pluralizes the trailing service-period noun on a `fullLabel` like
+/// `Tue Lunch` -> `Tue Lunches` or `Sat Brunch` -> `Sat Brunches`.
 String _pluralizeDaypart(String fullLabel) {
-  if (fullLabel.isEmpty) return fullLabel;
-  if (fullLabel.endsWith('Lunch')) return '${fullLabel}es';
-  return '${fullLabel}s';
+  final trimmed = fullLabel.trim();
+  if (trimmed.isEmpty) return fullLabel;
+  final splitAt = trimmed.lastIndexOf(' ');
+  if (splitAt < 0) return _pluralizeWord(trimmed);
+  final prefix = trimmed.substring(0, splitAt);
+  final noun = trimmed.substring(splitAt + 1);
+  return '$prefix ${_pluralizeWord(noun)}';
+}
+
+String _pluralizeWord(String word) {
+  if (word.isEmpty) return word;
+  final lower = word.toLowerCase();
+  if (lower.endsWith('ch') ||
+      lower.endsWith('sh') ||
+      lower.endsWith('s') ||
+      lower.endsWith('x') ||
+      lower.endsWith('z')) {
+    return '${word}es';
+  }
+  if (lower.endsWith('y') && word.length > 1) {
+    final beforeY = lower.codeUnitAt(lower.length - 2);
+    const vowels = <int>[97, 101, 105, 111, 117];
+    if (!vowels.contains(beforeY)) {
+      return '${word.substring(0, word.length - 1)}ies';
+    }
+  }
+  return '${word}s';
 }
 
 /// Frame-1 `.fvis` visual hint built from the locked lever identity.

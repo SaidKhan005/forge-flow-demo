@@ -266,6 +266,60 @@ void main() {
   });
 
   test(
+    'skips cycle-backed active profile rows missing profile version id',
+    () async {
+      const rid = 'rest_star_target_missing_profile_version';
+      await _clearStarTargetRows(rid);
+
+      final client = _StarTargetSyncClient()
+        ..cyclePages.add(
+          TargetCycleSyncPage(
+            cycles: <TargetCycleSyncRow>[
+              TargetCycleSyncRow(
+                operatorId: _opId,
+                locationId: _locId,
+                cycle: _cycle(rid),
+              ),
+            ],
+            nextCursor: null,
+          ),
+        )
+        ..profilePages.add(
+          ActiveTargetProfileSyncPage(
+            profiles: <ActiveTargetProfileSyncRow>[
+              ActiveTargetProfileSyncRow(
+                operatorId: _opId,
+                locationId: _locId,
+                targetCycleId: 'cycle-sync-1',
+                profile: _profile(rid, targetProfileVersionId: null),
+              ),
+            ],
+            nextCursor: null,
+          ),
+        );
+
+      final sync = PostgresShiftRecordToMobileSync(
+        client: client,
+        shiftRepository: SqliteShiftRecordRepository.instance,
+        watermarkDao: watermarkDao,
+      );
+      final result = await sync.sync(
+        operatorId: _opId,
+        locationId: _locId,
+        restaurantId: rid,
+      );
+
+      expect(result.starTargetMirrors.activeTargetProfiles.rowsWritten, 0);
+      expect(
+        await SqliteTargetProfileRepository.instance.getActiveTargetProfile(
+          rid,
+        ),
+        isNull,
+      );
+    },
+  );
+
+  test(
     'legacy client without star-target routes reports unavailable and leaves '
     'local cache untouched',
     () async {
@@ -443,11 +497,14 @@ TargetCycle _newerCycle(String restaurantId) => TargetCycle(
   ],
 );
 
-ActiveTargetProfile _profile(String restaurantId) => ActiveTargetProfile(
+ActiveTargetProfile _profile(
+  String restaurantId, {
+  String? targetProfileVersionId = 'tpv-sync-1',
+}) => ActiveTargetProfile(
   targetProfileId: 'profile-sync-1',
   restaurantId: restaurantId,
   targetCycleId: 'cycle-sync-1',
-  targetProfileVersionId: 'tpv-sync-1',
+  targetProfileVersionId: targetProfileVersionId,
   sourceType: 'cycle_manager_override',
   targetCPLH: 5.2,
   targetSPLH: 181,

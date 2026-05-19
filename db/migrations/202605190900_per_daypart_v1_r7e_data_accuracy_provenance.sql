@@ -24,7 +24,10 @@ select
   loc.operator_id,
   loc.location_id,
   (
-    coalesce(
+    coalesce(business_scope.covers_source_per_service_period, '{}'::jsonb)
+    || coalesce(org_scope.covers_source_per_service_period, '{}'::jsonb)
+    || coalesce(location_scope.covers_source_per_service_period, '{}'::jsonb)
+    || coalesce(
       (
         select jsonb_object_agg(k.service_period_key, k.covers_source)
           from (
@@ -42,9 +45,6 @@ select
       ),
       '{}'::jsonb
     )
-    || coalesce(business_scope.covers_source_per_service_period, '{}'::jsonb)
-    || coalesce(org_scope.covers_source_per_service_period, '{}'::jsonb)
-    || coalesce(location_scope.covers_source_per_service_period, '{}'::jsonb)
   ) as covers_source_per_service_period,
   coalesce(legacy.covers_manual_entries, '{}'::jsonb) as covers_manual_entries,
   coalesce(
@@ -84,32 +84,6 @@ select
   ) as updated_by,
   (
     coalesce(
-      (
-        select jsonb_object_agg(
-          k.service_period_key,
-          jsonb_build_object(
-            'scope_type', 'location',
-            'scope_id', loc.location_id::text,
-            'source_kind', 'service_period_setting',
-            'setting_id', k.id::text
-          )
-        )
-          from (
-            select distinct on (sp.service_period_key)
-                   sp.id,
-                   sp.service_period_key
-              from public.data_accuracy_service_period_settings sp
-             where sp.operator_id = loc.operator_id
-               and sp.location_id = loc.location_id
-               and sp.effective_at_business_date
-                     <= (now() at time zone 'utc')::date
-             order by sp.service_period_key,
-                      sp.effective_at_business_date desc
-          ) k
-      ),
-      '{}'::jsonb
-    )
-    || coalesce(
       (
         select jsonb_object_agg(
           keys.service_period_key,
@@ -163,6 +137,32 @@ select
               '{}'::jsonb
             )
           ) as keys(service_period_key)
+      ),
+      '{}'::jsonb
+    )
+    || coalesce(
+      (
+        select jsonb_object_agg(
+          k.service_period_key,
+          jsonb_build_object(
+            'scope_type', 'location',
+            'scope_id', loc.location_id::text,
+            'source_kind', 'service_period_setting',
+            'setting_id', k.id::text
+          )
+        )
+          from (
+            select distinct on (sp.service_period_key)
+                   sp.id,
+                   sp.service_period_key
+              from public.data_accuracy_service_period_settings sp
+             where sp.operator_id = loc.operator_id
+               and sp.location_id = loc.location_id
+               and sp.effective_at_business_date
+                     <= (now() at time zone 'utc')::date
+             order by sp.service_period_key,
+                      sp.effective_at_business_date desc
+          ) k
       ),
       '{}'::jsonb
     )
