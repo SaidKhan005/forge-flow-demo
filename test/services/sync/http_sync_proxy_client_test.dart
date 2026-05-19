@@ -215,6 +215,50 @@ void main() {
     });
   });
 
+  test('clearManualCovers patches canonical clear route', () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'setting_id': 'setting-1'},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.clearManualCovers(
+      operatorId: 'op',
+      locationId: 'loc',
+      restaurantId: 'restaurant-1',
+      businessDate: '2026-05-10',
+      servicePeriodKey: 'brunch',
+      idempotencyKey: 'manual-covers-clear-idem-1',
+    );
+
+    expect(seen.method, 'PATCH');
+    expect(
+      seen.url.path,
+      '/base/v1/operators/op/locations/loc/'
+      'data_accuracy_settings/manual_covers',
+    );
+    expect(seen.headers['authorization'], 'Bearer token-1');
+    expect(seen.headers['idempotency-key'], 'manual-covers-clear-idem-1');
+    final body = jsonDecode(seen.body) as Map<String, Object?>;
+    expect(body, <String, Object?>{
+      'restaurant_id': 'restaurant-1',
+      'business_date': '2026-05-10',
+      'service_period_key': 'brunch',
+      'clear': true,
+    });
+    expect(body.containsKey('covers'), isFalse);
+  });
+
   test(
     'switchDemoModeToLive posts scoped route with idempotency key',
     () async {

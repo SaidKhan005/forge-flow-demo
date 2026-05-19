@@ -238,6 +238,15 @@ abstract class ManualCoversWriteClient {
     String? restaurantId,
     String? recordedAt,
   });
+
+  Future<void> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required String idempotencyKey,
+    String? restaurantId,
+  });
 }
 
 class SyncProxyClientException implements Exception {

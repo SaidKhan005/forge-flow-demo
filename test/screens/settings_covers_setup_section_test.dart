@@ -7,8 +7,8 @@
 //     vendor override.
 //   * Save handler writes via the injected writer and clears the
 //     covers input on success.
-//   * Validation error renders when the operator hits Save without
-//     a covers value.
+//   * Blank saved manual covers clear through the injected clearer;
+//     blank unsaved fields are harmless.
 //   * HP #11 scope label renders when a [scopeLabel] is passed.
 
 import 'package:flutter/material.dart';
@@ -25,11 +25,21 @@ void main() {
   Future<List<ManualCoverEntry>> emptyLoader(String _) async =>
       const <ManualCoverEntry>[];
 
+  Future<ManualCoverEntry?> noSavedEntryFinder({
+    required String restaurantId,
+    required String businessDate,
+    required String daypart,
+  }) async {
+    return null;
+  }
+
   Widget harness({
     String? posVendorId,
     String? scopeLabel,
     ManualCoverEntryLoader? loader,
     ManualCoverEntryWriter? writer,
+    ManualCoverEntryClearer? clearer,
+    ManualCoverEntryFinder? finder,
     ServicePeriodCoversSourceLoader? coversSourceLoader,
     TimingConfigLoader? timingConfigLoader,
     bool injectInitialBusinessDate = true,
@@ -45,6 +55,8 @@ void main() {
             posVendorId: posVendorId,
             loader: loader ?? emptyLoader,
             writer: writer,
+            clearer: clearer,
+            finder: finder ?? noSavedEntryFinder,
             coversSourceLoader: coversSourceLoader ?? (_) async => const [],
             timingConfigLoader: timingConfigLoader ?? (_) async => null,
             servicePeriodsLoader: (_) async =>
@@ -269,15 +281,17 @@ void main() {
     expect(find.textContaining('Barrio Legado'), findsOneWidget);
   });
 
-  testWidgets('validation error when save is hit with an empty covers field', (
-    tester,
-  ) async {
+  testWidgets('blanking an unsaved field is harmless', (tester) async {
     var writes = 0;
+    var clears = 0;
     await tester.pumpWidget(
       harness(
         posVendorId: 'square',
         writer: (entry) async {
           writes += 1;
+        },
+        clearer: (entry) async {
+          clears += 1;
         },
       ),
     );
@@ -290,9 +304,68 @@ void main() {
 
     expect(
       find.byKey(const Key('settings_covers_setup_error_text')),
-      findsOneWidget,
+      findsNothing,
     );
     expect(writes, 0);
+    expect(clears, 0);
+  });
+
+  testWidgets('blanking a saved manual cover calls the clear writer', (
+    tester,
+  ) async {
+    ManualCoverEntry? cleared;
+    final entries = <ManualCoverEntry>[
+      const ManualCoverEntry(
+        restaurantId: 'restaurant-1',
+        businessDate: '2026-05-10',
+        daypart: 'dinner',
+        covers: 84,
+        recordedAt: '2026-05-10T18:00:00Z',
+      ),
+    ];
+
+    await tester.pumpWidget(
+      harness(
+        posVendorId: 'square',
+        loader: (_) async => entries,
+        finder:
+            ({
+              required String restaurantId,
+              required String businessDate,
+              required String daypart,
+            }) async {
+              return entries.singleWhere(
+                (entry) =>
+                    entry.restaurantId == restaurantId &&
+                    entry.businessDate == businessDate &&
+                    entry.daypart == daypart,
+              );
+            },
+        clearer: (entry) async {
+          cleared = entry;
+          entries.clear();
+        },
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('settings_covers_setup_save_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(cleared, isNotNull);
+    expect(cleared!.restaurantId, 'restaurant-1');
+    expect(cleared!.businessDate, '2026-05-10');
+    expect(cleared!.daypart, 'dinner');
+    expect(
+      find.byKey(const Key('settings_covers_setup_confirmation_text')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('settings_covers_setup_recent_2026-05-10_dinner')),
+      findsNothing,
+    );
   });
 
   testWidgets('save writes through the injected writer and clears the field', (
@@ -365,12 +438,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Numeric-only keyboard filter prevents typing letters, so test the
-    // empty path which the controller can reach via clear-and-save.
-    await tester.enterText(
+    final TextField field = tester.widget(
       find.byKey(const Key('settings_covers_setup_covers_field')),
-      '',
     );
+    field.controller!.text = '-1';
     await tester.tap(
       find.byKey(const Key('settings_covers_setup_save_button')),
     );
