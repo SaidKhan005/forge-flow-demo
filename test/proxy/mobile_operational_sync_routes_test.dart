@@ -252,6 +252,7 @@ void main() {
                 'wage_source': 'target_substitution',
                 'effective_at_business_date': '2026-05-07',
               },
+              idempotencyKey: 'service-period-key-1',
             );
             expect(patch.statusCode, 200);
             final body = jsonDecode(patch.body) as Map<String, Object?>;
@@ -264,6 +265,133 @@ void main() {
                 'data_accuracy_service_period_settings_write:op-1:loc-1:'
                 'breakfast:reservation_plus_walkin:target_substitution:'
                 '2026-05-07';
+            expect(ctx.gateway.calls, <String>[expectedCall]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH service-period settings rejects missing Idempotency-Key',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/'
+                'data_accuracy_service_period_settings',
+              ),
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'manual',
+                'wage_source': 'manual_mix',
+                'effective_at_business_date': '2026-05-07',
+              },
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_missing');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH service-period settings replays same key and body', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/'
+            'data_accuracy_service_period_settings',
+          );
+          const body = <String, Object?>{
+            'service_period_key': 'breakfast',
+            'covers_source': 'reservation_plus_walkin',
+            'wage_source': 'target_substitution',
+            'effective_at_business_date': '2026-05-07',
+          };
+          final first = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'service-period-replay-key',
+          );
+          final replay = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'service-period-replay-key',
+          );
+          expect(first.statusCode, 200);
+          expect(replay.statusCode, 200);
+          expect(jsonDecode(replay.body), jsonDecode(first.body));
+          final expectedCall =
+              'data_accuracy_service_period_settings_write:op-1:loc-1:'
+              'breakfast:reservation_plus_walkin:target_substitution:'
+              '2026-05-07';
+          expect(ctx.gateway.calls, <String>[expectedCall]);
+          expect(ctx.idempotencyStore.reserveCalls, 1);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH service-period settings rejects same key with different body',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            );
+            final first = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'manual',
+                'wage_source': 'manual_mix',
+                'effective_at_business_date': '2026-05-07',
+              },
+              idempotencyKey: 'service-period-conflict-key',
+            );
+            final conflict = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'vendor',
+                'wage_source': 'manual_mix',
+                'effective_at_business_date': '2026-05-07',
+              },
+              idempotencyKey: 'service-period-conflict-key',
+            );
+            expect(first.statusCode, 200);
+            expect(conflict.statusCode, 409);
+            final body = jsonDecode(conflict.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_conflict');
+            final expectedCall =
+                'data_accuracy_service_period_settings_write:op-1:loc-1:'
+                'breakfast:manual:manual_mix:2026-05-07';
             expect(ctx.gateway.calls, <String>[expectedCall]);
           } finally {
             ctx.client.close(force: true);
@@ -430,12 +558,126 @@ void main() {
                 'walk_in_handling_mode': 'walk_ins_added_to_reservations',
                 'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
               },
+              idempotencyKey: 'data-accuracy-settings-key-1',
             );
             expect(response.statusCode, 200);
             final body = jsonDecode(response.body) as Map<String, Object?>;
             final data = body['data'] as Map<String, Object?>;
             expect(data['covers_source_lunch'], 'manual');
             expect(data['wage_source'], 'manual_mix');
+            expect(ctx.gateway.calls, <String>[
+              'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
+            ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH data accuracy settings rejects missing Idempotency-Key',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+              ),
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'wage_source': 'manual_mix',
+              },
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_missing');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH data accuracy settings replays same key and body', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+          );
+          const body = <String, Object?>{
+            'covers_source_lunch': 'manual',
+            'wage_source': 'manual_mix',
+          };
+          final first = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'data-accuracy-settings-replay-key',
+          );
+          final replay = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'data-accuracy-settings-replay-key',
+          );
+          expect(first.statusCode, 200);
+          expect(replay.statusCode, 200);
+          expect(jsonDecode(replay.body), jsonDecode(first.body));
+          expect(ctx.gateway.calls, <String>[
+            'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
+          ]);
+          expect(ctx.idempotencyStore.reserveCalls, 1);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH data accuracy settings rejects same key with different body',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+            );
+            final first = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'wage_source': 'manual_mix',
+              },
+              idempotencyKey: 'data-accuracy-settings-conflict-key',
+            );
+            final conflict = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'covers_source_lunch': 'vendor',
+                'wage_source': 'manual_mix',
+              },
+              idempotencyKey: 'data-accuracy-settings-conflict-key',
+            );
+            expect(first.statusCode, 200);
+            expect(conflict.statusCode, 409);
+            final body = jsonDecode(conflict.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_conflict');
             expect(ctx.gateway.calls, <String>[
               'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
             ]);
