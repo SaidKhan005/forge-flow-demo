@@ -7085,3 +7085,25 @@ Migration count: **139**
   * docs/contracts/hardening_rls_and_repository_pattern_contract.md
   (per-tenant RLS preserved; no policy/index change; the dropped
   columns are non-indexed scalar columns).
+
+## `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
+
+- Per-Daypart V1 R7e Data Accuracy provenance.
+- Redefines `public.effective_data_accuracy_settings_v` additively.
+- Preserves every existing value column and HP #11 precedence from R7d.
+- Appends three source-metadata columns:
+  - `covers_source_per_service_period_source`
+  - `wage_source_source`
+  - `walk_in_handling_mode_source`
+- The per-service-period source map mirrors the effective value map:
+  keyed service-period rows first, then business, org-unit, and
+  location scoped overrides, with later scopes winning on key
+  collision.
+- Scalar source metadata reports the winning scope for wage source and
+  walk-in handling mode, or a default source object when no configured
+  row owns the value.
+- No table columns, indexes, policies, or grants are changed beyond
+  re-granting select on the view to `service_role` and `forge_admin`.
+- No down migration. This is additive view metadata used by proxy and
+  Flutter surfaces to show honest source labels without client-side
+  inheritance guesses.

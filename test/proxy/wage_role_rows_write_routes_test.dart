@@ -47,19 +47,21 @@ void main() {
       }
     }
 
-    Future<({
-      HttpServer server,
-      HttpClient client,
-      Uri baseUri,
-      _RecordingWageGateway writeGateway,
-      _RecordingAuditSink auditSink,
-      _RecordingMobileSyncGateway readGateway,
-      _SettableVerifier verifier,
-    })> spinUp({
-      ProxyJwtClaims? initialClaims,
-    }) async {
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _RecordingWageGateway writeGateway,
+        _RecordingAuditSink auditSink,
+        _RecordingMobileSyncGateway readGateway,
+        _SettableVerifier verifier,
+      })
+    >
+    spinUp({ProxyJwtClaims? initialClaims}) async {
       final verifier = _SettableVerifier();
-      verifier.claims = initialClaims ??
+      verifier.claims =
+          initialClaims ??
           const ProxyJwtClaims(
             userId: _kUserA,
             operatorId: _kOpA,
@@ -177,35 +179,34 @@ void main() {
       });
     });
 
-    test('DELETE on already-inactive row records removed=false in audit',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          ctx.writeGateway.softDeleteAffected = false;
-          final response = await _http(
-            ctx.client,
-            ctx.baseUri.resolve('$wageRoleRowsPrefix$_kRowId'),
-            method: 'DELETE',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-audit-del-noop',
-          );
-          expect(response.statusCode, equals(200));
-          expect(
-            (jsonDecode(response.body) as Map<String, Object?>)['removed'],
-            isFalse,
-          );
-          expect(ctx.auditSink.softDeleteCalls, hasLength(1));
-          expect(
-            ctx.auditSink.softDeleteCalls.single['removed'],
-            isFalse,
-          );
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'DELETE on already-inactive row records removed=false in audit',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            ctx.writeGateway.softDeleteAffected = false;
+            final response = await _http(
+              ctx.client,
+              ctx.baseUri.resolve('$wageRoleRowsPrefix$_kRowId'),
+              method: 'DELETE',
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-audit-del-noop',
+            );
+            expect(response.statusCode, equals(200));
+            expect(
+              (jsonDecode(response.body) as Map<String, Object?>)['removed'],
+              isFalse,
+            );
+            expect(ctx.auditSink.softDeleteCalls, hasLength(1));
+            expect(ctx.auditSink.softDeleteCalls.single['removed'], isFalse);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('idempotent replay does NOT re-fire the audit sink', () async {
       await withRealHttp(() async {
@@ -249,49 +250,51 @@ void main() {
       });
     });
 
-    test('service-principal actorKind round-trips into the audit row',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(
-          initialClaims: const ProxyJwtClaims(
-            userId: _kPrincipalA,
-            operatorId: _kOpA,
-            locationId: _kLocA,
-            roles: <String>['operator_owner'],
-            actorKind: 'service',
-          ),
-        );
-        try {
-          final response = await _http(
-            ctx.client,
-            ctx.baseUri.resolve(wageRoleRowsPath),
-            method: 'POST',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-audit-service',
-            body: const <String, Object?>{
-              'restaurant_id': 'rest-1',
-              'role_name': 'Server',
-              'labor_bucket': 'foh',
-              'hourly_rate': 18.5,
-              'weighted_hours': 30.0,
-            },
+    test(
+      'service-principal actorKind round-trips into the audit row',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: _kPrincipalA,
+              operatorId: _kOpA,
+              locationId: _kLocA,
+              roles: <String>['operator_owner'],
+              actorKind: 'service',
+            ),
           );
-          expect(response.statusCode, equals(200));
-          expect(ctx.auditSink.upsertCalls, hasLength(1));
-          expect(
-            ctx.auditSink.upsertCalls.single['actorKind'],
-            equals('service'),
-          );
-          expect(
-            ctx.auditSink.upsertCalls.single['actorUserId'],
-            equals(_kPrincipalA),
-          );
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await _http(
+              ctx.client,
+              ctx.baseUri.resolve(wageRoleRowsPath),
+              method: 'POST',
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-audit-service',
+              body: const <String, Object?>{
+                'restaurant_id': 'rest-1',
+                'role_name': 'Server',
+                'labor_bucket': 'foh',
+                'hourly_rate': 18.5,
+                'weighted_hours': 30.0,
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(ctx.auditSink.upsertCalls, hasLength(1));
+            expect(
+              ctx.auditSink.upsertCalls.single['actorKind'],
+              equals('service'),
+            );
+            expect(
+              ctx.auditSink.upsertCalls.single['actorUserId'],
+              equals(_kPrincipalA),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('cross-device read-after-write: the same operator scope sees '
         'the upserted row through the operational sync route a peer '
@@ -323,23 +326,25 @@ void main() {
           // mirrors that behavior — once the write commits, it adds
           // the row to the next sync response so a peer device's
           // operational-sync pull surfaces it.
-          ctx.readGateway.publish(WageRoleRowRecord(
-            wageRoleRowId: _kRowId,
-            operatorId: _kOpA,
-            locationId: _kLocA,
-            restaurantId: 'rest-1',
-            roleName: 'Server',
-            laborBucket: 'foh',
-            hourlyRate: 18.5,
-            weightedHours: 30.0,
-            source: WageRoleRowSource.operatorManual,
-            isActive: true,
-            effectiveAt: DateTime.utc(2026, 5, 8, 12, 30),
-            metadata: const <String, Object?>{},
-            createdAt: DateTime.utc(2026, 5, 8, 12, 30),
-            updatedAt: DateTime.utc(2026, 5, 8, 12, 30),
-            updatedBy: _kUserA,
-          ));
+          ctx.readGateway.publish(
+            WageRoleRowRecord(
+              wageRoleRowId: _kRowId,
+              operatorId: _kOpA,
+              locationId: _kLocA,
+              restaurantId: 'rest-1',
+              roleName: 'Server',
+              laborBucket: 'foh',
+              hourlyRate: 18.5,
+              weightedHours: 30.0,
+              source: WageRoleRowSource.operatorManual,
+              isActive: true,
+              effectiveAt: DateTime.utc(2026, 5, 8, 12, 30),
+              metadata: const <String, Object?>{},
+              createdAt: DateTime.utc(2026, 5, 8, 12, 30),
+              updatedAt: DateTime.utc(2026, 5, 8, 12, 30),
+              updatedBy: _kUserA,
+            ),
+          );
 
           // Device B (same operator JWT) syncs the wage rows surface
           // and sees the row.
@@ -574,9 +579,9 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
     required String? modifiedSince,
     required int pageSize,
   }) async => const <String, Object?>{
-        'shift_records': <Map<String, Object?>>[],
-        'next_cursor': null,
-      };
+    'shift_records': <Map<String, Object?>>[],
+    'next_cursor': null,
+  };
 
   @override
   Future<Map<String, Object?>> fetchOpenShiftSnapshots({
@@ -586,8 +591,8 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
     required String? modifiedSince,
     required int pageSize,
   }) async => const <String, Object?>{
-        'open_shift_snapshots': <Map<String, Object?>>[],
-      };
+    'open_shift_snapshots': <Map<String, Object?>>[],
+  };
 
   @override
   Future<Map<String, Object?>> fetchResolvedTimingConfig({
@@ -613,6 +618,14 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
   }) async => const <String, Object?>{};
 
   @override
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async => const <String, Object?>{};
+
+  @override
   Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -626,8 +639,8 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
     required String operatorId,
     required String locationId,
   }) async => const <String, Object?>{
-        'data_accuracy_service_period_settings': <Map<String, Object?>>[],
-      };
+    'data_accuracy_service_period_settings': <Map<String, Object?>>[],
+  };
 
   @override
   Future<Map<String, Object?>> fetchDemoModeStates({
@@ -635,8 +648,8 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
     required String operatorId,
     required String locationId,
   }) async => const <String, Object?>{
-        'demo_mode_states': <Map<String, Object?>>[],
-      };
+    'demo_mode_states': <Map<String, Object?>>[],
+  };
 
   @override
   Future<Map<String, Object?>> fetchPollingTierAssignment({

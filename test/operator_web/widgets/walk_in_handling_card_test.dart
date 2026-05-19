@@ -6,15 +6,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/operator_web/widgets/walk_in_handling_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1200, 1600);
@@ -29,15 +30,17 @@ void main() {
     testWidgets('card renders 3 mode radios', (tester) async {
       await sizeViewport(tester);
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.reservationsOnly,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.reservationsOnly,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: null,
+            onDailyWalkInCountChanged: (_) {},
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -57,15 +60,17 @@ void main() {
     testWidgets('card key + title visible', (tester) async {
       await sizeViewport(tester);
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.reservationsOnly,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.reservationsOnly,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: null,
+            onDailyWalkInCountChanged: (_) {},
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -74,24 +79,53 @@ void main() {
       );
     });
 
+    testWidgets('source label renders when server metadata exists', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.reservationsOnly,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: null,
+            onDailyWalkInCountChanged: (_) {},
+            source: const DataAccuracySettingSource(
+              scopeType: 'default',
+              sourceKind: 'default',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('walk_in_handling_source_label')),
+        findsOneWidget,
+      );
+      expect(find.text('Source: Default'), findsOneWidget);
+    });
+
     testWidgets('tapping a mode emits onModeChanged', (tester) async {
       await sizeViewport(tester);
       final captured = <WalkInHandlingMode>[];
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.reservationsOnly,
-          onModeChanged: captured.add,
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.reservationsOnly,
+            onModeChanged: captured.add,
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: null,
+            onDailyWalkInCountChanged: (_) {},
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('walk_in_handling_radio_added')),
-      );
+      await tester.tap(find.byKey(const Key('walk_in_handling_radio_added')));
       await tester.pumpAndSettle();
 
       expect(
@@ -103,70 +137,80 @@ void main() {
     });
 
     testWidgets(
-        'daily walk-in count field appears only in walkInsAddedToReservations mode',
-        (tester) async {
-      await sizeViewport(tester);
+      'daily walk-in count field appears only in walkInsAddedToReservations mode',
+      (tester) async {
+        await sizeViewport(tester);
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.reservationsOnly,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: (_) {},
-        ),
-      ));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('walk_in_handling_daily_count_field')),
-        findsNothing,
-      );
+        await tester.pumpWidget(
+          wrap(
+            WalkInHandlingCard(
+              mode: WalkInHandlingMode.reservationsOnly,
+              onModeChanged: (_) {},
+              businessDateIso: '2026-05-05',
+              dailyWalkInCount: null,
+              onDailyWalkInCountChanged: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('walk_in_handling_daily_count_field')),
+          findsNothing,
+        );
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.walkInsAddedToReservations,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: (_) {},
-        ),
-      ));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('walk_in_handling_daily_count_field')),
-        findsOneWidget,
-      );
+        await tester.pumpWidget(
+          wrap(
+            WalkInHandlingCard(
+              mode: WalkInHandlingMode.walkInsAddedToReservations,
+              onModeChanged: (_) {},
+              businessDateIso: '2026-05-05',
+              dailyWalkInCount: null,
+              onDailyWalkInCountChanged: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('walk_in_handling_daily_count_field')),
+          findsOneWidget,
+        );
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.walkInsTrackedSeparately,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: (_) {},
-        ),
-      ));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('walk_in_handling_daily_count_field')),
-        findsNothing,
-      );
-    });
+        await tester.pumpWidget(
+          wrap(
+            WalkInHandlingCard(
+              mode: WalkInHandlingMode.walkInsTrackedSeparately,
+              onModeChanged: (_) {},
+              businessDateIso: '2026-05-05',
+              dailyWalkInCount: null,
+              onDailyWalkInCountChanged: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('walk_in_handling_daily_count_field')),
+          findsNothing,
+        );
+      },
+    );
 
-    testWidgets('submitting daily walk-in count emits parsed int',
-        (tester) async {
+    testWidgets('submitting daily walk-in count emits parsed int', (
+      tester,
+    ) async {
       await sizeViewport(tester);
       final captured = <int?>[];
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.walkInsAddedToReservations,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: null,
-          onDailyWalkInCountChanged: captured.add,
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.walkInsAddedToReservations,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: null,
+            onDailyWalkInCountChanged: captured.add,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -183,15 +227,17 @@ void main() {
       await sizeViewport(tester);
       final captured = <int?>[];
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.walkInsAddedToReservations,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: 14,
-          onDailyWalkInCountChanged: captured.add,
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.walkInsAddedToReservations,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: 14,
+            onDailyWalkInCountChanged: captured.add,
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -207,15 +253,17 @@ void main() {
     testWidgets('pre-fills field from dailyWalkInCount', (tester) async {
       await sizeViewport(tester);
 
-      await tester.pumpWidget(wrap(
-        WalkInHandlingCard(
-          mode: WalkInHandlingMode.walkInsAddedToReservations,
-          onModeChanged: (_) {},
-          businessDateIso: '2026-05-05',
-          dailyWalkInCount: 22,
-          onDailyWalkInCountChanged: (_) {},
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.walkInsAddedToReservations,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: 22,
+            onDailyWalkInCountChanged: (_) {},
+          ),
         ),
-      ));
+      );
       await tester.pumpAndSettle();
 
       final field = tester.widget<TextField>(

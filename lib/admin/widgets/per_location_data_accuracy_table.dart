@@ -170,8 +170,16 @@ class _PerLocationDataAccuracyTableState
     final updatedAt = _modifiedAtLabel(row);
     final covers = _coversFacts(row);
     final metadata = <_MiniFact>[
-      _MiniFact('Wage source', _wageLabel(row.settings.wageSource)),
-      _MiniFact('Walk-ins', _walkInLabel(row.settings.walkInHandlingMode)),
+      _MiniFact(
+        'Wage source',
+        _wageLabel(row.settings.wageSource),
+        sourceLabel: row.settings.wageSourceSource?.label,
+      ),
+      _MiniFact(
+        'Walk-ins',
+        _walkInLabel(row.settings.walkInHandlingMode),
+        sourceLabel: row.settings.walkInHandlingModeSource?.label,
+      ),
       _MiniFact('Last override', updatedAt),
       _MiniFact('Changed by', updatedBy),
     ];
@@ -295,6 +303,9 @@ class _PerLocationDataAccuracyTableState
           _MiniFact(
             _servicePeriodLabel(period.servicePeriodKey),
             _servicePeriodCoversLabel(period.coversSource),
+            sourceLabel: row.settings
+                .coversSourceSourceFor(period.servicePeriodKey)
+                ?.label,
           ),
       ];
     }
@@ -305,16 +316,29 @@ class _PerLocationDataAccuracyTableState
         ..sort((a, b) => a.key.compareTo(b.key));
       return <_MiniFact>[
         for (final entry in entries)
-          _MiniFact(_servicePeriodLabel(entry.key), _coversLabel(entry.value)),
+          _MiniFact(
+            _servicePeriodLabel(entry.key),
+            _coversLabel(entry.value),
+            sourceLabel: row.settings.coversSourceSourceFor(entry.key)?.label,
+          ),
       ];
     }
 
     return <_MiniFact>[
-      _MiniFact('Lunch', _coversLabel(row.settings.coversSourceFor('lunch'))),
-      _MiniFact('Dinner', _coversLabel(row.settings.coversSourceFor('dinner'))),
+      _MiniFact(
+        'Lunch',
+        _coversLabel(row.settings.coversSourceFor('lunch')),
+        sourceLabel: row.settings.coversSourceSourceFor('lunch')?.label,
+      ),
+      _MiniFact(
+        'Dinner',
+        _coversLabel(row.settings.coversSourceFor('dinner')),
+        sourceLabel: row.settings.coversSourceSourceFor('dinner')?.label,
+      ),
       _MiniFact(
         'Late night',
         _coversLabel(row.settings.coversSourceFor('late_night')),
+        sourceLabel: row.settings.coversSourceSourceFor('late_night')?.label,
       ),
     ];
   }
@@ -527,10 +551,11 @@ class _OperatorLocationBlock extends StatelessWidget {
 }
 
 class _MiniFact {
-  const _MiniFact(this.label, this.value);
+  const _MiniFact(this.label, this.value, {this.sourceLabel});
 
   final String label;
   final String value;
+  final String? sourceLabel;
 }
 
 class _FactWrap extends StatelessWidget {
@@ -545,17 +570,26 @@ class _FactWrap extends StatelessWidget {
       runSpacing: 8,
       children: [
         for (final fact in facts)
-          _FactPill(label: fact.label, value: fact.value),
+          _FactPill(
+            label: fact.label,
+            value: fact.value,
+            sourceLabel: fact.sourceLabel,
+          ),
       ],
     );
   }
 }
 
 class _FactPill extends StatelessWidget {
-  const _FactPill({required this.label, required this.value});
+  const _FactPill({
+    required this.label,
+    required this.value,
+    required this.sourceLabel,
+  });
 
   final String label;
   final String value;
+  final String? sourceLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -582,6 +616,14 @@ class _FactPill extends StatelessWidget {
             style: AppTextStyles.body13(color: AppColors.textPrimary),
             overflow: TextOverflow.ellipsis,
           ),
+          if (sourceLabel != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              'Source: $sourceLabel',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
         ],
       ),
     );

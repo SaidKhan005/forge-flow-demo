@@ -7501,8 +7501,9 @@ abstract class PricingTierAdminProxyGateway {
 /// still run through tenant-scoped Postgres transactions so RLS remains the
 /// backup defense.
 ///
-/// Mobile reads from this surface only. The scoped data accuracy write is used
-/// by operator-owned web flows so server truth remains authoritative.
+/// Mobile mostly reads from this surface. The data-accuracy write endpoints are
+/// narrow canonical-write seams for operator-owned clients so server truth
+/// remains authoritative.
 abstract class MobileOperationalSyncProxyGateway {
   Future<Map<String, Object?>> fetchShiftRecords({
     required OperatorContext scope,
@@ -7540,6 +7541,13 @@ abstract class MobileOperationalSyncProxyGateway {
   });
 
   Future<Map<String, Object?>> upsertDataAccuracySettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  });
+
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
     required OperatorContext scope,
     required String operatorId,
     required String locationId,
@@ -9665,6 +9673,8 @@ Future<void> routeRequest(
             mobileOperationalPath != null &&
             (mobileOperationalPath.resource == 'data_accuracy_settings' ||
                 mobileOperationalPath.resource ==
+                    'data_accuracy_settings/manual_covers' ||
+                mobileOperationalPath.resource ==
                     'data_accuracy_service_period_settings')) {
           await _routeOperatorDataAccuracySettingsWrite(
             request: request,
@@ -9672,6 +9682,7 @@ Future<void> routeRequest(
             authGuard: authGuard,
             gateway: mobileOperationalSyncGateway,
             businessScopeGateway: businessScopeGateway,
+            idempotencyStore: adminRequestIdempotencyStore,
             target: mobileOperationalPath,
           );
           return;
@@ -17744,6 +17755,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   required ProxyRequestGuard authGuard,
   required MobileOperationalSyncProxyGateway? gateway,
   required BusinessScopeProxyGateway? businessScopeGateway,
+  required AdminRequestIdempotencyStore? idempotencyStore,
   required _MobileOperationalPath target,
 }) async {
   if (gateway == null) {
@@ -17819,6 +17831,12 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       _writeJson(response, keyError.$1, keyError.$2);
       return;
     }
+  } else if (target.resource == 'data_accuracy_settings/manual_covers') {
+    final keyError = _validateManualCoversWriteBody(bodyResult.body!);
+    if (keyError != null) {
+      _writeJson(response, keyError.$1, keyError.$2);
+      return;
+    }
   }
 
   try {
@@ -17827,20 +17845,66 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       operatorId: target.operatorId,
       locationId: target.locationId,
     );
-    final result = target.resource == 'data_accuracy_service_period_settings'
-        ? await gateway.upsertDataAccuracyServicePeriodSettings(
+    final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+    if (idempotencyKey == null || idempotencyKey.isEmpty) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'idempotency_key_missing',
+        'message': 'Idempotency-Key header is required',
+      });
+      return;
+    }
+    if (idempotencyKey.length > 200) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'idempotency_key_too_long',
+        'message': 'Idempotency-Key header must be 200 characters or fewer',
+      });
+      return;
+    }
+    final requestType = switch (target.resource) {
+      'data_accuracy_service_period_settings' =>
+        'operator.data_accuracy.service_period.patch',
+      'data_accuracy_settings/manual_covers' =>
+        'operator.data_accuracy.manual_covers.patch',
+      _ => 'operator.data_accuracy.settings.patch',
+    };
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: requestType,
+      actorUserId: claims.userId,
+      requestBody: bodyResult.body!,
+      compute: () async {
+        final result = switch (target.resource) {
+          'data_accuracy_service_period_settings' =>
+            await gateway.upsertDataAccuracyServicePeriodSettings(
+              scope: writeScope,
+              operatorId: target.operatorId,
+              locationId: target.locationId,
+              body: bodyResult.body!,
+            ),
+          'data_accuracy_settings/manual_covers' =>
+            await gateway.upsertDataAccuracyManualCovers(
+              scope: writeScope,
+              operatorId: target.operatorId,
+              locationId: target.locationId,
+              body: bodyResult.body!,
+            ),
+          _ => await gateway.upsertDataAccuracySettings(
             scope: writeScope,
             operatorId: target.operatorId,
             locationId: target.locationId,
             body: bodyResult.body!,
-          )
-        : await gateway.upsertDataAccuracySettings(
-            scope: writeScope,
-            operatorId: target.operatorId,
-            locationId: target.locationId,
-            body: bodyResult.body!,
-          );
-    _writeJson(response, 200, result);
+          ),
+        };
+        return (statusCode: 200, payload: result);
+      },
+    );
+  } on AdminIdempotencyKeyConflict catch (error) {
+    _writeJson(response, 409, <String, Object?>{
+      'error': 'idempotency_key_conflict',
+      'message': error.message,
+    });
   } on MobileOperationalSyncProxyGatewayException catch (error) {
     _writeJson(response, error.statusCode, <String, Object?>{
       'error': error.code,
@@ -17941,6 +18005,52 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   return null;
 }
 
+(int, Map<String, Object?>)? _validateManualCoversWriteBody(
+  Map<String, Object?> body,
+) {
+  final keyRaw = body['service_period_key'];
+  if (keyRaw is! String ||
+      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_service_period_key',
+        'message':
+            'service_period_key must start with a lowercase letter and contain '
+            'only lowercase letters, numbers, or underscores',
+      },
+    );
+  }
+  final dateRaw = body['business_date'];
+  if (dateRaw is! String || !RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(dateRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_business_date',
+        'message': 'business_date must be a YYYY-MM-DD business date',
+      },
+    );
+  }
+  final coversRaw = body['covers'];
+  final covers = coversRaw is int
+      ? coversRaw
+      : coversRaw is num && coversRaw == coversRaw.roundToDouble()
+      ? coversRaw.toInt()
+      : coversRaw is String
+      ? int.tryParse(coversRaw.trim())
+      : null;
+  if (covers == null || covers < 0) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_covers',
+        'message': 'covers must be a non-negative integer',
+      },
+    );
+  }
+  return null;
+}
+
 Future<bool> _operatorLocationScopeAllowed({
   required OperatorContext scope,
   required String operatorId,
@@ -17996,6 +18106,7 @@ _MobileOperationalPath? _mobileOperationalPath(String path) {
     case 'timing/resolved':
     case 'demo_mode_states':
     case 'data_accuracy_settings':
+    case 'data_accuracy_settings/manual_covers':
     case 'data_accuracy_service_period_settings':
     case 'wage_role_rows':
     case 'polling_tier_assignment':

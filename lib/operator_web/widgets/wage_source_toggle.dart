@@ -31,6 +31,7 @@ class WageSourceToggle extends StatelessWidget {
     required this.value,
     required this.onChanged,
     required this.bundle,
+    this.source,
     this.vendorApplicabilityBound = false,
     this.vendorApplicabilityLoading = false,
     this.vendorApplicabilityError,
@@ -40,6 +41,7 @@ class WageSourceToggle extends StatelessWidget {
   final WageSource value;
   final ValueChanged<WageSource> onChanged;
   final VendorConnectionsBundle? bundle;
+  final DataAccuracySettingSource? source;
   final bool vendorApplicabilityBound;
   final bool vendorApplicabilityLoading;
   final String? vendorApplicabilityError;
@@ -86,6 +88,14 @@ class WageSourceToggle extends StatelessWidget {
                 'or if you have not yet built confidence in them.',
             onTap: () => onChanged(WageSource.manualMix),
           ),
+          if (source != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Source: ${source!.label}',
+              key: const Key('wage_source_source_label'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
           const SizedBox(height: 14),
           if (vendorApplicabilityBound) ...[
             _VendorApplicabilityStatus(
