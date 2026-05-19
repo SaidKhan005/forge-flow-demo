@@ -12,35 +12,57 @@ import '../../tool/advisor_proxy/operator_benchmark_overrides_routes.dart';
 void main() {
   const operatorId = '22222222-2222-4222-8222-222222222222';
   const locationId = '33333333-3333-4333-8333-333333333333';
-  const orgUnitId = '44444444-4444-4444-8444-444444444444';
   const actorUserId = '11111111-1111-4111-8111-111111111111';
+  const overrideId = '55555555-5555-4555-8555-555555555555';
 
   group('OperatorBenchmarkOverridesRouter', () {
-    test('matches read and write routes only', () {
+    test('matches read routes and legacy write tombstones', () {
       expect(
         OperatorBenchmarkOverridesRouter.matches(
-          '/v1/operator/benchmarks/overrides',
+          operatorBenchmarkOverridesPath,
           'GET',
         ),
         isTrue,
       );
       expect(
         OperatorBenchmarkOverridesRouter.matches(
-          '/v1/operator/benchmarks/overrides',
+          operatorBenchmarkOverrideCapStatusPath,
+          'GET',
+        ),
+        isTrue,
+      );
+      expect(
+        OperatorBenchmarkOverridesRouter.matches(
+          operatorBenchmarkOverridesPath,
           'POST',
         ),
         isTrue,
       );
       expect(
         OperatorBenchmarkOverridesRouter.matches(
-          '/v1/operator/benchmarks/overrides/override-a',
+          '$operatorBenchmarkOverridesPrefix$overrideId',
+          'PATCH',
+        ),
+        isTrue,
+      );
+      expect(
+        OperatorBenchmarkOverridesRouter.matches(
+          '$operatorBenchmarkOverridesPrefix$overrideId',
           'DELETE',
         ),
         isTrue,
       );
       expect(
         OperatorBenchmarkOverridesRouter.matches(
-          '/v1/operator/benchmarks/overrides',
+          '$operatorBenchmarkOverridesPrefix$overrideId'
+              '$operatorBenchmarkOverrideAdminUndoSuffix',
+          'DELETE',
+        ),
+        isTrue,
+      );
+      expect(
+        OperatorBenchmarkOverridesRouter.matches(
+          operatorBenchmarkOverridesPath,
           'DELETE',
         ),
         isFalse,
@@ -68,25 +90,78 @@ void main() {
       expect(result.statusCode, 200);
       expect(result.body['overrides'], isA<List<Object?>>());
       expect(gateway.listCalls, 1);
+      expect(gateway.monthCalls, 0);
     });
 
-    test('POST sets override, emits audit, and replays same idem key',
-        () async {
+    test('legacy write verbs return gone without gateway or audit', () async {
       final gateway = _FakeGateway();
       gateway.rows.add(_row(value: 10));
       final audit = _RecordingAuditSink();
       final router = OperatorBenchmarkOverridesRouter(
         gateway: gateway,
         auditSink: audit,
-        idempotencyCache: OperatorWriteIdempotencyCache(),
         now: () => DateTime.utc(2026, 5, 13, 17),
       );
-      final body = <String, Object?>{
-        'scope_type': 'org_unit',
-        'org_unit_id': orgUnitId,
-        'metric_key': 'target_cplh',
-        'override_value': 12.25,
-      };
+
+      final cases = <({String method, String path, Map<String, Object?> body})>[
+        (
+          method: 'POST',
+          path: operatorBenchmarkOverridesPath,
+          body: const <String, Object?>{
+            'scope_type': 'org_unit',
+            'metric_key': 'target_cplh',
+            'override_value': 12.25,
+          },
+        ),
+        (
+          method: 'PATCH',
+          path: '$operatorBenchmarkOverridesPrefix$overrideId',
+          body: const <String, Object?>{'override_value': 13},
+        ),
+        (
+          method: 'DELETE',
+          path: '$operatorBenchmarkOverridesPrefix$overrideId',
+          body: const <String, Object?>{},
+        ),
+        (
+          method: 'DELETE',
+          path:
+              '$operatorBenchmarkOverridesPrefix$overrideId'
+              '$operatorBenchmarkOverrideAdminUndoSuffix',
+          body: const <String, Object?>{
+            'undo_reason': 'Legacy admin undo is disabled too.',
+          },
+        ),
+      ];
+
+      for (final c in cases) {
+        final result = await router.handle(
+          method: c.method,
+          path: c.path,
+          operatorId: operatorId,
+          locationId: locationId,
+          actorUserId: actorUserId,
+          actorKind: 'operator_user',
+          actorRoles: const <String>{'operator_owner'},
+          idempotencyKey: 'same-idem-key',
+          body: c.body,
+        );
+
+        _expectLegacyWriteDisabled(result);
+      }
+
+      expect(gateway.listCalls, 0);
+      expect(gateway.monthCalls, 0);
+      expect(audit.events, isEmpty);
+    });
+
+    test('legacy POST is disabled before validation and replay', () async {
+      final gateway = _FakeGateway();
+      final audit = _RecordingAuditSink();
+      final router = OperatorBenchmarkOverridesRouter(
+        gateway: gateway,
+        auditSink: audit,
+      );
 
       final first = await router.handle(
         method: 'POST',
@@ -95,8 +170,12 @@ void main() {
         locationId: locationId,
         actorUserId: actorUserId,
         actorKind: 'operator_user',
-        idempotencyKey: 'idem-1',
-        body: body,
+        idempotencyKey: '',
+        body: const <String, Object?>{
+          'scope_type': 'org_unit',
+          'metric_key': 'unknown',
+          'override_value': -1,
+        },
       );
       final second = await router.handle(
         method: 'POST',
@@ -105,53 +184,7 @@ void main() {
         locationId: locationId,
         actorUserId: actorUserId,
         actorKind: 'operator_user',
-        idempotencyKey: 'idem-1',
-        body: Map<String, Object?>.from(body),
-      );
-
-      expect(first.statusCode, 201);
-      expect(second.statusCode, 201);
-      expect(gateway.setCalls, 1);
-      expect(audit.events, hasLength(1));
-      expect(audit.events.single['eventKind'], 'benchmark.override.set');
-      expect(audit.events.single['occurredAt'], DateTime.utc(2026, 5, 13, 17));
-      final payload = audit.events.single['payload'] as Map<String, Object?>;
-      expect(payload['scope_type'], 'org_unit');
-      expect(payload['target_id'], orgUnitId);
-      expect(payload['metric_key'], 'target_cplh');
-      expect(payload['prev_value'], 10);
-      expect(payload['new_value'], 12.25);
-    });
-
-    test('POST idem key conflict returns 409 before second write', () async {
-      final gateway = _FakeGateway();
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: _RecordingAuditSink(),
-      );
-
-      await router.handle(
-        method: 'POST',
-        path: operatorBenchmarkOverridesPath,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        idempotencyKey: 'idem-1',
-        body: const <String, Object?>{
-          'scope_type': 'operator_wide',
-          'metric_key': 'target_splh',
-          'override_value': 10,
-        },
-      );
-      final conflict = await router.handle(
-        method: 'POST',
-        path: operatorBenchmarkOverridesPath,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        idempotencyKey: 'idem-1',
+        idempotencyKey: '',
         body: const <String, Object?>{
           'scope_type': 'operator_wide',
           'metric_key': 'target_splh',
@@ -159,207 +192,15 @@ void main() {
         },
       );
 
-      expect(conflict.statusCode, 409);
-      expect(conflict.body['error'], 'idempotency_key_conflict');
-      expect(gateway.setCalls, 1);
-    });
-
-    test('DELETE clears override and emits clear audit event', () async {
-      final gateway = _FakeGateway();
-      gateway.rows.add(_row(value: 12.25));
-      final audit = _RecordingAuditSink();
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: audit,
-      );
-
-      final result = await router.handle(
-        method: 'DELETE',
-        path:
-            '$operatorBenchmarkOverridesPrefix'
-            '55555555-5555-4555-8555-555555555555',
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        idempotencyKey: 'delete-1',
-        body: const <String, Object?>{},
-      );
-
-      expect(result.statusCode, 200);
-      expect(gateway.clearCalls, 1);
-      expect(audit.events.single['eventKind'], 'benchmark.override.clear');
-      final payload = audit.events.single['payload'] as Map<String, Object?>;
-      expect(payload['target_id'], orgUnitId);
-      expect(payload['metric_key'], 'target_cplh');
-      expect(payload['prev_value'], 12.25);
-      expect(payload['new_value'], isNull);
-      expect(payload['cleared'], isTrue);
-    });
-
-    test('invalid body is rejected before gateway write', () async {
-      final gateway = _FakeGateway();
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: _RecordingAuditSink(),
-      );
-
-      final result = await router.handle(
-        method: 'POST',
-        path: operatorBenchmarkOverridesPath,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        idempotencyKey: 'bad-1',
-        body: const <String, Object?>{
-          'scope_type': 'org_unit',
-          'metric_key': 'unknown',
-          'override_value': 12,
-        },
-      );
-
-      expect(result.statusCode, 400);
-      expect(result.body['error'], 'invalid_metric_key');
-      expect(gateway.setCalls, 0);
+      _expectLegacyWriteDisabled(first);
+      _expectLegacyWriteDisabled(second);
+      expect(gateway.listCalls, 0);
+      expect(gateway.monthCalls, 0);
+      expect(audit.events, isEmpty);
     });
   });
 
-  group('RP-15 manager-once cap', () {
-    test('manager-tier user is blocked on second POST in same month',
-        () async {
-      final gateway = _FakeGateway();
-      final audit = _RecordingAuditSink();
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: audit,
-        now: () => DateTime.utc(2026, 5, 13, 17),
-      );
-
-      final firstBody = <String, Object?>{
-        'scope_type': 'location',
-        'location_id': locationId,
-        'metric_key': 'target_cplh',
-        'override_value': 12.5,
-      };
-      final first = await router.handle(
-        method: 'POST',
-        path: operatorBenchmarkOverridesPath,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        actorRoles: const <String>{'location_manager'},
-        idempotencyKey: 'mgr-first',
-        body: firstBody,
-      );
-      expect(first.statusCode, 201);
-
-      // The fake gateway's setOverride seeds a row with createdBy =
-      // the test actor and effective_from = the router's fixed now,
-      // so the second attempt's cap evaluator now sees one row in
-      // the same month — capped.
-      final second = await router.handle(
-        method: 'POST',
-        path: operatorBenchmarkOverridesPath,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        actorRoles: const <String>{'location_manager'},
-        idempotencyKey: 'mgr-second',
-        body: <String, Object?>{
-          'scope_type': 'location',
-          'location_id': locationId,
-          'metric_key': 'target_splh',
-          'override_value': 4.2,
-        },
-      );
-
-      expect(second.statusCode, 409);
-      expect(second.body['error'], 'manager_override_cap_reached');
-      final cap = second.body['cap'] as Map<String, Object?>;
-      expect(cap['tier'], 'manager');
-      expect(cap['remaining'], 0);
-      expect(gateway.setCalls, 1);
-    });
-
-    test('admin-tier user is uncapped — third POST still passes', () async {
-      final gateway = _FakeGateway();
-      final audit = _RecordingAuditSink();
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: audit,
-        now: () => DateTime.utc(2026, 5, 13, 17),
-      );
-
-      for (var i = 0; i < 3; i += 1) {
-        final result = await router.handle(
-          method: 'POST',
-          path: operatorBenchmarkOverridesPath,
-          operatorId: operatorId,
-          locationId: locationId,
-          actorUserId: actorUserId,
-          actorKind: 'operator_user',
-          actorRoles: const <String>{'operator_owner'},
-          idempotencyKey: 'admin-$i',
-          body: <String, Object?>{
-            'scope_type': 'operator_wide',
-            'metric_key': 'target_cplh',
-            'override_value': 10.0 + i,
-          },
-        );
-        expect(result.statusCode, 201);
-      }
-      expect(gateway.setCalls, 3);
-    });
-
-    test('cap resets across calendar months', () async {
-      final gateway = _FakeGateway();
-      // Seed a manager-set row from April.
-      gateway.history.add(
-        BenchmarkOverrideCandidate(
-          overrideId: 'apr-row',
-          operatorId: operatorId,
-          scopeType: BenchmarkOverrideScopeType.location,
-          orgUnitId: null,
-          locationId: locationId,
-          metricKey: 'target_cplh',
-          value: 11,
-          effectiveFrom: DateTime.utc(2026, 4, 30, 17),
-          effectiveUntil: DateTime.utc(2026, 5, 1, 6),
-          createdBy: actorUserId,
-        ),
-      );
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: _RecordingAuditSink(),
-        now: () => DateTime.utc(2026, 5, 13, 17),
-      );
-
-      // April's row sits outside May; manager should still have the
-      // full budget.
-      final result = await router.handle(
-        method: 'POST',
-        path: operatorBenchmarkOverridesPath,
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        actorRoles: const <String>{'location_manager'},
-        idempotencyKey: 'new-month',
-        body: <String, Object?>{
-          'scope_type': 'location',
-          'location_id': locationId,
-          'metric_key': 'target_cplh',
-          'override_value': 12.0,
-        },
-      );
-
-      expect(result.statusCode, 201);
-      expect(gateway.setCalls, 1);
-    });
-
+  group('legacy cap-status read', () {
     test('cap-status GET reports remaining for managers', () async {
       final gateway = _FakeGateway();
       gateway.rows.add(
@@ -399,123 +240,117 @@ void main() {
       expect(cap['tier'], 'manager');
       expect(cap['used'], 1);
       expect(cap['remaining'], 0);
+      expect(gateway.monthCalls, 1);
     });
 
-    test('admin-undo writes admin.benchmark_override_undone audit row',
-        () async {
-      final gateway = _FakeGateway();
-      const managerOriginalId = '55555555-5555-4555-8555-555555555555';
-      gateway.rows.add(
-        BenchmarkOverrideCandidate(
-          overrideId: managerOriginalId,
+    test(
+      'cap-status GET reports admins as uncapped without month load',
+      () async {
+        final gateway = _FakeGateway();
+        final router = OperatorBenchmarkOverridesRouter(
+          gateway: gateway,
+          auditSink: _RecordingAuditSink(),
+          now: () => DateTime.utc(2026, 5, 13, 17),
+        );
+
+        final result = await router.handle(
+          method: 'GET',
+          path: operatorBenchmarkOverrideCapStatusPath,
           operatorId: operatorId,
-          scopeType: BenchmarkOverrideScopeType.location,
-          orgUnitId: null,
           locationId: locationId,
-          metricKey: 'target_cplh',
-          value: 12,
-          effectiveFrom: DateTime.utc(2026, 5, 5, 17),
-          effectiveUntil: null,
-          createdBy: 'manager-007',
-        ),
-      );
-      final audit = _RecordingAuditSink();
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: audit,
-        now: () => DateTime.utc(2026, 5, 13, 18),
-      );
+          actorUserId: actorUserId,
+          actorKind: 'operator_user',
+          actorRoles: const <String>{'operator_owner'},
+          idempotencyKey: '',
+          body: const <String, Object?>{},
+        );
 
-      final result = await router.handle(
-        method: 'DELETE',
-        path:
-            '$operatorBenchmarkOverridesPrefix$managerOriginalId'
-            '$operatorBenchmarkOverrideAdminUndoSuffix',
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: 'admin-001',
-        actorKind: 'operator_user',
-        actorRoles: const <String>{'operator_owner'},
-        idempotencyKey: 'undo-1',
-        body: const <String, Object?>{
-          'undo_reason': 'Replaced with new benchmark for May rollout.',
-        },
-      );
-
-      expect(result.statusCode, 200);
-      expect(gateway.clearCalls, 1);
-      expect(audit.events, hasLength(1));
-      expect(
-        audit.events.single['eventKind'],
-        'admin.benchmark_override_undone',
-      );
-      final payload = audit.events.single['payload'] as Map<String, Object?>;
-      expect(payload['undone_by_admin_id'], 'admin-001');
-      expect(payload['original_override_id'], managerOriginalId);
-      expect(payload['original_manager_id'], 'manager-007');
-      expect(
-        payload['undo_reason'],
-        'Replaced with new benchmark for May rollout.',
-      );
-    });
-
-    test('admin-undo refuses manager-tier callers', () async {
-      final gateway = _FakeGateway();
-      gateway.rows.add(_row());
-      final router = OperatorBenchmarkOverridesRouter(
-        gateway: gateway,
-        auditSink: _RecordingAuditSink(),
-      );
-
-      final result = await router.handle(
-        method: 'DELETE',
-        path:
-            '$operatorBenchmarkOverridesPrefix'
-            '55555555-5555-4555-8555-555555555555'
-            '$operatorBenchmarkOverrideAdminUndoSuffix',
-        operatorId: operatorId,
-        locationId: locationId,
-        actorUserId: actorUserId,
-        actorKind: 'operator_user',
-        actorRoles: const <String>{'location_manager'},
-        idempotencyKey: 'no-undo',
-        body: const <String, Object?>{},
-      );
-
-      expect(result.statusCode, 403);
-      expect(result.body['error'], 'admin_role_required');
-      expect(gateway.clearCalls, 0);
-    });
+        expect(result.statusCode, 200);
+        final cap = result.body['cap'] as Map<String, Object?>;
+        expect(cap['tier'], 'admin');
+        expect(cap['remaining'], -1);
+        expect(gateway.monthCalls, 0);
+      },
+    );
   });
 
-  group('HTTP permission gate', () {
-    test('POST requires forgeflow.baseline.override permission', () async {
-      await _withRealHttp(() async {
-        final ctx = await _spinUp(allowBaselineOverride: false);
-        try {
-          final response = await _httpPost(
-            ctx.client,
-            ctx.baseUri.resolve(operatorBenchmarkOverridesPath),
-            <String, Object?>{
-              'scope_type': 'operator_wide',
-              'metric_key': 'target_cplh',
-              'override_value': 10,
-            },
-          );
-          expect(response.statusCode, HttpStatus.forbidden);
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(
-            body['permission_key'],
-            PermissionKeys.forgeflowBaselineOverride,
-          );
-          expect(ctx.gateway.setCalls, 0);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+  group('HTTP mount behavior', () {
+    test(
+      'POST legacy write returns gone before permission or gateway',
+      () async {
+        await _withRealHttp(() async {
+          final ctx = await _spinUp(allowBaselineOverride: false);
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(operatorBenchmarkOverridesPath),
+              body: const <String, Object?>{
+                'scope_type': 'operator_wide',
+                'metric_key': 'unknown',
+                'override_value': -1,
+              },
+            );
+
+            expect(
+              response.statusCode,
+              operatorBenchmarkOverrideWriteDisabledStatus,
+            );
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], operatorBenchmarkOverrideWriteDisabledError);
+            expect(
+              body['replacement'],
+              'mobile_baseline_manager_selected_star',
+            );
+            expect(ctx.permissionResolver.loadCalls, 0);
+            expect(ctx.gateway.listCalls, 0);
+            expect(ctx.gateway.monthCalls, 0);
+            expect(ctx.auditSink.events, isEmpty);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'GET read-only route still requires baseline override permission',
+      () async {
+        await _withRealHttp(() async {
+          final ctx = await _spinUp(allowBaselineOverride: false);
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'GET',
+              ctx.baseUri.resolve(operatorBenchmarkOverridesPath),
+            );
+
+            expect(response.statusCode, HttpStatus.forbidden);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['permission_key'],
+              PermissionKeys.forgeflowBaselineOverride,
+            );
+            expect(ctx.permissionResolver.loadCalls, 1);
+            expect(ctx.gateway.listCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
   });
+}
+
+void _expectLegacyWriteDisabled(
+  ({int statusCode, Map<String, Object?> body}) result,
+) {
+  expect(result.statusCode, operatorBenchmarkOverrideWriteDisabledStatus);
+  expect(result.body['error'], operatorBenchmarkOverrideWriteDisabledError);
+  expect(result.body['message'], operatorBenchmarkOverrideWriteDisabledMessage);
+  expect(result.body['replacement'], 'mobile_baseline_manager_selected_star');
 }
 
 class _FakeGateway implements OperatorBenchmarkOverridesGateway {
@@ -524,9 +359,6 @@ class _FakeGateway implements OperatorBenchmarkOverridesGateway {
       <BenchmarkOverrideCandidate>[];
   int listCalls = 0;
   int monthCalls = 0;
-  int setCalls = 0;
-  int patchCalls = 0;
-  int clearCalls = 0;
 
   @override
   Future<List<BenchmarkOverrideCandidate>> listCurrent({
@@ -548,58 +380,13 @@ class _FakeGateway implements OperatorBenchmarkOverridesGateway {
     monthCalls += 1;
     final ref = referenceTime.toUtc();
     final corpus = <BenchmarkOverrideCandidate>[...rows, ...history];
-    return corpus.where((row) {
-      if (row.createdBy != actorUserId) return false;
-      final ef = row.effectiveFrom.toUtc();
-      return ef.year == ref.year && ef.month == ref.month;
-    }).toList(growable: false);
-  }
-
-  @override
-  Future<BenchmarkOverrideCandidate> setOverride({
-    required String operatorId,
-    required String locationId,
-    required String actorUserId,
-    required BenchmarkOverrideScopeType scopeType,
-    required String? orgUnitId,
-    required String? targetLocationId,
-    required String metricKey,
-    required double overrideValue,
-    DateTime? effectiveFrom,
-  }) async {
-    setCalls += 1;
-    final row = _row(
-      scopeType: scopeType,
-      orgUnitId: orgUnitId,
-      locationId: targetLocationId,
-      metricKey: metricKey,
-      value: overrideValue,
-    );
-    rows.add(row);
-    return row;
-  }
-
-  @override
-  Future<BenchmarkOverrideCandidate?> patchOverride({
-    required String operatorId,
-    required String locationId,
-    required String actorUserId,
-    required String overrideId,
-    required double overrideValue,
-  }) async {
-    patchCalls += 1;
-    return _row(value: overrideValue);
-  }
-
-  @override
-  Future<BenchmarkOverrideCandidate?> clearOverride({
-    required String operatorId,
-    required String locationId,
-    required String actorUserId,
-    required String overrideId,
-  }) async {
-    clearCalls += 1;
-    return _row(overrideId: overrideId);
+    return corpus
+        .where((row) {
+          if (row.createdBy != actorUserId) return false;
+          final ef = row.effectiveFrom.toUtc();
+          return ef.year == ref.year && ef.month == ref.month;
+        })
+        .toList(growable: false);
   }
 }
 
@@ -627,19 +414,19 @@ class _RecordingAuditSink implements OperatorWriteAuditSink {
 }
 
 BenchmarkOverrideCandidate _row({
-  String overrideId = '55555555-5555-4555-8555-555555555555',
+  String id = '55555555-5555-4555-8555-555555555555',
   BenchmarkOverrideScopeType scopeType = BenchmarkOverrideScopeType.orgUnit,
   String? orgUnitId = '44444444-4444-4444-8444-444444444444',
-  String? locationId,
+  String? rowLocationId,
   String metricKey = 'target_cplh',
   double value = 12.25,
 }) {
   return BenchmarkOverrideCandidate(
-    overrideId: overrideId,
+    overrideId: id,
     operatorId: '22222222-2222-4222-8222-222222222222',
     scopeType: scopeType,
     orgUnitId: orgUnitId,
-    locationId: locationId,
+    locationId: rowLocationId,
     metricKey: metricKey,
     value: value,
     effectiveFrom: DateTime.utc(2026, 5, 13, 17),
@@ -659,13 +446,19 @@ Future<T> _withRealHttp<T>(Future<T> Function() body) async {
   }
 }
 
-Future<({
-  HttpServer server,
-  HttpClient client,
-  Uri baseUri,
-  _FakeGateway gateway,
-})> _spinUp({required bool allowBaselineOverride}) async {
+Future<
+  ({
+    HttpServer server,
+    HttpClient client,
+    Uri baseUri,
+    _FakeGateway gateway,
+    _RecordingAuditSink auditSink,
+    _StaticPermissionResolver permissionResolver,
+  })
+>
+_spinUp({required bool allowBaselineOverride}) async {
   final gateway = _FakeGateway();
+  final auditSink = _RecordingAuditSink();
   final guard = ProxyRequestGuard(
     verifier: const _StaticVerifier(
       ProxyJwtClaims(
@@ -679,13 +472,9 @@ Future<({
   final permissionResolver = _StaticPermissionResolver(
     allowBaselineOverride: allowBaselineOverride,
   );
-  // Construct the router with the same closure-bound auth + permission
-  // bridges that `main.dart` builds in production. Tests then mount it
-  // via `tryHandle` ahead of `routeRequest` (sibling-file pre-check
-  // pattern shared with C-1 SendGrid + B8 audit-log-hierarchy).
   final router = OperatorBenchmarkOverridesRouter(
     gateway: gateway,
-    auditSink: _RecordingAuditSink(),
+    auditSink: auditSink,
     authResolver: (request) async {
       try {
         final scope = await guard.requireOperatorContext(
@@ -735,21 +524,34 @@ Future<({
   });
   final client = HttpClient();
   final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
-  return (server: server, client: client, baseUri: baseUri, gateway: gateway);
+  return (
+    server: server,
+    client: client,
+    baseUri: baseUri,
+    gateway: gateway,
+    auditSink: auditSink,
+    permissionResolver: permissionResolver,
+  );
 }
 
-Future<({int statusCode, String body})> _httpPost(
+Future<({int statusCode, String body})> _httpJson(
   HttpClient client,
-  Uri uri,
-  Map<String, Object?> body,
-) async {
-  final request = await client.postUrl(uri);
-  final encoded = utf8.encode(jsonEncode(body));
+  String method,
+  Uri uri, {
+  Map<String, Object?>? body,
+  String? idempotencyKey,
+}) async {
+  final request = await client.openUrl(method, uri);
   request.headers.set(HttpHeaders.authorizationHeader, 'Bearer token');
-  request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
-  request.headers.set('Idempotency-Key', 'http-test-idem');
-  request.headers.contentLength = encoded.length;
-  request.add(encoded);
+  if (idempotencyKey != null) {
+    request.headers.set('Idempotency-Key', idempotencyKey);
+  }
+  if (body != null) {
+    final encoded = utf8.encode(jsonEncode(body));
+    request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+    request.headers.contentLength = encoded.length;
+    request.add(encoded);
+  }
   final response = await request.close();
   return (
     statusCode: response.statusCode,
@@ -767,12 +569,14 @@ class _StaticVerifier implements ProxyJwtVerifier {
 }
 
 class _StaticPermissionResolver implements ProxyPermissionSnapshotResolver {
-  const _StaticPermissionResolver({required this.allowBaselineOverride});
+  _StaticPermissionResolver({required this.allowBaselineOverride});
 
   final bool allowBaselineOverride;
+  int loadCalls = 0;
 
   @override
   Future<ProxyPermissionSnapshot> load(OperatorContext scope) async {
+    loadCalls += 1;
     return ProxyPermissionSnapshot(
       userId: scope.userId,
       operatorId: scope.operatorId,

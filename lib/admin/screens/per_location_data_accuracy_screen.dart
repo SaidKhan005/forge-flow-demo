@@ -246,6 +246,7 @@ class _PerLocationDataAccuracyScreenState
       context: context,
       builder: (_) => _DataAccuracyOverrideDialog(
         initial: rows.first,
+        keyedRows: rows,
         title: 'Apply data accuracy to ${scope.displayLabel}',
       ),
     );
@@ -257,9 +258,7 @@ class _PerLocationDataAccuracyScreenState
         scopeType: _mutationScopeType(scope),
         orgUnitId: scope.orgUnitId,
         locationId: scope.locationId,
-        coversSourceLunch: result.coversSourceLunch,
-        coversSourceDinner: result.coversSourceDinner,
-        coversSourceLateNight: result.coversSourceLateNight,
+        coversSourcePerServicePeriod: result.coversSourcePerServicePeriod,
         wageSource: result.wageSource,
         walkInHandlingMode: result.walkInHandlingMode,
         actorUserId: widget.actorUserId,
@@ -621,6 +620,7 @@ class _DataAccuracyOverrideDraft {
     required this.coversSourceLunch,
     required this.coversSourceDinner,
     required this.coversSourceLateNight,
+    required this.coversSourcePerServicePeriod,
     required this.wageSource,
     required this.walkInHandlingMode,
     required this.reasonNote,
@@ -629,15 +629,21 @@ class _DataAccuracyOverrideDraft {
   final CoversSource? coversSourceLunch;
   final CoversSource? coversSourceDinner;
   final CoversSource? coversSourceLateNight;
+  final Map<String, CoversSource>? coversSourcePerServicePeriod;
   final WageSource? wageSource;
   final DataAccuracyWalkInHandlingMode? walkInHandlingMode;
   final String reasonNote;
 }
 
 class _DataAccuracyOverrideDialog extends StatefulWidget {
-  const _DataAccuracyOverrideDialog({required this.initial, this.title});
+  const _DataAccuracyOverrideDialog({
+    required this.initial,
+    this.keyedRows,
+    this.title,
+  });
 
   final DataAccuracyAdminRow initial;
+  final List<DataAccuracyAdminRow>? keyedRows;
   final String? title;
 
   @override
@@ -647,25 +653,44 @@ class _DataAccuracyOverrideDialog extends StatefulWidget {
 
 class _DataAccuracyOverrideDialogState
     extends State<_DataAccuracyOverrideDialog> {
-  // Per-Daypart V1 Slice R5 (Gap 27/36): covers source is keyed by
-  // service period. This admin override dialog keeps the legacy
-  // 3-daypart shape (the admin-hierarchy per-period editor is a scoped
-  // follow-up); each lookup resolves to the vendor default when the
-  // period has no keyed row.
-  late CoversSource _lunch = widget.initial.settings.coversSourceFor('lunch');
-  late CoversSource _dinner = widget.initial.settings.coversSourceFor('dinner');
-  late CoversSource _lateNight = widget.initial.settings.coversSourceFor(
-    'late_night',
-  );
-  late WageSource _wage = widget.initial.settings.wageSource;
-  late DataAccuracyWalkInHandlingMode _walkInMode =
-      widget.initial.settings.walkInHandlingMode;
+  late final bool _usesKeyedCovers = widget.keyedRows != null;
+  late final List<String> _servicePeriodKeys = _usesKeyedCovers
+      ? _servicePeriodKeysForRows(widget.keyedRows!)
+      : const <String>[];
+  late Map<String, CoversSource> _coversSourcePerServicePeriod;
+  late CoversSource _lunch;
+  late CoversSource _dinner;
+  late CoversSource _lateNight;
+  late WageSource _wage;
+  late DataAccuracyWalkInHandlingMode _walkInMode;
   final TextEditingController _reason = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _coversSourcePerServicePeriod = <String, CoversSource>{
+      for (final key in _servicePeriodKeys)
+        key: _initialCoversSourceForKey(key),
+    };
+    _lunch = widget.initial.settings.coversSourceFor('lunch');
+    _dinner = widget.initial.settings.coversSourceFor('dinner');
+    _lateNight = widget.initial.settings.coversSourceFor('late_night');
+    _wage = widget.initial.settings.wageSource;
+    _walkInMode = widget.initial.settings.walkInHandlingMode;
+  }
 
   @override
   void dispose() {
     _reason.dispose();
     super.dispose();
+  }
+
+  CoversSource _initialCoversSourceForKey(String key) {
+    for (final row in widget.keyedRows ?? const <DataAccuracyAdminRow>[]) {
+      final explicit = row.settings.coversSourcePerServicePeriod[key];
+      if (explicit != null) return explicit;
+    }
+    return widget.initial.settings.coversSourceFor(key);
   }
 
   @override
@@ -686,24 +711,40 @@ class _DataAccuracyOverrideDialogState
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
-              _CoversSourceField(
-                label: 'Covers source - lunch',
-                fieldKey: const Key('admin_data_accuracy_lunch'),
-                value: _lunch,
-                onChanged: (v) => setState(() => _lunch = v),
-              ),
-              _CoversSourceField(
-                label: 'Covers source - dinner',
-                fieldKey: const Key('admin_data_accuracy_dinner'),
-                value: _dinner,
-                onChanged: (v) => setState(() => _dinner = v),
-              ),
-              _CoversSourceField(
-                label: 'Covers source - late night',
-                fieldKey: const Key('admin_data_accuracy_late_night'),
-                value: _lateNight,
-                onChanged: (v) => setState(() => _lateNight = v),
-              ),
+              if (_usesKeyedCovers)
+                for (final key in _servicePeriodKeys)
+                  _CoversSourceField(
+                    label: 'Covers source - ${_servicePeriodKeyLabel(key)}',
+                    fieldKey: Key('admin_data_accuracy_covers_source_$key'),
+                    value: _coversSourcePerServicePeriod[key]!,
+                    onChanged: (v) => setState(
+                      () => _coversSourcePerServicePeriod =
+                          <String, CoversSource>{
+                            ..._coversSourcePerServicePeriod,
+                            key: v,
+                          },
+                    ),
+                  )
+              else ...[
+                _CoversSourceField(
+                  label: 'Covers source - lunch',
+                  fieldKey: const Key('admin_data_accuracy_lunch'),
+                  value: _lunch,
+                  onChanged: (v) => setState(() => _lunch = v),
+                ),
+                _CoversSourceField(
+                  label: 'Covers source - dinner',
+                  fieldKey: const Key('admin_data_accuracy_dinner'),
+                  value: _dinner,
+                  onChanged: (v) => setState(() => _dinner = v),
+                ),
+                _CoversSourceField(
+                  label: 'Covers source - late night',
+                  fieldKey: const Key('admin_data_accuracy_late_night'),
+                  value: _lateNight,
+                  onChanged: (v) => setState(() => _lateNight = v),
+                ),
+              ],
               const SizedBox(height: 8),
               _WageSourceField(
                 value: _wage,
@@ -744,9 +785,14 @@ class _DataAccuracyOverrideDialogState
             if (note.isEmpty) return;
             Navigator.of(context).pop(
               _DataAccuracyOverrideDraft(
-                coversSourceLunch: _lunch,
-                coversSourceDinner: _dinner,
-                coversSourceLateNight: _lateNight,
+                coversSourceLunch: _usesKeyedCovers ? null : _lunch,
+                coversSourceDinner: _usesKeyedCovers ? null : _dinner,
+                coversSourceLateNight: _usesKeyedCovers ? null : _lateNight,
+                coversSourcePerServicePeriod: _usesKeyedCovers
+                    ? Map<String, CoversSource>.unmodifiable(
+                        _coversSourcePerServicePeriod,
+                      )
+                    : null,
                 wageSource: _wage,
                 walkInHandlingMode: _walkInMode,
                 reasonNote: note,
@@ -807,6 +853,28 @@ class _CoversSourceField extends StatelessWidget {
       ),
     );
   }
+}
+
+List<String> _servicePeriodKeysForRows(List<DataAccuracyAdminRow> rows) {
+  final seen = <String>{};
+  final keys = <String>[];
+
+  void add(String key) {
+    final normalized = key.trim();
+    if (normalized.isEmpty) return;
+    if (!seen.add(normalized)) return;
+    keys.add(normalized);
+  }
+
+  for (final row in rows) {
+    for (final key in row.settings.coversSourcePerServicePeriod.keys) {
+      add(key);
+    }
+    for (final setting in row.servicePeriodSettings) {
+      add(setting.servicePeriodKey);
+    }
+  }
+  return keys;
 }
 
 class _WageSourceField extends StatelessWidget {
@@ -1127,6 +1195,18 @@ String _servicePeriodWageLabel(ServicePeriodWageSource source) {
     case ServicePeriodWageSource.manualMix:
       return 'Manual mix';
   }
+}
+
+String _servicePeriodKeyLabel(String key) {
+  return key
+      .split('_')
+      .where((part) => part.isNotEmpty)
+      .map(
+        (part) => part.length == 1
+            ? part.toUpperCase()
+            : '${part[0].toUpperCase()}${part.substring(1)}',
+      )
+      .join(' ');
 }
 
 String _coversSourceLabel(CoversSource source) {

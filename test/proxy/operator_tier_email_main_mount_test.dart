@@ -82,7 +82,10 @@ void main() {
           source.indexOf('operatorTierEmailSendGridProvider'),
           source.indexOf('startup.operator_tier_email_router'),
         );
-        expect(mountRegion, contains("Platform.environment['SENDGRID_API_KEY']"));
+        expect(
+          mountRegion,
+          contains("Platform.environment['SENDGRID_API_KEY']"),
+        );
         expect(
           mountRegion,
           contains("Platform.environment['SENDGRID_SANDBOX_MODE']"),
@@ -117,13 +120,15 @@ void main() {
       // sibling routers (B6 / B8.b) so reviewers see one idiom
       // for every operator-scoped pre-check. We pin the ORDERING
       // among `tryHandle` calls — production sets the pre-check
-      // chain as: auditLogHierarchy -> operatorBenchmarkOverrides
+      // chain as: auditLogHierarchy -> legacy benchmark override tombstone
       // -> operatorTierEmail -> operatorWebAuditLogHierarchy ->
       // routeRequest fallback.
-      final preCheckIndex =
-          source.indexOf('operatorTierEmailRouter.tryHandle(request)');
-      final benchmarkTryHandleIndex =
-          source.indexOf('operatorBenchmarkOverridesRouter.tryHandle(request)');
+      final preCheckIndex = source.indexOf(
+        'operatorTierEmailRouter.tryHandle(request)',
+      );
+      final benchmarkTryHandleIndex = source.indexOf(
+        'operatorBenchmarkOverridesRouter.tryHandle(request)',
+      );
       // `operatorWebAuditLogHierarchyRouter` instantiation lives
       // higher in the file; we want the `.tryHandle(request)` call
       // site specifically. Indent-prefix `if (await ` makes the
@@ -191,107 +196,120 @@ void main() {
       );
     });
 
-    test('POST to the canonical path reaches the mounted router (200)',
-        () async {
-      final result = await _captureRequest(
-        router: router,
-        method: 'POST',
-        path: operatorTierEmailDataFreshnessRequestPath,
-        headers: <String, String>{
-          'Authorization': 'Bearer fake-token',
-          'Idempotency-Key': 'smoke-idem-1',
-        },
-        body: const <String, Object?>{
-          'current_tier': 'Standard',
-          'requested_cadence': 'Faster than current tier',
-          'business_reason': 'Mount smoke test',
-        },
-      );
+    test(
+      'POST to the canonical path reaches the mounted router (200)',
+      () async {
+        final result = await _captureRequest(
+          router: router,
+          method: 'POST',
+          path: operatorTierEmailDataFreshnessRequestPath,
+          headers: <String, String>{
+            'Authorization': 'Bearer fake-token',
+            'Idempotency-Key': 'smoke-idem-1',
+          },
+          body: const <String, Object?>{
+            'current_tier': 'Standard',
+            'requested_cadence': 'Faster than current tier',
+            'business_reason': 'Mount smoke test',
+          },
+        );
 
-      expect(result.handled, isTrue,
-          reason: 'router.tryHandle must claim the canonical POST path');
-      expect(result.statusCode, 200);
-      expect(result.bodyJson['ok'], true);
-      expect(result.bodyJson['audit_row_id'], 'audit-mount-row');
-      expect(emailProvider.sends, hasLength(1));
-      expect(auditSink.events, hasLength(1));
-      expect(
-        auditSink.events.single['eventKind'],
-        kOperatorTierEmailAuditEventKind,
-      );
-    });
+        expect(
+          result.handled,
+          isTrue,
+          reason: 'router.tryHandle must claim the canonical POST path',
+        );
+        expect(result.statusCode, 200);
+        expect(result.bodyJson['ok'], true);
+        expect(result.bodyJson['audit_row_id'], 'audit-mount-row');
+        expect(emailProvider.sends, hasLength(1));
+        expect(auditSink.events, hasLength(1));
+        expect(
+          auditSink.events.single['eventKind'],
+          kOperatorTierEmailAuditEventKind,
+        );
+      },
+    );
 
-    test('POST to a non-mounted path falls through to the dispatcher (404)',
-        () async {
-      // Proves the pre-check is a precise match, not a prefix
-      // match — the fallback path must still 404 just like
-      // production would route it through the monolith.
-      final result = await _captureRequest(
-        router: router,
-        method: 'POST',
-        path: '/v1/operator/tier-email/something-else',
-        headers: <String, String>{
-          'Authorization': 'Bearer fake-token',
-          'Idempotency-Key': 'smoke-idem-2',
-        },
-        body: const <String, Object?>{},
-      );
+    test(
+      'POST to a non-mounted path falls through to the dispatcher (404)',
+      () async {
+        // Proves the pre-check is a precise match, not a prefix
+        // match — the fallback path must still 404 just like
+        // production would route it through the monolith.
+        final result = await _captureRequest(
+          router: router,
+          method: 'POST',
+          path: '/v1/operator/tier-email/something-else',
+          headers: <String, String>{
+            'Authorization': 'Bearer fake-token',
+            'Idempotency-Key': 'smoke-idem-2',
+          },
+          body: const <String, Object?>{},
+        );
 
-      expect(result.handled, isFalse,
-          reason: 'router.tryHandle must NOT claim a near-miss path');
-      expect(result.statusCode, 404);
-      expect(result.bodyJson['error'], 'not_found');
-      // Routed past the router — neither audit nor email side
-      // effects fired.
-      expect(emailProvider.sends, isEmpty);
-      expect(auditSink.events, isEmpty);
-    });
+        expect(
+          result.handled,
+          isFalse,
+          reason: 'router.tryHandle must NOT claim a near-miss path',
+        );
+        expect(result.statusCode, 404);
+        expect(result.bodyJson['error'], 'not_found');
+        // Routed past the router — neither audit nor email side
+        // effects fired.
+        expect(emailProvider.sends, isEmpty);
+        expect(auditSink.events, isEmpty);
+      },
+    );
 
-    test('GET on the canonical path falls through (405-equivalent 404)',
-        () async {
-      // The router only matches `POST`; other methods on the same
-      // path must NOT short-circuit, so the fallback dispatcher
-      // owns the response shape.
-      final result = await _captureRequest(
-        router: router,
-        method: 'GET',
-        path: operatorTierEmailDataFreshnessRequestPath,
-        headers: <String, String>{
-          'Authorization': 'Bearer fake-token',
-        },
-      );
+    test(
+      'GET on the canonical path falls through (405-equivalent 404)',
+      () async {
+        // The router only matches `POST`; other methods on the same
+        // path must NOT short-circuit, so the fallback dispatcher
+        // owns the response shape.
+        final result = await _captureRequest(
+          router: router,
+          method: 'GET',
+          path: operatorTierEmailDataFreshnessRequestPath,
+          headers: <String, String>{'Authorization': 'Bearer fake-token'},
+        );
 
-      expect(result.handled, isFalse);
-      expect(result.statusCode, 404);
-      expect(result.bodyJson['error'], 'not_found');
-    });
+        expect(result.handled, isFalse);
+        expect(result.statusCode, 404);
+        expect(result.bodyJson['error'], 'not_found');
+      },
+    );
 
-    test('missing Authorization header is rejected by the router (401)',
-        () async {
-      // Confirms the mounted router's auth resolver is the one
-      // running — not the fallback dispatcher.
-      final result = await _captureRequest(
-        router: router,
-        method: 'POST',
-        path: operatorTierEmailDataFreshnessRequestPath,
-        headers: <String, String>{
-          'Idempotency-Key': 'smoke-idem-3',
-        },
-        body: const <String, Object?>{
-          'current_tier': 'Standard',
-          'requested_cadence': 'Faster',
-          'business_reason': 'No auth',
-        },
-      );
+    test(
+      'missing Authorization header is rejected by the router (401)',
+      () async {
+        // Confirms the mounted router's auth resolver is the one
+        // running — not the fallback dispatcher.
+        final result = await _captureRequest(
+          router: router,
+          method: 'POST',
+          path: operatorTierEmailDataFreshnessRequestPath,
+          headers: <String, String>{'Idempotency-Key': 'smoke-idem-3'},
+          body: const <String, Object?>{
+            'current_tier': 'Standard',
+            'requested_cadence': 'Faster',
+            'business_reason': 'No auth',
+          },
+        );
 
-      expect(result.handled, isTrue,
-          reason: 'router.tryHandle claims the path even when auth fails');
-      expect(result.statusCode, 401);
-      expect(result.bodyJson['error'], 'unauthorized');
-      // No side effects: audit + email both empty.
-      expect(emailProvider.sends, isEmpty);
-      expect(auditSink.events, isEmpty);
-    });
+        expect(
+          result.handled,
+          isTrue,
+          reason: 'router.tryHandle claims the path even when auth fails',
+        );
+        expect(result.statusCode, 401);
+        expect(result.bodyJson['error'], 'unauthorized');
+        // No side effects: audit + email both empty.
+        expect(emailProvider.sends, isEmpty);
+        expect(auditSink.events, isEmpty);
+      },
+    );
   });
 }
 
@@ -347,10 +365,12 @@ Future<_CapturedResult> _captureRequest({
         if (!handled) {
           request.response.statusCode = 404;
           request.response.headers.contentType = ContentType.json;
-          request.response.write(jsonEncode(<String, Object?>{
-            'error': 'not_found',
-            'message': 'fallback dispatcher',
-          }));
+          request.response.write(
+            jsonEncode(<String, Object?>{
+              'error': 'not_found',
+              'message': 'fallback dispatcher',
+            }),
+          );
           await request.response.close();
         }
       } catch (_) {

@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../services/integration/iana_timezone_converter.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../auth/operator_web_handoff_redeem_gateway.dart';
 import '../account/operator_web_account_actions.dart';
@@ -269,6 +270,7 @@ class OperatorWebRouter extends StatefulWidget {
     required this.source,
     this.initialNavId = kOperatorWebDefaultNavId,
     this.initialUri,
+    this.nowUtc,
   });
 
   /// Auth source the router watches.
@@ -282,9 +284,50 @@ class OperatorWebRouter extends StatefulWidget {
   /// Optional browser URI test seam. Production reads [Uri.base].
   final Uri? initialUri;
 
+  /// Optional UTC clock seam. Production uses [DateTime.now]; widget
+  /// tests pin this so business-date rollover behavior is deterministic.
+  final DateTime Function()? nowUtc;
+
   @override
   State<OperatorWebRouter> createState() => _OperatorWebRouterState();
 }
+
+String _dataAccuracyBusinessDateIso({
+  required OperatorWebSession session,
+  required DateTime instantUtc,
+}) {
+  final rolloverHour = _validRolloverHour(session.rolloverHour) ?? 4;
+  final timezone = session.primaryLocationTimezone?.trim();
+  if (timezone != null && timezone.isNotEmpty) {
+    try {
+      final businessDate = IanaTimezoneConverter.shared.toBusinessDate(
+        restaurantTimezone: timezone,
+        businessDayRolloverHour: rolloverHour,
+        instant: instantUtc.toUtc(),
+      );
+      return _isoDate(businessDate);
+    } on IanaTimezoneConverterError {
+      // Fall through to the UTC fallback below. This avoids reviving the
+      // stale fixture date if a session arrives before timezone repair.
+    }
+  }
+
+  final utc = instantUtc.toUtc();
+  final adjusted = utc.hour < rolloverHour
+      ? utc.subtract(const Duration(days: 1))
+      : utc;
+  return _isoDate(adjusted);
+}
+
+int? _validRolloverHour(int? value) {
+  if (value == null || value < 0 || value > 23) return null;
+  return value;
+}
+
+String _isoDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
 
 class _OperatorWebRouterState extends State<OperatorWebRouter> {
   late OperatorWebAuthState _state;
@@ -876,9 +919,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
       },
       onRequestPasswordReset: ({required String email}) async {
-        await _withBusy(
-          () => widget.source.requestPasswordReset(email: email),
-        );
+        await _withBusy(() => widget.source.requestPasswordReset(email: email));
       },
       errorMessage: errorMessage,
       infoMessage: infoMessage,
@@ -1205,9 +1246,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           body = vendorConnectionsWiringError;
         } else if (locationScope == null) {
           body = _RequiresLocationScopeSurface(
-            key: const Key(
-              'operator_web_vendor_connections_requires_location',
-            ),
+            key: const Key('operator_web_vendor_connections_requires_location'),
             icon: Icons.cable_outlined,
             title: 'Choose a location',
             body:
@@ -1262,22 +1301,26 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           );
         } else {
           body = DataAccuracyScreen(
-                session: session,
-                locationId: locationScope.id,
-                locationName: locationScope.label,
-                dataAccuracyGateway: _dataAccuracyGateway,
-                vendorApplicabilityGateway: _vendorApplicabilityGateway,
-                // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
-                // Authority section now mounts inside Data Accuracy.
-                // Re-use the same gateway resolution the standalone
-                // Wage Authority case below uses so the embedded
-                // section saves through the live proxy when wired and
-                // the in-memory demo gateway otherwise.
-                wageAuthorityGateway:
-                    _wageAuthorityGateway ??
-                    (_routerOwnedDemoWageAuthorityGateway ??=
-                        OperatorWebDemoWageAuthorityGateway()),
-              );
+            session: session,
+            locationId: locationScope.id,
+            locationName: locationScope.label,
+            dataAccuracyGateway: _dataAccuracyGateway,
+            vendorApplicabilityGateway: _vendorApplicabilityGateway,
+            businessDateIso: _dataAccuracyBusinessDateIso(
+              session: session,
+              instantUtc: (widget.nowUtc ?? DateTime.now)().toUtc(),
+            ),
+            // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
+            // Authority section now mounts inside Data Accuracy.
+            // Re-use the same gateway resolution the standalone
+            // Wage Authority case below uses so the embedded
+            // section saves through the live proxy when wired and
+            // the in-memory demo gateway otherwise.
+            wageAuthorityGateway:
+                _wageAuthorityGateway ??
+                (_routerOwnedDemoWageAuthorityGateway ??=
+                    OperatorWebDemoWageAuthorityGateway()),
+          );
         }
         break;
       // OW-G73 — the standalone `kOperatorWebNavWageAuthority` case was
@@ -1293,8 +1336,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       case kOperatorWebNavNotifications:
         body =
             _liveSurfaceMissingGateway(
-              hasLiveProvider: widget.source
-                  is OperatorWebNotificationPreferencesGatewayProvider,
+              hasLiveProvider:
+                  widget.source
+                      is OperatorWebNotificationPreferencesGatewayProvider,
               surfaceTitle: 'Notifications',
             ) ??
             SettingsNotificationsScreen(
@@ -1315,8 +1359,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         // short-circuits via `_isDemoAuthSource` (the seeded demo
         // schedule fixtures stay intact for demo — byte-unchanged).
         final scheduleWiringError = _liveSurfaceMissingGateway(
-          hasLiveProvider:
-              widget.source is OperatorWebScheduleGatewayProvider,
+          hasLiveProvider: widget.source is OperatorWebScheduleGatewayProvider,
           surfaceTitle: 'Schedule',
         );
         if (scheduleWiringError != null) {
@@ -1541,8 +1584,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   DemoWebTeamRolesGateway? _routerOwnedDemoRolesGateway;
   // _routerOwnedDemoBenchmarksGateway removed — operator-web Benchmarks
   // override surface cut (Per-Daypart Targets V1 / Slice 2, Gap 35).
-  InMemoryWebAuditLogHierarchyGateway?
-      _routerOwnedDemoAuditLogHierarchyGateway;
+  InMemoryWebAuditLogHierarchyGateway? _routerOwnedDemoAuditLogHierarchyGateway;
 
   WebTeamHierarchyGateway get _teamHierarchyGateway {
     final source = widget.source;

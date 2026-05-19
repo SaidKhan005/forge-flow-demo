@@ -7632,6 +7632,7 @@ abstract class DataAccuracyAdminProxyGateway {
     String? coversSourceLunch,
     String? coversSourceDinner,
     String? coversSourceLateNight,
+    Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -7647,6 +7648,7 @@ abstract class DataAccuracyAdminProxyGateway {
     String? coversSourceLunch,
     String? coversSourceDinner,
     String? coversSourceLateNight,
+    Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -16606,6 +16608,10 @@ Future<void> _routeDataAccuracyAdmin({
       body,
       'covers_source_late_night',
     );
+    final coversPerServicePeriod = _optionalBodyStringMap(
+      body,
+      'covers_source_per_service_period',
+    );
     final wageSource = _optionalBodyString(body, 'wage_source');
     final walkInHandlingMode = _optionalBodyString(
       body,
@@ -16627,6 +16633,7 @@ Future<void> _routeDataAccuracyAdmin({
           coversSourceLunch: coversLunch,
           coversSourceDinner: coversDinner,
           coversSourceLateNight: coversLateNight,
+          coversSourcePerServicePeriod: coversPerServicePeriod,
           wageSource: wageSource,
           walkInHandlingMode: walkInHandlingMode,
           reasonNote: reasonNote,
@@ -16659,6 +16666,10 @@ Future<void> _routeDataAccuracyAdmin({
       body,
       'covers_source_late_night',
     );
+    final coversPerServicePeriod = _optionalBodyStringMap(
+      body,
+      'covers_source_per_service_period',
+    );
     final wageSource = _optionalBodyString(body, 'wage_source');
     final walkInHandlingMode = _optionalBodyString(
       body,
@@ -16682,6 +16693,7 @@ Future<void> _routeDataAccuracyAdmin({
           coversSourceLunch: coversLunch,
           coversSourceDinner: coversDinner,
           coversSourceLateNight: coversLateNight,
+          coversSourcePerServicePeriod: coversPerServicePeriod,
           wageSource: wageSource,
           walkInHandlingMode: walkInHandlingMode,
           reasonNote: reasonNote,
@@ -17485,6 +17497,41 @@ Map<String, int>? _optionalBodyPositiveIntMap(
       );
     }
     out[key.trim()] = parsed;
+  });
+  return out;
+}
+
+Map<String, String>? _optionalBodyStringMap(
+  Map<String, Object?> body,
+  String field,
+) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an object of string values',
+    );
+  }
+  final out = <String, String>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field keys must be non-empty strings',
+      );
+    }
+    if (value is! String || value.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field values must be non-empty strings',
+      );
+    }
+    out[key.trim()] = value.trim();
   });
   return out;
 }

@@ -1,42 +1,27 @@
 import 'package:forge_and_flow/services/baseline/benchmark_override_resolver.dart';
 
-/// Wave 2 RP-15 — manager-once cap policy for benchmark overrides.
+/// Historical RP-15 manager-once cap policy for benchmark override
+/// status reads.
 ///
-/// The benchmark override surface (operator-web Benchmarks screen +
-/// proxy `/v1/operator/benchmarks/overrides` routes) lets owners and
-/// managers re-anchor CPLH / SPLH / PPA against the target cycle. RP-15
-/// adds two guardrails on top of the existing `forgeflow.baseline.override`
-/// permission gate:
-///
-///   1. Manager-tier roles ("Location Manager", "Supervisor") may set at
-///      most one override per calendar month. The second attempt is
-///      rejected with HTTP 409 `manager_override_cap_reached`. The cap
-///      resets at the first of the month in UTC.
-///   2. Admin-tier roles ("Owner", "General Manager", "F&F Super Admin")
-///      are uncapped — they own the override surface and can undo a
-///      manager's override if they disagree (see admin-undo affordance
-///      shipped on the operator-web admin screen).
-///
-/// The cap is enforced both server-side (in
-/// `operator_benchmark_overrides_routes.dart`) and surfaced client-side
-/// via `OperatorWebBenchmarksGateway.getCapStatus` so the operator sees
-/// the remaining count before they tap Save. Per HP #2 the in-memory
-/// demo gateway honors the same policy.
+/// Legacy `/v1/operator/benchmarks/overrides` mutations are disabled;
+/// mobile Baseline Manager selected-star writes are the only active
+/// override path. This policy remains so the read-only cap-status route
+/// can report the same tier/remaining shape to any cleanup or status
+/// consumers without reopening legacy writes.
 class BenchmarkOverrideCapPolicy {
   const BenchmarkOverrideCapPolicy({this.managerMonthlyLimit = 1});
 
-  /// Manager-tier role keys (location-scoped, post-R-2L). These users
-  /// can edit benchmark overrides but are capped at one per calendar
-  /// month. Verified against the R-2L Default Role Catalog v2 proposal
-  /// (`docs/_indices/WAVE_2_R2L_DEFAULT_ROLE_CATALOG_V2_PROPOSAL.md`).
+  /// Manager-tier role keys (location-scoped, post-R-2L). In the legacy
+  /// cap-status response these users report a one-per-calendar-month
+  /// budget, but the old write route itself is disabled.
   static const Set<String> managerTierRoles = <String>{
     'location_manager',
     'supervisor',
   };
 
   /// Admin-tier role keys (business-wide, post-R-2L) plus the global
-  /// F&F super admin. These users are uncapped and can undo a
-  /// manager's override via the admin-undo affordance.
+  /// F&F super admin. The legacy cap-status response reports these
+  /// users as uncapped.
   static const Set<String> adminTierRoles = <String>{
     'operator_owner',
     'operator_admin',
@@ -44,8 +29,7 @@ class BenchmarkOverrideCapPolicy {
     'super_admin',
   };
 
-  /// How many overrides a manager-tier user may set per calendar month.
-  /// Operator-locked at 1 in 2026-05-14 RP-15 spec.
+  /// Historical per-month budget shown by the legacy cap-status read.
   final int managerMonthlyLimit;
 
   /// Returns the cap status for [actorUserId] given their [roles] and
@@ -68,9 +52,8 @@ class BenchmarkOverrideCapPolicy {
       );
     }
     if (tier == BenchmarkOverrideCapTier.none) {
-      // Roles not in either tier set still get a cap of 0 — they can't
-      // override at all. The route's role gate (`kOperatorWriteRoles`)
-      // is the primary defense; this is belt-and-suspenders.
+      // Roles not in either tier set still report a cap of 0 in the
+      // read-only compatibility envelope.
       return BenchmarkOverrideCapStatus(
         tier: tier,
         limit: managerMonthlyLimit,
@@ -108,9 +91,8 @@ class BenchmarkOverrideCapPolicy {
   }
 }
 
-/// Outcome of [BenchmarkOverrideCapPolicy.evaluate]. The router emits
-/// `remaining == 0` as HTTP 409; the operator-web Benchmarks screen
-/// renders the remaining count as a hint and disables Save at zero.
+/// Outcome of [BenchmarkOverrideCapPolicy.evaluate] for the legacy
+/// read-only cap-status response.
 class BenchmarkOverrideCapStatus {
   const BenchmarkOverrideCapStatus({
     required this.tier,
@@ -128,9 +110,8 @@ class BenchmarkOverrideCapStatus {
   /// calendar month. Always 0 for admins.
   final int used;
 
-  /// How many more overrides the user may set this month. `-1` for
-  /// admins (unlimited). Manager-tier users see `1` -> `0` after the
-  /// first override.
+  /// Historical remaining budget for the current month. `-1` for
+  /// admins (unlimited).
   final int remaining;
 
   bool get isCapped =>
@@ -139,17 +120,15 @@ class BenchmarkOverrideCapStatus {
   bool get isUnlimited => remaining < 0;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'tier': tier.wire,
-        'limit': limit,
-        'used': used,
-        'remaining': remaining,
-      };
+    'tier': tier.wire,
+    'limit': limit,
+    'used': used,
+    'remaining': remaining,
+  };
 
   static BenchmarkOverrideCapStatus fromJson(Map<String, Object?> json) {
     return BenchmarkOverrideCapStatus(
-      tier: BenchmarkOverrideCapTier.parse(
-        (json['tier'] as String?) ?? 'none',
-      ),
+      tier: BenchmarkOverrideCapTier.parse((json['tier'] as String?) ?? 'none'),
       limit: (json['limit'] as num?)?.toInt() ?? 0,
       used: (json['used'] as num?)?.toInt() ?? 0,
       remaining: (json['remaining'] as num?)?.toInt() ?? 0,

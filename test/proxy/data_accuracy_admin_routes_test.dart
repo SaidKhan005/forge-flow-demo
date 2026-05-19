@@ -170,14 +170,65 @@ void main() {
                 'scope_type': 'org_unit',
                 'org_unit_id': 'ou-1',
                 'covers_source_lunch': 'manual',
+                'covers_source_per_service_period': <String, Object?>{
+                  'breakfast': 'forecast',
+                  'lunch': 'vendor',
+                },
                 'reason_note': 'Set lunch source for the region',
               },
             );
             expect(response.statusCode, equals(200));
             expect(gateway.scopeOverrideCalls, equals(1));
             expect(gateway.lastScopeType, equals('org_unit'));
+            expect(gateway.lastCoversSourceLunch, equals('manual'));
+            expect(
+              gateway.lastCoversSourcePerServicePeriod,
+              equals(<String, String>{
+                'breakfast': 'forecast',
+                'lunch': 'vendor',
+              }),
+            );
             final body = jsonDecode(response.body) as Map<String, Object?>;
             expect(body['affected_location_count'], equals(0));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH data accuracy passes keyed covers map to admin gateway',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '${adminDataAccuracySettingsPrefix}op-1/loc-1',
+              ),
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'covers_source_per_service_period': <String, Object?>{
+                  'breakfast': 'forecast',
+                  'lunch': 'vendor',
+                },
+                'reason_note': 'Set breakfast source for launch',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastCoversSourceLunch, equals('manual'));
+            expect(
+              gateway.lastCoversSourcePerServicePeriod,
+              equals(<String, String>{
+                'breakfast': 'forecast',
+                'lunch': 'vendor',
+              }),
+            );
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -364,6 +415,8 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastActorUserId;
   String? lastScopeType;
   String? lastServicePeriodKey;
+  String? lastCoversSourceLunch;
+  Map<String, String>? lastCoversSourcePerServicePeriod;
   int assignTierCalls = 0;
   int scopeOverrideCalls = 0;
   int scopeAssignCalls = 0;
@@ -398,12 +451,15 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     String? coversSourceLunch,
     String? coversSourceDinner,
     String? coversSourceLateNight,
+    Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
     required String adminReason,
   }) async {
     lastActorUserId = actorUserId;
+    lastCoversSourceLunch = coversSourceLunch;
+    lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
     return const <String, Object?>{'ok': true};
   }
 
@@ -417,6 +473,7 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     String? coversSourceLunch,
     String? coversSourceDinner,
     String? coversSourceLateNight,
+    Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -424,6 +481,8 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   }) async {
     lastActorUserId = actorUserId;
     lastScopeType = scopeType;
+    lastCoversSourceLunch = coversSourceLunch;
+    lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
     scopeOverrideCalls += 1;
     return <String, Object?>{
       'scope_type': scopeType,

@@ -21,6 +21,7 @@ import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_vendor_connections_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
+import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_hierarchy_gateway.dart';
@@ -83,41 +84,38 @@ void main() {
       },
     );
 
-    testWidgets(
-      'email/password sign-in reaches the completed shell with no '
-      'magic-link / ToS step in between (invited-operator path)',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = DemoOperatorWebAuthSource.signedOut();
-        addTearDown(source.dispose);
+    testWidgets('email/password sign-in reaches the completed shell with no '
+        'magic-link / ToS step in between (invited-operator path)', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.signedOut();
+      addTearDown(source.dispose);
 
-        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
 
-        await tester.enterText(
-          find.byKey(const Key('operator_web_signin_email_field')),
-          'invited.operator@forgeflow.test',
-        );
-        await tester.enterText(
-          find.byKey(const Key('operator_web_signin_password_field')),
-          'set-via-firebase-reset-email',
-        );
-        await tester.tap(
-          find.byKey(const Key('operator_web_signin_submit')),
-        );
-        await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('operator_web_signin_email_field')),
+        'invited.operator@forgeflow.test',
+      );
+      await tester.enterText(
+        find.byKey(const Key('operator_web_signin_password_field')),
+        'set-via-firebase-reset-email',
+      );
+      await tester.tap(find.byKey(const Key('operator_web_signin_submit')));
+      await tester.pumpAndSettle();
 
-        // Lands directly on the post-sign-in shell — no welcome, no
-        // set-password, no onboarding-MFA, no ToS surface.
-        expect(
-          find.byKey(const Key('operator_web_shell_scaffold')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_welcome_token_field')),
-          findsNothing,
-        );
-      },
-    );
+      // Lands directly on the post-sign-in shell — no welcome, no
+      // set-password, no onboarding-MFA, no ToS surface.
+      expect(
+        find.byKey(const Key('operator_web_shell_scaffold')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_welcome_token_field')),
+        findsNothing,
+      );
+    });
 
     testWidgets(
       'completed state renders the post-onboarding shell with Account body',
@@ -608,9 +606,10 @@ void main() {
       await tester.tap(
         find.byKey(const Key('operator_web_management_scope_picker')),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
       await tester.tap(find.text('Downtown').last);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
       expect(
         find.text('Manage the services connected to Downtown.'),
@@ -620,9 +619,10 @@ void main() {
       await tester.tap(
         find.byKey(const Key('operator_web_management_scope_picker')),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
       await tester.tap(find.text('All locations').last);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
 
       expect(
         find.byKey(
@@ -828,9 +828,7 @@ void main() {
         );
         expect(
           find.byKey(
-            const Key(
-              'operator_web_surface_wiring_error_vendor_connections',
-            ),
+            const Key('operator_web_surface_wiring_error_vendor_connections'),
           ),
           findsNothing,
         );
@@ -854,14 +852,9 @@ void main() {
           find.byKey(const Key('operator_web_nav_item_schedule')),
         );
         await tester.pumpAndSettle();
+        expect(find.byKey(const Key('schedule_screen')), findsOneWidget);
         expect(
-          find.byKey(const Key('schedule_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_schedule'),
-          ),
+          find.byKey(const Key('operator_web_surface_wiring_error_schedule')),
           findsNothing,
         );
 
@@ -886,46 +879,33 @@ void main() {
     // and the live fail-loud guard is covered by the Data accuracy
     // wiring-error tests below.
 
-    testWidgets(
-      'live source missing the team-users mixin: honest wiring-error '
-      'surface, NOT fixtures, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveUnwiredOperatorWebSource();
-        addTearDown(source.dispose);
+    testWidgets('live source missing the team-users mixin: honest wiring-error '
+        'surface, NOT fixtures, NO demo banner', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveUnwiredOperatorWebSource();
+      addTearDown(source.dispose);
 
-        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
-        await tester.pumpAndSettle();
+      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+      await tester.pumpAndSettle();
 
-        // G19 — no demo banner for a live source.
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
+      // G19 — no demo banner for a live source.
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
 
-        await tester.tap(
-          find.byKey(const Key('operator_web_nav_item_members')),
-        );
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('operator_web_nav_item_members')));
+      await tester.pumpAndSettle();
 
-        // G62 — fail loud: the honest wiring-error surface, NOT the
-        // in-memory demo fixtures.
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_team_members'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_members_screen')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+      // G62 — fail loud: the honest wiring-error surface, NOT the
+      // in-memory demo fixtures.
+      expect(
+        find.byKey(const Key('operator_web_surface_wiring_error_team_members')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_members_screen')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
 
     testWidgets(
       'fully-wired live source: real gateway renders Members, NO banner, '
@@ -938,10 +918,7 @@ void main() {
         await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
         await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
+        expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
 
         await tester.tap(
           find.byKey(const Key('operator_web_nav_item_members')),
@@ -959,10 +936,7 @@ void main() {
           find.byKey(const Key('operator_web_members_screen')),
           findsOneWidget,
         );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
+        expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
       },
     );
 
@@ -992,10 +966,7 @@ void main() {
         await tester.pumpAndSettle();
 
         // G19 — no demo banner for a live source.
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
+        expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
 
         await tester.tap(
           find.byKey(const Key('operator_web_nav_item_audit_log')),
@@ -1011,16 +982,11 @@ void main() {
         );
         // NOT the fail-loud wiring-error surface.
         expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_audit_log'),
-          ),
+          find.byKey(const Key('operator_web_surface_wiring_error_audit_log')),
           findsNothing,
         );
         // Still no demo banner — this is a live source.
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
+        expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
       },
     );
 
@@ -1034,116 +1000,96 @@ void main() {
     // The demo-source "fixtures still served" assertions live in the
     // demo-banner tests above.
 
-    testWidgets(
-      'OW-G70 — live source missing the vendor-connections mixin: '
-      'honest wiring-error surface, NOT fixtures, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveUnwiredOperatorWebSource();
-        addTearDown(source.dispose);
+    testWidgets('OW-G70 — live source missing the vendor-connections mixin: '
+        'honest wiring-error surface, NOT fixtures, NO demo banner', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = _LiveUnwiredOperatorWebSource();
+      addTearDown(source.dispose);
 
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavVendorConnections,
-            ),
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavVendorConnections,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(
-            const Key(
-              'operator_web_surface_wiring_error_vendor_connections',
-            ),
+      expect(
+        find.byKey(
+          const Key('operator_web_surface_wiring_error_vendor_connections'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_vendor_connections_screen')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
+
+    testWidgets('OW-G70 — fully-wired live source: real Vendor connections '
+        'screen renders, NO wiring error, NO demo banner', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveVendorConnectionsWiredOperatorWebSource(
+        OperatorWebDemoVendorConnectionsFixture.gateway(),
+      );
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavVendorConnections,
           ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_vendor_connections_screen')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    testWidgets(
-      'OW-G70 — fully-wired live source: real Vendor connections '
-      'screen renders, NO wiring error, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveVendorConnectionsWiredOperatorWebSource(
-          OperatorWebDemoVendorConnectionsFixture.gateway(),
-        );
-        addTearDown(source.dispose);
+      expect(
+        find.byKey(const Key('operator_web_vendor_connections_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_surface_wiring_error_vendor_connections'),
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
 
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavVendorConnections,
-            ),
+    testWidgets('OW-G70 — live source missing the data-accuracy mixin: honest '
+        'wiring-error surface, NOT fixtures, NO demo banner', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveUnwiredOperatorWebSource();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavDataAccuracy,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('operator_web_vendor_connections_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key(
-              'operator_web_surface_wiring_error_vendor_connections',
-            ),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets(
-      'OW-G70 — live source missing the data-accuracy mixin: honest '
-      'wiring-error surface, NOT fixtures, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveUnwiredOperatorWebSource();
-        addTearDown(source.dispose);
-
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavDataAccuracy,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_data_accuracy'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('operator_web_data_accuracy_screen')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+      expect(
+        find.byKey(
+          const Key('operator_web_surface_wiring_error_data_accuracy'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
 
     testWidgets(
       'OW-G70 — live source with data-accuracy gateway but MISSING the '
@@ -1182,44 +1128,70 @@ void main() {
       },
     );
 
-    testWidgets(
-      'OW-G70 — fully-wired live source (data-accuracy + vendor-'
-      'applicability): real Data accuracy screen, NO wiring error, '
-      'NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveDataAccuracyWiredOperatorWebSource(
-          dataAccuracyGateway: _StubDataAccuracyGateway(),
-          vendorApplicabilityGateway: _StubVendorApplicabilityGateway(),
-        );
-        addTearDown(source.dispose);
+    testWidgets('Data accuracy uses session timezone and rollover for default '
+        'business date', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveDataAccuracyWiredOperatorWebSource(
+        dataAccuracyGateway: _StubDataAccuracyGateway(),
+        vendorApplicabilityGateway: _StubVendorApplicabilityGateway(),
+      );
+      addTearDown(source.dispose);
 
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavDataAccuracy,
-            ),
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavDataAccuracy,
+            nowUtc: () => DateTime.utc(2026, 5, 13, 7, 30),
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('operator_web_data_accuracy_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_data_accuracy'),
+      final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
+      await tester.ensureVisible(addButton);
+      await tester.pumpAndSettle();
+      await tester.tap(addButton, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      final dateField = tester.widget<TextField>(
+        find.byKey(kKeyedServicePeriodAccuracyEffectiveDateFieldKey),
+      );
+      expect(dateField.controller!.text, '2026-05-12');
+    });
+
+    testWidgets('OW-G70 — fully-wired live source (data-accuracy + vendor-'
+        'applicability): real Data accuracy screen, NO wiring error, '
+        'NO demo banner', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveDataAccuracyWiredOperatorWebSource(
+        dataAccuracyGateway: _StubDataAccuracyGateway(),
+        vendorApplicabilityGateway: _StubVendorApplicabilityGateway(),
+      );
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavDataAccuracy,
           ),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_surface_wiring_error_data_accuracy'),
+        ),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
 
     // OW-G73 — removed the two remaining OW-G70 tests that injected the
     // deleted `kOperatorWebNavWageAuthority` constant to exercise the
@@ -1230,77 +1202,55 @@ void main() {
     // now-unused `_LiveWageAuthorityWiredOperatorWebSource` helper was
     // removed with them.
 
-    testWidgets(
-      'OW-G70 — live source missing the schedule mixin: honest '
-      'wiring-error surface, NOT fixtures, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveUnwiredOperatorWebSource();
-        addTearDown(source.dispose);
+    testWidgets('OW-G70 — live source missing the schedule mixin: honest '
+        'wiring-error surface, NOT fixtures, NO demo banner', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveUnwiredOperatorWebSource();
+      addTearDown(source.dispose);
 
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavSchedule,
-            ),
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavSchedule,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_schedule'),
+      expect(
+        find.byKey(const Key('operator_web_surface_wiring_error_schedule')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('schedule_screen')), findsNothing);
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
+
+    testWidgets('OW-G70 — fully-wired live source: real Schedule screen, NO '
+        'wiring error, NO demo banner', (tester) async {
+      await sizeViewport(tester);
+      final source = _LiveScheduleWiredOperatorWebSource(
+        OperatorWebDemoScheduleGateway(),
+      );
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavSchedule,
           ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('schedule_screen')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    testWidgets(
-      'OW-G70 — fully-wired live source: real Schedule screen, NO '
-      'wiring error, NO demo banner',
-      (tester) async {
-        await sizeViewport(tester);
-        final source = _LiveScheduleWiredOperatorWebSource(
-          OperatorWebDemoScheduleGateway(),
-        );
-        addTearDown(source.dispose);
-
-        await tester.pumpWidget(
-          wrap(
-            OperatorWebRouter(
-              source: source,
-              initialNavId: kOperatorWebNavSchedule,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(const Key('schedule_screen')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_surface_wiring_error_schedule'),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const Key('operator_web_demo_banner')),
-          findsNothing,
-        );
-      },
-    );
+      expect(find.byKey(const Key('schedule_screen')), findsOneWidget);
+      expect(
+        find.byKey(const Key('operator_web_surface_wiring_error_schedule')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('operator_web_demo_banner')), findsNothing);
+    });
   });
 }
 
@@ -1314,8 +1264,7 @@ class _LiveUnwiredOperatorWebSource extends OperatorWebAuthSource {
     _controller.add(_state);
   }
 
-  final _controller =
-      StreamController<OperatorWebAuthState>.broadcast();
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
   final OperatorWebAuthState _state = const OperatorWebCompleted(
     session: kDemoOperatorWebSession,
   );
@@ -1345,8 +1294,7 @@ class _LiveWiredOperatorWebSource extends OperatorWebAuthSource
     _controller.add(_state);
   }
 
-  final _controller =
-      StreamController<OperatorWebAuthState>.broadcast();
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
   final OperatorWebAuthState _state = const OperatorWebCompleted(
     session: kDemoOperatorWebSession,
   );
@@ -1388,8 +1336,7 @@ class _LiveAuditLogWiredOperatorWebSource extends OperatorWebAuthSource
     _controller.add(_state);
   }
 
-  final _controller =
-      StreamController<OperatorWebAuthState>.broadcast();
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
   final OperatorWebAuthState _state = const OperatorWebCompleted(
     session: kDemoOperatorWebSession,
   );
@@ -1453,8 +1400,7 @@ class _FakeOperatorWebHandoffGateway
 /// Fully-wired live source for the Vendor connections route — mixes
 /// `OperatorWebVendorConnectionsGatewayProvider`, exactly as the
 /// production `FirebaseOperatorWebAuthSource` does.
-class _LiveVendorConnectionsWiredOperatorWebSource
-    extends OperatorWebAuthSource
+class _LiveVendorConnectionsWiredOperatorWebSource extends OperatorWebAuthSource
     implements OperatorWebVendorConnectionsGatewayProvider {
   _LiveVendorConnectionsWiredOperatorWebSource(this.vendorConnectionsGateway) {
     _controller.add(_state);
@@ -1637,8 +1583,7 @@ class _StubDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
 }
 
 /// Minimal stub for the vendor-applicability gateway — empty rows.
-class _StubVendorApplicabilityGateway
-    implements WebVendorApplicabilityGateway {
+class _StubVendorApplicabilityGateway implements WebVendorApplicabilityGateway {
   @override
   Future<List<WebVendorApplicabilityRow>> list({
     required String settingKind,
