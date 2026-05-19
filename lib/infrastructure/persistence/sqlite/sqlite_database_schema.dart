@@ -119,6 +119,7 @@ Future<void> _createAllTables(Database db) async {
       target_profile_version_id  TEXT PRIMARY KEY NOT NULL,
       target_profile_id          TEXT NOT NULL,
       restaurant_id              TEXT NOT NULL,
+      target_cycle_id            TEXT,
       source_type                TEXT NOT NULL,
       target_cplh                REAL NOT NULL,
       target_splh                REAL NOT NULL,
@@ -132,6 +133,11 @@ Future<void> _createAllTables(Database db) async {
       theoretical_labor_pct      REAL NOT NULL,
       created_at                 TEXT NOT NULL
     )
+  ''');
+  await db.execute('''
+    CREATE INDEX ix_target_profile_versions_cycle
+    ON target_profile_versions(restaurant_id, target_cycle_id)
+    WHERE target_cycle_id IS NOT NULL
   ''');
 
   // ── Canonical operational layer ───────────────────────────────────────

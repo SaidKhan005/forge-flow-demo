@@ -46,7 +46,7 @@ Write-Host '7. Apply migrations in order with `psql -v ON_ERROR_STOP=1` against'
 Write-Host '   $env:POSTGRES_ADMIN_URL, starting with'
 Write-Host '   db/migrations/202604250000_advisor_roles.sql and continuing'
 # MIGRATION_CUTOFF_BEGIN
-Write-Host '   through 202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql.'
+Write-Host '   through 202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql.'
 # MIGRATION_CUTOFF_END
 Write-Host ''
 Write-Host '   The cutoff line above is enforced by tool/migration_cutoff_lint.dart'

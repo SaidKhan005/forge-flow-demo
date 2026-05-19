@@ -21,9 +21,11 @@
 
 import '../domain/models/recommended_benchmark_selection.dart';
 import '../domain/repositories/baseline_selection_repository.dart';
+import '../domain/repositories/open_shift_snapshot_repository.dart';
 import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
@@ -32,6 +34,7 @@ import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../domain/services/target_cycle_policy.dart';
 import 'business_date_authority_service.dart';
+import 'closed_truth_eligibility.dart';
 import 'baseline_authority_service.dart';
 import '../domain/services/recommended_benchmark_selection_service.dart';
 import 'restaurant_timing_config_read_service.dart';
@@ -46,6 +49,8 @@ class BaselineManagerService {
   static final BaselineManagerService instance = BaselineManagerService._();
 
   final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
+  final OpenShiftSnapshotRepository _openShiftRepo =
+      SqliteOpenShiftSnapshotRepository.instance;
   final BaselineSelectionRepository _baselineRepo =
       SqliteBaselineSelectionRepository.instance;
   final RestaurantScopeRepository _scopeRepo =
@@ -130,10 +135,17 @@ class BaselineManagerService {
     String? restaurantId,
   }) async {
     final scopedId = restaurantId ?? await _activeRestaurantId();
-    final closedShifts = await _shiftRepo.getClosedShiftsInDateRange(
+    final rawClosedShifts = await _shiftRepo.getClosedShiftsInDateRange(
       scopedId,
       startDate,
       endDate,
+    );
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      scopedId,
+    );
+    final closedShifts = ClosedTruthEligibility.filter(
+      rawClosedShifts,
+      currentOperationalBusinessDate: operationalBusinessDate,
     );
     final selectedKeys = await _baselineRepo.getSelectedRecordKeys(scopedId);
 

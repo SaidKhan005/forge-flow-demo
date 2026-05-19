@@ -29,11 +29,28 @@ class TargetProfileDao {
   }
 
   Future<void> insertTargetProfileVersion(TargetProfileVersion version) async {
+    final map = await _targetProfileVersionMapForSchema(version);
     await _db.insert(
       'target_profile_versions',
-      version.toMap(),
+      map,
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
+    if (map.containsKey('target_cycle_id') &&
+        version.targetCycleId != null &&
+        version.targetCycleId!.trim().isNotEmpty) {
+      await _db.update(
+        'target_profile_versions',
+        <String, Object?>{'target_cycle_id': version.targetCycleId},
+        where:
+            'restaurant_id = ? AND target_profile_version_id = ? '
+            'AND (target_cycle_id IS NULL OR target_cycle_id = ?)',
+        whereArgs: <Object?>[
+          version.restaurantId,
+          version.targetProfileVersionId,
+          '',
+        ],
+      );
+    }
   }
 
   Future<TargetProfileVersion?> getTargetProfileVersion(
@@ -44,6 +61,24 @@ class TargetProfileDao {
       'target_profile_versions',
       where: 'restaurant_id = ? AND target_profile_version_id = ?',
       whereArgs: [restaurantId, versionId],
+    );
+    if (rows.isEmpty) return null;
+    return TargetProfileVersion.fromMap(rows.first);
+  }
+
+  Future<TargetProfileVersion?> getTargetProfileVersionForCycle(
+    String restaurantId,
+    String targetCycleId,
+  ) async {
+    if (!await _columnExists('target_profile_versions', 'target_cycle_id')) {
+      return null;
+    }
+    final rows = await _db.query(
+      'target_profile_versions',
+      where: 'restaurant_id = ? AND target_cycle_id = ?',
+      whereArgs: <Object?>[restaurantId, targetCycleId],
+      orderBy: 'created_at DESC',
+      limit: 1,
     );
     if (rows.isEmpty) return null;
     return TargetProfileVersion.fromMap(rows.first);
@@ -133,5 +168,20 @@ class TargetProfileDao {
           verdictReason: row['verdict_reason'] as String?,
         ),
     ]);
+  }
+
+  Future<Map<String, dynamic>> _targetProfileVersionMapForSchema(
+    TargetProfileVersion version,
+  ) async {
+    final map = Map<String, dynamic>.from(version.toMap());
+    if (!await _columnExists('target_profile_versions', 'target_cycle_id')) {
+      map.remove('target_cycle_id');
+    }
+    return map;
+  }
+
+  Future<bool> _columnExists(String table, String column) async {
+    final rows = await _db.rawQuery('PRAGMA table_info($table)');
+    return rows.any((row) => row['name'] == column);
   }
 }

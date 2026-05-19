@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/services/closed_timing_label_resolver.dart';
 import 'package:forge_and_flow/services/history_pattern_builder.dart';
@@ -40,6 +41,29 @@ ShiftRecord _shift({
     servicePeriodKey: servicePeriodKey,
   );
 }
+
+const _configuredServicePeriods = <ServicePeriodDefinition>[
+  ServicePeriodDefinition(
+    id: 'supper',
+    label: 'Supper',
+    shortLabel: 'S',
+    sortOrder: 10,
+    startLocalTime: '17:00',
+    endLocalTime: '22:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+  ServicePeriodDefinition(
+    id: 'brunch',
+    label: 'Brunch',
+    shortLabel: 'B',
+    sortOrder: 20,
+    startLocalTime: '09:00',
+    endLocalTime: '14:00',
+    rollsPastMidnight: false,
+    applicableDays: [1, 2, 3, 4, 5, 6, 7],
+  ),
+];
 
 // â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -317,6 +341,57 @@ void main() {
 
         expect(result.single.daypart, 'dinner');
         expect(result.single.fullLabel, 'Thu Supper');
+      });
+
+      test(
+        'configured definitions label saved keys when no snapshot exists',
+        () {
+          final shifts = [
+            _shift(
+              weekId: '2026-W09',
+              dayLabel: 'Thu',
+              daypart: 'dinner',
+              status: 'closed',
+              primaryLever: 'CPLH_DOWN',
+              businessTimingProfileId: 'profile-v2',
+              businessTimingProfileVersionId: 'profile-v2',
+              servicePeriodKey: 'supper',
+            ),
+          ];
+
+          final result = HistoryPatternBuilder.fromClosedShifts(
+            shifts,
+            {},
+            servicePeriodDefinitions: _configuredServicePeriods,
+          );
+
+          expect(result.single.daypart, 'supper');
+          expect(result.single.fullLabel, 'Thu Supper');
+          expect(result.single.servicePeriodSortOrder, 10);
+        },
+      );
+
+      test('configured definitions label keyed rows without raw-key fallback', () {
+        final shifts = [
+          _shift(
+            weekId: '2026-W09',
+            dayLabel: 'Fri',
+            daypart: 'dinner',
+            status: 'closed',
+            primaryLever: 'PPA_UP',
+            servicePeriodKey: 'brunch',
+          ),
+        ];
+
+        final result = HistoryPatternBuilder.fromClosedShifts(
+          shifts,
+          {},
+          servicePeriodDefinitions: _configuredServicePeriods,
+        );
+
+        expect(result.single.daypart, 'brunch');
+        expect(result.single.fullLabel, 'Fri Brunch');
+        expect(result.single.servicePeriodSortOrder, 20);
       });
     });
 

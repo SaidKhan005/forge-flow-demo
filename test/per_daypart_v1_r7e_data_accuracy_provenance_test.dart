@@ -1,7 +1,8 @@
-// Per-Daypart V1 R7e - data accuracy provenance.
+// Per-Daypart V1 R7f - data accuracy provenance precedence.
 //
-// Proves the effective data-accuracy view now emits source metadata
-// and the shared model parses it without breaking older payloads.
+// Proves the effective data-accuracy view emits source metadata with
+// the same hierarchy winner as the effective value, and the shared
+// model parses it without breaking older payloads.
 
 import 'dart:io';
 
@@ -10,7 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 
 const String _migrationFilename =
-    '202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql';
+    '202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql';
 
 String _readMigration() {
   final file = File('db/migrations/$_migrationFilename');
@@ -25,7 +26,7 @@ String _readMigration() {
 }
 
 void main() {
-  group('R7e migration', () {
+  group('R7f migration', () {
     test('appends provenance columns to the effective view', () {
       final sql = _readMigration().toLowerCase();
 
@@ -58,7 +59,7 @@ void main() {
       );
     });
 
-    test('keyed service-period rows win over scoped fallback maps', () {
+    test('scoped overrides win over keyed service-period base maps', () {
       final sql = _readMigration().toLowerCase();
       final valueOrder = _extractMergeOrder(
         sql,
@@ -71,13 +72,22 @@ void main() {
         endNeedle: ') as covers_source_per_service_period_source,',
       );
 
+      expect(sourceOrder, equals(valueOrder));
       expect(
         _mergeCoversSources(valueOrder),
-        containsPair('lunch', 'keyed_vendor'),
+        containsPair('afternoon', 'keyed_manual'),
       );
       expect(
         _mergeCoversSources(valueOrder),
-        containsPair('breakfast', 'keyed_forecast'),
+        containsPair('brunch', 'business_forecast'),
+      );
+      expect(
+        _mergeCoversSources(valueOrder),
+        containsPair('breakfast', 'org_manual'),
+      );
+      expect(
+        _mergeCoversSources(valueOrder),
+        containsPair('lunch', 'location_forecast'),
       );
       expect(
         _mergeCoversSources(valueOrder),
@@ -85,11 +95,19 @@ void main() {
       );
       expect(
         _mergeProvenanceSources(sourceOrder),
-        containsPair('lunch', 'keyed_service_period_setting'),
+        containsPair('afternoon', 'keyed_service_period_setting'),
       );
       expect(
         _mergeProvenanceSources(sourceOrder),
-        containsPair('breakfast', 'keyed_service_period_setting'),
+        containsPair('brunch', 'business_scoped_override'),
+      );
+      expect(
+        _mergeProvenanceSources(sourceOrder),
+        containsPair('breakfast', 'org_scoped_override'),
+      );
+      expect(
+        _mergeProvenanceSources(sourceOrder),
+        containsPair('lunch', 'location_scoped_override'),
       );
       expect(
         _mergeProvenanceSources(sourceOrder),
@@ -200,6 +218,7 @@ Map<String, String> _mergeCoversSources(List<_MergeSource> order) {
       _MergeSource.business: <String, String>{
         'breakfast': 'business_manual',
         'lunch': 'business_forecast',
+        'brunch': 'business_forecast',
       },
       _MergeSource.orgUnit: <String, String>{
         'breakfast': 'org_manual',
@@ -210,8 +229,10 @@ Map<String, String> _mergeCoversSources(List<_MergeSource> order) {
         'dinner': 'location_manual',
       },
       _MergeSource.keyed: <String, String>{
+        'afternoon': 'keyed_manual',
         'breakfast': 'keyed_forecast',
         'lunch': 'keyed_vendor',
+        'brunch': 'keyed_vendor',
       },
     },
   );
@@ -224,6 +245,7 @@ Map<String, String> _mergeProvenanceSources(List<_MergeSource> order) {
       _MergeSource.business: <String, String>{
         'breakfast': 'business_scoped_override',
         'lunch': 'business_scoped_override',
+        'brunch': 'business_scoped_override',
       },
       _MergeSource.orgUnit: <String, String>{
         'breakfast': 'org_scoped_override',
@@ -234,8 +256,10 @@ Map<String, String> _mergeProvenanceSources(List<_MergeSource> order) {
         'dinner': 'location_scoped_override',
       },
       _MergeSource.keyed: <String, String>{
+        'afternoon': 'keyed_service_period_setting',
         'breakfast': 'keyed_service_period_setting',
         'lunch': 'keyed_service_period_setting',
+        'brunch': 'keyed_service_period_setting',
       },
     },
   );

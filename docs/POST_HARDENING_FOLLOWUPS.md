@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**60 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`;
+**61 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -98,8 +98,9 @@ Production1 apply.
 | `202605170100_per_daypart_v1_r7a_covers_source_per_period_hierarchy.sql` | Per-Daypart V1 R7a per-period covers-source hierarchy. ADDITIVE: `public.effective_data_accuracy_settings_v` gains a `covers_source_per_service_period` jsonb output (resolved most-specific-scope-wins from the keyed `data_accuracy_service_period_settings` effective rows, HP #11 operator/org_unit/location precedence preserved), and `public.data_accuracy_scoped_overrides` gains a nullable `covers_source_per_service_period` jsonb column. Existing 3 scalar view outputs byte-unchanged; no column dropped or altered; RLS/timestamptz/operator-leading-index compliant; idempotent; no down migration. Sets up R7b (proxy onto the jsonb) and R7d (final legacy-column drop). | code-ready |
 | `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql` | Per-Daypart V1 R7d FINAL covers-source de-hardcode step (schema-destructive). Atomic `begin; create or replace view public.effective_data_accuracy_settings_v` (R7a body minus the 3 legacy scalar outputs) then `alter table ... drop column if exists` the 3 legacy `covers_source_{lunch,dinner,late_night}` columns on `public.data_accuracy_settings` and the 3 legacy scalar columns on `public.data_accuracy_scoped_overrides`; `commit;`. No `cascade`, view never dropped. Safe because R5 backfilled into the keyed table, R7a added the per-period jsonb (view + scoped-overrides), R7b moved the proxy off legacy-column SQL, R7c removed dead legacy-column Dart; pre-drop grep proved zero remaining SQL/view-scalar readers. Idempotent (`drop column if exists`); no down migration (destructive, rationale in header). Production-safe: all prior covers-source migrations Production1-pending, no live data. | code-ready |
 | `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql` | Per-Daypart V1 R7e Data Accuracy provenance. Additive `create or replace view` appends source metadata to `public.effective_data_accuracy_settings_v` for per-service-period covers source, wage source, and walk-in handling mode while preserving existing value columns and HP #11 precedence. No table shape change, no policy/index change, no down migration. Enables Admin/Operator Web to show honest inherited-source labels from server truth instead of guessing in Flutter. | code-ready |
+| `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql` | Per-Daypart V1 R7f Data Accuracy precedence and source parity. `create or replace view` repairs `public.effective_data_accuracy_settings_v` so keyed service-period rows are base defaults, while business, org-unit, and location scoped overrides win above them per HP #11. Source metadata follows the same winning scope. No table shape change, no policy/index change, no down migration. | code-ready |
 
-**Action:** apply all 60 in next Production1 event per
+**Action:** apply all 61 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

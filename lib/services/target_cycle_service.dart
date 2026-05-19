@@ -65,6 +65,7 @@ import '../domain/models/benchmark_selection_summary.dart';
 import '../domain/models/recommended_benchmark_selection.dart';
 import '../domain/models/target_cycle.dart';
 import '../domain/models/target_cycle_source.dart';
+import '../domain/models/target_profile_version.dart';
 import '../domain/repositories/benchmark_selection_summary_repository.dart';
 import '../domain/repositories/target_cycle_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
@@ -98,8 +99,7 @@ class TargetCycleService {
   TargetCycleService._();
   static final TargetCycleService instance = TargetCycleService._();
 
-  final TargetCycleRepository _cycleRepo =
-      SqliteTargetCycleRepository.instance;
+  final TargetCycleRepository _cycleRepo = SqliteTargetCycleRepository.instance;
 
   final TargetProfileRepository _profileRepo =
       SqliteTargetProfileRepository.instance;
@@ -121,7 +121,9 @@ class TargetCycleService {
   ///   past-effective-end-but-not-yet-week-start deferral case), repairing
   ///   the companion [BenchmarkSelectionSummary] if it is missing (7.56b.1).
   Future<TargetCycle> getOrCreateActiveCycle(
-      String restaurantId, String businessDate) async {
+    String restaurantId,
+    String businessDate,
+  ) async {
     final existing = await _cycleRepo.getActiveCycle(restaurantId);
 
     if (existing == null) {
@@ -136,10 +138,15 @@ class TargetCycleService {
         .getTimingConfig(restaurantId);
     final weekStartDay = timingConfig?.weekStartDay ?? DateTime.monday;
 
-    if (TargetCyclePolicy.needsAutoRefresh(existing, businessDate,
-        weekStartDay: weekStartDay)) {
-      final newCycle =
-          await _createRecommendedCycle(restaurantId, businessDate);
+    if (TargetCyclePolicy.needsAutoRefresh(
+      existing,
+      businessDate,
+      weekStartDay: weekStartDay,
+    )) {
+      final newCycle = await _createRecommendedCycle(
+        restaurantId,
+        businessDate,
+      );
       // Persist passive notification for cycle rollover (7.55p.4d).
       // Awaited so the notification row is durable before the rollover
       // path returns. Only on auto-refresh, not initial bootstrap.
@@ -174,16 +181,20 @@ class TargetCycleService {
   ///
   /// Throws [ManagerOverrideDeniedException] if the override is not allowed.
   Future<TargetCycle> applyManagerOverrideCycle(
-      String restaurantId, String businessDate) async {
+    String restaurantId,
+    String businessDate,
+  ) async {
     final current = await getOrCreateActiveCycle(restaurantId, businessDate);
 
     if (!TargetCyclePolicy.canManagerOverride(current, businessDate)) {
       if (current.managerOverrideUsed) {
         throw ManagerOverrideDeniedException(
-            'Manager override already used for this cycle');
+          'Manager override already used for this cycle',
+        );
       }
       throw ManagerOverrideDeniedException(
-          'Business date is outside the active cycle window');
+        'Business date is outside the active cycle window',
+      );
     }
 
     return _writeReplacementCycle(
@@ -210,7 +221,9 @@ class TargetCycleService {
   /// [TargetCycleSource.adminReplacement] and carries forward prior
   /// manager override metadata as historical context.
   Future<TargetCycle> applyAdminReplacementCycle(
-      String restaurantId, String businessDate) async {
+    String restaurantId,
+    String businessDate,
+  ) async {
     final current = await getOrCreateActiveCycle(restaurantId, businessDate);
 
     return _writeReplacementCycle(
@@ -232,7 +245,9 @@ class TargetCycleService {
   /// profile directly. Prior override usage is preserved so clearing the
   /// override does not silently grant a fresh once-per-cycle allowance.
   Future<TargetCycle> restoreRecommendedCycle(
-      String restaurantId, String businessDate) async {
+    String restaurantId,
+    String businessDate,
+  ) async {
     final current = await getOrCreateActiveCycle(restaurantId, businessDate);
 
     if (current.source == TargetCycleSource.recommended) {
@@ -260,12 +275,15 @@ class TargetCycleService {
     String? adminReplacedAt,
   }) async {
     // Re-prime benchmark context for the business date's 60-day window.
-    await BaselineManagerService.instance
-        .primeBaselineContextForDate(restaurantId, businessDate);
+    await BaselineManagerService.instance.primeBaselineContextForDate(
+      restaurantId,
+      businessDate,
+    );
 
     // Resolve wages fresh from the wage-authority waterfall.
-    final wageCtx =
-        await WageStandardContextService.instance.resolve(restaurantId);
+    final wageCtx = await WageStandardContextService.instance.resolve(
+      restaurantId,
+    );
 
     // Manager-override replacement stays backed by the explicit
     // manager-selected candidate cohort. Admin replacements with no
@@ -316,8 +334,9 @@ class TargetCycleService {
     final profile = build.profile;
 
     // Deactivate all active cycles for the restaurant.
-    await SqliteTargetCycleRepository.instance
-        .deactivateAllForRestaurant(restaurantId);
+    await SqliteTargetCycleRepository.instance.deactivateAllForRestaurant(
+      restaurantId,
+    );
 
     // Calibration window matches the actual benchmark window used to
     // rebuild standards — not the prior cycle's potentially stale window.
@@ -333,8 +352,7 @@ class TargetCycleService {
     final nowUtc = DateTime.now().toUtc();
     final now = nowUtc.toIso8601String();
     final replacement = TargetCycle(
-      cycleId:
-          '${restaurantId}_${source.label}_${_random128BitHex()}',
+      cycleId: '${restaurantId}_${source.label}_${_random128BitHex()}',
       restaurantId: restaurantId,
       source: source,
       effectiveStart: current.effectiveStart,
@@ -383,16 +401,21 @@ class TargetCycleService {
   // compatibility seam, but it is no longer the live authoring path here.
 
   Future<TargetCycle> _createRecommendedCycle(
-      String restaurantId, String businessDate) async {
+    String restaurantId,
+    String businessDate,
+  ) async {
     // Re-prime benchmark context for the requested business date's 60-day
     // window. Still used for historicalContextRecords and manager-override
     // path compatibility.
-    await BaselineManagerService.instance
-        .primeBaselineContextForDate(restaurantId, businessDate);
+    await BaselineManagerService.instance.primeBaselineContextForDate(
+      restaurantId,
+      businessDate,
+    );
 
     // Resolve wages fresh from the wage-authority waterfall.
-    final wageCtx =
-        await WageStandardContextService.instance.resolve(restaurantId);
+    final wageCtx = await WageStandardContextService.instance.resolve(
+      restaurantId,
+    );
 
     // Recommended-cycle creation must stay provenance-honest even if
     // persisted manager-selected keys happen to exist already. Override
@@ -411,8 +434,9 @@ class TargetCycleService {
 
     // Enforce one-active-per-restaurant: deactivate all existing active
     // cycles before writing the new one.
-    await SqliteTargetCycleRepository.instance
-        .deactivateAllForRestaurant(restaurantId);
+    await SqliteTargetCycleRepository.instance.deactivateAllForRestaurant(
+      restaurantId,
+    );
 
     final effectiveStart = businessDate;
     final effectiveEnd = _addDays(businessDate, 59);
@@ -511,17 +535,19 @@ class TargetCycleService {
     final dayparts = <TargetCycleDaypart>[];
     for (final entry in recommendation.perDaypartStats.entries) {
       final stats = entry.value;
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: entry.key,
-        targetCPLH: stats.recommendedTargetCPLH,
-        targetSPLH: stats.recommendedTargetSPLH,
-        targetPPA: stats.recommendedTargetPPA,
-        opzFloorCPLH: stats.opzFloorCPLH,
-        opzCeilingCPLH: stats.opzCeilingCPLH,
-        coverCount: stats.selectedCoverSum,
-        verdict: stats.verdict,
-        verdictReason: stats.verdictReason,
-      ));
+      dayparts.add(
+        TargetCycleDaypart(
+          servicePeriodId: entry.key,
+          targetCPLH: stats.recommendedTargetCPLH,
+          targetSPLH: stats.recommendedTargetSPLH,
+          targetPPA: stats.recommendedTargetPPA,
+          opzFloorCPLH: stats.opzFloorCPLH,
+          opzCeilingCPLH: stats.opzCeilingCPLH,
+          coverCount: stats.selectedCoverSum,
+          verdict: stats.verdict,
+          verdictReason: stats.verdictReason,
+        ),
+      );
     }
 
     // Whole-day pool = cover-weighted rollup of TEACHABLE periods only
@@ -580,10 +606,10 @@ class TargetCycleService {
     final startDate = _addDays(businessDate, -59);
     final candidates = await BaselineManagerService.instance
         .getCandidateShiftsForDateRange(
-      startDate,
-      businessDate,
-      restaurantId: restaurantId,
-    );
+          startDate,
+          businessDate,
+          restaurantId: restaurantId,
+        );
     return candidates.where((c) => c.isSelected).toList();
   }
 
@@ -644,15 +670,17 @@ class TargetCycleService {
         if (c.cplh > opzCeiling) opzCeiling = c.cplh;
       }
       final n = cohort.length;
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: sumCPLH / n,
-        targetSPLH: sumSPLH / n,
-        targetPPA: sumPPA / n,
-        opzFloorCPLH: opzFloor,
-        opzCeilingCPLH: opzCeiling,
-        coverCount: sumCovers,
-      ));
+      dayparts.add(
+        TargetCycleDaypart(
+          servicePeriodId: periodId,
+          targetCPLH: sumCPLH / n,
+          targetSPLH: sumSPLH / n,
+          targetPPA: sumPPA / n,
+          opzFloorCPLH: opzFloor,
+          opzCeilingCPLH: opzCeiling,
+          coverCount: sumCovers,
+        ),
+      );
     }
 
     // Pool computed from the per-period rows (Design Rule 4). When
@@ -686,25 +714,72 @@ class TargetCycleService {
   // table and are reattached on read via the cycle DAO.
 
   Future<void> _syncActiveTargetProfile(TargetCycle cycle) async {
-    final projected = TargetCycleActiveTargetProfileProjector.project(cycle);
+    final existing = await _profileRepo.getActiveTargetProfile(
+      cycle.restaurantId,
+    );
+    final targetProfileVersionId = await _profileVersionIdForCycle(
+      existing,
+      cycle,
+    );
+    final projected = TargetCycleActiveTargetProfileProjector.project(
+      cycle,
+      targetProfileId: existing?.targetProfileId,
+      targetProfileVersionId: targetProfileVersionId,
+    );
     // Mirror the cycle's per-period rows onto the active profile shape
     // so consumers reading the profile (via the standard read seam) get
     // the same per-period data the write path emitted onto the cycle.
     final profileWithDayparts = projected.withDayparts(
       cycle.dayparts
-          .map((d) => ActiveTargetProfileDaypart(
-                servicePeriodId: d.servicePeriodId,
-                daypartTargetCPLH: d.targetCPLH,
-                daypartTargetSPLH: d.targetSPLH,
-                daypartTargetPPA: d.targetPPA,
-                daypartOpzFloorCPLH: d.opzFloorCPLH,
-                daypartOpzCeilingCPLH: d.opzCeilingCPLH,
-                verdict: d.verdict,
-                verdictReason: d.verdictReason,
-              ))
+          .map(
+            (d) => ActiveTargetProfileDaypart(
+              servicePeriodId: d.servicePeriodId,
+              daypartTargetCPLH: d.targetCPLH,
+              daypartTargetSPLH: d.targetSPLH,
+              daypartTargetPPA: d.targetPPA,
+              daypartOpzFloorCPLH: d.opzFloorCPLH,
+              daypartOpzCeilingCPLH: d.opzCeilingCPLH,
+              verdict: d.verdict,
+              verdictReason: d.verdictReason,
+            ),
+          )
           .toList(),
     );
     await _profileRepo.upsertActiveTargetProfile(profileWithDayparts);
+    await _profileRepo.insertTargetProfileVersion(
+      TargetProfileVersion(
+        targetProfileVersionId: profileWithDayparts.targetProfileVersionId!,
+        targetProfileId: profileWithDayparts.targetProfileId,
+        restaurantId: profileWithDayparts.restaurantId,
+        targetCycleId: cycle.cycleId,
+        sourceType: profileWithDayparts.sourceType,
+        targetCPLH: profileWithDayparts.targetCPLH,
+        targetSPLH: profileWithDayparts.targetSPLH,
+        targetPPA: profileWithDayparts.targetPPA,
+        fohWage: profileWithDayparts.fohWage,
+        bohWage: profileWithDayparts.bohWage,
+        opzFloorCPLH: profileWithDayparts.opzFloorCPLH,
+        opzCeilingCPLH: profileWithDayparts.opzCeilingCPLH,
+        theoreticalFohLaborPct: profileWithDayparts.theoreticalFohLaborPct,
+        theoreticalBohLaborPct: profileWithDayparts.theoreticalBohLaborPct,
+        theoreticalLaborPct: profileWithDayparts.theoreticalLaborPct,
+        createdAt: cycle.createdAt,
+      ),
+    );
+  }
+
+  Future<String?> _profileVersionIdForCycle(
+    ActiveTargetProfile? existing,
+    TargetCycle cycle,
+  ) async {
+    if (existing?.targetCycleId == cycle.cycleId) {
+      final versionId = existing?.targetProfileVersionId?.trim();
+      if (versionId != null && versionId.isNotEmpty) return versionId;
+    }
+    final version = await SqliteTargetProfileRepository.instance
+        .getTargetProfileVersionForCycle(cycle.restaurantId, cycle.cycleId);
+    final versionId = version?.targetProfileVersionId.trim();
+    return versionId == null || versionId.isEmpty ? null : versionId;
   }
 
   // ── Per-daypart-aware spread quality (Per-Daypart Targets V1 + SB) ────
@@ -732,10 +807,9 @@ class TargetCycleService {
     // operationVerdict is the SB single source of truth. Fall back to
     // overallQuality only for legacy/insufficient results that predate
     // a verdict (e.g. the `.insufficient()` factory).
-    final verdict = recommendation.operationVerdict ??
-        (recommendation.isInsufficient
-            ? null
-            : recommendation.overallQuality);
+    final verdict =
+        recommendation.operationVerdict ??
+        (recommendation.isInsufficient ? null : recommendation.overallQuality);
     switch (verdict) {
       case BenchmarkVerdict.teachable:
         return BaselineSelectionAnalytics(
@@ -802,8 +876,7 @@ class TargetCycleService {
       // `_recommendationAnalytics`.
       analytics = _recommendationAnalytics(fromRecommendation);
     } else {
-      final selected =
-          BaselineData.records.where((r) => r.isSelected).toList();
+      final selected = BaselineData.records.where((r) => r.isSelected).toList();
       analytics = BaselineSelectionAnalyticsService.computeAnalytics(
         selected.length,
         selected.map((r) => r.cplh).toList(),
@@ -879,9 +952,10 @@ class TargetCycleService {
 
     final useOverrideEvidence =
         cycle.source == TargetCycleSource.managerOverride ||
-            (cycle.source == TargetCycleSource.adminReplacement &&
-                await BaselineManagerService.instance
-                    .hasPersistedManagerOverride(cycle.restaurantId));
+        (cycle.source == TargetCycleSource.adminReplacement &&
+            await BaselineManagerService.instance.hasPersistedManagerOverride(
+              cycle.restaurantId,
+            ));
 
     if (useOverrideEvidence) {
       sourceLabel = cycle.source == TargetCycleSource.managerOverride
@@ -904,7 +978,9 @@ class TargetCycleService {
       // evidence the cycle was built against.
       final recommendation = await BaselineManagerService.instance
           .resolveRecommendedSelection(
-              cycle.restaurantId, cycle.calibrationWindowEnd);
+            cycle.restaurantId,
+            cycle.calibrationWindowEnd,
+          );
 
       if (cycle.source == TargetCycleSource.adminReplacement) {
         sourceLabel = 'admin_replacement';
@@ -975,7 +1051,8 @@ class TargetCycleService {
   //                            matches what the cycle was built from, and
   //                            apply signals with the cycle's geometry.
   Future<void> hydrateBenchmarkHonestyFromActiveCycle(
-      String restaurantId) async {
+    String restaurantId,
+  ) async {
     final cycle = await _cycleRepo.getActiveCycle(restaurantId);
     if (cycle == null) {
       BaselineData.clearRecommendationSignals();
@@ -994,8 +1071,7 @@ class TargetCycleService {
     // evidence. For admin-replacement recommended cycles this still
     // uses the recommendation pipeline (7.55p.5g admin branch).
     final recommendation = await BaselineManagerService.instance
-        .resolveRecommendedSelection(
-            restaurantId, cycle.calibrationWindowEnd);
+        .resolveRecommendedSelection(restaurantId, cycle.calibrationWindowEnd);
 
     final sourceLabel = recommendation.isInsufficient
         ? 'cycle_recommended_insufficient'
@@ -1077,8 +1153,5 @@ class _RecommendedBuildResult {
 class _OverrideBuildResult {
   final ActiveTargetProfile profile;
   final List<TargetCycleDaypart> dayparts;
-  const _OverrideBuildResult({
-    required this.profile,
-    required this.dayparts,
-  });
+  const _OverrideBuildResult({required this.profile, required this.dayparts});
 }

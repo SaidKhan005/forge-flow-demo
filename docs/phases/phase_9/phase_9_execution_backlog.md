@@ -176,11 +176,17 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
+  (Per-Daypart V1 / R7f Data Accuracy precedence and source parity:
+  view repair that treats keyed service-period rows as base defaults,
+  then lets business, org-unit, and location scoped overrides win per
+  HP #11, with source metadata following the same winning scope). The
+  prior cutoff
   `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
   (Per-Daypart V1 / R7e Data Accuracy provenance: additive view
   replace that appends server source metadata for covers, wage, and
   walk-in handling while preserving existing value columns and HP #11
-  precedence). The prior cutoff
+  precedence). The earlier cutoff
   `202605170200_per_daypart_v1_r7d_drop_legacy_covers_columns.sql`
   (Per-Daypart V1 / R7d FINAL covers-source step, schema-destructive:
   atomic view re-create minus the 3 legacy scalar outputs, then

@@ -180,7 +180,10 @@ class _PerLocationDataAccuracyScreenState
     if (!_locationMutationEnabled) return;
     final result = await showDialog<_DataAccuracyOverrideDraft>(
       context: context,
-      builder: (_) => _DataAccuracyOverrideDialog(initial: row),
+      builder: (_) => _DataAccuracyOverrideDialog(
+        initial: row,
+        keyedRows: <DataAccuracyAdminRow>[row],
+      ),
     );
     if (result == null) return;
     setState(() => _actionError = null);
@@ -191,6 +194,7 @@ class _PerLocationDataAccuracyScreenState
         coversSourceLunch: result.coversSourceLunch,
         coversSourceDinner: result.coversSourceDinner,
         coversSourceLateNight: result.coversSourceLateNight,
+        coversSourcePerServicePeriod: result.coversSourcePerServicePeriod,
         wageSource: result.wageSource,
         walkInHandlingMode: result.walkInHandlingMode,
         actorUserId: widget.actorUserId,

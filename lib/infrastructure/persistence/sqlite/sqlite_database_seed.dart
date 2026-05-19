@@ -49,10 +49,7 @@ Future<void> _backfillLockedTargets(
   Database db, {
   required String businessDate,
 }) async {
-  final cycle = await _ensureDemoSeedCycle(
-    db,
-    businessDate: businessDate,
-  );
+  final cycle = await _ensureDemoSeedCycle(db, businessDate: businessDate);
   final profile = await _loadSeedAuthorityProfile(
     db,
     businessDate: businessDate,
@@ -64,6 +61,7 @@ Future<void> _backfillLockedTargets(
     'target_profile_version_id': compatVersionId,
     'target_profile_id': profile.targetProfileId,
     'restaurant_id': DemoScope.restaurantId,
+    'target_cycle_id': cycle.cycleId,
     'source_type': profile.sourceType,
     'target_cplh': profile.targetCPLH,
     'target_splh': profile.targetSPLH,
@@ -78,7 +76,8 @@ Future<void> _backfillLockedTargets(
     'created_at': nowIsoUtc(),
   }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE shift_records SET
       target_profile_id = ?,
       target_profile_version_id = ?,
@@ -93,38 +92,40 @@ Future<void> _backfillLockedTargets(
       theoretical_foh_labor_pct = ?,
       theoretical_boh_labor_pct = ?
     WHERE target_cplh IS NULL AND restaurant_id = ?
-  ''', [
-    profile.targetProfileId,
-    compatVersionId,
-    profile.sourceType,
-    profile.targetCPLH,
-    profile.targetSPLH,
-    profile.targetPPA,
-    profile.fohWage,
-    profile.bohWage,
-    profile.opzFloorCPLH,
-    profile.opzCeilingCPLH,
-    profile.theoreticalFohLaborPct,
-    profile.theoreticalBohLaborPct,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [
+      profile.targetProfileId,
+      compatVersionId,
+      profile.sourceType,
+      profile.targetCPLH,
+      profile.targetSPLH,
+      profile.targetPPA,
+      profile.fohWage,
+      profile.bohWage,
+      profile.opzFloorCPLH,
+      profile.opzCeilingCPLH,
+      profile.theoreticalFohLaborPct,
+      profile.theoreticalBohLaborPct,
+      DemoScope.restaurantId,
+    ],
+  );
 
   // ── Provenance-only repair for partially migrated rows ──────────────────
   // Rows that already have numeric locked targets but lack identity fields.
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE shift_records SET
       target_profile_id = ?,
       target_profile_version_id = ?
     WHERE restaurant_id = ?
       AND target_cplh IS NOT NULL
       AND (target_profile_id IS NULL OR target_profile_version_id IS NULL)
-  ''', [
-    profile.targetProfileId,
-    compatVersionId,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [profile.targetProfileId, compatVersionId, DemoScope.restaurantId],
+  );
 
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE week_records SET
       target_source_type = ?,
       target_cplh = ?,
@@ -135,19 +136,22 @@ Future<void> _backfillLockedTargets(
       theoretical_foh_labor_pct = ?,
       theoretical_boh_labor_pct = ?
     WHERE target_cplh IS NULL AND restaurant_id = ?
-  ''', [
-    profile.sourceType,
-    profile.targetCPLH,
-    profile.targetSPLH,
-    profile.targetPPA,
-    profile.fohWage,
-    profile.bohWage,
-    profile.theoreticalFohLaborPct,
-    profile.theoreticalBohLaborPct,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [
+      profile.sourceType,
+      profile.targetCPLH,
+      profile.targetSPLH,
+      profile.targetPPA,
+      profile.fohWage,
+      profile.bohWage,
+      profile.theoreticalFohLaborPct,
+      profile.theoreticalBohLaborPct,
+      DemoScope.restaurantId,
+    ],
+  );
 
-  await db.execute('''
+  await db.execute(
+    '''
     UPDATE week_records SET
       target_calibration_window_start = ?,
       target_calibration_window_end = ?
@@ -156,11 +160,13 @@ Future<void> _backfillLockedTargets(
         target_calibration_window_start IS NULL OR
         target_calibration_window_end IS NULL
       )
-  ''', [
-    cycle.calibrationWindowStart,
-    cycle.calibrationWindowEnd,
-    DemoScope.restaurantId,
-  ]);
+  ''',
+    [
+      cycle.calibrationWindowStart,
+      cycle.calibrationWindowEnd,
+      DemoScope.restaurantId,
+    ],
+  );
 }
 
 /// Builds the current-week open/projected/closed `open_shift_snapshots`
@@ -192,8 +198,9 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
   required MockReplayScenario scenario,
   required String now,
 }) {
-  final projectedShifts =
-      currentWeekShifts.where((s) => s.isProjected).toList();
+  final projectedShifts = currentWeekShifts
+      .where((s) => s.isProjected)
+      .toList();
 
   final snapshots = <OpenShiftSnapshot>[];
 
@@ -211,30 +218,32 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
       continue;
     }
 
-    snapshots.add(OpenShiftSnapshot(
-      restaurantId: restaurantId,
-      weekId: s.weekId,
-      dayLabel: s.dayLabel,
-      daypart: s.daypart,
-      status: 'projected',
-      businessDate: _businessDateFromWeekDay(s.weekId, s.dayLabel)!,
-      forecastCovers: s.forecastCovers,
-      currentCovers: s.covers,
-      scheduledFohHours: s.scheduledFohHours ?? s.fohHours,
-      scheduledBohHours: s.scheduledBohHours ?? s.bohHours,
-      currentPPA: s.ppa,
-      currentCPLH: s.cplh,
-      currentSPLH: s.splh,
-      blendedWage: s.blendedWage,
-      sourceSystem: s.sourceSystem ?? MockIntegrationReplaySeed.sourceSystem,
-      sourceShiftId: MockIntegrationReplaySeed.snapshotSourceShiftId(
+    snapshots.add(
+      OpenShiftSnapshot(
+        restaurantId: restaurantId,
         weekId: s.weekId,
         dayLabel: s.dayLabel,
         daypart: s.daypart,
         status: 'projected',
+        businessDate: _businessDateFromWeekDay(s.weekId, s.dayLabel)!,
+        forecastCovers: s.forecastCovers,
+        currentCovers: s.covers,
+        scheduledFohHours: s.scheduledFohHours ?? s.fohHours,
+        scheduledBohHours: s.scheduledBohHours ?? s.bohHours,
+        currentPPA: s.ppa,
+        currentCPLH: s.cplh,
+        currentSPLH: s.splh,
+        blendedWage: s.blendedWage,
+        sourceSystem: s.sourceSystem ?? MockIntegrationReplaySeed.sourceSystem,
+        sourceShiftId: MockIntegrationReplaySeed.snapshotSourceShiftId(
+          weekId: s.weekId,
+          dayLabel: s.dayLabel,
+          daypart: s.daypart,
+          status: 'projected',
+        ),
+        updatedAt: now,
       ),
-      updatedAt: now,
-    ));
+    );
   }
 
   // One current open shift — ONLY when the clock-derived scenario has a
@@ -246,16 +255,17 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
   // scenario (`openProgressFraction` / `openTimeLabel` /
   // `openServiceElapsedLabel`), never the old fixed 0.63 / 7:45 PM /
   // 3h 15m fabrication.
-  final openSourceShiftId =
-      MockIntegrationReplaySeed.openShiftSourceShiftIdFor(scenario);
+  final openSourceShiftId = MockIntegrationReplaySeed.openShiftSourceShiftIdFor(
+    scenario,
+  );
 
   if (openDaypart != null && openSourceShiftId != null) {
-    final progress = scenario.openProgressFraction ??
+    final progress =
+        scenario.openProgressFraction ??
         MockIntegrationReplaySeed.openProgressFraction;
     final matches = currentWeekShifts.where(
       (s) =>
-          s.dayLabel == scenario.openShiftDayLabel &&
-          s.daypart == openDaypart,
+          s.dayLabel == scenario.openShiftDayLabel && s.daypart == openDaypart,
     );
     if (matches.isNotEmpty) {
       final openShiftPlan = matches.first;
@@ -269,63 +279,71 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
           ? openSales / openShiftPlan.bohHours
           : 0.0;
 
-      snapshots.add(OpenShiftSnapshot(
-        restaurantId: restaurantId,
-        weekId: scenario.currentWeekId,
-        dayLabel: scenario.openShiftDayLabel,
-        daypart: openDaypart,
-        status: 'open',
-        businessDate: scenario.currentBusinessDate,
-        forecastCovers: openShiftPlan.forecastCovers,
-        currentCovers: openCovers,
-        scheduledFohHours: openShiftPlan.fohHours,
-        scheduledBohHours: openShiftPlan.bohHours,
-        currentPPA: openPPA,
-        currentCPLH: double.parse(openCPLH.toStringAsFixed(2)),
-        currentSPLH: double.parse(openSPLH.toStringAsFixed(2)),
-        blendedWage:
-            double.parse(openShiftPlan.blendedWage.toStringAsFixed(2)),
-        timeLabel: scenario.openTimeLabel ??
-            MockIntegrationReplaySeed.openShiftTimeLabel,
-        serviceElapsedLabel: scenario.openServiceElapsedLabel ??
-            MockIntegrationReplaySeed.openShiftServiceElapsedLabel,
-        sourceSystem: MockIntegrationReplaySeed.sourceSystem,
-        sourceShiftId: openSourceShiftId,
-        updatedAt: now,
-      ));
+      snapshots.add(
+        OpenShiftSnapshot(
+          restaurantId: restaurantId,
+          weekId: scenario.currentWeekId,
+          dayLabel: scenario.openShiftDayLabel,
+          daypart: openDaypart,
+          status: 'open',
+          businessDate: scenario.currentBusinessDate,
+          forecastCovers: openShiftPlan.forecastCovers,
+          currentCovers: openCovers,
+          scheduledFohHours: openShiftPlan.fohHours,
+          scheduledBohHours: openShiftPlan.bohHours,
+          currentPPA: openPPA,
+          currentCPLH: double.parse(openCPLH.toStringAsFixed(2)),
+          currentSPLH: double.parse(openSPLH.toStringAsFixed(2)),
+          blendedWage: double.parse(
+            openShiftPlan.blendedWage.toStringAsFixed(2),
+          ),
+          timeLabel:
+              scenario.openTimeLabel ??
+              MockIntegrationReplaySeed.openShiftTimeLabel,
+          serviceElapsedLabel:
+              scenario.openServiceElapsedLabel ??
+              MockIntegrationReplaySeed.openShiftServiceElapsedLabel,
+          sourceSystem: MockIntegrationReplaySeed.sourceSystem,
+          sourceShiftId: openSourceShiftId,
+          updatedAt: now,
+        ),
+      );
     }
   }
 
   // Seed closed dayparts for the open shift's day (whole-day aggregation).
   final currentDayClosed = currentWeekShifts
-      .where((s) =>
-          s.dayLabel == scenario.openShiftDayLabel && s.status == 'closed')
+      .where(
+        (s) => s.dayLabel == scenario.openShiftDayLabel && s.status == 'closed',
+      )
       .toList();
   for (final s in currentDayClosed) {
-    snapshots.add(OpenShiftSnapshot(
-      restaurantId: restaurantId,
-      weekId: s.weekId,
-      dayLabel: s.dayLabel,
-      daypart: s.daypart,
-      status: 'closed',
-      businessDate: _businessDateFromWeekDay(s.weekId, s.dayLabel)!,
-      forecastCovers: s.forecastCovers,
-      currentCovers: s.covers,
-      scheduledFohHours: s.scheduledFohHours ?? s.fohHours,
-      scheduledBohHours: s.scheduledBohHours ?? s.bohHours,
-      currentPPA: s.ppa,
-      currentCPLH: s.cplh,
-      currentSPLH: s.splh,
-      blendedWage: s.blendedWage,
-      sourceSystem: s.sourceSystem ?? MockIntegrationReplaySeed.sourceSystem,
-      sourceShiftId: MockIntegrationReplaySeed.snapshotSourceShiftId(
+    snapshots.add(
+      OpenShiftSnapshot(
+        restaurantId: restaurantId,
         weekId: s.weekId,
         dayLabel: s.dayLabel,
         daypart: s.daypart,
         status: 'closed',
+        businessDate: _businessDateFromWeekDay(s.weekId, s.dayLabel)!,
+        forecastCovers: s.forecastCovers,
+        currentCovers: s.covers,
+        scheduledFohHours: s.scheduledFohHours ?? s.fohHours,
+        scheduledBohHours: s.scheduledBohHours ?? s.bohHours,
+        currentPPA: s.ppa,
+        currentCPLH: s.cplh,
+        currentSPLH: s.splh,
+        blendedWage: s.blendedWage,
+        sourceSystem: s.sourceSystem ?? MockIntegrationReplaySeed.sourceSystem,
+        sourceShiftId: MockIntegrationReplaySeed.snapshotSourceShiftId(
+          weekId: s.weekId,
+          dayLabel: s.dayLabel,
+          daypart: s.daypart,
+          status: 'closed',
+        ),
+        updatedAt: now,
       ),
-      updatedAt: now,
-    ));
+    );
   }
 
   return snapshots;
@@ -342,7 +360,9 @@ List<OpenShiftSnapshot> _buildCurrentWeekOpenShiftSnapshots({
 /// scaled current-week shifts) so every demo location has its own live
 /// current-week shift — no longer Downtown-only.
 Future<void> _seedOpenShiftSnapshotsFromReplay(
-    Database db, MockReplayOutput replay) async {
+  Database db,
+  MockReplayOutput replay,
+) async {
   final snapshots = _buildCurrentWeekOpenShiftSnapshots(
     restaurantId: DemoScope.restaurantId,
     currentWeekShifts: replay.currentWeekShifts,
@@ -352,8 +372,11 @@ Future<void> _seedOpenShiftSnapshotsFromReplay(
 
   final batch = db.batch();
   for (final snap in snapshots) {
-    batch.insert('open_shift_snapshots', snap.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    batch.insert(
+      'open_shift_snapshots',
+      snap.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
   await batch.commit(noResult: true);
 }
@@ -424,8 +447,7 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
     businessDate,
     weekStartDay: weekStartDay,
   );
-  final weekKey =
-      WeeklyPlanSnapshotPolicy.weekKeyFromSpan(weekStart, weekEnd);
+  final weekKey = WeeklyPlanSnapshotPolicy.weekKeyFromSpan(weekStart, weekEnd);
 
   // No-op when a snapshot already covers the in-force week. Preserves
   // the locked-snapshot-survives-same-week-advance contract (7.55l.6b1).
@@ -464,8 +486,9 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   // pre-Slice-1 "legacy" snapshot (the Gap-12 1:1 allocator trap is
   // never actually closed in demo).
   final parentCycle = TargetCycle.fromMap(cycleRows.first);
-  final cycleDayparts =
-      await TargetCycleDao(db).getDaypartsForCycle(parentCycle.cycleId);
+  final cycleDayparts = await TargetCycleDao(
+    db,
+  ).getDaypartsForCycle(parentCycle.cycleId);
   final cycle = cycleDayparts.isEmpty
       ? parentCycle
       : parentCycle.copyWith(dayparts: cycleDayparts);
@@ -530,7 +553,8 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   final dayRows = List<WeeklyPlanSnapshotDay>.generate(rotated.length, (i) {
     final dayPlan = rotated[i];
     final date = startDate.add(Duration(days: i));
-    final iso = '${date.year.toString().padLeft(4, '0')}-'
+    final iso =
+        '${date.year.toString().padLeft(4, '0')}-'
         '${date.month.toString().padLeft(2, '0')}-'
         '${date.day.toString().padLeft(2, '0')}';
     return WeeklyPlanSnapshotDay(
@@ -553,10 +577,7 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   // silently falls back to the read-time `DaypartPlanAllocator`
   // regeneration, so Slice 3's persistence read-swap is dead in demo
   // (Gap-12 1:1 trap never actually closed for the shipped demo).
-  final dayDayparts = _buildSeedDayDaypartRows(
-    cycle: cycle,
-    dayRows: dayRows,
-  );
+  final dayDayparts = _buildSeedDayDaypartRows(cycle: cycle, dayRows: dayRows);
 
   // Per-Daypart V1 (bottom-up locked snapshot, PR #917 parity): the
   // demo seed used to be a THIRD divergent writer — it constructed the
@@ -621,8 +642,7 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   // coercions) — inlined here because the DAO can't be reached during
   // _onCreate (it would re-enter the database getter).
   final map = snapshot.toMap();
-  final encodedDayRows =
-      jsonEncode(map.remove('day_rows') as List<dynamic>);
+  final encodedDayRows = jsonEncode(map.remove('day_rows') as List<dynamic>);
   final forecastContext = map.remove('forecast_context');
   // Per-Daypart V1 (Slice 1/3): the seed's snapshot model now also
   // carries `day_dayparts` and `wage_at_lock_time_json`. `day_dayparts`
@@ -634,11 +654,13 @@ Future<void> _seedWeeklyPlanSnapshotFromReplay(
   final dayDaypartsToPersist =
       (map.remove('day_dayparts') as List<dynamic>? ?? const <dynamic>[]);
   final wageAtLockTimeJson = map.remove('wage_at_lock_time_json');
-  map['wage_at_lock_time_json'] =
-      wageAtLockTimeJson == null ? null : jsonEncode(wageAtLockTimeJson);
+  map['wage_at_lock_time_json'] = wageAtLockTimeJson == null
+      ? null
+      : jsonEncode(wageAtLockTimeJson);
   map['day_rows_json'] = encodedDayRows;
-  map['forecast_context_json'] =
-      forecastContext == null ? null : jsonEncode(forecastContext);
+  map['forecast_context_json'] = forecastContext == null
+      ? null
+      : jsonEncode(forecastContext);
   if (map.containsKey('metadata')) {
     final rawMetadata = map['metadata'];
     map['metadata'] = rawMetadata == null ? null : jsonEncode(rawMetadata);
@@ -745,22 +767,26 @@ List<WeeklyPlanSnapshotDayDaypart> _buildSeedDayDaypartRows({
           ? ((dayRow.forecastCovers * w) / totalWeight).round()
           : 0;
       final periodSales = periodCovers * cycleDp.targetPPA;
-      final periodReqFohHours =
-          cycleDp.targetCPLH > 0 ? periodCovers / cycleDp.targetCPLH : 0.0;
-      final periodReqBohHours =
-          cycleDp.targetSPLH > 0 ? periodSales / cycleDp.targetSPLH : 0.0;
+      final periodReqFohHours = cycleDp.targetCPLH > 0
+          ? periodCovers / cycleDp.targetCPLH
+          : 0.0;
+      final periodReqBohHours = cycleDp.targetSPLH > 0
+          ? periodSales / cycleDp.targetSPLH
+          : 0.0;
       final periodFohDollars = periodReqFohHours * cycle.fohWage;
       final periodBohDollars = periodReqBohHours * cycle.bohWage;
-      out.add(WeeklyPlanSnapshotDayDaypart(
-        businessDate: dayRow.businessDate,
-        servicePeriodId: periodId,
-        forecastCovers: periodCovers,
-        forecastSales: periodSales,
-        requiredFohHours: periodReqFohHours,
-        requiredBohHours: periodReqBohHours,
-        theoreticalFohDollars: periodFohDollars,
-        theoreticalBohDollars: periodBohDollars,
-      ));
+      out.add(
+        WeeklyPlanSnapshotDayDaypart(
+          businessDate: dayRow.businessDate,
+          servicePeriodId: periodId,
+          forecastCovers: periodCovers,
+          forecastSales: periodSales,
+          requiredFohHours: periodReqFohHours,
+          requiredBohHours: periodReqBohHours,
+          theoreticalFohDollars: periodFohDollars,
+          theoreticalBohDollars: periodBohDollars,
+        ),
+      );
     }
   }
   return out;
@@ -789,7 +815,8 @@ Future<int> _resolveSeedDemandWeeklyCovers(
   final baselineRows = await db.query(
     'shift_records',
     columns: const ['covers'],
-    where: "restaurant_id = ? "
+    where:
+        "restaurant_id = ? "
         "AND status = 'closed' "
         "AND business_date >= ? "
         "AND business_date <= ?",
@@ -806,7 +833,8 @@ Future<int> _resolveSeedDemandWeeklyCovers(
   final recentRows = await db.query(
     'shift_records',
     columns: const ['covers'],
-    where: "restaurant_id = ? "
+    where:
+        "restaurant_id = ? "
         "AND status = 'closed' "
         "AND business_date >= ? "
         "AND business_date <= ?",
@@ -854,7 +882,8 @@ Future<ScheduleDistributionWeights?> _buildSeedDistributionWeights(
   final baselineStart = _subtractIsoDays(anchorBusinessDate, 59);
   final baselineRows = await db.query(
     'shift_records',
-    where: "restaurant_id = ? "
+    where:
+        "restaurant_id = ? "
         "AND status = 'closed' "
         "AND business_date >= ? "
         "AND business_date <= ?",
@@ -864,7 +893,8 @@ Future<ScheduleDistributionWeights?> _buildSeedDistributionWeights(
   final recentStart = _subtractIsoDays(anchorBusinessDate, 20);
   final recentRows = await db.query(
     'shift_records',
-    where: "restaurant_id = ? "
+    where:
+        "restaurant_id = ? "
         "AND status = 'closed' "
         "AND business_date >= ? "
         "AND business_date <= ?",
@@ -898,7 +928,9 @@ Future<ScheduleDistributionWeights?> _buildSeedDistributionWeights(
 /// whole-day read model — which sums every daypart row for the day —
 /// sees the day's unseated covers exactly once, never doubled).
 Future<void> _seedReservationBookSnapshotsFromReplay(
-    Database db, MockReplayOutput replay) async {
+  Database db,
+  MockReplayOutput replay,
+) async {
   final now = nowIsoUtc();
   final scenario = replay.scenario;
 
@@ -918,16 +950,23 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
   const fridayUnseatedCovers = 72;
   const fridayUnseatedParties = 18;
   const dayBaseCovers = {
-    'Mon': 140, 'Tue': 150, 'Wed': 160, 'Thu': 190,
-    'Fri': 220, 'Sat': 230, 'Sun': 110,
+    'Mon': 140,
+    'Tue': 150,
+    'Wed': 160,
+    'Thu': 190,
+    'Fri': 220,
+    'Sat': 230,
+    'Sun': 110,
   };
   final dayLabel = scenario.openShiftDayLabel;
   final dayCovers = dayBaseCovers[dayLabel] ?? fridayBaseCovers;
   final coverRatio = dayCovers / fridayBaseCovers;
   final dayUnseatedCovers = fridayUnseatedCovers * coverRatio;
   final dayUnseatedParties = fridayUnseatedParties * coverRatio;
-  final share =
-      MockIntegrationReplaySeed.daypartCoverShare(dayLabel, scenarioDaypart);
+  final share = MockIntegrationReplaySeed.daypartCoverShare(
+    dayLabel,
+    scenarioDaypart,
+  );
   final unseatedCovers = (dayUnseatedCovers * share).round();
   final unseatedParties = (dayUnseatedParties * share).round();
   // Honest-degrade: a period the scenario does not serve (zero share)
@@ -941,12 +980,14 @@ Future<void> _seedReservationBookSnapshotsFromReplay(
     unseatedCovers: unseatedCovers,
     unseatedPartyCount: unseatedParties,
     sourceSystem: 'demo_reservations',
-    sourceServiceId:
-        'demo_res_${dayLabel.toLowerCase()}_$scenarioDaypart',
+    sourceServiceId: 'demo_res_${dayLabel.toLowerCase()}_$scenarioDaypart',
     updatedAt: now,
   );
-  await db.insert('reservation_book_snapshots', snapshot.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace);
+  await db.insert(
+    'reservation_book_snapshots',
+    snapshot.toMap(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
 }
 
 Future<void> _seedDemoRestaurant(Database db) async {
@@ -963,17 +1004,13 @@ Future<void> _seedDemoRestaurant(Database db) async {
   // Slice A seeds the location rows only — per-location operational
   // data (shifts/weeks/cycle/plan) is Slice C.
   for (final location in DemoScope.locations) {
-    await db.insert(
-      'restaurant_locations',
-      {
-        'restaurant_id': location.restaurantId,
-        'display_name': location.displayName,
-        'business_timezone': location.businessTimezone,
-        'created_at': now,
-        'updated_at': now,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    await db.insert('restaurant_locations', {
+      'restaurant_id': location.restaurantId,
+      'display_name': location.displayName,
+      'business_timezone': location.businessTimezone,
+      'created_at': now,
+      'updated_at': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
 
   // Seed demo timing config (7.55n.1) for Downtown only —
@@ -1006,54 +1043,49 @@ const String _kDemoBusinessDayStartLocalTime = '04:00';
 /// `service_period_definitions_json` and [resolveDemoOpenPeriod].
 const List<Map<String, Object?>> _kDemoDowntownServicePeriods =
     <Map<String, Object?>>[
-  {
-    'id': 'lunch',
-    'label': 'Lunch',
-    'short_label': 'L',
-    'sort_order': 1,
-    'start_local_time': '11:00',
-    'end_local_time': '15:00',
-    'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'dinner',
-    'label': 'Dinner',
-    'short_label': 'D',
-    'sort_order': 2,
-    'start_local_time': '17:00',
-    'end_local_time': '23:00',
-    'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'late_night',
-    'label': 'Late Night',
-    'short_label': 'LN',
-    'sort_order': 3,
-    'start_local_time': '23:00',
-    'end_local_time': '02:00',
-    'rolls_past_midnight': true,
-    'applicable_days': [5, 6],
-  },
-];
+      {
+        'id': 'lunch',
+        'label': 'Lunch',
+        'short_label': 'L',
+        'sort_order': 1,
+        'start_local_time': '11:00',
+        'end_local_time': '15:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'dinner',
+        'label': 'Dinner',
+        'short_label': 'D',
+        'sort_order': 2,
+        'start_local_time': '17:00',
+        'end_local_time': '23:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'late_night',
+        'label': 'Late Night',
+        'short_label': 'LN',
+        'sort_order': 3,
+        'start_local_time': '23:00',
+        'end_local_time': '02:00',
+        'rolls_past_midnight': true,
+        'applicable_days': [5, 6],
+      },
+    ];
 
 Future<void> _seedDemoTimingConfig(Database db, String now) async {
   // Per-Daypart V1 Slice 1.5: `shift_close_authority` +
   // `local_close_fallback` dropped (operator decision 2026-05-15).
-  await db.insert(
-    'restaurant_timing_configs',
-    {
-      'restaurant_id': DemoScope.restaurantId,
-      'business_day_start_local_time': _kDemoBusinessDayStartLocalTime,
-      'week_start_day': DateTime.monday,
-      'service_period_definitions_json':
-          jsonEncode(_kDemoDowntownServicePeriods),
-      'created_at': now,
-      'updated_at': now,
-    },
-    conflictAlgorithm: ConflictAlgorithm.ignore,
-  );
+  await db.insert('restaurant_timing_configs', {
+    'restaurant_id': DemoScope.restaurantId,
+    'business_day_start_local_time': _kDemoBusinessDayStartLocalTime,
+    'week_start_day': DateTime.monday,
+    'service_period_definitions_json': jsonEncode(_kDemoDowntownServicePeriods),
+    'created_at': now,
+    'updated_at': now,
+  }, conflictAlgorithm: ConflictAlgorithm.ignore);
 }
 
 /// Parses an `HH:mm` clock string to minutes-since-midnight.
@@ -1098,10 +1130,9 @@ int? _demoParseHm(String hm) {
 ///    day that already ended (→ seeded `closed` with actuals — closed
 ///    truth is not rewritten).
 OpenPeriodResolution resolveDemoOpenPeriod({required DateTime localNow}) {
-  final defs = _kDemoDowntownServicePeriods
-      .map(ServicePeriodDefinition.fromMap)
-      .toList()
-    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  final defs =
+      _kDemoDowntownServicePeriods.map(ServicePeriodDefinition.fromMap).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
   final businessDateIso = BusinessDateResolver.resolve(
     localTimestamp: localNow,
@@ -1165,7 +1196,8 @@ OpenPeriodResolution resolveDemoOpenPeriod({required DateTime localNow}) {
   final endMin = _demoParseHm(active.endLocalTime)!;
   // Minutes-of-day, full sub-minute precision (deterministic given the
   // injected anchor — no DateTime.now() in any seeded VALUE).
-  final nowMin = localNow.hour * 60 +
+  final nowMin =
+      localNow.hour * 60 +
       localNow.minute +
       localNow.second / 60.0 +
       localNow.millisecond / 60000.0;
@@ -1173,14 +1205,16 @@ OpenPeriodResolution resolveDemoOpenPeriod({required DateTime localNow}) {
   final double windowMin;
   if (active.rollsPastMidnight) {
     windowMin = ((1440 - startMin) + endMin).toDouble();
-    elapsedMin =
-        nowMin >= startMin ? nowMin - startMin : (1440 - startMin) + nowMin;
+    elapsedMin = nowMin >= startMin
+        ? nowMin - startMin
+        : (1440 - startMin) + nowMin;
   } else {
     windowMin = (endMin - startMin).toDouble();
     elapsedMin = nowMin - startMin;
   }
-  final fraction =
-      windowMin <= 0 ? 0.0 : (elapsedMin / windowMin).clamp(0.0, 1.0);
+  final fraction = windowMin <= 0
+      ? 0.0
+      : (elapsedMin / windowMin).clamp(0.0, 1.0);
 
   final h = localNow.hour;
   final hour12 = (h % 12) == 0 ? 12 : h % 12;
@@ -1244,10 +1278,9 @@ OpenPeriodResolution seedTimeOpenPeriodResolution({
     return honest;
   }
 
-  final defs = _kDemoDowntownServicePeriods
-      .map(ServicePeriodDefinition.fromMap)
-      .toList()
-    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  final defs =
+      _kDemoDowntownServicePeriods.map(ServicePeriodDefinition.fromMap).toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
   final businessDateIso = BusinessDateResolver.resolve(
     localTimestamp: localNow,
@@ -1264,8 +1297,11 @@ OpenPeriodResolution seedTimeOpenPeriodResolution({
     if (_demoParseHm(d.endLocalTime) == null) continue;
     applicable.add(d);
   }
-  applicable.sort((a, b) => _demoParseHm(a.startLocalTime)!
-      .compareTo(_demoParseHm(b.startLocalTime)!));
+  applicable.sort(
+    (a, b) => _demoParseHm(
+      a.startLocalTime,
+    )!.compareTo(_demoParseHm(b.startLocalTime)!),
+  );
 
   if (applicable.isEmpty) {
     // No applicable period at all (should never happen — Lunch/Dinner
@@ -1287,11 +1323,11 @@ OpenPeriodResolution seedTimeOpenPeriodResolution({
   chosen ??= applicable
       .where((d) => !d.rollsPastMidnight)
       .fold<ServicePeriodDefinition?>(null, (best, d) {
-    if (best == null) return d;
-    return _demoParseHm(d.endLocalTime)! > _demoParseHm(best.endLocalTime)!
-        ? d
-        : best;
-  });
+        if (best == null) return d;
+        return _demoParseHm(d.endLocalTime)! > _demoParseHm(best.endLocalTime)!
+            ? d
+            : best;
+      });
   // Absolute last resort: the first applicable period.
   chosen ??= applicable.first;
 
@@ -1349,8 +1385,39 @@ Future<void> _seedDemoActiveTargetProfile(
     businessDate: businessDate,
     replay: replay,
   );
-  await db.insert('active_target_profiles', profile.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace);
+  await db.insert(
+    'active_target_profiles',
+    profile.toMap(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+  final versionId = profile.targetProfileVersionId;
+  if (versionId != null && versionId.trim().isNotEmpty) {
+    final versionMap = <String, Object?>{
+      'target_profile_version_id': versionId,
+      'target_profile_id': profile.targetProfileId,
+      'restaurant_id': profile.restaurantId,
+      'source_type': profile.sourceType,
+      'target_cplh': profile.targetCPLH,
+      'target_splh': profile.targetSPLH,
+      'target_ppa': profile.targetPPA,
+      'foh_wage': profile.fohWage,
+      'boh_wage': profile.bohWage,
+      'opz_floor_cplh': profile.opzFloorCPLH,
+      'opz_ceiling_cplh': profile.opzCeilingCPLH,
+      'theoretical_foh_labor_pct': profile.theoreticalFohLaborPct,
+      'theoretical_boh_labor_pct': profile.theoreticalBohLaborPct,
+      'theoretical_labor_pct': profile.theoreticalLaborPct,
+      'created_at': profile.builtAt,
+    };
+    if (await _columnExists(db, 'target_profile_versions', 'target_cycle_id')) {
+      versionMap['target_cycle_id'] = profile.targetCycleId;
+    }
+    await db.insert(
+      'target_profile_versions',
+      versionMap,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
 }
 
 Future<ActiveTargetProfile> _loadSeedAuthorityProfile(
@@ -1444,37 +1511,42 @@ List<TargetCycleDaypart> _buildDemoSeedDayparts({
     final coverCount = coversByPeriod[periodId] ?? 0;
     // A "real teachable band" is one the engine actually drew (positive
     // band + target). building_* / running-hot-without-band yield zeros.
-    final hasRealBand = stats != null &&
+    final hasRealBand =
+        stats != null &&
         stats.opzCeilingCPLH > 0 &&
         stats.recommendedTargetCPLH > 0;
     if (hasRealBand) {
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: stats.recommendedTargetCPLH,
-        targetSPLH: stats.recommendedTargetSPLH,
-        targetPPA: stats.recommendedTargetPPA,
-        opzFloorCPLH: stats.opzFloorCPLH,
-        opzCeilingCPLH: stats.opzCeilingCPLH,
-        coverCount: coverCount,
-        verdict: stats.verdict,
-        verdictReason: stats.verdictReason,
-      ));
+      dayparts.add(
+        TargetCycleDaypart(
+          servicePeriodId: periodId,
+          targetCPLH: stats.recommendedTargetCPLH,
+          targetSPLH: stats.recommendedTargetSPLH,
+          targetPPA: stats.recommendedTargetPPA,
+          opzFloorCPLH: stats.opzFloorCPLH,
+          opzCeilingCPLH: stats.opzCeilingCPLH,
+          coverCount: coverCount,
+          verdict: stats.verdict,
+          verdictReason: stats.verdictReason,
+        ),
+      );
     } else {
       final band = MockIntegrationReplaySeed.demoDaypartTargetBand(periodId)!;
-      dayparts.add(TargetCycleDaypart(
-        servicePeriodId: periodId,
-        targetCPLH: band.targetCPLH,
-        targetSPLH: band.targetSPLH,
-        targetPPA: band.targetPPA,
-        opzFloorCPLH: band.opzFloorCPLH,
-        opzCeilingCPLH: band.opzCeilingCPLH,
-        coverCount: coverCount,
-        // Carry the honest verdict when the engine produced one (the
-        // pre-SA degenerate-data `building_*` case); null on the
-        // genuine insufficient path.
-        verdict: stats?.verdict,
-        verdictReason: stats?.verdictReason,
-      ));
+      dayparts.add(
+        TargetCycleDaypart(
+          servicePeriodId: periodId,
+          targetCPLH: band.targetCPLH,
+          targetSPLH: band.targetSPLH,
+          targetPPA: band.targetPPA,
+          opzFloorCPLH: band.opzFloorCPLH,
+          opzCeilingCPLH: band.opzCeilingCPLH,
+          coverCount: coverCount,
+          // Carry the honest verdict when the engine produced one (the
+          // pre-SA degenerate-data `building_*` case); null on the
+          // genuine insufficient path.
+          verdict: stats?.verdict,
+          verdictReason: stats?.verdictReason,
+        ),
+      );
     }
   }
   return dayparts;
@@ -1490,8 +1562,9 @@ TargetCycle _buildDemoSeedCycle({
     replay,
     businessDate: businessDate,
   );
-  final recommendation =
-      RecommendedBenchmarkSelectionService.instance.select(candidates);
+  final recommendation = RecommendedBenchmarkSelectionService.instance.select(
+    candidates,
+  );
 
   // Per-period candidate cover totals over the same calibration-window
   // closed-shift cohort the recommendation engine consumed, so the
@@ -1546,40 +1619,49 @@ List<BaselineCandidateShift> _seedRecommendationCandidates(
   ];
 
   return closedShifts
-      .where((shift) =>
-          shift.businessDate != null &&
-          shift.businessDate!.compareTo(startDate) >= 0 &&
-          shift.businessDate!.compareTo(businessDate) <= 0)
-      .map((shift) => BaselineCandidateShift(
-            recordKey: '${shift.weekId}|${shift.dayLabel}|${shift.daypart}',
-            weekId: shift.weekId,
-            weekLabel: shift.weekId,
-            dayLabel: shift.dayLabel,
-            daypart: shift.daypart,
-            covers: shift.covers,
-            cplh: shift.cplh,
-            splh: shift.splh,
-            ppa: shift.ppa,
-            primaryLeverId: shift.normalizedLeverId,
-            isSelected: false,
-            businessDate: shift.businessDate,
-            actualLaborPct: shift.totalLaborPct,
-            hasActualLaborPctTruth: shift.hasSourceBackedTotalLaborPct,
-          ))
+      .where(
+        (shift) =>
+            shift.businessDate != null &&
+            shift.businessDate!.compareTo(startDate) >= 0 &&
+            shift.businessDate!.compareTo(businessDate) <= 0,
+      )
+      .map(
+        (shift) => BaselineCandidateShift(
+          recordKey: '${shift.weekId}|${shift.dayLabel}|${shift.daypart}',
+          weekId: shift.weekId,
+          weekLabel: shift.weekId,
+          dayLabel: shift.dayLabel,
+          daypart: shift.daypart,
+          covers: shift.covers,
+          cplh: shift.cplh,
+          splh: shift.splh,
+          ppa: shift.ppa,
+          primaryLeverId: shift.normalizedLeverId,
+          isSelected: false,
+          businessDate: shift.businessDate,
+          actualLaborPct: shift.totalLaborPct,
+          hasActualLaborPctTruth: shift.hasSourceBackedTotalLaborPct,
+        ),
+      )
       .toList();
 }
 
 /// Weighted average hourly rate from raw DB rows for a given labor bucket.
-double? _weightedAvgFromRows(
-    List<Map<String, dynamic>> rows, String bucket) {
-  final filtered =
-      rows.where((r) => r['labor_bucket'] == bucket).toList();
+double? _weightedAvgFromRows(List<Map<String, dynamic>> rows, String bucket) {
+  final filtered = rows.where((r) => r['labor_bucket'] == bucket).toList();
   if (filtered.isEmpty) return null;
-  final totalHours =
-      filtered.fold<double>(0, (s, r) => s + (r['weighted_hours'] as num).toDouble());
+  final totalHours = filtered.fold<double>(
+    0,
+    (s, r) => s + (r['weighted_hours'] as num).toDouble(),
+  );
   if (totalHours <= 0) return null;
   final totalDollars = filtered.fold<double>(
-      0, (s, r) => s + (r['hourly_rate'] as num).toDouble() * (r['weighted_hours'] as num).toDouble());
+    0,
+    (s, r) =>
+        s +
+        (r['hourly_rate'] as num).toDouble() *
+            (r['weighted_hours'] as num).toDouble(),
+  );
   return totalDollars / totalHours;
 }
 
@@ -1650,19 +1732,15 @@ Future<void> _seedDemoWageRoleRows(Database db) async {
   ];
   final batch = db.batch();
   for (final r in rows) {
-    batch.insert(
-      'wage_role_rows',
-      {
-        'restaurant_id': DemoScope.restaurantId,
-        'role_name': r['role_name'],
-        'labor_bucket': r['labor_bucket'],
-        'hourly_rate': r['hourly_rate'],
-        'weighted_hours': r['weighted_hours'],
-        'source': 'demo_seed',
-        'is_active': 1,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    batch.insert('wage_role_rows', {
+      'restaurant_id': DemoScope.restaurantId,
+      'role_name': r['role_name'],
+      'labor_bucket': r['labor_bucket'],
+      'hourly_rate': r['hourly_rate'],
+      'weighted_hours': r['weighted_hours'],
+      'source': 'demo_seed',
+      'is_active': 1,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
   await batch.commit(noResult: true);
 }
@@ -1761,8 +1839,7 @@ ShiftRecord _scaleShiftForLocation(
   _DemoLocationProfile p,
 ) {
   final covers = (s.covers * p.volume).round().clamp(10, 9999);
-  final forecastCovers =
-      (s.forecastCovers * p.volume).round().clamp(10, 9999);
+  final forecastCovers = (s.forecastCovers * p.volume).round().clamp(10, 9999);
   final ppa = _round2(s.ppa * p.ppa);
   final cplh = _round2(s.cplh * p.cplh);
   final splh = _round2(s.splh * p.splh);
@@ -1774,14 +1851,13 @@ ShiftRecord _scaleShiftForLocation(
       : s.bohHours;
   final scheduledFoh = s.scheduledFohHours == null
       ? null
-      : (s.scheduledFohHours! * p.volume / p.cplh)
-          .round()
-          .clamp(1, 999999);
+      : (s.scheduledFohHours! * p.volume / p.cplh).round().clamp(1, 999999);
   final scheduledBoh = s.scheduledBohHours == null
       ? null
-      : (s.scheduledBohHours! * p.volume * p.ppa / p.splh)
-          .round()
-          .clamp(1, 999999);
+      : (s.scheduledBohHours! * p.volume * p.ppa / p.splh).round().clamp(
+          1,
+          999999,
+        );
   final fohDollar = (s.storedFohLaborDollar != null && s.fohHours > 0)
       ? s.storedFohLaborDollar! * fohHours / s.fohHours
       : s.storedFohLaborDollar;
@@ -1844,10 +1920,9 @@ Map<String, dynamic> _scaleWeekMapForLocation(
     'restaurant_id': restaurantId,
     'total_covers': (n(w['total_covers']) * p.volume).round(),
     'forecast_covers': (n(w['forecast_covers']) * p.volume).round(),
-    'total_foh_hours':
-        (n(w['total_foh_hours']) * p.volume / p.cplh).round(),
-    'total_boh_hours':
-        (n(w['total_boh_hours']) * p.volume * p.ppa / p.splh).round(),
+    'total_foh_hours': (n(w['total_foh_hours']) * p.volume / p.cplh).round(),
+    'total_boh_hours': (n(w['total_boh_hours']) * p.volume * p.ppa / p.splh)
+        .round(),
     'avg_ppa': _round2(n(w['avg_ppa']) * p.ppa),
     'avg_cplh': _round2(n(w['avg_cplh']) * p.cplh),
     'dollar_gap': n(w['dollar_gap']) * p.volume,
@@ -1880,10 +1955,13 @@ TargetCycle _buildLocationSeedCycle({
   required String businessDate,
   required MockReplayOutput replay,
 }) {
-  final candidates =
-      _seedRecommendationCandidates(replay, businessDate: businessDate);
-  final recommendation =
-      RecommendedBenchmarkSelectionService.instance.select(candidates);
+  final candidates = _seedRecommendationCandidates(
+    replay,
+    businessDate: businessDate,
+  );
+  final recommendation = RecommendedBenchmarkSelectionService.instance.select(
+    candidates,
+  );
 
   final coversByPeriod = <String, int>{};
   for (final c in candidates) {
@@ -1946,8 +2024,8 @@ Future<void> _seedAdditionalLocationsFromReplay(
     // numbers. Its `restaurant_locations` row is still seeded by
     // `_seedDemoRestaurant`, so it stays in the scope drawer.
     if (_isNoneConnectedDemoLocation(restaurantId)) continue;
-    final profile = _demoLocationProfiles[
-        i < _demoLocationProfiles.length
+    final profile =
+        _demoLocationProfiles[i < _demoLocationProfiles.length
             ? i
             : _demoLocationProfiles.length - 1];
 
@@ -1981,16 +2059,37 @@ Future<void> _seedAdditionalLocationsFromReplay(
       await dao.upsertCycle(cycle);
     }
 
-    final atProfile =
-        TargetCycleActiveTargetProfileProjector.project(cycle);
-    await db.insert('active_target_profiles', atProfile.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    final atProfile = TargetCycleActiveTargetProfileProjector.project(cycle);
+    await db.insert(
+      'active_target_profiles',
+      atProfile.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    await db.insert('target_profile_versions', {
+      'target_profile_version_id': atProfile.targetProfileVersionId,
+      'target_profile_id': atProfile.targetProfileId,
+      'restaurant_id': restaurantId,
+      'target_cycle_id': cycle.cycleId,
+      'source_type': atProfile.sourceType,
+      'target_cplh': atProfile.targetCPLH,
+      'target_splh': atProfile.targetSPLH,
+      'target_ppa': atProfile.targetPPA,
+      'foh_wage': atProfile.fohWage,
+      'boh_wage': atProfile.bohWage,
+      'opz_floor_cplh': atProfile.opzFloorCPLH,
+      'opz_ceiling_cplh': atProfile.opzCeilingCPLH,
+      'theoretical_foh_labor_pct': atProfile.theoreticalFohLaborPct,
+      'theoretical_boh_labor_pct': atProfile.theoreticalBohLaborPct,
+      'theoretical_labor_pct': atProfile.theoreticalLaborPct,
+      'created_at': atProfile.builtAt,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
     final versionId = 'compat_${restaurantId}_v8_backfill';
     await db.insert('target_profile_versions', {
       'target_profile_version_id': versionId,
       'target_profile_id': atProfile.targetProfileId,
       'restaurant_id': restaurantId,
+      'target_cycle_id': cycle.cycleId,
       'source_type': atProfile.sourceType,
       'target_cplh': atProfile.targetCPLH,
       'target_splh': atProfile.targetSPLH,
@@ -2010,21 +2109,19 @@ Future<void> _seedAdditionalLocationsFromReplay(
     // and preserves the generator's per-period daypart stamps
     // (Design Rule 2 — null daypart stamps are never substituted).
     ShiftRecord stamp(ShiftRecord r) => r.withLockedTargetDefaults(
-          defaultTargetCPLH: atProfile.targetCPLH,
-          defaultTargetSPLH: atProfile.targetSPLH,
-          defaultTargetPPA: atProfile.targetPPA,
-          defaultFohWage: atProfile.fohWage,
-          defaultBohWage: atProfile.bohWage,
-          defaultOpzFloorCPLH: atProfile.opzFloorCPLH,
-          defaultOpzCeilingCPLH: atProfile.opzCeilingCPLH,
-          defaultTheoreticalFohLaborPct:
-              atProfile.theoreticalFohLaborPct,
-          defaultTheoreticalBohLaborPct:
-              atProfile.theoreticalBohLaborPct,
-          defaultTargetProfileId: atProfile.targetProfileId,
-          defaultTargetProfileVersionId: versionId,
-          defaultTargetSourceType: atProfile.sourceType,
-        );
+      defaultTargetCPLH: atProfile.targetCPLH,
+      defaultTargetSPLH: atProfile.targetSPLH,
+      defaultTargetPPA: atProfile.targetPPA,
+      defaultFohWage: atProfile.fohWage,
+      defaultBohWage: atProfile.bohWage,
+      defaultOpzFloorCPLH: atProfile.opzFloorCPLH,
+      defaultOpzCeilingCPLH: atProfile.opzCeilingCPLH,
+      defaultTheoreticalFohLaborPct: atProfile.theoreticalFohLaborPct,
+      defaultTheoreticalBohLaborPct: atProfile.theoreticalBohLaborPct,
+      defaultTargetProfileId: atProfile.targetProfileId,
+      defaultTargetProfileVersionId: versionId,
+      defaultTargetSourceType: atProfile.sourceType,
+    );
 
     final batch = db.batch();
     for (final s in scaledCurrent) {
@@ -2042,8 +2139,11 @@ Future<void> _seedAdditionalLocationsFromReplay(
         cycle.calibrationWindowStart,
         cycle.calibrationWindowEnd,
       );
-      batch.insert('week_records', scaledW,
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'week_records',
+        scaledW,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
     await batch.commit(noResult: true);
 
@@ -2088,9 +2188,13 @@ Future<void> _seedAdditionalLocationsFromReplay(
   }
 }
 
-Future<void> _seedDemoDataFromReplay(Database db, MockReplayOutput replay) async {
+Future<void> _seedDemoDataFromReplay(
+  Database db,
+  MockReplayOutput replay,
+) async {
   final now = DateTime.now().toIso8601String();
-  final importRunId = 'mock_replay_seed_${now.replaceAll(RegExp(r'[^0-9]'), '')}';
+  final importRunId =
+      'mock_replay_seed_${now.replaceAll(RegExp(r'[^0-9]'), '')}';
 
   // Per-Daypart V1 (Slice 1, Decision 4) — pre-production reseed wipes
   // demo-scope closed shifts before regenerating so newly added
@@ -2121,8 +2225,11 @@ Future<void> _seedDemoDataFromReplay(Database db, MockReplayOutput replay) async
   for (final w in replay.weekRecords) {
     final map = w.toMap()..remove('id');
     map['restaurant_id'] = DemoScope.restaurantId;
-    batch.insert('week_records', map,
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    batch.insert(
+      'week_records',
+      map,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
   await batch.commit(noResult: true);
 
@@ -2339,37 +2446,37 @@ const String _kDemoScopeOperatorId = 'n';
 /// the single-axis invariant holds.
 const List<Map<String, Object?>> _kDemoBusinessDefaultServicePeriods =
     <Map<String, Object?>>[
-  {
-    'id': 'lunch',
-    'label': 'Lunch',
-    'short_label': 'L',
-    'sort_order': 1,
-    'start_local_time': '11:00',
-    'end_local_time': '15:00',
-    'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'dinner',
-    'label': 'Dinner',
-    'short_label': 'D',
-    'sort_order': 2,
-    'start_local_time': '17:00',
-    'end_local_time': '23:00',
-    'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'late_night',
-    'label': 'Late Night',
-    'short_label': 'LN',
-    'sort_order': 3,
-    'start_local_time': '23:00',
-    'end_local_time': '02:00',
-    'rolls_past_midnight': true,
-    'applicable_days': [5, 6],
-  },
-];
+      {
+        'id': 'lunch',
+        'label': 'Lunch',
+        'short_label': 'L',
+        'sort_order': 1,
+        'start_local_time': '11:00',
+        'end_local_time': '15:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'dinner',
+        'label': 'Dinner',
+        'short_label': 'D',
+        'sort_order': 2,
+        'start_local_time': '17:00',
+        'end_local_time': '23:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'late_night',
+        'label': 'Late Night',
+        'short_label': 'LN',
+        'sort_order': 3,
+        'start_local_time': '23:00',
+        'end_local_time': '02:00',
+        'rolls_past_midnight': true,
+        'applicable_days': [5, 6],
+      },
+    ];
 
 /// Region scope (§2c) — East Region overrides timing.
 ///
@@ -2392,21 +2499,18 @@ Future<void> _seedDemoScopeOverrideTimingConfig(Database db) async {
   );
   if (existing.isNotEmpty) return; // operator authority — never clobber
   const now = '2026-05-15T00:00:00.000Z'; // fixed — determinism (NO now())
-  await db.insert(
-    'restaurant_timing_configs',
-    {
-      'restaurant_id': overrideRestaurantId,
-      'business_day_start_local_time': '04:00',
-      // East-Region timing override: Sunday week-start (business
-      // default is Monday). Single-axis HP #11 diff.
-      'week_start_day': DateTime.sunday,
-      'service_period_definitions_json':
-          jsonEncode(_kDemoBusinessDefaultServicePeriods),
-      'created_at': now,
-      'updated_at': now,
-    },
-    conflictAlgorithm: ConflictAlgorithm.ignore,
-  );
+  await db.insert('restaurant_timing_configs', {
+    'restaurant_id': overrideRestaurantId,
+    'business_day_start_local_time': '04:00',
+    // East-Region timing override: Sunday week-start (business
+    // default is Monday). Single-axis HP #11 diff.
+    'week_start_day': DateTime.sunday,
+    'service_period_definitions_json': jsonEncode(
+      _kDemoBusinessDefaultServicePeriods,
+    ),
+    'created_at': now,
+    'updated_at': now,
+  }, conflictAlgorithm: ConflictAlgorithm.ignore);
 }
 
 /// Location scope (§2c) — Riverside overrides wages; Harbour inherits.
@@ -2460,19 +2564,15 @@ Future<void> _seedDemoScopeOverrideWageRows(Database db) async {
   ];
   final batch = db.batch();
   for (final r in rows) {
-    batch.insert(
-      'wage_role_rows',
-      {
-        'restaurant_id': overrideRestaurantId,
-        'role_name': r['role_name'],
-        'labor_bucket': r['labor_bucket'],
-        'hourly_rate': r['hourly_rate'],
-        'weighted_hours': r['weighted_hours'],
-        'source': 'demo_seed',
-        'is_active': 1,
-      },
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
+    batch.insert('wage_role_rows', {
+      'restaurant_id': overrideRestaurantId,
+      'role_name': r['role_name'],
+      'labor_bucket': r['labor_bucket'],
+      'hourly_rate': r['hourly_rate'],
+      'weighted_hours': r['weighted_hours'],
+      'source': 'demo_seed',
+      'is_active': 1,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
   }
   await batch.commit(noResult: true);
 }
@@ -2488,10 +2588,7 @@ Future<void> _seedDemoScopeOverrideWageRows(Database db) async {
 /// Riverside / Harbour get NO row → the cache reader returns nothing →
 /// the caller resolves them to the inherited business default.
 Future<void> _seedDemoScopeOverrideDataAccuracy(Database db) async {
-  if (!await _tableExists(
-    db,
-    'data_accuracy_service_period_settings_cache',
-  )) {
+  if (!await _tableExists(db, 'data_accuracy_service_period_settings_cache')) {
     return;
   }
   const businessRid = DemoScope.restaurantId; // Downtown = business default
@@ -2512,21 +2609,20 @@ Future<void> _seedDemoScopeOverrideDataAccuracy(Database db) async {
     required String rid,
     required String period,
     required String coversSource,
-  }) =>
-      <String, Object?>{
-        'restaurant_id': rid,
-        'service_period_key': period,
-        'effective_at_business_date': effectiveDate,
-        'id': 'demo_das_${rid}_$period',
-        'operator_id': _kDemoScopeOperatorId,
-        'location_id': rid, // runtime convention: location_id == rid
-        'covers_source': coversSource,
-        'wage_source': 'vendor_per_employee',
-        'created_at': ts,
-        'updated_at': ts,
-        'updated_by': 'demo_seed',
-        'cached_at': ts,
-      };
+  }) => <String, Object?>{
+    'restaurant_id': rid,
+    'service_period_key': period,
+    'effective_at_business_date': effectiveDate,
+    'id': 'demo_das_${rid}_$period',
+    'operator_id': _kDemoScopeOperatorId,
+    'location_id': rid, // runtime convention: location_id == rid
+    'covers_source': coversSource,
+    'wage_source': 'vendor_per_employee',
+    'created_at': ts,
+    'updated_at': ts,
+    'updated_by': 'demo_seed',
+    'cached_at': ts,
+  };
   final batch = db.batch();
   // Business-default baseline — Downtown, all 3 periods `vendor`.
   for (final period in const ['lunch', 'dinner', 'late_night']) {
@@ -2628,54 +2724,60 @@ const String _kDemoFourPeriodBusinessTimezone = 'America/St_Johns';
 /// de-hardcode against an N≠3 period set.
 const List<Map<String, Object?>> _kDemoFourPeriodServicePeriods =
     <Map<String, Object?>>[
-  {
-    'id': 'breakfast',
-    'label': 'Breakfast',
-    'short_label': 'B',
-    'sort_order': 1,
-    'start_local_time': '07:00',
-    'end_local_time': '11:00',
-    'rolls_past_midnight': false,
-    // Breakfast every day (a real all-week breakfast service).
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'lunch',
-    'label': 'Lunch',
-    'short_label': 'L',
-    'sort_order': 2,
-    'start_local_time': '11:00',
-    'end_local_time': '15:00',
-    'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'dinner',
-    'label': 'Dinner',
-    'short_label': 'D',
-    'sort_order': 3,
-    'start_local_time': '17:00',
-    'end_local_time': '23:00',
-    'rolls_past_midnight': false,
-    'applicable_days': [1, 2, 3, 4, 5, 6, 7],
-  },
-  {
-    'id': 'late_night',
-    'label': 'Late night',
-    'short_label': 'LN',
-    'sort_order': 4,
-    'start_local_time': '23:00',
-    'end_local_time': '02:00',
-    'rolls_past_midnight': true,
-    // Late night Thu–Sun only (real weekend-leaning late service).
-    'applicable_days': [4, 5, 6, 7],
-  },
-];
+      {
+        'id': 'breakfast',
+        'label': 'Breakfast',
+        'short_label': 'B',
+        'sort_order': 1,
+        'start_local_time': '07:00',
+        'end_local_time': '11:00',
+        'rolls_past_midnight': false,
+        // Breakfast every day (a real all-week breakfast service).
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'lunch',
+        'label': 'Lunch',
+        'short_label': 'L',
+        'sort_order': 2,
+        'start_local_time': '11:00',
+        'end_local_time': '15:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'dinner',
+        'label': 'Dinner',
+        'short_label': 'D',
+        'sort_order': 3,
+        'start_local_time': '17:00',
+        'end_local_time': '23:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'late_night',
+        'label': 'Late night',
+        'short_label': 'LN',
+        'sort_order': 4,
+        'start_local_time': '23:00',
+        'end_local_time': '02:00',
+        'rolls_past_midnight': true,
+        // Late night Thu–Sun only (real weekend-leaning late service).
+        'applicable_days': [4, 5, 6, 7],
+      },
+    ];
 
 /// Maps an ISO weekday (1=Mon..7=Sun) to the canonical day label the
 /// `shift_records` schema + baseline candidate read service use.
 const List<String> _kIsoWeekdayDayLabels = <String>[
-  'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
 ];
 
 /// Per-period deterministic base metrics for the proof cohort. Values
@@ -2686,11 +2788,11 @@ const List<String> _kIsoWeekdayDayLabels = <String>[
 /// configured period.
 const Map<String, Map<String, num>> _kDemoFourPeriodMetrics =
     <String, Map<String, num>>{
-  'breakfast': {'covers': 95, 'ppa': 14.50, 'cplh': 38.0, 'splh': 95.0},
-  'lunch': {'covers': 165, 'ppa': 22.00, 'cplh': 44.0, 'splh': 140.0},
-  'dinner': {'covers': 210, 'ppa': 31.00, 'cplh': 41.0, 'splh': 170.0},
-  'late_night': {'covers': 70, 'ppa': 18.00, 'cplh': 33.0, 'splh': 110.0},
-};
+      'breakfast': {'covers': 95, 'ppa': 14.50, 'cplh': 38.0, 'splh': 95.0},
+      'lunch': {'covers': 165, 'ppa': 22.00, 'cplh': 44.0, 'splh': 140.0},
+      'dinner': {'covers': 210, 'ppa': 31.00, 'cplh': 41.0, 'splh': 170.0},
+      'late_night': {'covers': 70, 'ppa': 18.00, 'cplh': 33.0, 'splh': 110.0},
+    };
 
 /// Seeds the 4-period proof location's `restaurant_locations` +
 /// `restaurant_timing_configs` rows. Idempotent (skip-if-present +
@@ -2703,17 +2805,13 @@ Future<void> _seedDemoFourPeriodTimingConfig(Database db) async {
   // Fixed literal — determinism (never DateTime.now()).
   const ts = '2026-05-16T00:00:00.000Z';
 
-  await db.insert(
-    'restaurant_locations',
-    {
-      'restaurant_id': _kDemoFourPeriodRestaurantId,
-      'display_name': _kDemoFourPeriodDisplayName,
-      'business_timezone': _kDemoFourPeriodBusinessTimezone,
-      'created_at': ts,
-      'updated_at': ts,
-    },
-    conflictAlgorithm: ConflictAlgorithm.ignore,
-  );
+  await db.insert('restaurant_locations', {
+    'restaurant_id': _kDemoFourPeriodRestaurantId,
+    'display_name': _kDemoFourPeriodDisplayName,
+    'business_timezone': _kDemoFourPeriodBusinessTimezone,
+    'created_at': ts,
+    'updated_at': ts,
+  }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
   if (!await _tableExists(db, 'restaurant_timing_configs')) return;
   final existing = await db.query(
@@ -2727,23 +2825,20 @@ Future<void> _seedDemoFourPeriodTimingConfig(Database db) async {
   // Canonicalize order exactly as RestaurantTimingConfigDao.upsert does
   // (sort_order asc, then id asc) so the persisted JSON round-trips to
   // the same ordered definition list the DAO would have produced.
-  final sorted = [..._kDemoFourPeriodServicePeriods]..sort((a, b) {
+  final sorted = [..._kDemoFourPeriodServicePeriods]
+    ..sort((a, b) {
       final cmp = (a['sort_order'] as int).compareTo(b['sort_order'] as int);
       return cmp != 0 ? cmp : (a['id'] as String).compareTo(b['id'] as String);
     });
 
-  await db.insert(
-    'restaurant_timing_configs',
-    {
-      'restaurant_id': _kDemoFourPeriodRestaurantId,
-      'business_day_start_local_time': '04:00',
-      'week_start_day': DateTime.monday,
-      'service_period_definitions_json': jsonEncode(sorted),
-      'created_at': ts,
-      'updated_at': ts,
-    },
-    conflictAlgorithm: ConflictAlgorithm.ignore,
-  );
+  await db.insert('restaurant_timing_configs', {
+    'restaurant_id': _kDemoFourPeriodRestaurantId,
+    'business_day_start_local_time': '04:00',
+    'week_start_day': DateTime.monday,
+    'service_period_definitions_json': jsonEncode(sorted),
+    'created_at': ts,
+    'updated_at': ts,
+  }, conflictAlgorithm: ConflictAlgorithm.ignore);
 }
 
 /// Seeds a deterministic 60-day closed `shift_records` cohort for the
@@ -2774,22 +2869,25 @@ Future<void> _seedDemoFourPeriodClosedShifts(
   // definitions (no hardcoded period set).
   final periodApplicableDays = <String, Set<int>>{
     for (final p in _kDemoFourPeriodServicePeriods)
-      p['id'] as String:
-          ((p['applicable_days'] as List).cast<int>()).toSet(),
+      p['id'] as String: ((p['applicable_days'] as List).cast<int>()).toSet(),
   };
   // Stable canonical period order (sort_order then id) so the seeded
   // rows + any ordered read are consistent.
-  final orderedPeriodIds = (<String>[
-    for (final p in _kDemoFourPeriodServicePeriods) p['id'] as String,
-  ]..sort((a, b) {
-      final pa = _kDemoFourPeriodServicePeriods
-          .firstWhere((p) => p['id'] == a);
-      final pb = _kDemoFourPeriodServicePeriods
-          .firstWhere((p) => p['id'] == b);
-      final cmp =
-          (pa['sort_order'] as int).compareTo(pb['sort_order'] as int);
-      return cmp != 0 ? cmp : a.compareTo(b);
-    }));
+  final orderedPeriodIds =
+      (<String>[
+        for (final p in _kDemoFourPeriodServicePeriods) p['id'] as String,
+      ]..sort((a, b) {
+        final pa = _kDemoFourPeriodServicePeriods.firstWhere(
+          (p) => p['id'] == a,
+        );
+        final pb = _kDemoFourPeriodServicePeriods.firstWhere(
+          (p) => p['id'] == b,
+        );
+        final cmp = (pa['sort_order'] as int).compareTo(
+          pb['sort_order'] as int,
+        );
+        return cmp != 0 ? cmp : a.compareTo(b);
+      }));
 
   final batch = db.batch();
   // 60-day trailing window ending at the anchor (inclusive), matching
@@ -2803,20 +2901,18 @@ Future<void> _seedDemoFourPeriodClosedShifts(
     final monday = dt.subtract(Duration(days: isoWeekday - 1));
     final jan4 = DateTime(monday.year, 1, 4);
     final week1Monday = jan4.subtract(Duration(days: jan4.weekday - 1));
-    final weekNum =
-        ((monday.difference(week1Monday).inDays) ~/ 7) + 1;
-    final weekId =
-        '${monday.year}-W${weekNum.toString().padLeft(2, '0')}';
+    final weekNum = ((monday.difference(week1Monday).inDays) ~/ 7) + 1;
+    final weekId = '${monday.year}-W${weekNum.toString().padLeft(2, '0')}';
 
     for (final periodId in orderedPeriodIds) {
       // De-hardcode proof: a period only contributes a closed shift on
       // a weekday it actually serves — driven purely by the configured
       // `applicable_days`, never a fixed assumption.
-      if (!(periodApplicableDays[periodId]?.contains(isoWeekday) ??
-          false)) {
+      if (!(periodApplicableDays[periodId]?.contains(isoWeekday) ?? false)) {
         continue;
       }
-      final m = _kDemoFourPeriodMetrics[periodId] ??
+      final m =
+          _kDemoFourPeriodMetrics[periodId] ??
           _kDemoFourPeriodMetrics['breakfast']!;
       final covers = (m['covers'] as num).toInt();
       final ppa = (m['ppa'] as num).toDouble();
@@ -2907,32 +3003,28 @@ Future<void> _seedDemoVarianceBreachNotification(Database db) async {
   final weekId = worst['week_id'] as String;
   final weekLabel = (worst['week_label'] as String?) ?? weekId;
   final actualPct = (worst['actual_labor_pct'] as num?)?.toDouble() ?? 0.0;
-  final theoPct =
-      (worst['theoretical_labor_pct'] as num?)?.toDouble() ?? 0.0;
+  final theoPct = (worst['theoretical_labor_pct'] as num?)?.toDouble() ?? 0.0;
   final businessDate =
       (worst['closed_at'] as String?) ?? _businessDateFromWeekId(weekId);
   final eventKey =
       'variance_breach_${weekId.replaceAll(RegExp(r'[^A-Za-z0-9_]'), '_')}';
-  await db.insert(
-    'app_notifications',
-    {
-      'notification_id': '${rid}_$eventKey',
-      'restaurant_id': rid,
-      'type': 'variance_breach',
-      'event_key': eventKey,
-      'title': 'Weekly labor ran over plan',
-      'body': 'Week $weekLabel: labor ran \$${worstGap.round()} over the '
-          'locked plan (actual ${actualPct.toStringAsFixed(1)}% vs plan '
-          '${theoPct.toStringAsFixed(1)}%). Open the Variance tab to '
-          'review.',
-      'business_date': businessDate,
-      // Deterministic: derived from the breach week's business date,
-      // never DateTime.now() — two reseeds byte-identical.
-      'created_at': '${businessDate}T12:00:00.000Z',
-      'read_at': null,
-    },
-    conflictAlgorithm: ConflictAlgorithm.ignore,
-  );
+  await db.insert('app_notifications', {
+    'notification_id': '${rid}_$eventKey',
+    'restaurant_id': rid,
+    'type': 'variance_breach',
+    'event_key': eventKey,
+    'title': 'Weekly labor ran over plan',
+    'body':
+        'Week $weekLabel: labor ran \$${worstGap.round()} over the '
+        'locked plan (actual ${actualPct.toStringAsFixed(1)}% vs plan '
+        '${theoPct.toStringAsFixed(1)}%). Open the Variance tab to '
+        'review.',
+    'business_date': businessDate,
+    // Deterministic: derived from the breach week's business date,
+    // never DateTime.now() — two reseeds byte-identical.
+    'created_at': '${businessDate}T12:00:00.000Z',
+    'read_at': null,
+  }, conflictAlgorithm: ConflictAlgorithm.ignore);
 }
 
 /// Best-effort `YYYY-MM-DD` from a `week_id` when a week_record has no
@@ -3006,8 +3098,8 @@ List<ShiftRecord> _envelopeShiftsForLocation(
   String restaurantId,
 ) {
   if (locationIndex == 0) return baseShifts;
-  final profile = _demoLocationProfiles[
-      locationIndex < _demoLocationProfiles.length
+  final profile =
+      _demoLocationProfiles[locationIndex < _demoLocationProfiles.length
           ? locationIndex
           : _demoLocationProfiles.length - 1];
   return baseShifts
@@ -3084,10 +3176,16 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
     if (_isNoneConnectedDemoLocation(rid)) continue;
     final isDowntown = i == 0;
 
-    final histShifts =
-        _envelopeShiftsForLocation(replay.historicalClosedShifts, i, rid);
-    final currentShifts =
-        _envelopeShiftsForLocation(replay.currentWeekShifts, i, rid);
+    final histShifts = _envelopeShiftsForLocation(
+      replay.historicalClosedShifts,
+      i,
+      rid,
+    );
+    final currentShifts = _envelopeShiftsForLocation(
+      replay.currentWeekShifts,
+      i,
+      rid,
+    );
 
     OpenShiftSnapshot snapFor(ShiftRecord s, String status) {
       final bd = _businessDateFromWeekDay(s.weekId, s.dayLabel)!;
@@ -3108,10 +3206,8 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
         currentPPA: s.ppa,
         currentCPLH: s.cplh,
         currentSPLH: s.splh,
-        blendedWage:
-            double.parse(s.blendedWage.toStringAsFixed(2)),
-        sourceSystem:
-            s.sourceSystem ?? MockIntegrationReplaySeed.sourceSystem,
+        blendedWage: double.parse(s.blendedWage.toStringAsFixed(2)),
+        sourceSystem: s.sourceSystem ?? MockIntegrationReplaySeed.sourceSystem,
         sourceShiftId: MockIntegrationReplaySeed.snapshotSourceShiftId(
           weekId: s.weekId,
           dayLabel: s.dayLabel,
@@ -3127,8 +3223,11 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
     // Historical closed shifts → closed snapshots (all 4 locations).
     for (final s in histShifts) {
       if (s.status != 'closed') continue;
-      batch.insert('open_shift_snapshots', snapFor(s, 'closed').toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'open_shift_snapshots',
+        snapFor(s, 'closed').toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
 
     // Current-week coverage for the 3 non-Downtown locations only.
@@ -3148,8 +3247,11 @@ Future<void> _seedHistoricalOpenShiftSnapshotsFromReplay(
       now: nowIsoUtc(),
     );
     for (final snap in currentWeekSnapshots) {
-      batch.insert('open_shift_snapshots', snap.toMap(),
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      batch.insert(
+        'open_shift_snapshots',
+        snap.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
     }
   }
 
@@ -3192,8 +3294,13 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
   const fridayUnseatedCovers = 72;
   const fridayUnseatedParties = 18;
   const dayBaseCovers = {
-    'Mon': 140, 'Tue': 150, 'Wed': 160, 'Thu': 190,
-    'Fri': 220, 'Sat': 230, 'Sun': 110,
+    'Mon': 140,
+    'Tue': 150,
+    'Wed': 160,
+    'Thu': 190,
+    'Fri': 220,
+    'Sat': 230,
+    'Sun': 110,
   };
 
   final locations = DemoScope.locations;
@@ -3207,9 +3314,9 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
     final volume = i == 0
         ? 1.0
         : _demoLocationProfiles[i < _demoLocationProfiles.length
-                ? i
-                : _demoLocationProfiles.length - 1]
-            .volume;
+                  ? i
+                  : _demoLocationProfiles.length - 1]
+              .volume;
 
     // Group the forward (non-closed) cells by day so the WHOLE-DAY
     // unseated baseline is computed once per day and then apportioned
@@ -3226,19 +3333,23 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
       final dayCovers = dayBaseCovers[dayLabel] ?? fridayBaseCovers;
       final coverRatio = dayCovers / fridayBaseCovers;
       // WHOLE-DAY unseated covers/parties for this location-day.
-      final dayUnseatedCovers =
-          (fridayUnseatedCovers * coverRatio * volume).round();
-      final dayUnseatedParties =
-          (fridayUnseatedParties * coverRatio * volume).round();
+      final dayUnseatedCovers = (fridayUnseatedCovers * coverRatio * volume)
+          .round();
+      final dayUnseatedParties = (fridayUnseatedParties * coverRatio * volume)
+          .round();
       if (dayUnseatedCovers <= 0) continue; // honest-degrade
 
       // Cover-share weight per served period (same split the rest of
       // the demo uses). Drop zero-share periods so they get no row.
       final served = entry.value
-          .where((s) =>
-              MockIntegrationReplaySeed.daypartCoverShare(
-                  dayLabel, s.daypart) >
-              0.0)
+          .where(
+            (s) =>
+                MockIntegrationReplaySeed.daypartCoverShare(
+                  dayLabel,
+                  s.daypart,
+                ) >
+                0.0,
+          )
           .toList();
       if (served.isEmpty) continue;
       // Largest-share period FIRST. Every other period gets its rounded
@@ -3247,10 +3358,15 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
       // whole-day baseline with no rounding drift and the remainder
       // always lands on a comfortably-positive row (deterministic —
       // replay is pure, no RNG).
-      served.sort((a, b) => MockIntegrationReplaySeed.daypartCoverShare(
-              dayLabel, b.daypart)
-          .compareTo(MockIntegrationReplaySeed.daypartCoverShare(
-              dayLabel, a.daypart)));
+      served.sort(
+        (a, b) =>
+            MockIntegrationReplaySeed.daypartCoverShare(
+              dayLabel,
+              b.daypart,
+            ).compareTo(
+              MockIntegrationReplaySeed.daypartCoverShare(dayLabel, a.daypart),
+            ),
+      );
 
       // Pre-compute the non-largest periods' rounded shares; the largest
       // takes the remainder.
@@ -3260,7 +3376,9 @@ Future<void> _seedForwardReservationEnvelopeFromReplay(
       var partiesRemainder = dayUnseatedParties;
       for (var idx = served.length - 1; idx >= 1; idx--) {
         final share = MockIntegrationReplaySeed.daypartCoverShare(
-            dayLabel, served[idx].daypart);
+          dayLabel,
+          served[idx].daypart,
+        );
         final c = (dayUnseatedCovers * share).round();
         final p = (dayUnseatedParties * share).round();
         partCoversByIdx[idx] = c;
@@ -3337,8 +3455,9 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
 
     final parentCycle = await daoCycle.getActiveCycle(rid);
     if (parentCycle == null) continue; // degrade silently (no cycle yet)
-    final cycleDayparts =
-        await daoCycle.getDaypartsForCycle(parentCycle.cycleId);
+    final cycleDayparts = await daoCycle.getDaypartsForCycle(
+      parentCycle.cycleId,
+    );
     if (cycleDayparts.isEmpty) continue; // no per-period bands → skip
     final cycle = parentCycle.copyWith(dayparts: cycleDayparts);
 
@@ -3374,10 +3493,14 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
     for (final s in allShifts) {
       final bd = _businessDateFromWeekDay(s.weekId, s.dayLabel);
       if (bd == null) continue;
-      final ws = WeeklyPlanSnapshotPolicy.weekStartForDate(bd,
-          weekStartDay: weekStartDay);
-      final we = WeeklyPlanSnapshotPolicy.weekEndForDate(bd,
-          weekStartDay: weekStartDay);
+      final ws = WeeklyPlanSnapshotPolicy.weekStartForDate(
+        bd,
+        weekStartDay: weekStartDay,
+      );
+      final we = WeeklyPlanSnapshotPolicy.weekEndForDate(
+        bd,
+        weekStartDay: weekStartDay,
+      );
       final wk = WeeklyPlanSnapshotPolicy.weekKeyFromSpan(ws, we);
       (byWeekKey[wk] ??= <ShiftRecord>[]).add(s);
     }
@@ -3420,24 +3543,27 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
         final covers = s.forecastCovers; // the locked plan is a forecast
         if (covers <= 0) continue; // honest-degrade
         final sales = covers * cycleDp.targetPPA;
-        final reqFoh =
-            cycleDp.targetCPLH > 0 ? covers / cycleDp.targetCPLH : 0.0;
-        final reqBoh =
-            cycleDp.targetSPLH > 0 ? sales / cycleDp.targetSPLH : 0.0;
+        final reqFoh = cycleDp.targetCPLH > 0
+            ? covers / cycleDp.targetCPLH
+            : 0.0;
+        final reqBoh = cycleDp.targetSPLH > 0
+            ? sales / cycleDp.targetSPLH
+            : 0.0;
         final fohDollars = reqFoh * cycle.fohWage;
         final bohDollars = reqBoh * cycle.bohWage;
-        children.add(WeeklyPlanSnapshotDayDaypart(
-          businessDate: bd,
-          servicePeriodId: s.daypart,
-          forecastCovers: covers,
-          forecastSales: sales,
-          requiredFohHours: reqFoh,
-          requiredBohHours: reqBoh,
-          theoreticalFohDollars: fohDollars,
-          theoreticalBohDollars: bohDollars,
-        ));
-        final agg = dayAgg.putIfAbsent(
-            bd, () => _SeedDayAgg(day: s.dayLabel));
+        children.add(
+          WeeklyPlanSnapshotDayDaypart(
+            businessDate: bd,
+            servicePeriodId: s.daypart,
+            forecastCovers: covers,
+            forecastSales: sales,
+            requiredFohHours: reqFoh,
+            requiredBohHours: reqBoh,
+            theoreticalFohDollars: fohDollars,
+            theoreticalBohDollars: bohDollars,
+          ),
+        );
+        final agg = dayAgg.putIfAbsent(bd, () => _SeedDayAgg(day: s.dayLabel));
         agg.covers += covers;
         agg.sales += sales;
         agg.foh += reqFoh;
@@ -3474,25 +3600,31 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
       // non-empty here (`if (children.isEmpty) continue;` above), so the
       // synthetic plan below is only the never-hit Gap-42 empty
       // fallback; it still carries honest pre-reconcile totals.
-      final fallbackTheoreticalTotal = children.fold<double>(
-            0, (a, c) => a + c.theoreticalFohDollars,
-          ) +
+      final fallbackTheoreticalTotal =
+          children.fold<double>(0, (a, c) => a + c.theoreticalFohDollars) +
           children.fold<double>(0, (a, c) => a + c.theoreticalBohDollars);
-      final fallbackCovers =
-          dayAgg.values.fold<int>(0, (a, v) => a + v.covers);
-      final fallbackSales =
-          dayAgg.values.fold<double>(0, (a, v) => a + v.sales);
+      final fallbackCovers = dayAgg.values.fold<int>(0, (a, v) => a + v.covers);
+      final fallbackSales = dayAgg.values.fold<double>(
+        0,
+        (a, v) => a + v.sales,
+      );
       final fallbackPlan = SchedulePlan(
         forecastCovers: fallbackCovers,
         forecastSales: fallbackSales,
-        requiredFohHours:
-            dayAgg.values.fold<double>(0, (a, v) => a + v.foh).round(),
-        requiredBohHours:
-            dayAgg.values.fold<double>(0, (a, v) => a + v.boh).round(),
-        theoreticalFohLaborDollars:
-            children.fold<double>(0, (a, c) => a + c.theoreticalFohDollars),
-        theoreticalBohLaborDollars:
-            children.fold<double>(0, (a, c) => a + c.theoreticalBohDollars),
+        requiredFohHours: dayAgg.values
+            .fold<double>(0, (a, v) => a + v.foh)
+            .round(),
+        requiredBohHours: dayAgg.values
+            .fold<double>(0, (a, v) => a + v.boh)
+            .round(),
+        theoreticalFohLaborDollars: children.fold<double>(
+          0,
+          (a, c) => a + c.theoreticalFohDollars,
+        ),
+        theoreticalBohLaborDollars: children.fold<double>(
+          0,
+          (a, c) => a + c.theoreticalBohDollars,
+        ),
         theoreticalLaborPct: fallbackSales > 0
             ? fallbackTheoreticalTotal / fallbackSales * 100
             : 0.0,
@@ -3512,16 +3644,15 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
         dayDayparts: children,
       );
 
-      final isInForce = scenario.currentBusinessDate.compareTo(weekStart) >=
-              0 &&
+      final isInForce =
+          scenario.currentBusinessDate.compareTo(weekStart) >= 0 &&
           scenario.currentBusinessDate.compareTo(weekEnd) <= 0;
       // Deterministic lock instant — locked at the close of the week
       // (never DateTime.now(); idempotent across reseeds).
       final lockTs = '${weekEnd}T23:59:00.000Z';
 
       final snapshot = WeeklyPlanSnapshot(
-        snapshotId:
-            '${rid}_snapshot_${weekStart.replaceAll('-', '')}',
+        snapshotId: '${rid}_snapshot_${weekStart.replaceAll('-', '')}',
         restaurantId: rid,
         weekStartDate: weekStart,
         weekEndDate: weekEnd,
@@ -3532,8 +3663,7 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
         requiredBohHours: reconciled.weekBohHours,
         theoreticalFohLaborDollars: reconciled.weekFohDollars,
         theoreticalBohLaborDollars: reconciled.weekBohDollars,
-        coversSource:
-            ForecastDemandSource.appDerivedFromHistoricalAverage,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
         salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
         generatedAt: lockTs,
         lockedAt: lockTs,
@@ -3556,30 +3686,33 @@ Future<void> _seedHistoricalWeeklyPlanSnapshotsFromReplay(
       // Persist via the same map shape WeeklyPlanSnapshotDao.upsertSnapshot
       // writes (inlined — the DAO can't be reached during _onCreate).
       final map = snapshot.toMap();
-      final encodedDayRows =
-          jsonEncode(map.remove('day_rows') as List<dynamic>);
+      final encodedDayRows = jsonEncode(
+        map.remove('day_rows') as List<dynamic>,
+      );
       final forecastContext = map.remove('forecast_context');
       final dayDaypartsToPersist =
-          (map.remove('day_dayparts') as List<dynamic>? ??
-              const <dynamic>[]);
+          (map.remove('day_dayparts') as List<dynamic>? ?? const <dynamic>[]);
       final wageAtLockTimeJson = map.remove('wage_at_lock_time_json');
       map['wage_at_lock_time_json'] = wageAtLockTimeJson == null
           ? null
           : jsonEncode(wageAtLockTimeJson);
       map['day_rows_json'] = encodedDayRows;
-      map['forecast_context_json'] =
-          forecastContext == null ? null : jsonEncode(forecastContext);
+      map['forecast_context_json'] = forecastContext == null
+          ? null
+          : jsonEncode(forecastContext);
       if (map.containsKey('metadata')) {
         final rawMetadata = map['metadata'];
-        map['metadata'] =
-            rawMetadata == null ? null : jsonEncode(rawMetadata);
+        map['metadata'] = rawMetadata == null ? null : jsonEncode(rawMetadata);
       }
       if (map.containsKey('is_active')) {
         final raw = map['is_active'];
         if (raw is bool) map['is_active'] = raw ? 1 : 0;
       }
-      await db.insert('weekly_plan_snapshots', map,
-          conflictAlgorithm: ConflictAlgorithm.replace);
+      await db.insert(
+        'weekly_plan_snapshots',
+        map,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
 
       await db.delete(
         'weekly_plan_snapshot_day_dayparts',
@@ -3639,7 +3772,8 @@ Future<void> _seedDemoSampleNotifications(
       kind: 'first_connect_backfill_complete',
       type: 'notif.backfill.complete',
       title: 'First Connect backfill complete',
-      body: 'Your last 60 days of point-of-sale history finished loading. '
+      body:
+          'Your last 60 days of point-of-sale history finished loading. '
           'Benchmarks and the weekly plan now reflect a full cycle of '
           'real services.',
       daysBefore: 9,
@@ -3649,7 +3783,8 @@ Future<void> _seedDemoSampleNotifications(
       kind: 'weekly_plan_locked',
       type: 'notif.plan.updated',
       title: 'This week\'s plan is locked',
-      body: 'The operating plan for the current week is locked in. Open '
+      body:
+          'The operating plan for the current week is locked in. Open '
           'Shift to see the per-daypart cover, hour, and labor targets '
           'you are running against.',
       daysBefore: 1,
@@ -3659,7 +3794,8 @@ Future<void> _seedDemoSampleNotifications(
       kind: 'target_cycle_refreshed',
       type: 'cycle_rollover',
       title: 'Target cycle refreshed',
-      body: 'A new 60-day target cycle is now in force. Benchmarks '
+      body:
+          'A new 60-day target cycle is now in force. Benchmarks '
           'recalibrated from the most recent closed services — review the '
           'new lunch, dinner, and late-night targets.',
       daysBefore: 6,
@@ -3669,7 +3805,8 @@ Future<void> _seedDemoSampleNotifications(
       kind: 'reservation_vendor_available',
       type: 'notif.vendor.now_available',
       title: 'A reservation integration is ready to connect',
-      body: 'A reservation provider you can link is now available. '
+      body:
+          'A reservation provider you can link is now available. '
           'Connecting it lets Forge & Flow factor unseated covers into '
           'the live shift view.',
       daysBefore: 3,
@@ -3692,23 +3829,19 @@ Future<void> _seedDemoSampleNotifications(
       final body = t.body;
       final bd = _subtractIsoDays(base, t.daysBefore);
       final eventKey = 'demo_seed_${t.kind}';
-      batch.insert(
-        'app_notifications',
-        {
-          'notification_id': '${rid}_$eventKey',
-          'restaurant_id': rid,
-          'type': type,
-          'event_key': eventKey,
-          'title': title,
-          'body': body,
-          'business_date': bd,
-          // Deterministic — derived from the scenario date, fixed time
-          // component; never DateTime.now() (idempotent reseed).
-          'created_at': '${bd}T13:00:00.000Z',
-          'read_at': t.read ? '${bd}T18:30:00.000Z' : null,
-        },
-        conflictAlgorithm: ConflictAlgorithm.ignore,
-      );
+      batch.insert('app_notifications', {
+        'notification_id': '${rid}_$eventKey',
+        'restaurant_id': rid,
+        'type': type,
+        'event_key': eventKey,
+        'title': title,
+        'body': body,
+        'business_date': bd,
+        // Deterministic — derived from the scenario date, fixed time
+        // component; never DateTime.now() (idempotent reseed).
+        'created_at': '${bd}T13:00:00.000Z',
+        'read_at': t.read ? '${bd}T18:30:00.000Z' : null,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
   await batch.commit(noResult: true);
@@ -3732,4 +3865,3 @@ class _DemoNoticeTemplate {
   final int daysBefore;
   final bool read;
 }
-

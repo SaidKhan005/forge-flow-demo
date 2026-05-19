@@ -70,7 +70,9 @@ void main() {
       );
 
       // Change covers source for lunch from `vendor` to `manual`.
-      final lunchDropdown = find.byKey(const Key('admin_data_accuracy_lunch'));
+      final lunchDropdown = find.byKey(
+        const Key('admin_data_accuracy_covers_source_lunch'),
+      );
       expect(lunchDropdown, findsOneWidget);
       await tester.tap(lunchDropdown);
       await tester.pumpAndSettle();
@@ -113,13 +115,18 @@ void main() {
       expect(event.actorKind, equals('forge_admin'));
       expect(event.operatorId, equals('op-1'));
       expect(event.locationId, equals('loc-1a'));
-      expect(event.diff.containsKey('covers_source_lunch'), isTrue);
+      expect(
+        event.diff.containsKey('covers_source_per_service_period'),
+        isTrue,
+      );
+      expect(event.diff.containsKey('covers_source_lunch'), isFalse);
       expect(event.diff.containsKey('wage_source'), isTrue);
       expect(event.reasonNote, isNotNull);
       expect(event.reasonNote!.isNotEmpty, isTrue);
 
       // The diff payload's `to` value matches what we picked.
-      final lunchDiff = event.diff['covers_source_lunch']! as Map;
+      final keyedDiff = event.diff['covers_source_per_service_period']! as Map;
+      final lunchDiff = keyedDiff['lunch']! as Map;
       expect(lunchDiff['to'], equals(CoversSource.manual.wire));
       final wageDiff = event.diff['wage_source']! as Map;
       expect(wageDiff['to'], equals(WageSource.manualMix.wire));

@@ -181,6 +181,7 @@ void main() {
         .getTargetProfileVersion(rid, 'tpv-sync-1');
     expect(version, isNotNull);
     expect(version!.targetProfileId, 'profile-sync-1');
+    expect(version.targetCycleId, 'cycle-sync-1');
 
     expect(client.selectedCursors, <String?>[null, 'selected-cursor-1']);
     expect(client.cycleCursors, <String?>[null, 'cycle-cursor-1']);
@@ -541,6 +542,7 @@ TargetProfileVersion _version(String restaurantId) => TargetProfileVersion(
   targetProfileVersionId: 'tpv-sync-1',
   targetProfileId: 'profile-sync-1',
   restaurantId: restaurantId,
+  targetCycleId: 'cycle-sync-1',
   sourceType: 'cycle_manager_override',
   targetCPLH: 5.2,
   targetSPLH: 181,
