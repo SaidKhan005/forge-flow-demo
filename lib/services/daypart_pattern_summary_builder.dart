@@ -299,8 +299,10 @@ class DaypartPatternSummaryBuilder {
     List<ServicePeriodDefinition>? servicePeriodDefinitions,
   }) {
     final snapshot = timingLabelResolver?.snapshotFor(shift);
-    if (snapshot != null) return snapshot.label;
-    if (_hasSavedTimingIdentity(shift)) return null;
+    final snapshotLabel = snapshot?.label.trim();
+    if (snapshotLabel != null && snapshotLabel.isNotEmpty) {
+      return snapshot!.label;
+    }
 
     final servicePeriodKey = shift.servicePeriodKey?.trim();
     if (servicePeriodDefinitions != null &&
@@ -311,6 +313,7 @@ class DaypartPatternSummaryBuilder {
         servicePeriodKey,
       );
     }
+    if (_hasSavedTimingIdentity(shift)) return null;
     return null;
   }
 
@@ -321,7 +324,6 @@ class DaypartPatternSummaryBuilder {
   }) {
     final savedSortOrder = timingLabelResolver?.sortOrderFor(shift);
     if (savedSortOrder != null) return savedSortOrder;
-    if (_hasSavedTimingIdentity(shift)) return null;
 
     final servicePeriodKey = shift.servicePeriodKey?.trim();
     if (servicePeriodDefinitions != null &&
@@ -332,6 +334,7 @@ class DaypartPatternSummaryBuilder {
         servicePeriodKey,
       );
     }
+    if (_hasSavedTimingIdentity(shift)) return null;
     return null;
   }
 

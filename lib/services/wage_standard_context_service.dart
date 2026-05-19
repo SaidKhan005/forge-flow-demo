@@ -15,6 +15,7 @@
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/target_cycle.dart';
+import '../domain/models/target_profile_version.dart';
 import '../domain/models/wage_role_row.dart';
 import '../domain/models/wage_standard_context.dart';
 import '../domain/models/wage_standard_source.dart';
@@ -180,6 +181,7 @@ class WageStandardContextService {
         await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
           projected,
         );
+        await _persistProjectedVersion(projected, pinnedCycle);
         return _reattachCycleDayparts(projected, pinnedCycle);
       }
       return _reattachCycleDayparts(existing, pinnedCycle);
@@ -198,6 +200,7 @@ class WageStandardContextService {
         await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
           projected,
         );
+        await _persistProjectedVersion(projected, cycle);
         // Reattach the cycle's per-period rows onto the returned profile
         // so per-period consumers (Shift daypart lens) read real
         // `daypartFor(...)` rows instead of the Gap-42 whole-day pool.
@@ -261,6 +264,34 @@ class WageStandardContextService {
             ),
           )
           .toList(),
+    );
+  }
+
+  static Future<void> _persistProjectedVersion(
+    ActiveTargetProfile profile,
+    TargetCycle cycle,
+  ) async {
+    final versionId = _nonBlank(profile.targetProfileVersionId);
+    if (versionId == null) return;
+    await SqliteTargetProfileRepository.instance.insertTargetProfileVersion(
+      TargetProfileVersion(
+        targetProfileVersionId: versionId,
+        targetProfileId: profile.targetProfileId,
+        restaurantId: profile.restaurantId,
+        targetCycleId: cycle.cycleId,
+        sourceType: profile.sourceType,
+        targetCPLH: profile.targetCPLH,
+        targetSPLH: profile.targetSPLH,
+        targetPPA: profile.targetPPA,
+        fohWage: profile.fohWage,
+        bohWage: profile.bohWage,
+        opzFloorCPLH: profile.opzFloorCPLH,
+        opzCeilingCPLH: profile.opzCeilingCPLH,
+        theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
+        theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+        theoreticalLaborPct: profile.theoreticalLaborPct,
+        createdAt: cycle.createdAt,
+      ),
     );
   }
 

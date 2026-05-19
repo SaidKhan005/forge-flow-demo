@@ -421,6 +421,7 @@ class TargetProfileVersionSyncRow {
         ),
         targetProfileId: _requiredString(json, 'target_profile_id'),
         restaurantId: _requiredString(json, 'restaurant_id'),
+        targetCycleId: _readString(json['target_cycle_id']),
         sourceType: _requiredString(json, 'source_type'),
         targetCPLH: _requiredDouble(json, 'target_cplh'),
         targetSPLH: _requiredDouble(json, 'target_splh'),

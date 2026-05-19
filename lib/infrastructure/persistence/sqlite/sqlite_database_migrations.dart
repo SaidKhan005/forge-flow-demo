@@ -574,6 +574,32 @@ Future<void> _migrateToV38(Database db) async {
   }
 }
 
+Future<void> _migrateToV39(Database db) async {
+  if (!await _columnExists(db, 'target_profile_versions', 'target_cycle_id')) {
+    await db.execute(
+      'ALTER TABLE target_profile_versions ADD COLUMN target_cycle_id TEXT',
+    );
+  }
+  await db.execute('''
+    UPDATE target_profile_versions
+    SET target_cycle_id = (
+      SELECT active_target_profiles.target_cycle_id
+      FROM active_target_profiles
+      WHERE active_target_profiles.restaurant_id =
+            target_profile_versions.restaurant_id
+        AND active_target_profiles.target_profile_version_id =
+            target_profile_versions.target_profile_version_id
+      LIMIT 1
+    )
+    WHERE target_cycle_id IS NULL
+  ''');
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS ix_target_profile_versions_cycle
+    ON target_profile_versions(restaurant_id, target_cycle_id)
+    WHERE target_cycle_id IS NOT NULL
+  ''');
+}
+
 Future<void> _migrateToV29(Database db) async {
   if (!await _columnExists(
     db,

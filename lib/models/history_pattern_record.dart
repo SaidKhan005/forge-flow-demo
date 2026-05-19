@@ -12,6 +12,7 @@ class HistoryPatternRecord {
   final String dayLabel;
   final String daypart; // 'lunch' | 'dinner' | 'late_night'
   final String? servicePeriodLabel;
+  final int? servicePeriodSortOrder;
   final String leverId; // matches LeverCardData.id
   final bool isBenchmark; // true = favorable benchmark; false = leak
 
@@ -21,6 +22,7 @@ class HistoryPatternRecord {
     required this.dayLabel,
     required this.daypart,
     this.servicePeriodLabel,
+    this.servicePeriodSortOrder,
     required this.leverId,
     required this.isBenchmark,
   });

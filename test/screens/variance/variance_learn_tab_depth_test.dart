@@ -85,14 +85,14 @@ HistoryPatternRecord _r({
   isBenchmark: isBenchmark,
 );
 
-// Builds a closed-shift fixture of [n] rows. Only `isClosed` and the
-// list length matter for the LearnTab loader (the closed-shift list
-// is the coverage denominator).
-List<ShiftRecord> _stubClosedShifts(int n) => List.generate(
-  n,
-  (i) => ShiftRecord(
-    weekId: 'W${(i ~/ 4) + 1}',
-    dayLabel: 'D$i',
+// Builds a closed-shift fixture of [n] rows. The first six rows carry
+// the recurring Tue Lunch leak the LearnTab now derives directly from
+// closed shifts; the full list is still the coverage denominator.
+List<ShiftRecord> _stubClosedShifts(int n) => List.generate(n, (i) {
+  final isRecurringLeak = i < 6;
+  return ShiftRecord(
+    weekId: isRecurringLeak ? 'W${i + 1}' : 'W${(i ~/ 4) + 1}',
+    dayLabel: isRecurringLeak ? 'Tue' : 'D$i',
     daypart: 'lunch',
     status: 'closed',
     covers: 100,
@@ -102,10 +102,10 @@ List<ShiftRecord> _stubClosedShifts(int n) => List.generate(
     splh: 180,
     fohHours: 10,
     bohHours: 10,
-    primaryLever: 'on_model',
+    primaryLever: isRecurringLeak ? 'covers_down' : 'on_model',
     businessDate: '2026-03-${(10 + i).toString().padLeft(2, '0')}',
-  ),
-);
+  );
+});
 
 List<ShiftRecord> _brunchWinShifts() => List.generate(
   2,

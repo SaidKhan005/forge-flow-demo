@@ -8,6 +8,7 @@ class TargetProfileVersion {
   final String targetProfileVersionId;
   final String targetProfileId;
   final String restaurantId;
+  final String? targetCycleId;
   final String sourceType;
   final double targetCPLH;
   final double targetSPLH;
@@ -25,6 +26,7 @@ class TargetProfileVersion {
     required this.targetProfileVersionId,
     required this.targetProfileId,
     required this.restaurantId,
+    this.targetCycleId,
     required this.sourceType,
     required this.targetCPLH,
     required this.targetSPLH,
@@ -40,41 +42,42 @@ class TargetProfileVersion {
   });
 
   Map<String, dynamic> toMap() => {
-        'target_profile_version_id': targetProfileVersionId,
-        'target_profile_id': targetProfileId,
-        'restaurant_id': restaurantId,
-        'source_type': sourceType,
-        'target_cplh': targetCPLH,
-        'target_splh': targetSPLH,
-        'target_ppa': targetPPA,
-        'foh_wage': fohWage,
-        'boh_wage': bohWage,
-        'opz_floor_cplh': opzFloorCPLH,
-        'opz_ceiling_cplh': opzCeilingCPLH,
-        'theoretical_foh_labor_pct': theoreticalFohLaborPct,
-        'theoretical_boh_labor_pct': theoreticalBohLaborPct,
-        'theoretical_labor_pct': theoreticalLaborPct,
-        'created_at': createdAt,
-      };
+    'target_profile_version_id': targetProfileVersionId,
+    'target_profile_id': targetProfileId,
+    'restaurant_id': restaurantId,
+    'target_cycle_id': targetCycleId,
+    'source_type': sourceType,
+    'target_cplh': targetCPLH,
+    'target_splh': targetSPLH,
+    'target_ppa': targetPPA,
+    'foh_wage': fohWage,
+    'boh_wage': bohWage,
+    'opz_floor_cplh': opzFloorCPLH,
+    'opz_ceiling_cplh': opzCeilingCPLH,
+    'theoretical_foh_labor_pct': theoreticalFohLaborPct,
+    'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+    'theoretical_labor_pct': theoreticalLaborPct,
+    'created_at': createdAt,
+  };
 
-  factory TargetProfileVersion.fromMap(Map<String, dynamic> m) =>
-      TargetProfileVersion(
-        targetProfileVersionId: m['target_profile_version_id'] as String,
-        targetProfileId: m['target_profile_id'] as String,
-        restaurantId: m['restaurant_id'] as String,
-        sourceType: m['source_type'] as String,
-        targetCPLH: (m['target_cplh'] as num).toDouble(),
-        targetSPLH: (m['target_splh'] as num).toDouble(),
-        targetPPA: (m['target_ppa'] as num).toDouble(),
-        fohWage: (m['foh_wage'] as num).toDouble(),
-        bohWage: (m['boh_wage'] as num).toDouble(),
-        opzFloorCPLH: (m['opz_floor_cplh'] as num).toDouble(),
-        opzCeilingCPLH: (m['opz_ceiling_cplh'] as num).toDouble(),
-        theoreticalFohLaborPct:
-            (m['theoretical_foh_labor_pct'] as num).toDouble(),
-        theoreticalBohLaborPct:
-            (m['theoretical_boh_labor_pct'] as num).toDouble(),
-        theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
-        createdAt: m['created_at'] as String,
-      );
+  factory TargetProfileVersion.fromMap(
+    Map<String, dynamic> m,
+  ) => TargetProfileVersion(
+    targetProfileVersionId: m['target_profile_version_id'] as String,
+    targetProfileId: m['target_profile_id'] as String,
+    restaurantId: m['restaurant_id'] as String,
+    targetCycleId: m['target_cycle_id'] as String?,
+    sourceType: m['source_type'] as String,
+    targetCPLH: (m['target_cplh'] as num).toDouble(),
+    targetSPLH: (m['target_splh'] as num).toDouble(),
+    targetPPA: (m['target_ppa'] as num).toDouble(),
+    fohWage: (m['foh_wage'] as num).toDouble(),
+    bohWage: (m['boh_wage'] as num).toDouble(),
+    opzFloorCPLH: (m['opz_floor_cplh'] as num).toDouble(),
+    opzCeilingCPLH: (m['opz_ceiling_cplh'] as num).toDouble(),
+    theoreticalFohLaborPct: (m['theoretical_foh_labor_pct'] as num).toDouble(),
+    theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num).toDouble(),
+    theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
+    createdAt: m['created_at'] as String,
+  );
 }

@@ -22,10 +22,13 @@
 
 import '../domain/canonical_day_order.dart';
 import '../domain/models/restaurant_timing_config.dart';
+import '../domain/repositories/open_shift_snapshot_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/services/business_date_resolver.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import 'closed_truth_eligibility.dart';
 import 'restaurant_timing_config_read_service.dart';
 
 class BusinessDateAuthorityService {
@@ -34,6 +37,8 @@ class BusinessDateAuthorityService {
       BusinessDateAuthorityService._();
 
   final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
+  final OpenShiftSnapshotRepository _openShiftRepo =
+      SqliteOpenShiftSnapshotRepository.instance;
 
   // ── Planning-anchor resolution ──────────────────────────────────────────
 
@@ -57,7 +62,33 @@ class BusinessDateAuthorityService {
     );
     if (mockDate != null) return mockDate;
 
-    return _shiftRepo.getLatestClosedBusinessDate(restaurantId);
+    final latestClosedDate = await _shiftRepo.getLatestClosedBusinessDate(
+      restaurantId,
+    );
+    if (latestClosedDate == null) return null;
+
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
+    if (operationalBusinessDate == null) return latestClosedDate;
+
+    final closedRows = await _shiftRepo.getClosedShiftsInDateRange(
+      restaurantId,
+      '0001-01-01',
+      latestClosedDate,
+    );
+    final eligibleRows = ClosedTruthEligibility.filter(
+      closedRows,
+      currentOperationalBusinessDate: operationalBusinessDate,
+    );
+    return eligibleRows
+        .map((s) => s.businessDate)
+        .whereType<String>()
+        .fold<String?>(
+          null,
+          (latest, date) =>
+              latest == null || date.compareTo(latest) > 0 ? date : latest,
+        );
   }
 
   // ── Business-date resolution from timing config ─────────────────────────

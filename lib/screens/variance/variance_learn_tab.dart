@@ -14,13 +14,13 @@ import '../../domain/constants/cross_axis_pair_catalog.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/shift_data_source.dart';
-import '../../models/history_pattern_record.dart';
 import '../../models/learn_benchmark_context.dart';
 import '../../models/learn_repeatable_win_summary.dart';
 import '../../models/learn_teaching_summary.dart';
 import '../../models/shift_record.dart';
 import '../../models/week_record.dart';
 import '../../services/daypart_evidence_visibility_policy.dart';
+import '../../services/history_pattern_builder.dart';
 import '../../services/learn_repeatable_wins_read_service.dart';
 import '../../services/learn_teaching_analyzer.dart';
 import '../../services/variance_driver_pattern_read_service.dart';
@@ -53,17 +53,23 @@ class _LearnTabState extends State<LearnTab>
     _future =
         Future.wait([
           source.getWeekHistory(),
-          source.getHistoryPatternRecords(),
           LearnBenchmarkContextService.instance.resolve(),
           source.getHistoricalClosedShifts(),
           _loadServicePeriodDefinitions(),
         ]).then((results) {
           final weeks = results[0] as List<WeekRecord>;
-          final patternRecords = results[1] as List<HistoryPatternRecord>;
-          final benchmarkContext = results[2] as LearnBenchmarkContext;
-          final closedShifts = results[3] as List<ShiftRecord>;
+          final benchmarkContext = results[1] as LearnBenchmarkContext;
+          final closedShifts = results[2] as List<ShiftRecord>;
           final servicePeriodDefinitions =
-              results[4] as List<ServicePeriodDefinition>?;
+              results[3] as List<ServicePeriodDefinition>?;
+          final weekLabelsById = {
+            for (final week in weeks) week.weekId: week.weekLabel,
+          };
+          final patternRecords = HistoryPatternBuilder.fromClosedShifts(
+            closedShifts,
+            weekLabelsById,
+            servicePeriodDefinitions: servicePeriodDefinitions,
+          );
           // 7.58.3 — coverage denominator for the leak repeat counter.
           // `closedShifts` is the same closed `shift_records` population
           // `HistoryPatternBuilder` consumes upstream, so repeats and
