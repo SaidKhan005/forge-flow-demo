@@ -113,25 +113,19 @@ user signs in
 7. The drawer copy reads as training, not jargon (UX writing standard).
 8. The active scope persists across app restarts via existing local
    identity storage, not a new keychain entry.
-9. **HP #11 carve-out (mobile is single-location by design).** The
-   mobile app is intentionally a single-location operational view: a
-   user with operator-, region-, or group-level access still picks one
-   location and the phone reads that one location at a time. This is a
-   deliberate `CLAUDE.md` Hard Promise #11 carve-out, exercised under
-   HP #11's "or document why the capability is
-   backend-only/gated/incomplete" clause. The rationale: higher-level
+9. **HP #11 mobile shape (single location, honest inherited settings).**
+   The mobile app is intentionally a single-location operational view:
+   a user with operator-, region-, or group-level access still picks one
+   location and the phone reads that one location at a time. Higher-level
    grants are projected by the server into their underlying location
-   rows (Hard Rule 1), so the hierarchy work happens server-side and
-   the phone never synthesizes a tree or rollup; group / region /
-   company rollup dashboards are explicitly deferred to a separate
-   post-V1 sprint (see "Out of scope"). Because of this carve-out, the
-   mobile settings, timing, pricing, wage, and accuracy surfaces are
-   NOT required to show the selected-scope / inherited-source /
-   effective-value triad that HP #11 mandates for the operator-web and
-   admin consoles; surfacing the active location label is sufficient on
-   mobile. Removing this carve-out (i.e., bringing the org-unit tree and
-   inheritance display to mobile) is a deliberate post-V1 scope
-   decision, not a bug, and requires its own contract update.
+   rows (Hard Rule 1), so mobile does not synthesize a tree or rollup;
+   group / region / company rollup dashboards are explicitly deferred to
+   a separate post-V1 sprint (see "Out of scope"). This is not a license
+   to hide setting provenance. When a mobile surface shows an inherited
+   setting such as Timing, pricing, wage, or accuracy, it must show the
+   selected location, the inherited source when available, and the
+   effective value. Mobile may use a compact source label instead of the
+   full operator-web inheritance chain.
 
 ## Acceptance
 

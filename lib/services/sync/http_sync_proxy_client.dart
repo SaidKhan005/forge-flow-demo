@@ -950,6 +950,24 @@ class HttpSyncProxyClient
       servicePeriodDefinitions: definitions,
       createdAt: _readString(json['created_at']) ?? now,
       updatedAt: _readString(json['updated_at']) ?? now,
+      selectedScopeType:
+          _readString(json['selected_scope_type']) ??
+          _readString(json['selectedScopeType']),
+      selectedScopeId:
+          _readString(json['selected_scope_id']) ??
+          _readString(json['selectedScopeId']),
+      sourceScopeType:
+          _readString(json['source_scope_type']) ??
+          _readString(json['sourceScopeType']),
+      sourceScopeId:
+          _readString(json['source_scope_id']) ??
+          _readString(json['sourceScopeId']),
+      sourceScopeLabel:
+          _readString(json['source_scope_label']) ??
+          _readString(json['sourceScopeLabel']),
+      inheritedFromAncestor:
+          _readBool(json['inherited_from_ancestor']) ??
+          _readBool(json['inheritedFromAncestor']),
     );
   }
 

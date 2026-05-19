@@ -296,8 +296,9 @@ abstract class SyncProxyClient {
   /// location, or null when the operator has not configured timing
   /// yet and mobile should keep its current local/default row.
   ///
-  /// This is the resolved shape, not the inheritance graph. Mobile
-  /// stores it in `restaurant_timing_configs` for fast rendering.
+  /// This is the resolved shape plus the winning source summary, not
+  /// the full inheritance graph. Mobile stores it in
+  /// `restaurant_timing_configs` for fast rendering.
   Future<RestaurantTimingConfig?> fetchResolvedTimingConfig({
     required String operatorId,
     required String locationId,

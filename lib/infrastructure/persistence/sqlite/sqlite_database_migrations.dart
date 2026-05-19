@@ -600,6 +600,25 @@ Future<void> _migrateToV39(Database db) async {
   ''');
 }
 
+Future<void> _migrateToV40(Database db) async {
+  const columns = <String>[
+    'selected_scope_type TEXT',
+    'selected_scope_id TEXT',
+    'source_scope_type TEXT',
+    'source_scope_id TEXT',
+    'source_scope_label TEXT',
+    'inherited_from_ancestor INTEGER',
+  ];
+  for (final column in columns) {
+    final name = column.split(' ').first;
+    if (!await _columnExists(db, 'restaurant_timing_configs', name)) {
+      await db.execute(
+        'ALTER TABLE restaurant_timing_configs ADD COLUMN $column',
+      );
+    }
+  }
+}
+
 Future<void> _migrateToV29(Database db) async {
   if (!await _columnExists(
     db,

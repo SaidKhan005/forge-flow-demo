@@ -994,7 +994,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          const DataAccuracyExplainerCard(),
+          DataAccuracyExplainerCard(servicePeriods: _servicePeriods),
         ],
       ),
     );

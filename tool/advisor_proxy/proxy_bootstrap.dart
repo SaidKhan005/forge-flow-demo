@@ -3196,7 +3196,16 @@ class RepositoryMobileOperationalSyncProxyGateway
         createdAt: candidates.first.createdAt.toUtc().toIso8601String(),
         updatedAt: newest.toUtc().toIso8601String(),
       );
-      return <String, Object?>{'timing_config': _timingConfigJson(config)};
+      return <String, Object?>{
+        'timing_config': _timingConfigJson(
+          config,
+          provenance: _timingConfigProvenanceJson(
+            locationId: locationId,
+            resolved: resolved,
+            candidates: candidates,
+          ),
+        ),
+      };
     } on BusinessTimingProfileResolutionException {
       return const <String, Object?>{'timing_config': null};
     }
@@ -3810,7 +3819,51 @@ class RepositoryMobileOperationalSyncProxyGateway
     );
   }
 
-  static Map<String, Object?> _timingConfigJson(RestaurantTimingConfig config) {
+  static Map<String, Object?> _timingConfigProvenanceJson({
+    required String locationId,
+    required EffectiveBusinessTimingProfile resolved,
+    required List<BusinessTimingProfileRow> candidates,
+  }) {
+    final sourceScopeType = resolved.resolvedScope.value;
+    BusinessTimingProfileRow? source;
+    for (final row in candidates) {
+      if (row.scopeType == sourceScopeType &&
+          row.scopeId == resolved.resolvedScopeId) {
+        source = row;
+      }
+    }
+    source ??= candidates.isEmpty ? null : candidates.last;
+    return <String, Object?>{
+      'selected_scope_type': 'location',
+      'selected_scope_id': locationId,
+      'source_scope_type': source?.scopeType ?? sourceScopeType,
+      'source_scope_id': source?.scopeId ?? resolved.resolvedScopeId,
+      'source_scope_label': _timingSourceLabel(
+        source?.displayName,
+        source?.scopeType ?? sourceScopeType,
+      ),
+      'inherited_from_ancestor': sourceScopeType != 'location',
+    };
+  }
+
+  static String _timingSourceLabel(String? displayName, String scopeType) {
+    final trimmed = displayName?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+    switch (scopeType) {
+      case 'operator':
+        return 'Business default';
+      case 'org_unit':
+        return 'Org unit override';
+      case 'location':
+        return 'Location override';
+    }
+    return 'Configured setting';
+  }
+
+  static Map<String, Object?> _timingConfigJson(
+    RestaurantTimingConfig config, {
+    Map<String, Object?> provenance = const <String, Object?>{},
+  }) {
     // Per-Daypart V1 Slice 1.5: `shiftCloseAuthority` /
     // `localCloseFallback` were dropped from RestaurantTimingConfig.
     // Close-authority is auto-derived per shift from the per-vendor
@@ -3823,6 +3876,7 @@ class RepositoryMobileOperationalSyncProxyGateway
       'week_start_day': config.weekStartDay,
       'created_at': config.createdAt,
       'updated_at': config.updatedAt,
+      ...provenance,
       'service_period_definitions': <Map<String, Object?>>[
         for (final period in config.servicePeriodDefinitions) period.toMap(),
       ],

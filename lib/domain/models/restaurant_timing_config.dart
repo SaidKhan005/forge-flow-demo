@@ -36,11 +36,10 @@ enum ShiftCloseAuthority {
   final String value;
 
   static ShiftCloseAuthority fromValue(String v) => switch (v) {
-        'vendor_finalization' => ShiftCloseAuthority.vendorFinalization,
-        'app_local_cutoff_fallback' =>
-          ShiftCloseAuthority.appLocalCutoffFallback,
-        _ => throw ArgumentError('Unknown ShiftCloseAuthority: $v'),
-      };
+    'vendor_finalization' => ShiftCloseAuthority.vendorFinalization,
+    'app_local_cutoff_fallback' => ShiftCloseAuthority.appLocalCutoffFallback,
+    _ => throw ArgumentError('Unknown ShiftCloseAuthority: $v'),
+  };
 }
 
 class RestaurantTimingConfig {
@@ -63,6 +62,18 @@ class RestaurantTimingConfig {
   /// Ordered service-period definitions for this restaurant.
   final List<ServicePeriodDefinition> servicePeriodDefinitions;
 
+  /// Scope the phone is currently viewing, usually the selected location.
+  final String? selectedScopeType;
+  final String? selectedScopeId;
+
+  /// Winning configured scope for the effective Timing values.
+  ///
+  /// Null means the server or local cache predates Timing provenance.
+  final String? sourceScopeType;
+  final String? sourceScopeId;
+  final String? sourceScopeLabel;
+  final bool? inheritedFromAncestor;
+
   final String createdAt;
   final String updatedAt;
 
@@ -74,5 +85,11 @@ class RestaurantTimingConfig {
     required this.servicePeriodDefinitions,
     required this.createdAt,
     required this.updatedAt,
+    this.selectedScopeType,
+    this.selectedScopeId,
+    this.sourceScopeType,
+    this.sourceScopeId,
+    this.sourceScopeLabel,
+    this.inheritedFromAncestor,
   });
 }

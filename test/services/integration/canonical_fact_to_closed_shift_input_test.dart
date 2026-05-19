@@ -1703,17 +1703,15 @@ void main() {
 
   // ─────────────────── N — keyed Data Accuracy service-period settings ────
   //
-  // Hardening Wave B1: covers-source resolution must prefer the
-  // keyed `data_accuracy_service_period_settings` row when present
-  // and fall back to the legacy `covers_source_*` column otherwise.
-  group('aggregator — N. Hardening Wave B1 keyed service-period settings '
-      'preference', () {
-    test('keyed setting present (covers_source=manual) overrides legacy '
-        'column (covers_source_dinner=vendor); manual entry from the '
-        'legacy jsonb still resolves; provenance + sourceSystem reflect '
-        'operator manual entry', () async {
+  // R7f: covers-source resolution must use the effective hierarchy
+  // answer. Raw keyed rows are only consulted when source metadata says
+  // the keyed base row is the effective winner, and then only at the
+  // closed shift's business date.
+  group('aggregator — N. R7f effective Covers source resolution', () {
+    test('effective keyed base source (covers_source=manual) still uses '
+        'the business-date keyed row; manual entry jsonb resolves; '
+        'provenance + sourceSystem reflect operator manual entry', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
-      // Legacy column says vendor; keyed setting flips to manual.
       pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
         'setting_id': 'das_001',
         'operator_id': _opA,
@@ -1777,8 +1775,8 @@ void main() {
         result!.input.covers,
         142,
         reason:
-            'keyed covers_source=manual must promote the legacy '
-            'manual jsonb value over the legacy column preference',
+            'effective keyed covers_source=manual must use the manual '
+            'jsonb value for the closed shift date',
       );
       expect(result.input.sourceSystem, 'operator_manual_entry');
       expect(
@@ -1787,12 +1785,166 @@ void main() {
       );
     });
 
-    test('no keyed row present — aggregator falls back to legacy '
-        'covers_source_dinner column (vendor) and emits the vendor '
+    test('org-unit scoped override from the effective view beats a raw '
+        'keyed base row for the same service period', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.effectiveDataAccuracySettingsByTenant['$_opA|$_locA'] =
+          <String, Object?>{
+            'setting_id': 'org_override_effective',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'covers_source_per_service_period': <String, Object?>{
+              'dinner': 'manual',
+            },
+            'covers_source_per_service_period_source': <String, Object?>{
+              'dinner': <String, Object?>{
+                'scope_type': 'org_unit',
+                'scope_id': 'org-unit-1',
+                'source_kind': 'scoped_override',
+                'override_id': 'org_override_1',
+              },
+            },
+            'covers_manual_entries': <String, Map<String, int>>{
+              _businessDateIso: <String, int>{'dinner': 142},
+            },
+            'wage_source': 'vendor',
+            'walk_in_handling_mode': 'reservations_only',
+            'walk_in_manual_entries': const <String, Object?>{},
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 4),
+            'updated_by': null,
+          };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': '99999999-9999-9999-9999-999999999990',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'vendor',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': null,
+          };
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'oracle_micros_simphony',
+          'vendor_entity_id': 'check_001',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 73,
+          'covers_source': 'direct',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 1184.50,
+        },
+      ];
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: _dinnerPeriod,
+          );
+
+      expect(result, isNotNull);
+      expect(
+        result!.input.covers,
+        142,
+        reason: 'effective org override must win over the raw keyed base row',
+      );
+      expect(result.input.sourceSystem, 'operator_manual_entry');
+      expect(
+        result.provenance.coversProvenance,
+        'operator_manual_entry_per_daypart',
+      );
+    });
+
+    test('date-aware keyed base lookup does not apply a row that became '
+        'effective after the closed shift business date', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+        'setting_id': 'das_001',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'covers_manual_entries': <String, Map<String, int>>{
+          _businessDateIso: <String, int>{'dinner': 187},
+        },
+        'wage_source': 'vendor',
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': null,
+      };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': '99999999-9999-9999-9999-999999999989',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'manual',
+            'wage_source': 'manual_mix',
+            'effective_at_business_date': '2026-05-10',
+            'created_at': DateTime.utc(2026, 5, 10),
+            'updated_at': DateTime.utc(2026, 5, 10),
+            'updated_by': null,
+          };
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'oracle_micros_simphony',
+          'vendor_entity_id': 'check_001',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 61,
+          'covers_source': 'direct',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 912.25,
+        },
+      ];
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: _dinnerPeriod,
+          );
+
+      expect(result, isNotNull);
+      expect(
+        result!.input.covers,
+        61,
+        reason:
+            'a keyed base row effective on 2026-05-10 must not rewrite '
+            'a 2026-05-04 closed shift',
+      );
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_oracle_micros_simphony',
+      );
+    });
+
+    test('no keyed row present — aggregator falls back to the vendor '
+        'default and emits the vendor '
         'provenance with the POS-supplied covers', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
-      // Legacy column says vendor; keyed table is empty for this
-      // (operator, location, service_period_key).
+      // Keyed table is empty for this
+      // (operator, location, service_period_key), so vendor is the
+      // effective default.
       pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
         'setting_id': 'das_001',
         'operator_id': _opA,
@@ -1844,7 +1996,7 @@ void main() {
     });
 
     test('forward-staged keyed row (effective_at AFTER the business_date) '
-        'must NOT short-circuit the legacy fallback — the at-or-before '
+        'must NOT short-circuit the vendor default — the at-or-before '
         'lookup keeps a 2026-06-01 manual switch from gating a '
         '2026-05-04 close', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
@@ -1908,7 +2060,7 @@ void main() {
         51,
         reason:
             'forward-staged keyed row must not short-circuit '
-            'the legacy vendor preference for a historical close',
+            'the vendor default for a historical close',
       );
       expect(
         result.provenance.coversProvenance,
@@ -1936,7 +2088,7 @@ void main() {
             'updated_at': DateTime.utc(2026, 5, 1),
             'updated_by': null,
           };
-      // Operator B has only the legacy default + a vendor POS row.
+      // Operator B has only the effective default + a vendor POS row.
       pool.dataAccuracySettingsByTenant['$_opB|$_locA'] = <String, Object?>{
         'setting_id': 'das_002',
         'operator_id': _opB,
@@ -3245,6 +3397,8 @@ String get _businessDateIso =>
     '-${_businessDate.day.toString().padLeft(2, '0')}';
 
 class _FakePool implements PostgresPool {
+  static const String _effectiveSettingsViewAsOfDate = '2026-05-19';
+
   /// Keyed by `(operator_id, location_id)`.
   final Map<String, Map<String, Object?>> _locations =
       <String, Map<String, Object?>>{};
@@ -3252,6 +3406,15 @@ class _FakePool implements PostgresPool {
   /// Keyed by `(operator_id, location_id)`.
   final Map<String, Map<String, Object?>> dataAccuracySettingsByTenant =
       <String, Map<String, Object?>>{};
+
+  /// Keyed by `(operator_id, location_id)`.
+  ///
+  /// When seeded, this row is returned as the already-resolved
+  /// `effective_data_accuracy_settings_v` answer. Tests use it for
+  /// scoped override precedence cases where the raw keyed base row is
+  /// intentionally not the effective winner.
+  final Map<String, Map<String, Object?>>
+  effectiveDataAccuracySettingsByTenant = <String, Map<String, Object?>>{};
 
   /// Hardening Wave B1 — keyed by `(operator_id, location_id,
   /// service_period_key)`. The fake returns the row when
@@ -3332,12 +3495,63 @@ class _FakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
-    // Per-Daypart V1 Slice R5 (Gap 27/36): the DAS read SELECT now
-    // embeds a `from public.data_accuracy_service_period_settings`
-    // sub-SELECT to project the keyed per-period covers source. Route
-    // by the bound `service_period_key` param (only the standalone
-    // keyed at-or-before read carries it) so the DAS read is NOT
-    // mis-routed into the keyed-period branch.
+    if (sql.contains('from public.effective_data_accuracy_settings_v')) {
+      final operatorId = parameters['operator_id'] as String;
+      final locationId = parameters['location_id'] as String;
+      final tenantKey = '$operatorId|$locationId';
+      final directRow = pool.effectiveDataAccuracySettingsByTenant[tenantKey];
+      if (directRow != null) return <PostgresRow>[directRow];
+      final row = pool.dataAccuracySettingsByTenant[tenantKey];
+      if (row == null) return const <PostgresRow>[];
+
+      final perPeriod = <String, Object?>{};
+      final rawPerPeriod = row['covers_source_per_service_period'];
+      if (rawPerPeriod is Map) {
+        rawPerPeriod.forEach((key, value) {
+          if (key is String && value is String) perPeriod[key] = value;
+        });
+      }
+      final perPeriodSources = <String, Object?>{};
+      final rawPerPeriodSources =
+          row['covers_source_per_service_period_source'];
+      if (rawPerPeriodSources is Map) {
+        rawPerPeriodSources.forEach((key, value) {
+          if (key is String && value is Map) perPeriodSources[key] = value;
+        });
+      }
+
+      final prefix = '$operatorId|$locationId|';
+      pool.dataAccuracyServicePeriodSettingsByTenant.forEach((key, kr) {
+        if (!key.startsWith(prefix)) return;
+        final effectiveAt = kr['effective_at_business_date'];
+        if (effectiveAt is String &&
+            effectiveAt.compareTo(_FakePool._effectiveSettingsViewAsOfDate) >
+                0) {
+          return;
+        }
+        final spk = kr['service_period_key'];
+        final cs = kr['covers_source'];
+        final id = kr['id'];
+        if (spk is! String || cs is! String) return;
+        perPeriod[spk] = cs;
+        perPeriodSources[spk] = <String, Object?>{
+          'scope_type': 'location',
+          'scope_id': locationId,
+          'source_kind': 'service_period_setting',
+          if (id is String) 'setting_id': id,
+        };
+      });
+
+      final projected = Map<String, Object?>.from(row);
+      projected['covers_source_per_service_period'] = perPeriod;
+      projected['covers_source_per_service_period_source'] = perPeriodSources;
+      return <PostgresRow>[projected];
+    }
+
+    // The raw keyed read is now only the date-aware base lookup. The
+    // effective settings read above is routed through
+    // `effective_data_accuracy_settings_v`, so this branch must only
+    // handle queries carrying the standalone service-period parameter.
     final hasServicePeriodKeyParam = parameters['service_period_key'] is String;
     if (sql.contains('from public.data_accuracy_service_period_settings') &&
         hasServicePeriodKeyParam) {

@@ -27,6 +27,12 @@ class RestaurantTimingConfigDao {
     required List<ServicePeriodDefinition> servicePeriodDefinitions,
     required String createdAt,
     required String updatedAt,
+    String? selectedScopeType,
+    String? selectedScopeId,
+    String? sourceScopeType,
+    String? sourceScopeId,
+    String? sourceScopeLabel,
+    bool? inheritedFromAncestor,
   }) async {
     // Canonicalize order: sortOrder ascending, then id ascending for stability.
     final sorted = [...servicePeriodDefinitions]
@@ -34,21 +40,23 @@ class RestaurantTimingConfigDao {
         final cmp = a.sortOrder.compareTo(b.sortOrder);
         return cmp != 0 ? cmp : a.id.compareTo(b.id);
       });
-    final defsJson = jsonEncode(
-      sorted.map((d) => d.toMap()).toList(),
-    );
-    await _db.insert(
-      'restaurant_timing_configs',
-      {
-        'restaurant_id': restaurantId,
-        'business_day_start_local_time': businessDayStartLocalTime,
-        'week_start_day': weekStartDay,
-        'service_period_definitions_json': defsJson,
-        'created_at': createdAt,
-        'updated_at': updatedAt,
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    final defsJson = jsonEncode(sorted.map((d) => d.toMap()).toList());
+    await _db.insert('restaurant_timing_configs', {
+      'restaurant_id': restaurantId,
+      'business_day_start_local_time': businessDayStartLocalTime,
+      'week_start_day': weekStartDay,
+      'service_period_definitions_json': defsJson,
+      'selected_scope_type': selectedScopeType,
+      'selected_scope_id': selectedScopeId,
+      'source_scope_type': sourceScopeType,
+      'source_scope_id': sourceScopeId,
+      'source_scope_label': sourceScopeLabel,
+      'inherited_from_ancestor': inheritedFromAncestor == null
+          ? null
+          : (inheritedFromAncestor ? 1 : 0),
+      'created_at': createdAt,
+      'updated_at': updatedAt,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   /// Deletes every `restaurant_timing_configs` row whose `restaurant_id`
