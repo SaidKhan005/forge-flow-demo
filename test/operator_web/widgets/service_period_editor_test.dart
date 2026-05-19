@@ -78,6 +78,84 @@ void main() {
       );
     });
 
+    test('same clock window accepted when weekdays do not overlap', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'weekday_lunch',
+          label: 'Weekday Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          applicableDays: <int>[1, 2, 3, 4, 5],
+          sortOrder: 1,
+        ),
+        ServicePeriodDraft(
+          key: 'weekend_brunch',
+          label: 'Weekend Brunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          applicableDays: <int>[6, 7],
+          sortOrder: 2,
+        ),
+      ]);
+      expect(
+        result.errors.any((e) => e.code == 'service_period_overlap'),
+        isFalse,
+      );
+      expect(result.isValid, isTrue);
+    });
+
+    test('long short label rejected with invalid_short_label', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'brunch',
+          label: 'Brunch',
+          startLocal: '10:00',
+          endLocal: '14:00',
+          shortLabel: 'WeekendBrunch',
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(result.errors.any((e) => e.code == 'invalid_short_label'), isTrue);
+    });
+
+    test('sort order outside 1..4 rejected with invalid_sort_order', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'brunch',
+          label: 'Brunch',
+          startLocal: '10:00',
+          endLocal: '14:00',
+          sortOrder: 0,
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(result.errors.any((e) => e.code == 'invalid_sort_order'), isTrue);
+    });
+
+    test('duplicate sort order rejected with duplicate_sort_order', () {
+      final result = validateServicePeriods(const <ServicePeriodDraft>[
+        ServicePeriodDraft(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+          sortOrder: 1,
+        ),
+        ServicePeriodDraft(
+          key: 'dinner',
+          label: 'Dinner',
+          startLocal: '17:00',
+          endLocal: '22:00',
+          sortOrder: 1,
+        ),
+      ]);
+      expect(result.isValid, isFalse);
+      expect(
+        result.errors.any((e) => e.code == 'duplicate_sort_order'),
+        isTrue,
+      );
+    });
+
     test('two past-midnight rejected with multiple_past_midnight_periods', () {
       final result = validateServicePeriods(const <ServicePeriodDraft>[
         ServicePeriodDraft(
@@ -113,24 +191,28 @@ void main() {
           label: 'Breakfast',
           startLocal: '07:00',
           endLocal: '11:00',
+          sortOrder: 1,
         ),
         ServicePeriodDraft(
           key: 'lunch',
           label: 'Lunch',
           startLocal: '11:15',
           endLocal: '15:00',
+          sortOrder: 2,
         ),
         ServicePeriodDraft(
           key: 'dinner',
           label: 'Dinner',
           startLocal: '17:00',
           endLocal: '22:00',
+          sortOrder: 3,
         ),
         ServicePeriodDraft(
           key: 'late',
           label: 'Late night',
           startLocal: '22:15',
           endLocal: '01:30',
+          sortOrder: 4,
         ),
       ]);
       expect(result.errors, isEmpty);
@@ -144,12 +226,14 @@ void main() {
           label: 'Dinner',
           startLocal: '17:00',
           endLocal: '22:00',
+          sortOrder: 1,
         ),
         ServicePeriodDraft(
           key: 'late',
           label: 'Late night',
           startLocal: '22:00',
           endLocal: '01:00',
+          sortOrder: 2,
         ),
       ]);
       expect(result.isValid, isTrue);
@@ -178,45 +262,49 @@ void main() {
       );
     });
 
-    test('uppercase / camelCase key rejected with invalid_service_period_key',
-        () {
-      final result = validateServicePeriods(const <ServicePeriodDraft>[
-        ServicePeriodDraft(
-          key: 'LunchTime',
-          label: 'Lunch',
-          startLocal: '11:00',
-          endLocal: '13:00',
-        ),
-      ]);
-      expect(result.isValid, isFalse);
-      expect(
-        result.errors.any((e) => e.code == 'invalid_service_period_key'),
-        isTrue,
-      );
-    });
-
-    test('day-start inside period rejected with business_day_start_inside_period',
-        () {
-      final result = validateServicePeriods(
-        const <ServicePeriodDraft>[
+    test(
+      'uppercase / camelCase key rejected with invalid_service_period_key',
+      () {
+        final result = validateServicePeriods(const <ServicePeriodDraft>[
           ServicePeriodDraft(
-            key: 'lunch',
+            key: 'LunchTime',
             label: 'Lunch',
             startLocal: '11:00',
-            endLocal: '15:00',
+            endLocal: '13:00',
           ),
-        ],
-        // Day starts at 12:00 which lands inside the lunch period.
-        businessDayStartLocal: '12:00',
-      );
-      expect(result.isValid, isFalse);
-      expect(
-        result.errors.any(
-          (e) => e.code == 'business_day_start_inside_period',
-        ),
-        isTrue,
-      );
-    });
+        ]);
+        expect(result.isValid, isFalse);
+        expect(
+          result.errors.any((e) => e.code == 'invalid_service_period_key'),
+          isTrue,
+        );
+      },
+    );
+
+    test(
+      'day-start inside period rejected with business_day_start_inside_period',
+      () {
+        final result = validateServicePeriods(
+          const <ServicePeriodDraft>[
+            ServicePeriodDraft(
+              key: 'lunch',
+              label: 'Lunch',
+              startLocal: '11:00',
+              endLocal: '15:00',
+            ),
+          ],
+          // Day starts at 12:00 which lands inside the lunch period.
+          businessDayStartLocal: '12:00',
+        );
+        expect(result.isValid, isFalse);
+        expect(
+          result.errors.any(
+            (e) => e.code == 'business_day_start_inside_period',
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('day-start outside any period accepts the profile', () {
       final result = validateServicePeriods(
@@ -250,9 +338,7 @@ void main() {
       );
       expect(result.isValid, isFalse);
       expect(
-        result.errors.any(
-          (e) => e.code == 'business_day_start_inside_period',
-        ),
+        result.errors.any((e) => e.code == 'business_day_start_inside_period'),
         isTrue,
       );
     });
@@ -275,23 +361,25 @@ void main() {
       );
     });
 
-    test('out-of-range applicableDays rejected with invalid_applicable_days',
-        () {
-      final result = validateServicePeriods(const <ServicePeriodDraft>[
-        ServicePeriodDraft(
-          key: 'lunch',
-          label: 'Lunch',
-          startLocal: '11:00',
-          endLocal: '15:00',
-          applicableDays: <int>[0, 8],
-        ),
-      ]);
-      expect(result.isValid, isFalse);
-      expect(
-        result.errors.any((e) => e.code == 'invalid_applicable_days'),
-        isTrue,
-      );
-    });
+    test(
+      'out-of-range applicableDays rejected with invalid_applicable_days',
+      () {
+        final result = validateServicePeriods(const <ServicePeriodDraft>[
+          ServicePeriodDraft(
+            key: 'lunch',
+            label: 'Lunch',
+            startLocal: '11:00',
+            endLocal: '15:00',
+            applicableDays: <int>[0, 8],
+          ),
+        ]);
+        expect(result.isValid, isFalse);
+        expect(
+          result.errors.any((e) => e.code == 'invalid_applicable_days'),
+          isTrue,
+        );
+      },
+    );
 
     test('weekend-only Sat/Sun applicableDays accepted', () {
       final result = validateServicePeriods(const <ServicePeriodDraft>[
@@ -309,40 +397,44 @@ void main() {
 
   // Slice 2.5 / Gap 28 — pure value-object behavior on the new fields.
   group('ServicePeriodDraft (Slice 2.5 fields)', () {
-    test('default constructor seeds all 7 weekdays + empty short label + 0 sort',
-        () {
-      const draft = ServicePeriodDraft(
-        key: 'lunch',
-        label: 'Lunch',
-        startLocal: '11:00',
-        endLocal: '15:00',
-      );
-      expect(draft.applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
-      expect(draft.shortLabel, '');
-      expect(draft.sortOrder, 0);
-    });
+    test(
+      'default constructor seeds all 7 weekdays + empty short label + 1 sort',
+      () {
+        const draft = ServicePeriodDraft(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+        );
+        expect(draft.applicableDays, <int>[1, 2, 3, 4, 5, 6, 7]);
+        expect(draft.shortLabel, '');
+        expect(draft.sortOrder, 1);
+      },
+    );
 
-    test('copyWith round-trips the three new fields without mutating others',
-        () {
-      const original = ServicePeriodDraft(
-        key: 'lunch',
-        label: 'Lunch',
-        startLocal: '11:00',
-        endLocal: '15:00',
-      );
-      final next = original.copyWith(
-        applicableDays: const <int>[6, 7],
-        shortLabel: 'L',
-        sortOrder: 3,
-      );
-      expect(next.key, original.key);
-      expect(next.label, original.label);
-      expect(next.startLocal, original.startLocal);
-      expect(next.endLocal, original.endLocal);
-      expect(next.applicableDays, <int>[6, 7]);
-      expect(next.shortLabel, 'L');
-      expect(next.sortOrder, 3);
-    });
+    test(
+      'copyWith round-trips the three new fields without mutating others',
+      () {
+        const original = ServicePeriodDraft(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+        );
+        final next = original.copyWith(
+          applicableDays: const <int>[6, 7],
+          shortLabel: 'L',
+          sortOrder: 3,
+        );
+        expect(next.key, original.key);
+        expect(next.label, original.label);
+        expect(next.startLocal, original.startLocal);
+        expect(next.endLocal, original.endLocal);
+        expect(next.applicableDays, <int>[6, 7]);
+        expect(next.shortLabel, 'L');
+        expect(next.sortOrder, 3);
+      },
+    );
 
     test('copyWith leaving new fields null preserves the originals', () {
       const original = ServicePeriodDraft(
@@ -375,12 +467,19 @@ void main() {
         ],
       );
       controller.addPeriod();
-      expect(controller.periods.last.applicableDays,
-          <int>[1, 2, 3, 4, 5, 6, 7]);
+      expect(controller.periods.last.applicableDays, <int>[
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+      ]);
       expect(controller.periods.last.shortLabel, '');
     });
 
-    test('addPeriod defaults sortOrder to current period count', () {
+    test('addPeriod defaults sortOrder to next slot number', () {
       final controller = ServicePeriodEditorController(
         initial: const <ServicePeriodDraft>[
           ServicePeriodDraft(
@@ -392,7 +491,7 @@ void main() {
         ],
       );
       controller.addPeriod();
-      expect(controller.periods.last.sortOrder, 1);
+      expect(controller.periods.last.sortOrder, 2);
     });
 
     test('updateAt with copyWith propagates day-chip toggles', () {
@@ -416,9 +515,9 @@ void main() {
 
   group('ServicePeriodEditor widget', () {
     Widget wrap(Widget child) => MaterialApp(
-          theme: AppTheme.themeData,
-          home: Scaffold(body: child),
-        );
+      theme: AppTheme.themeData,
+      home: Scaffold(body: child),
+    );
 
     testWidgets('renders one row per draft + the Add button', (tester) async {
       final controller = ServicePeriodEditorController(
@@ -481,7 +580,11 @@ void main() {
         ],
       );
       await tester.pumpWidget(
-        wrap(SingleChildScrollView(child: ServicePeriodEditor(controller: controller))),
+        wrap(
+          SingleChildScrollView(
+            child: ServicePeriodEditor(controller: controller),
+          ),
+        ),
       );
       // ButtonStyleButton is the common ancestor for OutlinedButton + its
       // .icon variant. Disabled state is exposed via onPressed == null.
@@ -553,15 +656,13 @@ void main() {
         find.byKey(const ValueKey('service_period_editor_day_0_1')),
       );
       await tester.pumpAndSettle();
-      expect(
-        controller.periods[0].applicableDays.contains(1),
-        isFalse,
-      );
+      expect(controller.periods[0].applicableDays.contains(1), isFalse);
       expect(controller.periods[0].applicableDays, <int>[2, 3, 4, 5, 6, 7]);
     });
 
-    testWidgets('renders the short label and sort order text fields',
-        (tester) async {
+    testWidgets('renders the short label and sort order text fields', (
+      tester,
+    ) async {
       final controller = ServicePeriodEditorController(
         initial: const <ServicePeriodDraft>[
           ServicePeriodDraft(
@@ -613,13 +714,17 @@ void main() {
         ],
       );
       await tester.pumpWidget(
-        wrap(SingleChildScrollView(
-          child: ServicePeriodEditor(controller: controller),
-        )),
+        wrap(
+          SingleChildScrollView(
+            child: ServicePeriodEditor(controller: controller),
+          ),
+        ),
       );
       expect(
         find.byKey(
-          const ValueKey('service_period_editor_error_1_service_period_overlap'),
+          const ValueKey(
+            'service_period_editor_error_1_service_period_overlap',
+          ),
         ),
         findsOneWidget,
       );

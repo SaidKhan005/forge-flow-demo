@@ -31,7 +31,7 @@ import '../../theme/app_theme.dart';
 /// only) and have full parity with what the mobile app reads:
 ///   - [applicableDays]  ISO weekdays (1=Mon..7=Sun); default = all 7.
 ///   - [shortLabel]      compact label for tight UI (e.g. "L"); default = ''.
-///   - [sortOrder]       display order; lower sorts first; default = 0.
+///   - [sortOrder]       display order; lower sorts first; default = 1.
 @immutable
 class ServicePeriodDraft {
   const ServicePeriodDraft({
@@ -41,7 +41,7 @@ class ServicePeriodDraft {
     required this.endLocal,
     this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.shortLabel = '',
-    this.sortOrder = 0,
+    this.sortOrder = 1,
   });
 
   final String key;
@@ -59,8 +59,8 @@ class ServicePeriodDraft {
   /// falls back to the long [label] when this is empty.
   final String shortLabel;
 
-  /// Display sort order. Lower values sort first. 0 is a legitimate
-  /// value (canonical model treats it as the first slot).
+  /// Display sort order. Lower values sort first. Values persist as
+  /// 1..4 to match the timing profile table.
   final int sortOrder;
 
   /// True when the end time is at or before the start time (mod 24h),
@@ -80,16 +80,15 @@ class ServicePeriodDraft {
     List<int>? applicableDays,
     String? shortLabel,
     int? sortOrder,
-  }) =>
-      ServicePeriodDraft(
-        key: key ?? this.key,
-        label: label ?? this.label,
-        startLocal: startLocal ?? this.startLocal,
-        endLocal: endLocal ?? this.endLocal,
-        applicableDays: applicableDays ?? this.applicableDays,
-        shortLabel: shortLabel ?? this.shortLabel,
-        sortOrder: sortOrder ?? this.sortOrder,
-      );
+  }) => ServicePeriodDraft(
+    key: key ?? this.key,
+    label: label ?? this.label,
+    startLocal: startLocal ?? this.startLocal,
+    endLocal: endLocal ?? this.endLocal,
+    applicableDays: applicableDays ?? this.applicableDays,
+    shortLabel: shortLabel ?? this.shortLabel,
+    sortOrder: sortOrder ?? this.sortOrder,
+  );
 }
 
 /// Pure validation result. Empty errors list means the draft is
@@ -191,6 +190,31 @@ ServicePeriodValidation validateServicePeriods(
       );
     }
 
+    final shortLabel = period.shortLabel.trim();
+    if (shortLabel.length > 8) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'invalid_short_label',
+          message:
+              'Short label for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'must be 8 characters or fewer.',
+          periodIndex: i,
+        ),
+      );
+    }
+
+    if (period.sortOrder < 1 || period.sortOrder > 4) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'invalid_sort_order',
+          message:
+              'Sort order for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
+              'must be 1 to 4.',
+          periodIndex: i,
+        ),
+      );
+    }
+
     // Slice 2.5 / Gap 28: at least one weekday must be selected, and
     // every entry must be a valid ISO weekday (1=Mon..7=Sun). The
     // server enforces the same rule; surfacing it client-side avoids
@@ -203,9 +227,9 @@ ServicePeriodValidation validateServicePeriods(
           code: 'invalid_applicable_days',
           message: days.isEmpty
               ? 'Pick at least one day for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}". '
-                  'A service period needs to apply on at least one weekday.'
+                    'A service period needs to apply on at least one weekday.'
               : 'The days for "${period.label.isEmpty ? "service period ${i + 1}" : period.label}" '
-                  'must be Monday through Sunday (1-7).',
+                    'must be Monday through Sunday (1-7).',
           periodIndex: i,
         ),
       );
@@ -250,6 +274,23 @@ ServicePeriodValidation validateServicePeriods(
     }
   }
 
+  final sortOrders = <int>{};
+  for (var i = 0; i < draft.length; i++) {
+    final sortOrder = draft[i].sortOrder;
+    if (sortOrder < 1 || sortOrder > 4) continue;
+    if (!sortOrders.add(sortOrder)) {
+      errors.add(
+        ServicePeriodValidationError(
+          code: 'duplicate_sort_order',
+          message:
+              'Two service periods share sort order $sortOrder. Give each '
+              'period a unique order.',
+          periodIndex: i,
+        ),
+      );
+    }
+  }
+
   final pastMidnight = draft.where((p) => p.rollsPastMidnight).toList();
   if (pastMidnight.length > 1) {
     errors.add(
@@ -275,7 +316,7 @@ ServicePeriodValidation validateServicePeriods(
           !_isQuarterHour(b.endLocal)) {
         continue;
       }
-      if (_periodsOverlap(a, b)) {
+      if (_daysOverlap(a, b) && _periodsOverlap(a, b)) {
         errors.add(
           ServicePeriodValidationError(
             code: 'service_period_overlap',
@@ -350,6 +391,14 @@ int? _minutesOrNull(String hhmm) {
   if (h < 0 || h > 23) return null;
   if (m < 0 || m > 59) return null;
   return h * 60 + m;
+}
+
+bool _daysOverlap(ServicePeriodDraft a, ServicePeriodDraft b) {
+  final left = a.applicableDays.toSet();
+  for (final day in b.applicableDays) {
+    if (left.contains(day)) return true;
+  }
+  return false;
 }
 
 bool _periodsOverlap(ServicePeriodDraft a, ServicePeriodDraft b) {
@@ -437,9 +486,7 @@ class _ServicePeriodEditorState extends State<ServicePeriodEditor> {
             index: i,
             period: periods[i],
             onChanged: (next) => controller.updateAt(i, next),
-            onRemove: periods.length > 1
-                ? () => controller.removeAt(i)
-                : null,
+            onRemove: periods.length > 1 ? () => controller.removeAt(i) : null,
             errors: controller.validation.errors
                 .where((e) => e.periodIndex == i)
                 .toList(),
@@ -503,8 +550,9 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
     _start = TextEditingController(text: widget.period.startLocal);
     _end = TextEditingController(text: widget.period.endLocal);
     _shortLabel = TextEditingController(text: widget.period.shortLabel);
-    _sortOrder =
-        TextEditingController(text: widget.period.sortOrder.toString());
+    _sortOrder = TextEditingController(
+      text: widget.period.sortOrder.toString(),
+    );
   }
 
   @override
@@ -586,9 +634,7 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
               if (widget.onRemove != null) ...[
                 const SizedBox(width: 8),
                 IconButton(
-                  key: ValueKey(
-                    'service_period_editor_remove_${widget.index}',
-                  ),
+                  key: ValueKey('service_period_editor_remove_${widget.index}'),
                   onPressed: widget.onRemove,
                   tooltip: 'Remove this service period',
                   icon: const Icon(
@@ -605,17 +651,14 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
             children: [
               Expanded(
                 child: TextField(
-                  key: ValueKey(
-                    'service_period_editor_label_${widget.index}',
-                  ),
+                  key: ValueKey('service_period_editor_label_${widget.index}'),
                   controller: _label,
                   decoration: const InputDecoration(
                     labelText: 'Label your team sees',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (value) => widget.onChanged(
-                    widget.period.copyWith(label: value),
-                  ),
+                  onChanged: (value) =>
+                      widget.onChanged(widget.period.copyWith(label: value)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -629,9 +672,8 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                     border: OutlineInputBorder(),
                     helperText: 'lower_snake_case',
                   ),
-                  onChanged: (value) => widget.onChanged(
-                    widget.period.copyWith(key: value),
-                  ),
+                  onChanged: (value) =>
+                      widget.onChanged(widget.period.copyWith(key: value)),
                 ),
               ),
             ],
@@ -642,9 +684,7 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
               SizedBox(
                 width: 130,
                 child: TextField(
-                  key: ValueKey(
-                    'service_period_editor_start_${widget.index}',
-                  ),
+                  key: ValueKey('service_period_editor_start_${widget.index}'),
                   controller: _start,
                   decoration: const InputDecoration(
                     labelText: 'Starts (HH:MM)',
@@ -665,9 +705,8 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                     labelText: 'Ends (HH:MM)',
                     border: OutlineInputBorder(),
                   ),
-                  onChanged: (value) => widget.onChanged(
-                    widget.period.copyWith(endLocal: value),
-                  ),
+                  onChanged: (value) =>
+                      widget.onChanged(widget.period.copyWith(endLocal: value)),
                 ),
               ),
               const SizedBox(width: 10),
@@ -687,9 +726,8 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
           _DayChipRow(
             index: widget.index,
             selectedDays: widget.period.applicableDays,
-            onChanged: (next) => widget.onChanged(
-              widget.period.copyWith(applicableDays: next),
-            ),
+            onChanged: (next) =>
+                widget.onChanged(widget.period.copyWith(applicableDays: next)),
           ),
           const SizedBox(height: 10),
           Row(
@@ -727,9 +765,8 @@ class _ServicePeriodRowState extends State<_ServicePeriodRow> {
                   ),
                   onChanged: (value) {
                     final parsed = int.tryParse(value.trim());
-                    if (parsed == null) return;
                     widget.onChanged(
-                      widget.period.copyWith(sortOrder: parsed),
+                      widget.period.copyWith(sortOrder: parsed ?? 0),
                     );
                   },
                 ),
@@ -782,14 +819,14 @@ class _DayChipRow extends StatelessWidget {
 
   static const List<({int isoDay, String label})> _days =
       <({int isoDay, String label})>[
-    (isoDay: 1, label: 'Mon'),
-    (isoDay: 2, label: 'Tue'),
-    (isoDay: 3, label: 'Wed'),
-    (isoDay: 4, label: 'Thu'),
-    (isoDay: 5, label: 'Fri'),
-    (isoDay: 6, label: 'Sat'),
-    (isoDay: 7, label: 'Sun'),
-  ];
+        (isoDay: 1, label: 'Mon'),
+        (isoDay: 2, label: 'Tue'),
+        (isoDay: 3, label: 'Wed'),
+        (isoDay: 4, label: 'Thu'),
+        (isoDay: 5, label: 'Fri'),
+        (isoDay: 6, label: 'Sat'),
+        (isoDay: 7, label: 'Sun'),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -801,9 +838,7 @@ class _DayChipRow extends StatelessWidget {
       children: <Widget>[
         for (final day in _days)
           FilterChip(
-            key: ValueKey(
-              'service_period_editor_day_${index}_${day.isoDay}',
-            ),
+            key: ValueKey('service_period_editor_day_${index}_${day.isoDay}'),
             label: Text(day.label),
             selected: selected.contains(day.isoDay),
             onSelected: (isSelected) {
@@ -924,8 +959,8 @@ class ServicePeriodEditorController extends ChangeNotifier {
   ServicePeriodEditorController({
     required List<ServicePeriodDraft> initial,
     String? businessDayStartLocal,
-  })  : _periods = List<ServicePeriodDraft>.from(initial),
-        _businessDayStartLocal = businessDayStartLocal;
+  }) : _periods = List<ServicePeriodDraft>.from(initial),
+       _businessDayStartLocal = businessDayStartLocal;
 
   List<ServicePeriodDraft> _periods;
   String? _businessDayStartLocal;
@@ -941,9 +976,9 @@ class ServicePeriodEditorController extends ChangeNotifier {
   String? get businessDayStartLocal => _businessDayStartLocal;
 
   ServicePeriodValidation get validation => validateServicePeriods(
-        _periods,
-        businessDayStartLocal: _businessDayStartLocal,
-      );
+    _periods,
+    businessDayStartLocal: _businessDayStartLocal,
+  );
 
   void updateAt(int index, ServicePeriodDraft next) {
     if (index < 0 || index >= _periods.length) return;
@@ -955,7 +990,7 @@ class ServicePeriodEditorController extends ChangeNotifier {
     if (_periods.length >= 4) return;
     // Slice 2.5: a brand-new period defaults to all 7 weekdays
     // (matches pre-2.5 implicit behavior — every period applied every
-    // day), an empty short label, and a sortOrder equal to its index
+    // day), an empty short label, and a sortOrder equal to its slot
     // in the list at insert time. The operator can adjust any of the
     // three after add via the chip row + auxiliary fields.
     _periods.add(
@@ -967,7 +1002,7 @@ class ServicePeriodEditorController extends ChangeNotifier {
             endLocal: '00:00',
             applicableDays: const <int>[1, 2, 3, 4, 5, 6, 7],
             shortLabel: '',
-            sortOrder: _periods.length,
+            sortOrder: _periods.length + 1,
           ),
     );
     notifyListeners();

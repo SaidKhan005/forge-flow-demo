@@ -72,6 +72,8 @@ const Set<String> kBusinessTimingAllowedIanaTimezones = <String>{
   'UTC',
 };
 
+const List<int> _kDefaultApplicableDays = <int>[1, 2, 3, 4, 5, 6, 7];
+
 /// Single named validation failure. The proxy translates this into a
 /// 400 JSON envelope with `{ "error": code, "message": message,
 /// "path": path }`. `path` is JSON-pointer-ish so the frontend can
@@ -90,14 +92,15 @@ class BusinessTimingValidationError implements Exception {
   final Map<String, Object?> extras;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'error': code,
-        'message': message,
-        if (path != null) 'path': path,
-        ...extras,
-      };
+    'error': code,
+    'message': message,
+    if (path != null) 'path': path,
+    ...extras,
+  };
 
   @override
-  String toString() => 'BusinessTimingValidationError($code at ${path ?? '<root>'})';
+  String toString() =>
+      'BusinessTimingValidationError($code at ${path ?? '<root>'})';
 }
 
 /// Wire shape of one service period after parsing. All times are
@@ -112,6 +115,9 @@ class ValidatedServicePeriod {
     required this.startMinute,
     required this.endMinute,
     required this.rollsPastMidnight,
+    required this.applicableDays,
+    required this.shortLabel,
+    required this.sortOrder,
   });
 
   final String key;
@@ -121,6 +127,9 @@ class ValidatedServicePeriod {
   final int startMinute;
   final int endMinute;
   final bool rollsPastMidnight;
+  final List<int> applicableDays;
+  final String shortLabel;
+  final int sortOrder;
 }
 
 /// Result of a successful POST/PATCH validation. The repository
@@ -160,8 +169,7 @@ ValidatedBusinessTimingProfile validateNewBusinessTimingProfile(
   final ianaTimezone = _requireTimezone(body, 'ianaTimezone');
   final weekStartDay = _requireWeekStartDay(body, 'weekStartDay');
   final weekStartInt = _weekStartDayToInt(weekStartDay);
-  final businessDayStart =
-      _requireQuarterHour(body, 'businessDayStartLocal');
+  final businessDayStart = _requireQuarterHour(body, 'businessDayStartLocal');
   final servicePeriodsRaw = body['servicePeriods'];
   if (servicePeriodsRaw is! List) {
     throw const BusinessTimingValidationError(
@@ -224,7 +232,10 @@ ValidatedBusinessTimingProfile validateProfilePatch({
         path: '/servicePeriods',
       );
     }
-    periods = _validateServicePeriodSet(raw, businessDayStart: businessDayStart);
+    periods = _validateServicePeriodSet(
+      raw,
+      businessDayStart: businessDayStart,
+    );
   } else {
     // No servicePeriods change: re-validate the existing set against
     // the (possibly new) business-day start so a partial PATCH that
@@ -237,9 +248,15 @@ ValidatedBusinessTimingProfile validateProfilePatch({
           'label': p.label,
           'startLocal': p.startLocal,
           'endLocal': p.endLocal,
+          'applicableDays': p.applicableDays,
+          'shortLabel': p.shortLabel,
+          'sortOrder': p.sortOrder,
         },
     ];
-    periods = _validateServicePeriodSet(raw, businessDayStart: businessDayStart);
+    periods = _validateServicePeriodSet(
+      raw,
+      businessDayStart: businessDayStart,
+    );
   }
   return ValidatedBusinessTimingProfile(
     scopeKind: scopeKind,
@@ -258,11 +275,14 @@ ValidatedBusinessTimingProfile validateProfilePatch({
 /// profile is re-validated. Returns the new period plus the merged set
 /// so the repository can write either the diff or the full set.
 ({ValidatedServicePeriod added, List<ValidatedServicePeriod> merged})
-    validateAddServicePeriod({
+validateAddServicePeriod({
   required Map<String, Object?> body,
   required ValidatedBusinessTimingProfile existing,
 }) {
-  final period = _validateServicePeriodEntry(body, index: existing.servicePeriods.length);
+  final period = _validateServicePeriodEntry(
+    body,
+    index: existing.servicePeriods.length,
+  );
   if (existing.servicePeriods.any((p) => p.key == period.key)) {
     throw BusinessTimingValidationError(
       code: 'duplicate_service_period_key',
@@ -278,12 +298,18 @@ ValidatedBusinessTimingProfile validateProfilePatch({
         'label': p.label,
         'startLocal': p.startLocal,
         'endLocal': p.endLocal,
+        'applicableDays': p.applicableDays,
+        'shortLabel': p.shortLabel,
+        'sortOrder': p.sortOrder,
       },
     <String, Object?>{
       'key': period.key,
       'label': period.label,
       'startLocal': period.startLocal,
       'endLocal': period.endLocal,
+      'applicableDays': period.applicableDays,
+      'shortLabel': period.shortLabel,
+      'sortOrder': period.sortOrder,
     },
   ];
   final mergedValidated = _validateServicePeriodSet(
@@ -333,6 +359,15 @@ List<ValidatedServicePeriod> validateUpdateServicePeriod({
   final mergedEnd = body.containsKey('endLocal')
       ? _requireQuarterHour(body, 'endLocal')
       : target.endLocal;
+  final mergedApplicableDays = body.containsKey('applicableDays')
+      ? _requireApplicableDays(body, 'applicableDays')
+      : target.applicableDays;
+  final mergedShortLabel = body.containsKey('shortLabel')
+      ? _requireShortLabel(body, 'shortLabel')
+      : target.shortLabel;
+  final mergedSortOrder = body.containsKey('sortOrder')
+      ? _requireSortOrder(body, 'sortOrder', fallback: target.sortOrder)
+      : target.sortOrder;
   final raw = <Map<String, Object?>>[
     for (final p in existing.servicePeriods)
       if (p.key == urlKey)
@@ -341,6 +376,9 @@ List<ValidatedServicePeriod> validateUpdateServicePeriod({
           'label': mergedLabel,
           'startLocal': mergedStart,
           'endLocal': mergedEnd,
+          'applicableDays': mergedApplicableDays,
+          'shortLabel': mergedShortLabel,
+          'sortOrder': mergedSortOrder,
         }
       else
         <String, Object?>{
@@ -348,6 +386,9 @@ List<ValidatedServicePeriod> validateUpdateServicePeriod({
           'label': p.label,
           'startLocal': p.startLocal,
           'endLocal': p.endLocal,
+          'applicableDays': p.applicableDays,
+          'shortLabel': p.shortLabel,
+          'sortOrder': p.sortOrder,
         },
   ];
   return _validateServicePeriodSet(
@@ -365,13 +406,15 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
   if (raw.isEmpty || raw.length > 4) {
     throw BusinessTimingValidationError(
       code: 'invalid_period_count',
-      message: 'service period count must be between 1 and 4 (got '
+      message:
+          'service period count must be between 1 and 4 (got '
           '${raw.length})',
       path: '/servicePeriods',
     );
   }
   final periods = <ValidatedServicePeriod>[];
   final keys = <String>{};
+  final sortOrders = <int>{};
   var rollingCount = 0;
   for (var i = 0; i < raw.length; i++) {
     final item = raw[i];
@@ -395,6 +438,14 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
       );
     }
     if (period.rollsPastMidnight) rollingCount += 1;
+    if (!sortOrders.add(period.sortOrder)) {
+      throw BusinessTimingValidationError(
+        code: 'duplicate_sort_order',
+        message: 'service period sortOrder values must be unique',
+        path: '/servicePeriods/$i/sortOrder',
+        extras: <String, Object?>{'sortOrder': period.sortOrder},
+      );
+    }
     periods.add(period);
   }
   if (rollingCount > 1) {
@@ -407,7 +458,8 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
   // Pairwise overlap check.
   for (var i = 0; i < periods.length; i++) {
     for (var j = i + 1; j < periods.length; j++) {
-      if (_periodsOverlap(periods[i], periods[j])) {
+      if (_daysOverlap(periods[i], periods[j]) &&
+          _periodsOverlap(periods[i], periods[j])) {
         throw BusinessTimingValidationError(
           code: 'service_period_overlap',
           message: 'service periods overlap',
@@ -436,10 +488,7 @@ List<ValidatedServicePeriod> _validateServicePeriodSet(
         code: 'business_day_start_inside_period',
         message: 'business day start time falls inside a service period',
         path: '/businessDayStartLocal',
-        extras: <String, Object?>{
-          'period_key': p.key,
-          'period_index': i,
-        },
+        extras: <String, Object?>{'period_key': p.key, 'period_index': i},
       );
     }
   }
@@ -454,6 +503,18 @@ ValidatedServicePeriod _validateServicePeriodEntry(
   final label = _requireLabel(body, 'label', index: index);
   final start = _requireQuarterHour(body, 'startLocal', index: index);
   final end = _requireQuarterHour(body, 'endLocal', index: index);
+  final applicableDays = _requireApplicableDays(
+    body,
+    'applicableDays',
+    index: index,
+  );
+  final shortLabel = _requireShortLabel(body, 'shortLabel', index: index);
+  final sortOrder = _requireSortOrder(
+    body,
+    'sortOrder',
+    index: index,
+    fallback: index + 1,
+  );
   final startMinute = _quarterHourToMinute(start);
   final endMinute = _quarterHourToMinute(end);
   // Reject zero-length periods. start == end can either mean
@@ -466,10 +527,7 @@ ValidatedServicePeriod _validateServicePeriodEntry(
       code: 'invalid_service_period_range',
       message: 'service period start and end times cannot be equal',
       path: '/servicePeriods/$index/endLocal',
-      extras: <String, Object?>{
-        'startLocal': start,
-        'endLocal': end,
-      },
+      extras: <String, Object?>{'startLocal': start, 'endLocal': end},
     );
   }
   final rolls = endMinute < startMinute;
@@ -481,7 +539,18 @@ ValidatedServicePeriod _validateServicePeriodEntry(
     startMinute: startMinute,
     endMinute: endMinute,
     rollsPastMidnight: rolls,
+    applicableDays: applicableDays,
+    shortLabel: shortLabel,
+    sortOrder: sortOrder,
   );
+}
+
+bool _daysOverlap(ValidatedServicePeriod a, ValidatedServicePeriod b) {
+  final left = a.applicableDays.toSet();
+  for (final day in b.applicableDays) {
+    if (left.contains(day)) return true;
+  }
+  return false;
 }
 
 bool _periodsOverlap(ValidatedServicePeriod a, ValidatedServicePeriod b) {
@@ -585,9 +654,7 @@ String _requireQuarterHour(
   int? index,
 }) {
   final raw = body[field];
-  final path = index == null
-      ? '/$field'
-      : '/servicePeriods/$index/$field';
+  final path = index == null ? '/$field' : '/servicePeriods/$index/$field';
   if (raw is! String || !RegExp(r'^([01]\d|2[0-3]):[0-5]\d$').hasMatch(raw)) {
     throw BusinessTimingValidationError(
       code: 'invalid_quarter_hour_boundary',
@@ -612,8 +679,7 @@ String _requirePeriodKey(
   required int index,
 }) {
   final raw = body[field];
-  if (raw is! String ||
-      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(raw)) {
+  if (raw is! String || !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(raw)) {
     throw BusinessTimingValidationError(
       code: 'invalid_service_period_key',
       message: 'service period key must match ^[a-z][a-z0-9_]{0,63}\$',
@@ -623,15 +689,9 @@ String _requirePeriodKey(
   return raw;
 }
 
-String _requireLabel(
-  Map<String, Object?> body,
-  String field, {
-  int? index,
-}) {
+String _requireLabel(Map<String, Object?> body, String field, {int? index}) {
   final raw = body[field];
-  final path = index == null
-      ? '/$field'
-      : '/servicePeriods/$index/$field';
+  final path = index == null ? '/$field' : '/servicePeriods/$index/$field';
   if (raw is! String) {
     throw BusinessTimingValidationError(
       code: 'invalid_service_period_label',
@@ -648,6 +708,98 @@ String _requireLabel(
     );
   }
   return trimmed;
+}
+
+List<int> _requireApplicableDays(
+  Map<String, Object?> body,
+  String field, {
+  int? index,
+}) {
+  if (!body.containsKey(field)) return _kDefaultApplicableDays;
+  final raw = body[field];
+  final path = index == null ? '/$field' : '/servicePeriods/$index/$field';
+  if (raw is! List) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_applicable_days',
+      message: '$field must be a non-empty array of ISO weekdays 1..7',
+      path: path,
+    );
+  }
+  final days = <int>[];
+  final seen = <int>{};
+  for (final value in raw) {
+    final day = value is int ? value : (value is num ? value.toInt() : null);
+    if (day == null || day < 1 || day > 7 || !seen.add(day)) {
+      throw BusinessTimingValidationError(
+        code: 'invalid_applicable_days',
+        message: '$field must contain unique ISO weekdays 1..7',
+        path: path,
+      );
+    }
+    days.add(day);
+  }
+  if (days.isEmpty) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_applicable_days',
+      message: '$field must contain at least one weekday',
+      path: path,
+    );
+  }
+  return List<int>.unmodifiable(days);
+}
+
+String _requireShortLabel(
+  Map<String, Object?> body,
+  String field, {
+  int? index,
+}) {
+  if (!body.containsKey(field)) return '';
+  final raw = body[field];
+  final path = index == null ? '/$field' : '/servicePeriods/$index/$field';
+  if (raw is! String) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_short_label',
+      message: '$field must be a string of at most 8 characters',
+      path: path,
+    );
+  }
+  final trimmed = raw.trim();
+  if (trimmed.length > 8) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_short_label',
+      message: '$field must be at most 8 characters',
+      path: path,
+    );
+  }
+  return trimmed;
+}
+
+int _requireSortOrder(
+  Map<String, Object?> body,
+  String field, {
+  int? index,
+  required int fallback,
+}) {
+  if (!body.containsKey(field)) return fallback;
+  final raw = body[field];
+  final path = index == null ? '/$field' : '/servicePeriods/$index/$field';
+  final parsed = raw is int ? raw : (raw is num ? raw.toInt() : null);
+  if (parsed == null) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_sort_order',
+      message: '$field must be an integer between 1 and 4',
+      path: path,
+    );
+  }
+  if (parsed == 0) return fallback;
+  if (parsed < 1 || parsed > 4) {
+    throw BusinessTimingValidationError(
+      code: 'invalid_sort_order',
+      message: '$field must be an integer between 1 and 4',
+      path: path,
+    );
+  }
+  return parsed;
 }
 
 int _quarterHourToMinute(String hhmm) {
@@ -741,7 +893,8 @@ ValidatedOperatorAccountPatch validateOperatorAccountPatch(
     if (trimmed.isEmpty || trimmed.length > 120) {
       throw const BusinessTimingValidationError(
         code: 'invalid_business_name',
-        message: 'businessName must be a non-empty string of at most 120 characters',
+        message:
+            'businessName must be a non-empty string of at most 120 characters',
         path: '/businessName',
       );
     }

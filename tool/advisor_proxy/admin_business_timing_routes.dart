@@ -58,8 +58,9 @@ const String _kBusinessTimingResolutionSegment = 'business-timing-resolution';
 
 /// Parsed `(operatorId, locationId)` for the admin business-timing
 /// resolution route, or null when [path] is not that route.
-({String operatorId, String locationId})?
-    adminBusinessTimingResolutionScopeOf(String path) {
+({String operatorId, String locationId})? adminBusinessTimingResolutionScopeOf(
+  String path,
+) {
   if (!path.startsWith(adminBusinessTimingProfilesPathPrefix)) return null;
   final tail = path.substring(adminBusinessTimingProfilesPathPrefix.length);
   final parts = tail.split('/');
@@ -89,9 +90,9 @@ class AdminBusinessTimingRouter {
     OperatorWriteIdempotencyCache? idempotencyCache,
     DateTime Function()? now,
     OperatorBusinessTimingMutationListener? mutationListener,
-  })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
-        _now = now ?? DateTime.now,
-        _mutationListener = mutationListener;
+  }) : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
+       _now = now ?? DateTime.now,
+       _mutationListener = mutationListener;
 
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
   final OperatorWriteAuditSink auditSink;
@@ -132,7 +133,8 @@ class AdminBusinessTimingRouter {
     if (isReadOnly(path, method)) {
       return _list(operatorId: parsed.operatorId);
     }
-    final reason = _readNonBlank(body['admin_reason']) ??
+    final reason =
+        _readNonBlank(body['admin_reason']) ??
         _readNonBlank(body['adminReason']);
     if (reason == null) {
       return (
@@ -178,7 +180,8 @@ class AdminBusinessTimingRouter {
             statusCode: 405,
             body: const <String, Object?>{
               'error': 'method_not_allowed',
-              'message': 'admin business-timing route does not allow this method',
+              'message':
+                  'admin business-timing route does not allow this method',
             },
           );
         },
@@ -206,8 +209,7 @@ class AdminBusinessTimingRouter {
   /// `runAsSystem` admin bypass. No resolver fork, no write, no
   /// idempotency surface. [reason] is the audit-attribution string
   /// stamped on the system-scope transaction.
-  Future<({int statusCode, Map<String, Object?> body})>
-      handleResolution({
+  Future<({int statusCode, Map<String, Object?> body})> handleResolution({
     required String operatorId,
     required String locationId,
     String? businessDate,
@@ -426,6 +428,9 @@ class AdminBusinessTimingRouter {
             startMinute: _hhmmToMinute(p.startLocal),
             endMinute: _hhmmToMinute(p.endLocal),
             rollsPastMidnight: p.rollsPastMidnight,
+            applicableDays: p.applicableDays,
+            shortLabel: p.shortLabel,
+            sortOrder: p.sortOrder,
           ),
       ],
     );
@@ -444,10 +449,7 @@ class AdminBusinessTimingRouter {
     return (operatorId: operatorId, profileId: null);
   }
   if (parts.length == 3 && parts[2].trim().isNotEmpty) {
-    return (
-      operatorId: operatorId,
-      profileId: Uri.decodeComponent(parts[2]),
-    );
+    return (operatorId: operatorId, profileId: Uri.decodeComponent(parts[2]));
   }
   return null;
 }
