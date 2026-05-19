@@ -234,6 +234,101 @@ void main() {
     expect(dayparts.single.coverCount, 120);
   });
 
+  group('stable idempotency keys', () {
+    test('select action repeats for same body and changes with body', () async {
+      final first = await _selectedDecisionKey(
+        candidate: _candidate('new-key', selected: false),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      final retry = await _selectedDecisionKey(
+        candidate: _candidate('new-key', selected: false),
+        clock: () => DateTime.utc(2026, 5, 6, 12, 0, 1),
+      );
+      final changedBody = await _selectedDecisionKey(
+        candidate: _candidate('new-key', selected: false, covers: 121),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+
+      expect(retry, first);
+      expect(changedBody, isNot(first));
+      expect(first, startsWith('mobile-star-select-'));
+      expect(first, isNot(contains('new-key')));
+    });
+
+    test('clear action repeats for same body and changes with body', () async {
+      final first = await _clearedDecisionKey(
+        candidate: _candidate('old-key', selected: true),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      final retry = await _clearedDecisionKey(
+        candidate: _candidate('old-key', selected: true),
+        clock: () => DateTime.utc(2026, 5, 6, 12, 0, 1),
+      );
+      final changedBody = await _clearedDecisionKey(
+        candidate: _candidate(
+          'old-key',
+          selected: true,
+          servicePeriodKey: 'late-night',
+        ),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+
+      expect(retry, first);
+      expect(changedBody, isNot(first));
+      expect(first, startsWith('mobile-star-clear-'));
+      expect(first, isNot(contains('old-key')));
+    });
+
+    test('projection repeats for same body and changes with body', () async {
+      const context = StarTargetProjectionContext(
+        effectiveStart: '2026-05-06',
+        effectiveEnd: '2026-07-04',
+        calibrationWindowStart: '2026-03-08',
+        calibrationWindowEnd: '2026-05-06',
+        targetCplh: 12.4,
+        targetSplh: 152.0,
+        targetPpa: 42.5,
+        fohWage: 18.0,
+        bohWage: 20.0,
+        opzFloorCplh: 12.0,
+        opzCeilingCplh: 14.0,
+        reason: 'manager selected star target on mobile',
+      );
+      const changedContext = StarTargetProjectionContext(
+        effectiveStart: '2026-05-06',
+        effectiveEnd: '2026-07-04',
+        calibrationWindowStart: '2026-03-08',
+        calibrationWindowEnd: '2026-05-06',
+        targetCplh: 12.5,
+        targetSplh: 152.0,
+        targetPpa: 42.5,
+        fohWage: 18.0,
+        bohWage: 20.0,
+        opzFloorCplh: 12.0,
+        opzCeilingCplh: 14.0,
+        reason: 'manager selected star target on mobile',
+      );
+
+      final first = await _projectionKeyFor(
+        context: context,
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+      final retry = await _projectionKeyFor(
+        context: context,
+        clock: () => DateTime.utc(2026, 5, 6, 12, 0, 1),
+      );
+      final changedBody = await _projectionKeyFor(
+        context: changedContext,
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+      );
+
+      expect(retry, first);
+      expect(changedBody, isNot(first));
+      expect(first, startsWith('mobile-star-project-'));
+      expect(first, isNot(contains('restaurant-1')));
+    });
+  });
+
   test(
     'AuthSessionStarTargetSelectionWriter rejects candidate without date',
     () async {
@@ -260,6 +355,73 @@ void main() {
       );
     },
   );
+}
+
+Future<String> _selectedDecisionKey({
+  required BaselineCandidateShift candidate,
+  required DateTime Function() clock,
+}) async {
+  final client = _RecordingStarTargetSelectionWriteClient();
+  final writer = AuthSessionStarTargetSelectionWriter(
+    client: client,
+    authSessionProvider: () => _session(),
+    clock: clock,
+  );
+
+  await writer.replaceSelection(
+    restaurantId: 'restaurant-1',
+    selectedCandidates: <BaselineCandidateShift>[candidate],
+    previouslySelectedCandidates: const <BaselineCandidateShift>[],
+  );
+
+  expect(client.calls, hasLength(1));
+  return client.calls.single.idempotencyKey;
+}
+
+Future<String> _clearedDecisionKey({
+  required BaselineCandidateShift candidate,
+  required DateTime Function() clock,
+}) async {
+  final client = _RecordingStarTargetSelectionWriteClient();
+  final writer = AuthSessionStarTargetSelectionWriter(
+    client: client,
+    authSessionProvider: () => _session(),
+    clock: clock,
+  );
+
+  await writer.replaceSelection(
+    restaurantId: 'restaurant-1',
+    selectedCandidates: const <BaselineCandidateShift>[],
+    previouslySelectedCandidates: <BaselineCandidateShift>[candidate],
+  );
+
+  expect(client.calls, hasLength(1));
+  return client.calls.single.idempotencyKey;
+}
+
+Future<String> _projectionKeyFor({
+  required StarTargetProjectionContext context,
+  required DateTime Function() clock,
+}) async {
+  final client = _RecordingStarTargetSelectionWriteClient();
+  final writer = AuthSessionStarTargetSelectionWriter(
+    client: client,
+    authSessionProvider: () => _session(),
+    clock: clock,
+    projectionContextProvider:
+        ({required restaurantId, required selectedCandidates}) async => context,
+  );
+
+  await writer.replaceSelection(
+    restaurantId: 'restaurant-1',
+    selectedCandidates: <BaselineCandidateShift>[
+      _candidate('new-key', selected: false),
+    ],
+    previouslySelectedCandidates: const <BaselineCandidateShift>[],
+  );
+
+  expect(client.projections, hasLength(1));
+  return client.projections.single.idempotencyKey;
 }
 
 AuthSession _session() {

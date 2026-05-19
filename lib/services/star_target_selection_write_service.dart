@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:crypto/crypto.dart' as crypto;
 
 import '../auth/auth_session.dart';
@@ -153,16 +155,16 @@ class AuthSessionStarTargetSelectionWriter
     required StarTargetSelectionWriteClient client,
     required AuthSession? Function() authSessionProvider,
     StarTargetProjectionContextProvider? projectionContextProvider,
+    // Retained for source compatibility. Idempotency keys are now stable
+    // hashes and no longer include a clock value.
     DateTime Function()? clock,
   }) : _client = client,
        _authSessionProvider = authSessionProvider,
-       _projectionContextProvider = projectionContextProvider,
-       _clock = clock ?? DateTime.now;
+       _projectionContextProvider = projectionContextProvider;
 
   final StarTargetSelectionWriteClient _client;
   final AuthSession? Function() _authSessionProvider;
   final StarTargetProjectionContextProvider? _projectionContextProvider;
-  final DateTime Function() _clock;
 
   @override
   Future<void> replaceSelection({
@@ -237,21 +239,23 @@ class AuthSessionStarTargetSelectionWriter
             'history before changing the selection.',
       );
     }
+    final body = _bodyFor(
+      restaurantId: restaurantId,
+      candidate: candidate,
+      businessDate: businessDate,
+      action: action,
+    );
     return _client.submitSelectedStarDecision(
       operatorId: session.operatorId,
       locationId: session.locationId,
       action: action,
       idempotencyKey: _idempotencyKey(
         action: action,
+        session: session,
         restaurantId: restaurantId,
-        recordKey: candidate.recordKey,
+        body: body,
       ),
-      body: _bodyFor(
-        restaurantId: restaurantId,
-        candidate: candidate,
-        businessDate: businessDate,
-        action: action,
-      ),
+      body: body,
     );
   }
 
@@ -269,14 +273,16 @@ class AuthSessionStarTargetSelectionWriter
       selectedCandidates: selected,
     );
     if (context == null) return;
+    final body = context.toBody(restaurantId: restaurantId);
     await _client.submitSelectedStarTargetProjection(
       operatorId: session.operatorId,
       locationId: session.locationId,
       idempotencyKey: _projectionIdempotencyKey(
+        session: session,
         restaurantId: restaurantId,
-        selectedRecordKeys: selected.map((candidate) => candidate.recordKey),
+        body: body,
       ),
-      body: context.toBody(restaurantId: restaurantId),
+      body: body,
     );
   }
 
@@ -331,23 +337,62 @@ class AuthSessionStarTargetSelectionWriter
 
   String _idempotencyKey({
     required StarTargetSelectionWriteAction action,
+    required AuthSession session,
     required String restaurantId,
-    required String recordKey,
+    required Map<String, Object?> body,
   }) {
-    final digest = crypto.sha1.convert('$restaurantId|$recordKey'.codeUnits);
-    final timestamp = _clock().toUtc().microsecondsSinceEpoch;
-    return 'mobile-star-${action.name}-${digest.toString().substring(0, 20)}-$timestamp';
+    final digest = _stableDigest(
+      action: 'selected-star-${action.name}',
+      session: session,
+      restaurantId: restaurantId,
+      body: body,
+    );
+    return 'mobile-star-${action.name}-${digest.substring(0, 40)}';
   }
 
   String _projectionIdempotencyKey({
+    required AuthSession session,
     required String restaurantId,
-    required Iterable<String> selectedRecordKeys,
+    required Map<String, Object?> body,
   }) {
-    final keys = selectedRecordKeys.toList(growable: false)..sort();
-    final digest = crypto.sha1.convert(
-      '$restaurantId|${keys.join('|')}'.codeUnits,
+    final digest = _stableDigest(
+      action: 'selected-star-target-projection',
+      session: session,
+      restaurantId: restaurantId,
+      body: body,
     );
-    final timestamp = _clock().toUtc().microsecondsSinceEpoch;
-    return 'mobile-star-project-${digest.toString().substring(0, 20)}-$timestamp';
+    return 'mobile-star-project-${digest.substring(0, 40)}';
+  }
+
+  String _stableDigest({
+    required String action,
+    required AuthSession session,
+    required String restaurantId,
+    required Map<String, Object?> body,
+  }) {
+    final payload = <String, Object?>{
+      'action': action,
+      'scope': <String, Object?>{
+        'operator_id': session.operatorId,
+        'location_id': session.locationId,
+        'restaurant_id': restaurantId,
+      },
+      'body': body,
+    };
+    final canonicalJson = jsonEncode(_canonicalJsonValue(payload));
+    return crypto.sha256.convert(utf8.encode(canonicalJson)).toString();
+  }
+
+  Object? _canonicalJsonValue(Object? value) {
+    if (value is Map<String, Object?>) {
+      final keys = value.keys.toList(growable: false)..sort();
+      return <String, Object?>{
+        for (final key in keys) key: _canonicalJsonValue(value[key]),
+      };
+    }
+    if (value is List<Object?>) {
+      return <Object?>[for (final item in value) _canonicalJsonValue(item)];
+    }
+    return value;
   }
 }
