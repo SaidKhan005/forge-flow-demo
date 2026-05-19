@@ -290,6 +290,50 @@ void main() {
       expect(dateMap['dinner'], equals(187));
       expect(dateMap['late_night'], equals(12));
     });
+
+    test(
+      'clearManualCovers removes one slot and preserves neighbors',
+      () async {
+        final pool = _DataAccuracyPool(
+          existingRows: <PostgresRow>[
+            _settingsRow(
+              perPeriod: <String, Object?>{'dinner': 'manual'},
+              manualEntries: <String, Object?>{
+                '2026-05-04': <String, Object?>{'lunch': 87, 'dinner': 187},
+                '2026-05-05': <String, Object?>{'dinner': 201},
+              },
+            ),
+          ],
+        );
+        final repo = DataAccuracySettingsRepository(
+          TenantTransactionWrapper(pool),
+        );
+
+        final saved = await repo.clearManualCovers(
+          operatorId: _opA,
+          locationId: _locA,
+          businessDateIso: '2026-05-04',
+          servicePeriodId: 'dinner',
+          actorUserId: _userA,
+        );
+
+        expect(
+          saved.coversManualEntries,
+          equals(<String, Map<String, int>>{
+            '2026-05-04': <String, int>{'lunch': 87},
+            '2026-05-05': <String, int>{'dinner': 201},
+          }),
+        );
+        final updateParams = pool.transactions.single.parameters.firstWhere(
+          (p) => p['manual_entries'] is String,
+        );
+        final decoded =
+            jsonDecode(updateParams['manual_entries'] as String)
+                as Map<String, Object?>;
+        expect(decoded['2026-05-04'], equals(<String, Object?>{'lunch': 87}));
+        expect(decoded['2026-05-05'], equals(<String, Object?>{'dinner': 201}));
+      },
+    );
   });
 
   group('DataAccuracySettingsRepository — historical seed bulk entry '

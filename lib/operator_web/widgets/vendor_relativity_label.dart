@@ -87,8 +87,7 @@ class VendorRelativityLabel extends StatelessWidget {
 List<String> composeVendorRelativityLines(
   VendorRelativitySetting setting,
   VendorConnectionsBundle? bundle,
-) =>
-    _composeLines(setting, bundle);
+) => _composeLines(setting, bundle);
 
 List<String> _composeLines(
   VendorRelativitySetting setting,
@@ -130,11 +129,11 @@ List<String> _composeCoversLines(VendorConnectionsBundle? bundle) {
   if (!coversNotExposed) {
     return <String>[
       '${pos.displayName} exposes covers directly. This setting only kicks in if you switch to a POS that does not (Square, Clover).',
-      'You can still pick "manual" for a daypart to type your own numbers; F&F will use those instead of what ${pos.displayName} reports.',
+      'You can still pick "manual" for a service period to type your own numbers; F&F will use those instead of what ${pos.displayName} reports.',
     ];
   }
   return <String>[
-    '${pos.displayName} does not expose covers as a first-class field. Pick a covers source per daypart so F&F knows where to read covers from.',
+    '${pos.displayName} does not expose covers as a first-class field. Pick a covers source per service period so F&F knows where to read covers from.',
     'POS systems that do not expose covers at V1: Square, Clover.',
   ];
 }

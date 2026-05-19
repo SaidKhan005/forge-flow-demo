@@ -220,6 +220,38 @@ void main() {
       expect(request.headers['idempotency-key'], isNotNull);
     });
 
+    test(
+      'clears one manual covers slot through explicit PATCH intent',
+      () async {
+        final gateway = buildGateway(
+          responses: <Map<String, Object?>>[settingsPayload()],
+        );
+
+        await gateway.clearManualCovers(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          businessDateIso: '2026-05-06',
+          servicePeriodKey: 'dinner',
+        );
+
+        final request = capturedRequests.single;
+        expect(request.method, 'PATCH');
+        expect(
+          request.url.path,
+          '/v1/operators/op-1/locations/loc-1/data_accuracy_settings/'
+          'manual_covers',
+        );
+        final json = jsonDecode(request.body) as Map<String, Object?>;
+        expect(json, <String, Object?>{
+          'business_date': '2026-05-06',
+          'service_period_key': 'dinner',
+          'clear': true,
+        });
+        expect(json.containsKey('covers'), isFalse);
+        expect(request.headers['idempotency-key'], isNotNull);
+      },
+    );
+
     test('saves custom service periods without legacy trio keys', () async {
       final gateway = buildGateway(
         responses: <Map<String, Object?>>[
