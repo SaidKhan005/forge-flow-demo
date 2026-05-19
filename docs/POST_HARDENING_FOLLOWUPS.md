@@ -188,6 +188,81 @@ that inert state is the safety guarantee until the Azure swap ships.
 **Not blocking:** A11.2's other deliverables (fd watcher, p3c CLI flags)
 are independent of this swap and stay live on master.
 
+## P1 — C-1 SendGrid Webhook: outbox-status flip on terminal events (PR #611 follow-up)
+
+**Origin:** 2026-05-19 review of a rescued earlier SendGrid implementation
+(rescue branch `rescue/wt-snapshot/master-sendgrid-webhook-20260519-054323`)
+against the landed Lane C C-1 + C-1a stack (PRs
+[#599](https://github.com/SaidKhan005/forge-flow-demo/pull/599) +
+[#611](https://github.com/SaidKhan005/forge-flow-demo/pull/611)). The
+compare-against-origin pass confirmed every rescued file is superseded,
+but surfaced one delta the landed implementation does NOT cover.
+
+**The gap.** `lib/services/email/email_outbox_dispatcher.dart` lines 8-15
+contracts that bounce/complaint transitions are owned by the SendGrid
+webhook handler:
+
+> The `bounced` / `complaint` transitions are owned by the SendGrid
+> webhook handler — the dispatcher itself only advances pending →
+> sending → sent / failed.
+
+But the landed webhook receiver does NOT perform that flip. Greps across
+`tool/advisor_proxy/sendgrid_events_webhook.dart` and
+`lib/infrastructure/persistence/postgres/repositories/email_event_repository.dart`
+find zero `UPDATE email_outbox SET status` writes; the receiver only
+INSERTs into `email_event` with `ON CONFLICT DO NOTHING`. No NOTIFY-based
+listener picks up the slack (the existing NOTIFY channels cover
+`event_outbox` and permission-cache, not the email outbox). On origin
+today, a `bounce` or `complaint` SendGrid event creates an `email_event`
+row but leaves `email_outbox.status` at `'sent'` indefinitely.
+
+**Why this is follow-up, not a PR #611 regression.** The PR #611 audit
+(`docs/archive/_audits/post_codex_wave_2026-05-13/pr_611_c_1_sendgrid_events_webhook_audit.md`)
+scoped explicitly to parse + verify + INSERT. The outbox-flip was
+implicitly deferred. Operator-facing queries that need delivery state
+can join `email_outbox` to `email_event` today; the denormalized status
+column is just stale.
+
+**Why P1 not P0.** No live SendGrid traffic in production yet (Phase 9.8
+staging-only). Staging soak surfaces the divergence before launch.
+
+**Follow-up slice scope (when picked up):**
+1. Add a method on `EmailEventRepository` that updates the matching
+   `email_outbox` row's status to the terminal kind (`bounced` /
+   `complaint`), guarded against overwriting an already-terminal state
+   (prevents flapping when SendGrid emits both `bounce` and a later
+   `dropped` for the same email).
+2. Call it from `sendgrid_events_webhook.dart` after the
+   `EmailEventInsertResult.inserted` path, only for terminal event
+   kinds, and only when the FK to `email_outbox.email_id` resolves.
+   `duplicate` results skip the flip (idempotent on replays).
+3. Wrap both writes in the same `runAsSystem` admin-pool transaction so
+   an event row never lands without its corresponding outbox flip.
+4. Tests: terminal kind flips status; non-terminal kinds (`delivered`,
+   `open`) leave status untouched; duplicate event does not re-flip;
+   already-terminal `email_outbox.status` (e.g. `failed`) is not
+   overwritten.
+
+**Authority anchors:**
+- `lib/services/email/email_outbox_dispatcher.dart:8-15` — the contract
+  that the webhook owns bounce/complaint transitions.
+- `tool/advisor_proxy/sendgrid_events_webhook.dart` — the landed receiver
+  that does not flip.
+- `lib/infrastructure/persistence/postgres/repositories/email_event_repository.dart`
+  — the natural home for the new method, mirroring its existing
+  `runAsSystem` discipline.
+- `docs/archive/_audits/post_codex_wave_2026-05-13/pr_611_c_1_sendgrid_events_webhook_audit.md`
+  — PR audit that scoped to receiver-only.
+- Rescue branch `rescue/wt-snapshot/master-sendgrid-webhook-20260519-054323`
+  — a superseded earlier implementation containing an in-line example
+  of the flip pattern; useful only as a sketch, its architecture is
+  incompatible with the landed `OperatorScopedRepository` discipline.
+
+**Not blocking:** the C-1 + C-1a receiver path is correct as-is for the
+events-as-audit-log use case. Defer until staging exercises the bounce
+flow or an operator-facing query needs the denormalized status to be
+accurate.
+
 ## P1 — Live Admin Operational Gates
 
 The staging admin smoke surfaced live actions that code cannot complete
