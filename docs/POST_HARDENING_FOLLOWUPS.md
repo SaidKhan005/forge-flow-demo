@@ -582,7 +582,7 @@ Resolution: shipped via PR #426 with `lib/widgets/demo_mode_banner.dart`,
 `lib/forge_flow_app.dart` (banner stack above the IndexedStack tab
 body), `Provider<SyncProxyClient?>` exposure in
 `lib/forge_flow_bootstrap.dart`, walkthrough at
-`docs/_walkthroughs/8.demo-mode-banner.md`, and 5 widget tests at
+`docs/archive/_walkthroughs/8.demo-mode-banner.md`, and 5 widget tests at
 `test/widgets/demo_mode_banner_test.dart`. Two follow-ups punted:
 (1) mobile-side vendor-connections route doesn't exist yet, so the
 banner is informational-only; (2) the realtime invalidation path

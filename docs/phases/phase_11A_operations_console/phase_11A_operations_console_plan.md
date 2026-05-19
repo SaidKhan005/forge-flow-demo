@@ -291,7 +291,7 @@ Specifically:
   (`FirebaseAdminAuthSource` in production; demo source under
   `-DemoMode`). Deploys to a separate Cloud Run service. Six placeholder
   routes (Operators, Pricing, Corpus, Integrations, Debug,
-  Observability). Walkthrough: `docs/_walkthroughs/11A.0.md`.
+  Observability). Walkthrough: `docs/archive/_walkthroughs/11A.0.md`.
 - `11A.1` **accepted** (commit `d66e3c3`) — Operator + location
   management. CRUD on `operators`, `locations`, `users`,
   `operator_admins`. Onboard new operator (creates rows, assigns
@@ -304,7 +304,7 @@ Specifically:
   identity goes through the Phase 9 auth gateway (Firebase user +
   custom claims + `users` + `user_roles` + invite + audit), then
   attaches `operator_admins` with `scope_type = 'operator_owner'`.
-  Walkthrough: `docs/_walkthroughs/11A.1.md`.
+  Walkthrough: `docs/archive/_walkthroughs/11A.1.md`.
 - `11A.2` **accepted** (commit `934fc69`) — Pricing tier admin.
   Table editor for `usage_caps` per
   `(operator_id, location_id, staff_id NULL, workflow_id NULL,
@@ -316,7 +316,7 @@ Specifically:
   for mutations. `applyTierTemplate` validates all preconditions before
   any write. UPSERT honors `usage_caps_two_slot_uq` (UNIQUE NULLS NOT
   DISTINCT) on the post-9.0Σ.g schema with billing-owner + scoped
-  org-unit axes. Walkthrough: `docs/_walkthroughs/11A.2.md`.
+  org-unit axes. Walkthrough: `docs/archive/_walkthroughs/11A.2.md`.
 - `11A.3` **Corpus admin.** Drag-and-drop markdown upload.
   Per-chunk preview before commit. Diff view (what's new, what's
   changing, what's being inactivated). Rollback to prior corpus
@@ -479,7 +479,7 @@ Acceptance:
   API; never displays plaintext after creation). Vendor
   connector status placeholder (lights up when Phase 8 lands).
   FX-rate source status. Email provider status (when 9.8 lands).
-- `11A.5` **Debug console.** *Status (2026-05-03): accepted in worktree `claude/nifty-colden-5621fa`; walkthrough `docs/_walkthroughs/11A.5.md`.* Per-operator request log viewer.
+- `11A.5` **Debug console.** *Status (2026-05-03): accepted in worktree `claude/nifty-colden-5621fa`; walkthrough `docs/archive/_walkthroughs/11A.5.md`.* Per-operator request log viewer.
   Filter by operator / location / usage_class / time-window /
   status. View request meta by default; toggle full content per
   operator (per `feature_flags` opt-in row). Search by
@@ -503,7 +503,7 @@ Acceptance:
   flags. Full repair actions consume Phase 9 safe backend routes;
   the admin client must not perform direct DB/Firebase writes.
 - `11A.6` **Observability dashboard.** *Status (2026-05-03): accepted —
-  walkthrough `docs/_walkthroughs/11A.6.md`. The former scaffold route is replaced
+  walkthrough `docs/archive/_walkthroughs/11A.6.md`. The former scaffold route is replaced
   by a read-only `/observability` binding in `lib/admin/admin_routes.dart`.
   Production `lib/main_admin.dart` wires `HttpObservabilityAdminGateway` to
   bearer-token `GET /v1/admin/observability` with a 60s timeout and typed
@@ -560,7 +560,7 @@ Phase 11W gives operators desktop self-service for their own data via `11W.1`–
 
 Cross-operator member view + invite admin. F&F super-admin / `ff_support` selects an operator via the existing operator picker (`lib/admin/screens/operator_picker_screen.dart`); the screen lists that operator's users with the same filter set as `11W.1` Members and exposes the same row actions plus support-only actions (`Restore soft-deleted`, `Override role grant`). All writes flow through `/v1/admin/auth/users` + `/v1/admin/auth/invites` + `/v1/admin/auth/role-grants` (admin path; gates on `admin.users.*` + `admin.invites.*` + `admin.roles.*`). Every write writes the calling F&F admin's UID into `created_by` / `updated_by` and the operator's audit log via `audit_logs` (B27 hash-chained). RLS-bypass via `forge_admin` Postgres role; no operator `team.*` keys inspected.
 
-Files this slice owns: `lib/admin/services/members_admin_gateway.dart`, `lib/admin/screens/members_admin_screen.dart`, `lib/admin/screens/invite_member_admin_dialog.dart`, route entry in `lib/admin/admin_routes.dart`, gateway resolver in `lib/main_admin.dart`. Walkthrough at acceptance: sign in to admin console as `super.admin@forgeflow.test` → pick a fixture operator → land on Members → filter by `mfa_enrolled=false` → invite a fixture user → restore a soft-deleted user → screenshot trace per `docs/_walkthroughs/11A.5.md` bar.
+Files this slice owns: `lib/admin/services/members_admin_gateway.dart`, `lib/admin/screens/members_admin_screen.dart`, `lib/admin/screens/invite_member_admin_dialog.dart`, route entry in `lib/admin/admin_routes.dart`, gateway resolver in `lib/main_admin.dart`. Walkthrough at acceptance: sign in to admin console as `super.admin@forgeflow.test` → pick a fixture operator → land on Members → filter by `mfa_enrolled=false` → invite a fixture user → restore a soft-deleted user → screenshot trace per `docs/archive/_walkthroughs/11A.5.md` bar.
 
 #### `11A.13` Roles + Hierarchy + Sessions inspect (cross-operator)
 
@@ -626,7 +626,7 @@ explicit per Hard Promise #10.
 - `11A.4` integration management (consumed by Phase 8 / 8R / 8.5)
 - `11A.5` debug console request log (meta-by-default, full-content
   reveal gated by role and operator opt-in, live-tail bounded)
-- `11A.6` observability dashboard (accepted; walkthrough `docs/_walkthroughs/11A.6.md`)
+- `11A.6` observability dashboard (accepted; walkthrough `docs/archive/_walkthroughs/11A.6.md`)
 - `11A.7` feature flag admin
 - `11A.8` API version management
 - `11A.9` audit log review (consumes B27 / B37)

@@ -14,9 +14,9 @@ directory is the second hop. Slice scope lives in
 | File | Purpose |
 |---|---|
 | `NEXT_WAVE_PLAN.md` | Forward pipeline. Phase 2.5, Per-Daypart Targets V1, is the active feature work (output of the Phase 2 mobile walkthrough). |
-| `PER_DAYPART_V1_MAIN_ORCHESTRATOR_BRIEF.md` | Cold-readable brief for the main orchestrator session driving Per-Daypart V1 (plan + execution context). |
-| `PER_DAYPART_V1_CLAUDE2_HANDOFF.md` | Paste-ready prompt to bootstrap a second Claude session into the Per-Daypart V1 parallel-lane role. |
-| `PER_DAYPART_V1_POST_SLICE1_DISPATCH.md` | Pre-staged worker prompts to fire as one parallel wave once the relevant Per-Daypart slice merges. |
+| `docs/archive/_indices/per_daypart_v1_one_offs_2026_05_15/PER_DAYPART_V1_MAIN_ORCHESTRATOR_BRIEF.md` | Cold-readable brief for the main orchestrator session driving Per-Daypart V1 (plan + execution context). |
+| `docs/archive/_indices/per_daypart_v1_one_offs_2026_05_15/PER_DAYPART_V1_CLAUDE2_HANDOFF.md` | Paste-ready prompt to bootstrap a second Claude session into the Per-Daypart V1 parallel-lane role. |
+| `docs/archive/_indices/per_daypart_v1_one_offs_2026_05_15/PER_DAYPART_V1_POST_SLICE1_DISPATCH.md` | Pre-staged worker prompts to fire as one parallel wave once the relevant Per-Daypart slice merges. |
 | `VARIANCE_COACHING_V2_LEDGER.md` | One row per Variance Coaching V2 lane. Lanes A to F MERGED; Lane G wave-close in review. Audit artifacts: `docs/_audits/variance_coaching_v2/`. |
 | `DEBUG_MD_IMPLEMENTATION_STATUS.md` | Source-of-truth mapping every `debug.md` brain-dump ask to done / in-progress / not-done / investigating, with citations. |
 | `INFRA_DEFERRALS_INVENTORY.md` | Discovery index (not authority) for deliberate infra deferrals that live only as code comments (GAP B6). |

@@ -15,7 +15,7 @@ Each B slice produces three layers of evidence:
    demo flavour (`flutter run --release -t lib/main_admin.dart` for admin
    surfaces; `lib/main_operator_web.dart` for operator-web; mobile uses
    `lib/main_forgeflow.dart`). Captures named widgets + named values per the
-   click-path bar set by `docs/_walkthroughs/7.58.UX.5.md`.
+   click-path bar set by `docs/archive/_walkthroughs/7.58.UX.5.md`.
 3. **Audit/runtime integrity** — proof that hash-chain integrity, RLS, and
    idempotency are not violated.
 

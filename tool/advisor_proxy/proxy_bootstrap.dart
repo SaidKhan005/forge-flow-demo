@@ -10086,7 +10086,7 @@ CloudRunAdminClient _buildCloudRunAdminClient({
 // console) — not operator-facing. Per lean cut 2 the 11A.6 DLQ tile
 // is deferred; V1 ops triage flow is logs + admin SQL against
 // `public.event_outbox_dead_letter`. The walkthrough at
-// `docs/_walkthroughs/10a.2.md` documents the SQL queries and the
+// `docs/archive/_walkthroughs/10a.2.md` documents the SQL queries and the
 // `/health` JSON shape an F&F engineer reads during a DLQ event.
 // `EventOutboxDeadLetterRepository.listByOperator` /
 // `countByOperator` stay available for any future tile or replay

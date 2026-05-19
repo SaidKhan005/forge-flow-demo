@@ -131,7 +131,7 @@ the webhook endpoint:
   every polling tick.
 
 This shape is verified by the slice's plan-tier fallback test
-(`Test 9`) and walked through in `docs/_walkthroughs/8.S.7S.md`.
+(`Test 9`) and walked through in `docs/archive/_walkthroughs/8.S.7S.md`.
 
 ---
 

@@ -117,7 +117,7 @@ Implementation tasks:
    multi-covered scopes.
 5. Run `dart analyze` clean. Run targeted widget tests.
 6. Author the walkthrough doc at docs/_walkthroughs/lane_b_b1a.md following
-   the click-path bar set by docs/_walkthroughs/7.58.UX.5.md.
+   the click-path bar set by docs/archive/_walkthroughs/7.58.UX.5.md.
 
 Required tests:
 - dart analyze (whole repo)
