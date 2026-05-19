@@ -1147,7 +1147,7 @@ class _DataAccuracyScopeSummary extends StatelessWidget {
   String _sourceSummary() {
     final labels = <String>[];
     void add(DataAccuracySettingSource? source) {
-      final label = source?.label;
+      final label = source?.operatorFacingLabel;
       if (label == null || labels.contains(label)) return;
       labels.add(label);
     }

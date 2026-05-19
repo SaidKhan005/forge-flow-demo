@@ -134,6 +134,7 @@ class _PeriodRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sourceLabel = sourceMetadata?.operatorFacingLabel;
     return Container(
       key: Key('covers_source_daypart_${period.id}'),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -174,10 +175,10 @@ class _PeriodRow extends StatelessWidget {
               ),
             ],
           ),
-          if (sourceMetadata != null) ...[
+          if (sourceLabel != null) ...[
             const SizedBox(height: 6),
             Text(
-              'Source: ${sourceMetadata!.label}',
+              'Source: $sourceLabel',
               key: Key('covers_source_source_${period.id}'),
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),

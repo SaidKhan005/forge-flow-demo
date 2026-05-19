@@ -96,6 +96,7 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
 
   @override
   Widget build(BuildContext context) {
+    final sourceLabel = widget.source?.operatorFacingLabel;
     return Container(
       key: const Key('data_accuracy_walk_in_handling_card'),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -172,10 +173,10 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
               WalkInHandlingMode.walkInsTrackedSeparately,
             ),
           ),
-          if (widget.source != null) ...[
+          if (sourceLabel != null) ...[
             const SizedBox(height: 10),
             Text(
-              'Source: ${widget.source!.label}',
+              'Source: $sourceLabel',
               key: const Key('walk_in_handling_source_label'),
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),

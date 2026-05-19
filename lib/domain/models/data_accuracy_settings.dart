@@ -152,6 +152,11 @@ class DataAccuracySettingSource {
   final String? settingId;
   final String? overrideId;
 
+  String? get operatorFacingLabel {
+    if (sourceKind == 'default' || scopeType == 'default') return null;
+    return label;
+  }
+
   String get label {
     switch (sourceKind) {
       case 'default':

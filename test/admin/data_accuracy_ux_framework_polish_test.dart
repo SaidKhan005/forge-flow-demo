@@ -436,7 +436,7 @@ void main() {
 
       expect(find.text('Source: Business'), findsOneWidget);
       expect(find.text('Source: Org unit'), findsOneWidget);
-      expect(find.text('Source: Default'), findsOneWidget);
+      expect(find.text('Source: Default'), findsNothing);
     });
 
     testWidgets('data accuracy table filters rows using vendor source', (

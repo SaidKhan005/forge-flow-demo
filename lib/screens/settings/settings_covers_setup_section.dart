@@ -409,7 +409,7 @@ class _SettingsCoversSetupSectionState
     }
     return _CoversSourceStatus(
       label: _coversSourceLabel(best.coversSource),
-      sourceLabel: best.coversSourceSource?.label,
+      sourceLabel: best.coversSourceSource?.operatorFacingLabel,
       effectiveAtBusinessDate: best.effectiveAtBusinessDate,
     );
   }
