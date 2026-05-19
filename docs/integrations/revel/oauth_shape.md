@@ -49,7 +49,7 @@ privilege subset the F&F adapter requires:
 Operators are instructed to issue credentials with these capabilities
 only; the connect-flow help text in the Vendor Connections widget
 will spell out the exact toggles to enable in the Revel admin portal
-(`docs/archive/_walkthroughs/8.RV.md` step 4).
+(`docs/_walkthroughs/8.RV.md` step 4).
 
 Capabilities the F&F adapter does NOT request even though Revel
 offers them:

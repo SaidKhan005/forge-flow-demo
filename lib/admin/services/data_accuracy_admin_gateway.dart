@@ -443,7 +443,6 @@ abstract class DataAccuracyAdminGateway {
     CoversSource? coversSourceLunch,
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
-    Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
@@ -459,7 +458,6 @@ abstract class DataAccuracyAdminGateway {
     CoversSource? coversSourceLunch,
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
-    Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
@@ -641,7 +639,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     CoversSource? coversSourceLunch,
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
-    Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
@@ -662,11 +659,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           'covers_source_dinner': coversSourceDinner.wire,
         if (coversSourceLateNight != null)
           'covers_source_late_night': coversSourceLateNight.wire,
-        if (coversSourcePerServicePeriod != null &&
-            coversSourcePerServicePeriod.isNotEmpty)
-          'covers_source_per_service_period': _coversSourcePerServicePeriodJson(
-            coversSourcePerServicePeriod,
-          ),
         if (wageSource != null) 'wage_source': wageSource.wire,
         if (walkInHandlingMode != null)
           'walk_in_handling_mode': walkInHandlingMode.wire,
@@ -686,7 +678,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     CoversSource? coversSourceLunch,
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
-    Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
@@ -710,11 +701,6 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           'covers_source_dinner': coversSourceDinner.wire,
         if (coversSourceLateNight != null)
           'covers_source_late_night': coversSourceLateNight.wire,
-        if (coversSourcePerServicePeriod != null &&
-            coversSourcePerServicePeriod.isNotEmpty)
-          'covers_source_per_service_period': _coversSourcePerServicePeriodJson(
-            coversSourcePerServicePeriod,
-          ),
         if (wageSource != null) 'wage_source': wageSource.wire,
         if (walkInHandlingMode != null)
           'walk_in_handling_mode': walkInHandlingMode.wire,
@@ -1294,15 +1280,6 @@ DateTime? _optionalDateTime(Object? value) {
   return null;
 }
 
-Map<String, String> _coversSourcePerServicePeriodJson(
-  Map<String, CoversSource> covers,
-) {
-  return <String, String>{
-    for (final entry in covers.entries)
-      if (entry.key.trim().isNotEmpty) entry.key.trim(): entry.value.wire,
-  };
-}
-
 /// In-memory gateway powering kDemoMode + widget tests. Mirrors the
 /// shape of the production HTTP gateway: every write goes through a
 /// single `_record` helper that buffers an audit event and updates
@@ -1507,7 +1484,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     CoversSource? coversSourceLunch,
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
-    Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
@@ -1534,7 +1510,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       'lunch': coversSourceLunch ?? prevLunch,
       'dinner': coversSourceDinner ?? prevDinner,
       'late_night': coversSourceLateNight ?? prevLateNight,
-      ...?coversSourcePerServicePeriod,
     };
     final next = DataAccuracySettings(
       settingId: prev.settingId,
@@ -1569,20 +1544,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         'from': prevLateNight.wire,
         'to': coversSourceLateNight.wire,
       };
-    }
-    final keyedDiff = <String, Map<String, String>>{};
-    if (coversSourcePerServicePeriod != null) {
-      for (final entry in coversSourcePerServicePeriod.entries) {
-        final key = entry.key.trim();
-        if (key.isEmpty) continue;
-        final from = prev.coversSourceFor(key);
-        final to = entry.value;
-        if (to == from) continue;
-        keyedDiff[key] = <String, String>{'from': from.wire, 'to': to.wire};
-      }
-    }
-    if (keyedDiff.isNotEmpty) {
-      diff['covers_source_per_service_period'] = keyedDiff;
     }
     if (wageSource != null && wageSource != prev.wageSource) {
       diff['wage_source'] = <String, String>{
@@ -1631,7 +1592,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     CoversSource? coversSourceLunch,
     CoversSource? coversSourceDinner,
     CoversSource? coversSourceLateNight,
-    Map<String, CoversSource>? coversSourcePerServicePeriod,
     WageSource? wageSource,
     DataAccuracyWalkInHandlingMode? walkInHandlingMode,
     required String actorUserId,
@@ -1657,7 +1617,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           coversSourceLunch: coversSourceLunch,
           coversSourceDinner: coversSourceDinner,
           coversSourceLateNight: coversSourceLateNight,
-          coversSourcePerServicePeriod: coversSourcePerServicePeriod,
           wageSource: wageSource,
           walkInHandlingMode: walkInHandlingMode,
           actorUserId: actorUserId,
@@ -1687,11 +1646,6 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
           'covers_source_dinner': coversSourceDinner.wire,
         if (coversSourceLateNight != null)
           'covers_source_late_night': coversSourceLateNight.wire,
-        if (coversSourcePerServicePeriod != null &&
-            coversSourcePerServicePeriod.isNotEmpty)
-          'covers_source_per_service_period': _coversSourcePerServicePeriodJson(
-            coversSourcePerServicePeriod,
-          ),
         if (wageSource != null) 'wage_source': wageSource.wire,
         if (walkInHandlingMode != null)
           'walk_in_handling_mode': walkInHandlingMode.wire,
