@@ -5030,7 +5030,7 @@ Migration count: **139**
   `docs/POST_HARDENING_FOLLOWUPS.md`). Future migrations MUST follow
   the expand-contract pattern (new migration drops + recreates the
   index) once the migration has been applied anywhere downstream.
-  See `docs/_audits/post_codex_wave/pr_481_retroactive_audit.md` for
+  See `docs/archive/_audits/post_codex_wave/pr_481_retroactive_audit.md` for
   the full rationale.
 
 ## `202605080900_oauth_refresh_advisory_lock.sql`
@@ -6066,7 +6066,7 @@ Migration count: **139**
   wire `vendor_sync_error_alert` with a first-failure-of-outage
   detector; per-row email would spam on transients. Operator
   picked WIRE option (D) in the C-2 matrix.
-  * docs/_decisions/c_2_email_template_wire_or_delete_decisions.md
+  * docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md
   — draft D rationale + outage-detector design. Operator picks
   section 2026-05-13.
   * CLAUDE.md "RLS-Ready Schema" — operator-scoped fact tables
