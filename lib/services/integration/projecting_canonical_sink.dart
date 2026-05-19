@@ -114,6 +114,10 @@ class CanonicalFactProjectionCommitDrainer {
 
   final Map<String, CanonicalFactProjectionTap> _tapsByVendor;
 
+  int get tapCount => _tapsByVendor.length;
+
+  bool hasTapForVendor(String vendorId) => _tapsByVendor.containsKey(vendorId);
+
   Future<void> drainIfCommitEvent({
     required String vendorId,
     required String operatorId,

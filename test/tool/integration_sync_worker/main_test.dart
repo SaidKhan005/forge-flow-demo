@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
@@ -35,6 +36,31 @@ const String _opId = '11111111-1111-4111-8111-111111111111';
 const String _locId = '22222222-2222-4222-8222-222222222222';
 
 void main() {
+  group('buildWorkerRuntime', () {
+    test('wires projection taps for poll commits', () {
+      final runtime = buildWorkerRuntime(
+        config: WorkerRuntimeConfig(
+          postgresUrl: 'postgres://test',
+          pgcryptoEnvelopeKey: 'test-pgcrypto-key',
+          webhookPublicBaseUri: Uri.parse('https://api.forgeflow.app'),
+          maxRowsPerTick: 100,
+          pollInterval: const Duration(minutes: 5),
+          workerIdPrefix: 'integration-sync-test',
+          loadedSecretNames: const <String>[],
+          environment: const <String, String>{},
+        ),
+        poolFactory: (_) => _NeverPostgresPool(),
+      );
+
+      final drainer = runtime.projectionCommitDrainer;
+      expect(drainer, isNotNull);
+      expect(drainer!.tapCount, greaterThan(0));
+      expect(drainer.hasTapForVendor('toast'), isTrue);
+      expect(drainer.hasTapForVendor('adp'), isTrue);
+      expect(drainer.hasTapForVendor('opentable'), isTrue);
+    });
+  });
+
   group('runSyncWorkerOnce', () {
     test(
       'happy path: two connected rows → two poll_success logs + two '
@@ -663,6 +689,13 @@ class _ObservedSyncLog {
   final String locationId;
   final String connectionId;
   final String eventKind;
+}
+
+class _NeverPostgresPool implements PostgresPool {
+  @override
+  Future<PostgresTransaction> beginTransaction() {
+    throw StateError('test must not touch Postgres');
+  }
 }
 
 /// In-memory `IOSink` for asserting on stdout/stderr without writing
