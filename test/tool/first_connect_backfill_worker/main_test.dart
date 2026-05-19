@@ -344,7 +344,7 @@ void main() {
       // dispatcher can `await` the per-tenant construction; the test
       // unwraps the Future before identity-checking against the
       // recorded adapter instance.
-      final resolved = await (result as Future<Object>);
+      final resolved = await result;
       expect(identical(resolved, adapter), isTrue);
     });
 

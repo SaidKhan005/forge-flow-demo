@@ -4,6 +4,8 @@
 // calls `adapter.backfill`, and persists completion/resume/failure through the
 // Lane 0 job repository plus the existing CanonicalSink observability seams.
 
+import 'dart:async';
+
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
@@ -19,7 +21,7 @@ import '../advisor_proxy/reservation_adapter_registry.dart';
 import 'dispatch.dart' show kSyncWorkerServicePrincipalId;
 
 typedef BackfillAdapterFactory =
-    Object Function(FirstConnectionBackfillJob job);
+    FutureOr<Object> Function(FirstConnectionBackfillJob job);
 
 abstract class BackfillJobStore {
   Future<FirstConnectionBackfillJob?> claimNext({
@@ -351,6 +353,13 @@ class IntegrationSyncWorkerBackfillDispatch {
         actorUserId: effectiveActorUserId,
         eventKind: 'backfill_error',
       );
+      await projectionCommitDrainer?.drainIfCommitEvent(
+        vendorId: job.vendorId,
+        operatorId: job.operatorId,
+        locationId: job.locationId,
+        connectionId: job.connectionId,
+        eventKind: 'backfill_error',
+      );
       await _fireTerminalHook(
         job: job,
         outcome: BackfillDispatchOutcome.failed,
@@ -501,8 +510,8 @@ class IntegrationSyncWorkerBackfillDispatch {
     FirstConnectionBackfillJob job,
     BackfillAdapterFactory adapterFactory,
     BackfillCommand command,
-  ) {
-    final adapter = adapterFactory(job);
+  ) async {
+    final adapter = await adapterFactory(job);
     switch (job.category) {
       case IntegrationCategory.pos:
         if (adapter is! PosAdapter) {

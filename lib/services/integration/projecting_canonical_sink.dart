@@ -74,6 +74,8 @@ typedef CanonicalRestaurantIdResolver =
 const Set<String> kProjectingCanonicalSinkCommitEventKinds = <String>{
   'backfill_success',
   'backfill_partial',
+  'backfill_error',
+  'poll_error',
   'poll_success',
   'webhook_received',
 };
