@@ -44,6 +44,8 @@ void main() {
       final recentFirst = recent.first as Map<String, Object?>;
       expect(recentFirst['status'], equals('pending'));
       expect(recentFirst['job_id'], equals('active-0'));
+      expect(recentFirst['changed_period_count'], equals(1));
+      expect(recentFirst['open_current_fact_count'], equals(2));
       expect(
         recentFirst['next_attempt_at'],
         equals('2026-05-19T12:00:00.000Z'),
@@ -200,6 +202,8 @@ List<PostgresRow> _projectionRows({
         'status': status,
         'fact_count': i + 1,
         'attempt_count': deadLettered ? 5 : 1,
+        'changed_period_count': deadLettered ? 0 : 1,
+        'open_current_fact_count': deadLettered ? 1 : 2,
         'worker_id': deadLettered ? null : 'worker-1',
         'claimed_at': deadLettered ? null : base.subtract(Duration(minutes: i)),
         'next_attempt_at': base.add(Duration(minutes: i)),

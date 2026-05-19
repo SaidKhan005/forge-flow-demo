@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
@@ -20,6 +22,30 @@ void main() {
         () => parseArgs(<String>['forever']),
         throwsA(isA<FormatException>()),
       );
+    });
+
+    test('container default runs one scheduled drain tick', () {
+      final dockerfile = File(
+        'tool/projection_retry_worker/Dockerfile',
+      ).readAsStringSync();
+
+      expect(
+        dockerfile,
+        contains('ENTRYPOINT ["/app/projection_retry_worker"]'),
+      );
+      expect(dockerfile, contains('CMD ["runOnce"]'));
+      expect(dockerfile, isNot(contains('CMD ["daemon"]')));
+    });
+
+    test('deploy script pins Cloud Run Job to runOnce', () {
+      final script = File(
+        'scripts/deploy_projection_retry_worker.ps1',
+      ).readAsStringSync();
+
+      expect(script, contains('--command /app/projection_retry_worker'));
+      expect(script, contains('--args runOnce'));
+      expect(script, contains('gcloud scheduler jobs'));
+      expect(script, isNot(contains('--args daemon')));
     });
   });
 

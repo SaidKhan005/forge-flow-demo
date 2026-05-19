@@ -10,8 +10,13 @@ dart run tool/projection_retry_worker/main.dart runOnce
 dart run tool/projection_retry_worker/main.dart daemon
 ```
 
-`runOnce` is the intended production mode for Cloud Scheduler. `daemon` is
-available for local or platform setups that expect a loop.
+`runOnce` is the intended production mode for Cloud Scheduler and is the
+Dockerfile default. `daemon` is available for local or platform setups that
+expect a loop.
+
+Production deploys should use `scripts/deploy_projection_retry_worker.ps1`,
+which creates a Cloud Run Job plus Cloud Scheduler trigger and pins
+`--args runOnce`.
 
 ## Required Env
 
