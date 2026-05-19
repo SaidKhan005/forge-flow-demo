@@ -25,6 +25,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
+import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../auth/operator_web_handoff_redeem_gateway.dart';
@@ -333,6 +334,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   String? _managementScopeError;
   int _managementScopeGeneration = 0;
 
+  /// Count of vendor connections in `status == error` for the current
+  /// location scope. Drives the red attention chip on the Vendor
+  /// integrations nav item so an operator who is not on the
+  /// integrations screen still sees that a connection broke.
+  /// `0` when no location scope is active or the gateway has not
+  /// resolved yet.
+  int _vendorOutageCount = 0;
+
+  /// Key (`operatorId|locationId`) the current [_vendorOutageCount]
+  /// reflects. Used to skip a refetch when the scope hasn't changed
+  /// and to force one when it has.
+  String? _vendorOutageCountKey;
+
+  /// In-flight guard so a rebuild storm cannot stack overlapping
+  /// fetches against the gateway.
+  bool _vendorOutageFetching = false;
+
   @override
   void initState() {
     super.initState();
@@ -559,6 +577,47 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     });
     final gateway = _teamHierarchyGateway;
     unawaited(_loadManagementScopes(session, gateway, generation));
+  }
+
+  /// Refresh [_vendorOutageCount] from the connections gateway for the
+  /// supplied (operatorId, locationId). Idempotent and best-effort — a
+  /// gateway throw leaves the previous count in place and is swallowed
+  /// (the dot is a hint, not a critical surface). Called from
+  /// [_buildPostOnboardingShell] via a post-frame callback when the
+  /// location scope changes; production triggers it once per scope
+  /// switch.
+  Future<void> _refreshVendorOutageCount({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    if (_vendorOutageFetching) return;
+    final key = '$operatorId|$locationId';
+    final gateway = _vendorConnectionsGateway;
+    if (gateway == null) return;
+    _vendorOutageFetching = true;
+    try {
+      final bundle = await gateway.loadBundle(
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (!mounted) return;
+      final errorRows = <VendorConnectionRow?>[
+        bundle.posConnection,
+        bundle.laborConnection,
+        bundle.reservationConnection,
+      ].where((row) => row?.status == VendorConnectionStatus.error).length;
+      setState(() {
+        _vendorOutageCount = errorRows;
+        _vendorOutageCountKey = key;
+      });
+    } catch (_) {
+      // Best-effort hint surface — leave the prior count and key in
+      // place so a transient gateway error doesn't clear the dot.
+      if (!mounted) return;
+      _vendorOutageCountKey = key;
+    } finally {
+      _vendorOutageFetching = false;
+    }
   }
 
   Future<void> _loadManagementScopes(
@@ -972,6 +1031,35 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     // already-selected Locations route back to the default nav when
     // the operator drops into location scope.
     final isLocationScope = locationScope != null;
+
+    // Vendor outage attention chip — refresh the count when the
+    // location scope changes (or first becomes active). The fetch is
+    // post-framed so we don't mutate state inside build; the chip
+    // shows the previous count until the new one resolves. Clearing
+    // the count when location scope goes away keeps the chip from
+    // stale-rendering at business / org-unit scope where the Vendor
+    // integrations row already shows a "Choose a location" body.
+    final outageKey = locationScope == null
+        ? null
+        : '${session.operatorId}|${locationScope.id}';
+    if (locationScope == null && _vendorOutageCount > 0) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        setState(() {
+          _vendorOutageCount = 0;
+          _vendorOutageCountKey = null;
+        });
+      });
+    } else if (locationScope != null && _vendorOutageCountKey != outageKey) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(_refreshVendorOutageCount(
+          operatorId: session.operatorId,
+          locationId: locationScope.id,
+        ));
+      });
+    }
+
     final navItems = <OperatorWebNavItem>[
       const OperatorWebNavItem(
         id: kOperatorWebNavSchedule,
@@ -1031,11 +1119,20 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         icon: Icons.fact_check_outlined,
         group: 'Access',
       ),
-      const OperatorWebNavItem(
+      OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor integrations',
         icon: Icons.cable_outlined,
         group: 'Data & integrations',
+        // Red chip when ≥1 connection on the current location is in
+        // `status == error`. Only fires under location scope (the
+        // Vendor integrations screen itself only mounts there); the
+        // post-frame fetch above keeps the count fresh on scope switch.
+        alertCount: locationScope == null ? 0 : _vendorOutageCount,
+        alertTooltip: _vendorOutageCount == 0
+            ? null
+            : '${_vendorOutageCount} vendor ${_vendorOutageCount == 1 ? "connection is" : "connections are"} '
+                'in an error state. Open Vendor integrations to reconnect.',
       ),
       const OperatorWebNavItem(
         id: kOperatorWebNavDataAccuracy,
