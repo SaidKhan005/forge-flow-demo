@@ -34,7 +34,7 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
   static const String _selectColumns =
       'wage_role_row_id::text as wage_role_row_id, '
       'operator_id::text as operator_id, '
-      'location_id::text as location_id, '
+      "coalesce(location_id::text, '') as location_id, "
       'restaurant_id, '
       'role_name, '
       'labor_bucket, '
@@ -49,7 +49,10 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
       'metadata, '
       'created_at, '
       'updated_at, '
-      'updated_by';
+      'updated_by, '
+      'scope_type, '
+      'org_unit_id::text as org_unit_id, '
+      'inherited_from_scope_id::text as inherited_from_scope_id';
 
   /// Upsert a wage row keyed by the natural 4-tuple (operator_id,
   /// location_id, restaurant_id, role_name). DO UPDATE rewrites the
@@ -72,7 +75,23 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
     bool isActive = true,
     Map<String, Object?> metadata = const <String, Object?>{},
     String? actorUserId,
+    String scopeType = 'location',
+    String? orgUnitId,
+    String? inheritedFromScopeId,
   }) {
+    final normalizedScope = _normalizeScopeType(scopeType);
+    final normalizedOrgUnitId = _normalizeOptionalUuid(orgUnitId);
+    final rowLocationId = normalizedScope == 'location' ? locationId : null;
+    final rowOrgUnitId = normalizedScope == 'org_unit'
+        ? _requireOrgUnitId(normalizedOrgUnitId)
+        : null;
+    if (normalizedScope != 'org_unit' && normalizedOrgUnitId != null) {
+      throw ArgumentError.value(
+        orgUnitId,
+        'orgUnitId',
+        'must be omitted unless scopeType is org_unit',
+      );
+    }
     final ctx = TenantContext(
       operatorId: operatorId,
       locationId: locationId,
@@ -84,15 +103,26 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
         'operator_id, location_id, restaurant_id, role_name, '
         'labor_bucket, hourly_rate, weighted_hours, '
         'job_code, vendor_id, vendor_role_id, '
-        'source, is_active, metadata, updated_by) '
+        'source, is_active, metadata, updated_by, '
+        'scope_type, org_unit_id, inherited_from_scope_id) '
         'values ('
-        '@operator_id::uuid, @location_id::uuid, '
+        '@operator_id::uuid, @row_location_id::uuid, '
         '@restaurant_id, @role_name, '
         '@labor_bucket, @hourly_rate, @weighted_hours, '
         '@job_code, @vendor_id, @vendor_role_id, '
-        '@source, @is_active, @metadata::jsonb, @updated_by) '
-        'on conflict (operator_id, location_id, restaurant_id, role_name) '
+        '@source, @is_active, @metadata::jsonb, @updated_by, '
+        '@scope_type, @org_unit_id::uuid, @inherited_from_scope_id::uuid) '
+        'on conflict ('
+        'operator_id, '
+        'scope_type, '
+        "(coalesce(org_unit_id, '00000000-0000-0000-0000-000000000000'::uuid)), "
+        "(coalesce(location_id, '00000000-0000-0000-0000-000000000000'::uuid)), "
+        'restaurant_id, role_name) '
         'do update set '
+        'location_id = excluded.location_id, '
+        'scope_type = excluded.scope_type, '
+        'org_unit_id = excluded.org_unit_id, '
+        'inherited_from_scope_id = excluded.inherited_from_scope_id, '
         'labor_bucket = excluded.labor_bucket, '
         'hourly_rate = excluded.hourly_rate, '
         'weighted_hours = excluded.weighted_hours, '
@@ -108,6 +138,7 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
+          'row_location_id': rowLocationId,
           'restaurant_id': restaurantId,
           'role_name': roleName,
           'labor_bucket': laborBucket,
@@ -120,6 +151,11 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
           'is_active': isActive,
           'metadata': _encodeMetadata(metadata),
           'updated_by': actorUserId,
+          'scope_type': normalizedScope,
+          'org_unit_id': rowOrgUnitId,
+          'inherited_from_scope_id': _normalizeOptionalUuid(
+            inheritedFromScopeId,
+          ),
         },
       );
       if (rows.isEmpty) {
@@ -155,17 +191,46 @@ class WageRoleRowsRepository extends OperatorScopedRepository {
         'updated_by = @updated_by '
         'where wage_role_row_id = @wage_role_row_id::uuid '
         'and operator_id = @operator_id::uuid '
-        'and location_id = @location_id::uuid '
         'and is_active is true',
         parameters: <String, Object?>{
           'wage_role_row_id': wageRoleRowId,
           'operator_id': operatorId,
-          'location_id': locationId,
           'updated_by': actorUserId,
         },
       );
       return affected > 0;
     });
+  }
+
+  static String _normalizeScopeType(String scopeType) {
+    final normalized = scopeType.trim();
+    switch (normalized) {
+      case 'operator_wide':
+      case 'org_unit':
+      case 'location':
+        return normalized;
+    }
+    throw ArgumentError.value(
+      scopeType,
+      'scopeType',
+      'must be one of operator_wide / org_unit / location',
+    );
+  }
+
+  static String? _normalizeOptionalUuid(String? value) {
+    final trimmed = value?.trim();
+    return trimmed == null || trimmed.isEmpty ? null : trimmed;
+  }
+
+  static String _requireOrgUnitId(String? orgUnitId) {
+    if (orgUnitId == null) {
+      throw ArgumentError.value(
+        orgUnitId,
+        'orgUnitId',
+        'is required when scopeType is org_unit',
+      );
+    }
+    return orgUnitId;
   }
 
   /// Encode the `metadata` jsonb payload as a JSON string. The

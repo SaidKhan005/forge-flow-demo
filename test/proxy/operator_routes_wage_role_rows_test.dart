@@ -45,18 +45,22 @@ void main() {
       }
     }
 
-    Future<({
-      HttpServer server,
-      HttpClient client,
-      Uri baseUri,
-      _RecordingWageGateway gateway,
-    })> spinUp({
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _RecordingWageGateway gateway,
+      })
+    >
+    spinUp({
       ProxyJwtClaims? initialClaims,
       bool routerConfigured = true,
       List<String> roles = const <String>['operator_owner'],
     }) async {
       final verifier = _SettableVerifier();
-      verifier.claims = initialClaims ??
+      verifier.claims =
+          initialClaims ??
           ProxyJwtClaims(
             userId: _kUserA,
             operatorId: _kOpA,
@@ -108,8 +112,9 @@ void main() {
         try {
           final response = await _http(
             client,
-            Uri.parse('http://${server.address.host}:${server.port}')
-                .resolve(wageRoleRowsPath),
+            Uri.parse(
+              'http://${server.address.host}:${server.port}',
+            ).resolve(wageRoleRowsPath),
             method: 'POST',
             authorization: 'Bearer fake.token',
             idempotencyKey: 'idem-401',
@@ -129,36 +134,33 @@ void main() {
       });
     });
 
-    test(
-      'POST 403 when actor lacks operator-write role (e.g., manager '
-      'without owner / admin)',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp(roles: const <String>['operator_member']);
-          try {
-            final response = await _http(
-              ctx.client,
-              ctx.baseUri.resolve(wageRoleRowsPath),
-              method: 'POST',
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-403',
-              body: const <String, Object?>{
-                'restaurant_id': 'rest-1',
-                'role_name': 'Server',
-                'labor_bucket': 'foh',
-                'hourly_rate': 18.5,
-                'weighted_hours': 30.0,
-              },
-            );
-            expect(response.statusCode, equals(403));
-            expect(ctx.gateway.upsertCalls, isEmpty);
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+    test('POST 403 when actor lacks operator-write role (e.g., manager '
+        'without owner / admin)', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(roles: const <String>['operator_member']);
+        try {
+          final response = await _http(
+            ctx.client,
+            ctx.baseUri.resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-403',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+            },
+          );
+          expect(response.statusCode, equals(403));
+          expect(ctx.gateway.upsertCalls, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test('POST 400 when Idempotency-Key is missing', () async {
       await withRealHttp(() async {
@@ -189,102 +191,132 @@ void main() {
       });
     });
 
-    test(
-      'POST round-trips and forwards JWT operator + location to the '
-      'gateway (not URL / body)',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp();
-          try {
-            final response = await _http(
-              ctx.client,
-              ctx.baseUri.resolve(wageRoleRowsPath),
-              method: 'POST',
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-001',
-              body: const <String, Object?>{
-                'restaurant_id': 'rest-1',
-                'role_name': 'Server',
-                'labor_bucket': 'foh',
-                'hourly_rate': 18.5,
-                'weighted_hours': 30.0,
-                'source': 'operator_manual',
-              },
-            );
-            expect(response.statusCode, equals(200));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['server_id'], equals(_kRowId));
-            expect(body['restaurant_id'], equals('rest-1'));
-            expect(body['role_name'], equals('Server'));
-            expect(body['labor_bucket'], equals('foh'));
-            expect(body['source'], equals('operator_manual'));
-            expect(ctx.gateway.upsertCalls, hasLength(1));
-            expect(
-              ctx.gateway.upsertCalls.single['operatorId'],
-              equals(_kOpA),
-            );
-            expect(
-              ctx.gateway.upsertCalls.single['locationId'],
-              equals(_kLoc),
-            );
-            expect(
-              ctx.gateway.upsertCalls.single['actorUserId'],
-              equals(_kUserA),
-            );
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+    test('POST round-trips and forwards JWT operator + location to the '
+        'gateway (not URL / body)', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _http(
+            ctx.client,
+            ctx.baseUri.resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-001',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+              'source': 'operator_manual',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['server_id'], equals(_kRowId));
+          expect(body['restaurant_id'], equals('rest-1'));
+          expect(body['role_name'], equals('Server'));
+          expect(body['labor_bucket'], equals('foh'));
+          expect(body['source'], equals('operator_manual'));
+          expect(body['scope_type'], equals('location'));
+          expect(ctx.gateway.upsertCalls, hasLength(1));
+          expect(ctx.gateway.upsertCalls.single['operatorId'], equals(_kOpA));
+          expect(ctx.gateway.upsertCalls.single['locationId'], equals(_kLoc));
+          expect(
+            ctx.gateway.upsertCalls.single['actorUserId'],
+            equals(_kUserA),
+          );
+          expect(
+            ctx.gateway.upsertCalls.single['scopeType'],
+            equals('location'),
+          );
+          expect(ctx.gateway.upsertCalls.single['orgUnitId'], isNull);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
-    test(
-      'POST idempotent replay returns the cached response — gateway '
-      'saw the call exactly once',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp();
-          try {
-            final first = await _http(
-              ctx.client,
-              ctx.baseUri.resolve(wageRoleRowsPath),
-              method: 'POST',
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-replay',
-              body: const <String, Object?>{
-                'restaurant_id': 'rest-1',
-                'role_name': 'Server',
-                'labor_bucket': 'foh',
-                'hourly_rate': 18.5,
-                'weighted_hours': 30.0,
-              },
-            );
-            final second = await _http(
-              ctx.client,
-              ctx.baseUri.resolve(wageRoleRowsPath),
-              method: 'POST',
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-replay',
-              body: const <String, Object?>{
-                'restaurant_id': 'rest-1',
-                'role_name': 'Server',
-                'labor_bucket': 'foh',
-                'hourly_rate': 18.5,
-                'weighted_hours': 30.0,
-              },
-            );
-            expect(first.statusCode, equals(200));
-            expect(second.statusCode, equals(200));
-            expect(first.body, equals(second.body));
-            expect(ctx.gateway.upsertCalls, hasLength(1));
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+    test('POST forwards org-unit hierarchy scope when supplied', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          const orgUnitId = '77777777-7777-7777-7777-777777777777';
+          final response = await _http(
+            ctx.client,
+            ctx.baseUri.resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-org-scope',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+              'scope_type': 'org_unit',
+              'org_unit_id': orgUnitId,
+            },
+          );
+
+          expect(response.statusCode, equals(200));
+          final call = ctx.gateway.upsertCalls.single;
+          expect(call['scopeType'], equals('org_unit'));
+          expect(call['orgUnitId'], equals(orgUnitId));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['scope_type'], equals('org_unit'));
+          expect(body['org_unit_id'], equals(orgUnitId));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('POST idempotent replay returns the cached response — gateway '
+        'saw the call exactly once', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final first = await _http(
+            ctx.client,
+            ctx.baseUri.resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-replay',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+            },
+          );
+          final second = await _http(
+            ctx.client,
+            ctx.baseUri.resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-replay',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+            },
+          );
+          expect(first.statusCode, equals(200));
+          expect(second.statusCode, equals(200));
+          expect(first.body, equals(second.body));
+          expect(ctx.gateway.upsertCalls, hasLength(1));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test(
       'POST 409 idempotency_key_conflict when same key + different body',
@@ -331,81 +363,80 @@ void main() {
       },
     );
 
-    test(
-      'cross-tenant: gateway always sees the JWT operator id, never '
-      'a value smuggled in via URL or body',
-      () async {
-        await withRealHttp(() async {
-          final verifier = _SettableVerifier();
-          final gateway = _RecordingWageGateway();
-          final guard = ProxyRequestGuard(verifier: verifier);
-          final router = WageRoleRowsRouter(gateway: gateway);
-          final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-          // ignore: unawaited_futures
-          server.listen((request) async {
-            await routeRequest(request, guard, wageRoleRowsRouter: router);
-          });
-          final client = HttpClient();
-          try {
-            // Operator A.
-            verifier.claims = const ProxyJwtClaims(
-              userId: _kUserA,
-              operatorId: _kOpA,
-              locationId: _kLoc,
-              roles: <String>['operator_owner'],
-            );
-            await _http(
-              client,
-              Uri.parse('http://${server.address.host}:${server.port}')
-                  .resolve(wageRoleRowsPath),
-              method: 'POST',
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-a',
-              body: const <String, Object?>{
-                'restaurant_id': 'rest-1',
-                'role_name': 'Server',
-                'labor_bucket': 'foh',
-                'hourly_rate': 18.5,
-                'weighted_hours': 30.0,
-                // Hostile payload claiming to be operator B — must be
-                // ignored, the JWT wins.
-                'operator_id': _kOpB,
-              },
-            );
-            // Operator B.
-            verifier.claims = const ProxyJwtClaims(
-              userId: _kUserB,
-              operatorId: _kOpB,
-              locationId: _kLoc,
-              roles: <String>['operator_owner'],
-            );
-            await _http(
-              client,
-              Uri.parse('http://${server.address.host}:${server.port}')
-                  .resolve(wageRoleRowsPath),
-              method: 'POST',
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-b',
-              body: const <String, Object?>{
-                'restaurant_id': 'rest-1',
-                'role_name': 'Server',
-                'labor_bucket': 'foh',
-                'hourly_rate': 18.5,
-                'weighted_hours': 30.0,
-              },
-            );
-            expect(gateway.upsertCalls, hasLength(2));
-            expect(gateway.upsertCalls[0]['operatorId'], equals(_kOpA));
-            expect(gateway.upsertCalls[0]['actorUserId'], equals(_kUserA));
-            expect(gateway.upsertCalls[1]['operatorId'], equals(_kOpB));
-            expect(gateway.upsertCalls[1]['actorUserId'], equals(_kUserB));
-          } finally {
-            client.close(force: true);
-            await server.close(force: true);
-          }
+    test('cross-tenant: gateway always sees the JWT operator id, never '
+        'a value smuggled in via URL or body', () async {
+      await withRealHttp(() async {
+        final verifier = _SettableVerifier();
+        final gateway = _RecordingWageGateway();
+        final guard = ProxyRequestGuard(verifier: verifier);
+        final router = WageRoleRowsRouter(gateway: gateway);
+        final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+        // ignore: unawaited_futures
+        server.listen((request) async {
+          await routeRequest(request, guard, wageRoleRowsRouter: router);
         });
-      },
-    );
+        final client = HttpClient();
+        try {
+          // Operator A.
+          verifier.claims = const ProxyJwtClaims(
+            userId: _kUserA,
+            operatorId: _kOpA,
+            locationId: _kLoc,
+            roles: <String>['operator_owner'],
+          );
+          await _http(
+            client,
+            Uri.parse(
+              'http://${server.address.host}:${server.port}',
+            ).resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-a',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+              // Hostile payload claiming to be operator B — must be
+              // ignored, the JWT wins.
+              'operator_id': _kOpB,
+            },
+          );
+          // Operator B.
+          verifier.claims = const ProxyJwtClaims(
+            userId: _kUserB,
+            operatorId: _kOpB,
+            locationId: _kLoc,
+            roles: <String>['operator_owner'],
+          );
+          await _http(
+            client,
+            Uri.parse(
+              'http://${server.address.host}:${server.port}',
+            ).resolve(wageRoleRowsPath),
+            method: 'POST',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-b',
+            body: const <String, Object?>{
+              'restaurant_id': 'rest-1',
+              'role_name': 'Server',
+              'labor_bucket': 'foh',
+              'hourly_rate': 18.5,
+              'weighted_hours': 30.0,
+            },
+          );
+          expect(gateway.upsertCalls, hasLength(2));
+          expect(gateway.upsertCalls[0]['operatorId'], equals(_kOpA));
+          expect(gateway.upsertCalls[0]['actorUserId'], equals(_kUserA));
+          expect(gateway.upsertCalls[1]['operatorId'], equals(_kOpB));
+          expect(gateway.upsertCalls[1]['actorUserId'], equals(_kUserB));
+        } finally {
+          client.close(force: true);
+          await server.close(force: true);
+        }
+      });
+    });
 
     test('POST 400 invalid_labor_bucket on unsupported bucket', () async {
       await withRealHttp(() async {
@@ -466,42 +497,64 @@ void main() {
       },
     );
 
+    test('DELETE soft-deletes by UUID and returns removed=true; gateway '
+        'sees JWT operator + location', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          ctx.gateway.softDeleteAffected = true;
+          final response = await _http(
+            ctx.client,
+            ctx.baseUri.resolve('$wageRoleRowsPrefix$_kRowId'),
+            method: 'DELETE',
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-del',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['removed'], isTrue);
+          expect(body['wage_role_row_id'], equals(_kRowId));
+          expect(ctx.gateway.softDeleteCalls, hasLength(1));
+          expect(
+            ctx.gateway.softDeleteCalls.single['operatorId'],
+            equals(_kOpA),
+          );
+          expect(
+            ctx.gateway.softDeleteCalls.single['locationId'],
+            equals(_kLoc),
+          );
+          expect(
+            ctx.gateway.softDeleteCalls.single['wageRoleRowId'],
+            equals(_kRowId),
+          );
+          expect(
+            ctx.gateway.softDeleteCalls.single['actorUserId'],
+            equals(_kUserA),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test(
-      'DELETE soft-deletes by UUID and returns removed=true; gateway '
-      'sees JWT operator + location',
+      'DELETE 400 invalid_wage_role_row_id when path is not a UUID',
       () async {
         await withRealHttp(() async {
           final ctx = await spinUp();
           try {
-            ctx.gateway.softDeleteAffected = true;
             final response = await _http(
               ctx.client,
-              ctx.baseUri.resolve('$wageRoleRowsPrefix$_kRowId'),
+              ctx.baseUri.resolve('${wageRoleRowsPrefix}not-a-uuid'),
               method: 'DELETE',
               authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-del',
+              idempotencyKey: 'idem-bad-id',
             );
-            expect(response.statusCode, equals(200));
+            expect(response.statusCode, equals(400));
             final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['removed'], isTrue);
-            expect(body['wage_role_row_id'], equals(_kRowId));
-            expect(ctx.gateway.softDeleteCalls, hasLength(1));
-            expect(
-              ctx.gateway.softDeleteCalls.single['operatorId'],
-              equals(_kOpA),
-            );
-            expect(
-              ctx.gateway.softDeleteCalls.single['locationId'],
-              equals(_kLoc),
-            );
-            expect(
-              ctx.gateway.softDeleteCalls.single['wageRoleRowId'],
-              equals(_kRowId),
-            );
-            expect(
-              ctx.gateway.softDeleteCalls.single['actorUserId'],
-              equals(_kUserA),
-            );
+            expect(body['error'], equals('invalid_wage_role_row_id'));
+            expect(ctx.gateway.softDeleteCalls, isEmpty);
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -509,29 +562,6 @@ void main() {
         });
       },
     );
-
-    test('DELETE 400 invalid_wage_role_row_id when path is not a UUID',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final response = await _http(
-            ctx.client,
-            ctx.baseUri.resolve('${wageRoleRowsPrefix}not-a-uuid'),
-            method: 'DELETE',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-bad-id',
-          );
-          expect(response.statusCode, equals(400));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['error'], equals('invalid_wage_role_row_id'));
-          expect(ctx.gateway.softDeleteCalls, isEmpty);
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
 
     test('503 when router is not configured', () async {
       await withRealHttp(() async {
@@ -553,10 +583,7 @@ void main() {
           );
           expect(response.statusCode, equals(503));
           final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(
-            body['error'],
-            equals('wage_role_rows_router_not_configured'),
-          );
+          expect(body['error'], equals('wage_role_rows_router_not_configured'));
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -603,6 +630,8 @@ class _RecordingWageGateway implements WageRoleRowsGateway {
     bool isActive = true,
     Map<String, Object?> metadata = const <String, Object?>{},
     String? actorUserId,
+    String scopeType = 'location',
+    String? orgUnitId,
   }) async {
     upsertCalls.add(<String, Object?>{
       'operatorId': operatorId,
@@ -619,6 +648,8 @@ class _RecordingWageGateway implements WageRoleRowsGateway {
       'isActive': isActive,
       'metadata': metadata,
       'actorUserId': actorUserId,
+      'scopeType': scopeType,
+      'orgUnitId': orgUnitId,
     });
     return WageRoleRowRecord(
       wageRoleRowId: _kRowId,
@@ -639,6 +670,8 @@ class _RecordingWageGateway implements WageRoleRowsGateway {
       createdAt: DateTime.utc(2026, 5, 7, 12),
       updatedAt: DateTime.utc(2026, 5, 7, 12),
       updatedBy: actorUserId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
     );
   }
 

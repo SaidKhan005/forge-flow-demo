@@ -44,6 +44,7 @@ import '../widgets/covers_historical_seed_card.dart';
 import '../widgets/covers_manual_entry_card.dart';
 import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
+import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
@@ -130,6 +131,9 @@ class DataAccuracyScreen extends StatefulWidget {
     this.tierEmailIdempotencyKeyFactory,
     this.wageAuthorityGateway,
     this.wageAuthorityIdempotencyKeyFactory,
+    this.hierarchyNodes = const <HierarchyMapNode>[],
+    this.ancestorOrgUnitIdsNearestFirst = const <String>[],
+    this.businessName,
     this.servicePeriodsLoader,
   });
 
@@ -197,6 +201,12 @@ class DataAccuracyScreen extends StatefulWidget {
   /// embedded [WageAuthoritySection]. Production wires the live
   /// random-bytes generator; tests pass a deterministic counter.
   final String Function()? wageAuthorityIdempotencyKeyFactory;
+
+  /// Operator hierarchy passed through to the embedded Wage Authority
+  /// section so scope inheritance stays visible inside Data Accuracy.
+  final List<HierarchyMapNode> hierarchyNodes;
+  final List<String> ancestorOrgUnitIdsNearestFirst;
+  final String? businessName;
 
   /// Per-Daypart V1 Slice R5 (Gap 27/36): resolves the operator's
   /// configured service periods so the covers cards iterate the real
@@ -990,6 +1000,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               locationName: locationLabel,
               gateway: widget.wageAuthorityGateway,
               idempotencyKeyFactory: widget.wageAuthorityIdempotencyKeyFactory,
+              hierarchyNodes: widget.hierarchyNodes,
+              ancestorOrgUnitIdsNearestFirst:
+                  widget.ancestorOrgUnitIdsNearestFirst,
+              businessName: widget.businessName,
               showHeader: false,
             ),
           ),
