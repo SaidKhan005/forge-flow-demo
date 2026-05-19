@@ -107,7 +107,7 @@ Verdict: **ALIGNED** (self-consistent), 1 STALE-CITATION. 0 DRIFT.
 | Postgres per-statement 5s / acquire 10s timeouts; acquire fail-closed exit 78 | ALIGNED | 98-99 | `lib/infrastructure/persistence/postgres/postgres_executor.dart:56-57` (`kPostgresPerStatementTimeout=5s`, `kPostgresAcquireConnectionTimeout=10s`) | none |
 | Voyage / Secret Manager per-call timeout constants NOT landed this slice | ALIGNED (self-disclosed) | 3-7 | Confirmed absent; the contract's own status banner pre-discloses this exact gap | none |
 | KMS startup: prod missing GCP vars → `startup.kms_misconfigured` ERROR + exit 78; non-prod → `startup.kms_stub_active` WARN; replace silent stub at `proxy_bootstrap.dart:2650` | ALIGNED rule / **STALE-CITATION** on the `:2650` pointer | 117-131 | KMS gating implemented at `proxy_bootstrap.dart:9360-9397` (`startup.kms_misconfigured`/`startup.kms_stub_active`, `kms_real_provider_enabled`); the doc's "`:2650`" pointer is obsolete | Refresh the `proxy_bootstrap.dart:2650` line reference |
-| Rollback runbook `docs/runbooks/proxy_rollback_runbook.md` with 6 sections, ≤200 lines | ALIGNED | 139-158 | File present, all 6 numbered sections, 183 lines (≤200) | none |
+| Rollback runbook `runbooks/proxy_rollback_runbook.md` with 6 sections, ≤200 lines | ALIGNED | 139-158 | File present, all 6 numbered sections, 183 lines (≤200) | none |
 
 Detail: The contract is internally honest about the Voyage/SM timeout
 gap (status banner), so that is not drift. KMS behavior and Postgres

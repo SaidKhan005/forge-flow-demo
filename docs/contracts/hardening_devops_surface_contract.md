@@ -85,7 +85,7 @@ New files under `tool/mfa_removal_worker/`:
 - Step gated on `flutter analyze --fatal-infos` and the focused MFA test files
   listed in `tool/mfa_removal_worker/cloudbuild.yaml`.
 
-`README.md` (or runbook addition under `docs/runbooks/`):
+`README.md` (or runbook addition under `runbooks/`):
 
 - Cloud Run Job spec: image, region (`northamerica-northeast2` by default),
   min/max retries, parallelism, timeout (5 min), and static egress when the

@@ -7,7 +7,7 @@
 #
 # Platform: Google Cloud Monitoring (formerly Stackdriver).
 # Notification channel: PagerDuty (channel named "forgeflow-pagerduty").
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md
+# Runbook: runbooks/cutover_4_stabilization_runbook.md
 # Authority: docs/contracts/v1_launch_slos.md
 ---
 apiVersion: monitoring.googleapis.com/v3
@@ -19,7 +19,7 @@ metadata:
     severity: P1
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#postgres-connection-storm
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md#postgres-connection-storm
     forge-flow.dev/slo: docs/contracts/v1_launch_slos.md
 spec:
   displayName: "[P1] Postgres Connection Pool Saturation > 80%"
@@ -33,7 +33,7 @@ spec:
       3. If a vendor adapter has a stuck connection, see the "vendor adapter wedged" playbook in cutover_4_stabilization_runbook.md.
       4. If total connections approaching pg_settings max_connections, trigger emergency scale-down of low-priority Cloud Run services.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#postgres-connection-storm
+      Runbook: runbooks/cutover_4_stabilization_runbook.md#postgres-connection-storm
     mimeType: text/markdown
   conditions:
     - displayName: Pool saturation > 80% for 5 min

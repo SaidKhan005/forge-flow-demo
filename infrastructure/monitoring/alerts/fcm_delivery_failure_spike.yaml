@@ -9,7 +9,7 @@
 # Platform: Google Cloud Monitoring.
 # Severity: P2.
 # Notification channel: PagerDuty.
-# Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation
+# Runbook: runbooks/cutover_4_stabilization_runbook.md#fcm-mass-revocation
 ---
 apiVersion: monitoring.googleapis.com/v3
 kind: AlertPolicy
@@ -20,7 +20,7 @@ metadata:
     severity: P2
     phase: v1-launch
   annotations:
-    forge-flow.dev/runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation
+    forge-flow.dev/runbook: runbooks/cutover_4_stabilization_runbook.md#fcm-mass-revocation
 spec:
   displayName: "[P2] FCM Delivery Success Rate < 90% in 1h"
   documentation:
@@ -39,7 +39,7 @@ spec:
       3. If FCM service is down: enable in-app polling fallback; notify affected operators.
       4. Confirm FIREBASE_PROJECT_ID env var is set correctly on the proxy.
 
-      Runbook: runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md#fcm-mass-revocation
+      Runbook: runbooks/cutover_4_stabilization_runbook.md#fcm-mass-revocation
     mimeType: text/markdown
   conditions:
     - displayName: FCM success rate < 90% over 1h

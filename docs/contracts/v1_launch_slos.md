@@ -5,7 +5,7 @@ Owner: F&F engineering.
 Updated: 2026-05-07.
 Alert implementations: `infrastructure/monitoring/alerts/`
 On-call: `runbooks/on_call_rotation.md`
-Stabilization: `runbooks/phase_production_cutover/cutover_4_stabilization_runbook.md`
+Stabilization: `runbooks/cutover_4_stabilization_runbook.md`
 
 ## Measurement Window
 

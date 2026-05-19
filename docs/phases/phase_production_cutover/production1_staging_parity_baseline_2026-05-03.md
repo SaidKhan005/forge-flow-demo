@@ -151,5 +151,5 @@ each new staging runtime feature, update:
 
 - this baseline,
 - `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`,
-- the relevant runbook under `runbooks/` or `docs/runbooks/`,
+- the relevant runbook under `runbooks/`,
 - `PROJECT_TRACKER.md` if it changes cutover ordering or gates.

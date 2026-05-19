@@ -29,7 +29,7 @@ Handoff between:
   client initialization.
 - `lib/infrastructure/persistence/postgres/` — Postgres client timeouts.
 - `lib/services/auth/password_change_gateway.dart` — HIBP fetch timeout.
-- `docs/runbooks/proxy_rollback_runbook.md` — new file.
+- `runbooks/proxy_rollback_runbook.md` — new file.
 
 Disagreement rule: this contract wins for log shape, correlation ID
 header name, timeout values, and KMS startup behavior.
@@ -137,7 +137,7 @@ needed; this contract owns the KMS-specific check.
 
 ## Required — Rollback Runbook
 
-New file: `docs/runbooks/proxy_rollback_runbook.md`. Required sections:
+New file: `runbooks/proxy_rollback_runbook.md`. Required sections:
 
 1. **When to rollback** — symptom triage (5xx spike, audit-chain hash
    mismatch, breaker-open sustained, login lockout false positives).
@@ -179,7 +179,7 @@ it does not duplicate code.
 - Tests asserting timeouts fire on simulated slow Postgres/Firebase/HIBP
   (mock with `Future.delayed`).
 - `dart analyze --fatal-infos`.
-- Runbook exists at `docs/runbooks/proxy_rollback_runbook.md` and links
+- Runbook exists at `runbooks/proxy_rollback_runbook.md` and links
   resolve.
 
 ## Codex Acceptance
@@ -192,6 +192,6 @@ it does not duplicate code.
 - [ ] `PROXY_ENVIRONMENT=prod` + missing GCP vars + KMS flag enabled →
       exit 78 with correct event.
 - [ ] Sensitive fields never appear in any log line (test asserts).
-- [ ] `docs/runbooks/proxy_rollback_runbook.md` exists with all six
+- [ ] `runbooks/proxy_rollback_runbook.md` exists with all six
       sections.
 - [ ] All listed tests pass; `dart analyze --fatal-infos` clean.
