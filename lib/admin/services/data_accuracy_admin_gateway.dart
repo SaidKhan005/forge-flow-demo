@@ -176,10 +176,23 @@ class DataAccuracyAdminRow {
   const DataAccuracyAdminRow({
     required this.operatorRef,
     required this.settings,
+    this.servicePeriodSettings = const <DataAccuracyServicePeriodSetting>[],
   });
 
   final OperatorLocationRef operatorRef;
   final DataAccuracySettings settings;
+  final List<DataAccuracyServicePeriodSetting> servicePeriodSettings;
+
+  DataAccuracyAdminRow copyWith({
+    List<DataAccuracyServicePeriodSetting>? servicePeriodSettings,
+  }) {
+    return DataAccuracyAdminRow(
+      operatorRef: operatorRef,
+      settings: settings,
+      servicePeriodSettings:
+          servicePeriodSettings ?? this.servicePeriodSettings,
+    );
+  }
 }
 
 /// Tab 2 → Card 1 - F&F-engineering tier preset.
@@ -1021,9 +1034,17 @@ class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
 }
 
 DataAccuracyAdminRow _dataAccuracyRowFromJson(Map<String, Object?> json) {
+  final serviceRows =
+      (json['service_period_settings'] as List?) ??
+      (json['data_accuracy_service_period_settings'] as List?) ??
+      const [];
   return DataAccuracyAdminRow(
     operatorRef: _operatorRefFromJson(_asMap(json['operator_ref'])),
     settings: _settingsFromJson(_asMap(json['settings'])),
+    servicePeriodSettings: <DataAccuracyServicePeriodSetting>[
+      for (final row in serviceRows)
+        _servicePeriodSettingFromJson((row as Map).cast<String, Object?>()),
+    ],
   );
 }
 
@@ -1433,6 +1454,11 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         DataAccuracyAdminRow(
           operatorRef: ref,
           settings: _readSettings(ref.operatorId, ref.locationId),
+          servicePeriodSettings:
+              List<DataAccuracyServicePeriodSetting>.unmodifiable(
+                _servicePeriodSettings[_key(ref.operatorId, ref.locationId)] ??
+                    const <DataAccuracyServicePeriodSetting>[],
+              ),
         ),
     ];
   }
@@ -1546,7 +1572,15 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         reasonNote: reasonNote,
       );
     }
-    return DataAccuracyAdminRow(operatorRef: ref, settings: next);
+    return DataAccuracyAdminRow(
+      operatorRef: ref,
+      settings: next,
+      servicePeriodSettings:
+          List<DataAccuracyServicePeriodSetting>.unmodifiable(
+            _servicePeriodSettings[_key(operatorId, locationId)] ??
+                const <DataAccuracyServicePeriodSetting>[],
+          ),
+    );
   }
 
   @override

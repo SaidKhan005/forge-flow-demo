@@ -186,6 +186,104 @@ void main() {
       },
     );
 
+    test('GET service-period settings reads keyed admin rows', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(customGateway: gateway);
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$adminDataAccuracyServicePeriodSettingsPrefix'
+              'op-1/loc-1',
+            ),
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.servicePeriodListCalls, equals(1));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final rows =
+              body['data_accuracy_service_period_settings'] as List<Object?>;
+          expect(rows, hasLength(1));
+          final row = rows.single as Map<String, Object?>;
+          expect(row['service_period_key'], equals('breakfast'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH service-period settings writes keyed admin row', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(customGateway: gateway);
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '$adminDataAccuracyServicePeriodSettingsPrefix'
+              'op-1/loc-1',
+            ),
+            body: const <String, Object?>{
+              'service_period_key': 'breakfast',
+              'covers_source': 'manual',
+              'wage_source': 'target_substitution',
+              'effective_at_business_date': '2026-06-01',
+              'reason_note': 'Breakfast is now manual for launch week',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.servicePeriodOverrideCalls, equals(1));
+          expect(gateway.lastServicePeriodKey, equals('breakfast'));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final row = body['data'] as Map<String, Object?>;
+          expect(row['covers_source'], equals('manual'));
+          expect(row['wage_source'], equals('target_substitution'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH service-period settings rejects ff_support callers', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_support',
+            operatorId: null,
+            locationId: null,
+            roles: <String>['ff_support'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '$adminDataAccuracyServicePeriodSettingsPrefix'
+              'op-1/loc-1',
+            ),
+            body: const <String, Object?>{
+              'service_period_key': 'breakfast',
+              'covers_source': 'manual',
+              'wage_source': 'target_substitution',
+              'effective_at_business_date': '2026-06-01',
+              'reason_note': 'support cannot write',
+            },
+          );
+          expect(response.statusCode, equals(403));
+          expect(gateway.servicePeriodOverrideCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test(
       'PUT scoped polling assignment writes through selected hierarchy scope',
       () async {
@@ -265,9 +363,12 @@ class _SettableVerifier implements ProxyJwtVerifier {
 class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastActorUserId;
   String? lastScopeType;
+  String? lastServicePeriodKey;
   int assignTierCalls = 0;
   int scopeOverrideCalls = 0;
   int scopeAssignCalls = 0;
+  int servicePeriodListCalls = 0;
+  int servicePeriodOverrideCalls = 0;
 
   @override
   Future<List<Map<String, Object?>>> listDataAccuracyRows({
@@ -332,6 +433,45 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
       'affected_location_count': 0,
       'rows': const <Map<String, Object?>>[],
     };
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listDataAccuracyServicePeriodRows({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    servicePeriodListCalls += 1;
+    return <Map<String, Object?>>[
+      _servicePeriodRow(operatorId: operatorId, locationId: locationId),
+    ];
+  }
+
+  @override
+  Future<Map<String, Object?>> overrideDataAccuracyServicePeriod({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String coversSource,
+    required String wageSource,
+    required String effectiveAtBusinessDate,
+    required String reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastServicePeriodKey = servicePeriodKey;
+    servicePeriodOverrideCalls += 1;
+    return _servicePeriodRow(
+      operatorId: operatorId,
+      locationId: locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      wageSource: wageSource,
+      effectiveAtBusinessDate: effectiveAtBusinessDate,
+    );
   }
 
   @override
@@ -482,6 +622,28 @@ Future<_HttpResponseData> _httpJson(
   final raw = await request.close();
   final responseBody = await utf8.decodeStream(raw);
   return _HttpResponseData(raw.statusCode, responseBody);
+}
+
+Map<String, Object?> _servicePeriodRow({
+  required String operatorId,
+  required String locationId,
+  String servicePeriodKey = 'breakfast',
+  String coversSource = 'vendor',
+  String wageSource = 'vendor_per_employee',
+  String effectiveAtBusinessDate = '2026-06-01',
+}) {
+  return <String, Object?>{
+    'id': 'sp-$servicePeriodKey',
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'service_period_key': servicePeriodKey,
+    'covers_source': coversSource,
+    'wage_source': wageSource,
+    'effective_at_business_date': effectiveAtBusinessDate,
+    'created_at': '2026-05-01T00:00:00.000Z',
+    'updated_at': '2026-05-01T00:00:00.000Z',
+    'updated_by': 'user_admin',
+  };
 }
 
 class _HttpResponseData {

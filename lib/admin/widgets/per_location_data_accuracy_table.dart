@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
 import '../admin_button_styles.dart';
@@ -79,15 +80,9 @@ class _PerLocationDataAccuracyTableState
   }
 
   static String _coversSummary(DataAccuracyAdminRow row) {
-    final s = row.settings;
-    // Per-Daypart V1 Slice R5 (Gap 27/36): covers source is keyed by
-    // service period. This admin summary keeps the legacy 3-daypart
-    // shape (the admin-hierarchy per-period table is a scoped
-    // follow-up); each lookup resolves to the vendor default when the
-    // period has no keyed row.
-    return '${_coversLabel(s.coversSourceFor('lunch'))} / '
-        '${_coversLabel(s.coversSourceFor('dinner'))} / '
-        '${_coversLabel(s.coversSourceFor('late_night'))}';
+    return _coversFacts(
+      row,
+    ).map((fact) => '${fact.label}: ${fact.value}').join(' / ');
   }
 
   @override
@@ -155,10 +150,7 @@ class _PerLocationDataAccuracyTableState
     final filter = _effectiveVendorSourceFilter;
     if (filter == null || filter.isEmpty) return true;
     final settings = row.settings;
-    final coversUsesVendor =
-        settings.coversSourceFor('lunch') == CoversSource.vendor ||
-        settings.coversSourceFor('dinner') == CoversSource.vendor ||
-        settings.coversSourceFor('late_night') == CoversSource.vendor;
+    final coversUsesVendor = _coversUsesVendor(row);
     final wageUsesVendor = settings.wageSource == WageSource.vendor;
     switch (filter) {
       case 'vendor_any':
@@ -176,17 +168,7 @@ class _PerLocationDataAccuracyTableState
   Widget _buildSummaryRow(DataAccuracyAdminRow row) {
     final updatedBy = _updatedByLabel(row.settings.updatedBy);
     final updatedAt = _modifiedAtLabel(row);
-    final covers = <_MiniFact>[
-      _MiniFact('Lunch', _coversLabel(row.settings.coversSourceFor('lunch'))),
-      _MiniFact(
-        'Dinner',
-        _coversLabel(row.settings.coversSourceFor('dinner')),
-      ),
-      _MiniFact(
-        'Late night',
-        _coversLabel(row.settings.coversSourceFor('late_night')),
-      ),
-    ];
+    final covers = _coversFacts(row);
     final metadata = <_MiniFact>[
       _MiniFact('Wage source', _wageLabel(row.settings.wageSource)),
       _MiniFact('Walk-ins', _walkInLabel(row.settings.walkInHandlingMode)),
@@ -303,6 +285,81 @@ class _PerLocationDataAccuracyTableState
       case CoversSource.manual:
         return 'Manual';
     }
+  }
+
+  static List<_MiniFact> _coversFacts(DataAccuracyAdminRow row) {
+    final servicePeriodRows = row.servicePeriodSettings;
+    if (servicePeriodRows.isNotEmpty) {
+      return <_MiniFact>[
+        for (final period in servicePeriodRows)
+          _MiniFact(
+            _servicePeriodLabel(period.servicePeriodKey),
+            _servicePeriodCoversLabel(period.coversSource),
+          ),
+      ];
+    }
+
+    final keyed = row.settings.coversSourcePerServicePeriod;
+    if (keyed.isNotEmpty) {
+      final entries = keyed.entries.toList(growable: false)
+        ..sort((a, b) => a.key.compareTo(b.key));
+      return <_MiniFact>[
+        for (final entry in entries)
+          _MiniFact(_servicePeriodLabel(entry.key), _coversLabel(entry.value)),
+      ];
+    }
+
+    return <_MiniFact>[
+      _MiniFact('Lunch', _coversLabel(row.settings.coversSourceFor('lunch'))),
+      _MiniFact('Dinner', _coversLabel(row.settings.coversSourceFor('dinner'))),
+      _MiniFact(
+        'Late night',
+        _coversLabel(row.settings.coversSourceFor('late_night')),
+      ),
+    ];
+  }
+
+  static bool _coversUsesVendor(DataAccuracyAdminRow row) {
+    final servicePeriodRows = row.servicePeriodSettings;
+    if (servicePeriodRows.isNotEmpty) {
+      return servicePeriodRows.any(
+        (period) => period.coversSource == ServicePeriodCoversSource.vendor,
+      );
+    }
+
+    final keyed = row.settings.coversSourcePerServicePeriod;
+    if (keyed.isNotEmpty) {
+      return keyed.values.any((source) => source == CoversSource.vendor);
+    }
+
+    return row.settings.coversSourceFor('lunch') == CoversSource.vendor ||
+        row.settings.coversSourceFor('dinner') == CoversSource.vendor ||
+        row.settings.coversSourceFor('late_night') == CoversSource.vendor;
+  }
+
+  static String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {
+    switch (source) {
+      case ServicePeriodCoversSource.vendor:
+        return 'Vendor';
+      case ServicePeriodCoversSource.forecast:
+        return 'Forecast';
+      case ServicePeriodCoversSource.manual:
+        return 'Manual';
+      case ServicePeriodCoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
+    }
+  }
+
+  static String _servicePeriodLabel(String key) {
+    return key
+        .split('_')
+        .where((part) => part.isNotEmpty)
+        .map(
+          (part) => part.length == 1
+              ? part.toUpperCase()
+              : '${part[0].toUpperCase()}${part.substring(1)}',
+        )
+        .join(' ');
   }
 
   static String _modifiedAtLabel(DataAccuracyAdminRow row) {

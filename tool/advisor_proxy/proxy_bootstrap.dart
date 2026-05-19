@@ -5250,6 +5250,151 @@ class RepositoryDataAccuracyAdminProxyGateway
   }
 
   @override
+  Future<List<Map<String, Object?>>> listDataAccuracyServicePeriodRows({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 404,
+          code: 'unknown_operator_location',
+          message: 'operator/location pair not found',
+        );
+      }
+      final rows = await exec.query(
+        'select id::text as id, operator_id::text as operator_id, '
+        'location_id::text as location_id, service_period_key, '
+        'covers_source, wage_source, '
+        'effective_at_business_date::text as effective_at_business_date, '
+        'created_at, updated_at, updated_by '
+        'from public.data_accuracy_service_period_settings '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'order by service_period_key asc, effective_at_business_date desc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.data_accuracy.service_period.list',
+        adminReason: adminReason,
+        payload: <String, Object?>{'row_count': rows.length},
+      );
+      return <Map<String, Object?>>[
+        for (final row in rows) _servicePeriodSettingJson(row),
+      ];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>> overrideDataAccuracyServicePeriod({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String coversSource,
+    required String wageSource,
+    required String effectiveAtBusinessDate,
+    required String reasonNote,
+    required String adminReason,
+  }) {
+    _validateServicePeriodKey(servicePeriodKey);
+    _validateServicePeriodCoversSource(coversSource);
+    _validateServicePeriodWageSource(wageSource);
+    _validateBusinessDate(effectiveAtBusinessDate);
+    if (reasonNote.trim().isEmpty) {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'reason_note_required',
+        message: 'reason_note is required for service-period overrides',
+      );
+    }
+    return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 404,
+          code: 'unknown_operator_location',
+          message: 'operator/location pair not found',
+        );
+      }
+      final before = await _currentServicePeriodSetting(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        servicePeriodKey: servicePeriodKey,
+        effectiveAtBusinessDate: effectiveAtBusinessDate,
+      );
+      final rows = await exec.query(
+        'insert into public.data_accuracy_service_period_settings ('
+        'operator_id, location_id, service_period_key, covers_source, '
+        'wage_source, effective_at_business_date, updated_by) values ('
+        '@operator_id::uuid, @location_id::uuid, @service_period_key, '
+        '@covers_source, @wage_source, '
+        '@effective_at_business_date::date, @updated_by) '
+        'on conflict (operator_id, location_id, service_period_key, '
+        'effective_at_business_date) do update set '
+        'covers_source = excluded.covers_source, '
+        'wage_source = excluded.wage_source, '
+        'updated_at = now(), updated_by = excluded.updated_by '
+        'returning id::text as id, operator_id::text as operator_id, '
+        'location_id::text as location_id, service_period_key, '
+        'covers_source, wage_source, '
+        'effective_at_business_date::text as effective_at_business_date, '
+        'created_at, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'service_period_key': servicePeriodKey,
+          'covers_source': coversSource,
+          'wage_source': wageSource,
+          'effective_at_business_date': effectiveAtBusinessDate,
+          'updated_by': actorUserId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 503,
+          code: 'data_accuracy_service_period_write_failed',
+          message: 'data accuracy service-period write returned no row',
+        );
+      }
+      final after = _servicePeriodSettingJson(rows.single);
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.data_accuracy.service_period_override',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': _servicePeriodSettingDiff(before, after),
+          'reason_note': reasonNote.trim(),
+          'admin_reason': adminReason,
+        },
+      );
+      return after;
+    }, reason: adminReason);
+  }
+
+  @override
   Future<List<Map<String, Object?>>> listTierDefinitions({
     required String actorUserId,
     required String adminReason,
@@ -5696,6 +5841,36 @@ class RepositoryDataAccuracyAdminProxyGateway
     return _settingsJson(rows.single);
   }
 
+  Future<Map<String, Object?>?> _currentServicePeriodSetting(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String effectiveAtBusinessDate,
+  }) async {
+    final rows = await exec.query(
+      'select id::text as id, operator_id::text as operator_id, '
+      'location_id::text as location_id, service_period_key, '
+      'covers_source, wage_source, '
+      'effective_at_business_date::text as effective_at_business_date, '
+      'created_at, updated_at, updated_by '
+      'from public.data_accuracy_service_period_settings '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and service_period_key = @service_period_key '
+      'and effective_at_business_date = @effective_at_business_date::date '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'service_period_key': servicePeriodKey,
+        'effective_at_business_date': effectiveAtBusinessDate,
+      },
+    );
+    if (rows.isEmpty) return null;
+    return _servicePeriodSettingJson(rows.single);
+  }
+
   Future<Map<String, Object?>?> _currentTierAssignment(
     PostgresExecutor exec, {
     required String operatorId,
@@ -5915,6 +6090,27 @@ class RepositoryDataAccuracyAdminProxyGateway
     return <String, Object?>{
       'operator_ref': _operatorRefJson(row),
       'settings': _settingsJson(row),
+    };
+  }
+
+  static Map<String, Object?> _servicePeriodSettingJson(
+    Map<String, Object?> row,
+  ) {
+    return <String, Object?>{
+      'id': row['id'],
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'service_period_key': row['service_period_key'],
+      'covers_source': row['covers_source'],
+      'wage_source': row['wage_source'],
+      'effective_at_business_date': _dateOnlyJson(
+        row['effective_at_business_date'],
+      ),
+      'created_at':
+          _dateJson(row['created_at']) ?? DateTime.utc(1970).toIso8601String(),
+      'updated_at':
+          _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
+      'updated_by': row['updated_by'],
     };
   }
 
@@ -6162,6 +6358,26 @@ class RepositoryDataAccuracyAdminProxyGateway
     return diff;
   }
 
+  static Map<String, Object?> _servicePeriodSettingDiff(
+    Map<String, Object?>? before,
+    Map<String, Object?> after,
+  ) {
+    final diff = <String, Object?>{
+      'service_period_key': after['service_period_key'],
+      'effective_at_business_date': after['effective_at_business_date'],
+    };
+    void changed(String key) {
+      final from = before?[key];
+      final to = after[key];
+      if (from == to) return;
+      diff[key] = <String, Object?>{if (before != null) 'from': from, 'to': to};
+    }
+
+    changed('covers_source');
+    changed('wage_source');
+    return diff;
+  }
+
   static Map<String, Object?> _jsonMap(Object? value) {
     if (value is Map<String, Object?>) return value;
     if (value is Map) return Map<String, Object?>.from(value);
@@ -6189,6 +6405,19 @@ class RepositoryDataAccuracyAdminProxyGateway
     if (value is DateTime) return value.toUtc().toIso8601String();
     if (value is String && value.isNotEmpty) {
       return DateTime.parse(value).toUtc().toIso8601String();
+    }
+    return null;
+  }
+
+  static String? _dateOnlyJson(Object? value) {
+    if (value is DateTime) {
+      final utc = value.toUtc();
+      return '${utc.year.toString().padLeft(4, '0')}-'
+          '${utc.month.toString().padLeft(2, '0')}-'
+          '${utc.day.toString().padLeft(2, '0')}';
+    }
+    if (value is String && value.isNotEmpty) {
+      return value.length >= 10 ? value.substring(0, 10) : value;
     }
     return null;
   }
@@ -6233,6 +6462,59 @@ class RepositoryDataAccuracyAdminProxyGateway
             'walk_ins_tracked_separately',
       );
     }
+  }
+
+  static void _validateServicePeriodKey(String value) {
+    if (RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(value)) return;
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_service_period_key',
+      message:
+          'service_period_key must start with a lowercase letter and contain only lowercase letters, numbers, or underscores',
+    );
+  }
+
+  static void _validateServicePeriodCoversSource(String value) {
+    if (const <String>{
+      'vendor',
+      'forecast',
+      'manual',
+      'reservation_plus_walkin',
+    }.contains(value)) {
+      return;
+    }
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_covers_source',
+      message:
+          'covers_source must be vendor, forecast, manual, or reservation_plus_walkin',
+    );
+  }
+
+  static void _validateServicePeriodWageSource(String value) {
+    if (const <String>{
+      'vendor_per_employee',
+      'vendor_per_position',
+      'target_substitution',
+      'manual_mix',
+    }.contains(value)) {
+      return;
+    }
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_wage_source',
+      message:
+          'wage_source must be vendor_per_employee, vendor_per_position, target_substitution, or manual_mix',
+    );
+  }
+
+  static void _validateBusinessDate(String value) {
+    if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(value)) return;
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_effective_at_business_date',
+      message: 'effective_at_business_date must be a YYYY-MM-DD business date',
+    );
   }
 
   static void _validateScopePayload({

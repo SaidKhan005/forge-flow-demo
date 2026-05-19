@@ -7349,6 +7349,10 @@ const String adminDataAccuracyRowsPath = '/v1/admin/data-accuracy/rows';
 const String adminDataAccuracySettingsPath = '/v1/admin/data-accuracy/settings';
 const String adminDataAccuracySettingsPrefix =
     '$adminDataAccuracySettingsPath/';
+const String adminDataAccuracyServicePeriodSettingsPath =
+    '/v1/admin/data-accuracy/service-period-settings';
+const String adminDataAccuracyServicePeriodSettingsPrefix =
+    '$adminDataAccuracyServicePeriodSettingsPath/';
 const String adminDataAccuracyScopedSettingsPath =
     '/v1/admin/data-accuracy/scoped-settings';
 const String adminDataAccuracyAuditHistoryPath =
@@ -7646,6 +7650,25 @@ abstract class DataAccuracyAdminProxyGateway {
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<List<Map<String, Object?>>> listDataAccuracyServicePeriodRows({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> overrideDataAccuracyServicePeriod({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String coversSource,
+    required String wageSource,
+    required String effectiveAtBusinessDate,
+    required String reasonNote,
     required String adminReason,
   });
 
@@ -16271,6 +16294,9 @@ bool _isAdminDataAccuracyPath(String path) {
   if (path == adminDataAccuracyRowsPath) return true;
   if (path == adminDataAccuracyAuditHistoryPath) return true;
   if (path.startsWith(adminDataAccuracySettingsPrefix)) return true;
+  if (path.startsWith(adminDataAccuracyServicePeriodSettingsPrefix)) {
+    return true;
+  }
   if (path == adminDataAccuracyScopedSettingsPath) return true;
   if (path == adminPollingPricingTierDefinitionsPath ||
       path.startsWith(adminPollingPricingTierDefinitionsPrefix)) {
@@ -16433,6 +16459,7 @@ bool _isAdminDataAccuracyOperation(String path, String method) {
   if (method == 'GET' &&
       (path == adminDataAccuracyRowsPath ||
           path == adminDataAccuracyAuditHistoryPath ||
+          path.startsWith(adminDataAccuracyServicePeriodSettingsPrefix) ||
           path == adminPollingPricingTierDefinitionsPath ||
           path == adminPollingPricingAssignmentsPath ||
           path == adminPollingPricingMarginPath ||
@@ -16441,6 +16468,7 @@ bool _isAdminDataAccuracyOperation(String path, String method) {
   }
   if (method == 'PATCH' &&
       (path.startsWith(adminDataAccuracySettingsPrefix) ||
+          path.startsWith(adminDataAccuracyServicePeriodSettingsPrefix) ||
           path.startsWith(adminPollingPricingTierDefinitionsPrefix) ||
           path.startsWith(adminPollingPricingChangeRequestsPrefix))) {
     return true;
@@ -16496,6 +16524,73 @@ Future<void> _routeDataAccuracyAdmin({
       adminReason: '$reasonPrefix:audit_history',
     );
     _writeJson(response, 200, <String, Object?>{'events': events});
+    return;
+  }
+
+  if (method == 'GET' &&
+      path.startsWith(adminDataAccuracyServicePeriodSettingsPrefix)) {
+    final pair = _pathPairSuffix(
+      path,
+      adminDataAccuracyServicePeriodSettingsPrefix,
+    );
+    if (pair == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final rows = await gateway.listDataAccuracyServicePeriodRows(
+      actorUserId: actorUserId,
+      operatorId: pair.operatorId,
+      locationId: pair.locationId,
+      adminReason:
+          '$reasonPrefix:service_period_settings:${pair.operatorId}:${pair.locationId}',
+    );
+    _writeJson(response, 200, <String, Object?>{
+      'data_accuracy_service_period_settings': rows,
+    });
+    return;
+  }
+
+  if (method == 'PATCH' &&
+      path.startsWith(adminDataAccuracyServicePeriodSettingsPrefix)) {
+    final pair = _pathPairSuffix(
+      path,
+      adminDataAccuracyServicePeriodSettingsPrefix,
+    );
+    if (pair == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final servicePeriodKey = _requireBodyString(body, 'service_period_key');
+    final coversSource = _requireBodyString(body, 'covers_source');
+    final wageSource = _requireBodyString(body, 'wage_source');
+    final effectiveAtBusinessDate = _requireBodyString(
+      body,
+      'effective_at_business_date',
+    );
+    final reasonNote = _requireBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.data_accuracy.service_period_override',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final row = await gateway.overrideDataAccuracyServicePeriod(
+          actorUserId: actorUserId,
+          operatorId: pair.operatorId,
+          locationId: pair.locationId,
+          servicePeriodKey: servicePeriodKey,
+          coversSource: coversSource,
+          wageSource: wageSource,
+          effectiveAtBusinessDate: effectiveAtBusinessDate,
+          reasonNote: reasonNote,
+          adminReason:
+              '$reasonPrefix:service_period_settings:${pair.operatorId}:${pair.locationId}:$servicePeriodKey',
+        );
+        return (statusCode: 200, payload: <String, Object?>{'data': row});
+      },
+    );
     return;
   }
 

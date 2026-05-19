@@ -142,6 +142,16 @@ class _PerLocationDataAccuracyScreenState
       ]);
       if (generation != _refreshGeneration) return;
       final rows = results[0] as List<DataAccuracyAdminRow>;
+      final hydratedRows = await Future.wait<DataAccuracyAdminRow>(
+        rows.map((row) async {
+          final servicePeriodRows = await widget.gateway
+              .listDataAccuracyServicePeriodRows(
+                operatorId: row.operatorRef.operatorId,
+                locationId: row.operatorRef.locationId,
+              );
+          return row.copyWith(servicePeriodSettings: servicePeriodRows);
+        }),
+      );
       // Tab 1's audit panel surfaces only data-accuracy override
       // events. The shared audit log buffer also records Tab 2 events
       // (`admin.polling_tier_*`, `admin.margin_rollup.export_csv`)
@@ -153,7 +163,7 @@ class _PerLocationDataAccuracyScreenState
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _rows = rows;
+        _rows = hydratedRows;
         _auditEvents = filtered;
         _loading = false;
       });
@@ -643,10 +653,10 @@ class _DataAccuracyOverrideDialogState
   // follow-up); each lookup resolves to the vendor default when the
   // period has no keyed row.
   late CoversSource _lunch = widget.initial.settings.coversSourceFor('lunch');
-  late CoversSource _dinner =
-      widget.initial.settings.coversSourceFor('dinner');
-  late CoversSource _lateNight =
-      widget.initial.settings.coversSourceFor('late_night');
+  late CoversSource _dinner = widget.initial.settings.coversSourceFor('dinner');
+  late CoversSource _lateNight = widget.initial.settings.coversSourceFor(
+    'late_night',
+  );
   late WageSource _wage = widget.initial.settings.wageSource;
   late DataAccuracyWalkInHandlingMode _walkInMode =
       widget.initial.settings.walkInHandlingMode;
