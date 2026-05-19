@@ -63,6 +63,15 @@ typedef ManualCoverEntryLoader =
 /// Writer abstraction with the same separation of concerns.
 typedef ManualCoverEntryWriter = Future<void> Function(ManualCoverEntry entry);
 
+typedef ManualCoverEntryClearer = Future<void> Function(ManualCoverEntry entry);
+
+typedef ManualCoverEntryFinder =
+    Future<ManualCoverEntry?> Function({
+      required String restaurantId,
+      required String businessDate,
+      required String daypart,
+    });
+
 typedef CoversSetupClock = DateTime Function();
 
 class SettingsCoversSetupSection extends StatefulWidget {
@@ -73,6 +82,8 @@ class SettingsCoversSetupSection extends StatefulWidget {
     this.posVendorId,
     this.loader,
     this.writer,
+    this.clearer,
+    this.finder,
     this.servicePeriodsLoader,
     this.timingConfigLoader,
     this.coversSourceLoader,
@@ -103,6 +114,14 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// Writer hook. Production passes a SQLite-backed closure; tests
   /// pass a fake.
   final ManualCoverEntryWriter? writer;
+
+  /// Clear hook. Signed-in production passes the canonical proxy clear
+  /// route; tests and unauth/demo fallback use the local mirror only.
+  final ManualCoverEntryClearer? clearer;
+
+  /// Current-slot lookup used to decide whether a blank covers field is a
+  /// harmless no-op or an explicit clear of a saved manual cover.
+  final ManualCoverEntryFinder? finder;
 
   /// Service-period loader hook. Tests can pass a fake; production
   /// resolves periods from [timingConfigLoader] so labels/order and the
@@ -346,6 +365,29 @@ class _SettingsCoversSetupSectionState
     await dao.upsert(entry);
   }
 
+  static Future<void> _defaultClearer(ManualCoverEntry entry) async {
+    final db = await SqliteDatabase.instance.database;
+    await db.delete(
+      'manual_cover_entries',
+      where: 'restaurant_id = ? AND business_date = ? AND daypart = ?',
+      whereArgs: [entry.restaurantId, entry.businessDate, entry.daypart],
+    );
+  }
+
+  static Future<ManualCoverEntry?> _defaultFinder({
+    required String restaurantId,
+    required String businessDate,
+    required String daypart,
+  }) async {
+    final db = await SqliteDatabase.instance.database;
+    final dao = ManualCoverEntryDao(db);
+    return dao.findEntry(
+      restaurantId: restaurantId,
+      businessDate: businessDate,
+      daypart: daypart,
+    );
+  }
+
   _CoversSourceStatus _coversSourceStatusFor(String servicePeriodId) {
     final selectedDate = _isoDate(_selectedDate);
     DataAccuracyServicePeriodSetting? best;
@@ -407,10 +449,7 @@ class _SettingsCoversSetupSectionState
   Future<void> _onSave() async {
     final raw = _coversController.text.trim();
     if (raw.isEmpty) {
-      setState(() {
-        _error = 'Type how many guests you served.';
-        _confirmation = null;
-      });
+      await _clearSavedManualCoverIfPresent();
       return;
     }
     final parsed = int.tryParse(raw);
@@ -448,6 +487,44 @@ class _SettingsCoversSetupSectionState
       if (!mounted) return;
       setState(() {
         _error = "Could not save: $error";
+        _saving = false;
+      });
+    }
+  }
+
+  Future<void> _clearSavedManualCoverIfPresent() async {
+    final businessDate = _isoDate(_selectedDate);
+    final finder = widget.finder ?? _defaultFinder;
+    setState(() {
+      _error = null;
+      _saving = true;
+      _confirmation = null;
+    });
+    try {
+      final existing = await finder(
+        restaurantId: widget.restaurantId,
+        businessDate: businessDate,
+        daypart: _selectedDaypart,
+      );
+      if (existing == null) {
+        if (!mounted) return;
+        setState(() => _saving = false);
+        return;
+      }
+      final clearer = widget.clearer ?? _defaultClearer;
+      await clearer(existing);
+      if (!mounted) return;
+      setState(() {
+        _confirmation =
+            'Cleared manual covers for ${_periodLabel(existing.daypart)} on ${existing.businessDate}.';
+        _saving = false;
+      });
+      await _loadRecent();
+      widget.onAfterSave?.call();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = "Could not clear: $error";
         _saving = false;
       });
     }

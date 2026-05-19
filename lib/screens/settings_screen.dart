@@ -200,7 +200,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final session = authNotifier?.session;
     final showAccount = session != null;
     final syncProxyClient = _syncProxyClientFromContext(context);
-    final manualCoversWriter = _manualCoversWriterFor(
+    final manualCoversWriteActions = _manualCoversWriteActionsFor(
       session: session,
       syncProxyClient: syncProxyClient,
     );
@@ -370,7 +370,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: SettingsCoversSetupSection(
                         restaurantId: restaurant.restaurantId,
                         scopeLabel: restaurant.displayName,
-                        writer: manualCoversWriter,
+                        writer: manualCoversWriteActions?.save,
+                        clearer: manualCoversWriteActions?.clear,
                         onAfterSave: _refreshAfterWrite,
                       ),
                     ),
@@ -624,25 +625,37 @@ SyncProxyClient? _syncProxyClientFromContext(BuildContext context) {
   }
 }
 
-ManualCoverEntryWriter? _manualCoversWriterFor({
+_ManualCoversWriteActions? _manualCoversWriteActionsFor({
   required AuthSession? session,
   required SyncProxyClient? syncProxyClient,
 }) {
   if (session == null) return null;
   if (syncProxyClient is! ManualCoversWriteClient) {
-    return (_) async {
+    Future<void> throwUnavailable(_) async {
       throw const ManualCoversWriteException(
         code: 'manual_covers_proxy_unavailable',
         message:
             'Manual covers need a live Forge & Flow connection before saving.',
       );
-    };
+    }
+
+    return _ManualCoversWriteActions(
+      save: throwUnavailable,
+      clear: throwUnavailable,
+    );
   }
   final writer = AuthSessionManualCoversWriter(
     client: syncProxyClient as ManualCoversWriteClient,
     authSessionProvider: () => session,
   );
-  return writer.save;
+  return _ManualCoversWriteActions(save: writer.save, clear: writer.clear);
+}
+
+class _ManualCoversWriteActions {
+  const _ManualCoversWriteActions({required this.save, required this.clear});
+
+  final ManualCoverEntryWriter save;
+  final ManualCoverEntryClearer clear;
 }
 
 /// MO-1 (Wave 2) â€” gate for the mobile Settings Data tab.

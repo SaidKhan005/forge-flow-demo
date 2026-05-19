@@ -32,6 +32,7 @@ void main() {
     expect(calls.single.businessDate, '2026-05-10');
     expect(calls.single.servicePeriodKey, 'brunch');
     expect(calls.single.covers, 84);
+    expect(calls.single.clear, isFalse);
     expect(calls.single.idempotencyKey, startsWith('mobile-covers-'));
     expect(mirrored, hasLength(1));
     expect(mirrored.single.businessDate, entry.businessDate);
@@ -62,6 +63,38 @@ void main() {
     expect(calls.single.operatorId, 'op-1');
     expect(calls.single.locationId, 'loc-2');
     expect(calls.single.restaurantId, 'loc-2');
+  });
+
+  test('clears canonical server covers then clears the local mirror', () async {
+    final calls = <_ManualCoversCall>[];
+    final cleared = <ManualCoverEntry>[];
+    final client = _RecordingManualCoversClient(calls);
+    final writer = AuthSessionManualCoversWriter(
+      client: client,
+      authSessionProvider: _session,
+      localMirrorClearer: (entry) async => cleared.add(entry),
+    );
+    const entry = ManualCoverEntry(
+      restaurantId: 'loc-1',
+      businessDate: '2026-05-10',
+      daypart: 'brunch',
+      covers: 84,
+      recordedAt: '2026-05-10T18:00:00Z',
+    );
+
+    await writer.clear(entry);
+
+    expect(calls, hasLength(1));
+    expect(calls.single.operatorId, 'op-1');
+    expect(calls.single.locationId, 'loc-1');
+    expect(calls.single.restaurantId, 'loc-1');
+    expect(calls.single.businessDate, '2026-05-10');
+    expect(calls.single.servicePeriodKey, 'brunch');
+    expect(calls.single.covers, isNull);
+    expect(calls.single.clear, isTrue);
+    expect(calls.single.idempotencyKey, startsWith('mobile-covers-'));
+    expect(cleared.single.businessDate, entry.businessDate);
+    expect(cleared.single.daypart, entry.daypart);
   });
 
   test('fails before local mirror when auth session is missing', () async {
@@ -164,7 +197,32 @@ class _RecordingManualCoversClient implements ManualCoversWriteClient {
         businessDate: businessDate,
         servicePeriodKey: servicePeriodKey,
         covers: covers,
+        clear: false,
         recordedAt: recordedAt,
+        idempotencyKey: idempotencyKey,
+      ),
+    );
+  }
+
+  @override
+  Future<void> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required String idempotencyKey,
+    String? restaurantId,
+  }) async {
+    calls.add(
+      _ManualCoversCall(
+        operatorId: operatorId,
+        locationId: locationId,
+        restaurantId: restaurantId,
+        businessDate: businessDate,
+        servicePeriodKey: servicePeriodKey,
+        covers: null,
+        clear: true,
+        recordedAt: null,
         idempotencyKey: idempotencyKey,
       ),
     );
@@ -179,6 +237,7 @@ class _ManualCoversCall {
     required this.businessDate,
     required this.servicePeriodKey,
     required this.covers,
+    required this.clear,
     required this.recordedAt,
     required this.idempotencyKey,
   });
@@ -188,7 +247,8 @@ class _ManualCoversCall {
   final String? restaurantId;
   final String businessDate;
   final String servicePeriodKey;
-  final int covers;
+  final int? covers;
+  final bool clear;
   final String? recordedAt;
   final String idempotencyKey;
 }
