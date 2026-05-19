@@ -20,10 +20,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -34,18 +34,17 @@ void main() {
     });
   }
 
-  OperatorWebSession sessionWithRoles(List<String> roles) =>
-      OperatorWebSession(
-        uid: 'demo-uid',
-        email: 'alex@brio-restaurants.com',
-        displayName: 'Alex Morrison',
-        operatorId: 'demo-operator',
-        businessName: 'Brio Restaurants',
-        primaryLocationId: 'demo-location',
-        primaryLocationName: 'Brio Main Street',
-        roles: roles,
-        mfaEnrolled: false,
-      );
+  OperatorWebSession sessionWithRoles(List<String> roles) => OperatorWebSession(
+    uid: 'demo-uid',
+    email: 'alex@brio-restaurants.com',
+    displayName: 'Alex Morrison',
+    operatorId: 'demo-operator',
+    businessName: 'Brio Restaurants',
+    primaryLocationId: 'demo-location',
+    primaryLocationName: 'Brio Main Street',
+    roles: roles,
+    mfaEnrolled: false,
+  );
 
   WageRoleRowRecord recordFor({
     required String id,
@@ -84,22 +83,24 @@ void main() {
   }
 
   group('WageAuthorityScreen', () {
-    testWidgets('renders empty state for an operator with no rows',
-        (tester) async {
+    testWidgets('renders empty state for an operator with no rows', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway();
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-      )));
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('wage_authority_screen')),
-        findsOneWidget,
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+          ),
+        ),
       );
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('wage_authority_screen')), findsOneWidget);
       // Each bucket renders an empty placeholder.
       expect(find.byKey(const Key('wage_authority_empty_foh')), findsOneWidget);
       expect(find.byKey(const Key('wage_authority_empty_boh')), findsOneWidget);
@@ -123,12 +124,16 @@ void main() {
             hourlyRate: 32.50,
           ),
         ]);
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-      )));
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       // Each row id is rendered.
       expect(
@@ -169,22 +174,27 @@ void main() {
       );
     });
 
-    testWidgets('add-row form fires upsert through the gateway with idem key',
-        (tester) async {
+    testWidgets('add-row form fires upsert through the gateway with idem key', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway();
       var idemSeq = 0;
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-        idempotencyKeyFactory: () {
-          idemSeq += 1;
-          return 'test-idem-$idemSeq';
-        },
-      )));
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+            idempotencyKeyFactory: () {
+              idemSeq += 1;
+              return 'test-idem-$idemSeq';
+            },
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       // Open add-row form for FOH.
       await tester.tap(find.byKey(const Key('wage_authority_add_button_foh')));
@@ -215,9 +225,9 @@ void main() {
       expect(call.request.restaurantId, session.primaryLocationId);
     });
 
-    testWidgets(
-        'edit-row fires upsert with the same role_name (idempotent)',
-        (tester) async {
+    testWidgets('edit-row fires upsert with the same role_name (idempotent)', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       final session = sessionWithRoles(<String>['operator_owner']);
       final existing = recordFor(
@@ -228,16 +238,20 @@ void main() {
       );
       final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
       var idemSeq = 0;
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-        idempotencyKeyFactory: () {
-          idemSeq += 1;
-          return 'test-idem-$idemSeq';
-        },
-      )));
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+            idempotencyKeyFactory: () {
+              idemSeq += 1;
+              return 'test-idem-$idemSeq';
+            },
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('wage_authority_row_edit_btn_row-foh')),
@@ -245,9 +259,7 @@ void main() {
       await tester.pumpAndSettle();
       // Update the rate from 18.50 → 19.50, role_name unchanged.
       await tester.enterText(
-        find.byKey(
-          const Key('wage_authority_form_hourly_rate_edit_row-foh'),
-        ),
+        find.byKey(const Key('wage_authority_form_hourly_rate_edit_row-foh')),
         '19.50',
       );
       // Wave 2 S-1 adds the blended-wage summary card above the bands,
@@ -271,8 +283,9 @@ void main() {
       expect(call.idempotencyKey, 'test-idem-1');
     });
 
-    testWidgets('delete fires through the gateway after confirm',
-        (tester) async {
+    testWidgets('delete fires through the gateway after confirm', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       final session = sessionWithRoles(<String>['operator_owner']);
       final existing = recordFor(
@@ -282,16 +295,20 @@ void main() {
       );
       final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
       var idemSeq = 0;
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-        idempotencyKeyFactory: () {
-          idemSeq += 1;
-          return 'test-idem-del-$idemSeq';
-        },
-      )));
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+            idempotencyKeyFactory: () {
+              idemSeq += 1;
+              return 'test-idem-del-$idemSeq';
+            },
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('wage_authority_row_delete_btn_row-foh')),
@@ -314,8 +331,9 @@ void main() {
       );
     });
 
-    testWidgets('delete failure rolls back + shows error snackbar',
-        (tester) async {
+    testWidgets('delete failure rolls back + shows error snackbar', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       final session = sessionWithRoles(<String>['operator_owner']);
       final existing = recordFor(
@@ -326,13 +344,17 @@ void main() {
       final gateway = _FakeGateway()
         ..seed(<WageRoleRowRecord>[existing])
         ..deleteShouldThrow = true;
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-        idempotencyKeyFactory: () => 'test-idem-1',
-      )));
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+            idempotencyKeyFactory: () => 'test-idem-1',
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('wage_authority_row_delete_btn_row-foh')),
@@ -352,8 +374,9 @@ void main() {
       );
     });
 
-    testWidgets('non-operator-write actor sees the read-only banner',
-        (tester) async {
+    testWidgets('non-operator-write actor sees the read-only banner', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       final session = sessionWithRoles(<String>['location_manager']);
       final existing = recordFor(
@@ -362,12 +385,16 @@ void main() {
         laborBucket: 'foh',
       );
       final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
-      await tester.pumpWidget(wrap(WageAuthorityScreen(
-        session: session,
-        locationId: session.primaryLocationId ?? '',
-        locationName: session.primaryLocationName,
-        gateway: gateway,
-      )));
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       // Banner shown.
       expect(
@@ -402,12 +429,16 @@ void main() {
         await sizeViewport(tester, const Size(1280, 900));
         final session = sessionWithRoles(<String>['operator_owner']);
         final gateway = _FakeGateway();
-        await tester.pumpWidget(wrap(WageAuthorityScreen(
-          session: session,
-          locationId: session.primaryLocationId ?? '',
-          locationName: session.primaryLocationName,
-          gateway: gateway,
-        )));
+        await tester.pumpWidget(
+          wrap(
+            WageAuthorityScreen(
+              session: session,
+              locationId: session.primaryLocationId ?? '',
+              locationName: session.primaryLocationName,
+              gateway: gateway,
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
         // The new blended-wage summary card renders above the bands.
         expect(
@@ -449,12 +480,16 @@ void main() {
           weightedHours: 8,
         );
         final gateway = _FakeGateway()..seed(<WageRoleRowRecord>[existing]);
-        await tester.pumpWidget(wrap(WageAuthorityScreen(
-          session: session,
-          locationId: session.primaryLocationId ?? '',
-          locationName: session.primaryLocationName,
-          gateway: gateway,
-        )));
+        await tester.pumpWidget(
+          wrap(
+            WageAuthorityScreen(
+              session: session,
+              locationId: session.primaryLocationId ?? '',
+              locationName: session.primaryLocationName,
+              gateway: gateway,
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
         // Initial blended = 16 × 8 / 8 = \$16.00/hr.
         expect(find.textContaining('\$16.00/hr'), findsWidgets);
@@ -464,9 +499,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         await tester.enterText(
-          find.byKey(
-            const Key('wage_authority_form_hourly_rate_edit_row-foh'),
-          ),
+          find.byKey(const Key('wage_authority_form_hourly_rate_edit_row-foh')),
           '20.00',
         );
         await tester.pump();
@@ -483,57 +516,56 @@ void main() {
       },
     );
 
-    testWidgets(
-      'each row carries a plain-English vendor applicability label',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 900));
-        final session = sessionWithRoles(<String>['operator_owner']);
-        final humanityRow = recordFor(
-          id: 'row-humanity',
-          roleName: 'Cook',
-          laborBucket: 'boh',
-          vendorId: 'humanity',
-          vendorRoleId: 'Cook',
-        );
-        final manualRow = recordFor(
-          id: 'row-manual',
-          roleName: 'Host',
-          laborBucket: 'foh',
-        );
-        final gateway = _FakeGateway()
-          ..seed(<WageRoleRowRecord>[humanityRow, manualRow]);
-        await tester.pumpWidget(wrap(WageAuthorityScreen(
-          session: session,
-          locationId: session.primaryLocationId ?? '',
-          locationName: session.primaryLocationName,
-          gateway: gateway,
-        )));
-        await tester.pumpAndSettle();
-        // Humanity row reads as a sync target.
-        final humanityLabel = tester
-            .widget<Text>(
-              find.byKey(
-                const Key(
-                  'wage_authority_row_vendor_label_row-humanity',
-                ),
-              ),
-            )
-            .data;
-        expect(humanityLabel, contains('Humanity'));
-        expect(humanityLabel, contains('Cook'));
-        // Manual row reads as "no labor vendor connected" (no other
-        // row carries a non-humanity vendor and the screen wasn't
-        // told about connected vendors via the constructor).
-        final manualLabel = tester
-            .widget<Text>(
-              find.byKey(
-                const Key('wage_authority_row_vendor_label_row-manual'),
-              ),
-            )
-            .data;
-        expect(manualLabel, contains('Manual only'));
-      },
-    );
+    testWidgets('each row carries a plain-English vendor applicability label', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 900));
+      final session = sessionWithRoles(<String>['operator_owner']);
+      final humanityRow = recordFor(
+        id: 'row-humanity',
+        roleName: 'Cook',
+        laborBucket: 'boh',
+        vendorId: 'humanity',
+        vendorRoleId: 'Cook',
+      );
+      final manualRow = recordFor(
+        id: 'row-manual',
+        roleName: 'Host',
+        laborBucket: 'foh',
+      );
+      final gateway = _FakeGateway()
+        ..seed(<WageRoleRowRecord>[humanityRow, manualRow]);
+      await tester.pumpWidget(
+        wrap(
+          WageAuthorityScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // Humanity row reads as a sync target.
+      final humanityLabel = tester
+          .widget<Text>(
+            find.byKey(
+              const Key('wage_authority_row_vendor_label_row-humanity'),
+            ),
+          )
+          .data;
+      expect(humanityLabel, contains('Humanity'));
+      expect(humanityLabel, contains('Cook'));
+      // Manual row reads as "no labor vendor connected" (no other
+      // row carries a non-humanity vendor and the screen wasn't
+      // told about connected vendors via the constructor).
+      final manualLabel = tester
+          .widget<Text>(
+            find.byKey(const Key('wage_authority_row_vendor_label_row-manual')),
+          )
+          .data;
+      expect(manualLabel, contains('Manual only'));
+    });
 
     testWidgets(
       'empty bucket renders the hierarchy-aware "no wage rates set at '
@@ -542,12 +574,16 @@ void main() {
         await sizeViewport(tester, const Size(1280, 900));
         final session = sessionWithRoles(<String>['operator_owner']);
         final gateway = _FakeGateway();
-        await tester.pumpWidget(wrap(WageAuthorityScreen(
-          session: session,
-          locationId: session.primaryLocationId ?? '',
-          locationName: session.primaryLocationName,
-          gateway: gateway,
-        )));
+        await tester.pumpWidget(
+          wrap(
+            WageAuthorityScreen(
+              session: session,
+              locationId: session.primaryLocationId ?? '',
+              locationName: session.primaryLocationName,
+              gateway: gateway,
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
         // The empty-state slot still uses the same key so existing
         // selectors keep working.
@@ -564,8 +600,9 @@ void main() {
     );
 
     testWidgets(
-      'renders HP #11 hierarchy scope notice (selected scope, inherited '
-      'from, effective value) at the top of the screen',
+      'GAP B2: no hierarchy → degrades to a Location notice + per-row '
+      'scope badge (the old hardcoded "coming in a later wave" notice '
+      'is gone)',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 900));
         final session = sessionWithRoles(<String>['operator_owner']);
@@ -573,50 +610,35 @@ void main() {
           ..seed(<WageRoleRowRecord>[
             recordFor(id: 'row-foh', roleName: 'Server', laborBucket: 'foh'),
           ]);
-        await tester.pumpWidget(wrap(WageAuthorityScreen(
-          session: session,
-          locationId: session.primaryLocationId ?? '',
-          locationName: session.primaryLocationName,
-          gateway: gateway,
-        )));
+        await tester.pumpWidget(
+          wrap(
+            WageAuthorityScreen(
+              session: session,
+              locationId: session.primaryLocationId ?? '',
+              locationName: session.primaryLocationName,
+              gateway: gateway,
+              // No hierarchyNodes — the pre-GAP-B2 single-location host.
+            ),
+          ),
+        );
         await tester.pumpAndSettle();
+        // The old misleading screen-level notice is replaced.
         expect(
           find.byKey(const Key('wage_authority_hierarchy_scope')),
-          findsOneWidget,
+          findsNothing,
         );
-        // The triple is present.
+        expect(find.textContaining('coming in a later wave'), findsNothing);
+        // GAP B2 location-only notice renders instead.
         expect(
-          find.byKey(
-            const Key('wage_authority_hierarchy_scope_selected_row'),
-          ),
+          find.byKey(const Key('wage_authority_scope_editor_location_only')),
           findsOneWidget,
         );
+        // Each row carries its real resolved scope provenance badge.
         expect(
-          find.byKey(
-            const Key('wage_authority_hierarchy_scope_inherited_row'),
-          ),
+          find.byKey(const Key('wage_authority_row_scope_badge_row-foh')),
           findsOneWidget,
         );
-        expect(
-          find.byKey(
-            const Key('wage_authority_hierarchy_scope_effective_row'),
-          ),
-          findsOneWidget,
-        );
-        // Backend-only carve-out explainer renders for forward-looking
-        // inheritance coverage.
-        expect(
-          find.byKey(
-            const Key('wage_authority_hierarchy_scope_backend_only'),
-          ),
-          findsOneWidget,
-        );
-        // Plain-English copy (no engineering jargon like scope_id=…).
-        expect(
-          find.textContaining('Set here. Does not inherit'),
-          findsOneWidget,
-        );
-        expect(find.text('Location'), findsOneWidget);
+        expect(find.text('Set at this location'), findsOneWidget);
       },
     );
   });
@@ -658,10 +680,12 @@ class _FakeGateway implements OperatorWebWageAuthorityGateway {
     required String locationId,
   }) async {
     return List<WageRoleRowRecord>.unmodifiable(
-      _rows.where((r) =>
-          r.operatorId == operatorId &&
-          r.locationId == locationId &&
-          r.isActive),
+      _rows.where(
+        (r) =>
+            r.operatorId == operatorId &&
+            r.locationId == locationId &&
+            r.isActive,
+      ),
     );
   }
 
@@ -670,10 +694,9 @@ class _FakeGateway implements OperatorWebWageAuthorityGateway {
     required WageRoleRowUpsert request,
     required String idempotencyKey,
   }) async {
-    upsertCalls.add(_UpsertCall(
-      request: request,
-      idempotencyKey: idempotencyKey,
-    ));
+    upsertCalls.add(
+      _UpsertCall(request: request, idempotencyKey: idempotencyKey),
+    );
     if (upsertShouldThrow) {
       throw const WageAuthorityGatewayException(
         code: 'simulated_failure',
@@ -710,10 +733,9 @@ class _FakeGateway implements OperatorWebWageAuthorityGateway {
     required String wageRoleRowId,
     required String idempotencyKey,
   }) async {
-    deleteCalls.add(_DeleteCall(
-      wageRoleRowId: wageRoleRowId,
-      idempotencyKey: idempotencyKey,
-    ));
+    deleteCalls.add(
+      _DeleteCall(wageRoleRowId: wageRoleRowId, idempotencyKey: idempotencyKey),
+    );
     if (deleteShouldThrow) {
       throw const WageAuthorityGatewayException(
         code: 'simulated_failure',
