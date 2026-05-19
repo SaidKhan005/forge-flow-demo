@@ -24,11 +24,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../domain/models/data_accuracy_service_period_setting.dart';
+import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
 import '../../infrastructure/persistence/sqlite/dao/data_accuracy_service_period_settings_cache_dao.dart';
 import '../../infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
+import '../../services/business_date_authority_service.dart';
+import '../../services/integration/iana_timezone_converter.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
@@ -42,6 +45,9 @@ import 'settings_shared_widgets.dart';
 /// `lib/services/benchmark_tracker_read_service.dart`.
 typedef ServicePeriodDefinitionsLoader =
     Future<List<ServicePeriodDefinition>> Function(String restaurantId);
+
+typedef TimingConfigLoader =
+    Future<RestaurantTimingConfig?> Function(String restaurantId);
 
 /// Loads the most recent synced per-service-period data accuracy rows.
 typedef ServicePeriodCoversSourceLoader =
@@ -57,6 +63,8 @@ typedef ManualCoverEntryLoader =
 /// Writer abstraction with the same separation of concerns.
 typedef ManualCoverEntryWriter = Future<void> Function(ManualCoverEntry entry);
 
+typedef CoversSetupClock = DateTime Function();
+
 class SettingsCoversSetupSection extends StatefulWidget {
   const SettingsCoversSetupSection({
     super.key,
@@ -66,9 +74,11 @@ class SettingsCoversSetupSection extends StatefulWidget {
     this.loader,
     this.writer,
     this.servicePeriodsLoader,
+    this.timingConfigLoader,
     this.coversSourceLoader,
     this.initialBusinessDate,
     this.initialDaypart = 'dinner',
+    this.clock,
     this.onAfterSave,
   });
 
@@ -94,21 +104,29 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// pass a fake.
   final ManualCoverEntryWriter? writer;
 
-  /// Service-period loader hook. Production resolves the operator's
-  /// persisted timing config; tests pass a fake. Falls back to the
-  /// canonical fixture-era definitions only when no config exists.
+  /// Service-period loader hook. Tests can pass a fake; production
+  /// resolves periods from [timingConfigLoader] so labels/order and the
+  /// initial business date share the same Timing config.
   final ServicePeriodDefinitionsLoader? servicePeriodsLoader;
+
+  /// Timing config loader hook. Production reads the active local
+  /// Timing cache; tests pass a fake config to avoid SQLite setup.
+  final TimingConfigLoader? timingConfigLoader;
 
   /// Optional loader for the synced keyed Covers-source settings. The
   /// default reads the local proxy-sync cache.
   final ServicePeriodCoversSourceLoader? coversSourceLoader;
 
-  /// Optional initial date for the picker. When null, falls back to
-  /// today (restaurant-local approximation = device-local date).
+  /// Optional initial date for the picker. When null, the section uses
+  /// the restaurant-local business date from Timing config when
+  /// available, with a device-local fallback.
   final DateTime? initialBusinessDate;
 
   /// Optional initial daypart selection. Default is dinner.
   final String initialDaypart;
+
+  /// Clock hook for deterministic business-date tests.
+  final CoversSetupClock? clock;
 
   /// Fires after a successful save so the host can refresh other
   /// surfaces (Variance / Plan / Benchmark) that read the same SQLite
@@ -129,6 +147,7 @@ class _SettingsCoversSetupSectionState
   String? _confirmation;
   bool _saving = false;
   bool _loadingRecent = true;
+  bool _operatorPickedDate = false;
   List<ManualCoverEntry> _recentEntries = const <ManualCoverEntry>[];
   List<ServicePeriodDefinition> _servicePeriods =
       const <ServicePeriodDefinition>[];
@@ -139,7 +158,7 @@ class _SettingsCoversSetupSectionState
   void initState() {
     super.initState();
     _coversController = TextEditingController();
-    _selectedDate = widget.initialBusinessDate ?? _todayLocal();
+    _selectedDate = widget.initialBusinessDate ?? _deviceLocalDate();
     _selectedDaypart = widget.initialDaypart;
     _loadRecent();
     _loadServicePeriods();
@@ -150,6 +169,8 @@ class _SettingsCoversSetupSectionState
   void didUpdateWidget(covariant SettingsCoversSetupSection oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.restaurantId != widget.restaurantId) {
+      _operatorPickedDate = false;
+      _selectedDate = widget.initialBusinessDate ?? _deviceLocalDate();
       _loadRecent();
       _loadServicePeriods();
       _loadCoversSourceSettings();
@@ -164,12 +185,23 @@ class _SettingsCoversSetupSectionState
   }
 
   Future<void> _loadServicePeriods() async {
-    final loader = widget.servicePeriodsLoader ?? _defaultServicePeriodsLoader;
+    final periodsLoader = widget.servicePeriodsLoader;
+    final timingLoader =
+        widget.timingConfigLoader ?? _defaultTimingConfigLoader;
     try {
-      final periods = await loader(widget.restaurantId);
+      final timingConfig = await timingLoader(widget.restaurantId);
+      final periods = periodsLoader == null
+          ? _definitionsFromConfig(timingConfig)
+          : await periodsLoader(widget.restaurantId);
+      final restaurantBusinessDate = _restaurantBusinessDate(timingConfig);
       if (!mounted) return;
       setState(() {
         _servicePeriods = periods;
+        if (widget.initialBusinessDate == null &&
+            !_operatorPickedDate &&
+            restaurantBusinessDate != null) {
+          _selectedDate = restaurantBusinessDate;
+        }
         // Keep the selection valid if the operator's configured set
         // does not include the previous (or default) selection.
         if (periods.isNotEmpty &&
@@ -181,6 +213,9 @@ class _SettingsCoversSetupSectionState
       if (!mounted) return;
       setState(() {
         _servicePeriods = ServicePeriodDefinitionResolver.demoDefinitions;
+        if (widget.initialBusinessDate == null && !_operatorPickedDate) {
+          _selectedDate = _deviceLocalDate();
+        }
         if (!_servicePeriods.any((p) => p.id == _selectedDaypart)) {
           _selectedDaypart = _servicePeriods.first.id;
         }
@@ -209,16 +244,22 @@ class _SettingsCoversSetupSectionState
     return dao.getRows(restaurantId);
   }
 
-  static Future<List<ServicePeriodDefinition>> _defaultServicePeriodsLoader(
+  static Future<RestaurantTimingConfig?> _defaultTimingConfigLoader(
     String restaurantId,
-  ) async {
+  ) {
+    return RestaurantTimingConfigReadService.instance.getTimingConfig(
+      restaurantId,
+    );
+  }
+
+  static List<ServicePeriodDefinition> _definitionsFromConfig(
+    RestaurantTimingConfig? config,
+  ) {
     // Canonical pattern (benchmark_tracker_read_service.dart): period
     // set + labels + ordering come from the operator's persisted timing
     // config, never a hardcoded daypart list. Falls back to the
     // canonical fixture-era definitions only when no config is
     // persisted yet.
-    final config = await RestaurantTimingConfigReadService.instance
-        .getTimingConfig(restaurantId);
     final defs = (config?.servicePeriodDefinitions.isNotEmpty ?? false)
         ? config!.servicePeriodDefinitions
         : ServicePeriodDefinitionResolver.demoDefinitions;
@@ -231,9 +272,38 @@ class _SettingsCoversSetupSectionState
     super.dispose();
   }
 
-  DateTime _todayLocal() {
-    final now = DateTime.now();
+  DateTime _deviceLocalDate() {
+    final now = _now().toLocal();
     return DateTime(now.year, now.month, now.day);
+  }
+
+  DateTime _now() => widget.clock?.call() ?? DateTime.now().toUtc();
+
+  DateTime? _restaurantBusinessDate(RestaurantTimingConfig? config) {
+    if (config == null) return null;
+    try {
+      final localNow = IanaTimezoneConverter.shared.toBusinessLocal(
+        restaurantTimezone: config.businessTimezone,
+        instant: _now().toUtc(),
+      );
+      final iso = BusinessDateAuthorityService.resolveBusinessDateFromConfig(
+        localTimestamp: localNow,
+        config: config,
+      );
+      return _dateFromIso(iso);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  DateTime? _dateFromIso(String isoDate) {
+    final parts = isoDate.split('-');
+    if (parts.length != 3) return null;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final day = int.tryParse(parts[2]);
+    if (year == null || month == null || day == null) return null;
+    return DateTime(year, month, day);
   }
 
   String _isoDate(DateTime date) {
@@ -316,7 +386,7 @@ class _SettingsCoversSetupSectionState
   }
 
   Future<void> _onPickDate() async {
-    final now = DateTime.now();
+    final now = _now().toLocal();
     final firstDate = DateTime(now.year - 1, now.month, now.day);
     final lastDate = DateTime(now.year + 1, now.month, now.day);
     final picked = await showDatePicker(
@@ -328,6 +398,7 @@ class _SettingsCoversSetupSectionState
     );
     if (picked == null) return;
     setState(() {
+      _operatorPickedDate = true;
       _selectedDate = DateTime(picked.year, picked.month, picked.day);
       _confirmation = null;
     });
@@ -360,7 +431,7 @@ class _SettingsCoversSetupSectionState
       businessDate: _isoDate(_selectedDate),
       daypart: _selectedDaypart,
       covers: parsed,
-      recordedAt: DateTime.now().toUtc().toIso8601String(),
+      recordedAt: _now().toUtc().toIso8601String(),
     );
     try {
       await writer(entry);

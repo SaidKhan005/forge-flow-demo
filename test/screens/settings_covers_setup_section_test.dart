@@ -16,6 +16,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import 'package:forge_and_flow/screens/settings/settings_covers_setup_section.dart';
@@ -30,6 +31,10 @@ void main() {
     ManualCoverEntryLoader? loader,
     ManualCoverEntryWriter? writer,
     ServicePeriodCoversSourceLoader? coversSourceLoader,
+    TimingConfigLoader? timingConfigLoader,
+    bool injectInitialBusinessDate = true,
+    DateTime? initialBusinessDate,
+    CoversSetupClock? clock,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -41,12 +46,37 @@ void main() {
             loader: loader ?? emptyLoader,
             writer: writer,
             coversSourceLoader: coversSourceLoader ?? (_) async => const [],
+            timingConfigLoader: timingConfigLoader ?? (_) async => null,
             servicePeriodsLoader: (_) async =>
                 ServicePeriodDefinitionResolver.demoDefinitions,
-            initialBusinessDate: DateTime.utc(2026, 5, 10),
+            initialBusinessDate: injectInitialBusinessDate
+                ? (initialBusinessDate ?? DateTime.utc(2026, 5, 10))
+                : null,
+            clock: clock,
           ),
         ),
       ),
+    );
+  }
+
+  RestaurantTimingConfig timingConfig({
+    String timezone = 'America/Los_Angeles',
+    String businessDayStart = '04:00',
+  }) {
+    return RestaurantTimingConfig(
+      restaurantId: 'restaurant-1',
+      businessTimezone: timezone,
+      businessDayStartLocalTime: businessDayStart,
+      weekStartDay: DateTime.monday,
+      servicePeriodDefinitions: ServicePeriodDefinitionResolver.demoDefinitions,
+      createdAt: '2026-05-01T00:00:00Z',
+      updatedAt: '2026-05-01T00:00:00Z',
+      selectedScopeType: 'location',
+      selectedScopeId: 'restaurant-1',
+      sourceScopeType: 'location',
+      sourceScopeId: 'restaurant-1',
+      sourceScopeLabel: 'Downtown',
+      inheritedFromAncestor: false,
     );
   }
 
@@ -73,6 +103,40 @@ void main() {
     );
     // Date pill shows the injected initial date in ISO form.
     expect(find.text('2026-05-10'), findsOneWidget);
+  });
+
+  testWidgets(
+    'defaults to the restaurant-local business date before rollover',
+    (tester) async {
+      await tester.pumpWidget(
+        harness(
+          injectInitialBusinessDate: false,
+          clock: () => DateTime.utc(2026, 5, 10, 10),
+          timingConfigLoader: (_) async => timingConfig(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 2026-05-10T10:00Z is 03:00 in Los Angeles, before the 04:00
+      // business-day start, so the restaurant business date is May 9.
+      expect(find.text('2026-05-09'), findsOneWidget);
+    },
+  );
+
+  testWidgets('injected initial date is not overwritten by timing config', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        initialBusinessDate: DateTime.utc(2026, 5, 12),
+        clock: () => DateTime.utc(2026, 5, 10, 10),
+        timingConfigLoader: (_) async => timingConfig(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026-05-12'), findsOneWidget);
+    expect(find.text('2026-05-09'), findsNothing);
   });
 
   testWidgets('uses neutral covers-source framing when POS is missing covers', (

@@ -361,10 +361,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // the Setup tab per debug.md:287-289. Manual entry
                     // is the primary path when the active POS does
                     // not expose covers (Square / Clover) and a
-                    // manual override otherwise. Signed-in live paths
-                    // write through the canonical proxy first, then
-                    // mirror locally for recent-entry display. Demo /
-                    // unauth widget paths keep the local fallback.
+                    // manual entry otherwise. Signed-in live paths write
+                    // through the canonical proxy first, then mirror
+                    // locally for recent-entry display. Demo / unauth
+                    // widget paths keep the local fallback.
                     _settingsSection(
                       title: 'Covers setup',
                       child: SettingsCoversSetupSection(
