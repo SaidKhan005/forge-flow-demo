@@ -93,6 +93,10 @@ class WageRoleRowRecord {
     this.vendorId,
     this.vendorRoleId,
     this.updatedBy,
+    this.scopeType = 'location',
+    this.orgUnitId,
+    this.inheritedFromScopeId,
+    this.sourceLabel,
   });
 
   final String wageRoleRowId;
@@ -116,6 +120,26 @@ class WageRoleRowRecord {
   final DateTime updatedAt;
   final String? updatedBy;
 
+  /// GAP B2 HP #11 wage scope. `'operator_wide' | 'org_unit' |
+  /// 'location'`. Mirrors `wage_role_rows.scope_type`; defaults to
+  /// `'location'` so legacy rows + omitting writers stay Location-
+  /// scoped (matches the migration column default).
+  final String scopeType;
+
+  /// Set only when [scopeType] is `'org_unit'` — the region/group this
+  /// wage row is configured at. Null for operator_wide + location.
+  final String? orgUnitId;
+
+  /// Denormalized provenance: when a value was copied down from a
+  /// higher scope, the scope id it came from. Null when set at this
+  /// row's own scope.
+  final String? inheritedFromScopeId;
+
+  /// Plain-English label for the configured scope that supplied this row.
+  /// Read paths can attach this from locations/org_units/operators joins so
+  /// UI badges name the inherited source without re-querying hierarchy data.
+  final String? sourceLabel;
+
   /// Project from a row produced by the PostgresExecutor (UUIDs cast
   /// to text in SELECT).
   factory WageRoleRowRecord.fromRow(Map<String, Object?> row) {
@@ -133,7 +157,6 @@ class WageRoleRowRecord {
 
     if (id is! String ||
         operatorId is! String ||
-        locationId is! String ||
         restaurantId is! String ||
         roleName is! String ||
         laborBucket is! String ||
@@ -146,6 +169,9 @@ class WageRoleRowRecord {
         'wage_role_rows row malformed: missing required fields',
       );
     }
+
+    final normalizedLocationId =
+        locationId is String && locationId.isNotEmpty ? locationId : '';
 
     final hourlyRate = _coerceDouble(row['hourly_rate']);
     final weightedHours = _coerceDouble(row['weighted_hours']);
@@ -161,6 +187,15 @@ class WageRoleRowRecord {
     final vendorRoleId = row['vendor_role_id'];
     final updatedBy = row['updated_by'];
 
+    final scopeTypeRaw = row['scope_type'];
+    final scopeType =
+        scopeTypeRaw is String && scopeTypeRaw.isNotEmpty
+            ? scopeTypeRaw
+            : 'location';
+    final orgUnitId = row['org_unit_id'];
+    final inheritedFromScopeId = row['inherited_from_scope_id'];
+    final sourceLabel = row['source_label'];
+
     final metadataRaw = row['metadata'];
     final metadata = metadataRaw is Map
         ? Map<String, Object?>.from(metadataRaw)
@@ -169,7 +204,7 @@ class WageRoleRowRecord {
     return WageRoleRowRecord(
       wageRoleRowId: id,
       operatorId: operatorId,
-      locationId: locationId,
+      locationId: normalizedLocationId,
       restaurantId: restaurantId,
       roleName: roleName,
       laborBucket: laborBucket,
@@ -187,6 +222,15 @@ class WageRoleRowRecord {
       createdAt: createdAt,
       updatedAt: updatedAt,
       updatedBy: updatedBy is String && updatedBy.isNotEmpty ? updatedBy : null,
+      scopeType: scopeType,
+      orgUnitId:
+          orgUnitId is String && orgUnitId.isNotEmpty ? orgUnitId : null,
+      inheritedFromScopeId:
+          inheritedFromScopeId is String && inheritedFromScopeId.isNotEmpty
+              ? inheritedFromScopeId
+              : null,
+      sourceLabel:
+          sourceLabel is String && sourceLabel.isNotEmpty ? sourceLabel : null,
     );
   }
 
@@ -213,6 +257,10 @@ class WageRoleRowRecord {
         'created_at': createdAt.toUtc().toIso8601String(),
         'updated_at': updatedAt.toUtc().toIso8601String(),
         'updated_by': updatedBy,
+        'scope_type': scopeType,
+        'org_unit_id': orgUnitId,
+        'inherited_from_scope_id': inheritedFromScopeId,
+        if (sourceLabel != null) 'source_label': sourceLabel,
       };
 
   static double? _coerceDouble(Object? raw) {
