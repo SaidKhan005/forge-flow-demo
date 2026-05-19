@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'dart:convert';
 
 import 'package:provider/provider.dart';
@@ -11,8 +11,10 @@ import '../services/auth/account_info_gateway.dart';
 import '../services/auth/auth_operations_gateway.dart';
 import '../services/auth/handoff_code_gateway.dart';
 import '../services/auth/password_change_gateway.dart';
+import '../services/manual_covers_write_service.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
+import '../services/sync/sync_proxy_client.dart';
 import '../state/app_refresh_coordinator.dart';
 import '../state/auth_session_notifier.dart';
 import '../state/permission_context.dart';
@@ -197,6 +199,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     final session = authNotifier?.session;
     final showAccount = session != null;
+    final syncProxyClient = _syncProxyClientFromContext(context);
+    final manualCoversWriter = _manualCoversWriterFor(
+      session: session,
+      syncProxyClient: syncProxyClient,
+    );
     // MO-1 — read the production permission snapshot (when wired by
     // AuthPermissionContextBridge). `listen: true` so a session-driven
     // re-load of the snapshot re-runs the Data tab gate without
@@ -354,14 +361,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     // the Setup tab per debug.md:287-289. Manual entry
                     // is the primary path when the active POS does
                     // not expose covers (Square / Clover) and a
-                    // manual override otherwise. Demo + live both
-                    // write to the same `manual_cover_entries` table
-                    // (HP #2 — no kDemoMode reader branch).
+                    // manual override otherwise. Signed-in live paths
+                    // write through the canonical proxy first, then
+                    // mirror locally for recent-entry display. Demo /
+                    // unauth widget paths keep the local fallback.
                     _settingsSection(
                       title: 'Covers setup',
                       child: SettingsCoversSetupSection(
                         restaurantId: restaurant.restaurantId,
                         scopeLabel: restaurant.displayName,
+                        writer: manualCoversWriter,
                         onAfterSave: _refreshAfterWrite,
                       ),
                     ),
@@ -603,6 +612,38 @@ bool _isFFAccount(TeamScopeActor? actor) {
   if (actor == null) return false;
   return actor.actorRoles.contains('super_admin') ||
       actor.actorRoles.contains('ff_support');
+}
+
+SyncProxyClient? _syncProxyClientFromContext(BuildContext context) {
+  try {
+    return Provider.of<SyncProxyClient?>(context, listen: false);
+  } on ProviderNotFoundException {
+    return null;
+  }
+}
+
+ManualCoverEntryWriter? _manualCoversWriterFor({
+  required AuthSession? session,
+  required SyncProxyClient? syncProxyClient,
+}) {
+  if (session == null) return null;
+  final writeClient = syncProxyClient is ManualCoversWriteClient
+      ? syncProxyClient
+      : null;
+  if (writeClient == null) {
+    return (_) async {
+      throw const ManualCoversWriteException(
+        code: 'manual_covers_proxy_unavailable',
+        message:
+            'Manual covers need a live Forge & Flow connection before saving.',
+      );
+    };
+  }
+  final writer = AuthSessionManualCoversWriter(
+    client: writeClient,
+    authSessionProvider: () => session,
+  );
+  return writer.save;
 }
 
 /// MO-1 (Wave 2) â€” gate for the mobile Settings Data tab.

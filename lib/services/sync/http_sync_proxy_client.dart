@@ -25,7 +25,8 @@ class HttpSyncProxyClient
         BusinessScopeClient,
         StarTargetSyncProxyClient,
         WeeklyPlanSyncProxyClient,
-        StarTargetSelectionWriteClient {
+        StarTargetSelectionWriteClient,
+        ManualCoversWriteClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
@@ -409,6 +410,35 @@ class HttpSyncProxyClient
   }
 
   @override
+  Future<void> submitManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    required String idempotencyKey,
+    String? restaurantId,
+    String? recordedAt,
+  }) async {
+    await _patchJson(
+      _locationPath(operatorId, locationId, const <String>[
+        'data_accuracy_settings',
+        'manual_covers',
+      ]),
+      body: <String, Object?>{
+        if (restaurantId != null && restaurantId.trim().isNotEmpty)
+          'restaurant_id': restaurantId.trim(),
+        'business_date': businessDate,
+        'service_period_key': servicePeriodKey,
+        'covers': covers,
+        if (recordedAt != null && recordedAt.trim().isNotEmpty)
+          'recorded_at': recordedAt.trim(),
+      },
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
   Future<TargetCycleSyncPage> fetchTargetCycles({
     required String operatorId,
     required String locationId,
@@ -670,6 +700,34 @@ class HttpSyncProxyClient
     return _interpret(retry);
   }
 
+  Future<Map<String, Object?>> _patchJson(
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
+    final firstAttempt = await _attemptJsonMutation(
+      'PATCH',
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    if (firstAttempt.statusCode != 401 || _refreshIdToken == null) {
+      return _interpret(firstAttempt);
+    }
+    try {
+      await _refreshIdToken();
+    } catch (_) {
+      return _interpret(firstAttempt);
+    }
+    final retry = await _attemptJsonMutation(
+      'PATCH',
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    return _interpret(retry);
+  }
+
   Future<_HttpAttemptResult> _attemptGet(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -704,6 +762,20 @@ class HttpSyncProxyClient
     required Map<String, Object?> body,
     required String idempotencyKey,
   }) async {
+    return _attemptJsonMutation(
+      'POST',
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  Future<_HttpAttemptResult> _attemptJsonMutation(
+    String method,
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
     final token = (await _idTokenProvider())?.trim();
     if (token == null || token.isEmpty) {
       throw const SyncProxyClientException(
@@ -711,7 +783,7 @@ class HttpSyncProxyClient
         message: 'The sync proxy client has no live auth token.',
       );
     }
-    final request = http.Request('POST', _resolve(tailSegments));
+    final request = http.Request(method, _resolve(tailSegments));
     request.headers.addAll(<String, String>{
       'accept': 'application/json',
       'authorization': 'Bearer $token',

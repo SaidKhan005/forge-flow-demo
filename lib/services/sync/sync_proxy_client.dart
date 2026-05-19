@@ -211,6 +211,24 @@ abstract class DemoModeMasterSwitchClient {
   });
 }
 
+/// Canonical mobile write seam for manual covers.
+///
+/// Kept separate from [SyncProxyClient] so read-only sync fakes do not need a
+/// mutation method, while the production [HttpSyncProxyClient] can implement
+/// this alongside the existing operational reads.
+abstract class ManualCoversWriteClient {
+  Future<void> submitManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    required String idempotencyKey,
+    String? restaurantId,
+    String? recordedAt,
+  });
+}
+
 /// Vendor-agnostic mobile sync surface.
 ///
 /// The production implementation talks to the proxy

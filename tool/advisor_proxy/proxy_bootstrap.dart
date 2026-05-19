@@ -3392,6 +3392,74 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) {
+    final businessDate = _bodyBusinessDate(body, 'business_date');
+    final servicePeriodKey = _bodyServicePeriodKey(body);
+    final covers = _bodyCoversCount(body);
+
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        'insert into public.data_accuracy_settings ('
+        'operator_id, location_id, covers_manual_entries, updated_by) '
+        'values ('
+        '@operator_id::uuid, @location_id::uuid, '
+        'jsonb_build_object('
+        '@business_date, jsonb_build_object(@service_period_key, @covers::int)'
+        '), @updated_by) '
+        'on conflict (operator_id, location_id) do update set '
+        'covers_manual_entries = coalesce('
+        'public.data_accuracy_settings.covers_manual_entries, '
+        "'{}'::jsonb) || jsonb_build_object("
+        '@business_date, coalesce('
+        'public.data_accuracy_settings.covers_manual_entries '
+        "-> @business_date, '{}'::jsonb"
+        ') || jsonb_build_object(@service_period_key, @covers::int)), '
+        'updated_at = now(), updated_by = excluded.updated_by '
+        'returning setting_id::text as setting_id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'covers_manual_entries, wage_source, '
+        'walk_in_handling_mode, walk_in_manual_entries, '
+        'created_at, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'business_date': businessDate,
+          'service_period_key': servicePeriodKey,
+          'covers': covers,
+          'updated_by': _uuidOrNull(scope.userId),
+        },
+      );
+      if (rows.isEmpty) {
+        throw const MobileOperationalSyncProxyGatewayException(
+          statusCode: 503,
+          code: 'data_accuracy_manual_covers_write_failed',
+          message: 'manual covers write returned no row',
+        );
+      }
+      final coversRow = await exec.query(
+        'select $_coversPerPeriodSubquery',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      final merged = <String, Object?>{
+        ...rows.single,
+        'covers_source_per_service_period': coversRow.isEmpty
+            ? null
+            : coversRow.single['covers_source_per_service_period'],
+      };
+      return <String, Object?>{'data': _dataAccuracyJson(merged)};
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> upsertDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -4037,6 +4105,25 @@ class RepositoryMobileOperationalSyncProxyGateway
           'wage_source must be vendor_per_employee, vendor_per_position, '
           'target_substitution, or manual_mix',
     );
+  }
+
+  static int _bodyCoversCount(Map<String, Object?> body) {
+    final raw = body['covers'];
+    final parsed = raw is int
+        ? raw
+        : raw is num && raw == raw.roundToDouble()
+        ? raw.toInt()
+        : raw is String
+        ? int.tryParse(raw.trim())
+        : null;
+    if (parsed == null || parsed < 0) {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_covers',
+        message: 'covers must be a non-negative integer',
+      );
+    }
+    return parsed;
   }
 
   static Map<String, Map<String, int>> _bodyNestedIntMap(
