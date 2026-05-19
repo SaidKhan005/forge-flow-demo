@@ -41,7 +41,8 @@ void main() {
       Map<String, String>? displayNames,
     }) async {
       final verifier = _SettableVerifier();
-      verifier.claims = initialClaims ??
+      verifier.claims =
+          initialClaims ??
           const ProxyJwtClaims(
             userId: _kUser,
             operatorId: _kOpA,
@@ -65,8 +66,9 @@ void main() {
           await routeRequest(
             request,
             guard,
-            vendorLifecycleRecentlyAvailableRouter:
-                routerConfigured ? router : null,
+            vendorLifecycleRecentlyAvailableRouter: routerConfigured
+                ? router
+                : null,
           );
         } catch (_) {
           try {
@@ -76,9 +78,7 @@ void main() {
         }
       });
       final client = HttpClient();
-      final baseUri = Uri.parse(
-        'http://${server.address.host}:${server.port}',
-      );
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
       return (
         server: server,
         client: client,
@@ -110,9 +110,7 @@ void main() {
         try {
           final response = await _httpGet(
             ctx.client,
-            ctx.baseUri.resolve(
-              operatorVendorLifecycleRecentlyAvailablePath,
-            ),
+            ctx.baseUri.resolve(operatorVendorLifecycleRecentlyAvailablePath),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(200));
@@ -146,38 +144,37 @@ void main() {
     });
 
     test(
-        'falls back to the raw vendor id when display-name resolver returns null',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp(
-          seed: <OperatorRecentlyAvailableVendorRow>[
-            OperatorRecentlyAvailableVendorRow(
-              vendorId: 'unknown_vendor',
-              promotedAt: DateTime.utc(2026, 5, 5),
-            ),
-          ],
-          now: () => DateTime.utc(2026, 5, 7, 12),
-        );
-        try {
-          final response = await _httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(
-              operatorVendorLifecycleRecentlyAvailablePath,
-            ),
-            authorization: 'Bearer fake.token',
+      'falls back to the raw vendor id when display-name resolver returns null',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            seed: <OperatorRecentlyAvailableVendorRow>[
+              OperatorRecentlyAvailableVendorRow(
+                vendorId: 'unknown_vendor',
+                promotedAt: DateTime.utc(2026, 5, 5),
+              ),
+            ],
+            now: () => DateTime.utc(2026, 5, 7, 12),
           );
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          final vendors = body['vendors'] as List<Object?>;
-          final first = vendors.first as Map<String, Object?>;
-          expect(first['vendor_id'], equals('unknown_vendor'));
-          expect(first['vendor_display_name'], equals('unknown_vendor'));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(operatorVendorLifecycleRecentlyAvailablePath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final vendors = body['vendors'] as List<Object?>;
+            final first = vendors.first as Map<String, Object?>;
+            expect(first['vendor_id'], equals('unknown_vendor'));
+            expect(first['vendor_display_name'], equals('unknown_vendor'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('since query param narrows the gateway call', () async {
       await withRealHttp(() async {
@@ -189,9 +186,11 @@ void main() {
             ctx.client,
             ctx.baseUri
                 .resolve(operatorVendorLifecycleRecentlyAvailablePath)
-                .replace(queryParameters: <String, String>{
-              'since': since.toIso8601String(),
-            }),
+                .replace(
+                  queryParameters: <String, String>{
+                    'since': since.toIso8601String(),
+                  },
+                ),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(200));
@@ -211,9 +210,9 @@ void main() {
             ctx.client,
             ctx.baseUri
                 .resolve(operatorVendorLifecycleRecentlyAvailablePath)
-                .replace(queryParameters: <String, String>{
-              'since': 'not-a-date',
-            }),
+                .replace(
+                  queryParameters: <String, String>{'since': 'not-a-date'},
+                ),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(400));
@@ -227,9 +226,7 @@ void main() {
       });
     });
 
-    test(
-        'clamps a since older than the 90-day max window',
-        () async {
+    test('clamps a since older than the 90-day max window', () async {
       await withRealHttp(() async {
         final fixedNow = DateTime.utc(2026, 5, 7, 12);
         final ctx = await spinUp(now: () => fixedNow);
@@ -240,9 +237,11 @@ void main() {
             ctx.client,
             ctx.baseUri
                 .resolve(operatorVendorLifecycleRecentlyAvailablePath)
-                .replace(queryParameters: <String, String>{
-              'since': since.toIso8601String(),
-            }),
+                .replace(
+                  queryParameters: <String, String>{
+                    'since': since.toIso8601String(),
+                  },
+                ),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(200));
@@ -263,18 +262,14 @@ void main() {
         try {
           final response = await _httpGet(
             ctx.client,
-            ctx.baseUri.resolve(
-              operatorVendorLifecycleRecentlyAvailablePath,
-            ),
+            ctx.baseUri.resolve(operatorVendorLifecycleRecentlyAvailablePath),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(503));
           final body = jsonDecode(response.body) as Map<String, Object?>;
           expect(
             body['error'],
-            equals(
-              'vendor_lifecycle_recently_available_router_not_configured',
-            ),
+            equals('vendor_lifecycle_recently_available_router_not_configured'),
           );
         } finally {
           ctx.client.close(force: true);
@@ -296,14 +291,37 @@ void main() {
         try {
           final response = await _httpGet(
             ctx.client,
-            ctx.baseUri.resolve(
-              operatorVendorLifecycleRecentlyAvailablePath,
-            ),
+            ctx.baseUri.resolve(operatorVendorLifecycleRecentlyAvailablePath),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(403));
           final body = jsonDecode(response.body) as Map<String, Object?>;
           expect(body['error'], equals('forbidden'));
+          expect(ctx.gateway.calls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('403 when caller has phantom operator_admin role', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpA,
+            locationId: _kLoc,
+            roles: <String>['operator_admin'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(operatorVendorLifecycleRecentlyAvailablePath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(403));
           expect(ctx.gateway.calls, equals(0));
         } finally {
           ctx.client.close(force: true);
@@ -320,9 +338,7 @@ void main() {
           try {
             final aResp = await _httpGet(
               ctx.client,
-              ctx.baseUri.resolve(
-                operatorVendorLifecycleRecentlyAvailablePath,
-              ),
+              ctx.baseUri.resolve(operatorVendorLifecycleRecentlyAvailablePath),
               authorization: 'Bearer fake.token',
             );
             expect(aResp.statusCode, equals(200));
@@ -335,7 +351,7 @@ void main() {
               userId: _kUser,
               operatorId: _kOpB,
               locationId: _kLoc,
-              roles: <String>['operator_admin'],
+              roles: <String>['location_manager'],
             );
             final guard = ProxyRequestGuard(verifier: verifier);
             final gatewayB = _RecordingRecentlyAvailableGateway();
@@ -343,8 +359,10 @@ void main() {
               gateway: gatewayB,
               displayNameResolver: (_) => null,
             );
-            final serverB =
-                await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+            final serverB = await HttpServer.bind(
+              InternetAddress.loopbackIPv4,
+              0,
+            );
             // ignore: unawaited_futures
             serverB.listen((request) async {
               await routeRequest(

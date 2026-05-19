@@ -44,14 +44,13 @@ const Map<String, Object?> _legacyBenchmarkOverrideWriteDisabledBody =
 
 /// Route-local role allow-list for legacy benchmark override reads.
 /// The write verbs are tombstoned before this role gate; GET and
-/// cap-status keep the same operator/admin/manager read envelope for
+/// cap-status keep the same owner/general-manager/manager read envelope for
 /// existing cleanup/status consumers.
 ///
 /// Permission gate (`forgeflow.baseline.override`) is the primary
 /// defense for the surviving read-only route.
 const Set<String> kOperatorBenchmarkOverrideWriteRoles = <String>{
   'operator_owner',
-  'operator_admin',
   'operator_general_manager',
   'location_manager',
   'supervisor',

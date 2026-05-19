@@ -72,9 +72,7 @@ void main() {
         }
       });
       final client = HttpClient();
-      final baseUri = Uri.parse(
-        'http://${server.address.host}:${server.port}',
-      );
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
       return (
         server: server,
         client: client,
@@ -128,9 +126,9 @@ void main() {
             ctx.client,
             ctx.baseUri
                 .resolve(operatorConnectorBackfillJobsPath)
-                .replace(queryParameters: <String, String>{
-                  'connection_id': _kConnA,
-                }),
+                .replace(
+                  queryParameters: <String, String>{'connection_id': _kConnA},
+                ),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(200));
@@ -150,9 +148,9 @@ void main() {
             ctx.client,
             ctx.baseUri
                 .resolve(operatorConnectorBackfillJobsPath)
-                .replace(queryParameters: <String, String>{
-                  'connection_id': '   ',
-                }),
+                .replace(
+                  queryParameters: <String, String>{'connection_id': '   '},
+                ),
             authorization: 'Bearer fake.token',
           );
           expect(response.statusCode, equals(400));
@@ -249,71 +247,93 @@ void main() {
       });
     });
 
-    test(
-      'cross-tenant impossible: gateway sees the JWT operator + location, '
-      'never URL-supplied scope',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp();
+    test('403 when caller has phantom operator_admin role', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpA,
+            locationId: _kLoc,
+            roles: <String>['operator_admin'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(operatorConnectorBackfillJobsPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(403));
+          expect(ctx.gateway.calls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('cross-tenant impossible: gateway sees the JWT operator + location, '
+        'never URL-supplied scope', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          // Operator A reads. JWT pins (_kOpA, _kLoc).
+          final aResp = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(operatorConnectorBackfillJobsPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(aResp.statusCode, equals(200));
+          expect(ctx.gateway.lastOperatorId, equals(_kOpA));
+          expect(ctx.gateway.lastLocationId, equals(_kLoc));
+
+          // Same client, swap the JWT to operator B; the gateway now
+          // sees operator B even though every URL/header otherwise
+          // identical. Confirms scope rides solely on the bearer token.
+          final verifier = _SettableVerifier();
+          verifier.claims = const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpB,
+            locationId: _kLoc,
+            roles: <String>['location_manager'],
+          );
+          final guard = ProxyRequestGuard(verifier: verifier);
+          final gatewayB = _RecordingBackfillJobsGateway();
+          final routerB = ConnectorBackfillJobsRouter(gateway: gatewayB);
+          final serverB = await HttpServer.bind(
+            InternetAddress.loopbackIPv4,
+            0,
+          );
+          // ignore: unawaited_futures
+          serverB.listen((request) async {
+            await routeRequest(
+              request,
+              guard,
+              connectorBackfillJobsRouter: routerB,
+            );
+          });
+          final clientB = HttpClient();
           try {
-            // Operator A reads. JWT pins (_kOpA, _kLoc).
-            final aResp = await _httpGet(
-              ctx.client,
-              ctx.baseUri.resolve(operatorConnectorBackfillJobsPath),
+            final bResp = await _httpGet(
+              clientB,
+              Uri.parse(
+                'http://${serverB.address.host}:${serverB.port}',
+              ).resolve(operatorConnectorBackfillJobsPath),
               authorization: 'Bearer fake.token',
             );
-            expect(aResp.statusCode, equals(200));
-            expect(ctx.gateway.lastOperatorId, equals(_kOpA));
-            expect(ctx.gateway.lastLocationId, equals(_kLoc));
-
-            // Same client, swap the JWT to operator B; the gateway now
-            // sees operator B even though every URL/header otherwise
-            // identical. Confirms scope rides solely on the bearer token.
-            final verifier = _SettableVerifier();
-            verifier.claims = const ProxyJwtClaims(
-              userId: _kUser,
-              operatorId: _kOpB,
-              locationId: _kLoc,
-              roles: <String>['operator_admin'],
-            );
-            final guard = ProxyRequestGuard(verifier: verifier);
-            final gatewayB = _RecordingBackfillJobsGateway();
-            final routerB = ConnectorBackfillJobsRouter(gateway: gatewayB);
-            final serverB = await HttpServer.bind(
-              InternetAddress.loopbackIPv4,
-              0,
-            );
-            // ignore: unawaited_futures
-            serverB.listen((request) async {
-              await routeRequest(
-                request,
-                guard,
-                connectorBackfillJobsRouter: routerB,
-              );
-            });
-            final clientB = HttpClient();
-            try {
-              final bResp = await _httpGet(
-                clientB,
-                Uri.parse(
-                  'http://${serverB.address.host}:${serverB.port}',
-                ).resolve(operatorConnectorBackfillJobsPath),
-                authorization: 'Bearer fake.token',
-              );
-              expect(bResp.statusCode, equals(200));
-              expect(gatewayB.lastOperatorId, equals(_kOpB));
-              expect(gatewayB.lastLocationId, equals(_kLoc));
-            } finally {
-              clientB.close(force: true);
-              await serverB.close(force: true);
-            }
+            expect(bResp.statusCode, equals(200));
+            expect(gatewayB.lastOperatorId, equals(_kOpB));
+            expect(gatewayB.lastLocationId, equals(_kLoc));
           } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
+            clientB.close(force: true);
+            await serverB.close(force: true);
           }
-        });
-      },
-    );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
   });
 }
 
@@ -351,7 +371,8 @@ FirstConnectionBackfillJob _sampleJob({
 class _RecordingBackfillJobsGateway
     implements ConnectorBackfillJobsReadGateway {
   _RecordingBackfillJobsGateway({
-    List<FirstConnectionBackfillJob> seed = const <FirstConnectionBackfillJob>[],
+    List<FirstConnectionBackfillJob> seed =
+        const <FirstConnectionBackfillJob>[],
   }) : _seed = seed;
 
   final List<FirstConnectionBackfillJob> _seed;
