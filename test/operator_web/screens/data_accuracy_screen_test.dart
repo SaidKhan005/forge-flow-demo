@@ -1512,10 +1512,11 @@ void main() {
         find.byKey(const Key('wage_authority_row_display_row-mgr')),
         findsOneWidget,
       );
-      // S-1 hierarchy-scope notice (HP #11) renders at the top of
-      // the embedded section.
+      // HP #11 scope editor renders at the top of the embedded section.
+      // With no hierarchy nodes supplied, it honestly degrades to the
+      // location-only state.
       expect(
-        find.byKey(const Key('wage_authority_hierarchy_scope')),
+        find.byKey(const Key('wage_authority_scope_editor_location_only')),
         findsOneWidget,
       );
     });
