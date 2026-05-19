@@ -12,6 +12,7 @@
 //   * Cap events - refused requests when usage_caps was reached.
 //   * Graph     - approved / inferred / rejected / isolated counts,
 //                 projection freshness, traversal p95.
+//   * Retries   - canonical projection retry queue and dead-letter rows.
 //   * Cloud Run - per-route latency p50/p95/p99 + error rate, plus
 //                 active Cloud Run instances by service.
 //
@@ -53,6 +54,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
   _TabSpec(label: 'Operators', keySuffix: 'operators'),
   _TabSpec(label: 'Limit events', keySuffix: 'cap_events'),
   _TabSpec(label: 'Knowledge graph', keySuffix: 'graph'),
+  _TabSpec(label: 'Projection retries', keySuffix: 'projection_retries'),
   _TabSpec(label: 'Hosting', keySuffix: 'cloud_run'),
 ];
 
@@ -328,6 +330,12 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
                   key: const Key('admin_observability_tab_body_graph'),
                   envelope: envelope,
                 ),
+                _ProjectionRetriesTab(
+                  key: const Key(
+                    'admin_observability_tab_body_projection_retries',
+                  ),
+                  envelope: envelope,
+                ),
                 _CloudRunTab(
                   key: const Key('admin_observability_tab_body_cloud_run'),
                   envelope: envelope,
@@ -483,6 +491,8 @@ class _AsOfStrip extends StatelessWidget {
     final dormantCount = envelope.dormantOperators.length;
     final underwaterCount = envelope.underwaterOperators.length;
     final capEventCount = envelope.capEvents.length;
+    final retryDeadLetters =
+        envelope.projectionRetries.statusCounts.deadLettered;
     return Container(
       key: const Key('admin_observability_as_of_strip'),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -521,6 +531,13 @@ class _AsOfStrip extends StatelessWidget {
             value: '$capEventCount',
             severity: capEventCount > 0
                 ? _SummarySeverity.warning
+                : _SummarySeverity.neutral,
+          ),
+          _SummaryChip(
+            label: 'Retry dead letters',
+            value: '$retryDeadLetters',
+            severity: retryDeadLetters > 0
+                ? _SummarySeverity.negative
                 : _SummarySeverity.neutral,
           ),
         ],
@@ -566,6 +583,11 @@ class _MetricsKey extends StatelessWidget {
       label: 'Unlinked items',
       meaning:
           'Knowledge graph items that are not connected to a confirmed relationship yet.',
+    ),
+    _MetricsKeyItem(
+      label: 'Projection retries',
+      meaning:
+          'Shift and open-period projection work waiting to replay, currently running, or dead-lettered.',
     ),
   ];
 
@@ -1961,6 +1983,266 @@ class _GraphTab extends StatelessWidget {
   }
 }
 
+class _ProjectionRetriesTab extends StatelessWidget {
+  const _ProjectionRetriesTab({super.key, required this.envelope});
+
+  final ObservabilityEnvelope envelope;
+
+  @override
+  Widget build(BuildContext context) {
+    final retries = envelope.projectionRetries;
+    final counts = retries.statusCounts;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          _SectionCard(
+            keyName: 'admin_observability_section_projection_retry_counts',
+            title: 'Projection retry queue',
+            subtitle:
+                'Shows canonical shift and open-period projection work that is waiting, running, completed, or dead-lettered.',
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: <Widget>[
+                _MetricTileShell(
+                  key: const Key(
+                    'admin_observability_projection_retry_pending',
+                  ),
+                  label: 'Waiting',
+                  labelHelp:
+                      'Jobs ready for the retry worker once their next attempt time arrives.',
+                  value: '${counts.pending}',
+                  caption: 'Pending retry jobs',
+                  accent: counts.pending > 0
+                      ? AppColors.warning
+                      : AppColors.positive,
+                ),
+                _MetricTileShell(
+                  key: const Key(
+                    'admin_observability_projection_retry_running',
+                  ),
+                  label: 'Running',
+                  labelHelp:
+                      'Jobs currently claimed by a projection retry worker.',
+                  value: '${counts.running}',
+                  caption: 'Claimed retry jobs',
+                  accent: counts.running > 0
+                      ? AppColors.warning
+                      : AppColors.neutral,
+                ),
+                _MetricTileShell(
+                  key: const Key(
+                    'admin_observability_projection_retry_dead_lettered',
+                  ),
+                  label: 'Dead-lettered',
+                  labelHelp:
+                      'Jobs that reached the retry limit or were recorded as non-replayable failures.',
+                  value: '${counts.deadLettered}',
+                  caption: 'Need support triage',
+                  accent: counts.deadLettered > 0
+                      ? AppColors.negative
+                      : AppColors.positive,
+                ),
+                _MetricTileShell(
+                  key: const Key(
+                    'admin_observability_projection_retry_succeeded',
+                  ),
+                  label: 'Completed',
+                  labelHelp: 'Retry jobs that replayed successfully.',
+                  value: '${counts.succeeded}',
+                  caption: 'Historical successes',
+                  accent: AppColors.neutral,
+                ),
+              ],
+            ),
+          ),
+          _SectionCard(
+            keyName: 'admin_observability_section_projection_retry_active',
+            title: 'Recent active retry jobs',
+            subtitle:
+                'Bounded list of waiting or running rows. The worker drains these through tenant-scoped replay.',
+            child: retries.recentActive.isEmpty
+                ? const _EmptyState(
+                    keyName:
+                        'admin_observability_projection_retry_active_empty',
+                    label: 'No waiting or running projection retry rows.',
+                  )
+                : _ProjectionRetryRows(
+                    rows: retries.recentActive,
+                    keyPrefix: 'admin_observability_projection_retry_active',
+                    limit: retries.recentActiveLimit,
+                  ),
+          ),
+          _SectionCard(
+            keyName:
+                'admin_observability_section_projection_retry_dead_letters',
+            title: 'Dead-lettered projection jobs',
+            subtitle:
+                'Rows that need support triage. Some pre-input failures are intentionally not replayable until the failed source data is corrected.',
+            child: retries.deadLettered.isEmpty
+                ? const _EmptyState(
+                    keyName:
+                        'admin_observability_projection_retry_dead_letters_empty',
+                    label: 'No dead-lettered projection retry rows.',
+                  )
+                : _ProjectionRetryRows(
+                    rows: retries.deadLettered,
+                    keyPrefix:
+                        'admin_observability_projection_retry_dead_letter',
+                    limit: retries.deadLetteredLimit,
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectionRetryRows extends StatelessWidget {
+  const _ProjectionRetryRows({
+    required this.rows,
+    required this.keyPrefix,
+    required this.limit,
+  });
+
+  final List<ProjectionRetryRow> rows;
+  final String keyPrefix;
+  final int limit;
+
+  @override
+  Widget build(BuildContext context) {
+    final limitText = limit > 0
+        ? 'Showing ${rows.length} of up to $limit rows.'
+        : 'Showing ${rows.length} rows.';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Text(
+          limitText,
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+        const SizedBox(height: 8),
+        for (final row in rows)
+          _ProjectionRetryRowCard(
+            key: Key('${keyPrefix}_${row.jobId}'),
+            row: row,
+          ),
+      ],
+    );
+  }
+}
+
+class _ProjectionRetryRowCard extends StatelessWidget {
+  const _ProjectionRetryRowCard({super.key, required this.row});
+
+  final ProjectionRetryRow row;
+
+  @override
+  Widget build(BuildContext context) {
+    final stage = _projectionRetryPayloadLabel(row);
+    final statusColor = row.isDeadLettered
+        ? AppColors.negative
+        : row.status == 'running'
+        ? AppColors.warning
+        : AppColors.textPrimary;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Expanded(
+                flex: 3,
+                child: Text(
+                  _compactId(row.jobId),
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.mono12(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  row.status.replaceAll('_', ' '),
+                  textAlign: TextAlign.right,
+                  style: AppTextStyles.mono11(
+                    color: statusColor,
+                  ).copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 10,
+            runSpacing: 6,
+            children: <Widget>[
+              _ProjectionRetryFact(label: 'Vendor', value: row.vendorId),
+              _ProjectionRetryFact(label: 'Category', value: row.category),
+              _ProjectionRetryFact(
+                label: 'Location',
+                value: _compactId(row.locationId),
+              ),
+              _ProjectionRetryFact(
+                label: 'Connection',
+                value: _compactId(row.connectionId),
+              ),
+              _ProjectionRetryFact(
+                label: 'Attempts',
+                value: '${row.attemptCount}',
+              ),
+              _ProjectionRetryFact(label: 'Input', value: stage),
+              if (row.nextAttemptAt != null)
+                _ProjectionRetryFact(
+                  label: 'Next attempt',
+                  value: adminHumanDateTime(row.nextAttemptAt!),
+                ),
+              if (row.deadLetteredAt != null)
+                _ProjectionRetryFact(
+                  label: 'Dead-lettered',
+                  value: adminHumanDateTime(row.deadLetteredAt!),
+                ),
+            ],
+          ),
+          if (row.lastErrorMessage.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8),
+            Text(
+              '${row.lastErrorClass}: ${row.lastErrorMessage}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ProjectionRetryFact extends StatelessWidget {
+  const _ProjectionRetryFact({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      '$label: ${value.isEmpty ? '-' : value}',
+      style: AppTextStyles.mono10(color: AppColors.textMuted),
+    );
+  }
+}
+
 class _CloudRunTab extends StatelessWidget {
   const _CloudRunTab({super.key, required this.envelope});
 
@@ -2217,6 +2499,20 @@ class _CloudRunHeader extends StatelessWidget {
 
 String _routeKey(String route) =>
     route.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_');
+
+String _compactId(String value) {
+  if (value.length <= 12) return value;
+  return '${value.substring(0, 8)}...${value.substring(value.length - 4)}';
+}
+
+String _projectionRetryPayloadLabel(ProjectionRetryRow row) {
+  final closed = row.changedPeriodCount;
+  final open = row.openCurrentFactCount;
+  if (closed == null && open == null) {
+    return '${row.factCount} facts';
+  }
+  return '${closed ?? 0} closed / ${open ?? 0} open';
+}
 
 /// Stable cost-row key. Uses an explicit `none` placeholder when an
 /// axis (location, staff, workflow) is null so widget tests do not

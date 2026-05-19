@@ -522,6 +522,154 @@ class CloudRunInstanceMetric {
   }
 }
 
+@immutable
+class ProjectionRetryStatusCounts {
+  const ProjectionRetryStatusCounts({
+    required this.pending,
+    required this.running,
+    required this.succeeded,
+    required this.deadLettered,
+  });
+
+  final int pending;
+  final int running;
+  final int succeeded;
+  final int deadLettered;
+
+  factory ProjectionRetryStatusCounts.fromJson(Map<String, Object?> json) {
+    return ProjectionRetryStatusCounts(
+      pending: _parseInt(json['pending']) ?? 0,
+      running: _parseInt(json['running']) ?? 0,
+      succeeded: _parseInt(json['succeeded']) ?? 0,
+      deadLettered: _parseInt(json['dead_lettered']) ?? 0,
+    );
+  }
+}
+
+@immutable
+class ProjectionRetryRow {
+  const ProjectionRetryRow({
+    required this.jobId,
+    required this.operatorId,
+    required this.locationId,
+    required this.restaurantId,
+    required this.connectionId,
+    required this.vendorId,
+    required this.category,
+    required this.status,
+    required this.factCount,
+    required this.attemptCount,
+    required this.changedPeriodCount,
+    required this.openCurrentFactCount,
+    required this.workerId,
+    required this.claimedAt,
+    required this.nextAttemptAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.completedAt,
+    required this.deadLetteredAt,
+    required this.inputHash,
+    required this.lastErrorClass,
+    required this.lastErrorMessage,
+    required this.stackFirstFrame,
+  });
+
+  final String jobId;
+  final String operatorId;
+  final String locationId;
+  final String restaurantId;
+  final String connectionId;
+  final String vendorId;
+  final String category;
+  final String status;
+  final int factCount;
+  final int attemptCount;
+  final int? changedPeriodCount;
+  final int? openCurrentFactCount;
+  final String? workerId;
+  final DateTime? claimedAt;
+  final DateTime? nextAttemptAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final DateTime? completedAt;
+  final DateTime? deadLetteredAt;
+  final String inputHash;
+  final String lastErrorClass;
+  final String lastErrorMessage;
+  final String stackFirstFrame;
+
+  bool get isDeadLettered => status == 'dead_lettered';
+
+  factory ProjectionRetryRow.fromJson(Map<String, Object?> json) {
+    return ProjectionRetryRow(
+      jobId: (json['job_id'] as String?) ?? '',
+      operatorId: (json['operator_id'] as String?) ?? '',
+      locationId: (json['location_id'] as String?) ?? '',
+      restaurantId: (json['restaurant_id'] as String?) ?? '',
+      connectionId: (json['connection_id'] as String?) ?? '',
+      vendorId: (json['vendor_id'] as String?) ?? '',
+      category: (json['category'] as String?) ?? '',
+      status: (json['status'] as String?) ?? '',
+      factCount: _parseInt(json['fact_count']) ?? 0,
+      attemptCount: _parseInt(json['attempt_count']) ?? 0,
+      changedPeriodCount: _parseInt(json['changed_period_count']),
+      openCurrentFactCount: _parseInt(json['open_current_fact_count']),
+      workerId: json['worker_id'] as String?,
+      claimedAt: _parseUtc(json['claimed_at']),
+      nextAttemptAt: _parseUtc(json['next_attempt_at']),
+      createdAt: _parseUtc(json['created_at']),
+      updatedAt: _parseUtc(json['updated_at']),
+      completedAt: _parseUtc(json['completed_at']),
+      deadLetteredAt: _parseUtc(json['dead_lettered_at']),
+      inputHash: (json['input_hash'] as String?) ?? '',
+      lastErrorClass: (json['last_error_class'] as String?) ?? '',
+      lastErrorMessage: (json['last_error_message'] as String?) ?? '',
+      stackFirstFrame: (json['stack_first_frame'] as String?) ?? '',
+    );
+  }
+}
+
+@immutable
+class ProjectionRetryObservability {
+  const ProjectionRetryObservability({
+    required this.statusCounts,
+    required this.recentActive,
+    required this.deadLettered,
+    required this.recentActiveLimit,
+    required this.deadLetteredLimit,
+  });
+
+  final ProjectionRetryStatusCounts statusCounts;
+  final List<ProjectionRetryRow> recentActive;
+  final List<ProjectionRetryRow> deadLettered;
+  final int recentActiveLimit;
+  final int deadLetteredLimit;
+
+  factory ProjectionRetryObservability.fromJson(Map<String, Object?> json) {
+    final limits =
+        (json['limits'] as Map?)?.cast<String, Object?>() ??
+        const <String, Object?>{};
+    return ProjectionRetryObservability(
+      statusCounts: ProjectionRetryStatusCounts.fromJson(
+        ((json['status_counts'] as Map?) ?? const <String, Object?>{})
+            .cast<String, Object?>(),
+      ),
+      recentActive: <ProjectionRetryRow>[
+        for (final entry in (json['recent_active'] as List?) ?? const [])
+          if (entry is Map)
+            ProjectionRetryRow.fromJson(entry.cast<String, Object?>()),
+      ],
+      deadLettered: <ProjectionRetryRow>[
+        for (final entry in (json['dead_lettered'] as List?) ?? const [])
+          if (entry is Map)
+            ProjectionRetryRow.fromJson(entry.cast<String, Object?>()),
+      ],
+      recentActiveLimit: _parseInt(limits['recent_active']) ?? 0,
+      deadLetteredLimit: _parseInt(limits['dead_lettered']) ?? 0,
+    );
+  }
+}
+
 /// Whole observability envelope. Every list is non-null; an empty list
 /// is the proxy's signal that no rows are populated yet (typical for
 /// the first launch run). The screen renders an empty-state caption
@@ -550,6 +698,7 @@ class ObservabilityEnvelope {
     required this.margins,
     required this.capEvents,
     required this.graph,
+    required this.projectionRetries,
     required this.routeLatency,
     required this.cloudRun,
     this.costTelemetryQueryClassFilter,
@@ -584,6 +733,7 @@ class ObservabilityEnvelope {
   final List<MarginEstimateEntry> margins;
   final List<CapEvent> capEvents;
   final GraphObservability graph;
+  final ProjectionRetryObservability projectionRetries;
   final List<RouteLatencyEntry> routeLatency;
   final List<CloudRunInstanceMetric> cloudRun;
 
@@ -663,6 +813,10 @@ class ObservabilityEnvelope {
       ],
       graph: GraphObservability.fromJson(
         ((json['graph'] as Map?) ?? const <String, Object?>{})
+            .cast<String, Object?>(),
+      ),
+      projectionRetries: ProjectionRetryObservability.fromJson(
+        ((json['projection_retries'] as Map?) ?? const <String, Object?>{})
             .cast<String, Object?>(),
       ),
       routeLatency: <RouteLatencyEntry>[

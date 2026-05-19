@@ -32,4 +32,4 @@ COPY --from=build /workspace/build/projection_retry_worker \
      /app/projection_retry_worker
 
 ENTRYPOINT ["/app/projection_retry_worker"]
-CMD ["daemon"]
+CMD ["runOnce"]
