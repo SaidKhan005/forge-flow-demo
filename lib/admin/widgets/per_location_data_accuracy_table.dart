@@ -298,20 +298,8 @@ class _PerLocationDataAccuracyTableState
   }
 
   static List<_MiniFact> _coversFacts(DataAccuracyAdminRow row) {
-    final servicePeriodRows = row.servicePeriodSettings;
-    if (servicePeriodRows.isNotEmpty) {
-      return <_MiniFact>[
-        for (final period in servicePeriodRows)
-          _MiniFact(
-            _servicePeriodLabelFor(row, period.servicePeriodKey),
-            _servicePeriodCoversLabel(period.coversSource),
-            sourceLabel: row.settings
-                .coversSourceSourceFor(period.servicePeriodKey)
-                ?.label,
-          ),
-      ];
-    }
-
+    final servicePeriodFacts = _servicePeriodFacts(row);
+    if (servicePeriodFacts.isNotEmpty) return servicePeriodFacts;
     final keyed = row.settings.coversSourcePerServicePeriod;
     if (keyed.isNotEmpty) {
       final entries = keyed.entries.toList(growable: false)
@@ -349,6 +337,15 @@ class _PerLocationDataAccuracyTableState
   static bool _coversUsesVendor(DataAccuracyAdminRow row) {
     final servicePeriodRows = row.servicePeriodSettings;
     if (servicePeriodRows.isNotEmpty) {
+      final configured = row.configuredServicePeriods;
+      if (configured.isNotEmpty) {
+        final keyed = <String>{
+          for (final period in servicePeriodRows) period.servicePeriodKey,
+        };
+        if (configured.any((period) => !keyed.contains(period.id))) {
+          return true;
+        }
+      }
       return servicePeriodRows.any(
         (period) => period.coversSource == ServicePeriodCoversSource.vendor,
       );
@@ -368,6 +365,70 @@ class _PerLocationDataAccuracyTableState
     }
 
     return true;
+  }
+
+  static List<_MiniFact> _servicePeriodFacts(DataAccuracyAdminRow row) {
+    final servicePeriodRows = row.servicePeriodSettings;
+    if (servicePeriodRows.isEmpty) return const <_MiniFact>[];
+
+    final configured = row.configuredServicePeriods;
+    final keyedRows = <String, DataAccuracyServicePeriodSetting>{
+      for (final period in servicePeriodRows) period.servicePeriodKey: period,
+    };
+    if (configured.isEmpty) {
+      final sorted = servicePeriodRows.toList(growable: false)
+        ..sort((a, b) => a.servicePeriodKey.compareTo(b.servicePeriodKey));
+      return <_MiniFact>[
+        for (final period in sorted)
+          _MiniFact(
+            _servicePeriodLabelFor(row, period.servicePeriodKey),
+            _servicePeriodCoversLabel(period.coversSource),
+            sourceLabel: row.settings
+                .coversSourceSourceFor(period.servicePeriodKey)
+                ?.label,
+          ),
+      ];
+    }
+
+    final seen = <String>{};
+    final facts = <_MiniFact>[
+      for (final period in configured)
+        _servicePeriodFactFor(
+          row: row,
+          key: period.id,
+          keyedRow: keyedRows[period.id],
+          seen: seen,
+        ),
+    ];
+    final extraKeys =
+        keyedRows.keys.where((key) => !seen.contains(key)).toList()..sort();
+    facts.addAll(<_MiniFact>[
+      for (final key in extraKeys)
+        _servicePeriodFactFor(
+          row: row,
+          key: key,
+          keyedRow: keyedRows[key],
+          seen: seen,
+        ),
+    ]);
+    return facts;
+  }
+
+  static _MiniFact _servicePeriodFactFor({
+    required DataAccuracyAdminRow row,
+    required String key,
+    required DataAccuracyServicePeriodSetting? keyedRow,
+    required Set<String> seen,
+  }) {
+    seen.add(key);
+    if (keyedRow != null) {
+      return _MiniFact(
+        _servicePeriodLabelFor(row, key),
+        _servicePeriodCoversLabel(keyedRow.coversSource),
+        sourceLabel: row.settings.coversSourceSourceFor(key)?.label,
+      );
+    }
+    return _MiniFact(_servicePeriodLabelFor(row, key), 'Vendor default');
   }
 
   static String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {

@@ -1160,6 +1160,63 @@ void main() {
   // dialog round-trips a draft into saveServicePeriodSetting on the
   // injected gateway.
   group('DataAccuracyScreen keyed service-period card', () {
+    testWidgets('reloads configured service periods when location changes', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1400));
+
+      final gateway = _RecordingDataAccuracyGateway();
+      var loadCalls = 0;
+      var activePeriods = <ServicePeriodDefinition>[
+        servicePeriodDefinition(
+          id: 'breakfast',
+          label: 'Breakfast',
+          sortOrder: 1,
+        ),
+      ];
+      Future<List<ServicePeriodDefinition>> loadPeriods() async {
+        loadCalls += 1;
+        return activePeriods;
+      }
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+            servicePeriodsLoader: loadPeriods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(loadCalls, equals(1));
+      expect(find.text('Breakfast'), findsWidgets);
+
+      activePeriods = <ServicePeriodDefinition>[
+        servicePeriodDefinition(id: 'supper', label: 'Supper', sortOrder: 1),
+      ];
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: 'brio-ottawa-market',
+            locationName: 'Brio - Ottawa Market',
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+            servicePeriodsLoader: loadPeriods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(loadCalls, equals(2));
+      expect(find.text('Supper'), findsWidgets);
+      expect(find.text('Breakfast'), findsNothing);
+    });
+
     testWidgets(
       'card renders existing rows when a data-accuracy gateway is wired',
       (tester) async {
@@ -1455,10 +1512,11 @@ void main() {
         find.byKey(const Key('wage_authority_row_display_row-mgr')),
         findsOneWidget,
       );
-      // S-1 hierarchy-scope notice (HP #11) renders at the top of
-      // the embedded section.
+      // HP #11 scope editor renders at the top of the embedded section.
+      // With no hierarchy nodes supplied, it honestly degrades to the
+      // location-only state.
       expect(
-        find.byKey(const Key('wage_authority_hierarchy_scope')),
+        find.byKey(const Key('wage_authority_scope_editor_location_only')),
         findsOneWidget,
       );
     });

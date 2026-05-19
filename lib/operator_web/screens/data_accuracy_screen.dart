@@ -263,6 +263,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   // honest "no periods configured" hint while empty.
   List<ServicePeriodDefinition> _servicePeriods =
       const <ServicePeriodDefinition>[];
+  int _servicePeriodsLoadGeneration = 0;
 
   // In-memory editable working copy of the settings. Materialized
   // back into `DataAccuracySettings` on save. Covers source is keyed
@@ -290,13 +291,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   Future<void> _loadServicePeriods() async {
+    final generation = ++_servicePeriodsLoadGeneration;
     final loader = widget.servicePeriodsLoader ?? _defaultServicePeriodsLoader;
     try {
       final periods = await loader();
-      if (!mounted) return;
+      if (!mounted || generation != _servicePeriodsLoadGeneration) return;
       setState(() => _servicePeriods = periods);
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || generation != _servicePeriodsLoadGeneration) return;
       setState(
         () => _servicePeriods = ServicePeriodDefinitionResolver.ordered(
           ServicePeriodDefinitionResolver.demoDefinitions,
@@ -350,7 +352,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         oldWidget.session.operatorId != widget.session.operatorId ||
         oldWidget.dataAccuracyGateway != widget.dataAccuracyGateway ||
         oldWidget.vendorApplicabilityGateway !=
-            widget.vendorApplicabilityGateway) {
+            widget.vendorApplicabilityGateway ||
+        oldWidget.servicePeriodsLoader != widget.servicePeriodsLoader) {
       _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
       setState(() {
         _loading = true;
@@ -365,11 +368,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _servicePeriodLoadError = null;
         _servicePeriodSaveError = null;
         _servicePeriodRows = const <DataAccuracyServicePeriodSetting>[];
+        _servicePeriods = const <ServicePeriodDefinition>[];
       });
       _loadBundle();
       _loadSettings();
       _loadWageApplicability();
       _loadServicePeriodSettings();
+      _loadServicePeriods();
     }
   }
 
