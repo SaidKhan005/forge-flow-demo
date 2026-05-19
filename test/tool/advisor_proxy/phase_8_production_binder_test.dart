@@ -71,6 +71,13 @@ void main() {
         expect(installed.webhookHandler.posAdapterFactories, contains('toast'));
         expect(installed.webhookHandler.signatureVerifiers, contains('toast'));
         expect(installed.firstBackfillEnqueueGateway, isNotNull);
+        expect(
+          phase8ProjectingSinksByVendor,
+          contains('toast'),
+          reason:
+              'production boot should create the default post-commit '
+              'projector wiring when no test override is supplied',
+        );
       },
     );
 

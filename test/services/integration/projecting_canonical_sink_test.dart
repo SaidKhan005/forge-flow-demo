@@ -52,11 +52,17 @@ void main() {
           canonicalFact: _coverFact(connectionId: _connectionA),
         );
 
-        expect(wrote, isTrue,
-            reason: 'wrapper forwards underlying boolean verbatim');
+        expect(
+          wrote,
+          isTrue,
+          reason: 'wrapper forwards underlying boolean verbatim',
+        );
         expect(underlying.coverFacts, hasLength(1));
-        expect(projector.invocations, isEmpty,
-            reason: 'no projection until commit signal arrives');
+        expect(
+          projector.invocations,
+          isEmpty,
+          reason: 'no projection until commit signal arrives',
+        );
 
         await wrapper.appendSyncLog(
           operatorId: _operatorA,
@@ -66,53 +72,111 @@ void main() {
           recordsCount: 1,
         );
 
-        expect(projector.invocations, hasLength(1),
-            reason: 'commit signal drains the buffer once');
+        expect(
+          projector.invocations,
+          hasLength(1),
+          reason: 'commit signal drains the buffer once',
+        );
         final invocation = projector.invocations.single;
         expect(invocation.operatorId, _operatorA);
         expect(invocation.locationId, _locationA);
         expect(invocation.connectionId, _connectionA);
         expect(invocation.changedPeriods, hasLength(1));
-        expect(
-          invocation.changedPeriods.single.servicePeriodKey,
-          'dinner',
-        );
+        expect(invocation.changedPeriods.single.servicePeriodKey, 'dinner');
       },
     );
 
-    test('underlying sink throwing short-circuits before projector fires',
-        () async {
-      final underlying = _ThrowingCanonicalSink();
-      final projector = _RecordingProjector();
-      final wrapper = _wrapper(underlying: underlying, projector: projector);
+    test(
+      'real vendor maps without connection_id still drain on commit signal',
+      () async {
+        final underlying = _RecordingCanonicalSink();
+        final projector = _RecordingProjector();
+        final resolvedFacts = <Map<String, Object?>>[];
+        final wrapper = _wrapper(
+          underlying: underlying,
+          projector: projector,
+          periodResolver:
+              ({
+                required String operatorId,
+                required String locationId,
+                required IntegrationCategory category,
+                required String vendorId,
+                required String connectionId,
+                required Map<String, Object?> canonicalFact,
+              }) {
+                resolvedFacts.add(canonicalFact);
+                return _stubResolver(
+                  operatorId: operatorId,
+                  locationId: locationId,
+                  category: category,
+                  vendorId: vendorId,
+                  connectionId: connectionId,
+                  canonicalFact: canonicalFact,
+                );
+              },
+        );
+        final fact = Map<String, Object?>.of(
+          _coverFact(connectionId: _connectionA),
+        )..remove('connection_id');
 
-      await expectLater(
-        wrapper.upsertCoverFact(
+        await wrapper.upsertCoverFact(
           operatorId: _operatorA,
           locationId: _locationA,
-          canonicalFact: _coverFact(connectionId: _connectionA),
-        ),
-        throwsA(isA<StateError>()),
-      );
+          canonicalFact: fact,
+        );
+        await wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'poll_success',
+          recordsCount: 1,
+        );
 
-      await wrapper.appendSyncLog(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        connectionId: _connectionA,
-        eventKind: 'backfill_success',
-      );
+        expect(projector.invocations, hasLength(1));
+        expect(projector.invocations.single.connectionId, _connectionA);
+        expect(resolvedFacts.single['operator_id'], _operatorA);
+        expect(resolvedFacts.single['location_id'], _locationA);
+        expect(resolvedFacts.single['fact_type'], 'cover_fact');
+        expect(resolvedFacts.single['source_system'], 'toast');
+      },
+    );
 
-      expect(projector.invocations, isEmpty,
-          reason: 'underlying throw means no fact buffered, no projection');
-    });
+    test(
+      'underlying sink throwing short-circuits before projector fires',
+      () async {
+        final underlying = _ThrowingCanonicalSink();
+        final projector = _RecordingProjector();
+        final wrapper = _wrapper(underlying: underlying, projector: projector);
+
+        await expectLater(
+          wrapper.upsertCoverFact(
+            operatorId: _operatorA,
+            locationId: _locationA,
+            canonicalFact: _coverFact(connectionId: _connectionA),
+          ),
+          throwsA(isA<StateError>()),
+        );
+
+        await wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'backfill_success',
+        );
+
+        expect(
+          projector.invocations,
+          isEmpty,
+          reason: 'underlying throw means no fact buffered, no projection',
+        );
+      },
+    );
 
     test(
       'projector throwing is logged as warning and does not propagate',
       () async {
         final underlying = _RecordingCanonicalSink();
-        final projector = _RecordingProjector(
-          throwOnNextProject: true,
-        );
+        final projector = _RecordingProjector(throwOnNextProject: true);
         final wrapper = _wrapper(underlying: underlying, projector: projector);
 
         // Underlying write must succeed regardless of projector failure.
@@ -136,58 +200,69 @@ void main() {
           reason: 'projector failure must not propagate to caller',
         );
 
-        expect(projector.invocations, hasLength(1),
-            reason: 'projector was invoked once before throwing');
-        expect(underlying.syncLogs, hasLength(1),
-            reason: 'underlying syncLog write occurred regardless of projector');
+        expect(
+          projector.invocations,
+          hasLength(1),
+          reason: 'projector was invoked once before throwing',
+        );
+        expect(
+          underlying.syncLogs,
+          hasLength(1),
+          reason: 'underlying syncLog write occurred regardless of projector',
+        );
       },
     );
 
-    test('per-tenant buffers do not cross operator/location/connection',
-        () async {
-      final underlying = _RecordingCanonicalSink();
-      final projector = _RecordingProjector();
-      final wrapper = _wrapper(underlying: underlying, projector: projector);
+    test(
+      'per-tenant buffers do not cross operator/location/connection',
+      () async {
+        final underlying = _RecordingCanonicalSink();
+        final projector = _RecordingProjector();
+        final wrapper = _wrapper(underlying: underlying, projector: projector);
 
-      // Write into (operatorA, locationA, connectionA).
-      await wrapper.upsertCoverFact(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        canonicalFact: _coverFact(connectionId: _connectionA),
-      );
-      // Write into a different tenant — same wrapper instance.
-      await wrapper.upsertCoverFact(
-        operatorId: _operatorB,
-        locationId: _locationB,
-        canonicalFact: _coverFact(connectionId: 'connection-B'),
-      );
+        // Write into (operatorA, locationA, connectionA).
+        await wrapper.upsertCoverFact(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          canonicalFact: _coverFact(connectionId: _connectionA),
+        );
+        // Write into a different tenant — same wrapper instance.
+        await wrapper.upsertCoverFact(
+          operatorId: _operatorB,
+          locationId: _locationB,
+          canonicalFact: _coverFact(connectionId: 'connection-B'),
+        );
 
-      // Drain only the first tenant's buffer.
-      await wrapper.appendSyncLog(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        connectionId: _connectionA,
-        eventKind: 'backfill_success',
-      );
+        // Drain only the first tenant's buffer.
+        await wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'backfill_success',
+        );
 
-      expect(projector.invocations, hasLength(1));
-      final invocation = projector.invocations.single;
-      expect(invocation.operatorId, _operatorA);
-      expect(invocation.locationId, _locationA);
-      expect(invocation.connectionId, _connectionA);
-      expect(invocation.changedPeriods, hasLength(1),
-          reason: 'B tenant facts must not leak into A drain');
+        expect(projector.invocations, hasLength(1));
+        final invocation = projector.invocations.single;
+        expect(invocation.operatorId, _operatorA);
+        expect(invocation.locationId, _locationA);
+        expect(invocation.connectionId, _connectionA);
+        expect(
+          invocation.changedPeriods,
+          hasLength(1),
+          reason: 'B tenant facts must not leak into A drain',
+        );
 
-      // Drain B tenant — separate invocation, separate scope.
-      await wrapper.appendSyncLog(
-        operatorId: _operatorB,
-        locationId: _locationB,
-        connectionId: 'connection-B',
-        eventKind: 'backfill_success',
-      );
-      expect(projector.invocations, hasLength(2));
-      expect(projector.invocations.last.operatorId, _operatorB);
-    });
+        // Drain B tenant — separate invocation, separate scope.
+        await wrapper.appendSyncLog(
+          operatorId: _operatorB,
+          locationId: _locationB,
+          connectionId: 'connection-B',
+          eventKind: 'backfill_success',
+        );
+        expect(projector.invocations, hasLength(2));
+        expect(projector.invocations.last.operatorId, _operatorB);
+      },
+    );
 
     test('duplicate period identities within a batch are deduped', () async {
       final underlying = _RecordingCanonicalSink();
@@ -205,7 +280,10 @@ void main() {
       await wrapper.upsertCoverFact(
         operatorId: _operatorA,
         locationId: _locationA,
-        canonicalFact: _coverFact(connectionId: _connectionA, vendorEntityId: 'pos-2'),
+        canonicalFact: _coverFact(
+          connectionId: _connectionA,
+          vendorEntityId: 'pos-2',
+        ),
       );
 
       await wrapper.appendSyncLog(
@@ -216,42 +294,50 @@ void main() {
       );
 
       expect(projector.invocations, hasLength(1));
-      expect(projector.invocations.single.changedPeriods, hasLength(1),
-          reason:
-              'same (business_date, service_period_key) fact pair → one period');
+      expect(
+        projector.invocations.single.changedPeriods,
+        hasLength(1),
+        reason:
+            'same (business_date, service_period_key) fact pair → one period',
+      );
     });
 
-    test('non-commit appendSyncLog event kinds do not drain the buffer',
-        () async {
-      final underlying = _RecordingCanonicalSink();
-      final projector = _RecordingProjector();
-      final wrapper = _wrapper(underlying: underlying, projector: projector);
+    test(
+      'non-commit appendSyncLog event kinds do not drain the buffer',
+      () async {
+        final underlying = _RecordingCanonicalSink();
+        final projector = _RecordingProjector();
+        final wrapper = _wrapper(underlying: underlying, projector: projector);
 
-      await wrapper.upsertCoverFact(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        canonicalFact: _coverFact(connectionId: _connectionA),
-      );
-      await wrapper.appendSyncLog(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        connectionId: _connectionA,
-        eventKind: 'poll_error',
-        errorMessage: 'transient timeout',
-      );
+        await wrapper.upsertCoverFact(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          canonicalFact: _coverFact(connectionId: _connectionA),
+        );
+        await wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'poll_error',
+          errorMessage: 'transient timeout',
+        );
 
-      expect(projector.invocations, isEmpty,
-          reason: 'poll_error is not a commit signal');
+        expect(
+          projector.invocations,
+          isEmpty,
+          reason: 'poll_error is not a commit signal',
+        );
 
-      // Subsequent commit signal still flushes the buffered fact.
-      await wrapper.appendSyncLog(
-        operatorId: _operatorA,
-        locationId: _locationA,
-        connectionId: _connectionA,
-        eventKind: 'backfill_success',
-      );
-      expect(projector.invocations, hasLength(1));
-    });
+        // Subsequent commit signal still flushes the buffered fact.
+        await wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'backfill_success',
+        );
+        expect(projector.invocations, hasLength(1));
+      },
+    );
 
     test('flush() drains explicitly without an appendSyncLog call', () async {
       final underlying = _RecordingCanonicalSink();
@@ -270,95 +356,103 @@ void main() {
       );
 
       expect(projector.invocations, hasLength(1));
-      expect(projector.invocations.single.changedPeriods.single.servicePeriodKey,
-          'dinner');
+      expect(
+        projector.invocations.single.changedPeriods.single.servicePeriodKey,
+        'dinner',
+      );
     });
 
-    test(
-      'underlying upsert returning false (idempotency replay) does not '
-      'accumulate the fact',
-      () async {
-        final underlying = _RecordingCanonicalSink(returnFalseOnUpsert: true);
-        final projector = _RecordingProjector();
-        final wrapper = _wrapper(underlying: underlying, projector: projector);
+    test('underlying upsert returning false (idempotency replay) does not '
+        'accumulate the fact', () async {
+      final underlying = _RecordingCanonicalSink(returnFalseOnUpsert: true);
+      final projector = _RecordingProjector();
+      final wrapper = _wrapper(underlying: underlying, projector: projector);
 
-        final wrote = await wrapper.upsertCoverFact(
-          operatorId: _operatorA,
-          locationId: _locationA,
-          canonicalFact: _coverFact(connectionId: _connectionA),
-        );
-        expect(wrote, isFalse,
-            reason:
-                'underlying signalled idempotency replay; wrapper forwards verbatim');
-        await wrapper.flush(
-          operatorId: _operatorA,
-          locationId: _locationA,
+      final wrote = await wrapper.upsertCoverFact(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        canonicalFact: _coverFact(connectionId: _connectionA),
+      );
+      expect(
+        wrote,
+        isFalse,
+        reason:
+            'underlying signalled idempotency replay; wrapper forwards verbatim',
+      );
+      await wrapper.flush(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        connectionId: _connectionA,
+      );
+      expect(
+        projector.invocations,
+        isEmpty,
+        reason: 'replays must not retrigger projection',
+      );
+    });
+
+    test('re-projecting identical periods across drains is deduped by the '
+        'projector itself (smoke)', () async {
+      final underlying = _RecordingCanonicalSink();
+      // Wrap the real CanonicalFactPostCommitProjector so we exercise
+      // the dedupe in `_dedupePeriods`.
+      final closedAggregator = _FakeClosedAggregator();
+      final realProjector = CanonicalFactPostCommitProjector(
+        closedAggregator: closedAggregator,
+        targetSnapshotResolver: _FakeTargetResolver(),
+        closedWriter: _FakeClosedWriter(),
+        openProjector: _FakeOpenProjector(),
+      );
+      final wrapper = ProjectingCanonicalSink(
+        underlying: underlying,
+        projector: realProjector,
+        category: IntegrationCategory.pos,
+        vendorId: 'toast',
+        periodResolver: _stubResolver,
+        restaurantIdResolver: _stubRestaurantResolver,
+      );
+
+      await wrapper.upsertCoverFact(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        canonicalFact: _coverFact(connectionId: _connectionA),
+      );
+      await wrapper.upsertCoverFact(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        canonicalFact: _coverFact(
           connectionId: _connectionA,
-        );
-        expect(projector.invocations, isEmpty,
-            reason: 'replays must not retrigger projection');
-      },
-    );
+          vendorEntityId: 'pos-2',
+        ),
+      );
+      await wrapper.flush(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        connectionId: _connectionA,
+      );
 
-    test(
-      're-projecting identical periods across drains is deduped by the '
-      'projector itself (smoke)',
-      () async {
-        final underlying = _RecordingCanonicalSink();
-        // Wrap the real CanonicalFactPostCommitProjector so we exercise
-        // the dedupe in `_dedupePeriods`.
-        final closedAggregator = _FakeClosedAggregator();
-        final realProjector = CanonicalFactPostCommitProjector(
-          closedAggregator: closedAggregator,
-          targetSnapshotResolver: _FakeTargetResolver(),
-          closedWriter: _FakeClosedWriter(),
-          openProjector: _FakeOpenProjector(),
-        );
-        final wrapper = ProjectingCanonicalSink(
-          underlying: underlying,
-          projector: realProjector,
-          category: IntegrationCategory.pos,
-          vendorId: 'toast',
-          periodResolver: _stubResolver,
-          restaurantIdResolver: _stubRestaurantResolver,
-        );
-
-        await wrapper.upsertCoverFact(
-          operatorId: _operatorA,
-          locationId: _locationA,
-          canonicalFact: _coverFact(connectionId: _connectionA),
-        );
-        await wrapper.upsertCoverFact(
-          operatorId: _operatorA,
-          locationId: _locationA,
-          canonicalFact:
-              _coverFact(connectionId: _connectionA, vendorEntityId: 'pos-2'),
-        );
-        await wrapper.flush(
-          operatorId: _operatorA,
-          locationId: _locationA,
-          connectionId: _connectionA,
-        );
-
-        expect(closedAggregator.calls, hasLength(1),
-            reason:
-                'duplicate (business_date, service_period_key) facts collapse '
-                'to a single aggregator call');
-      },
-    );
+      expect(
+        closedAggregator.calls,
+        hasLength(1),
+        reason:
+            'duplicate (business_date, service_period_key) facts collapse '
+            'to a single aggregator call',
+      );
+    });
   });
 }
 
 ProjectingCanonicalSink _wrapper({
   required CanonicalSink underlying,
   required _RecordingProjector projector,
+  CanonicalFactPeriodResolver? periodResolver,
 }) {
   return ProjectingCanonicalSink(
     underlying: underlying,
     projector: projector,
     category: IntegrationCategory.pos,
     vendorId: 'toast',
-    periodResolver: _stubResolver,
+    periodResolver: periodResolver ?? _stubResolver,
     restaurantIdResolver: _stubRestaurantResolver,
   );
 }
