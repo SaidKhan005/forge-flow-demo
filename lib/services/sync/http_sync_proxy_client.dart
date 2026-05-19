@@ -18,6 +18,8 @@ import 'star_target_sync_resources.dart';
 import 'sync_proxy_client.dart';
 import 'weekly_plan_sync_resources.dart';
 
+export 'sync_proxy_client.dart' show SyncProxyClientException;
+
 class HttpSyncProxyClient
     implements
         SyncProxyClient,
@@ -25,7 +27,8 @@ class HttpSyncProxyClient
         BusinessScopeClient,
         StarTargetSyncProxyClient,
         WeeklyPlanSyncProxyClient,
-        StarTargetSelectionWriteClient {
+        StarTargetSelectionWriteClient,
+        ManualCoversWriteClient {
   HttpSyncProxyClient({
     required this.proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
@@ -409,6 +412,35 @@ class HttpSyncProxyClient
   }
 
   @override
+  Future<void> submitManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required int covers,
+    required String idempotencyKey,
+    String? restaurantId,
+    String? recordedAt,
+  }) async {
+    await _patchJson(
+      _locationPath(operatorId, locationId, const <String>[
+        'data_accuracy_settings',
+        'manual_covers',
+      ]),
+      body: <String, Object?>{
+        if (restaurantId != null && restaurantId.trim().isNotEmpty)
+          'restaurant_id': restaurantId.trim(),
+        'business_date': businessDate,
+        'service_period_key': servicePeriodKey,
+        'covers': covers,
+        if (recordedAt != null && recordedAt.trim().isNotEmpty)
+          'recorded_at': recordedAt.trim(),
+      },
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
   Future<TargetCycleSyncPage> fetchTargetCycles({
     required String operatorId,
     required String locationId,
@@ -670,6 +702,34 @@ class HttpSyncProxyClient
     return _interpret(retry);
   }
 
+  Future<Map<String, Object?>> _patchJson(
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
+    final firstAttempt = await _attemptJsonMutation(
+      'PATCH',
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    if (firstAttempt.statusCode != 401 || _refreshIdToken == null) {
+      return _interpret(firstAttempt);
+    }
+    try {
+      await _refreshIdToken();
+    } catch (_) {
+      return _interpret(firstAttempt);
+    }
+    final retry = await _attemptJsonMutation(
+      'PATCH',
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+    return _interpret(retry);
+  }
+
   Future<_HttpAttemptResult> _attemptGet(
     List<String> tailSegments, {
     Map<String, String>? queryParameters,
@@ -704,6 +764,20 @@ class HttpSyncProxyClient
     required Map<String, Object?> body,
     required String idempotencyKey,
   }) async {
+    return _attemptJsonMutation(
+      'POST',
+      tailSegments,
+      body: body,
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  Future<_HttpAttemptResult> _attemptJsonMutation(
+    String method,
+    List<String> tailSegments, {
+    required Map<String, Object?> body,
+    required String idempotencyKey,
+  }) async {
     final token = (await _idTokenProvider())?.trim();
     if (token == null || token.isEmpty) {
       throw const SyncProxyClientException(
@@ -711,7 +785,7 @@ class HttpSyncProxyClient
         message: 'The sync proxy client has no live auth token.',
       );
     }
-    final request = http.Request('POST', _resolve(tailSegments));
+    final request = http.Request(method, _resolve(tailSegments));
     request.headers.addAll(<String, String>{
       'accept': 'application/json',
       'authorization': 'Bearer $token',
@@ -938,9 +1012,14 @@ class HttpSyncProxyClient
       operatorId: _requiredString(json, 'operator_id'),
       locationId: _requiredString(json, 'location_id'),
       coversManualEntries: _readManualEntries(json['covers_manual_entries']),
+      coversSourcePerServicePeriodSources: _readNestedMap(
+        json['covers_source_per_service_period_source'],
+      ),
       wageSource: _readString(json['wage_source']) ?? 'vendor',
+      wageSourceSource: _readMap(json['wage_source_source']),
       walkInHandlingMode:
           _readString(json['walk_in_handling_mode']) ?? 'reservations_only',
+      walkInHandlingModeSource: _readMap(json['walk_in_handling_mode_source']),
       walkInManualEntries: _readIntMap(json['walk_in_manual_entries']),
       updatedAt: _readDateTime(json['updated_at']) ?? DateTime.now().toUtc(),
     );
@@ -1095,6 +1174,18 @@ class HttpSyncProxyClient
     return json.map((key, val) => MapEntry(key, _readInt(val) ?? 0));
   }
 
+  static Map<String, Map<String, Object?>> _readNestedMap(Object? value) {
+    final raw = _readMap(value);
+    if (raw == null) return const <String, Map<String, Object?>>{};
+    final out = <String, Map<String, Object?>>{};
+    raw.forEach((key, nested) {
+      final map = _readMap(nested);
+      if (map == null) return;
+      out[key] = map;
+    });
+    return out;
+  }
+
   static IntegrationCategory _integrationCategoryFromWire(String value) {
     for (final category in IntegrationCategory.values) {
       if (category.name == value) return category;
@@ -1197,21 +1288,6 @@ class HttpSyncProxyClient
     }
     return null;
   }
-}
-
-class SyncProxyClientException implements Exception {
-  const SyncProxyClientException({
-    required this.code,
-    required this.message,
-    this.statusCode,
-  });
-
-  final String code;
-  final String message;
-  final int? statusCode;
-
-  @override
-  String toString() => 'SyncProxyClientException($code, status=$statusCode)';
 }
 
 /// Internal carrier of a single HTTP attempt's status code + body so

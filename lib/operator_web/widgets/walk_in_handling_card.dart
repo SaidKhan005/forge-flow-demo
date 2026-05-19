@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../domain/models/data_accuracy_settings.dart';
 import '../../theme/app_theme.dart';
 
 enum WalkInHandlingMode {
@@ -32,6 +33,7 @@ class WalkInHandlingCard extends StatefulWidget {
     required this.businessDateIso,
     required this.dailyWalkInCount,
     required this.onDailyWalkInCountChanged,
+    this.source,
   });
 
   final WalkInHandlingMode mode;
@@ -45,6 +47,8 @@ class WalkInHandlingCard extends StatefulWidget {
 
   /// Called on submit. `null` when the operator clears the field.
   final void Function(int?) onDailyWalkInCountChanged;
+
+  final DataAccuracySettingSource? source;
 
   @override
   State<WalkInHandlingCard> createState() => _WalkInHandlingCardState();
@@ -168,17 +172,21 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
               WalkInHandlingMode.walkInsTrackedSeparately,
             ),
           ),
-          if (widget.mode ==
-              WalkInHandlingMode.walkInsAddedToReservations) ...[
+          if (widget.source != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Source: ${widget.source!.label}',
+              key: const Key('walk_in_handling_source_label'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
+          if (widget.mode == WalkInHandlingMode.walkInsAddedToReservations) ...[
             const SizedBox(height: 14),
             Container(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
                 color: AppColors.cardGlow,
-                border: Border.all(
-                  color: AppColors.borderSubtle,
-                  width: 1,
-                ),
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Row(
@@ -187,9 +195,7 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
                   Expanded(
                     child: Text(
                       'Walk-ins on ${widget.businessDateIso}',
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -202,18 +208,14 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
                         decimal: false,
                         signed: false,
                       ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                       onSubmitted: _commitWalkIn,
                       decoration: const InputDecoration(
                         isDense: true,
                         hintText: 'e.g. 12',
                         border: OutlineInputBorder(),
                       ),
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                     ),
                   ),
                 ],
@@ -278,16 +280,12 @@ class _RadioRow extends StatelessWidget {
                 children: [
                   Text(
                     label,
-                    style: AppTextStyles.body14(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.body14(color: AppColors.textPrimary),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     body,
-                    style: AppTextStyles.body13(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.body13(color: AppColors.textPrimary),
                   ),
                 ],
               ),

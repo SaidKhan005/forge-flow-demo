@@ -26,6 +26,7 @@ void main() {
         Uri baseUri,
         _FakeMobileOperationalSyncGateway gateway,
         _FakeDemoModeMasterSwitchGateway demoSwitchGateway,
+        _FakeAdminRequestIdempotencyStore idempotencyStore,
       })
     >
     spinUp({
@@ -33,6 +34,7 @@ void main() {
       bool gatewayConfigured = true,
       bool demoSwitchConfigured = true,
       _FakeDemoModeMasterSwitchGateway? demoSwitchGateway,
+      _FakeAdminRequestIdempotencyStore? idempotencyStore,
     }) async {
       final verifier = _SettableVerifier(
         claims ??
@@ -47,6 +49,8 @@ void main() {
       final gateway = _FakeMobileOperationalSyncGateway();
       final switchGateway =
           demoSwitchGateway ?? _FakeDemoModeMasterSwitchGateway();
+      final adminIdempotencyStore =
+          idempotencyStore ?? _FakeAdminRequestIdempotencyStore();
       final demoSwitchRouter = DemoModeMasterSwitchRouter(
         gateway: switchGateway,
         now: () => DateTime.utc(2026, 5, 13, 12),
@@ -62,6 +66,7 @@ void main() {
             demoModeMasterSwitchRouter: demoSwitchConfigured
                 ? demoSwitchRouter
                 : null,
+            adminRequestIdempotencyStore: adminIdempotencyStore,
           );
         } catch (_) {
           try {
@@ -78,6 +83,7 @@ void main() {
         baseUri: baseUri,
         gateway: gateway,
         demoSwitchGateway: switchGateway,
+        idempotencyStore: adminIdempotencyStore,
       );
     }
 
@@ -246,6 +252,7 @@ void main() {
                 'wage_source': 'target_substitution',
                 'effective_at_business_date': '2026-05-07',
               },
+              idempotencyKey: 'service-period-key-1',
             );
             expect(patch.statusCode, 200);
             final body = jsonDecode(patch.body) as Map<String, Object?>;
@@ -258,6 +265,133 @@ void main() {
                 'data_accuracy_service_period_settings_write:op-1:loc-1:'
                 'breakfast:reservation_plus_walkin:target_substitution:'
                 '2026-05-07';
+            expect(ctx.gateway.calls, <String>[expectedCall]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH service-period settings rejects missing Idempotency-Key',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/'
+                'data_accuracy_service_period_settings',
+              ),
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'manual',
+                'wage_source': 'manual_mix',
+                'effective_at_business_date': '2026-05-07',
+              },
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_missing');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH service-period settings replays same key and body', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/'
+            'data_accuracy_service_period_settings',
+          );
+          const body = <String, Object?>{
+            'service_period_key': 'breakfast',
+            'covers_source': 'reservation_plus_walkin',
+            'wage_source': 'target_substitution',
+            'effective_at_business_date': '2026-05-07',
+          };
+          final first = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'service-period-replay-key',
+          );
+          final replay = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'service-period-replay-key',
+          );
+          expect(first.statusCode, 200);
+          expect(replay.statusCode, 200);
+          expect(jsonDecode(replay.body), jsonDecode(first.body));
+          final expectedCall =
+              'data_accuracy_service_period_settings_write:op-1:loc-1:'
+              'breakfast:reservation_plus_walkin:target_substitution:'
+              '2026-05-07';
+          expect(ctx.gateway.calls, <String>[expectedCall]);
+          expect(ctx.idempotencyStore.reserveCalls, 1);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH service-period settings rejects same key with different body',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_service_period_settings',
+            );
+            final first = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'manual',
+                'wage_source': 'manual_mix',
+                'effective_at_business_date': '2026-05-07',
+              },
+              idempotencyKey: 'service-period-conflict-key',
+            );
+            final conflict = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'vendor',
+                'wage_source': 'manual_mix',
+                'effective_at_business_date': '2026-05-07',
+              },
+              idempotencyKey: 'service-period-conflict-key',
+            );
+            expect(first.statusCode, 200);
+            expect(conflict.statusCode, 409);
+            final body = jsonDecode(conflict.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_conflict');
+            final expectedCall =
+                'data_accuracy_service_period_settings_write:op-1:loc-1:'
+                'breakfast:manual:manual_mix:2026-05-07';
             expect(ctx.gateway.calls, <String>[expectedCall]);
           } finally {
             ctx.client.close(force: true);
@@ -424,6 +558,7 @@ void main() {
                 'walk_in_handling_mode': 'walk_ins_added_to_reservations',
                 'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
               },
+              idempotencyKey: 'data-accuracy-settings-key-1',
             );
             expect(response.statusCode, 200);
             final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -440,6 +575,277 @@ void main() {
         });
       },
     );
+
+    test(
+      'PATCH data accuracy settings rejects missing Idempotency-Key',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+              ),
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'wage_source': 'manual_mix',
+              },
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_missing');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH data accuracy settings replays same key and body', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+          );
+          const body = <String, Object?>{
+            'covers_source_lunch': 'manual',
+            'wage_source': 'manual_mix',
+          };
+          final first = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'data-accuracy-settings-replay-key',
+          );
+          final replay = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: body,
+            idempotencyKey: 'data-accuracy-settings-replay-key',
+          );
+          expect(first.statusCode, 200);
+          expect(replay.statusCode, 200);
+          expect(jsonDecode(replay.body), jsonDecode(first.body));
+          expect(ctx.gateway.calls, <String>[
+            'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
+          ]);
+          expect(ctx.idempotencyStore.reserveCalls, 1);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH data accuracy settings rejects same key with different body',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/data_accuracy_settings',
+            );
+            final first = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'covers_source_lunch': 'manual',
+                'wage_source': 'manual_mix',
+              },
+              idempotencyKey: 'data-accuracy-settings-conflict-key',
+            );
+            final conflict = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'covers_source_lunch': 'vendor',
+                'wage_source': 'manual_mix',
+              },
+              idempotencyKey: 'data-accuracy-settings-conflict-key',
+            );
+            expect(first.statusCode, 200);
+            expect(conflict.statusCode, 409);
+            final body = jsonDecode(conflict.body) as Map<String, Object?>;
+            expect(body['error'], 'idempotency_key_conflict');
+            expect(ctx.gateway.calls, <String>[
+              'data_accuracy_settings_write:op-1:loc-1:manual:manual_mix',
+            ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH manual covers rejects missing Idempotency-Key', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_settings/manual_covers',
+            ),
+            body: const <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-05-06',
+              'service_period_key': 'dinner',
+              'covers': 84,
+            },
+          );
+          expect(response.statusCode, 400);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'idempotency_key_missing');
+          expect(ctx.gateway.calls, isEmpty);
+          expect(ctx.idempotencyStore.reserveCalls, 0);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH manual covers merges one canonical cover entry', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_settings/manual_covers',
+            ),
+            body: const <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-05-06',
+              'service_period_key': 'dinner',
+              'covers': 84,
+            },
+            idempotencyKey: 'manual-cover-key-1',
+          );
+          expect(response.statusCode, 200);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final data = body['data'] as Map<String, Object?>;
+          final entries = data['covers_manual_entries'] as Map<String, Object?>;
+          expect(entries['2026-05-06'], <String, Object?>{'dinner': 84});
+          expect(ctx.gateway.calls, <String>[
+            'manual_covers_write:op-1:loc-1:2026-05-06:dinner:84',
+          ]);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH manual covers replays same key and body without a second write',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final uri = ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_settings/manual_covers',
+            );
+            const body = <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-05-06',
+              'service_period_key': 'dinner',
+              'covers': 84,
+            };
+            final first = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: body,
+              idempotencyKey: 'manual-cover-replay-key',
+            );
+            final replay = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: body,
+              idempotencyKey: 'manual-cover-replay-key',
+            );
+            expect(first.statusCode, 200);
+            expect(replay.statusCode, 200);
+            expect(jsonDecode(replay.body), jsonDecode(first.body));
+            expect(ctx.gateway.calls, <String>[
+              'manual_covers_write:op-1:loc-1:2026-05-06:dinner:84',
+            ]);
+            expect(ctx.idempotencyStore.reserveCalls, 1);
+            expect(ctx.idempotencyStore.reserveActorUserIds, <String?>[
+              'user-1',
+            ]);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH manual covers rejects same key with different body', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/'
+            'data_accuracy_settings/manual_covers',
+          );
+          final first = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: const <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-05-06',
+              'service_period_key': 'dinner',
+              'covers': 84,
+            },
+            idempotencyKey: 'manual-cover-conflict-key',
+          );
+          final conflict = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: const <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-05-06',
+              'service_period_key': 'dinner',
+              'covers': 85,
+            },
+            idempotencyKey: 'manual-cover-conflict-key',
+          );
+          expect(first.statusCode, 200);
+          expect(conflict.statusCode, 409);
+          final body = jsonDecode(conflict.body) as Map<String, Object?>;
+          expect(body['error'], 'idempotency_key_conflict');
+          expect(ctx.gateway.calls, <String>[
+            'manual_covers_write:op-1:loc-1:2026-05-06:dinner:84',
+          ]);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test('PATCH data accuracy settings rejects location manager', () async {
       await withRealHttp(() async {
@@ -742,6 +1148,114 @@ class _SettableVerifier implements ProxyJwtVerifier {
   Future<ProxyJwtClaims> verify(String bearerToken) async => claims;
 }
 
+class _FakeAdminRequestIdempotencyStore
+    implements AdminRequestIdempotencyStore {
+  final Map<String, _FakeAdminRequestIdempotencyRow> _rows =
+      <String, _FakeAdminRequestIdempotencyRow>{};
+  final List<String?> reserveActorUserIds = <String?>[];
+  int reserveCalls = 0;
+
+  @override
+  Future<AdminRequestIdempotencyEntry?> lookup({
+    required String idempotencyKey,
+    required String requestType,
+    required String requestBodyHash,
+  }) async {
+    final row = _rows[idempotencyKey];
+    if (row == null) return null;
+    if (row.requestType != requestType ||
+        row.requestBodyHash != requestBodyHash) {
+      throw const AdminIdempotencyKeyConflict(
+        message: 'Idempotency-Key was already used for another request',
+      );
+    }
+    return AdminRequestIdempotencyEntry(
+      idempotencyKey: idempotencyKey,
+      requestType: row.requestType,
+      responseStatus: row.responseStatus,
+      responsePayload: row.responsePayload,
+      completedAt: row.completedAt,
+      expiresAt: row.expiresAt,
+    );
+  }
+
+  @override
+  Future<bool> reserve({
+    required String idempotencyKey,
+    required String requestType,
+    required String? actorUserId,
+    required String requestBodyHash,
+  }) async {
+    reserveCalls += 1;
+    reserveActorUserIds.add(actorUserId);
+    if (_rows.containsKey(idempotencyKey)) return false;
+    _rows[idempotencyKey] = _FakeAdminRequestIdempotencyRow(
+      requestType: requestType,
+      requestBodyHash: requestBodyHash,
+      expiresAt: DateTime.utc(2026, 5, 6, 12, 15),
+    );
+    return true;
+  }
+
+  @override
+  Future<void> completeReservation({
+    required String idempotencyKey,
+    required int responseStatus,
+    required Map<String, Object?> responsePayload,
+  }) async {
+    final row = _rows[idempotencyKey];
+    if (row == null) return;
+    _rows[idempotencyKey] = row.copyWith(
+      responseStatus: responseStatus,
+      responsePayload: responsePayload,
+      completedAt: DateTime.utc(2026, 5, 6, 12, 1),
+    );
+  }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+    return false;
+  }
+
+  @override
+  Future<int> sweepExpiredOrphans() async {
+    return 0;
+  }
+}
+
+class _FakeAdminRequestIdempotencyRow {
+  const _FakeAdminRequestIdempotencyRow({
+    required this.requestType,
+    required this.requestBodyHash,
+    required this.expiresAt,
+    this.responseStatus,
+    this.responsePayload,
+    this.completedAt,
+  });
+
+  final String requestType;
+  final String requestBodyHash;
+  final DateTime? expiresAt;
+  final int? responseStatus;
+  final Map<String, Object?>? responsePayload;
+  final DateTime? completedAt;
+
+  _FakeAdminRequestIdempotencyRow copyWith({
+    int? responseStatus,
+    Map<String, Object?>? responsePayload,
+    DateTime? completedAt,
+  }) {
+    return _FakeAdminRequestIdempotencyRow(
+      requestType: requestType,
+      requestBodyHash: requestBodyHash,
+      expiresAt: expiresAt,
+      responseStatus: responseStatus ?? this.responseStatus,
+      responsePayload: responsePayload ?? this.responsePayload,
+      completedAt: completedAt ?? this.completedAt,
+    );
+  }
+}
+
 class _FakeMobileOperationalSyncGateway
     implements MobileOperationalSyncProxyGateway {
   final List<String> calls = <String>[];
@@ -912,6 +1426,41 @@ class _FakeMobileOperationalSyncGateway
             body['walk_in_handling_mode'] ?? 'reservations_only',
         'walk_in_manual_entries':
             body['walk_in_manual_entries'] ?? const <String, Object?>{},
+        'created_at': '2026-05-06T12:00:00Z',
+        'updated_at': '2026-05-06T12:01:00Z',
+        'updated_by': scope.userId,
+      },
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertDataAccuracyManualCovers({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async {
+    final businessDate = body['business_date']! as String;
+    final servicePeriodKey = body['service_period_key']! as String;
+    calls.add(
+      'manual_covers_write:$operatorId:$locationId:'
+      '$businessDate:$servicePeriodKey:'
+      '${body['covers']}',
+    );
+    return <String, Object?>{
+      'data': <String, Object?>{
+        'setting_id': 'setting-1',
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'covers_source_lunch': 'vendor',
+        'covers_source_dinner': 'manual',
+        'covers_source_late_night': 'vendor',
+        'covers_manual_entries': <String, Object?>{
+          businessDate: <String, Object?>{servicePeriodKey: body['covers']},
+        },
+        'wage_source': 'manual_mix',
+        'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+        'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
         'created_at': '2026-05-06T12:00:00Z',
         'updated_at': '2026-05-06T12:01:00Z',
         'updated_by': scope.userId,

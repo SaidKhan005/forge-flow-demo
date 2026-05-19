@@ -1,18 +1,19 @@
 // Wave 2 MO-2 — manual_cover_entries DAO.
 //
-// Mobile-side overlay for operator-entered covers. Each row is one
+// Mobile-side mirror for operator-entered covers. Each row is one
 // operator-entered cover count for a specific (restaurant_id,
-// business_date, daypart). Rows live in the local SQLite DB; a
-// follow-up write-through slice will fan them into
-// `public.data_accuracy_settings.covers_manual_entries` (jsonb) so the
-// aggregator can project them into closed shift facts.
+// business_date, daypart). Signed-in production writes go through the
+// proxy first into `public.data_accuracy_settings.covers_manual_entries`
+// (jsonb), then mirror here so Settings can show recent entries quickly.
 //
-// Demo-mode invariant: the writer here writes to the same table
+// Demo-mode invariant: the unauth/demo fallback writes to this same table
 // whether the restaurant is in demo or live mode — no `kDemoMode`
 // reader branch (HP #2 in CLAUDE.md). The demo seeder leaves this
 // table empty; manual entries the operator types in demo mode land
 // next to the seeded `shift_records` rows on the same Variance / Plan
 // / Benchmark tabs.
+// Live signed-in SettingsScreen bypasses that fallback and calls the
+// canonical proxy writer before this local mirror is updated.
 
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -42,12 +43,12 @@ class ManualCoverEntry {
   final String recordedAt;
 
   Map<String, Object?> toMap() => <String, Object?>{
-        'restaurant_id': restaurantId,
-        'business_date': businessDate,
-        'daypart': daypart,
-        'covers': covers,
-        'recorded_at': recordedAt,
-      };
+    'restaurant_id': restaurantId,
+    'business_date': businessDate,
+    'daypart': daypart,
+    'covers': covers,
+    'recorded_at': recordedAt,
+  };
 
   factory ManualCoverEntry.fromMap(Map<String, Object?> row) {
     return ManualCoverEntry(

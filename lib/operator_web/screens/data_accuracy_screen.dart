@@ -204,8 +204,7 @@ class DataAccuracyScreen extends StatefulWidget {
   /// Production resolves the persisted timing config; widget tests
   /// inject a fake. Falls back to the canonical fixture-era
   /// definitions only when no config is persisted yet.
-  final Future<List<ServicePeriodDefinition>> Function()?
-      servicePeriodsLoader;
+  final Future<List<ServicePeriodDefinition>> Function()? servicePeriodsLoader;
 
   bool get _canEditDataAccuracy =>
       session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
@@ -302,7 +301,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   // canonical fixture-era definitions only when no config is persisted
   // yet.
   static Future<List<ServicePeriodDefinition>>
-      _defaultServicePeriodsLoader() async {
+  _defaultServicePeriodsLoader() async {
     final config = await RestaurantTimingConfigReadService.instance
         .getActiveTimingConfig();
     final defs = (config?.servicePeriodDefinitions.isNotEmpty ?? false)
@@ -430,8 +429,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void _applySettingsSeed(DataAccuracySettings? seed) {
     _lastSettings = seed;
     _coversSourcePerPeriod = <String, CoversSource>{
-      for (final e
-          in (seed?.coversSourcePerServicePeriod ?? const {}).entries)
+      for (final e in (seed?.coversSourcePerServicePeriod ?? const {}).entries)
         e.key: e.value,
     };
     _wageSource = seed?.wageSource ?? WageSource.vendor;
@@ -671,7 +669,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
     final idempotencyKey =
         widget.tierEmailIdempotencyKeyFactory?.call() ??
-            _defaultTierEmailIdempotencyKey();
+        _defaultTierEmailIdempotencyKey();
     final result = await gateway.submitDataFreshnessRequest(
       request: OperatorTierEmailRequest(
         currentTier: tier.tierDisplayLabel,
@@ -707,10 +705,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     return 'tier-email-$rand';
   }
 
-  void _showTierEmailToast({
-    required String message,
-    required bool isSuccess,
-  }) {
+  void _showTierEmailToast({required String message, required bool isSuccess}) {
     final messenger = ScaffoldMessenger.maybeOf(context);
     if (messenger == null) return;
     messenger
@@ -723,8 +718,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                 : 'polling_tier_email_toast_failed',
           ),
           content: Text(message),
-          backgroundColor:
-              isSuccess ? AppColors.peacock : AppColors.sunsetDark,
+          backgroundColor: isSuccess ? AppColors.peacock : AppColors.sunsetDark,
           behavior: SnackBarBehavior.floating,
           duration: const Duration(seconds: 4),
         ),
@@ -746,10 +740,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   bool get _showHistoricalSeedCard => !_posExposesCovers;
 
   bool get _anyDaypartManual => _servicePeriods.any(
-        (p) =>
-            (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
-            CoversSource.manual,
-      );
+    (p) =>
+        (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
+        CoversSource.manual,
+  );
 
   bool get _showAnyFallbackCard =>
       _anyDaypartManual || _showWalkInCard || _showHistoricalSeedCard;
@@ -859,14 +853,13 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
             const SizedBox(height: 14),
           ],
-          const _DataAccuracySectionHeading(
-            title: 'Sources',
-          ),
+          const _DataAccuracySectionHeading(title: 'Sources'),
           const SizedBox(height: 12),
           WageSourceToggle(
             value: _wageSource,
             onChanged: _handleWageSourceChanged,
             bundle: _bundle,
+            source: settings.wageSourceSource,
             vendorApplicabilityBound: widget.vendorApplicabilityGateway != null,
             vendorApplicabilityLoading: _wageApplicabilityLoading,
             vendorApplicabilityError: _wageApplicabilityError,
@@ -906,6 +899,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               onModeChanged: _handleWalkInModeChanged,
               businessDateIso: widget.businessDateIso,
               dailyWalkInCount: _walkInDailyCount,
+              source: settings.walkInHandlingModeSource,
               onDailyWalkInCountChanged: _handleWalkInCountChanged,
             ),
           ],
@@ -936,15 +930,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               loadError: _servicePeriodLoadError,
               saveError: _servicePeriodSaveError,
               editingEnabled: widget._canEditDataAccuracy,
+              configuredServicePeriods: _servicePeriods,
               defaultEffectiveAtBusinessDateIso: widget.businessDateIso,
               onAddOrEdit: _saveKeyedServicePeriod,
               onRetry: _loadServicePeriodSettings,
             ),
           ],
           const SizedBox(height: 14),
-          const _DataAccuracySectionHeading(
-            title: 'Data Freshness',
-          ),
+          const _DataAccuracySectionHeading(title: 'Data Freshness'),
           const SizedBox(height: 12),
           PollingTierStatusCard(
             status: tier,
@@ -959,9 +952,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           // bands, vendor-applicability labels, hierarchy-aware empty
           // state) and saves through the same gateway the standalone
           // screen used.
-          const _DataAccuracySectionHeading(
-            title: 'Wage authority',
-          ),
+          const _DataAccuracySectionHeading(title: 'Wage authority'),
           const SizedBox(height: 12),
           Container(
             key: const Key('operator_web_data_accuracy_wage_authority_section'),
