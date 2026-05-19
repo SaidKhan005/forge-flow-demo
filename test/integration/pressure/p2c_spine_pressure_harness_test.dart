@@ -442,7 +442,7 @@ void main() {
 // ─── Realtime topic contract ────────────────────────────────────────
 
 /// Topic prefixes the demo-mode banner refresh + downstream consumers
-/// listen on. From `docs/archive/_walkthroughs/8.demo-mode-banner.md`:
+/// listen on. From `docs/_walkthroughs/8.demo-mode-banner.md`:
 /// `integrations.*` / `first_backfill.*` / `demo_mode_state.flipped`.
 const List<String> _kAllowedSpineTopics = <String>[
   'integrations.',
