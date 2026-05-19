@@ -51,8 +51,7 @@ Map<String, Object?> _settingsRow({
     'setting_id': '99999999-9999-9999-9999-999999999999',
     'operator_id': operatorId,
     'location_id': locationId,
-    'covers_source_per_service_period':
-        perPeriod ?? <String, Object?>{},
+    'covers_source_per_service_period': perPeriod ?? <String, Object?>{},
     'covers_manual_entries': manualEntries ?? <String, Object?>{},
     'wage_source': wageSource,
     'walk_in_handling_mode': walkInHandlingMode,
@@ -94,20 +93,11 @@ void main() {
       final selectSql = tx.executedSql.firstWhere(
         (s) => s.contains('from data_accuracy_settings das'),
       );
-      expect(
-        selectSql,
-        contains('where das.operator_id = @operator_id::uuid'),
-      );
-      expect(
-        selectSql,
-        contains('and das.location_id = @location_id::uuid'),
-      );
+      expect(selectSql, contains('where das.operator_id = @operator_id::uuid'));
+      expect(selectSql, contains('and das.location_id = @location_id::uuid'));
       // The keyed per-period covers source is projected from the keyed
       // table, NOT the deprecated legacy columns.
-      expect(
-        selectSql,
-        contains('data_accuracy_service_period_settings'),
-      );
+      expect(selectSql, contains('data_accuracy_service_period_settings'));
       expect(selectSql, isNot(contains('covers_source_lunch')));
     });
 
@@ -166,6 +156,50 @@ void main() {
       expect(thrown, isNotNull);
       expect(pool.transactions, isEmpty);
     });
+
+    test('full settings upsert deep-merges manual cover entries in SQL '
+        'instead of replacing the whole JSON object', () async {
+      final pool = _DataAccuracyPool(
+        existingRows: <PostgresRow>[
+          _settingsRow(
+            manualEntries: <String, Object?>{
+              '2026-05-04': <String, Object?>{'dinner': 187},
+            },
+          ),
+        ],
+      );
+      final repo = DataAccuracySettingsRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      await repo.upsert(
+        settings: DataAccuracySettings(
+          settingId: '99999999-9999-9999-9999-999999999999',
+          operatorId: _opA,
+          locationId: _locA,
+          coversSourcePerServicePeriod: const <String, CoversSource>{},
+          coversManualEntries: const <String, Map<String, int>>{
+            '2026-05-04': <String, int>{'lunch': 60},
+          },
+          wageSource: WageSource.vendor,
+          createdAt: DateTime.utc(2026, 5, 5, 10),
+          updatedAt: DateTime.utc(2026, 5, 5, 11),
+        ),
+        actorUserId: _userA,
+      );
+
+      final sql = pool.transactions.single.executedSql.firstWhere(
+        (s) => s.contains('insert into data_accuracy_settings'),
+      );
+      expect(sql, contains('jsonb_each(coalesce('));
+      expect(sql, contains('full join jsonb_each(coalesce('));
+      expect(
+        sql,
+        isNot(
+          contains('covers_manual_entries = excluded.covers_manual_entries'),
+        ),
+      );
+    });
   });
 
   group('DataAccuracySettingsRepository — per-period covers update '
@@ -203,8 +237,10 @@ void main() {
       );
       expect(
         keyedUpsert,
-        contains('on conflict (operator_id, location_id, '
-            'service_period_key, effective_at_business_date)'),
+        contains(
+          'on conflict (operator_id, location_id, '
+          'service_period_key, effective_at_business_date)',
+        ),
       );
       final keyedParams = tx.parameters.firstWhere(
         (p) => p['service_period_key'] == 'dinner',
@@ -219,8 +255,7 @@ void main() {
 
     test('updateCoversSourceForServicePeriod with a manual covers patch '
         'upserts into the existing covers_manual_entries jsonb under the '
-        'same business_date — prior periods at that date preserved',
-        () async {
+        'same business_date — prior periods at that date preserved', () async {
       final pool = _DataAccuracyPool(
         existingRows: <PostgresRow>[
           _settingsRow(
@@ -259,57 +294,55 @@ void main() {
 
   group('DataAccuracySettingsRepository — historical seed bulk entry '
       '(item D)', () {
-    test(
-      'applyHistoricalCoversSeed deep-merges per-date entries keyed by '
-      'service_period_id; unnamed dates preserved; named periods '
-      'overwritten',
-      () async {
-        final pool = _DataAccuracyPool(
-          existingRows: <PostgresRow>[
-            _settingsRow(
-              manualEntries: <String, Object?>{
-                '2026-05-01': <String, Object?>{'lunch': 60},
-                '2026-05-02': <String, Object?>{'lunch': 70, 'dinner': 200},
-              },
-            ),
-          ],
-        );
-        final repo = DataAccuracySettingsRepository(
-          TenantTransactionWrapper(pool),
-        );
-        await repo.applyHistoricalCoversSeed(
-          operatorId: _opA,
-          locationId: _locA,
-          actorUserId: _userA,
-          entries: <String, Map<String, int>>{
-            '2026-05-02': <String, int>{'dinner': 250, 'late_night': 25},
-            '2026-05-03': <String, int>{
-              'breakfast': 40,
-              'lunch': 80,
-              'dinner': 210,
+    test('applyHistoricalCoversSeed deep-merges per-date entries keyed by '
+        'service_period_id; unnamed dates preserved; named periods '
+        'overwritten', () async {
+      final pool = _DataAccuracyPool(
+        existingRows: <PostgresRow>[
+          _settingsRow(
+            manualEntries: <String, Object?>{
+              '2026-05-01': <String, Object?>{'lunch': 60},
+              '2026-05-02': <String, Object?>{'lunch': 70, 'dinner': 200},
             },
+          ),
+        ],
+      );
+      final repo = DataAccuracySettingsRepository(
+        TenantTransactionWrapper(pool),
+      );
+      await repo.applyHistoricalCoversSeed(
+        operatorId: _opA,
+        locationId: _locA,
+        actorUserId: _userA,
+        entries: <String, Map<String, int>>{
+          '2026-05-02': <String, int>{'dinner': 250, 'late_night': 25},
+          '2026-05-03': <String, int>{
+            'breakfast': 40,
+            'lunch': 80,
+            'dinner': 210,
           },
-        );
+        },
+      );
 
-        final tx = pool.transactions.single;
-        final updateParams = tx.parameters.firstWhere(
-          (p) => p['manual_entries'] is String,
-        );
-        final decoded = jsonDecode(updateParams['manual_entries'] as String)
-            as Map<String, Object?>;
-        expect(decoded['2026-05-01'], equals({'lunch': 60}));
-        final may2 = decoded['2026-05-02'] as Map<String, Object?>;
-        expect(may2['lunch'], equals(70));
-        expect(may2['dinner'], equals(250));
-        expect(may2['late_night'], equals(25));
-        // Brand-new date with a 4th period (breakfast) — proves N
-        // periods, not a hardcoded triplet.
-        expect(
-          decoded['2026-05-03'],
-          equals({'breakfast': 40, 'lunch': 80, 'dinner': 210}),
-        );
-      },
-    );
+      final tx = pool.transactions.single;
+      final updateParams = tx.parameters.firstWhere(
+        (p) => p['manual_entries'] is String,
+      );
+      final decoded =
+          jsonDecode(updateParams['manual_entries'] as String)
+              as Map<String, Object?>;
+      expect(decoded['2026-05-01'], equals({'lunch': 60}));
+      final may2 = decoded['2026-05-02'] as Map<String, Object?>;
+      expect(may2['lunch'], equals(70));
+      expect(may2['dinner'], equals(250));
+      expect(may2['late_night'], equals(25));
+      // Brand-new date with a 4th period (breakfast) — proves N
+      // periods, not a hardcoded triplet.
+      expect(
+        decoded['2026-05-03'],
+        equals({'breakfast': 40, 'lunch': 80, 'dinner': 210}),
+      );
+    });
   });
 
   group('DataAccuracySettingsRepository — defensive read-create path', () {
@@ -457,8 +490,8 @@ class _DataAccuracyTransaction extends PostgresTransaction {
       return existingRows.isNotEmpty
           ? existingRows
           : (firstCreateRow != null
-              ? <PostgresRow>[firstCreateRow!]
-              : const <PostgresRow>[]);
+                ? <PostgresRow>[firstCreateRow!]
+                : const <PostgresRow>[]);
     }
     return const <PostgresRow>[];
   }
@@ -475,7 +508,8 @@ class _DataAccuracyTransaction extends PostgresTransaction {
     // returns 1 and mutates the working row so the follow-up re-SELECT
     // reflects the write (wage / walk-in / manual-entries).
     if (sql.contains('update data_accuracy_settings set')) {
-      final base = _mutatedRow ??
+      final base =
+          _mutatedRow ??
           (existingRows.isNotEmpty
               ? existingRows.first
               : firstCreateRow ?? <String, Object?>{});
@@ -484,8 +518,7 @@ class _DataAccuracyTransaction extends PostgresTransaction {
         next['wage_source'] = parameters['wage_source'];
       }
       if (parameters['walk_in_handling_mode'] is String) {
-        next['walk_in_handling_mode'] =
-            parameters['walk_in_handling_mode'];
+        next['walk_in_handling_mode'] = parameters['walk_in_handling_mode'];
       }
       if (parameters['manual_entries'] is String) {
         next['covers_manual_entries'] = jsonDecode(
