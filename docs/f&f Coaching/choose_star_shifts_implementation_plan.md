@@ -42,7 +42,7 @@ Conclusion: redesign = UI re-composition + thread resolved `defs` + extend previ
 - **Lane B:** R5 — dispatched only after explicit operator approval (schema-touching per CLAUDE.md). After any `db/migrations/*.sql` change the agent runs `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart` (house rule).
 - **Lane C:** R6 — independent, data-only, parallel with Lane A.
 - Every agent contract: install hooks (step 0) → branch → implement → self-audit (Pattern B, file:line) → `dart analyze` → commit + push → open PR → STOP. No merge, no tracker edits, no `--no-verify`. Orchestrator audits the PR diff against this plan + contracts, then merges (R5 merge needs operator sign-off).
-- Audit artifacts: `docs/_audits/per_daypart_v1/pr_<n>_<topic>.md`.
+- Audit artifacts: `docs/_audits/per_daypart_v1/landed/pr_<n>_<topic>.md`.
 
 ## 5. Acceptance
 
