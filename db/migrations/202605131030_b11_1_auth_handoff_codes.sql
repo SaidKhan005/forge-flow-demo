@@ -1,9 +1,9 @@
 -- Lane B B11.1 — auth_handoff_codes table.
 --
 -- Authority:
---   * docs/_execution/lane_b_features/03_execution_slices.md
+--   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 --     ("B11.1 — handoff_codes table + endpoints")
---   * docs/_execution/lane_b_features/01_product_rule_and_ia.md
+--   * docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md
 --     (addendum A1: "Redemption-Code Handoff" — code never appears in
 --      a JWT-in-URL; mobile mints a one-time short-TTL opaque code that
 --      the web client redeems atomically against this table.)

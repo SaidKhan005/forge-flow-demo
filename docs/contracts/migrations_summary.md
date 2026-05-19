@@ -5459,9 +5459,9 @@ Migration count: **139**
   Lane B B11.1 — auth_handoff_codes table.
 
   Authority:
-  * docs/_execution/lane_b_features/03_execution_slices.md
+  * docs/archive/_execution/lane_b_features/03_execution_slices.md
   ("B11.1 — handoff_codes table + endpoints")
-  * docs/_execution/lane_b_features/01_product_rule_and_ia.md
+  * docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md
   (addendum A1: "Redemption-Code Handoff" — code never appears in
   a JWT-in-URL; mobile mints a one-time short-TTL opaque code that
   the web client redeems atomically against this table.)
@@ -5538,7 +5538,7 @@ Migration count: **139**
   Lane B B11.2 — auth_step_up_challenges table.
 
   Authority:
-  * docs/_execution/lane_b_features/03_execution_slices.md
+  * docs/archive/_execution/lane_b_features/03_execution_slices.md
   ("B11.2 — RFC 9470 step-up challenge on sensitive routes")
   * RFC 9470 — OAuth 2.0 Step Up Authentication Challenge Protocol
   https://www.rfc-editor.org/rfc/rfc9470
@@ -5710,7 +5710,7 @@ Migration count: **139**
   Lane B B2.1 — default_role_catalog_versions table + operators pointer.
 
   Authority:
-  * docs/_execution/lane_b_features/03_execution_slices.md
+  * docs/archive/_execution/lane_b_features/03_execution_slices.md
   ("B2.1 — Default Role catalog schema + publish endpoint")
   * CLAUDE.md "Hard Promises" #4 (per-operator isolation NON-NEGOTIABLE)
   * CLAUDE.md "RLS-Ready Schema" — operator-scoped fact tables include
@@ -5835,7 +5835,7 @@ Migration count: **139**
   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-1a (line 82) —
   prep migration for SendGrid Event Webhook idempotency; operator
   Path A pick 2026-05-13.
-  * docs/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
+  * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
   — SendGrid Event Webhook receiver" (line 9-29) — the receiver
   relies on Postgres-enforced uniqueness for duplicate-event
   rejection via ON CONFLICT DO NOTHING.
@@ -5956,7 +5956,7 @@ Migration count: **139**
   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-7a (line 94) — prep
   migration unblocking Codex's C-7 ("Adaptive 2FA button"). Operator
   approved 2026-05-13 ("yes to all" on the open-decisions slate).
-  * docs/_execution/lane_c_parity/03_execution_slices.md "Slice C-7
+  * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-7
   — Adaptive 2FA button" (line 145) — the My Account button state
   adapts from `(session.mfaEnrolled, factor_count,
   recovery_codes_viewed_at)`. That last column did not exist on

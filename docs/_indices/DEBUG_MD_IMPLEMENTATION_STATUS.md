@@ -115,7 +115,7 @@ consistent way." This is HP #11 (Hard Promise #11 in CLAUDE.md).
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
 | H-1 | "Every screen item must show scope, inherited source, effective value (HP #11)" | ✅ DONE | Wave 2 H-1 (PR #659) added the HP #11 scope notice to `schedule_screen.dart` + `wage_authority_screen.dart`, closing the 2 last-missing exemplars flagged in `c_12_lane_c_closeout_audit.md` M-4. Backbone (L_A1 / L_A2 / B6 / B8 / B8.b / C-6 / B5.b) was already shipped pre-Wave 2. <br> Phase 2 walkthrough 2026-05-14: ✅ DONE-LIVE — HP #11 sweep across all hierarchy-sensitive surfaces (`schedule_screen.dart` + `wage_authority_screen.dart` + AccountScreen + MFA section) per Phase 2 HP #11 sweep verification. |
-| H-2 | "Master list and end-to-end implementation plan for hierarchy" | ✅ DONE | `docs/_execution/lane_b_features/01_*.md` through `04_*.md` are the canonical execution plan; ledger row 100 (C-12 closeout) certifies the backbone is shipped. <br> Phase 2 walkthrough 2026-05-14: 🔧 BACKEND — hierarchy execution plan docs at `docs/_execution/lane_b_features/01_*.md` through `04_*.md`; C-12 closeout certifies backbone shipped. |
+| H-2 | "Master list and end-to-end implementation plan for hierarchy" | ✅ DONE | `docs/archive/_execution/lane_b_features/01_*.md` through `04_*.md` are the canonical execution plan; ledger row 100 (C-12 closeout) certifies the backbone is shipped. <br> Phase 2 walkthrough 2026-05-14: 🔧 BACKEND — hierarchy execution plan docs at `docs/archive/_execution/lane_b_features/01_*.md` through `04_*.md`; C-12 closeout certifies backbone shipped. |
 
 ---
 

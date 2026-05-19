@@ -255,7 +255,7 @@ export 'weekly_plan_routes.dart'
 // The opaque code travels in the response body of the mint endpoint
 // and the request body of the redeem endpoint — never as a URL
 // parameter to the proxy. See addendum A1 in
-// `docs/_execution/lane_b_features/01_product_rule_and_ia.md`.
+// `docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md`.
 export 'auth_handoff_routes.dart'
     show
         AuthHandoffRouteRejected,
@@ -5298,7 +5298,7 @@ class ProxyHealthRegistryContext {
   /// the envelope-level pod label produced separately by Cloud Run; this
   /// accessor exposes only the gauge state.
   /// Authority: docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
-  /// finding #2 + docs/_execution/lane_a_code_health/03_execution_slices.md
+  /// finding #2 + docs/archive/_execution/lane_a_code_health/03_execution_slices.md
   /// Slice A11.1 (consumer side, A11.1.b).
   final Map<String, Map<String, int>> Function()?
   sessionRecordIncompleteSnapshot;
@@ -7145,8 +7145,8 @@ class RollingWindowAttemptCounter {
 ///
 /// Authority: addendum B2 / R3 §2 stretch goal — "promote the predicate
 /// to a production gauge" (per
-/// `docs/_execution/lane_a_code_health/01_product_rule_and_ia.md` and
-/// `docs/_execution/lane_a_code_health/03_execution_slices.md` Slice
+/// `docs/archive/_execution/lane_a_code_health/01_product_rule_and_ia.md` and
+/// `docs/archive/_execution/lane_a_code_health/03_execution_slices.md` Slice
 /// A11.1).
 ///
 /// Discipline:
@@ -8853,7 +8853,7 @@ Future<void> routeRequest(
   // response body fails SessionRecordCompleteness.assertComplete.
   // Optional for back-compat; when null the route ships the 2xx without
   // the observability hop (legacy "no gauge" mode).
-  // Authority: docs/_execution/lane_a_code_health/03_execution_slices.md
+  // Authority: docs/archive/_execution/lane_a_code_health/03_execution_slices.md
   // "Slice A11.1 — Production Session-Record Gauge" + R3 §2.
   SessionRecordIncompleteGauge? sessionRecordIncompleteGauge,
   // HARD-H — admin idempotency cache for cross-tenant POST routes
@@ -10360,7 +10360,7 @@ Future<void> routeRequest(
         // opaque code travels in the response body of the mint
         // endpoint and the request body of the redeem endpoint —
         // never as a URL parameter to the proxy (addendum A1 in
-        // `docs/_execution/lane_b_features/01_product_rule_and_ia.md`).
+        // `docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md`).
         // Mint requires an Idempotency-Key header per CLAUDE.md
         // "Proxy & API Conventions"; redeem does not (a redeem is a
         // single side-effect that the predicate naturally idempotents
@@ -13774,7 +13774,7 @@ Future<void> routeRequest(
           // exact bytes we ship. The gauge is observability-only: a
           // missing-field finding NEVER blocks the 2xx (the response is
           // already committed by the time the harness reads the gauge).
-          // Authority: docs/_execution/lane_a_code_health/03_execution_slices.md
+          // Authority: docs/archive/_execution/lane_a_code_health/03_execution_slices.md
           // Slice A11.1 + R3 §2 stretch goal.
           final loginResponseBody = <String, Object?>{
             'session_id': sessionId,

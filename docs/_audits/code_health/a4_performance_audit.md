@@ -3,11 +3,11 @@
 | Field | Value |
 |---|---|
 | Slice | A4.1 — Performance Audit Pass |
-| Slice doc anchor | `docs/_execution/lane_a_code_health/03_execution_slices.md` §"Slice A4.1 — Performance Audit Pass" |
+| Slice doc anchor | `docs/archive/_execution/lane_a_code_health/03_execution_slices.md` §"Slice A4.1 — Performance Audit Pass" |
 | Branch / worktree | `claude/a4-1-performance-audit-pass` (worktree `.claude/worktrees/agent-a5f73d6fdd651d2d1`) |
 | Base commit | `42e04764` (origin/master, 2026-05-12) |
 | Audit date | 2026-05-12 |
-| Authority | `docs/frameworks/PERFORMANCE_FRAMEWORK.md` (active, 2026-05-03); Lens 10 of `docs/_execution/lane_a_code_health/02_plumbing_audit_matrix.md` |
+| Authority | `docs/frameworks/PERFORMANCE_FRAMEWORK.md` (active, 2026-05-03); Lens 10 of `docs/archive/_execution/lane_a_code_health/02_plumbing_audit_matrix.md` |
 | Mode | Read-only static inspection. Zero `.dart` files modified. No measurements run. No load tests. |
 | Predecessor | Supersedes the previous 503-line `a4_performance_audit.md` (commit `0e59029e`, parallel sub-agent on `claude/nifty-clarke-d3ec25`). The wider 24-finding survey there remains valid context; this slice-scoped doc focuses A4.2 exclusively on the Lens 10 + Postgres-pool deliverables. |
 

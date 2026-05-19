@@ -9,7 +9,7 @@
 // resolve it atomically.
 //
 // URL discipline (addendum A1 in
-// `docs/_execution/lane_b_features/01_product_rule_and_ia.md`):
+// `docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md`):
 //
 //   * The web app reads `code` from `window.location.search` (or the
 //     equivalent in the Flutter Web router) and IMMEDIATELY posts it
@@ -25,9 +25,9 @@
 //     — this client only handles the proxy round-trip.
 //
 // Authority:
-//   * docs/_execution/lane_b_features/03_execution_slices.md
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 //     "B11.1 — handoff_codes table + endpoints"
-//   * docs/_execution/lane_b_features/01_product_rule_and_ia.md
+//   * docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md
 //     "Redemption-Code Handoff (B11)" + addendum A1
 //   * tool/advisor_proxy/auth_handoff_routes.dart (the route the
 //     proxy exposes; the response shape this client expects).

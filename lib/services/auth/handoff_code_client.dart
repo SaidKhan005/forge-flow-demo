@@ -8,7 +8,7 @@
 // `/v1/auth/handoff/redeem` to mint a fresh web session.
 //
 // URL discipline (addendum A1 in
-// `docs/_execution/lane_b_features/01_product_rule_and_ia.md`):
+// `docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md`):
 //
 //   * The proxy contract is "code in body only". This client receives
 //     the code in the response body and surfaces it in
@@ -26,9 +26,9 @@
 //     of burning two slots in the per-user 10/hour rate limit.
 //
 // Authority:
-//   * docs/_execution/lane_b_features/03_execution_slices.md
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 //     "B11.1 — handoff_codes table + endpoints"
-//   * docs/_execution/lane_b_features/01_product_rule_and_ia.md
+//   * docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md
 //     "Redemption-Code Handoff (B11)" + addendum A1
 //   * tool/advisor_proxy/auth_handoff_routes.dart (the route the
 //     proxy exposes; the response shape this client expects).

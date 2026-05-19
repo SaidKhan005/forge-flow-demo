@@ -11,7 +11,7 @@
 //
 // Authority:
 //   * tool/advisor_proxy/admin_default_role_catalog_routes.dart
-//   * docs/_execution/lane_b_features/03_execution_slices.md
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 //     ("B2.1 — Default Role catalog schema + publish endpoint")
 
 import 'dart:convert';

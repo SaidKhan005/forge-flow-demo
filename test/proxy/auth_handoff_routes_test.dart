@@ -26,8 +26,8 @@
 //
 // Authority:
 //   * tool/advisor_proxy/auth_handoff_routes.dart (the route file)
-//   * docs/_execution/lane_b_features/03_execution_slices.md ("B11.1")
-//   * docs/_execution/lane_b_features/01_product_rule_and_ia.md
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md ("B11.1")
+//   * docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md
 //     (addendum A1: code in body only)
 
 import 'dart:convert';

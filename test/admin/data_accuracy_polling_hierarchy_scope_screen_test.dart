@@ -380,7 +380,7 @@ void main() {
   // both tiles render an inheritance notice warning the F&F admin that the
   // displayed value is effectively a single-location pull (HP #11 —
   // hierarchy honesty). Slice B1.a in
-  // `docs/_execution/lane_b_features/03_execution_slices.md`.
+  // `docs/archive/_execution/lane_b_features/03_execution_slices.md`.
 
   const singleLocationRefs = <OperatorLocationRef>[
     OperatorLocationRef(

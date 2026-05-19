@@ -1,7 +1,7 @@
 -- Lane B B2.1 — default_role_catalog_versions table + operators pointer.
 --
 -- Authority:
---   * docs/_execution/lane_b_features/03_execution_slices.md
+--   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 --     ("B2.1 — Default Role catalog schema + publish endpoint")
 --   * CLAUDE.md "Hard Promises" #4 (per-operator isolation NON-NEGOTIABLE)
 --   * CLAUDE.md "RLS-Ready Schema" — operator-scoped fact tables include

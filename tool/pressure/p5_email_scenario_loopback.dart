@@ -4,7 +4,7 @@
 // `EmailTemplateIds` catalog (`lib/services/email/email_template_renderer.dart`).
 //
 // Sprint authority:
-//   * Slice spec: `docs/_execution/lane_c_parity/03_execution_slices.md`
+//   * Slice spec: `docs/archive/_execution/lane_c_parity/03_execution_slices.md`
 //     C-11 (lines 209-225).
 //   * Inventory: `docs/_audits/code_health/c_email_notification_scenario_inventory.md`.
 //   * C-2 wire-or-delete decision matrix:

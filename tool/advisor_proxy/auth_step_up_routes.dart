@@ -38,7 +38,7 @@
 //
 // Authority:
 //   * RFC 9470 — https://www.rfc-editor.org/rfc/rfc9470
-//   * docs/_execution/lane_b_features/03_execution_slices.md
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 //     ("B11.2 — RFC 9470 step-up challenge on sensitive routes")
 //   * CLAUDE.md "Hard Promises" #4 (per-operator isolation)
 //   * CLAUDE.md "Proxy & API Conventions" (idempotent writes, JWT-

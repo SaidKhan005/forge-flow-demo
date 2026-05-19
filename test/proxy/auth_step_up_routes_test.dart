@@ -23,7 +23,7 @@
 //   * tool/advisor_proxy/auth_step_up_routes.dart (the file under
 //     test)
 //   * RFC 9470 (the wire shape)
-//   * docs/_execution/lane_b_features/03_execution_slices.md
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 //     ("B11.2 — RFC 9470 step-up challenge on sensitive routes")
 
 import 'package:flutter_test/flutter_test.dart';

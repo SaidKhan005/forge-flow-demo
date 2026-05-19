@@ -1,7 +1,7 @@
 -- Lane B B11.2 — auth_step_up_challenges table.
 --
 -- Authority:
---   * docs/_execution/lane_b_features/03_execution_slices.md
+--   * docs/archive/_execution/lane_b_features/03_execution_slices.md
 --     ("B11.2 — RFC 9470 step-up challenge on sensitive routes")
 --   * RFC 9470 — OAuth 2.0 Step Up Authentication Challenge Protocol
 --     https://www.rfc-editor.org/rfc/rfc9470

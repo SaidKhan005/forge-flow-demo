@@ -654,7 +654,7 @@ class _PollingAndPricingAdminScreenState
             // polling setup is effectively a single-location pull even
             // though the selected scope is "broader" (HP #11 —
             // hierarchy honesty). See B1.a in
-            // docs/_execution/lane_b_features/03_execution_slices.md.
+            // docs/archive/_execution/lane_b_features/03_execution_slices.md.
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Container(

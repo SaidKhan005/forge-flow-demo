@@ -4,7 +4,7 @@
 --   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-1a (line 82) —
 --     prep migration for SendGrid Event Webhook idempotency; operator
 --     Path A pick 2026-05-13.
---   * docs/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
+--   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-1
 --     — SendGrid Event Webhook receiver" (line 9-29) — the receiver
 --     relies on Postgres-enforced uniqueness for duplicate-event
 --     rejection via ON CONFLICT DO NOTHING.

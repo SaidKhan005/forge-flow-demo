@@ -400,7 +400,7 @@ ProxyHealthMetric _sessionRecordIncompleteCountTemplate() =>
 ///
 /// Authority: docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
 /// finding #2 (gauge data invisible to observability surface) +
-/// docs/_execution/lane_a_code_health/03_execution_slices.md Slice A11.1
+/// docs/archive/_execution/lane_a_code_health/03_execution_slices.md Slice A11.1
 /// (consumer side).
 Future<ProxyHealthMetric> sessionRecordIncompleteCountProducer(
   ProxyHealthProducerContext context,

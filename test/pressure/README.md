@@ -74,7 +74,7 @@ gitignored (see `.gitignore`).
 ## Phase 4 — B2 hot-fix lanes (2026-05-12)
 
 Added in the B1+B2 proxy hot-fix slice
-(`docs/_execution/b1_b2_proxy_soak_fix/01_execution_slice.md`):
+(`docs/archive/_execution/b1_b2_proxy_soak_fix/01_execution_slice.md`):
 
   * `tool/pressure/p4_session_soak.dart` — multi-session sign-in
     soak. Smoke run example:

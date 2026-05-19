@@ -5,7 +5,7 @@
 --   * docs/_indices/WAVE_EXECUTION_LEDGER.md row C-7a (line 94) — prep
 --     migration unblocking Codex's C-7 ("Adaptive 2FA button"). Operator
 --     approved 2026-05-13 ("yes to all" on the open-decisions slate).
---   * docs/_execution/lane_c_parity/03_execution_slices.md "Slice C-7
+--   * docs/archive/_execution/lane_c_parity/03_execution_slices.md "Slice C-7
 --     — Adaptive 2FA button" (line 145) — the My Account button state
 --     adapts from `(session.mfaEnrolled, factor_count,
 --     recovery_codes_viewed_at)`. That last column did not exist on
