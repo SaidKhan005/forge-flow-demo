@@ -72,7 +72,7 @@ Operator gave the go on the parked items (G7 re-spec + HP#11) and Round-2 §0b H
 
 ## 0b. Round-2 framework audit — NEW findings 2026-05-16 (post-fix master 1380c70e..5962a74c)
 
-Method: 4 read-only agents applied `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` + the per-daypart surface-coverage method to CURRENT master, excluding all tracked G1–G66/D*/U1/C* and parked/won't-fix/in-flight items. **No regressions in the merged fix wave (#831/#838/#840/#851/#853/#855/#857/#859) — all hold for their covered scope.** Dominant theme: **incomplete coverage** — the same bug *classes* recur on surfaces/gateways the fixes did not touch.
+Method: 4 read-only agents applied `runbooks/feature_implementation_lens_audit_runbook.md` + the per-daypart surface-coverage method to CURRENT master, excluding all tracked G1–G66/D*/U1/C* and parked/won't-fix/in-flight items. **No regressions in the merged fix wave (#831/#838/#840/#851/#853/#855/#857/#859) — all hold for their covered scope.** Dominant theme: **incomplete coverage** — the same bug *classes* recur on surfaces/gateways the fixes did not touch.
 
 ### Idempotency (G60-class data-corruption) — 3 NEW loci, fix not regressed but scoped too narrowly
 | ID | Surface | file:line | Note |

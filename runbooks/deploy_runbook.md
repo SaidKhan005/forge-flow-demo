@@ -235,9 +235,9 @@ Every end-to-end deploy should verify:
 
 Use this framework with:
 
-- `docs/frameworks/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`
-- `docs/frameworks/PERFORMANCE_FRAMEWORK.md`
-- `docs/frameworks/UX_ADJUSTMENT_FRAMEWORK.md`
+- `runbooks/mobile_web_console_e2e_runbook.md`
+- `runbooks/performance_audit_runbook.md`
+- `runbooks/ux_adjustment_runbook.md`
 
 Minimum web proof:
 

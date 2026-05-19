@@ -512,7 +512,7 @@ Append this to implementation prompts when a feature needs this framework:
 
 ```text
 Before editing, run the Feature Implementation Lens Audit Framework:
-docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md.
+runbooks/feature_implementation_lens_audit_runbook.md.
 Use quick pass for small changes and deep pass for feature or runtime changes.
 Include the lens table in the execution note or PR comment. Do not expose UI
 controls for backend capabilities that are not routed, persisted, authorized,
