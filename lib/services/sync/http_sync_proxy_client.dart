@@ -447,6 +447,31 @@ class HttpSyncProxyClient
   }
 
   @override
+  Future<void> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+    required String servicePeriodKey,
+    required String idempotencyKey,
+    String? restaurantId,
+  }) async {
+    await _patchJson(
+      _locationPath(operatorId, locationId, const <String>[
+        'data_accuracy_settings',
+        'manual_covers',
+      ]),
+      body: <String, Object?>{
+        if (restaurantId != null && restaurantId.trim().isNotEmpty)
+          'restaurant_id': restaurantId.trim(),
+        'business_date': businessDate,
+        'service_period_key': servicePeriodKey,
+        'clear': true,
+      },
+      idempotencyKey: idempotencyKey,
+    );
+  }
+
+  @override
   Future<TargetCycleSyncPage> fetchTargetCycles({
     required String operatorId,
     required String locationId,
