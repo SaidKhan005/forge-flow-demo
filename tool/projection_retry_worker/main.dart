@@ -159,6 +159,25 @@ abstract interface class ProjectionRetryScopeSource {
   });
 }
 
+@visibleForTesting
+const String kProjectionRetryDueScopesSql =
+    'select operator_id::text as operator_id, '
+    '       location_id::text as location_id '
+    'from public.canonical_fact_projection_retry_jobs '
+    'where (status = @pending '
+    '   or (status = @running '
+    '       and (claimed_at is null '
+    "         or claimed_at < now() - (@claim_stale_seconds * interval '1 second'))"
+    '      )'
+    '  ) '
+    '  and operator_id is not null '
+    '  and location_id is not null '
+    '  and connection_id is not null '
+    '  and next_attempt_at <= now() '
+    'group by operator_id, location_id '
+    'order by min(next_attempt_at) asc, min(created_at) asc '
+    'limit @limit';
+
 class PostgresProjectionRetryScopeSource implements ProjectionRetryScopeSource {
   PostgresProjectionRetryScopeSource(this._tenantWrapper);
 
@@ -172,19 +191,7 @@ class PostgresProjectionRetryScopeSource implements ProjectionRetryScopeSource {
     if (limit <= 0) return;
     final rows = await _tenantWrapper.runAsSystem<List<PostgresRow>>((exec) {
       return exec.query(
-        'select operator_id::text as operator_id, '
-        '       location_id::text as location_id '
-        'from public.canonical_fact_projection_retry_jobs '
-        'where (status = @pending '
-        '   or (status = @running '
-        '       and (claimed_at is null '
-        "         or claimed_at < now() - (@claim_stale_seconds * interval '1 second'))"
-        '      )'
-        '  ) '
-        '  and next_attempt_at <= now() '
-        'group by operator_id, location_id '
-        'order by min(next_attempt_at) asc, min(created_at) asc '
-        'limit @limit',
+        kProjectionRetryDueScopesSql,
         parameters: <String, Object?>{
           'pending': CanonicalFactProjectionRetryStatus.pending.wire,
           'running': CanonicalFactProjectionRetryStatus.running.wire,

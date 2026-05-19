@@ -147,6 +147,20 @@ void main() {
       expect(store.remainingJobs, 1);
     });
   });
+
+  group('PostgresProjectionRetryScopeSource', () {
+    test('does not offer orphaned evidence rows for replay', () {
+      expect(kProjectionRetryDueScopesSql, contains('location_id is not null'));
+      expect(
+        kProjectionRetryDueScopesSql,
+        contains('connection_id is not null'),
+      );
+      expect(
+        kProjectionRetryDueScopesSql,
+        contains('next_attempt_at <= now()'),
+      );
+    });
+  });
 }
 
 const _operatorId = '11111111-1111-4111-8111-111111111111';
