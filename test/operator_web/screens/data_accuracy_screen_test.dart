@@ -435,6 +435,12 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
+            // Inject the canonical demo service-period set directly so
+            // the dinner row renders without depending on
+            // RestaurantTimingConfigReadService.instance (which has no
+            // active config in widget tests, leaving _servicePeriods
+            // empty and the toggle in its `covers_source_no_periods`
+            // placeholder branch).
             servicePeriodsLoader: () async =>
                 ServicePeriodDefinitionResolver.demoDefinitions,
           ),
@@ -985,6 +991,10 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
+              // See sibling test "switching dinner to manual" — demo
+              // service periods are injected explicitly so the
+              // walkthrough's covers_source_chip_dinner_manual step
+              // does not race against the live timing-config singleton.
               servicePeriodsLoader: () async =>
                   ServicePeriodDefinitionResolver.demoDefinitions,
             ),
