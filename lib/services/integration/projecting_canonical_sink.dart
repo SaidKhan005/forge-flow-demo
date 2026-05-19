@@ -68,6 +68,26 @@ typedef CanonicalRestaurantIdResolver =
       required String locationId,
     });
 
+class CanonicalFactProjectionPreInputFailure implements Exception {
+  const CanonicalFactProjectionPreInputFailure({
+    required this.reason,
+    this.details = const <String, Object?>{},
+  });
+
+  final String reason;
+  final Map<String, Object?> details;
+
+  @override
+  String toString() {
+    if (details.isEmpty) return reason;
+    final detailText = details.entries
+        .where((entry) => entry.value != null)
+        .map((entry) => '${entry.key}=${entry.value}')
+        .join(', ');
+    return detailText.isEmpty ? reason : '$reason ($detailText)';
+  }
+}
+
 /// Sync-log event kinds that signal "this batch committed". The
 /// wrapper drains accumulated facts into the projector when the
 /// underlying [CanonicalSink.appendSyncLog] is called with one of
@@ -303,6 +323,20 @@ class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
           recorder: _retryRecorder,
           input: input,
           factCount: facts.length,
+          error: error,
+          stack: stack,
+        );
+      } else {
+        await _recordPreInputFailure(
+          recorder: _retryRecorder,
+          operatorId: operatorId,
+          locationId: locationId,
+          category: _category,
+          vendorId: _vendorId,
+          connectionId: connectionId,
+          restaurantIdResolver: _restaurantIdResolver,
+          facts: facts,
+          userId: _userIdOverride,
           error: error,
           stack: stack,
         );
@@ -703,6 +737,20 @@ class ProjectingCanonicalSink
           error: error,
           stack: stack,
         );
+      } else {
+        await _recordPreInputFailure(
+          recorder: _retryRecorder,
+          operatorId: operatorId,
+          locationId: locationId,
+          category: _category,
+          vendorId: _vendorId,
+          connectionId: connectionId,
+          restaurantIdResolver: _restaurantIdResolver,
+          facts: facts,
+          userId: _userIdOverride,
+          error: error,
+          stack: stack,
+        );
       }
     }
   }
@@ -735,6 +783,75 @@ Future<void> _recordRetry({
         'connection_id': input.connectionId,
         'integration_category': input.integrationCategory.name,
         'vendor_id': input.vendorId,
+        'error_class': retryError.runtimeType.toString(),
+        'error_message': retryError.toString(),
+        'stack_first_frame': firstStackFrame(retryStack),
+      },
+    );
+  }
+}
+
+Future<void> _recordPreInputFailure({
+  required CanonicalFactProjectionRetryRecorder? recorder,
+  required String operatorId,
+  required String locationId,
+  required IntegrationCategory category,
+  required String vendorId,
+  required String connectionId,
+  required CanonicalRestaurantIdResolver restaurantIdResolver,
+  required List<Map<String, Object?>> facts,
+  required String? userId,
+  required Object error,
+  required StackTrace stack,
+}) async {
+  if (recorder == null) return;
+  var restaurantId = locationId;
+  try {
+    restaurantId = await restaurantIdResolver(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
+  } catch (resolverError, resolverStack) {
+    log(
+      LogSeverity.warning,
+      'projecting_canonical_sink.restaurant_id_resolve_failed',
+      fields: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'connection_id': connectionId,
+        'integration_category': category.name,
+        'vendor_id': vendorId,
+        'error_class': resolverError.runtimeType.toString(),
+        'error_message': resolverError.toString(),
+        'stack_first_frame': firstStackFrame(resolverStack),
+      },
+    );
+  }
+  try {
+    await recorder.recordPreInputProjectionFailure(
+      CanonicalFactProjectionPreInputFailureRecord.fromFailure(
+        operatorId: operatorId,
+        locationId: locationId,
+        restaurantId: restaurantId,
+        integrationCategory: category,
+        vendorId: vendorId,
+        connectionId: connectionId,
+        canonicalFactMaps: facts,
+        error: error,
+        stackFirstFrame: firstStackFrame(stack),
+        userId: userId,
+      ),
+    );
+  } catch (retryError, retryStack) {
+    log(
+      LogSeverity.warning,
+      'projecting_canonical_sink.pre_input_failure_record_failed',
+      fields: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'connection_id': connectionId,
+        'integration_category': category.name,
+        'vendor_id': vendorId,
         'error_class': retryError.runtimeType.toString(),
         'error_message': retryError.toString(),
         'stack_first_frame': firstStackFrame(retryStack),

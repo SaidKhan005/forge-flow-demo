@@ -16,6 +16,10 @@ abstract interface class CanonicalFactProjectionRetryRecorder {
   Future<void> recordProjectionFailure(
     CanonicalFactProjectionRetryRecord record,
   );
+
+  Future<void> recordPreInputProjectionFailure(
+    CanonicalFactProjectionPreInputFailureRecord record,
+  );
 }
 
 abstract interface class CanonicalFactProjectionRetryJobStore
@@ -127,6 +131,100 @@ class CanonicalFactProjectionRetryRecord {
       openCurrentFactMaps: <Map<String, Object?>>[
         for (final fact in openCurrentFactMaps) Map<String, Object?>.from(fact),
       ],
+      userId: userId,
+    );
+  }
+}
+
+class CanonicalFactProjectionPreInputFailureRecord {
+  CanonicalFactProjectionPreInputFailureRecord({
+    required this.operatorId,
+    required this.locationId,
+    required this.restaurantId,
+    required this.integrationCategory,
+    required this.vendorId,
+    required this.connectionId,
+    required this.canonicalFactMaps,
+    required this.inputHash,
+    required this.factCount,
+    required this.errorClass,
+    required this.errorMessage,
+    required this.stackFirstFrame,
+    this.userId,
+  });
+
+  factory CanonicalFactProjectionPreInputFailureRecord.fromFailure({
+    required String operatorId,
+    required String locationId,
+    required String restaurantId,
+    required IntegrationCategory integrationCategory,
+    required String vendorId,
+    required String connectionId,
+    required Iterable<Map<String, Object?>> canonicalFactMaps,
+    required Object error,
+    required String? stackFirstFrame,
+    String? userId,
+  }) {
+    final factMaps = _jsonSafeFactMaps(canonicalFactMaps);
+    final hash = _preInputHash(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      integrationCategory: integrationCategory,
+      vendorId: vendorId,
+      connectionId: connectionId,
+      canonicalFactMaps: factMaps,
+      userId: userId,
+    );
+    return CanonicalFactProjectionPreInputFailureRecord(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      integrationCategory: integrationCategory,
+      vendorId: vendorId,
+      connectionId: connectionId,
+      canonicalFactMaps: factMaps,
+      inputHash: hash,
+      factCount: factMaps.length,
+      errorClass: error.runtimeType.toString(),
+      errorMessage: error.toString(),
+      stackFirstFrame: stackFirstFrame,
+      userId: userId,
+    );
+  }
+
+  final String operatorId;
+  final String locationId;
+  final String restaurantId;
+  final IntegrationCategory integrationCategory;
+  final String vendorId;
+  final String connectionId;
+  final List<Map<String, Object?>> canonicalFactMaps;
+  final String inputHash;
+  final int factCount;
+  final String errorClass;
+  final String errorMessage;
+  final String? stackFirstFrame;
+  final String? userId;
+
+  /// The existing ledger has no separate pre-input payload column. Store the
+  /// raw fact maps in the JSON payload field and leave `changedPeriods` empty
+  /// so current replay code cannot mistake this for a complete input.
+  CanonicalFactProjectionRetryRecord toDeadLetterRetryRecord() {
+    return CanonicalFactProjectionRetryRecord(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      integrationCategory: integrationCategory,
+      vendorId: vendorId,
+      connectionId: connectionId,
+      changedPeriods: const <Map<String, Object?>>[],
+      openCurrentFactMaps: canonicalFactMaps,
+      inputHash: inputHash,
+      factCount: factCount,
+      errorClass: errorClass,
+      errorMessage: errorMessage,
+      stackFirstFrame: stackFirstFrame,
       userId: userId,
     );
   }
@@ -344,6 +442,61 @@ String _inputHash({
     'user_id': userId,
   });
   return sha256.convert(utf8.encode(canonical)).toString();
+}
+
+String _preInputHash({
+  required String operatorId,
+  required String locationId,
+  required String restaurantId,
+  required IntegrationCategory integrationCategory,
+  required String vendorId,
+  required String connectionId,
+  required List<Map<String, Object?>> canonicalFactMaps,
+  required String? userId,
+}) {
+  final canonical = jsonEncode(<String, Object?>{
+    'failure_stage': 'pre_input',
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'restaurant_id': restaurantId,
+    'integration_category': integrationCategory.backfillWire,
+    'vendor_id': vendorId,
+    'connection_id': connectionId,
+    'canonical_fact_maps': canonicalFactMaps,
+    'user_id': userId,
+  });
+  return sha256.convert(utf8.encode(canonical)).toString();
+}
+
+List<Map<String, Object?>> _jsonSafeFactMaps(
+  Iterable<Map<String, Object?>> canonicalFactMaps,
+) {
+  return List<Map<String, Object?>>.unmodifiable(<Map<String, Object?>>[
+    for (final fact in canonicalFactMaps)
+      Map<String, Object?>.unmodifiable(<String, Object?>{
+        for (final entry in fact.entries)
+          entry.key: _jsonSafeValue(entry.value),
+      }),
+  ]);
+}
+
+Object? _jsonSafeValue(Object? value) {
+  if (value == null || value is String || value is num || value is bool) {
+    return value;
+  }
+  if (value is DateTime) {
+    return value.toUtc().toIso8601String();
+  }
+  if (value is Iterable) {
+    return <Object?>[for (final item in value) _jsonSafeValue(item)];
+  }
+  if (value is Map) {
+    return <String, Object?>{
+      for (final entry in value.entries)
+        entry.key.toString(): _jsonSafeValue(entry.value),
+    };
+  }
+  return value.toString();
 }
 
 String _requiredString(Map<String, Object?> json, String key) {

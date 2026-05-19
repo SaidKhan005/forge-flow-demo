@@ -128,7 +128,22 @@ class _ProductionCanonicalFactPeriodResolver {
       locationId: locationId,
       businessDate: seedBusinessDate,
     );
-    if (timing == null) return null;
+    if (timing == null) {
+      throw CanonicalFactProjectionPreInputFailure(
+        reason:
+            'business timing profile missing while building projection input',
+        details: _failureDetails(
+          operatorId: operatorId,
+          locationId: locationId,
+          category: category,
+          vendorId: vendorId,
+          connectionId: connectionId,
+          fact: fact,
+          canonicalFact: canonicalFact,
+          businessDate: seedBusinessDate,
+        ),
+      );
+    }
 
     final businessDate =
         explicitBusinessDate ?? _businessDateFor(fact.occurredAt, timing);
@@ -138,7 +153,22 @@ class _ProductionCanonicalFactPeriodResolver {
         locationId: locationId,
         businessDate: businessDate,
       );
-      if (dateSpecificTiming == null) return null;
+      if (dateSpecificTiming == null) {
+        throw CanonicalFactProjectionPreInputFailure(
+          reason:
+              'business timing profile missing while building projection input',
+          details: _failureDetails(
+            operatorId: operatorId,
+            locationId: locationId,
+            category: category,
+            vendorId: vendorId,
+            connectionId: connectionId,
+            fact: fact,
+            canonicalFact: canonicalFact,
+            businessDate: businessDate,
+          ),
+        );
+      }
       timing = dateSpecificTiming;
     }
 
@@ -147,7 +177,21 @@ class _ProductionCanonicalFactPeriodResolver {
       canonicalFact: canonicalFact,
       timing: timing,
     );
-    if (servicePeriodDefinition == null) return null;
+    if (servicePeriodDefinition == null) {
+      throw CanonicalFactProjectionPreInputFailure(
+        reason: 'service period missing while building projection input',
+        details: _failureDetails(
+          operatorId: operatorId,
+          locationId: locationId,
+          category: category,
+          vendorId: vendorId,
+          connectionId: connectionId,
+          fact: fact,
+          canonicalFact: canonicalFact,
+          businessDate: businessDate,
+        ),
+      );
+    }
     final weekStartDate = WeeklyPlanSnapshotPolicy.weekStartForDate(
       businessDate,
       weekStartDay: timing.weekStartDay,
@@ -308,6 +352,35 @@ class _ProductionCanonicalFactPeriodResolver {
       if (definition.id == key) return definition;
     }
     return null;
+  }
+
+  Map<String, Object?> _failureDetails({
+    required String operatorId,
+    required String locationId,
+    required IntegrationCategory category,
+    required String vendorId,
+    required String connectionId,
+    required OpenShiftCanonicalFact fact,
+    required Map<String, Object?> canonicalFact,
+    required String businessDate,
+  }) {
+    return <String, Object?>{
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'category': category.name,
+      'vendor_id': vendorId,
+      'connection_id': connectionId,
+      'business_date': businessDate,
+      'fact_kind': fact.kind.name,
+      'source_system': fact.sourceSystem,
+      'source_entity_id': fact.sourceEntityId,
+      'occurred_at': fact.occurredAt.toUtc().toIso8601String(),
+      'service_period_key': _stringFromFact(canonicalFact, const <String>[
+        'service_period_key',
+        'servicePeriodKey',
+        'daypart',
+      ]),
+    };
   }
 }
 
