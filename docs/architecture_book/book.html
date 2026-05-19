@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Forge Flow Architecture — A Study Guide</title>
+<title>Forge Flow Architecture, A Study Guide</title>
 <style>
   /* Forge & Flow Architecture Book
      Sunset #CC7A3E / SunsetDark #9A5C2A primary
@@ -106,22 +106,22 @@
 
 <section class="frontmatter toc">
   <h2 class="toc-title">Contents</h2>
-  <div class="toc-section-head">Part I — The Whole System</div>
+  <div class="toc-section-head">Part I, The Whole System</div>
   <ul class="toc-list">
     <li><span class="toc-num">1</span><span class="toc-label">Whole System In One Picture</span></li>
     <li><span class="toc-num">2</span><span class="toc-label">Quick Walkthroughs Before The Details</span></li>
     <li><span class="toc-num">3</span><span class="toc-label">The Product Loop</span></li>
     <li><span class="toc-num">4</span><span class="toc-label">Repository Map</span></li>
   </ul>
-  <div class="toc-section-head">Part II — The Runtime Path</div>
+  <div class="toc-section-head">Part II, The Runtime Path</div>
   <ul class="toc-list">
     <li><span class="toc-num">5</span><span class="toc-label">The App Runtime And UI</span></li>
-    <li><span class="toc-num">6</span><span class="toc-label">SQLite — Local App Database</span></li>
-    <li><span class="toc-num">7</span><span class="toc-label">Postgres — Shared Server Truth</span></li>
+    <li><span class="toc-num">6</span><span class="toc-label">SQLite, Local App Database</span></li>
+    <li><span class="toc-num">7</span><span class="toc-label">Postgres, Shared Server Truth</span></li>
     <li><span class="toc-num">8</span><span class="toc-label">The Proxy And API Layer</span></li>
     <li><span class="toc-num">9</span><span class="toc-label">DNS, Edge, And Cloud Run</span></li>
   </ul>
-  <div class="toc-section-head">Part III — The Safety Path</div>
+  <div class="toc-section-head">Part III, The Safety Path</div>
   <ul class="toc-list">
     <li><span class="toc-num">10</span><span class="toc-label">Tenant Safety And Row Level Security</span></li>
     <li><span class="toc-num">11</span><span class="toc-label">Authentication</span></li>
@@ -130,7 +130,7 @@
     <li><span class="toc-num">14</span><span class="toc-label">Service Principals</span></li>
     <li><span class="toc-num">15</span><span class="toc-label">Audit And Compliance</span></li>
   </ul>
-  <div class="toc-section-head">Part IV — The Expansion Path</div>
+  <div class="toc-section-head">Part IV, The Expansion Path</div>
   <ul class="toc-list">
     <li><span class="toc-num">16</span><span class="toc-label">Eventing And Real Time</span></li>
     <li><span class="toc-num">17</span><span class="toc-label">Usage, Caps, And Rollups</span></li>
@@ -141,7 +141,7 @@
     <li><span class="toc-num">22</span><span class="toc-label">The Operations Console</span></li>
     <li><span class="toc-num">23</span><span class="toc-label">The Workflow Platform</span></li>
   </ul>
-  <div class="toc-section-head">Part V — Operations &amp; Reference</div>
+  <div class="toc-section-head">Part V, Operations &amp; Reference</div>
   <ul class="toc-list">
     <li><span class="toc-num">24</span><span class="toc-label">Deployment, Secrets, And Environments</span></li>
     <li><span class="toc-num">25</span><span class="toc-label">Testing And Gates</span></li>
@@ -204,26 +204,26 @@
       <path d="M400,255 L425,280" stroke="#5A524A" stroke-width="1.4" marker-end="url(#arr)"/>
       <path d="M460,205 L560,280" stroke="#5A524A" stroke-width="1.4" marker-end="url(#arr)"/>
     </svg>
-    <figcaption>Figure 1.1 — The thin Flutter client sits above a fast local cache. Public requests enter through the managed edge, identity comes from Firebase, and every protected action flows through the proxy into Postgres, the advisor, and the audit/event spine.</figcaption>
+    <figcaption>Figure 1.1. The thin Flutter client sits above a fast local cache. Public requests enter through the managed edge, identity comes from Firebase, and every protected action flows through the proxy into Postgres, the advisor, and the audit/event spine.</figcaption>
   </figure>
   <p>The Flutter app is the user-facing surface, written in Dart, running on mobile, web, and desktop, in two flavors today: the main <strong>ForgeFlow</strong> product and the branded <strong>Barrio</strong> flavor. The app holds no privileged secrets. It reads cached state from a small local SQLite database, asks Firebase Identity Platform to verify credentials, and asks the server-side proxy to perform anything that involves shared data, vendor credentials, or privileged action.</p>
-  <p>The <strong>proxy</strong> is a Dart server living under <code>tool/advisor_proxy/</code>. It is the only place in the system that holds database passwords, vendor API keys, and the Firebase admin surface, and it is the only place that talks directly to Postgres. Every protected action the app needs — sign-in handoff, MFA management, role lookups, admin operations, advisor calls — flows through the proxy. It deploys as a container to Google <strong>Cloud Run</strong>, which scales it without us managing servers.</p>
+  <p>The <strong>proxy</strong> is a Dart server living under <code>tool/advisor_proxy/</code>. It is the only place in the system that holds database passwords, vendor API keys, and the Firebase admin surface, and it is the only place that talks directly to Postgres. Every protected action the app needs (sign-in handoff, MFA management, role lookups, admin operations, advisor calls) flows through the proxy. It deploys as a container to Google <strong>Cloud Run</strong>, which scales it without us managing servers.</p>
   <p>The <strong>shared database</strong> is <strong>Azure Database for PostgreSQL Flexible Server, version 16, in Canada Central</strong>. Postgres holds everything that must be correct across users, devices, operators, and audits: auth sessions, audit logs, operator and location records, roles and permissions, usage and caps, advisor evidence, graph relationships, and the rollup tables that feed dashboards. The proxy talks to Postgres through a small set of safe abstractions; nothing else does.</p>
   <p><strong>Firebase Identity Platform</strong> sits beside the proxy as the credential authority. It validates passwords, manages multi-factor enrollment, issues signed ID tokens, and holds the custom claims that map a Firebase user back to a Forge Flow operator, location, and role. Forge Flow trusts Firebase to say "this is a real authenticated person" and then layers its own business identity on top.</p>
-  <p>At the public edge, traffic enters through <strong>DNS</strong> (for example <code>staging-api.feflow.org</code>), terminates HTTPS at a <strong>Google managed load balancer</strong> with a <strong>Google managed certificate</strong>, passes through <strong>Cloud Armor</strong> for edge filtering, and is forwarded to Cloud Run via a <strong>serverless network endpoint group</strong>. The <strong>advisor</strong> — Forge Flow's AI surface — sits above this stack and uses model providers, embeddings, vector search, graph traversal, and SQL evidence to ground its recommendations rather than answering from generic chatbot memory.</p>
+  <p>At the public edge, traffic enters through <strong>DNS</strong> (for example <code>staging-api.feflow.org</code>), terminates HTTPS at a <strong>Google managed load balancer</strong> with a <strong>Google managed certificate</strong>, passes through <strong>Cloud Armor</strong> for edge filtering, and is forwarded to Cloud Run via a <strong>serverless network endpoint group</strong>. The <strong>advisor</strong>: Forge Flow's AI surface, sits above this stack and uses model providers, embeddings, vector search, graph traversal, and SQL evidence to ground its recommendations rather than answering from generic chatbot memory.</p>
   <figure class="diagram">
     <svg viewBox="0 0 640 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Layered stack">
       <rect x="0" y="0" width="640" height="320" fill="#fff"/>
       <g font-family="Segoe UI Semibold, sans-serif">
         <rect x="40" y="20" width="560" height="40" rx="6" fill="url(#g-sunset)"/><text x="60" y="46" fill="#fff" font-size="14" font-weight="700">Flutter UI · screens · widgets</text><text x="580" y="46" fill="#F8EDE6" font-size="10" text-anchor="end">presentation</text>
         <rect x="40" y="68" width="560" height="40" rx="6" fill="#E8A87C"/><text x="60" y="94" fill="#9A5C2A" font-size="14" font-weight="700">State · services · domain formulas</text><text x="580" y="94" fill="#9A5C2A" font-size="10" text-anchor="end">app logic</text>
-        <rect x="40" y="116" width="560" height="40" rx="6" fill="#A8D8D0"/><text x="60" y="142" fill="#0A6060" font-size="14" font-weight="700">SQLite — local working copy</text><text x="580" y="142" fill="#0A6060" font-size="10" text-anchor="end">device-local</text>
-        <rect x="40" y="164" width="560" height="40" rx="6" fill="url(#g-peacock)"/><text x="60" y="190" fill="#fff" font-size="14" font-weight="700">Proxy — trust boundary · secrets · auth · permission</text><text x="580" y="190" fill="#F8EDE6" font-size="10" text-anchor="end">server</text>
-        <rect x="40" y="212" width="560" height="40" rx="6" fill="#F8EDE6" stroke="#0E8080" stroke-width="2"/><text x="60" y="238" fill="#0A6060" font-size="14" font-weight="700">Postgres — shared truth + RLS</text><text x="580" y="238" fill="#0A6060" font-size="10" text-anchor="end">authoritative</text>
+        <rect x="40" y="116" width="560" height="40" rx="6" fill="#A8D8D0"/><text x="60" y="142" fill="#0A6060" font-size="14" font-weight="700">SQLite: local working copy</text><text x="580" y="142" fill="#0A6060" font-size="10" text-anchor="end">device-local</text>
+        <rect x="40" y="164" width="560" height="40" rx="6" fill="url(#g-peacock)"/><text x="60" y="190" fill="#fff" font-size="14" font-weight="700">Proxy: trust boundary · secrets · auth · permission</text><text x="580" y="190" fill="#F8EDE6" font-size="10" text-anchor="end">server</text>
+        <rect x="40" y="212" width="560" height="40" rx="6" fill="#F8EDE6" stroke="#0E8080" stroke-width="2"/><text x="60" y="238" fill="#0A6060" font-size="14" font-weight="700">Postgres: shared truth + RLS</text><text x="580" y="238" fill="#0A6060" font-size="10" text-anchor="end">authoritative</text>
         <rect x="40" y="260" width="560" height="40" rx="6" fill="#EFE8E0" stroke="#5A524A"/><text x="60" y="286" fill="#5A524A" font-size="14" font-weight="700">Audit chain · event_outbox · daily anchor</text><text x="580" y="286" fill="#5A524A" font-size="10" text-anchor="end">safety net</text>
       </g>
     </svg>
-    <figcaption>Figure 1.2 — The layered stack. UI sits at the top; trust deepens as you move down toward the audit and event substrate.</figcaption>
+    <figcaption>Figure 1.2. The layered stack. UI sits at the top; trust deepens as you move down toward the audit and event substrate.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>User opens Flutter app
@@ -268,7 +268,7 @@
         <path d="M450,185 L90,185" stroke="#0A6060" stroke-width="1.6" marker-end="url(#arr)"/><text x="270" y="180" text-anchor="middle" fill="#5A524A">5. permission snapshot DTO</text>
       </g>
     </svg>
-    <figcaption>Figure 2.1 — The login handshake: Firebase proves the person, the proxy records the session and resolves Forge Flow business identity.</figcaption>
+    <figcaption>Figure 2.1. The login handshake: Firebase proves the person, the proxy records the session and resolves Forge Flow business identity.</figcaption>
   </figure>
   <p>A user enters email and password. Firebase validates the credentials and returns a signed ID token, and the app passes that token to the proxy. The proxy checks that the required custom claims are present, resolves the operator, location, and user context, writes a row to the auth session ledger in Postgres, and returns a permission snapshot. The app stores a secure session envelope locally and unlocks the protected surfaces. In one sentence: Firebase proves the person, and Forge Flow records the session and decides what business access that person has.</p>
   <h2>B. Staging Health Check</h2>
@@ -286,7 +286,7 @@
         <text x="360" y="155" text-anchor="middle" fill="#5A524A" font-style="italic">DNS resolves the friendly name to Google's reserved edge IP (34.54.204.29).</text>
       </g>
     </svg>
-    <figcaption>Figure 2.2 — The staging health probe path, from friendly hostname to a healthy Cloud Run response.</figcaption>
+    <figcaption>Figure 2.2. The staging health probe path, from friendly hostname to a healthy Cloud Run response.</figcaption>
   </figure>
   <p>A browser requests <code>https://staging-api.feflow.org/readyz</code>. DNS resolves the name to Google's reserved load-balancer IP, the load balancer terminates HTTPS using the Google-managed certificate, Cloud Armor evaluates its edge policy, the serverless NEG forwards the request to the <code>forge-flow-staging-proxy</code> Cloud Run service, and the Dart proxy returns <code>{"status":"ok"}</code>.</p>
   <h2>C. Advisor Answer</h2>
@@ -325,10 +325,10 @@
         <text x="360" y="225" text-anchor="middle" fill="#5A524A" font-family="Segoe UI,sans-serif" font-size="10" font-style="italic">Learn feeds back into how the next 60-Day Benchmark and TargetCycle are set.</text>
       </g>
     </svg>
-    <figcaption>Figure 3.1 — The twelve layers of the canonical product loop. Each layer has its own home; provenance rules forbid collapsing one into another.</figcaption>
+    <figcaption>Figure 3.1. The twelve layers of the canonical product loop. Each layer has its own home; provenance rules forbid collapsing one into another.</figcaption>
   </figure>
-  <p>The first layer is <strong>source systems</strong> — POS, labor, reservations, accounting, banking — that produce raw evidence. The second is <strong>canonical operational facts</strong>: every vendor's exports, webhooks, and API payloads get translated into Forge Flow's own normalized shape so screens and advisor logic never see vendor-specific mess. The third is the <strong>60-Day Benchmark</strong>, the trusted history window that defines what "good" looks like for a comparable service. The fourth is the <strong>TargetCycle</strong>, a locked benchmark window that prevents the standard from drifting after a plan is made, and the fifth is the <strong>ActiveTargetProfile</strong>, the current target settings that the screens and formulas read against.</p>
-  <p>The sixth layer is the <strong>DemandForecastContext</strong>, which combines reservations, walk-ins, and history into expected demand so staffing decisions are not based on averages alone. The seventh is the <strong>SchedulePlan</strong>, the operator's intended staffing, which then locks into the eighth layer, the <strong>WeeklyPlanSnapshot</strong> — the version of the plan that existed at the moment it was approved, so future variance comparisons are fair.</p>
+  <p>The first layer is <strong>source systems</strong> (POS, labor, reservations, accounting, banking) that produce raw evidence. The second is <strong>canonical operational facts</strong>: every vendor's exports, webhooks, and API payloads get translated into Forge Flow's own normalized shape so screens and advisor logic never see vendor-specific mess. The third is the <strong>60-Day Benchmark</strong>, the trusted history window that defines what "good" looks like for a comparable service. The fourth is the <strong>TargetCycle</strong>, a locked benchmark window that prevents the standard from drifting after a plan is made, and the fifth is the <strong>ActiveTargetProfile</strong>, the current target settings that the screens and formulas read against.</p>
+  <p>The sixth layer is the <strong>DemandForecastContext</strong>, which combines reservations, walk-ins, and history into expected demand so staffing decisions are not based on averages alone. The seventh is the <strong>SchedulePlan</strong>, the operator's intended staffing, which then locks into the eighth layer, the <strong>WeeklyPlanSnapshot</strong>: the version of the plan that existed at the moment it was approved, so future variance comparisons are fair.</p>
   <p>The ninth layer is <strong>Shift</strong>, the live or whole-day view that shows what is happening right now. The tenth is <strong>Variance</strong>, the gap between plan and actual that turns raw numbers into an on-track / off-track signal. The eleventh is <strong>History</strong>, the closed truth that completed periods leave behind, and the twelfth is <strong>Learn</strong>, the teaching layer that uses repeated closed evidence to explain patterns and recommend coaching.</p>
   <p>The active feature line on top of these layers as of 2026-05-19 is <strong>Per-Daypart Targets V1</strong>, recorded in <code>docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md</code>. Per-daypart targets push the existing whole-day TargetCycle down to a daypart grain so lunch and dinner can carry distinct expected covers, labor, and verdict thresholds. The plan consolidates 44 surface-coverage gaps from the mobile walkthrough and ships in <strong>seven slices</strong> (Slice 0 through Slice 6); as of the 2026-05-19 status snapshot, Slices 0 through 5 have landed and Slice 6 is in flight.</p>
   <h3>How It Works</h3>
@@ -346,14 +346,14 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">04</span></div><div><h1 class="chapter-title">Repository Map</h1><div class="chapter-sub">Which folder owns which responsibility — and why that matters.</div></div></header>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">04</span></div><div><h1 class="chapter-title">Repository Map</h1><div class="chapter-sub">Which folder owns which responsibility, and why that matters.</div></div></header>
   <p>The repository is split by responsibility so that UI code, database code, cloud code, planning notes, and tests each have a clear home. When you make a change, the first question is which layer it touches: UI, app state, local data, server API, database schema, cloud deployment, or documentation.</p>
   <h2>The Layout</h2>
   <figure class="diagram">
     <svg viewBox="0 0 720 480" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="lib/ dependency layers">
       <rect x="0" y="0" width="720" height="480" fill="#fff"/>
       <g font-family="Segoe UI, sans-serif">
-        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Four entry points, one shared spine — what imports what</text>
+        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Four entry points, one shared spine: what imports what</text>
         <text x="360" y="38" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">Arrows point in the direction of import dependency: things on top depend on things below.</text>
 
         <!-- Entry points row (top) -->
@@ -377,17 +377,17 @@
 
         <!-- Presentation layer -->
         <rect x="30" y="120" width="465" height="50" rx="6" fill="#F8EDE6" stroke="#CC7A3E"/>
-        <text x="262" y="138" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Presentation — what the user sees</text>
+        <text x="262" y="138" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Presentation: what the user sees</text>
         <text x="262" y="155" text-anchor="middle" fill="#5A524A" font-size="9">lib/screens/ · lib/widgets/  (mobile)   ·   lib/admin/screens/ · lib/operator_web/screens/  (web)</text>
 
         <!-- State layer -->
         <rect x="30" y="180" width="465" height="46" rx="6" fill="#E8A87C"/>
-        <text x="262" y="200" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">State — what UI listens to</text>
+        <text x="262" y="200" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">State: what UI listens to</text>
         <text x="262" y="216" text-anchor="middle" fill="#5A524A" font-size="9">lib/state/  ·  AuthSessionNotifier  ·  DemoModeStateNotifier  ·  read-model notifiers</text>
 
         <!-- Services layer -->
         <rect x="30" y="236" width="465" height="46" rx="6" fill="url(#g-peacock)"/>
-        <text x="262" y="256" text-anchor="middle" fill="#fff" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Services — orchestration</text>
+        <text x="262" y="256" text-anchor="middle" fill="#fff" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Services: orchestration</text>
         <text x="262" y="272" text-anchor="middle" fill="#F8EDE6" font-size="9">lib/services/  ·  auth · mfa · email · realtime · advisor · proxy gateways</text>
 
         <!-- Infrastructure -->
@@ -439,19 +439,19 @@
 
         <!-- Bottom: outside lib/ -->
         <rect x="30" y="375" width="660" height="40" rx="6" fill="#FFFFFF" stroke="#5A524A" stroke-dasharray="3 3"/>
-        <text x="360" y="392" text-anchor="middle" fill="#5A524A" font-family="Segoe UI Semibold,sans-serif" font-size="10" font-weight="700">Outside lib/ — independently deployable / immutable</text>
+        <text x="360" y="392" text-anchor="middle" fill="#5A524A" font-family="Segoe UI Semibold,sans-serif" font-size="10" font-weight="700">Outside lib/: independently deployable / immutable</text>
         <text x="360" y="408" text-anchor="middle" fill="#5A524A" font-size="9">tool/advisor_proxy/  ·  db/migrations/  ·  test/  ·  runbooks/  ·  .github/workflows/  ·  scripts/</text>
 
         <text x="360" y="438" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">A screen can import services, but a service cannot import a screen. A migration is a file, not Dart code.</text>
         <text x="360" y="454" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">lib/internal/ (not shown) holds Forge &amp; Flow-only modules and never imports operator-facing code.</text>
       </g>
     </svg>
-    <figcaption>Figure 4.1 — Four app entry points all funnel down through the same four-layer Dart stack (presentation → state → services → infrastructure). The right column holds cross-cutting modules every layer is allowed to import; <code>lib/integrations/</code> hooks in at services. Arrows point in the import direction.</figcaption>
+    <figcaption>Figure 4.1. Four app entry points all funnel down through the same four-layer Dart stack (presentation → state → services → infrastructure). The right column holds cross-cutting modules every layer is allowed to import; <code>lib/integrations/</code> hooks in at services. Arrows point in the import direction.</figcaption>
   </figure>
   <p>The main Dart app lives under <code>lib/</code>. <code>lib/domain/</code> holds pure formulas and provider interfaces such as <code>llm_provider.dart</code>, <code>embedding_provider.dart</code>, and <code>rerank_provider.dart</code> under <code>lib/domain/services/</code>. <code>lib/services/</code> holds runtime services that coordinate auth, providers, gateways, and app operations. <code>lib/state/</code> holds the notifiers and read models that the UI listens to. <code>lib/dev/</code> contains demo-only and developer-only code, <code>lib/auth/</code> holds the frozen permission key catalog, and <code>lib/internal/</code> holds Forge &amp; Flow internal-only modules that should never be touched by operator-facing surfaces.</p>
-  <p>Persistence is split in two: <code>lib/infrastructure/persistence/sqlite/</code> defines the local schema and DAOs, while <code>lib/infrastructure/persistence/postgres/</code> holds the only place in the codebase where raw <code>package:postgres</code> imports are allowed — CI lint enforces that boundary. Three large surfaces sit alongside the main app: <code>lib/admin/</code> (internal admin console), <code>lib/operator_web/</code> (operator web console), and <code>lib/integrations/</code> (vendor integrations for labor, POS, and reservation data).</p>
-  <p>A second group of <code>lib/</code> subdirectories supports the UI without owning runtime behavior. <code>lib/screens/</code> holds the actual screen widgets that the routes render into. <code>lib/widgets/</code> holds the reusable widget primitives shared across screens. <code>lib/models/</code> holds plain data classes — read models like <code>shift_record</code> and <code>week_record</code>, plus the teaching summary shapes used in chapter 18 — that flow between services and screens. <code>lib/theme/</code> holds <code>app_theme.dart</code>, which is the single source of the Forge &amp; Flow brand palette (Sunset, Peacock, Jade, Ocean, Red Sand, Shell) referenced throughout the product and this book. <code>lib/l10n/</code> holds the localization entries, and <code>lib/utils/</code> holds small cross-cutting helpers like <code>formatters.dart</code> and the IANA timezone resolver used by chapter 20&apos;s integration timestamps.</p>
-  <p>Outside <code>lib/</code>, the proxy lives under <code>tool/advisor_proxy/</code> as an independently deployable Dart server. Database schema history lives under <code>db/migrations/</code>. Tests live under <code>test/</code>. Architecture contracts live under <code>docs/contracts/</code>, active phase plans under <code>docs/phases/</code>, and operational procedures under <code>runbooks/</code> — which the 2026-05-16 Wave 4 consolidation merged into a single unified home. CI workflows live under <code>.github/workflows/</code>, and helper scripts (including the staging proxy deploy script) live under <code>scripts/</code>.</p>
+  <p>Persistence is split in two: <code>lib/infrastructure/persistence/sqlite/</code> defines the local schema and DAOs, while <code>lib/infrastructure/persistence/postgres/</code> holds the only place in the codebase where raw <code>package:postgres</code> imports are allowed, CI lint enforces that boundary. Three large surfaces sit alongside the main app: <code>lib/admin/</code> (internal admin console), <code>lib/operator_web/</code> (operator web console), and <code>lib/integrations/</code> (vendor integrations for labor, POS, and reservation data).</p>
+  <p>A second group of <code>lib/</code> subdirectories supports the UI without owning runtime behavior. <code>lib/screens/</code> holds the actual screen widgets that the routes render into. <code>lib/widgets/</code> holds the reusable widget primitives shared across screens. <code>lib/models/</code> holds plain data classes (read models like <code>shift_record</code> and <code>week_record</code>, plus the teaching summary shapes used in chapter 18) that flow between services and screens. <code>lib/theme/</code> holds <code>app_theme.dart</code>, which is the single source of the Forge &amp; Flow brand palette (Sunset, Peacock, Jade, Ocean, Red Sand, Shell) referenced throughout the product and this book. <code>lib/l10n/</code> holds the localization entries, and <code>lib/utils/</code> holds small cross-cutting helpers like <code>formatters.dart</code> and the IANA timezone resolver used by chapter 20&apos;s integration timestamps.</p>
+  <p>Outside <code>lib/</code>, the proxy lives under <code>tool/advisor_proxy/</code> as an independently deployable Dart server. Database schema history lives under <code>db/migrations/</code>. Tests live under <code>test/</code>. Architecture contracts live under <code>docs/contracts/</code>, active phase plans under <code>docs/phases/</code>, and operational procedures under <code>runbooks/</code>, which the 2026-05-16 Wave 4 consolidation merged into a single unified home. CI workflows live under <code>.github/workflows/</code>, and helper scripts (including the staging proxy deploy script) live under <code>scripts/</code>.</p>
   <h3>How It Works</h3>
   <pre><code>docs/contract or phase plan
   -&gt; db/migrations if schema changes
@@ -465,7 +465,7 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">05</span></div><div><h1 class="chapter-title">The App Runtime And UI</h1><div class="chapter-sub">Flavors, entrypoints, bootstrap, and the auth gate that protects the dashboard.</div></div></header>
-  <p>The app is the part users see, with screens for the current shift, variance, plans, benchmarks, settings, and notifications. It ships in two flavors today — <strong>ForgeFlow</strong> (the main product, launched from <code>lib/main_forgeflow.dart</code>) and <strong>Barrio</strong> (a branded/demo variant, launched from <code>lib/main_barrio.dart</code>) — and both flavors share the same architectural backbone. Two additional entrypoints exist for non-app surfaces: <code>lib/main_admin.dart</code> boots the internal admin console, and <code>lib/main_operator_web.dart</code> boots the operator web console.</p>
+  <p>The app is the part users see, with screens for the current shift, variance, plans, benchmarks, settings, and notifications. It ships in two flavors today, <strong>ForgeFlow</strong> (the main product, launched from <code>lib/main_forgeflow.dart</code>) and <strong>Barrio</strong> (a branded/demo variant, launched from <code>lib/main_barrio.dart</code>), and both flavors share the same architectural backbone. Two additional entrypoints exist for non-app surfaces: <code>lib/main_admin.dart</code> boots the internal admin console, and <code>lib/main_operator_web.dart</code> boots the operator web console.</p>
   <h2>The Runtime Path</h2>
   <p>The visible app needs a reliable startup path before any protected screen renders. The flavor entrypoint is the first file that runs; it chooses which runtime bindings to install. From there, <code>bootstrapAndRunApp</code> performs the work of starting the app: it checks whether the Firebase auth runtime is enabled, builds the dependency tree, hydrates local SQLite-backed state, creates the <code>AuthSessionNotifier</code>, attempts to rehydrate any secure session envelope already on the device, and only then constructs the provider tree that feeds the widget tree.</p>
   <figure class="diagram">
@@ -502,25 +502,25 @@
         <!-- Gate stack (right): 4 sequential render-blocking gates -->
         <g font-size="9.5">
           <rect x="220" y="55" width="480" height="62" rx="6" fill="url(#g-sunset)"/>
-          <text x="240" y="76" fill="#fff" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 1 — Runtime bindings</text>
+          <text x="240" y="76" fill="#fff" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 1: Runtime bindings</text>
           <text x="240" y="93" fill="#F8EDE6">Pick flavor (forgeflow / barrio / admin / operator_web).</text>
           <text x="240" y="108" fill="#F8EDE6">Decide whether Firebase Auth runtime is enabled. Wire DI for the chosen runtime.</text>
           <text x="685" y="76" text-anchor="end" fill="#F8EDE6" font-size="8.5" font-style="italic">main_*.dart</text>
 
           <rect x="220" y="125" width="480" height="62" rx="6" fill="#E8A87C"/>
-          <text x="240" y="146" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 2 — Open and migrate the local DB</text>
+          <text x="240" y="146" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 2: Open and migrate the local DB</text>
           <text x="240" y="163" fill="#5A524A">Open SQLite. Read declared schema version (currently 37).</text>
           <text x="240" y="178" fill="#5A524A">Run any pending migrations. Seed demo data if requested. Block if any migration fails.</text>
           <text x="685" y="146" text-anchor="end" fill="#5A524A" font-size="8.5" font-style="italic">bootstrapAndRunApp</text>
 
           <rect x="220" y="195" width="480" height="62" rx="6" fill="url(#g-peacock)"/>
-          <text x="240" y="216" fill="#fff" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 3 — Build the session notifier</text>
+          <text x="240" y="216" fill="#fff" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 3: Build the session notifier</text>
           <text x="240" y="233" fill="#F8EDE6">Construct AuthSessionNotifier. Try to rehydrate the secure session envelope</text>
-          <text x="240" y="248" fill="#F8EDE6">from device storage. Until this resolves, no screen reads the session — it&apos;s null.</text>
+          <text x="240" y="248" fill="#F8EDE6">from device storage. Until this resolves, no screen reads the session, it&apos;s null.</text>
           <text x="685" y="216" text-anchor="end" fill="#F8EDE6" font-size="8.5" font-style="italic">AuthSessionNotifier</text>
 
           <rect x="220" y="265" width="480" height="62" rx="6" fill="#A8D8D0" stroke="#0A6060" stroke-width="2"/>
-          <text x="240" y="286" fill="#0A6060" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 4 — Mount providers and the auth gate</text>
+          <text x="240" y="286" fill="#0A6060" font-family="Segoe UI Semibold,sans-serif" font-weight="700">Gate 4: Mount providers and the auth gate</text>
           <text x="240" y="303" fill="#0A6060">Build the provider tree, mount MaterialApp, and let the auth gate decide:</text>
           <text x="240" y="318" fill="#0A6060">show login/MFA (if no session) or the dashboard (if session is valid).</text>
           <text x="685" y="286" text-anchor="end" fill="#0A6060" font-size="8.5" font-style="italic">forge_flow_app.dart</text>
@@ -537,7 +537,7 @@
         <text x="360" y="370" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">Every gate is render-blocking: the user sees the splash until Gate 4 mounts. If runtime bindings or storage fail, the auth gate falls back to deny-by-default.</text>
       </g>
     </svg>
-    <figcaption>Figure 5.1 — The app's boot is four render-blocking gates, not a parade of dots. The left column shows what the user sees while each gate resolves; the right shows what each gate has to satisfy before the next one runs. Gate 3 is the reason the dashboard never flashes before the session is known.</figcaption>
+    <figcaption>Figure 5.1. The app's boot is four render-blocking gates, not a parade of dots. The left column shows what the user sees while each gate resolves; the right shows what each gate has to satisfy before the next one runs. Gate 3 is the reason the dashboard never flashes before the session is known.</figcaption>
   </figure>
   <p>Flutter is the UI framework that makes the app portable across mobile, web, and desktop, and Dart is the shared language across the app and the proxy. The <code>provider</code> package wires dependencies and notifiers into the widget tree. <strong>Notifiers</strong> are state objects that emit changes; screens listen and rebuild when state updates. The <code>MaterialApp</code> shell owns routing, theme, and global navigation, and an <strong>auth gate</strong> sits between the shell and the protected surfaces so a logged-out user sees the login or MFA flow instead of the dashboard.</p>
   <h3>How It Works</h3>
@@ -554,10 +554,10 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">06</span></div><div><h1 class="chapter-title">SQLite — Local App Database</h1><div class="chapter-sub">The fast local working copy that keeps the UI responsive — and what it must <em>not</em> own.</div></div></header>
-  <div class="callout"><h4>Mental model</h4><p>SQLite is the app's local working copy — fast, in-process, used for demo data, replay scenarios, local app state, cached read models, and offline-friendly reads. Anything that must be correct across users, devices, operators, or audits belongs in Postgres.</p></div>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">06</span></div><div><h1 class="chapter-title">SQLite, Local App Database</h1><div class="chapter-sub">The fast local working copy that keeps the UI responsive, and what it must <em>not</em> own.</div></div></header>
+  <div class="callout"><h4>Mental model</h4><p>SQLite is the app's local working copy, fast, in-process, used for demo data, replay scenarios, local app state, cached read models, and offline-friendly reads. Anything that must be correct across users, devices, operators, or audits belongs in Postgres.</p></div>
   <p>The local database layer is built on <code>sqflite</code> for mobile builds and <code>sqflite_common_ffi</code> for desktop and test environments. A monotonically increasing schema version (currently <code>37</code>, declared in <code>lib/infrastructure/persistence/sqlite/sqlite_database.dart</code>) tells the app which migrations to run when an existing install opens. On first launch or whenever demo data is requested, seed data populates the local database with a known starting restaurant and replay fixtures, and a mock-replay state machine drives sample business days through the system so screens have realistic operational data to render against even before live integrations are wired up.</p>
-  <p>Above the raw storage, the layer defines screen-friendly read models — pre-shaped row types that the UI can render directly — and caches operational data so that complex dashboards do not have to recalculate from raw facts on every frame.</p>
+  <p>Above the raw storage, the layer defines screen-friendly read models, pre-shaped row types that the UI can render directly, and caches operational data so that complex dashboards do not have to recalculate from raw facts on every frame.</p>
   <div class="callout"><h4>Demo mode is a writer-side switch</h4><p>Forge Flow's second Hard Promise says demo mode is a <em>writer-side</em> switch, not a reader-side fork: demo data lives in the same standard SQLite tables as production data, under a single <code>DemoScope.restaurantId = 'demo_restaurant_001'</code>. The reader code never branches on <code>kDemoMode</code>; only writers do. The May 2026 surface <code>lib/screens/settings/settings_demo_live_switch.dart</code> adds a runtime user-facing demo↔live control that reads <code>DemoModeStateNotifier</code> and calls the proxy to flip per-(operator, location, category) <code>demo_mode_state</code> rows in Postgres without a rebuild.</p></div>
   <h2>SQLite vs Postgres at a glance</h2>
   <table class="compare">
@@ -584,12 +584,12 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">07</span></div><div><h1 class="chapter-title">Postgres — Shared Server Truth</h1><div class="chapter-sub">The authoritative database for everything that has to be correct across users.</div></div></header>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">07</span></div><div><h1 class="chapter-title">Postgres, Shared Server Truth</h1><div class="chapter-sub">The authoritative database for everything that has to be correct across users.</div></div></header>
   <p>Postgres is the official shared system of record. SQLite is the local working copy; Postgres is the source of truth that must work across users, devices, operators, audits, admin actions, advisor systems, and future automation. The app should never bypass Postgres for shared or sensitive data.</p>
   <h2>The Managed Platform</h2>
   <p>Forge Flow runs on <strong>Azure Database for PostgreSQL Flexible Server</strong>, version 16, in the <strong>Canada Central</strong> region. Azure handles hosting, backups, and platform maintenance. The choice of PostgreSQL 16 fixes the available syntax, the supported extensions, and the baseline behavior that migrations target.</p>
   <h2>The Access Abstractions</h2>
-  <p>Application code never talks directly to a Postgres connection. Repositories call a <code>PostgresExecutor</code> to run SQL, a <code>PostgresTransaction</code> to bundle several operations so they succeed or fail together, and a <code>PostgresPool</code> to reuse connections rather than opening a new socket per query. A <code>TenantContext</code> value carries the current operator, location, and user identifiers into every protected transaction. The <code>OperatorScopedRepository</code> base class enforces that operator-owned data access always runs inside tenant context. The raw <code>package:postgres</code> driver is held behind an adapter and is the only place in the codebase where direct database sockets are allowed — a CI lint enforces that no other file imports it.</p>
+  <p>Application code never talks directly to a Postgres connection. Repositories call a <code>PostgresExecutor</code> to run SQL, a <code>PostgresTransaction</code> to bundle several operations so they succeed or fail together, and a <code>PostgresPool</code> to reuse connections rather than opening a new socket per query. A <code>TenantContext</code> value carries the current operator, location, and user identifiers into every protected transaction. The <code>OperatorScopedRepository</code> base class enforces that operator-owned data access always runs inside tenant context. The raw <code>package:postgres</code> driver is held behind an adapter and is the only place in the codebase where direct database sockets are allowed, a CI lint enforces that no other file imports it.</p>
   <h2>Important Extensions</h2>
   <figure class="diagram">
     <svg viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="What Postgres extensions enable">
@@ -663,7 +663,7 @@
         <text x="40" y="354" fill="#5A524A" font-size="9.5">Forge Flow works around this with the transactional outbox pattern in chapter 16: an <tspan font-family="Consolas,monospace" fill="#0A6060">event_outbox</tspan> table + <tspan font-family="Consolas,monospace" fill="#0A6060">FOR UPDATE SKIP LOCKED</tspan> claims (or Cloud Tasks for heavier workloads).</text>
       </g>
     </svg>
-    <figcaption>Figure 7.1 — Each column is a capability our product depends on. Each extension says <em>what</em> it adds, plus <em>which Forge Flow feature</em> calls it. The dashed box at the bottom is the extension Azure doesn&apos;t ship — and what we do instead.</figcaption>
+    <figcaption>Figure 7.1. Each column is a capability our product depends on. Each extension says <em>what</em> it adds, plus <em>which Forge Flow feature</em> calls it. The dashed box at the bottom is the extension Azure doesn&apos;t ship, and what we do instead.</figcaption>
   </figure>
   <p>Hierarchy-scoped settings use the business → org-unit → location tree directly: business-level values inherit downward, org-unit values override their ancestors, and location values override everything above them. Any admin, operator, proxy, mobile, or migration work that exposes settings must preserve that rule and show which scope produced the effective value.</p>
   <h2>Important Execution Patterns</h2>
@@ -683,7 +683,7 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">08</span></div><div><h1 class="chapter-title">The Proxy And API Layer</h1><div class="chapter-sub">The server-side front desk that holds the secrets and enforces the rules.</div></div></header>
-  <div class="callout"><h4>Mental model</h4><p>The proxy is the secure server-side front desk. The app does not hold database passwords, vendor secrets, admin credentials, or privileged service keys — the proxy does. When the app needs protected work done, it asks the proxy, and the proxy verifies who the caller is, which operator and location they belong to, what permissions they hold, and whether the request is allowed before it touches the database or any external service.</p></div>
+  <div class="callout"><h4>Mental model</h4><p>The proxy is the secure server-side front desk. The app does not hold database passwords, vendor secrets, admin credentials, or privileged service keys, the proxy does. When the app needs protected work done, it asks the proxy, and the proxy verifies who the caller is, which operator and location they belong to, what permissions they hold, and whether the request is allowed before it touches the database or any external service.</p></div>
   <h2>Routes, Tokens, And Trust</h2>
   <p>Each capability the app needs is a versioned route under <code>/v1/...</code>; breaking changes get a new prefix like <code>/v2/...</code>, and old paths stay live until they are explicitly deprecated. Routes use standard HTTP verbs and exchange DTOs with typed fields. Every write is idempotent: the client carries an idempotency key, and the proxy records that key in a <code>proxy_requests</code> table with a UNIQUE constraint so that retries cannot accidentally double-charge or double-act.</p>
   <p>Identity arrives as a Firebase-issued JWT in the <code>Authorization: Bearer</code> header. The proxy verifies the signature, reads the required custom claims (<code>operator_id</code>, optional <code>user_id</code>, optional <code>location_id</code>, role and admin flags, role-version fields), and rejects the request fail-closed if anything is missing. Permission guards then check that the resolved identity is actually allowed to perform this specific action before any data-changing code runs.</p>
@@ -705,13 +705,13 @@
           <rect x="380" y="95" width="280" height="40" rx="6" fill="#A8D8D0" stroke="#0A6060"/><text x="520" y="112" text-anchor="middle" fill="#0A6060" font-weight="700">7. Write audit row</text><text x="520" y="127" text-anchor="middle" fill="#0A6060" font-size="9">pgcrypto digest chains to previous row</text>
           <rect x="380" y="145" width="280" height="40" rx="6" fill="#A8D8D0" stroke="#0A6060"/><text x="520" y="162" text-anchor="middle" fill="#0A6060" font-weight="700">8. Write event_outbox (if mutation)</text><text x="520" y="177" text-anchor="middle" fill="#0A6060" font-size="9">same transaction · durable</text>
           <rect x="380" y="195" width="280" height="40" rx="6" fill="url(#g-sunset)"/><text x="520" y="212" text-anchor="middle" fill="#fff" font-weight="700">9. Commit · idempotency stored</text><text x="520" y="227" text-anchor="middle" fill="#F8EDE6" font-size="9">proxy_requests row prevents duplicate side effects</text>
-          <rect x="380" y="245" width="280" height="40" rx="6" fill="url(#g-sunset)"/><text x="520" y="262" text-anchor="middle" fill="#fff" font-weight="700">10. Return DTO</text><text x="520" y="277" text-anchor="middle" fill="#F8EDE6" font-size="9">typed fields only — no raw DB shapes</text>
+          <rect x="380" y="245" width="280" height="40" rx="6" fill="url(#g-sunset)"/><text x="520" y="262" text-anchor="middle" fill="#fff" font-weight="700">10. Return DTO</text><text x="520" y="277" text-anchor="middle" fill="#F8EDE6" font-size="9">typed fields only, no raw DB shapes</text>
         </g>
         <path d="M280,265 L380,65" stroke="#5A524A" stroke-dasharray="2 3" fill="none"/>
-        <text x="330" y="300" text-anchor="middle" fill="#5A524A" font-style="italic">Any failure between steps 2–4 returns immediately — fail closed, no DB touch.</text>
+        <text x="330" y="300" text-anchor="middle" fill="#5A524A" font-style="italic">Any failure between steps 2 to 4 returns immediately, fail closed, no DB touch.</text>
       </g>
     </svg>
-    <figcaption>Figure 8.1 — Ten stages of a single proxy request. Steps 4–5 are the trust boundary; steps 6–9 are the durability boundary.</figcaption>
+    <figcaption>Figure 8.1. Ten stages of a single proxy request. Steps 4 to 5 are the trust boundary; steps 6 to 9 are the durability boundary.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>Flutter app calls /v1/auth/permissions/snapshot
@@ -729,8 +729,8 @@
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">09</span></div><div><h1 class="chapter-title">DNS, Edge, And Cloud Run</h1><div class="chapter-sub">From a friendly hostname to a running container.</div></div></header>
   <p>Apps and users do not call a raw server process; they call a friendly name. For staging that name is <code>staging-api.feflow.org</code>. DNS translates that name into a network destination, Google receives the traffic, HTTPS and edge rules are applied, and the request is forwarded to the Cloud Run proxy. The naming and edge layer is what makes infrastructure changeable behind the scenes without forcing client updates.</p>
   <h2>How A Public Request Travels</h2>
-  <p>A <strong>hostname</strong> like <code>staging-api.feflow.org</code> is the stable client-facing identifier. <strong>DNS</strong> translates hostnames into destinations. An <strong>A record</strong> points directly to an IPv4 address — Google's reserved load-balancer IP <code>34.54.204.29</code> — and a <strong>CNAME</strong> points one hostname at another. The current staging fix is an A record to the reserved Google edge IP; CNAME is the pattern to reach for when a provider owns a target hostname whose underlying IPs may change.</p>
-  <p>HTTPS trust comes from a <strong>Google-managed certificate</strong> issued for the hostname once DNS is publicly visible. The <strong>load balancer</strong> is the public entry point that terminates HTTPS and routes traffic to the backend. Before traffic reaches the backend, <strong>Cloud Armor</strong> evaluates an edge policy that logs or blocks suspicious requests. A <strong>serverless network endpoint group</strong> (serverless NEG) connects the load balancer to the <strong>Cloud Run service</strong> — <code>forge-flow-staging-proxy</code> for staging.</p>
+  <p>A <strong>hostname</strong> like <code>staging-api.feflow.org</code> is the stable client-facing identifier. <strong>DNS</strong> translates hostnames into destinations. An <strong>A record</strong> points directly to an IPv4 address, Google's reserved load-balancer IP <code>34.54.204.29</code>, and a <strong>CNAME</strong> points one hostname at another. The current staging fix is an A record to the reserved Google edge IP; CNAME is the pattern to reach for when a provider owns a target hostname whose underlying IPs may change.</p>
+  <p>HTTPS trust comes from a <strong>Google-managed certificate</strong> issued for the hostname once DNS is publicly visible. The <strong>load balancer</strong> is the public entry point that terminates HTTPS and routes traffic to the backend. Before traffic reaches the backend, <strong>Cloud Armor</strong> evaluates an edge policy that logs or blocks suspicious requests. A <strong>serverless network endpoint group</strong> (serverless NEG) connects the load balancer to the <strong>Cloud Run service</strong>: <code>forge-flow-staging-proxy</code> for staging.</p>
   <h3>How It Works</h3>
   <pre><code>https://staging-api.feflow.org/readyz
   -&gt; DNS A record
@@ -746,12 +746,12 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">10</span></div><div><h1 class="chapter-title">Tenant Safety And Row Level Security</h1><div class="chapter-sub">Two layers — repository discipline first, RLS as the safety net.</div></div></header>
-  <div class="callout"><h4>Mental model</h4><p>Forge Flow is multi-tenant: many operators and many locations can live in the same database. The rule is simple — Operator A must not see Operator B's data. The app and proxy code pass the correct context on every protected request; Postgres Row Level Security blocks rows that fall outside that context even if a query forgets to filter.</p></div>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">10</span></div><div><h1 class="chapter-title">Tenant Safety And Row Level Security</h1><div class="chapter-sub">Two layers, repository discipline first, RLS as the safety net.</div></div></header>
+  <div class="callout"><h4>Mental model</h4><p>Forge Flow is multi-tenant: many operators and many locations can live in the same database. The rule is simple, Operator A must not see Operator B's data. The app and proxy code pass the correct context on every protected request; Postgres Row Level Security blocks rows that fall outside that context even if a query forgets to filter.</p></div>
   <h2>Identity And Policies</h2>
   <p>Every protected database operation carries three identifiers: <code>operator_id</code> labels which customer/operator owns the work, <code>location_id</code> labels which restaurant location it belongs to, and <code>user_id</code> labels who is performing the action. That identity context travels with the transaction so the app, the proxy, the audit log, and the RLS policies are all talking about the same tenant and actor.</p>
-  <p>Row Level Security is a Postgres feature that hides rows that do not match the current context. Policies are written using a small set of approved <strong>wrapper functions</strong> — for example, <code>app_current_operator_id()</code> — because the wrappers are <code>STABLE LEAKPROOF PARALLEL SAFE</code>. A CI lint at <code>tool/rls_policy_lint.dart</code> enforces that policies never read bare session settings.</p>
-  <p>Tenant context is set with <code>set_config(..., true)</code> so that the current operator, location, and user are recorded only for the duration of the current transaction. This is critical because the proxy reuses pooled database connections. Every operator-scoped table is also indexed with a tenant-leading index — typically a B-tree starting with <code>operator_id</code> or <code>(operator_id, location_id)</code>. Operator-scoped tables store timestamps as <code>TIMESTAMPTZ</code> (UTC) plus a denormalized <code>business_date</code> column, so a late-night close at 1 AM still belongs to the correct operational day.</p>
+  <p>Row Level Security is a Postgres feature that hides rows that do not match the current context. Policies are written using a small set of approved <strong>wrapper functions</strong> (for example, <code>app_current_operator_id()</code>) because the wrappers are <code>STABLE LEAKPROOF PARALLEL SAFE</code>. A CI lint at <code>tool/rls_policy_lint.dart</code> enforces that policies never read bare session settings.</p>
+  <p>Tenant context is set with <code>set_config(..., true)</code> so that the current operator, location, and user are recorded only for the duration of the current transaction. This is critical because the proxy reuses pooled database connections. Every operator-scoped table is also indexed with a tenant-leading index (typically a B-tree starting with <code>operator_id</code> or <code>(operator_id, location_id)</code>). Operator-scoped tables store timestamps as <code>TIMESTAMPTZ</code> (UTC) plus a denormalized <code>business_date</code> column, so a late-night close at 1 AM still belongs to the correct operational day.</p>
   <figure class="diagram">
     <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="RLS request flow">
       <rect x="0" y="0" width="720" height="220" fill="#fff"/>
@@ -765,7 +765,7 @@
         <path d="M625,90 C625,180 550,160 550,160" stroke="#5A524A" stroke-dasharray="2 3" marker-end="url(#arr)"/>
       </g>
     </svg>
-    <figcaption>Figure 10.1 — Repository discipline carries operator context into the transaction; RLS enforces it at the row layer as a safety net.</figcaption>
+    <figcaption>Figure 10.1. Repository discipline carries operator context into the transaction; RLS enforces it at the row layer as a safety net.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>verified user belongs to operator X
@@ -803,7 +803,7 @@
         </g>
       </g>
     </svg>
-    <figcaption>Figure 11.1 — A Firebase ID token has three parts. The custom claims in the middle are what turn a Firebase user into a Forge Flow operator/location/role context. Missing required claims = fail closed.</figcaption>
+    <figcaption>Figure 11.1. A Firebase ID token has three parts. The custom claims in the middle are what turn a Firebase user into a Forge Flow operator/location/role context. Missing required claims = fail closed.</figcaption>
   </figure>
   <p>When a sign-in succeeds, the proxy writes a row to the auth session ledger in Postgres so that the session has a server-side record beyond the device. The ledger captures login, refresh, and revoke events, which makes session lifecycle auditable and revocable. The app stores a secure session envelope in device-protected storage so the session can be rehydrated without keeping plain credentials around.</p>
   <h3>How It Works</h3>
@@ -819,7 +819,7 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">12</span></div><div><h1 class="chapter-title">MFA And Admin Reset</h1><div class="chapter-sub">TOTP at launch, admin-mediated recovery, and a 24-hour delay.</div></div></header>
-  <p>Multi-factor authentication means password plus another proof. The launch path uses TOTP — the rotating six-digit codes from an authenticator app — because it is strong, standard, and avoids SMS dependency. Recovery-code display and challenge entry are intentionally not exposed in the launch UX; the visible product path for a user who loses access to their authenticator is restaurant-admin reset with a 24-hour removal delay.</p>
+  <p>Multi-factor authentication means password plus another proof. The launch path uses TOTP, the rotating six-digit codes from an authenticator app, because it is strong, standard, and avoids SMS dependency. Recovery-code display and challenge entry are intentionally not exposed in the launch UX; the visible product path for a user who loses access to their authenticator is restaurant-admin reset with a 24-hour removal delay.</p>
   <h2>Setup, Recovery, And Throttling</h2>
   <p>TOTP setup runs through the proxy and Firebase's Identity Toolkit. The user begins setup, the app asks the proxy to start an enrollment, the proxy talks to the Identity Toolkit to create the TOTP secret, the user scans or types the secret into their authenticator, and the user confirms a code. The proxy records the MFA factor state in Postgres.</p>
   <p>When a user loses their second factor, the recovery flow is admin-mediated. The user selects "Contact your admin," and a restaurant admin starts the reset from the Team surface. The proxy schedules a 24-hour removal that either the user or the admin can cancel while it is pending; when the window completes, a worker performs the actual removal and writes audit records. This delayed removal keeps account recovery tied to ownership and audit, and means the visible product never displays backup codes that could be stolen alongside a password.</p>
@@ -828,13 +828,13 @@
     <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="MFA admin reset state and 24-hour window">
       <rect x="0" y="0" width="720" height="240" fill="#fff"/>
       <g font-family="Segoe UI, sans-serif" font-size="10">
-        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Admin-mediated MFA reset — the 24-hour window</text>
+        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Admin-mediated MFA reset: the 24-hour window</text>
         <line x1="60" y1="115" x2="660" y2="115" stroke="#CC7A3E" stroke-width="3"/>
         <line x1="60" y1="108" x2="60" y2="122" stroke="#9A5C2A" stroke-width="2"/><line x1="660" y1="108" x2="660" y2="122" stroke="#9A5C2A" stroke-width="2"/>
         <text x="60" y="100" text-anchor="middle" fill="#9A5C2A" font-weight="700">T0</text><text x="60" y="140" text-anchor="middle" fill="#5A524A" font-size="9">request submitted</text>
         <text x="660" y="100" text-anchor="middle" fill="#9A5C2A" font-weight="700">T0 + 24h</text><text x="660" y="140" text-anchor="middle" fill="#5A524A" font-size="9">removal worker fires</text>
         <rect x="60" y="105" width="600" height="20" fill="#E8A87C" opacity="0.4"/>
-        <text x="360" y="120" text-anchor="middle" fill="#9A5C2A" font-weight="700">PENDING — user or admin can cancel</text>
+        <text x="360" y="120" text-anchor="middle" fill="#9A5C2A" font-weight="700">PENDING: user or admin can cancel</text>
         <g>
           <rect x="40" y="155" width="180" height="60" rx="6" fill="#A8D8D0" stroke="#0A6060"/><text x="130" y="174" text-anchor="middle" fill="#0A6060" font-weight="700">Trigger</text><text x="130" y="190" text-anchor="middle" fill="#5A524A" font-size="9">user contacts admin · or</text><text x="130" y="204" text-anchor="middle" fill="#5A524A" font-size="9">admin starts from Team</text>
           <rect x="270" y="155" width="180" height="60" rx="6" fill="#F8EDE6" stroke="#CC7A3E"/><text x="360" y="174" text-anchor="middle" fill="#9A5C2A" font-weight="700">Proxy checks</text><text x="360" y="190" text-anchor="middle" fill="#5A524A" font-size="9">permission + freshness</text><text x="360" y="204" text-anchor="middle" fill="#5A524A" font-size="9">schedules removal</text>
@@ -847,7 +847,7 @@
         </g>
       </g>
     </svg>
-    <figcaption>Figure 12.1 — The 24-hour window. Recovery is admin-mediated and reversible until the worker fires. No backup codes are surfaced to the user — that path is intentionally invisible.</figcaption>
+    <figcaption>Figure 12.1. The 24-hour window. Recovery is admin-mediated and reversible until the worker fires. No backup codes are surfaced to the user, that path is intentionally invisible.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <p>TOTP setup:</p>
@@ -870,9 +870,9 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">13</span></div><div><h1 class="chapter-title">Permissions, Roles, And Admin</h1><div class="chapter-sub">Snapshots from the server, not guesses from the client.</div></div></header>
-  <p>Permissions answer "What are you allowed to do?" Forge Flow expresses access as roles so capability sets are manageable. The app does not guess permissions from a job title — it asks for a permission snapshot and obeys it.</p>
+  <p>Permissions answer "What are you allowed to do?" Forge Flow expresses access as roles so capability sets are manageable. The app does not guess permissions from a job title, it asks for a permission snapshot and obeys it.</p>
   <h2>RBAC, Snapshots, And Admin Routes</h2>
-  <p>The model is <strong>role-based access control</strong>: users get roles, and roles expand into a set of named permission keys such as <code>auth.roles.update</code> or <code>schedule.view</code>. Roles bundle permission keys, and a <strong>role grant</strong> attaches a role to a user inside an operator or location context — for example, "Sarah has Manager at Downtown." Roles are defined in a hierarchy-scoped way (per the May 2026 roles redesign in <code>db/migrations/202605142100_phase_R_1L_roles_schema_rewrite.sql</code>) so role definitions can inherit from business level down through org units to specific locations.</p>
+  <p>The model is <strong>role-based access control</strong>: users get roles, and roles expand into a set of named permission keys such as <code>auth.roles.update</code> or <code>schedule.view</code>. Roles bundle permission keys, and a <strong>role grant</strong> attaches a role to a user inside an operator or location context, for example, "Sarah has Manager at Downtown." Roles are defined in a hierarchy-scoped way (per the May 2026 roles redesign in <code>db/migrations/202605142100_phase_R_1L_roles_schema_rewrite.sql</code>) so role definitions can inherit from business level down through org units to specific locations.</p>
   <p>The <strong>permission snapshot</strong> is the resolved view that the app actually uses. When the app asks the proxy for <code>/v1/auth/permissions/snapshot</code>, the proxy verifies the user, reads the relevant role grants and role permissions, resolves the effective permission set, and returns it as a DTO. The UI then enables and disables protected actions based on that snapshot.</p>
   <p>Administrative changes happen through protected <code>/v1/admin/auth/*</code> routes on the proxy. Every administrative change writes to a role audit log that preserves who changed access and when. The launch model is RBAC, but the architecture leaves room for <strong>relationship-based access control</strong> (ReBAC) in Phase 12.</p>
   <figure class="diagram">
@@ -907,11 +907,11 @@
           <path d="M590,85 L610,85" marker-end="url(#arr)"/>
         </g>
         <text x="360" y="175" text-anchor="middle" fill="#5A524A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Permission snapshot</text>
-        <text x="360" y="195" text-anchor="middle" fill="#5A524A" font-size="10" font-style="italic">The UI never recomputes auth logic — it just toggles widgets against the keys in the snapshot.</text>
+        <text x="360" y="195" text-anchor="middle" fill="#5A524A" font-size="10" font-style="italic">The UI never recomputes auth logic, it just toggles widgets against the keys in the snapshot.</text>
         <text x="360" y="213" text-anchor="middle" fill="#5A524A" font-size="10" font-style="italic">role_version + claim_version invalidate the snapshot the moment access changes server-side.</text>
       </g>
     </svg>
-    <figcaption>Figure 13.1 — Role grants attach a user to a role within a scope; roles expand to permission keys; the snapshot is the resolved DTO the UI listens to.</figcaption>
+    <figcaption>Figure 13.1. Role grants attach a user to a role within a scope; roles expand to permission keys; the snapshot is the resolved DTO the UI listens to.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>app requests permission snapshot
@@ -925,7 +925,7 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">14</span></div><div><h1 class="chapter-title">Service Principals</h1><div class="chapter-sub">Automation gets its own identity, never borrows a human's.</div></div></header>
-  <p>A service principal is a non-human identity. Humans log in with Firebase. Automation should not pretend to be a human. A workflow or backend job needs its own identity so audit logs can say exactly what acted — for example, the actor for a nightly audit anchor job is <code>sp:nightly-audit-anchor-job</code>, not the engineer who deployed it.</p>
+  <p>A service principal is a non-human identity. Humans log in with Firebase. Automation should not pretend to be a human. A workflow or backend job needs its own identity so audit logs can say exactly what acted, for example, the actor for a nightly audit anchor job is <code>sp:nightly-audit-anchor-job</code>, not the engineer who deployed it.</p>
   <h2>Issuance, Verification, And Audit Attribution</h2>
   <p>Service principals receive scoped credentials in the form of JWTs whose subjects are prefixed <code>sp:</code> (for example, <code>sp:rollup-worker</code>). The prefix makes it trivial for the proxy to distinguish automation tokens from Firebase human tokens. An <strong>issuer</strong> route inside the proxy creates the signed token for an approved service, and a <strong>verifier</strong> validates incoming <code>sp:</code> tokens before any work runs.</p>
   <p>Every audit row stores an <strong>actor kind</strong> field so a reviewer can tell whether a person, a service, or the system acted. Actor-kind values are drawn from a single canonical catalog, <code>ActorKindLabelCatalog</code> in <code>lib/services/auth/actor_kind_label_catalog.dart</code>. Both the <code>user</code> and <code>team_member</code> values resolve to the display label <strong>"Team member"</strong>; both <code>service</code> and <code>service_principal</code> resolve to <strong>"Service account"</strong>. Both the admin console and the operator-web audit surface read labels from this single source, so the same audit row reads consistently regardless of which UI is rendering it.</p>
@@ -986,7 +986,7 @@
           <text x="100" y="252" text-anchor="middle" fill="#5A524A" font-size="9">backend maintenance</text>
           <text x="100" y="266" text-anchor="middle" fill="#5A524A" font-size="9">not tied to a user</text>
           <text x="240" y="236" text-anchor="middle" fill="#5A524A" font-family="Consolas,monospace" font-size="9">runAsSystem(reason)</text>
-          <text x="240" y="252" text-anchor="middle" fill="#5A524A" font-size="9">no JWT — proxy-internal</text>
+          <text x="240" y="252" text-anchor="middle" fill="#5A524A" font-size="9">no JWT, proxy-internal</text>
           <text x="240" y="266" text-anchor="middle" fill="#5A524A" font-size="9">requires explicit reason string</text>
           <text x="380" y="236" text-anchor="middle" fill="#0A6060" font-family="Consolas,monospace" font-weight="700">'system'</text>
           <text x="380" y="266" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">(catalogue fallback)</text>
@@ -1003,7 +1003,7 @@
         <text x="40" y="327" fill="#5A524A" font-size="9">Both display surfaces (admin console, operator-web audit) read these labels from the same catalogue. Audit rendering can&apos;t drift between UIs.</text>
       </g>
     </svg>
-    <figcaption>Figure 14.1 — One audit row, four columns: what kind of actor, what token they presented, what enum value the row gets, and what the audit UI shows. The catalogue at the bottom is the single source the labels resolve through.</figcaption>
+    <figcaption>Figure 14.1. One audit row, four columns: what kind of actor, what token they presented, what enum value the row gets, and what the audit UI shows. The catalogue at the bottom is the single source the labels resolve through.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>workflow needs to run
@@ -1017,10 +1017,10 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">15</span></div><div><h1 class="chapter-title">Audit And Compliance</h1><div class="chapter-sub">Tamper-evident logs: alteration becomes detectable, not impossible.</div></div></header>
-  <p>Audit answers "Who did what, when, and under which authority?" For sensitive systems, ordinary logs are not enough — they can be edited or rotated away. Forge Flow is building toward tamper-evident audit logs where records are chained together with cryptographic hashes, so that altering an old audit entry breaks the chain that follows it. This does not make the database impossible to alter; it makes alteration detectable.</p>
+  <p>Audit answers "Who did what, when, and under which authority?" For sensitive systems, ordinary logs are not enough, they can be edited or rotated away. Forge Flow is building toward tamper-evident audit logs where records are chained together with cryptographic hashes, so that altering an old audit entry breaks the chain that follows it. This does not make the database impossible to alter; it makes alteration detectable.</p>
   <h2>Hash Chains, Anchors, And Redaction</h2>
   <p>Every sensitive action writes a durable <strong>audit row</strong> that captures the actor (human or service), the action, the resource, the operator and location context, and the timestamp. Tamper evidence comes from chaining. Each audit row includes a reference to the previous row's hash, and <code>pgcrypto</code> computes the digest for the current row over its own content plus that previous hash. The result is a hash chain: changing any historical row produces a different digest, which breaks the chain at every row after it.</p>
-  <p>A daily <strong>anchor</strong> writes a chain checkpoint to an external Azure Blob — outside the normal table write path — so that even if Postgres history were tampered with, an independent point of comparison still exists.</p>
+  <p>A daily <strong>anchor</strong> writes a chain checkpoint to an external Azure Blob, outside the normal table write path, so that even if Postgres history were tampered with, an independent point of comparison still exists.</p>
   <figure class="diagram">
     <svg viewBox="0 0 720 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hash chain">
       <rect x="0" y="0" width="720" height="220" fill="#fff"/>
@@ -1033,10 +1033,10 @@
           <rect x="560" y="60" width="140" height="80" rx="6" fill="#A8D8D0" stroke="#0A6060"/><text x="630" y="80" text-anchor="middle" fill="#0A6060" font-weight="700">Daily anchor</text><text x="630" y="98" text-anchor="middle" fill="#0A6060" font-size="9">Azure Blob</text><text x="630" y="113" text-anchor="middle" fill="#0A6060" font-size="9">checkpoint digest</text><text x="630" y="128" text-anchor="middle" fill="#0A6060" font-size="9">independent of DB</text>
           <path d="M170,100 L200,100" stroke="#5A524A" marker-end="url(#arr)"/><path d="M350,100 L380,100" stroke="#5A524A" marker-end="url(#arr)"/><path d="M530,100 L560,100" stroke="#5A524A" marker-end="url(#arr)"/>
         </g>
-        <text x="360" y="180" text-anchor="middle" fill="#5A524A" font-style="italic">Editing Row N changes its digest, which breaks every row after it — and disagrees with the daily anchor.</text>
+        <text x="360" y="180" text-anchor="middle" fill="#5A524A" font-style="italic">Editing Row N changes its digest, which breaks every row after it, and disagrees with the daily anchor.</text>
       </g>
     </svg>
-    <figcaption>Figure 15.1 — The audit hash chain. Each row's digest depends on the previous row's digest, and a daily anchor stores a checkpoint outside the database.</figcaption>
+    <figcaption>Figure 15.1. The audit hash chain. Each row's digest depends on the previous row's digest, and a daily anchor stores a checkpoint outside the database.</figcaption>
   </figure>
   <p>Privacy obligations like GDPR right-to-erasure are handled through redaction patterns rather than deletion. Redaction removes sensitive personal content from an audit row while preserving its structural shape, so the audit trail and the chain remain intact while the user-identifying detail is gone.</p>
   <h3>How It Works</h3>
@@ -1050,12 +1050,12 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">16</span></div><div><h1 class="chapter-title">Eventing And Real Time</h1><div class="chapter-sub">Outbox first, NOTIFY second — durable rows beat ephemeral pings.</div></div></header>
-  <div class="callout"><h4>Mental model</h4><p>When something changes on the server, other parts of the system may need to know. The safe pattern is not "send a notification and hope" — it is to save the real database change, save an event row, and let a worker deliver the event. The event row is durable; a notification is only a wake-up.</p></div>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">16</span></div><div><h1 class="chapter-title">Eventing And Real Time</h1><div class="chapter-sub">Outbox first, NOTIFY second, durable rows beat ephemeral pings.</div></div></header>
+  <div class="callout"><h4>Mental model</h4><p>When something changes on the server, other parts of the system may need to know. The safe pattern is not "send a notification and hope", it is to save the real database change, save an event row, and let a worker deliver the event. The event row is durable; a notification is only a wake-up.</p></div>
   <h2>Outbox, Notify, And Workers</h2>
-  <p>The pattern is the <strong>transactional outbox</strong>: alongside the business write, the same transaction writes a row into the <code>event_outbox</code> table. Because the business write and the event live in the same transaction, the event is durable the moment the change is committed — it cannot be lost even if a worker is down or the network is flaky.</p>
+  <p>The pattern is the <strong>transactional outbox</strong>: alongside the business write, the same transaction writes a row into the <code>event_outbox</code> table. Because the business write and the event live in the same transaction, the event is durable the moment the change is committed, it cannot be lost even if a worker is down or the network is flaky.</p>
   <p>Workers learn about new events through <code>LISTEN</code>/<code>NOTIFY</code>: when an outbox row is inserted, Postgres fires a notification that wakes any listening worker. The notification is just a wake-up; the worker reads the outbox table for the actual data, which means a missed notification is not a data loss. Workers claim rows for processing using <code>SELECT ... FOR UPDATE SKIP LOCKED</code>, which lets several workers run in parallel without two of them claiming the same row.</p>
-  <p>A <strong>lease</strong> model means each worker owns a row for a limited time. Consumers handle events <strong>idempotently</strong> — retrying the same event does not double-charge, double-write, or duplicate side effects. Events that repeatedly fail are moved to a <strong>dead-letter</strong> holding area. Downstream fan-out to <strong>Pub/Sub</strong> subscribers or <strong>WebSocket</strong>-connected clients lets multiple consumers receive the same change.</p>
+  <p>A <strong>lease</strong> model means each worker owns a row for a limited time. Consumers handle events <strong>idempotently</strong>: retrying the same event does not double-charge, double-write, or duplicate side effects. Events that repeatedly fail are moved to a <strong>dead-letter</strong> holding area. Downstream fan-out to <strong>Pub/Sub</strong> subscribers or <strong>WebSocket</strong>-connected clients lets multiple consumers receive the same change.</p>
   <p>Postgres's <code>pgmq</code> extension is not available on Azure Flexible Server, which is why the system uses <code>SKIP LOCKED</code> (and, for some workloads, Cloud Tasks) rather than a managed queue.</p>
   <figure class="diagram">
     <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Outbox flow">
@@ -1072,7 +1072,7 @@
         <path d="M645,100 L220,140" stroke="#5A524A" marker-end="url(#arr)"/><path d="M645,100 L440,140" stroke="#5A524A" marker-end="url(#arr)"/><path d="M645,100 L630,140" stroke="#5A524A" stroke-dasharray="2 3" marker-end="url(#arr)"/>
       </g>
     </svg>
-    <figcaption>Figure 16.1 — The transactional outbox makes events durable; NOTIFY only wakes workers, which claim rows with SKIP LOCKED and fan out to consumers.</figcaption>
+    <figcaption>Figure 16.1. The transactional outbox makes events durable; NOTIFY only wakes workers, which claim rows with SKIP LOCKED and fan out to consumers.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>business mutation happens
@@ -1089,8 +1089,8 @@
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">17</span></div><div><h1 class="chapter-title">Usage, Caps, And Rollups</h1><div class="chapter-sub">Count consumption, enforce limits, summarize for dashboards.</div></div></header>
   <p>Usage tracking answers "how much did someone use?" Caps answer "how much are they allowed to use?" Rollups answer "can we summarize a lot of raw detail into faster dashboard numbers?" Together they cover three jobs: counting consumption, enforcing limits, and pre-computing summaries so dashboards stay fast.</p>
   <h2>Logs, Caps, And Reconciliation</h2>
-  <p>Every measurable consumption — an advisor call, a vendor sync, an export — writes a row to a <strong>usage log</strong> so that billing, abuse detection, and product limits all have a factual trail. <strong>Usage caps</strong> define how much usage is allowed by operator, slot, and period. The cap identity uses a <strong>two-slot key model</strong> that separates the dimensions necessary for reconciliation: an operator slot plus a location or capability slot. Reconciliation compares actual usage against the cap and surfaces overages, drift, or accounting mismatches before they turn into surprise bills.</p>
-  <p><strong>Rollups</strong> are pre-computed summaries at multiple time grains — daypart, day, week, month, quarter, year — and at multiple entity levels — operator, location. Because dashboards do not have time to recompute totals from raw rows on every load, the rollup tables hold the answer and the dashboards read from them. An <strong>aggregation state</strong> tracker remembers when each rollup was last refreshed. The rollup refresh work runs as scheduled Postgres jobs through the <strong>pg_cron</strong> extension.</p>
+  <p>Every measurable consumption, an advisor call, a vendor sync, an export, writes a row to a <strong>usage log</strong> so that billing, abuse detection, and product limits all have a factual trail. <strong>Usage caps</strong> define how much usage is allowed by operator, slot, and period. The cap identity uses a <strong>two-slot key model</strong> that separates the dimensions necessary for reconciliation: an operator slot plus a location or capability slot. Reconciliation compares actual usage against the cap and surfaces overages, drift, or accounting mismatches before they turn into surprise bills.</p>
+  <p><strong>Rollups</strong> are pre-computed summaries at multiple time grains, daypart, day, week, month, quarter, year, and at multiple entity levels, operator, location. Because dashboards do not have time to recompute totals from raw rows on every load, the rollup tables hold the answer and the dashboards read from them. An <strong>aggregation state</strong> tracker remembers when each rollup was last refreshed. The rollup refresh work runs as scheduled Postgres jobs through the <strong>pg_cron</strong> extension.</p>
   <h3>How It Works</h3>
   <pre><code>raw usage or operational events arrive
   -&gt; usage_logs record details
@@ -1103,11 +1103,11 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">18</span></div><div><h1 class="chapter-title">The Advisor And AI Layer</h1><div class="chapter-sub">Evidence first, then synthesis — and recommendations only, never actions.</div></div></header>
-  <p>The advisor is not just "ask a chatbot." It is supposed to answer from evidence — product docs, operational metrics, SQL data, graph relationships, prior context — and explain why. The advisor recommends, explains, and cites the context that produced the answer, and it does not silently perform risky actions. Forge Flow's sixth Hard Promise binds this: the advisor speaks in recommendations, not commands, and never acts on the operator's behalf at launch.</p>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">18</span></div><div><h1 class="chapter-title">The Advisor And AI Layer</h1><div class="chapter-sub">Evidence first, then synthesis, and recommendations only, never actions.</div></div></header>
+  <p>The advisor is not just "ask a chatbot." It is supposed to answer from evidence, product docs, operational metrics, SQL data, graph relationships, prior context, and explain why. The advisor recommends, explains, and cites the context that produced the answer, and it does not silently perform risky actions. Forge Flow's sixth Hard Promise binds this: the advisor speaks in recommendations, not commands, and never acts on the operator's behalf at launch.</p>
   <h2>Providers, Retrieval, And Synthesis</h2>
   <p>The architecture treats every external AI dependency through a <strong>provider abstraction</strong>. The launch providers are Anthropic Claude for synthesis and classification, and Voyage for embeddings and reranking; the same <code>LLMProvider</code>, <code>EmbeddingProvider</code>, <code>RerankProvider</code>, <code>DataSourceProvider</code>, and <code>IntegrationProvider</code> interfaces will be reused by Phase 12.</p>
-  <p>When a user asks an operational question, a <strong>classifier</strong> decides the route. Once the path is chosen, retrieval-augmented generation (<strong>RAG</strong>) collects evidence: dense <strong>vector search</strong> over <strong>pgvector</strong> embeddings finds documents close to the question, sparse full-text search adds keyword precision, and AGE-based graph queries pull related entities and edges. A <strong>reranker</strong> model — Voyage's <code>rerank-2.5</code> — re-sorts the retrieved candidates so the most useful evidence comes first.</p>
+  <p>When a user asks an operational question, a <strong>classifier</strong> decides the route. Once the path is chosen, retrieval-augmented generation (<strong>RAG</strong>) collects evidence: dense <strong>vector search</strong> over <strong>pgvector</strong> embeddings finds documents close to the question, sparse full-text search adds keyword precision, and AGE-based graph queries pull related entities and edges. A <strong>reranker</strong> model, Voyage's <code>rerank-2.5</code>, re-sorts the retrieved candidates so the most useful evidence comes first.</p>
   <p><strong>Synthesis</strong> is the final answer generation, produced by Anthropic Claude Sonnet. <strong>Tool use</strong> lets the model invoke structured calls. Every answer carries <strong>provenance</strong>: the rows, documents, and graph edges that supported the answer are recorded so a user can inspect why a recommendation was made. <strong>Prompt caching</strong> reuses stable system context across calls to lower cost and latency, and <strong>model routing</strong> sends easy tasks to Claude Haiku and harder tasks to Claude Sonnet.</p>
   <figure class="diagram">
     <svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Advisor decision tree">
@@ -1123,10 +1123,10 @@
         <path d="M300,145 L130,170" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/><path d="M360,145 L360,170" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/><path d="M420,145 L590,170" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/>
         <rect x="240" y="240" width="240" height="40" rx="6" fill="#F8EDE6" stroke="#CC7A3E"/><text x="360" y="258" text-anchor="middle" fill="#9A5C2A" font-weight="700">Voyage rerank-2.5</text><text x="360" y="273" text-anchor="middle" fill="#5A524A" font-size="9">re-sort candidates · cut noise</text>
         <path d="M130,216 L300,240" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/><path d="M360,216 L360,240" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/><path d="M590,216 L420,240" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/>
-        <rect x="240" y="295" width="240" height="15" rx="3" fill="url(#g-peacock)"/><text x="360" y="307" text-anchor="middle" fill="#fff" font-weight="700" font-size="10">Claude Sonnet — synthesis + provenance</text>
+        <rect x="240" y="295" width="240" height="15" rx="3" fill="url(#g-peacock)"/><text x="360" y="307" text-anchor="middle" fill="#fff" font-weight="700" font-size="10">Claude Sonnet, synthesis + provenance</text>
       </g>
     </svg>
-    <figcaption>Figure 18.1 — A cheap classifier picks the route; heavy work happens only on the chosen path. Voyage rerank reduces noise before Sonnet synthesises the final answer with citations.</figcaption>
+    <figcaption>Figure 18.1. A cheap classifier picks the route; heavy work happens only on the chosen path. Voyage rerank reduces noise before Sonnet synthesises the final answer with citations.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>user asks a question
@@ -1154,10 +1154,10 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">20</span></div><div><h1 class="chapter-title">Live Integrations</h1><div class="chapter-sub">Adapters, not rewrites — vendor data enters through one shape.</div></div></header>
-  <p>Forge Flow should eventually use live vendor data from POS, labor, reservation, accounting, and banking systems — but the UI should not be rewritten for every vendor. Vendor data enters through adapters, becomes canonical Forge Flow facts, and then flows through the same screens, the same advisor, and the same audit and tenant safety as anything else. Hard Promise #1 makes this explicit: Phase 8 is a pure transport swap.</p>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">20</span></div><div><h1 class="chapter-title">Live Integrations</h1><div class="chapter-sub">Adapters, not rewrites, vendor data enters through one shape.</div></div></header>
+  <p>Forge Flow should eventually use live vendor data from POS, labor, reservation, accounting, and banking systems, but the UI should not be rewritten for every vendor. Vendor data enters through adapters, becomes canonical Forge Flow facts, and then flows through the same screens, the same advisor, and the same audit and tenant safety as anything else. Hard Promise #1 makes this explicit: Phase 8 is a pure transport swap.</p>
   <h2>Connectors, Adapters, And Watermarks</h2>
-  <p>A <strong>connector</strong> owns the conversation with one vendor: API calls, authentication, sync orchestration, webhook handling, and rate-limit behavior. An <strong>adapter</strong> then translates the vendor-specific payload into a <strong>canonical DTO</strong> — the Forge Flow shape that the rest of the product is built against — so vendor-specific differences stay at the boundary and never leak into screens or services.</p>
+  <p>A <strong>connector</strong> owns the conversation with one vendor: API calls, authentication, sync orchestration, webhook handling, and rate-limit behavior. An <strong>adapter</strong> then translates the vendor-specific payload into a <strong>canonical DTO</strong>: the Forge Flow shape that the rest of the product is built against, so vendor-specific differences stay at the boundary and never leak into screens or services.</p>
   <p>Vendor <strong>secrets</strong> stay server-side: API keys, OAuth tokens, and refresh credentials live in Secret Manager and are reached only by the proxy and connector code. <strong>OAuth</strong> is the delegated authorization flow. <strong>Webhooks</strong> push near-real-time updates from the vendor when something changes, and polling with <strong>sync watermarks</strong> handles pull-based reads. Every vendor payload is also stored as a <strong>raw import record</strong> before adaptation, so if the mapping logic changes later the original evidence can be inspected or replayed.</p>
   <figure class="diagram">
     <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Integration pipeline">
@@ -1174,10 +1174,10 @@
         <path d="M220,115 L260,140" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/>
         <rect x="440" y="140" width="260" height="40" rx="6" fill="#F8EDE6" stroke="#0E8080"/><text x="570" y="158" text-anchor="middle" fill="#0A6060" font-weight="700">Sync watermark</text><text x="570" y="172" text-anchor="middle" fill="#5A524A" font-size="9">last processed point · resume without reprocessing</text>
         <path d="M500,115 L530,140" stroke="#5A524A" stroke-width="1.3" fill="none" marker-end="url(#arr)"/>
-        <text x="360" y="210" text-anchor="middle" fill="#5A524A" font-style="italic">UI and advisor only ever see the canonical DTO — vendor mess never crosses the boundary.</text>
+        <text x="360" y="210" text-anchor="middle" fill="#5A524A" font-style="italic">UI and advisor only ever see the canonical DTO, vendor mess never crosses the boundary.</text>
       </g>
     </svg>
-    <figcaption>Figure 20.1 — Five pipeline stages plus two sidecars. Raw payloads are kept for replay; watermarks make sync incremental.</figcaption>
+    <figcaption>Figure 20.1. Five pipeline stages plus two sidecars. Raw payloads are kept for replay; watermarks make sync incremental.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>vendor API provides payload
@@ -1204,9 +1204,9 @@
         <rect x="260" y="50" width="200" height="80" rx="6" fill="url(#g-peacock)"/><text x="360" y="73" text-anchor="middle" fill="#fff" font-weight="700">Proxy</text><text x="360" y="89" text-anchor="middle" fill="#F8EDE6" font-size="9">JWT + permission + idempotency</text><text x="360" y="108" text-anchor="middle" fill="#F8EDE6" font-size="9">Postgres write + event_outbox</text><text x="360" y="122" text-anchor="middle" fill="#F8EDE6" font-size="9">in one transaction</text>
         <rect x="500" y="60" width="180" height="60" rx="6" fill="#F8EDE6" stroke="#0E8080" stroke-width="2"/><text x="590" y="83" text-anchor="middle" fill="#0A6060" font-weight="700">Postgres (source of truth)</text><text x="590" y="100" text-anchor="middle" fill="#0A6060" font-size="9">authoritative shared state</text><text x="590" y="114" text-anchor="middle" fill="#0A6060" font-size="9">RLS · TIMESTAMPTZ</text>
         <rect x="260" y="160" width="200" height="40" rx="6" fill="#A8D8D0" stroke="#0A6060"/><text x="360" y="178" text-anchor="middle" fill="#0A6060" font-weight="700">Event bridge</text><text x="360" y="192" text-anchor="middle" fill="#5A524A" font-size="9">Pub/Sub fan-out · WebSocket push</text>
-        <rect x="40" y="230" width="180" height="50" rx="6" fill="#E8A87C"/><text x="130" y="250" text-anchor="middle" fill="#9A5C2A" font-weight="700">Device A — host stand</text><text x="130" y="268" text-anchor="middle" fill="#5A524A" font-size="9">SQLite cache invalidated</text>
-        <rect x="260" y="230" width="200" height="50" rx="6" fill="#E8A87C"/><text x="360" y="250" text-anchor="middle" fill="#9A5C2A" font-weight="700">Device B — line tablet</text><text x="360" y="268" text-anchor="middle" fill="#5A524A" font-size="9">SQLite cache invalidated</text>
-        <rect x="500" y="230" width="180" height="50" rx="6" fill="#E8A87C"/><text x="590" y="250" text-anchor="middle" fill="#9A5C2A" font-weight="700">Device C — manager phone</text><text x="590" y="268" text-anchor="middle" fill="#5A524A" font-size="9">already had local edit (LWW)</text>
+        <rect x="40" y="230" width="180" height="50" rx="6" fill="#E8A87C"/><text x="130" y="250" text-anchor="middle" fill="#9A5C2A" font-weight="700">Device A: host stand</text><text x="130" y="268" text-anchor="middle" fill="#5A524A" font-size="9">SQLite cache invalidated</text>
+        <rect x="260" y="230" width="200" height="50" rx="6" fill="#E8A87C"/><text x="360" y="250" text-anchor="middle" fill="#9A5C2A" font-weight="700">Device B: line tablet</text><text x="360" y="268" text-anchor="middle" fill="#5A524A" font-size="9">SQLite cache invalidated</text>
+        <rect x="500" y="230" width="180" height="50" rx="6" fill="#E8A87C"/><text x="590" y="250" text-anchor="middle" fill="#9A5C2A" font-weight="700">Device C: manager phone</text><text x="590" y="268" text-anchor="middle" fill="#5A524A" font-size="9">already had local edit (LWW)</text>
         <g stroke="#5A524A" stroke-width="1.3" fill="none">
           <path d="M200,90 L260,90" marker-end="url(#arr)"/><path d="M460,90 L500,90" marker-end="url(#arr)"/>
           <path d="M360,130 L360,160" marker-end="url(#arr)"/>
@@ -1214,7 +1214,7 @@
         </g>
       </g>
     </svg>
-    <figcaption>Figure 21.1 — One device writes, every other device learns its cache is stale. V1 conflict policy is last-write-wins.</figcaption>
+    <figcaption>Figure 21.1. One device writes, every other device learns its cache is stale. V1 conflict policy is last-write-wins.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>manager changes shared setting
@@ -1229,10 +1229,10 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">22</span></div><div><h1 class="chapter-title">The Operations Console</h1><div class="chapter-sub">A staff-only Flutter Web surface that calls protected admin APIs.</div></div></header>
-  <p>The operations console is the internal admin tool that Forge &amp; Flow staff use to manage the platform itself — not the restaurant operator app. It is where the team manages operators, locations, pricing, feature flags, the advisor corpus, integrations, support actions, audit reviews, and health monitoring.</p>
+  <p>The operations console is the internal admin tool that Forge &amp; Flow staff use to manage the platform itself, not the restaurant operator app. It is where the team manages operators, locations, pricing, feature flags, the advisor corpus, integrations, support actions, audit reviews, and health monitoring.</p>
   <h2>Internal Admin Surface</h2>
   <p>The internal admin app is a Flutter Web surface that calls protected <strong>admin API</strong> routes on the proxy. Every administrative action goes through the proxy, which means admin power stays behind server-side identity, MFA, permission, and audit checks rather than relying on direct database access.</p>
-  <p><strong>Feature flags</strong> let the team enable or disable capabilities at runtime, supporting staged rollout and quick rollback without shipping a new app build. <strong>Observability</strong> surfaces — health checks, logs, metrics, and the bounded dashboard delivered in Phase 11A.6 — let staff diagnose problems before users report them. <strong>Support actions</strong> are the named, audited operations that resolve customer issues so support becomes repeatable rather than ad-hoc.</p>
+  <p><strong>Feature flags</strong> let the team enable or disable capabilities at runtime, supporting staged rollout and quick rollback without shipping a new app build. <strong>Observability</strong> surfaces, health checks, logs, metrics, and the bounded dashboard delivered in Phase 11A.6, let staff diagnose problems before users report them. <strong>Support actions</strong> are the named, audited operations that resolve customer issues so support becomes repeatable rather than ad-hoc.</p>
   <p>The hard line is that the browser never receives direct database access. The ops console calls API routes, and the proxy enforces every check; a compromised browser session cannot become raw Postgres access.</p>
   <h3>How It Works</h3>
   <pre><code>internal admin signs in
@@ -1265,13 +1265,13 @@
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">24</span></div><div><h1 class="chapter-title">Deployment, Secrets, And Environments</h1><div class="chapter-sub">Local for dev, staging for proof, production1 behind gates.</div></div></header>
   <p>An environment is a place the system runs. Local is for development. Staging is for testing real cloud wiring before production. Production1 is the protected real environment and only changes through explicit runbooks and gates. Secrets are sensitive values that must never be committed to Git or baked into the Flutter app bundle.</p>
   <h2>Environments, Secrets, And Releases</h2>
-  <p><strong>Local</strong> runs the app and supporting services on a developer machine. <strong>Staging</strong> proves the real cloud wiring: DNS, certificates, Cloud Run, the proxy, the secret store, and smoke tests. <strong>Production1</strong> is the customer-facing environment, where changes flow only through documented runbooks and explicit gates — destructive operations, force pushes to main, RLS-touching migrations, schema-touching migrations, proxy-touching slices, and ceiling raises like <code>kAdvisorProxyMaxLines</code> all require explicit operator approval.</p>
+  <p><strong>Local</strong> runs the app and supporting services on a developer machine. <strong>Staging</strong> proves the real cloud wiring: DNS, certificates, Cloud Run, the proxy, the secret store, and smoke tests. <strong>Production1</strong> is the customer-facing environment, where changes flow only through documented runbooks and explicit gates, destructive operations, force pushes to main, RLS-touching migrations, schema-touching migrations, proxy-touching slices, and ceiling raises like <code>kAdvisorProxyMaxLines</code> all require explicit operator approval.</p>
   <p><strong>Secrets</strong> live in Google <strong>Secret Manager</strong>, and Cloud Run reads them as secret references at startup. <strong>Environment variables</strong> carry non-secret runtime configuration. The proxy is built from a <strong>Dockerfile</strong> that describes the exact runtime environment in code. Continuous integration runs on <strong>GitHub Actions</strong>. High-risk live operations follow <strong>runbooks</strong> (consolidated into a single <code>runbooks/</code> home as of the 2026-05-16 Wave 4 docs consolidation). A <strong>Google-managed certificate</strong> secures public HTTPS without manual renewal.</p>
   <figure class="diagram">
     <svg viewBox="0 0 720 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="What each environment has access to">
       <rect x="0" y="0" width="720" height="360" fill="#fff"/>
       <g font-family="Segoe UI, sans-serif">
-        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Same code, three environments — what each one is allowed to touch</text>
+        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Same code, three environments: what each one is allowed to touch</text>
 
         <!-- Header -->
         <g font-size="10">
@@ -1293,8 +1293,8 @@
           <!-- Row 1 -->
           <rect x="20" y="76" width="680" height="28" fill="#F8EDE6" stroke="#DDD6CC"/>
           <text x="35" y="94" fill="#5A524A">Real customer data</text>
-          <text x="360" y="94" text-anchor="middle" fill="#9A5C2A" font-weight="700">✗ — never</text>
-          <text x="490" y="94" text-anchor="middle" fill="#9A5C2A" font-weight="700">✗ — synthetic only</text>
+          <text x="360" y="94" text-anchor="middle" fill="#9A5C2A" font-weight="700">✗, never</text>
+          <text x="490" y="94" text-anchor="middle" fill="#9A5C2A" font-weight="700">✗, synthetic only</text>
           <text x="630" y="94" text-anchor="middle" fill="#0A6060" font-weight="700">✓</text>
           <!-- Row 2 -->
           <rect x="20" y="104" width="680" height="28" fill="#FFFFFF" stroke="#DDD6CC"/>
@@ -1335,7 +1335,7 @@
           <!-- Row 8 -->
           <rect x="20" y="272" width="680" height="28" fill="#FFFFFF" stroke="#DDD6CC"/>
           <text x="35" y="290" fill="#5A524A" font-family="Segoe UI Semibold,sans-serif" font-weight="700">What gates a change?</text>
-          <text x="360" y="290" text-anchor="middle" fill="#5A524A">none — local rebuild</text>
+          <text x="360" y="290" text-anchor="middle" fill="#5A524A">none, local rebuild</text>
           <text x="490" y="290" text-anchor="middle" fill="#9A5C2A" font-weight="700">CI green</text>
           <text x="630" y="290" text-anchor="middle" fill="#9A5C2A" font-weight="700">CI + operator approval + runbook</text>
         </g>
@@ -1346,7 +1346,7 @@
         <text x="40" y="344" fill="#5A524A" font-size="9.5">The only differences between Local, Staging, and Production1 are the secret references (Secret Manager), the database connection string, and which gates a change has to pass before it lands. The Dockerfile is identical.</text>
       </g>
     </svg>
-    <figcaption>Figure 24.1 — Local, Staging, and Production1 are the same container with different secrets and different gates. The matrix shows what each environment is allowed to touch — and why a production change costs operator approval plus a runbook.</figcaption>
+    <figcaption>Figure 24.1. Local, Staging, and Production1 are the same container with different secrets and different gates. The matrix shows what each environment is allowed to touch, and why a production change costs operator approval plus a runbook.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <p>A staging deploy looks like:</p>
@@ -1367,8 +1367,8 @@
 </section>
 
 <section class="chapter">
-  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">25</span></div><div><h1 class="chapter-title">Testing And Gates</h1><div class="chapter-sub">Static analysis, lint, tests, and smoke probes — safety on every layer.</div></div></header>
-  <p>Tests are safety rails. In this repo, tests protect more than UI — they protect auth, MFA, tenant isolation, database migration shape, proxy behavior, platform builds, and production readiness. Tests are not the only gate: static analysis, RLS lint, contract tests, migration tests, and smoke tests all sit alongside the test suite.</p>
+  <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">25</span></div><div><h1 class="chapter-title">Testing And Gates</h1><div class="chapter-sub">Static analysis, lint, tests, and smoke probes, safety on every layer.</div></div></header>
+  <p>Tests are safety rails. In this repo, tests protect more than UI, they protect auth, MFA, tenant isolation, database migration shape, proxy behavior, platform builds, and production readiness. Tests are not the only gate: static analysis, RLS lint, contract tests, migration tests, and smoke tests all sit alongside the test suite.</p>
   <h2>The Verification Layers</h2>
   <p><strong>Static analysis</strong> runs <code>flutter analyze --fatal-infos</code> to catch Dart issues before the app ever runs. <strong>Unit tests</strong> check small, focused behaviors. <strong>Widget tests</strong> check Flutter UI behavior without booting a full device. <strong>Contract tests</strong> verify that the running code still obeys documented architectural shapes. <strong>Migration tests</strong> verify that schema changes create the indexes, constraints, and policies they promise. <strong>RLS lint</strong> at <code>tool/rls_policy_lint.dart</code> blocks unsafe RLS policy patterns automatically.</p>
   <p><strong>Smoke tests</strong> verify that a deployed service actually responds. <strong>GitHub Actions</strong> runs all of this on every push and pull request. A separate Apple verification workflow runs on a macOS runner and produces iOS simulator builds for both flavors.</p>
@@ -1460,10 +1460,10 @@
           <text x="640" y="350" text-anchor="middle" fill="#5A524A">human time</text>
         </g>
 
-        <text x="360" y="385" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">Gates run fastest-first so the cheapest answers come back before the expensive ones. The advisory gate is the only one a human still has to do — see slice_runtime_acceptance_contract.md.</text>
+        <text x="360" y="385" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">Gates run fastest-first so the cheapest answers come back before the expensive ones. The advisory gate is the only one a human still has to do, see slice_runtime_acceptance_contract.md.</text>
       </g>
     </svg>
-    <figcaption>Figure 25.1 — Eight gates, ordered by feedback speed. Each row says <em>what</em> it catches, <em>when</em> it runs, and <em>how long</em> the wait is. The dashed row at the bottom is the only one CI can&apos;t enforce.</figcaption>
+    <figcaption>Figure 25.1. Eight gates, ordered by feedback speed. Each row says <em>what</em> it catches, <em>when</em> it runs, and <em>how long</em> the wait is. The dashed row at the bottom is the only one CI can&apos;t enforce.</figcaption>
   </figure>
   <h3>How It Works</h3>
   <pre><code>push or pull request
@@ -1477,13 +1477,13 @@
 
 <section class="chapter">
   <header class="chapter-header"><div class="chapter-num">Chapter<span class="num">26</span></div><div><h1 class="chapter-title">Current Status And Known Gaps</h1><div class="chapter-sub">A snapshot of what is live, scaffolded, or still planned.</div></div></header>
-  <p>The foundation is broad, and much of it is now merged or scaffolded. Some database structures exist before their final UI, worker, or workflow consumer exists — and that is normal for this repo's phase style. The doctrine is: build the foundation, verify the contracts, then attach the consumer features.</p>
+  <p>The foundation is broad, and much of it is now merged or scaffolded. Some database structures exist before their final UI, worker, or workflow consumer exists, and that is normal for this repo's phase style. The doctrine is: build the foundation, verify the contracts, then attach the consumer features.</p>
   <h2>Snapshot</h2>
   <figure class="diagram">
     <svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Post-Codex pipeline position">
       <rect x="0" y="0" width="720" height="340" fill="#fff"/>
       <g font-family="Segoe UI, sans-serif">
-        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Where we are in the post-Codex pipeline — 2026-05-19 NEXT_WAVE_PLAN snapshot</text>
+        <text x="360" y="22" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="13" font-weight="700">Where we are in the post-Codex pipeline: 2026-05-19 NEXT_WAVE_PLAN snapshot</text>
 
         <!-- Phase rail (top): horizontal sequence -->
         <line x1="40" y1="80" x2="700" y2="80" stroke="#CC7A3E" stroke-width="3"/>
@@ -1504,7 +1504,7 @@
         <circle cx="300" cy="80" r="17" fill="#CC7A3E" stroke="#9A5C2A" stroke-width="3"/>
         <text x="300" y="85" text-anchor="middle" fill="#fff" font-weight="700" font-size="11">2.5</text>
         <text x="300" y="55" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="9.5" font-weight="700">Per-Daypart V1</text>
-        <text x="300" y="114" text-anchor="middle" fill="#9A5C2A" font-size="9" font-weight="700">LIVE — slices 0-5 landed</text>
+        <text x="300" y="114" text-anchor="middle" fill="#9A5C2A" font-size="9" font-weight="700">LIVE: slices 0-5 landed</text>
 
         <!-- Phase 2 walkthrough (gated) -->
         <circle cx="420" cy="80" r="13" fill="#E8A87C" stroke="#9A5C2A" stroke-width="2"/>
@@ -1541,7 +1541,7 @@
         <text x="300" y="172" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">YOU ARE HERE</text>
 
         <!-- Slice breakdown for Phase 2.5 -->
-        <text x="360" y="200" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Inside Phase 2.5 — Per-Daypart Targets V1, seven slices</text>
+        <text x="360" y="200" text-anchor="middle" fill="#9A5C2A" font-family="Segoe UI Semibold,sans-serif" font-size="11" font-weight="700">Inside Phase 2.5: Per-Daypart Targets V1 (seven slices)</text>
         <g font-size="9.5">
           <!-- Slice indicators -->
           <rect x="60" y="215" width="80" height="28" rx="4" fill="#0E8080"/><text x="100" y="232" text-anchor="middle" fill="#fff" font-weight="700">Slice 0 ✓</text>
@@ -1572,13 +1572,13 @@
         <text x="360" y="325" text-anchor="middle" fill="#5A524A" font-size="9" font-style="italic">The Phase 2 walkthrough only fires once Per-Daypart V1 exits cleanly; the happy-state Phase 2 tag drops when that walkthrough re-runs clean.</text>
       </g>
     </svg>
-    <figcaption>Figure 26.1 — The pipeline at the top + a zoom into the active phase below. Per-Daypart Targets V1 is mid-flight at Slice 6; the walkthrough phase is gated until V1 exits. Source: <code>docs/_indices/NEXT_WAVE_PLAN.md</code> status snapshot 2026-05-19.</figcaption>
+    <figcaption>Figure 26.1. The pipeline at the top + a zoom into the active phase below. Per-Daypart Targets V1 is mid-flight at Slice 6; the walkthrough phase is gated until V1 exits. Source: <code>docs/_indices/NEXT_WAVE_PLAN.md</code> status snapshot 2026-05-19.</figcaption>
   </figure>
-  <p>The Phase 9.0Sigma.b–k foundation is <span class="pill pill-live">Live</span>: auth, RLS, service-principal, audit, event, graph, and rollup groundwork is on master. Staging DNS and HTTPS are passing. Phase 9 is accepted: live auth closeout is accepted for next-phase handoff, Cloud Armor is in monitored preview, and physical iOS QA is deferred. The Phase 9 migrations through <code>202604280013</code> are applied to Production1.</p>
+  <p>The Phase 9.0Sigma.b through k foundation is <span class="pill pill-live">Live</span>: auth, RLS, service-principal, audit, event, graph, and rollup groundwork is on master. Staging DNS and HTTPS are passing. Phase 9 is accepted: live auth closeout is accepted for next-phase handoff, Cloud Armor is in monitored preview, and physical iOS QA is deferred. The Phase 9 migrations through <code>202604280013</code> are applied to Production1.</p>
   <p>The post-Codex execution pipeline is mid-flight. As of the 2026-05-19 <code>NEXT_WAVE_PLAN.md</code> status snapshot: Phase 0 (smoke) is complete; Phase 1 (Wave 2) is CLOSED (Wave 1 closed 2026-05-13; Wave 2 ran 33 slices across 11 lanes with operator-web + admin lanes closed 2026-05-14 and mobile closed 2026-05-15). <strong>Phase 2.5 (Per-Daypart Targets V1) is the live phase</strong>, recording seven slices (Slice 0 through Slice 6). <strong>Slices 0 through 5 have landed; Slice 6 and any later follow-ups are still in flight.</strong> The happy-state Phase 2 tag drops only when Phase 2.5 exits and the post-Wave-2 walkthrough re-runs cleanly. The team currently runs dual-Claude orchestration (main orchestrator + a second Claude lane) because Codex is out of quota.</p>
   <p>Recent landings: the hierarchy-scoped roles redesign (<code>202605142100</code>) and follow-ups, hierarchy-scoped benchmark overrides (<code>202605131550</code>), self-service profile permission key (<code>202605140000</code>), email-event provider id (<code>202605131700</code>), and the Per-Daypart V1 migration chain (<code>202605160000</code> through <code>202605170200</code>). The admin actor-kind label unification (2026-05-14) brought admin and operator-web audit surfaces onto a single canonical catalog. The Wave 4 docs consolidation (2026-05-16) unified runbooks into one home.</p>
   <p>The B17 admin role catalog CRUD is <span class="pill pill-live">Live</span> and smoke-passed on staging. The B33 <code>usage_logs</code> two-slot mirror work is <span class="pill pill-live">Live</span>. The B34 audit attribution contract clarification is <span class="pill pill-live">Live</span>. The RLS isolation sweep is <span class="pill pill-live">Live</span>. The service-principal issuer route is <span class="pill pill-live">Live in schema</span>. The event-outbox is <span class="pill pill-scaffold">Scaffolded</span> in Phase 10a; Pub/Sub adapter, dead-letter handling, retention sweep, tripwires, and operator-facing UX remain queued. Health producers B44 (graph), B45 (rollup), and B47 (vector) now fill the B42 health envelope.</p>
-  <p>The runtime user-facing demo↔live switch landed in <code>lib/screens/settings/settings_demo_live_switch.dart</code> in May 2026, so an operator can flip demo→live state at runtime without a rebuild — while the demo-mode reader path remains a single, non-branching code path per Hard Promise #2.</p>
+  <p>The runtime user-facing demo↔live switch landed in <code>lib/screens/settings/settings_demo_live_switch.dart</code> in May 2026, so an operator can flip demo→live state at runtime without a rebuild, while the demo-mode reader path remains a single, non-branching code path per Hard Promise #2.</p>
   <div class="where-lives"><h4>Where it lives</h4>Current tracker: <code>PROJECT_TRACKER.md</code>. Forward plan: <code>docs/_indices/NEXT_WAVE_PLAN.md</code>. Active feature plan: <code>docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md</code>. Production apply runbook: <code>runbooks/phase_9_production1_migration_apply_runbook.md</code>.</div>
 </section>
 
