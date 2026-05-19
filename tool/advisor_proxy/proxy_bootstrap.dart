@@ -1851,6 +1851,8 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   }) async {
     await _writeAudit(
@@ -1869,6 +1871,8 @@ class _ProductionWageRoleRowsAuditSink implements WageRoleRowsAuditSink {
         'hourly_rate': hourlyRate,
         'weighted_hours': weightedHours,
         'source': source,
+        'scope_type': scopeType,
+        'org_unit_id': orgUnitId,
       },
     );
   }
@@ -3654,6 +3658,7 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
     required String? modifiedSince,
     required int pageSize,
+    required bool includeHierarchy,
   }) {
     return _tenantRead(scope, operatorId, locationId, (exec) async {
       final params = <String, Object?>{
@@ -3661,24 +3666,17 @@ class RepositoryMobileOperationalSyncProxyGateway
         'location_id': locationId,
         'limit': pageSize + 1,
       };
-      final cursorSql = _modifiedSinceSql(modifiedSince, params);
-      final rows = await exec.query(
-        'select wage_role_row_id::text as server_id, '
-        'operator_id::text as operator_id, '
-        'location_id::text as location_id, restaurant_id, '
-        'role_name, labor_bucket, hourly_rate, weighted_hours, '
-        'job_code, vendor_id, vendor_role_id, source, is_active, '
-        'effective_at, metadata, created_at, updated_at, updated_by '
-        'from public.wage_role_rows '
-        'where operator_id = @operator_id::uuid '
-        'and location_id = @location_id::uuid '
-        'and is_active is true '
-        '$cursorSql'
-        'order by updated_at asc, labor_bucket asc, role_name asc, '
-        'wage_role_row_id asc '
-        'limit @limit',
-        parameters: params,
-      );
+      final rows = includeHierarchy
+          ? await _fetchHierarchyWageRoleRows(
+              exec: exec,
+              params: params,
+              modifiedSince: modifiedSince,
+            )
+          : await _fetchLocationWageRoleRows(
+              exec: exec,
+              params: params,
+              modifiedSince: modifiedSince,
+            );
       return _pagePayload(
         key: 'wage_role_rows',
         rows: rows,
@@ -3686,6 +3684,83 @@ class RepositoryMobileOperationalSyncProxyGateway
         mapper: _wageRoleRowJson,
       );
     });
+  }
+
+  static Future<List<PostgresRow>> _fetchLocationWageRoleRows({
+    required PostgresExecutor exec,
+    required Map<String, Object?> params,
+    required String? modifiedSince,
+  }) {
+    final cursorSql = _modifiedSinceSql(modifiedSince, params);
+    return exec.query(
+      'select wage_role_row_id::text as server_id, '
+      'operator_id::text as operator_id, '
+      "coalesce(location_id::text, '') as location_id, "
+      'restaurant_id, role_name, labor_bucket, hourly_rate, weighted_hours, '
+      'job_code, vendor_id, vendor_role_id, source, is_active, '
+      'effective_at, metadata, created_at, updated_at, updated_by, '
+      'scope_type, org_unit_id::text as org_unit_id, '
+      'inherited_from_scope_id::text as inherited_from_scope_id, '
+      'null::text as source_label '
+      'from public.wage_role_rows '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and is_active is true '
+      '$cursorSql'
+      'order by updated_at asc, labor_bucket asc, role_name asc, '
+      'wage_role_row_id asc '
+      'limit @limit',
+      parameters: params,
+    );
+  }
+
+  static Future<List<PostgresRow>> _fetchHierarchyWageRoleRows({
+    required PostgresExecutor exec,
+    required Map<String, Object?> params,
+    required String? modifiedSince,
+  }) {
+    final cursorSql = _modifiedSinceSqlForAlias(modifiedSince, params, 'wr');
+    return exec.query(
+      'with selected_location as ('
+      '  select location_id, name, org_unit_path '
+      '  from public.locations '
+      '  where operator_id = @operator_id::uuid '
+      '  and location_id = @location_id::uuid'
+      ') '
+      'select wr.wage_role_row_id::text as server_id, '
+      'wr.operator_id::text as operator_id, '
+      "coalesce(wr.location_id::text, '') as location_id, "
+      'wr.restaurant_id, wr.role_name, wr.labor_bucket, '
+      'wr.hourly_rate, wr.weighted_hours, wr.job_code, wr.vendor_id, '
+      'wr.vendor_role_id, wr.source, wr.is_active, wr.effective_at, '
+      'wr.metadata, wr.created_at, wr.updated_at, wr.updated_by, '
+      'wr.scope_type, wr.org_unit_id::text as org_unit_id, '
+      'wr.inherited_from_scope_id::text as inherited_from_scope_id, '
+      'case '
+      "when wr.scope_type = 'location' then loc.name "
+      "when wr.scope_type = 'org_unit' then ou.name "
+      "when wr.scope_type = 'operator_wide' then op.business_name "
+      'else null end as source_label '
+      'from public.wage_role_rows wr '
+      'join public.operators op on op.operator_id = wr.operator_id '
+      'cross join selected_location loc '
+      'left join public.org_units ou '
+      '  on ou.operator_id = wr.operator_id '
+      ' and ou.id = wr.org_unit_id '
+      'where wr.operator_id = @operator_id::uuid '
+      'and wr.is_active is true '
+      'and ('
+      "  (wr.scope_type = 'location' and "
+      'wr.location_id = @location_id::uuid) '
+      "  or wr.scope_type = 'operator_wide' "
+      "  or (wr.scope_type = 'org_unit' and loc.org_unit_path <@ ou.path)"
+      ') '
+      '$cursorSql'
+      'order by wr.updated_at asc, wr.labor_bucket asc, wr.role_name asc, '
+      'wr.wage_role_row_id asc '
+      'limit @limit',
+      parameters: params,
+    );
   }
 
   @override
@@ -3780,6 +3855,18 @@ class RepositoryMobileOperationalSyncProxyGateway
       modifiedSince,
     ).toUtc().toIso8601String();
     return 'and updated_at > @modified_since::timestamptz ';
+  }
+
+  static String _modifiedSinceSqlForAlias(
+    String? modifiedSince,
+    Map<String, Object?> params,
+    String alias,
+  ) {
+    if (modifiedSince == null) return '';
+    params['modified_since'] = DateTime.parse(
+      modifiedSince,
+    ).toUtc().toIso8601String();
+    return 'and $alias.updated_at > @modified_since::timestamptz ';
   }
 
   static Map<String, Object?> _pagePayload({
@@ -4017,6 +4104,10 @@ class RepositoryMobileOperationalSyncProxyGateway
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],
+      'scope_type': row['scope_type'] ?? 'location',
+      'org_unit_id': row['org_unit_id'],
+      'inherited_from_scope_id': row['inherited_from_scope_id'],
+      'source_label': row['source_label'],
     };
   }
 

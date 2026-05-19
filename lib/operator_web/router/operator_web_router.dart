@@ -68,6 +68,7 @@ import '../screens/settings_notifications_screen.dart';
 import '../screens/schedule_screen.dart';
 import '../screens/sign_in_screen.dart';
 import '../screens/vendor_connections_screen.dart';
+import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
 
@@ -876,6 +877,94 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     ];
   }
 
+  List<HierarchyMapNode> _wageHierarchyNodes() {
+    String? operatorKey;
+    for (final option in _managementScopeOptions) {
+      if (option.kind == OperatorWebManagementScopeKind.operator) {
+        operatorKey = option.key;
+        break;
+      }
+    }
+    final orgUnitKeys = <String>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit) option.key,
+    };
+    return <HierarchyMapNode>[
+      for (final option in _managementScopeOptions)
+        HierarchyMapNode(
+          id: option.key,
+          label: option.label,
+          helper: option.helper,
+          kind: _wageHierarchyNodeKind(option.kind),
+          parentId: _wageHierarchyParentId(option, operatorKey, orgUnitKeys),
+          inheritanceBreadcrumb: _wageHierarchyBreadcrumb(option.kind),
+        ),
+    ];
+  }
+
+  List<String> _wageAncestorOrgUnitIdsNearestFirst(
+    OperatorWebManagementScopeOption locationScope,
+  ) {
+    final ancestors = <String>[];
+    final orgUnitById = <String, OperatorWebManagementScopeOption>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
+          option.id: option,
+    };
+    var current = locationScope.parentOrgUnitId;
+    final seen = <String>{};
+    while (current != null && current.isNotEmpty) {
+      if (!seen.add(current)) break;
+      ancestors.add(current);
+      current = orgUnitById[current]?.parentOrgUnitId;
+    }
+    return ancestors;
+  }
+
+  static HierarchyMapNodeKind _wageHierarchyNodeKind(
+    OperatorWebManagementScopeKind kind,
+  ) {
+    switch (kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return HierarchyMapNodeKind.business;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return HierarchyMapNodeKind.orgUnit;
+      case OperatorWebManagementScopeKind.location:
+        return HierarchyMapNodeKind.location;
+    }
+  }
+
+  static String? _wageHierarchyParentId(
+    OperatorWebManagementScopeOption option,
+    String? operatorKey,
+    Set<String> orgUnitKeys,
+  ) {
+    switch (option.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return null;
+      case OperatorWebManagementScopeKind.orgUnit:
+      case OperatorWebManagementScopeKind.location:
+        final parent = option.parentOrgUnitId;
+        if (parent == null || parent.isEmpty) return operatorKey;
+        final parentKey = _scopeKey(
+          OperatorWebManagementScopeKind.orgUnit,
+          parent,
+        );
+        return orgUnitKeys.contains(parentKey) ? parentKey : operatorKey;
+    }
+  }
+
+  static String? _wageHierarchyBreadcrumb(OperatorWebManagementScopeKind kind) {
+    switch (kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return 'Business-wide. Every location inherits these defaults.';
+      case OperatorWebManagementScopeKind.orgUnit:
+        return 'Locations under this group inherit values set here.';
+      case OperatorWebManagementScopeKind.location:
+        return null;
+    }
+  }
+
   static String _scopeKey(OperatorWebManagementScopeKind kind, String id) =>
       '${kind.name}:${id.trim()}';
 
@@ -1420,6 +1509,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 _wageAuthorityGateway ??
                 (_routerOwnedDemoWageAuthorityGateway ??=
                     OperatorWebDemoWageAuthorityGateway()),
+            hierarchyNodes: _wageHierarchyNodes(),
+            ancestorOrgUnitIdsNearestFirst: _wageAncestorOrgUnitIdsNearestFirst(
+              locationScope,
+            ),
+            businessName: session.businessName,
           );
         }
         break;
