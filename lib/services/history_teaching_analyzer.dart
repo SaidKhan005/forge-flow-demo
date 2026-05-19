@@ -4,6 +4,7 @@
 
 import '../domain/constants/app_defaults.dart';
 import '../domain/constants/cross_axis_pair_catalog.dart';
+import '../domain/canonical_day_order.dart';
 import '../models/cross_axis_pair_record.dart';
 import '../models/history_pattern_record.dart';
 
@@ -89,6 +90,13 @@ class HistoryTeachingAnalyzer {
     'boh_wage_down',
   ];
 
+  static const _servicePeriodOrder = <String, int>{
+    'morning': 0,
+    'lunch': 1,
+    'dinner': 2,
+    'late_night': 3,
+  };
+
   static final _favorableIds = LeverCards.all
       .where((l) => l.isFavorable)
       .map((l) => l.id)
@@ -165,10 +173,13 @@ class HistoryTeachingAnalyzer {
     // r.leverId, so this stays empty — symmetric with the "no pattern"
     // state.
     final leakDpFreq = <String, int>{};
-    for (final r in leakRecords.where((r) => r.leverId == mostCommonLeakId)) {
+    final topLeakRecords = leakRecords
+        .where((r) => r.leverId == mostCommonLeakId)
+        .toList();
+    for (final r in topLeakRecords) {
       leakDpFreq[r.fullLabel] = (leakDpFreq[r.fullLabel] ?? 0) + 1;
     }
-    final topLeakDayparts = _topTwo(leakDpFreq);
+    final topLeakDayparts = _topTwoDaypartLabels(topLeakRecords);
 
     // 7.61.1 (F-1): filter benchmark records to known catalog ids upstream
     // so the tie-break (`bFreq`) and dayparts (`benchFreq`) computations
@@ -213,11 +224,7 @@ class HistoryTeachingAnalyzer {
       final LeverCardData? benchCard = LeverCards.lookup(mostCommonBenchmarkId);
       if (benchCard != null) {
         mostCommonBenchmarkSideLabel = benchCard.sideLabel;
-        final benchFreq = <String, int>{};
-        for (final r in benchmarkRecords) {
-          benchFreq[r.fullLabel] = (benchFreq[r.fullLabel] ?? 0) + 1;
-        }
-        benchmarkDayparts = _topTwo(benchFreq);
+        benchmarkDayparts = _topTwoDaypartLabels(benchmarkRecords);
       } else {
         mostCommonBenchmarkId = '';
         benchMaxCount = 0;
@@ -377,5 +384,59 @@ class HistoryTeachingAnalyzer {
         return cmp != 0 ? cmp : a.key.compareTo(b.key);
       });
     return sorted.take(2).map((e) => e.key).toList();
+  }
+
+  static List<String> _topTwoDaypartLabels(
+    List<HistoryPatternRecord> records,
+  ) {
+    if (records.isEmpty) return const [];
+
+    final freq = <String, int>{};
+    final order = <String, _DaypartSortOrder>{};
+    for (final record in records) {
+      final label = record.fullLabel;
+      freq[label] = (freq[label] ?? 0) + 1;
+      final currentOrder = _DaypartSortOrder.fromRecord(record);
+      final previousOrder = order[label];
+      if (previousOrder == null || currentOrder.compareTo(previousOrder) < 0) {
+        order[label] = currentOrder;
+      }
+    }
+
+    final sorted = freq.entries.toList()
+      ..sort((a, b) {
+        final countCmp = b.value.compareTo(a.value);
+        if (countCmp != 0) return countCmp;
+        final orderCmp = (order[a.key] ?? _DaypartSortOrder.fallback)
+            .compareTo(order[b.key] ?? _DaypartSortOrder.fallback);
+        if (orderCmp != 0) return orderCmp;
+        return a.key.compareTo(b.key);
+      });
+    return sorted.take(2).map((e) => e.key).toList();
+  }
+}
+
+class _DaypartSortOrder implements Comparable<_DaypartSortOrder> {
+  const _DaypartSortOrder(this.dayOrder, this.periodOrder);
+
+  final int dayOrder;
+  final int periodOrder;
+
+  static const fallback = _DaypartSortOrder(99, 99);
+
+  factory _DaypartSortOrder.fromRecord(HistoryPatternRecord record) {
+    return _DaypartSortOrder(
+      CanonicalDayOrder.index[record.dayLabel] ?? 99,
+      record.servicePeriodSortOrder ??
+          HistoryTeachingAnalyzer._servicePeriodOrder[record.daypart] ??
+          99,
+    );
+  }
+
+  @override
+  int compareTo(_DaypartSortOrder other) {
+    final dayCmp = dayOrder.compareTo(other.dayOrder);
+    if (dayCmp != 0) return dayCmp;
+    return periodOrder.compareTo(other.periodOrder);
   }
 }

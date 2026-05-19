@@ -28,11 +28,15 @@ HistoryPatternRecord _rec(
   String daypart,
   String leverId, {
   bool isBenchmark = false,
+  String? servicePeriodLabel,
+  int? servicePeriodSortOrder,
 }) => HistoryPatternRecord(
   weekId: weekId,
   weekLabel: 'Week $weekId',
   dayLabel: dayLabel,
   daypart: daypart,
+  servicePeriodLabel: servicePeriodLabel,
+  servicePeriodSortOrder: servicePeriodSortOrder,
   leverId: leverId,
   isBenchmark: isBenchmark,
 );
@@ -115,6 +119,44 @@ void main() {
       expect(hs.topLeakDaypartLabel, equals('Fri Dinner'));
       expect(hs.topLeakDaypartCount, equals(8));
       expect(hs.contrastBenchmarkDaypartLabel, equals('Fri Lunch'));
+    });
+
+    test('configured service-period labels flow into the recurring leak', () {
+      final records = <HistoryPatternRecord>[];
+      for (var w = 1; w <= 4; w++) {
+        records.add(
+          _rec(
+            'w$w',
+            'Fri',
+            'supper',
+            'ppa_down',
+            servicePeriodLabel: 'Supper',
+            servicePeriodSortOrder: 10,
+          ),
+        );
+        records.add(
+          _rec(
+            'w$w',
+            'Fri',
+            'brunch',
+            'ppa_up',
+            isBenchmark: true,
+            servicePeriodLabel: 'Brunch',
+            servicePeriodSortOrder: 20,
+          ),
+        );
+      }
+
+      final summary = LearnTeachingAnalyzer.summarize(
+        patternRecords: records,
+        weekCount: 4,
+        benchmarkContext: _ctx,
+      );
+
+      expect(summary.primaryFixLine, contains('Fri Supper'));
+      expect(summary.primaryFixLine, contains('Fri Brunch holds on plan'));
+      expect(summary.topLeakDayparts, ['Fri Supper']);
+      expect(summary.benchmarkDayparts, ['Fri Brunch']);
     });
   });
 

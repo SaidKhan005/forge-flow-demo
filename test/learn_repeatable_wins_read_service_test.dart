@@ -381,6 +381,33 @@ void main() {
 
       expect(results.map((r) => r.label), ['Fri Old Brunch', 'Fri Old Supper']);
     });
+
+    test(
+      'saved timing identity without a snapshot uses configured label/order',
+      () {
+        final results = service.build(
+          [
+            _shift(
+              dayLabel: 'Fri',
+              daypart: 'dinner',
+              businessTimingProfileId: 'profile-v2',
+              businessTimingProfileVersionId: 'profile-v2',
+              servicePeriodKey: 'brunch',
+            ),
+            _shift(
+              dayLabel: 'Fri',
+              daypart: 'dinner',
+              businessTimingProfileId: 'profile-v2',
+              businessTimingProfileVersionId: 'profile-v2',
+              servicePeriodKey: 'supper',
+            ),
+          ],
+          servicePeriodDefinitions: _configuredServicePeriods,
+        );
+
+        expect(results.map((r) => r.label), ['Fri Supper', 'Fri Brunch']);
+      },
+    );
   });
 
   group('I - configured service periods', () {

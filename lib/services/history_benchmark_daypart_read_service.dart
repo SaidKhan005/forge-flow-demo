@@ -8,6 +8,7 @@
 library;
 
 import '../domain/canonical_day_order.dart';
+import '../domain/models/service_period_definition.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/history_benchmark_daypart_summary.dart';
 import '../models/shift_record.dart';
@@ -39,12 +40,14 @@ class HistoryBenchmarkDaypartReadService {
   List<HistoryBenchmarkDaypartSummary> build(
     List<ShiftRecord> closedShifts, {
     ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
     String? currentOperationalBusinessDate,
     DaypartPatternShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
     final summaries = DaypartPatternSummaryBuilder.fromClosedShifts(
       closedShifts,
       timingLabelResolver: timingLabelResolver,
+      servicePeriodDefinitions: servicePeriodDefinitions,
       currentOperationalBusinessDate: currentOperationalBusinessDate,
       shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
     );
@@ -66,8 +69,8 @@ class HistoryBenchmarkDaypartReadService {
       final dayB = CanonicalDayOrder.index[b.dayLabel] ?? 99;
       if (dayA != dayB) return dayA.compareTo(dayB);
       // Then service-period order.
-      final dpA = _servicePeriodOrder[a.daypart] ?? 99;
-      final dpB = _servicePeriodOrder[b.daypart] ?? 99;
+      final dpA = a.servicePeriodSortOrder ?? _servicePeriodOrder[a.daypart] ?? 99;
+      final dpB = b.servicePeriodSortOrder ?? _servicePeriodOrder[b.daypart] ?? 99;
       return dpA.compareTo(dpB);
     });
 
