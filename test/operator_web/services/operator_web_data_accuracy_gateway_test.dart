@@ -17,14 +17,22 @@ void main() {
       String coversSourceLunch = 'manual',
       String wageSource = 'manual_mix',
     }) {
+      // Per-period covers source is now sourced via the keyed
+      // `covers_source_per_service_period` jsonb map (see
+      // DataAccuracySettings.fromRow). The deprecated flat
+      // `covers_source_lunch` / `_dinner` / `_late_night` columns
+      // are no longer consulted by the model parser, so the fake
+      // proxy response mirrors the keyed shape the live proxy emits.
       return <String, Object?>{
         'data': <String, Object?>{
           'setting_id': 'setting-1',
           'operator_id': 'op-1',
           'location_id': 'loc-1',
-          'covers_source_lunch': coversSourceLunch,
-          'covers_source_dinner': 'vendor',
-          'covers_source_late_night': 'forecast',
+          'covers_source_per_service_period': <String, Object?>{
+            'lunch': coversSourceLunch,
+            'dinner': 'vendor',
+            'late_night': 'forecast',
+          },
           'covers_manual_entries': <String, Object?>{
             '2026-05-06': <String, Object?>{'lunch': 42},
           },

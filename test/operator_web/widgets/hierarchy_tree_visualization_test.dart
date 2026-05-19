@@ -91,7 +91,9 @@ void main() {
     );
 
     // Header pill names the currently-edited scope, plain English.
-    expect(find.text('Editing Location — Brio Main'), findsOneWidget);
+    // Colon separator per the repo UX no-em-dash law (CLAUDE.md "House
+    // rules"); live widget builds 'Editing ${level.label}: ${name}'.
+    expect(find.text('Editing Location: Brio Main'), findsOneWidget);
 
     // No engineering jargon leaks through into the copy.
     expect(find.textContaining('scope_kind'), findsNothing);

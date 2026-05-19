@@ -46,7 +46,10 @@ void main() {
           controller.state.primaryButtonLabel,
           'Manage two-factor sign-in',
         );
-        expect(actions.stepUpLabels, contains('removing 2FA'));
+        expect(
+          actions.stepUpLabels,
+          contains('removing two-factor sign-in'),
+        );
 
         now = now.add(const Duration(hours: 24, minutes: 1));
         await controller.refresh();
@@ -63,7 +66,10 @@ void main() {
         gateway.completeDueRemovals();
         await controller.turnOffAfterGrace();
         expect(controller.state.stage, MfaCardStage.notEnrolled);
-        expect(actions.stepUpLabels, contains('turning off 2FA'));
+        expect(
+          actions.stepUpLabels,
+          contains('turning off two-factor sign-in'),
+        );
       },
     );
 
@@ -113,7 +119,10 @@ void main() {
 
         await controller.cancelRemoval();
         expect(controller.state.stage, MfaCardStage.enrolled);
-        expect(actions.stepUpLabels, contains('cancelling 2FA removal'));
+        expect(
+          actions.stepUpLabels,
+          contains('cancelling two-factor sign-in removal'),
+        );
       },
     );
 
