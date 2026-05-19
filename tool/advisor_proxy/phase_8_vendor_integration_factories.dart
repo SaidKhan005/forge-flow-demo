@@ -168,6 +168,7 @@ import 'package:forge_and_flow/integrations/reservation/tock_reservation_product
 import 'package:forge_and_flow/integrations/reservation/tock_webhook_signature_verifier.dart'
     hide kTockVendorId;
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
+import 'package:forge_and_flow/services/integration/canonical_fact_projection_retry.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
@@ -311,6 +312,7 @@ buildPhase8VendorIntegrationFactoriesFromCredentials({
   CanonicalFactPostCommitProjector? canonicalFactPostCommitProjector,
   CanonicalFactPeriodResolver? canonicalFactPeriodResolver,
   CanonicalRestaurantIdResolver? canonicalRestaurantIdResolver,
+  CanonicalFactProjectionRetryRecorder? canonicalFactProjectionRetryRecorder,
 }) {
   // The body uses `wrapper` as a short alias for the parameter so the
   // per-vendor branches read identically to the previous binder body
@@ -350,6 +352,7 @@ buildPhase8VendorIntegrationFactoriesFromCredentials({
       vendorId: vendorId,
       periodResolver: canonicalFactPeriodResolver,
       restaurantIdResolver: canonicalRestaurantIdResolver,
+      retryRecorder: canonicalFactProjectionRetryRecorder,
     );
     projectionTapsByVendor[vendorId] = tap;
     return tap;
@@ -368,6 +371,7 @@ buildPhase8VendorIntegrationFactoriesFromCredentials({
       vendorId: vendorId,
       periodResolver: canonicalFactPeriodResolver,
       restaurantIdResolver: canonicalRestaurantIdResolver,
+      retryRecorder: canonicalFactProjectionRetryRecorder,
     );
   }
 

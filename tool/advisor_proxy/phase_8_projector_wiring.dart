@@ -16,9 +16,11 @@ import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart'
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_shift_record_writer.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/active_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/business_timing_profiles_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/canonical_fact_projection_retry_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/open_shift_snapshots_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
+import 'package:forge_and_flow/services/integration/canonical_fact_projection_retry.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_to_closed_shift_input.dart';
 import 'package:forge_and_flow/services/integration/iana_timezone_converter.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
@@ -57,6 +59,7 @@ Phase8ProjectorWiring buildDefaultPhase8ProjectorWiring(
     projector: projector,
     periodResolver: periodResolver.resolve,
     restaurantIdResolver: _locationIdAsRestaurantId,
+    retryRecorder: CanonicalFactProjectionRetryRepository(tenantWrapper),
   );
 }
 
@@ -69,19 +72,22 @@ class Phase8ProjectorWiring {
   const Phase8ProjectorWiring.inactive({required this.source})
     : projector = null,
       periodResolver = null,
-      restaurantIdResolver = null;
+      restaurantIdResolver = null,
+      retryRecorder = null;
 
   const Phase8ProjectorWiring.active({
     required this.source,
     required this.projector,
     required this.periodResolver,
     required this.restaurantIdResolver,
+    this.retryRecorder,
   });
 
   final String source;
   final CanonicalFactPostCommitProjector? projector;
   final CanonicalFactPeriodResolver? periodResolver;
   final CanonicalRestaurantIdResolver? restaurantIdResolver;
+  final CanonicalFactProjectionRetryRecorder? retryRecorder;
 
   bool get isActive =>
       projector != null &&

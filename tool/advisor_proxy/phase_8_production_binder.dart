@@ -256,6 +256,7 @@ Future<void> bindPhase8IntegrationsForProduction(
     canonicalFactPostCommitProjector: projectorWiring.projector,
     canonicalFactPeriodResolver: projectorWiring.periodResolver,
     canonicalRestaurantIdResolver: projectorWiring.restaurantIdResolver,
+    canonicalFactProjectionRetryRecorder: projectorWiring.retryRecorder,
   );
   final posAdapterFactories = factories.posAdapterFactories;
   final laborAdapterFactories = factories.laborAdapterFactories;

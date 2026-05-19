@@ -1247,6 +1247,7 @@ WorkerRuntime buildWorkerRuntime({
     canonicalFactPostCommitProjector: projectorWiring.projector,
     canonicalFactPeriodResolver: projectorWiring.periodResolver,
     canonicalRestaurantIdResolver: projectorWiring.restaurantIdResolver,
+    canonicalFactProjectionRetryRecorder: projectorWiring.retryRecorder,
   );
   final projectionCommitDrainer = CanonicalFactProjectionCommitDrainer(
     tapsByVendor: Map<String, CanonicalFactProjectionTap>.unmodifiable(
