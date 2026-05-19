@@ -9,7 +9,7 @@ This repo keeps docs in five main buckets:
 These stay at the top level because they are the fastest-entry authority docs:
 
 - `PROJECT_TRACKER.md` (repo root)
-- `docs/ARCHITECTURE.md`
+- `docs/contracts/core_app_architecture.md` (canonical Phase 7.55 architecture authority)
 - `docs/DATA_ALIGNMENT_TRACKER.md`
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 
