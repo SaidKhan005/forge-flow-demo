@@ -166,7 +166,7 @@ Required sections — each row is a checkbox the `*.live.sandbox` and
       discrepancies as bounded fixes (not slice rebuilds).
 - [ ] **Disconnect → reconnect.** Watermark preserved across cycle;
       no data gap on reconnect.
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
 - [ ] **Demo-mode flip.** First connect + first backfill commit
       flips `demo_mode_state.is_demo` to `false`.

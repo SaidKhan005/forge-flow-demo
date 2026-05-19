@@ -113,12 +113,13 @@ Default role grants for `admin.audit_privacy.read`:
   re-applies of the foundation seed do not drop the new key).
 - `ff_support` — granted (F&F support's primary tool for
   investigating advisor incidents on behalf of an operator).
-- `operator_owner` / `operator_manager` / `operator_supervisor` /
-  `operator_staff` — **not** granted by default. Raw advisor
-  conversation content is F&F-internal at launch. An operator who
-  needs read access must request it via F&F support OR have a custom
-  operator-scoped role explicitly grant the key through 9.6's role
-  management surface.
+- Operator-scoped roles are **not** granted by default, including
+  `operator_owner`, `operator_general_manager`, `location_manager`,
+  `supervisor`, `finance_analyst`, `auditor_compliance`,
+  `training_lead`, and `team_admin`. Raw advisor conversation content
+  is F&F-internal at launch. An operator who needs read access must
+  request it via F&F support OR have a custom operator-scoped role
+  explicitly grant the key through 9.6's role management surface.
 
 ## Paired audit row (every read)
 

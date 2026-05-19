@@ -1218,19 +1218,19 @@ class MembersValidationCopy {
 /// shared by the override-role-grant action.
 const List<String> kSeededRoleKeysForAdmin = <String>[
   'operator_owner',
-  'operator_manager',
-  'operator_supervisor',
-  'operator_staff',
+  'operator_general_manager',
+  'location_manager',
+  'supervisor',
 ];
 
 /// Display labels for the seeded role keys. The admin members table
 /// renders these through [memberRoleLabel] so a future seeded role
 /// addition does not silently render the raw key.
 const Map<String, String> kSeededRoleDisplayNames = <String, String>{
-  'operator_owner': 'Operator owner',
-  'operator_manager': 'Operator manager',
-  'operator_supervisor': 'Operator supervisor',
-  'operator_staff': 'Operator staff',
+  'operator_owner': 'Owner',
+  'operator_general_manager': 'General Manager',
+  'location_manager': 'Location Manager',
+  'supervisor': 'Supervisor',
 };
 
 String memberRoleLabel(String roleKey) {
