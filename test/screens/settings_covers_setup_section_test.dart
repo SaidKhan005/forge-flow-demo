@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import 'package:forge_and_flow/screens/settings/settings_covers_setup_section.dart';
@@ -118,6 +119,10 @@ void main() {
             servicePeriodKey: 'dinner',
             coversSource: ServicePeriodCoversSource.manual,
             wageSource: ServicePeriodWageSource.vendorPerEmployee,
+            coversSourceSource: const DataAccuracySettingSource(
+              scopeType: 'org_unit',
+              sourceKind: 'scoped_override',
+            ),
             effectiveAtBusinessDate: '2026-05-01',
             createdAt: DateTime.utc(2026, 5, 1),
             updatedAt: DateTime.utc(2026, 5, 1),
@@ -136,12 +141,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Manual entry'), findsOneWidget);
-    expect(
-      find.textContaining(
-        'Last synced service-period setting since 2026-05-01',
-      ),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Org unit since 2026-05-01'), findsOneWidget);
   });
 
   testWidgets('renders hierarchy scope label per HP #11', (tester) async {

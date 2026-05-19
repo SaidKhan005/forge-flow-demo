@@ -478,6 +478,22 @@ void main() {
       ];
       final client = _FakeSyncProxyClient()
         ..scriptShiftPages([_Page(records: const [], nextCursor: null)])
+        ..scriptDataAccuracySettings(
+          DataAccuracySettingsSnapshot(
+            operatorId: _opId,
+            locationId: _locId,
+            coversSourcePerServicePeriodSources: const {
+              'brunch': {
+                'scope_type': 'location',
+                'source_kind': 'scoped_override',
+                'scope_id': 'loc-scope-1',
+              },
+            },
+            coversManualEntries: const {},
+            wageSource: 'vendor',
+            updatedAt: DateTime.utc(2026, 5, 4, 12, 0),
+          ),
+        )
         ..scriptDataAccuracyServicePeriodSettings(keyedSettings);
 
       final sync = PostgresShiftRecordToMobileSync(
@@ -505,6 +521,14 @@ void main() {
       expect(
         sync.latestDataAccuracyServicePeriodSettings.first.wageSource,
         ServicePeriodWageSource.manualMix,
+      );
+      expect(
+        sync
+            .latestDataAccuracyServicePeriodSettings
+            .first
+            .coversSourceSource
+            ?.label,
+        'Location',
       );
     },
   );

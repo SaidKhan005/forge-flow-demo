@@ -596,31 +596,31 @@ class CanonicalFactToClosedShiftInputAggregator
       }
     }
 
-    // Stage 3 — reservation+walk-in (Pattern A: seated_at sum +
-    // operator walk-in count). Skips Tock when seated_at absent;
-    // bucketing already filtered to slot via reservation_at.
-    final resolvedWalkInOverride =
-        walkInOverride ??
-        _walkInOverrideFromSettings(settings, isoBusinessDate);
-    if (reservationFacts.isNotEmpty && resolvedWalkInOverride != null) {
-      final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
-        final raw = row['party_size'];
-        if (raw is int) return acc + raw;
-        if (raw is num) return acc + raw.toInt();
-        return acc;
-      });
-      final reservationVendorId =
-          reservationFacts.first['vendor_id'] as String? ?? '';
-      if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
-        return _CoversResolution(
-          covers: seatedSum + resolvedWalkInOverride.operatorWalkInCount,
-          provenance:
-              'vendor_${reservationVendorId}_seated_plus_operator_walk_in_count',
-          sourceSystem: reservationVendorId,
-        );
-      }
-    }
+    // Stage 3 — reservation+walk-in (Pattern A: seated party_size +
+    // operator walk-in count). Bucketing already filtered to this slot
+    // via reservation_at / seated_at according to vendor availability.
     if (operatorPreference == _OperatorCoversPreference.reservationPlusWalkin) {
+      final resolvedWalkInOverride =
+          walkInOverride ??
+          _walkInOverrideFromSettings(settings, isoBusinessDate);
+      if (reservationFacts.isNotEmpty && resolvedWalkInOverride != null) {
+        final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
+          final raw = row['party_size'];
+          if (raw is int) return acc + raw;
+          if (raw is num) return acc + raw.toInt();
+          return acc;
+        });
+        final reservationVendorId =
+            reservationFacts.first['vendor_id'] as String? ?? '';
+        if (seatedSum > 0 && reservationVendorId.isNotEmpty) {
+          return _CoversResolution(
+            covers: seatedSum + resolvedWalkInOverride.operatorWalkInCount,
+            provenance:
+                'vendor_${reservationVendorId}_seated_plus_operator_walk_in_count',
+            sourceSystem: reservationVendorId,
+          );
+        }
+      }
       return null;
     }
 
@@ -946,6 +946,8 @@ class CanonicalFactToClosedShiftInputAggregator
         return _OperatorCoversPreference.forecast;
       case CoversSource.manual:
         return _OperatorCoversPreference.manual;
+      case CoversSource.reservationPlusWalkin:
+        return _OperatorCoversPreference.reservationPlusWalkin;
     }
   }
 

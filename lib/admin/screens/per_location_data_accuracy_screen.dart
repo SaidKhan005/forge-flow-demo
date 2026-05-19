@@ -1273,6 +1273,8 @@ String _coversSourceLabel(CoversSource source) {
       return 'Forecast';
     case CoversSource.manual:
       return 'Manual entry';
+    case CoversSource.reservationPlusWalkin:
+      return 'Reservations + walk-ins';
   }
 }
 

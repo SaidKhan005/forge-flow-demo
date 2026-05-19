@@ -53,6 +53,27 @@ void main() {
     );
   }
 
+  Future<void> selectRoleEditorPermission(
+    WidgetTester tester,
+    String permissionKey,
+  ) async {
+    final checkbox = find.byKey(
+      Key('admin_rhs_role_editor_checkbox_$permissionKey'),
+    );
+    final pickerScrollable = find.descendant(
+      of: find.byKey(const Key('admin_rhs_role_editor_permission_picker')),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      checkbox,
+      240,
+      scrollable: pickerScrollable,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(checkbox);
+    await tester.pumpAndSettle();
+  }
+
   group('role and hierarchy render', () {
     testWidgets('renders Roles and Hierarchy tabs after operator pick', (
       tester,
@@ -709,6 +730,12 @@ void main() {
           isNull,
         );
 
+        await tester.tap(
+          find.byKey(const Key('admin_rhs_role_editor_tab_forgeflow')),
+        );
+        await tester.pumpAndSettle();
+        await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
+
         await tester.enterText(
           find.byKey(const Key('admin_rhs_create_custom_role_name')),
           'Line Lead',
@@ -731,6 +758,71 @@ void main() {
         expect(event.action, equals('team.roles.create_custom'));
         expect(event.adminReason, equals('support-onboarding'));
         expect(event.actorKind, equals('forge_admin'));
+        final permissionKeys = event.payload['permission_keys'];
+        expect(
+          permissionKeys,
+          containsAll(<String>['forgeflow.shift.view', 'forgeflow.shift.edit']),
+        );
+      },
+    );
+
+    testWidgets(
+      'create custom role dialog blocks submit with no effective permissions',
+      (tester) async {
+        wideViewport(tester);
+        final gateway = buildDemoGateway();
+        await tester.pumpWidget(
+          wrap(
+            RolesHierarchySessionsAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+              pickedOperator: demoPick(),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.ensureVisible(
+          find.byKey(const Key('admin_rhs_roles_create_custom')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('admin_rhs_roles_create_custom')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(
+          find.byKey(const Key('admin_rhs_create_custom_role_name')),
+          'Line Lead',
+        );
+        await tester.enterText(
+          find.byKey(const Key('admin_rhs_create_custom_role_key')),
+          'custom.line_lead',
+        );
+        await tester.enterText(
+          find.byKey(const Key('admin_rhs_create_custom_role_reason')),
+          'support-onboarding',
+        );
+        await tester.tap(
+          find.byKey(const Key('admin_rhs_create_custom_role_submit')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('admin_rhs_create_custom_role_dialog')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('admin_rhs_create_custom_role_permissions_error'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Pick at least one permission for this role.'),
+          findsOneWidget,
+        );
+        expect(gateway.capturedAuditEvents, isEmpty);
       },
     );
 
@@ -767,6 +859,7 @@ void main() {
           find.byKey(const Key('admin_rhs_create_custom_role_key')),
           'custom.line_lead',
         );
+        await selectRoleEditorPermission(tester, 'forgeflow.shift.edit');
         // Reason intentionally left blank.
         await tester.tap(
           find.byKey(const Key('admin_rhs_create_custom_role_submit')),
@@ -996,13 +1089,11 @@ void main() {
       await tester.tap(find.byKey(const Key('admin_rhs_reason_submit')));
       await tester.pumpAndSettle();
 
+      expect(find.text(HierarchyValidationCopy.deleteNotEmpty), findsOneWidget);
       expect(
-        find.text(HierarchyValidationCopy.deleteNotEmpty),
-        findsOneWidget,
-      );
-      expect(
-        gateway.capturedAuditEvents
-            .where((e) => e.action == 'team.org_unit.delete'),
+        gateway.capturedAuditEvents.where(
+          (e) => e.action == 'team.org_unit.delete',
+        ),
         isEmpty,
       );
     });
@@ -1115,9 +1206,7 @@ void main() {
       // (GAP A1 added a third org-unit action). Scroll the deepest
       // node into view before tapping — the depth-cap *behavior* is
       // what this test pins, not pixel layout.
-      final addN6 = find.byKey(
-        const Key('admin_rhs_org_unit_add_child_n6'),
-      );
+      final addN6 = find.byKey(const Key('admin_rhs_org_unit_add_child_n6'));
       await tester.ensureVisible(addN6);
       await tester.pumpAndSettle();
       await tester.tap(addN6);
@@ -1133,8 +1222,9 @@ void main() {
       );
     });
 
-    testWidgets('parent one below the cap (5): add-child opens the dialog',
-        (tester) async {
+    testWidgets('parent one below the cap (5): add-child opens the dialog', (
+      tester,
+    ) async {
       wideViewport(tester);
       final gateway = InMemoryRolesHierarchySessionsAdminGateway(
         rolesByOperator: kDemoRolesByOperator(),
@@ -1156,9 +1246,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Scroll the depth-5 node into view first (tall synthetic chain).
-      final addN5 = find.byKey(
-        const Key('admin_rhs_org_unit_add_child_n5'),
-      );
+      final addN5 = find.byKey(const Key('admin_rhs_org_unit_add_child_n5'));
       await tester.ensureVisible(addN5);
       await tester.pumpAndSettle();
       await tester.tap(addN5);
@@ -1168,17 +1256,11 @@ void main() {
         find.byKey(const Key('admin_rhs_add_child_org_unit_dialog')),
         findsOneWidget,
       );
-      expect(
-        find.text(HierarchyValidationCopy.depthCapReached),
-        findsNothing,
-      );
+      expect(find.text(HierarchyValidationCopy.depthCapReached), findsNothing);
     });
 
     test('admin depth-cap copy aliases the shared rule copy', () {
-      expect(
-        HierarchyValidationCopy.depthCapReached,
-        kOrgUnitDepthCapMessage,
-      );
+      expect(HierarchyValidationCopy.depthCapReached, kOrgUnitDepthCapMessage);
     });
   });
 

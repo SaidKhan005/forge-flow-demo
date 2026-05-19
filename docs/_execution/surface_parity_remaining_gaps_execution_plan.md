@@ -1,16 +1,17 @@
 # Surface Parity Remaining Gaps Execution Plan
 
-Status: implemented and pushed candidate
+Status: closed/superseded after PR #1020-era cleanup. Preserve this file as
+historical execution context; do not dispatch new lanes from it.
 Created: 2026-05-19
-Owner: Codex orchestrator
+Owner: executor-agnostic orchestrator
 Worktree: `.codex_worktrees/per-daypart-server-parity`
 Branch: `codex/surface-parity-remaining-gaps`
 
 ## Plain English Summary
 
 - The prior surface-parity slice is already on `origin/master`.
-- This slice continues in a worktree; the main checkout stays on `master`.
-- Three gaps remain:
+- This slice continued in a worktree; the main checkout stayed on `master`.
+- Three gaps remained at dispatch time:
   - Mobile covers edits must become real server truth.
   - Operator Web should use configured service periods, not free-text keys.
   - Data Accuracy provenance needs schema/API support before UI can show honest inheritance labels.

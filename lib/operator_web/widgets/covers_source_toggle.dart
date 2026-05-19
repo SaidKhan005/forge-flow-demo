@@ -195,6 +195,8 @@ class _PeriodRow extends StatelessWidget {
         return 'Forecast';
       case CoversSource.manual:
         return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
     }
   }
 }

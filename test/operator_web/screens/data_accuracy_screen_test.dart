@@ -1728,6 +1728,7 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
           perPeriod[row.servicePeriodKey] = CoversSource.manual;
           break;
         case ServicePeriodCoversSource.reservationPlusWalkin:
+          perPeriod[row.servicePeriodKey] = CoversSource.reservationPlusWalkin;
           break;
       }
     }

@@ -91,6 +91,10 @@ class TargetProfileDao {
   Future<ActiveTargetProfile> _hydrateWithActiveCycleDayparts(
     ActiveTargetProfile parent,
   ) async {
+    final pinnedCycleId = parent.targetCycleId?.trim();
+    if (pinnedCycleId != null && pinnedCycleId.isNotEmpty) {
+      return _hydrateWithCycleDayparts(parent, pinnedCycleId);
+    }
     final cycles = await _db.query(
       'target_cycles',
       columns: const <String>['cycle_id'],
@@ -102,6 +106,13 @@ class TargetProfileDao {
     if (cycles.isEmpty) return parent;
     final cycleId = cycles.single['cycle_id'] as String?;
     if (cycleId == null || cycleId.isEmpty) return parent;
+    return _hydrateWithCycleDayparts(parent, cycleId);
+  }
+
+  Future<ActiveTargetProfile> _hydrateWithCycleDayparts(
+    ActiveTargetProfile parent,
+    String cycleId,
+  ) async {
     final rows = await _db.query(
       'target_cycle_dayparts',
       where: 'cycle_id = ?',
@@ -116,10 +127,8 @@ class TargetProfileDao {
           daypartTargetCPLH: (row['target_cplh']! as num).toDouble(),
           daypartTargetSPLH: (row['target_splh']! as num).toDouble(),
           daypartTargetPPA: (row['target_ppa']! as num).toDouble(),
-          daypartOpzFloorCPLH:
-              (row['opz_floor_cplh']! as num).toDouble(),
-          daypartOpzCeilingCPLH:
-              (row['opz_ceiling_cplh']! as num).toDouble(),
+          daypartOpzFloorCPLH: (row['opz_floor_cplh']! as num).toDouble(),
+          daypartOpzCeilingCPLH: (row['opz_ceiling_cplh']! as num).toDouble(),
           verdict: row['verdict'] as String?,
           verdictReason: row['verdict_reason'] as String?,
         ),

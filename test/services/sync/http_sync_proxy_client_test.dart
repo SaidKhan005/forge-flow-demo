@@ -750,6 +750,8 @@ void main() {
     expect(cycles.cycles.single.cycle.daypartFor('legacy_lunch'), isNull);
     expect(cycles.nextCursor, 'cycle-next');
     expect(profiles.profiles.single.profile.targetProfileId, 'profile-1');
+    expect(profiles.profiles.single.profile.targetCycleId, 'cycle-1');
+    expect(profiles.profiles.single.profile.targetProfileVersionId, 'tpv-1');
     expect(
       profiles.profiles.single.profile
           .daypartFor('afternoon_tea')!

@@ -17,6 +17,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/weekly_plan_snapshot.dart';
@@ -72,41 +73,38 @@ void main() {
       expect(stored.metadata!['origin'], 'mock');
     });
 
-    test(
-      'upsertRow re-resolves on server_id when role_name changes',
-      () async {
-        final db = await SqliteDatabase.instance.database;
-        final dao = WageRoleRowDao(db);
-        const serverId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2';
-        await dao.upsertRow(
-          const WageRoleRow(
-            serverId: serverId,
-            restaurantId: 'rest-h5',
-            roleName: 'Server',
-            laborBucket: 'foh',
-            hourlyRate: 16.5,
-            weightedHours: 30.0,
-          ),
-        );
-        // Same server row, role_name renamed by an operator. Without
-        // server_id matching, this would insert a duplicate.
-        await dao.upsertRow(
-          const WageRoleRow(
-            serverId: serverId,
-            restaurantId: 'rest-h5',
-            roleName: 'Server (FOH)',
-            laborBucket: 'foh',
-            hourlyRate: 17.0,
-            weightedHours: 30.0,
-          ),
-        );
+    test('upsertRow re-resolves on server_id when role_name changes', () async {
+      final db = await SqliteDatabase.instance.database;
+      final dao = WageRoleRowDao(db);
+      const serverId = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb2';
+      await dao.upsertRow(
+        const WageRoleRow(
+          serverId: serverId,
+          restaurantId: 'rest-h5',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 16.5,
+          weightedHours: 30.0,
+        ),
+      );
+      // Same server row, role_name renamed by an operator. Without
+      // server_id matching, this would insert a duplicate.
+      await dao.upsertRow(
+        const WageRoleRow(
+          serverId: serverId,
+          restaurantId: 'rest-h5',
+          roleName: 'Server (FOH)',
+          laborBucket: 'foh',
+          hourlyRate: 17.0,
+          weightedHours: 30.0,
+        ),
+      );
 
-        final fetched = await dao.getRows('rest-h5');
-        expect(fetched, hasLength(1));
-        expect(fetched.single.roleName, 'Server (FOH)');
-        expect(fetched.single.hourlyRate, 17.0);
-      },
-    );
+      final fetched = await dao.getRows('rest-h5');
+      expect(fetched, hasLength(1));
+      expect(fetched.single.roleName, 'Server (FOH)');
+      expect(fetched.single.hourlyRate, 17.0);
+    });
   });
 
   group('Theme H#6 — weekly_plan snapshot lifecycle fields', () {
@@ -167,8 +165,7 @@ void main() {
         requiredBohHours: 60,
         theoreticalFohLaborDollars: 1440.0,
         theoreticalBohLaborDollars: 1200.0,
-        coversSource:
-            ForecastDemandSource.appDerivedFromHistoricalAverage,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
         salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
         generatedAt: '2026-05-06T12:00:00.000Z',
         lockedAt: '2026-05-06T12:01:00.000Z',
@@ -206,6 +203,13 @@ void main() {
           servicePeriodKey: 'lunch',
           coversSource: ServicePeriodCoversSource.vendor,
           wageSource: ServicePeriodWageSource.vendorPerEmployee,
+          coversSourceSource: const DataAccuracySettingSource(
+            scopeType: 'business',
+            sourceKind: 'scoped_override',
+            scopeId: 'business-1',
+            settingId: 'setting-1',
+            overrideId: 'override-1',
+          ),
           effectiveAtBusinessDate: '2026-05-04',
           createdAt: DateTime.utc(2026, 5, 6, 12),
           updatedAt: DateTime.utc(2026, 5, 6, 12, 1),
@@ -216,8 +220,7 @@ void main() {
           operatorId: 'op-1',
           locationId: 'loc-1',
           servicePeriodKey: 'dinner',
-          coversSource:
-              ServicePeriodCoversSource.reservationPlusWalkin,
+          coversSource: ServicePeriodCoversSource.reservationPlusWalkin,
           wageSource: ServicePeriodWageSource.manualMix,
           effectiveAtBusinessDate: '2026-05-04',
           createdAt: DateTime.utc(2026, 5, 6, 12),
@@ -240,6 +243,11 @@ void main() {
       );
       expect(dinner.wageSource, ServicePeriodWageSource.manualMix);
       expect(dinner.effectiveAtBusinessDate, '2026-05-04');
+      final lunch = fetched.firstWhere(
+        (row) => row.servicePeriodKey == 'lunch',
+      );
+      expect(lunch.coversSourceSource?.label, 'Business');
+      expect(lunch.coversSourceSource?.scopeId, 'business-1');
     });
   });
 
@@ -273,4 +281,3 @@ void main() {
     });
   });
 }
-

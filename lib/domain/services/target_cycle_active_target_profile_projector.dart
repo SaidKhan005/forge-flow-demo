@@ -23,12 +23,14 @@ class TargetCycleActiveTargetProfileProjector {
     final fohPct = (cycle.targetCPLH > 0 && cycle.targetPPA > 0)
         ? cycle.fohWage / (cycle.targetCPLH * cycle.targetPPA) * 100
         : 0.0;
-    final bohPct =
-        cycle.targetSPLH > 0 ? cycle.bohWage / cycle.targetSPLH * 100 : 0.0;
+    final bohPct = cycle.targetSPLH > 0
+        ? cycle.bohWage / cycle.targetSPLH * 100
+        : 0.0;
 
     return ActiveTargetProfile(
       targetProfileId: '${cycle.restaurantId}_active',
       restaurantId: cycle.restaurantId,
+      targetCycleId: cycle.cycleId,
       sourceType: _sourceType(cycle.source),
       targetCPLH: cycle.targetCPLH,
       targetSPLH: cycle.targetSPLH,
@@ -45,8 +47,8 @@ class TargetCycleActiveTargetProfileProjector {
   }
 
   static String _sourceType(TargetCycleSource source) => switch (source) {
-        TargetCycleSource.recommended => 'cycle_recommended',
-        TargetCycleSource.managerOverride => 'cycle_manager_override',
-        TargetCycleSource.adminReplacement => 'cycle_admin_replacement',
-      };
+    TargetCycleSource.recommended => 'cycle_recommended',
+    TargetCycleSource.managerOverride => 'cycle_manager_override',
+    TargetCycleSource.adminReplacement => 'cycle_admin_replacement',
+  };
 }

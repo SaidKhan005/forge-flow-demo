@@ -158,7 +158,7 @@ class SqliteDatabase {
   Future<Database>? _initInFlight;
 
   /// Current schema version.
-  static const int schemaVersion = 37;
+  static const int schemaVersion = 38;
 
   Future<Database> get database {
     final existing = _db;
@@ -359,9 +359,7 @@ class SqliteDatabase {
       // Deterministic legacy-compat: 19:45 → Dinner in progress (Dinner
       // applies every weekday) so pre-existing date-only override tests
       // stay green and deterministic regardless of the real wall clock.
-      return seedTimeOpenPeriodResolution(
-        localNow: DateTime(y, mo, d, 19, 45),
-      );
+      return seedTimeOpenPeriodResolution(localNow: DateTime(y, mo, d, 19, 45));
     }
     if (coldBoot) {
       // Production / demo device fresh launch — the real clock decides
@@ -461,10 +459,7 @@ class SqliteDatabase {
     // true Saturday 09:25 (before Lunch opens) yields no open shift.
     final replay = MockIntegrationReplaySeed.generateForDate(
       coldBootBusinessDate,
-      open: _openPeriodResolutionForSeed(
-        coldBootBusinessDate,
-        coldBoot: true,
-      ),
+      open: _openPeriodResolutionForSeed(coldBootBusinessDate, coldBoot: true),
     );
     await _seedDemoActiveTargetProfile(
       db,
@@ -498,10 +493,7 @@ class SqliteDatabase {
     // previously had zero notifications; this + the sample inbox below
     // give a populated bell on first launch.
     await _seedDemoVarianceBreachNotification(db);
-    await _backfillLockedTargets(
-      db,
-      businessDate: coldBootBusinessDate,
-    );
+    await _backfillLockedTargets(db, businessDate: coldBootBusinessDate);
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
     // FU-mobile-cold-boot-shift-stale-state: seed the locked weekly plan
@@ -690,6 +682,9 @@ class SqliteDatabase {
     }
     if (oldV < 37) {
       await _migrateToV37(db);
+    }
+    if (oldV < 38) {
+      await _migrateToV38(db);
     }
   }
 
@@ -892,10 +887,7 @@ class SqliteDatabase {
     // this seeder is a no-op when one already exists for the week-in-force,
     // so cross-week advances and post-reseedDemo bootstraps both produce
     // a snapshot without rewriting same-week locked truth.
-    await _seedWeeklyPlanSnapshotFromReplay(
-      db,
-      businessDate: isoDate,
-    );
+    await _seedWeeklyPlanSnapshotFromReplay(db, businessDate: isoDate);
     // Demo-data — per-location operational envelope. Same single seam
     // the cold-boot path uses; runs LAST so it reads the fully-seeded
     // cycles + shift set + the existing Downtown in-force snapshot.

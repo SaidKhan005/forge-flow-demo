@@ -399,7 +399,7 @@ parity work is the upstream gate.
 
 | # | Brain-dump ask | Status | Citation / Next-wave slot |
 |---|---|---|---|
-| MO-6 | "Covers setup on mobile — manual entry when vendors don't support; first item on setup tab" | ✅ DONE | Wave 2 MO-2 (PR #676) shipped the manual covers entry form on Settings → Setup as the first item, with primary-path framing for vendors that don't expose covers (Square / Clover) vs manual-override framing for vendors that do (Toast / Aloha / Lightspeed K-Series / Oracle MICROS Simphony / Revel). Writes land in a new mobile-side SQLite `manual_cover_entries` table (v34 migration). <br> Phase 2 walkthrough 2026-05-14: 📱 MOBILE-DEFERRED — mobile covers manual entry on Settings → Setup + manual_cover_entries SQLite v34 migration per Wave 2 MO-2 PR #676; deferred to mobile walkthrough lane. |
+| MO-6 | "Covers setup on mobile — manual entry when vendors don't support; first item on setup tab" | ✅ DONE | Wave 2 MO-2 (PR #676) shipped the manual covers entry form on Settings → Setup as the first item, with primary-path framing for vendors that don't expose covers (Square / Clover) vs manual-override framing for vendors that do (Toast / Aloha / Lightspeed K-Series / Oracle MICROS Simphony / Revel). Supersession note: the PR #1020-era parity cleanup made signed-in production saves write canonical server truth through the proxy; mobile SQLite is now the recent-entry mirror, not the source of truth. <br> Phase 2 walkthrough 2026-05-14: 📱 MOBILE-DEFERRED — mobile covers manual entry on Settings → Setup + manual_cover_entries SQLite v34 migration per Wave 2 MO-2 PR #676; deferred to mobile walkthrough lane. |
 
 ### 7) Integrations tab
 

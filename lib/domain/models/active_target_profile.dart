@@ -55,15 +55,15 @@ class ActiveTargetProfileDaypart {
   });
 
   Map<String, dynamic> toMap() => {
-        'service_period_id': servicePeriodId,
-        'daypart_target_cplh': daypartTargetCPLH,
-        'daypart_target_splh': daypartTargetSPLH,
-        'daypart_target_ppa': daypartTargetPPA,
-        'daypart_opz_floor_cplh': daypartOpzFloorCPLH,
-        'daypart_opz_ceiling_cplh': daypartOpzCeilingCPLH,
-        'verdict': verdict,
-        'verdict_reason': verdictReason,
-      };
+    'service_period_id': servicePeriodId,
+    'daypart_target_cplh': daypartTargetCPLH,
+    'daypart_target_splh': daypartTargetSPLH,
+    'daypart_target_ppa': daypartTargetPPA,
+    'daypart_opz_floor_cplh': daypartOpzFloorCPLH,
+    'daypart_opz_ceiling_cplh': daypartOpzCeilingCPLH,
+    'verdict': verdict,
+    'verdict_reason': verdictReason,
+  };
 
   factory ActiveTargetProfileDaypart.fromMap(Map<String, dynamic> m) =>
       ActiveTargetProfileDaypart(
@@ -72,8 +72,8 @@ class ActiveTargetProfileDaypart {
         daypartTargetSPLH: (m['daypart_target_splh'] as num).toDouble(),
         daypartTargetPPA: (m['daypart_target_ppa'] as num).toDouble(),
         daypartOpzFloorCPLH: (m['daypart_opz_floor_cplh'] as num).toDouble(),
-        daypartOpzCeilingCPLH:
-            (m['daypart_opz_ceiling_cplh'] as num).toDouble(),
+        daypartOpzCeilingCPLH: (m['daypart_opz_ceiling_cplh'] as num)
+            .toDouble(),
         verdict: m['verdict'] as String?,
         verdictReason: m['verdict_reason'] as String?,
       );
@@ -87,23 +87,23 @@ class ActiveTargetProfileDaypart {
     double? daypartOpzCeilingCPLH,
     String? verdict,
     String? verdictReason,
-  }) =>
-      ActiveTargetProfileDaypart(
-        servicePeriodId: servicePeriodId ?? this.servicePeriodId,
-        daypartTargetCPLH: daypartTargetCPLH ?? this.daypartTargetCPLH,
-        daypartTargetSPLH: daypartTargetSPLH ?? this.daypartTargetSPLH,
-        daypartTargetPPA: daypartTargetPPA ?? this.daypartTargetPPA,
-        daypartOpzFloorCPLH: daypartOpzFloorCPLH ?? this.daypartOpzFloorCPLH,
-        daypartOpzCeilingCPLH:
-            daypartOpzCeilingCPLH ?? this.daypartOpzCeilingCPLH,
-        verdict: verdict ?? this.verdict,
-        verdictReason: verdictReason ?? this.verdictReason,
-      );
+  }) => ActiveTargetProfileDaypart(
+    servicePeriodId: servicePeriodId ?? this.servicePeriodId,
+    daypartTargetCPLH: daypartTargetCPLH ?? this.daypartTargetCPLH,
+    daypartTargetSPLH: daypartTargetSPLH ?? this.daypartTargetSPLH,
+    daypartTargetPPA: daypartTargetPPA ?? this.daypartTargetPPA,
+    daypartOpzFloorCPLH: daypartOpzFloorCPLH ?? this.daypartOpzFloorCPLH,
+    daypartOpzCeilingCPLH: daypartOpzCeilingCPLH ?? this.daypartOpzCeilingCPLH,
+    verdict: verdict ?? this.verdict,
+    verdictReason: verdictReason ?? this.verdictReason,
+  );
 }
 
 class ActiveTargetProfile {
   final String targetProfileId;
   final String restaurantId;
+  final String? targetCycleId;
+  final String? targetProfileVersionId;
   final String sourceType; // e.g. cycle_recommended / cycle_manager_override
   final double targetCPLH;
   final double targetSPLH;
@@ -126,6 +126,8 @@ class ActiveTargetProfile {
   const ActiveTargetProfile({
     required this.targetProfileId,
     required this.restaurantId,
+    this.targetCycleId,
+    this.targetProfileVersionId,
     required this.sourceType,
     required this.targetCPLH,
     required this.targetSPLH,
@@ -181,10 +183,9 @@ class ActiveTargetProfile {
   double? daypartTheoreticalLaborPctFor(String servicePeriodId) {
     final row = daypartFor(servicePeriodId);
     if (row == null) return null;
-    final fohPct =
-        (row.daypartTargetCPLH > 0 && row.daypartTargetPPA > 0)
-            ? fohWage / (row.daypartTargetCPLH * row.daypartTargetPPA) * 100
-            : 0.0;
+    final fohPct = (row.daypartTargetCPLH > 0 && row.daypartTargetPPA > 0)
+        ? fohWage / (row.daypartTargetCPLH * row.daypartTargetPPA) * 100
+        : 0.0;
     final bohPct = row.daypartTargetSPLH > 0
         ? bohWage / row.daypartTargetSPLH * 100
         : 0.0;
@@ -219,6 +220,8 @@ class ActiveTargetProfile {
     return ActiveTargetProfile(
       targetProfileId: targetProfileId ?? '${restaurantId}_active',
       restaurantId: restaurantId,
+      targetCycleId: null,
+      targetProfileVersionId: null,
       sourceType: sourceType,
       targetCPLH: targetCPLH,
       targetSPLH: targetSPLH,
@@ -236,46 +239,49 @@ class ActiveTargetProfile {
   }
 
   Map<String, dynamic> toMap() => {
-        'target_profile_id': targetProfileId,
-        'restaurant_id': restaurantId,
-        'source_type': sourceType,
-        'target_cplh': targetCPLH,
-        'target_splh': targetSPLH,
-        'target_ppa': targetPPA,
-        'foh_wage': fohWage,
-        'boh_wage': bohWage,
-        'opz_floor_cplh': opzFloorCPLH,
-        'opz_ceiling_cplh': opzCeilingCPLH,
-        'theoretical_foh_labor_pct': theoreticalFohLaborPct,
-        'theoretical_boh_labor_pct': theoreticalBohLaborPct,
-        'theoretical_labor_pct': theoreticalLaborPct,
-        'built_at': builtAt,
-        // Per-period rows are not persisted on the parent profile row
-        // (they live in `active_target_profile_dayparts` once Slice 1
-        // wires the repository). [toMap] / [fromMap] remain on the
-        // parent row only for backward compatibility with the legacy
-        // SQLite shape.
-      };
+    'target_profile_id': targetProfileId,
+    'restaurant_id': restaurantId,
+    'target_cycle_id': targetCycleId,
+    'target_profile_version_id': targetProfileVersionId,
+    'source_type': sourceType,
+    'target_cplh': targetCPLH,
+    'target_splh': targetSPLH,
+    'target_ppa': targetPPA,
+    'foh_wage': fohWage,
+    'boh_wage': bohWage,
+    'opz_floor_cplh': opzFloorCPLH,
+    'opz_ceiling_cplh': opzCeilingCPLH,
+    'theoretical_foh_labor_pct': theoreticalFohLaborPct,
+    'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+    'theoretical_labor_pct': theoreticalLaborPct,
+    'built_at': builtAt,
+    // Per-period rows are not persisted on the parent profile row
+    // (they live in `active_target_profile_dayparts` once Slice 1
+    // wires the repository). [toMap] / [fromMap] remain on the
+    // parent row only for backward compatibility with the legacy
+    // SQLite shape.
+  };
 
-  factory ActiveTargetProfile.fromMap(Map<String, dynamic> m) =>
-      ActiveTargetProfile(
-        targetProfileId: m['target_profile_id'] as String,
-        restaurantId: m['restaurant_id'] as String,
-        sourceType: m['source_type'] as String,
-        targetCPLH: (m['target_cplh'] as num).toDouble(),
-        targetSPLH: (m['target_splh'] as num).toDouble(),
-        targetPPA: (m['target_ppa'] as num).toDouble(),
-        fohWage: (m['foh_wage'] as num).toDouble(),
-        bohWage: (m['boh_wage'] as num).toDouble(),
-        opzFloorCPLH: (m['opz_floor_cplh'] as num).toDouble(),
-        opzCeilingCPLH: (m['opz_ceiling_cplh'] as num).toDouble(),
-        theoreticalFohLaborPct:
-            (m['theoretical_foh_labor_pct'] as num).toDouble(),
-        theoreticalBohLaborPct:
-            (m['theoretical_boh_labor_pct'] as num).toDouble(),
-        theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
-        builtAt: m['built_at'] as String,
-      );
+  factory ActiveTargetProfile.fromMap(
+    Map<String, dynamic> m,
+  ) => ActiveTargetProfile(
+    targetProfileId: m['target_profile_id'] as String,
+    restaurantId: m['restaurant_id'] as String,
+    targetCycleId: m['target_cycle_id'] as String?,
+    targetProfileVersionId: m['target_profile_version_id'] as String?,
+    sourceType: m['source_type'] as String,
+    targetCPLH: (m['target_cplh'] as num).toDouble(),
+    targetSPLH: (m['target_splh'] as num).toDouble(),
+    targetPPA: (m['target_ppa'] as num).toDouble(),
+    fohWage: (m['foh_wage'] as num).toDouble(),
+    bohWage: (m['boh_wage'] as num).toDouble(),
+    opzFloorCPLH: (m['opz_floor_cplh'] as num).toDouble(),
+    opzCeilingCPLH: (m['opz_ceiling_cplh'] as num).toDouble(),
+    theoreticalFohLaborPct: (m['theoretical_foh_labor_pct'] as num).toDouble(),
+    theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num).toDouble(),
+    theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
+    builtAt: m['built_at'] as String,
+  );
 
   /// Returns a copy of this profile with the provided per-period rows
   /// replacing the existing list. Used by the cycle write path's
@@ -284,6 +290,8 @@ class ActiveTargetProfile {
       ActiveTargetProfile(
         targetProfileId: targetProfileId,
         restaurantId: restaurantId,
+        targetCycleId: targetCycleId,
+        targetProfileVersionId: targetProfileVersionId,
         sourceType: sourceType,
         targetCPLH: targetCPLH,
         targetSPLH: targetSPLH,
@@ -314,12 +322,12 @@ class ActiveTargetProfile {
   /// profile's own rate inputs. Independent of demand volume
   /// (covers cancel out in the model-hour ratio).
   double get targetBlendedWage => computeTargetBlendedWage(
-        targetCPLH: targetCPLH,
-        targetSPLH: targetSPLH,
-        targetPPA: targetPPA,
-        fohWage: fohWage,
-        bohWage: bohWage,
-      );
+    targetCPLH: targetCPLH,
+    targetSPLH: targetSPLH,
+    targetPPA: targetPPA,
+    fohWage: fohWage,
+    bohWage: bohWage,
+  );
 
   /// 7.55q.3: cover-independent benchmark-target blended wage formula.
   ///
@@ -351,7 +359,6 @@ class ActiveTargetProfile {
     final bohHourBasis = targetPPA / targetSPLH;
     final totalHourBasis = fohHourBasis + bohHourBasis;
     if (totalHourBasis <= 0) return 0.0;
-    return (fohHourBasis * fohWage + bohHourBasis * bohWage) /
-        totalHourBasis;
+    return (fohHourBasis * fohWage + bohHourBasis * bohWage) / totalHourBasis;
   }
 }
