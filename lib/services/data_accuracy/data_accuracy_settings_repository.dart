@@ -40,9 +40,9 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
   // the alias `covers_source_per_service_period`. "Effective" = the
   // most recent row at-or-before today's UTC date per service period
   // (the same at-or-before lookup the closed-shift aggregator uses).
-  // `reservation_plus_walkin` is admitted by the keyed table but has no
-  // operator-facing 3-way slot; the model's parser skips it (falls back
-  // to the vendor default) so it does not need filtering here.
+  // `reservation_plus_walkin` is admitted by the keyed table and stays
+  // lossless in the model so Operator Web, Admin, mobile, and closed-shift
+  // aggregation agree on the same effective source.
   static const String _perPeriodSubquery =
       "coalesce((select jsonb_object_agg(k.service_period_key, k.covers_source) "
       'from (select distinct on (sp.service_period_key) '
@@ -149,8 +149,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
           'updated_by': actorUserId,
         },
       );
-      final effectiveDate =
-          effectiveAtBusinessDateIso ?? _todayUtcIso();
+      final effectiveDate = effectiveAtBusinessDateIso ?? _todayUtcIso();
       for (final entry in settings.coversSourcePerServicePeriod.entries) {
         await _upsertKeyedCoversSource(
           exec,

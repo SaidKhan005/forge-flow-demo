@@ -14,6 +14,8 @@
 
 import '../domain/constants/app_defaults.dart';
 import '../domain/canonical_day_order.dart';
+import '../domain/models/service_period_definition.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/shift_record.dart';
 import '../services/closed_timing_label_resolver.dart';
@@ -71,13 +73,21 @@ class DaypartPatternSummaryBuilder {
     List<ShiftRecord> shifts, {
     int minSampleThreshold = 1,
     ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
   }) {
+    final configuredDefinitions = servicePeriodDefinitions?.isNotEmpty == true
+        ? servicePeriodDefinitions
+        : null;
+
     // ── 1. Group closed shifts by recurring bucket ────────────────────────
     final buckets = <String, List<ShiftRecord>>{};
     for (final shift in shifts) {
       if (!shift.isClosed) continue;
-      final bucketKey =
-          timingLabelResolver?.bucketKeyFor(shift) ?? shift.daypart;
+      final bucketKey = _bucketKeyFor(
+        shift,
+        timingLabelResolver: timingLabelResolver,
+        servicePeriodDefinitions: configuredDefinitions,
+      );
       final key = '${shift.restaurantId}|${shift.dayLabel}|$bucketKey';
       (buckets[key] ??= []).add(shift);
     }
@@ -93,8 +103,21 @@ class DaypartPatternSummaryBuilder {
         _buildSummary(
           restaurantId: first.restaurantId,
           dayLabel: first.dayLabel,
-          daypart: timingLabelResolver?.bucketKeyFor(first) ?? first.daypart,
-          servicePeriodLabel: timingLabelResolver?.labelFor(first),
+          daypart: _bucketKeyFor(
+            first,
+            timingLabelResolver: timingLabelResolver,
+            servicePeriodDefinitions: configuredDefinitions,
+          ),
+          servicePeriodLabel: _servicePeriodLabelFor(
+            first,
+            timingLabelResolver: timingLabelResolver,
+            servicePeriodDefinitions: configuredDefinitions,
+          ),
+          servicePeriodSortOrder: _servicePeriodSortOrderFor(
+            first,
+            timingLabelResolver: timingLabelResolver,
+            servicePeriodDefinitions: configuredDefinitions,
+          ),
           shifts: group,
         ),
       );
@@ -106,8 +129,10 @@ class DaypartPatternSummaryBuilder {
       final dayB = CanonicalDayOrder.index[b.dayLabel] ?? 99;
       if (dayA != dayB) return dayA.compareTo(dayB);
 
-      final dpA = _servicePeriodOrder[a.daypart] ?? 99;
-      final dpB = _servicePeriodOrder[b.daypart] ?? 99;
+      final dpA =
+          a.servicePeriodSortOrder ?? _servicePeriodOrder[a.daypart] ?? 99;
+      final dpB =
+          b.servicePeriodSortOrder ?? _servicePeriodOrder[b.daypart] ?? 99;
       if (dpA != dpB) return dpA.compareTo(dpB);
 
       // Final tiebreak on daypart string for unknown IDs.
@@ -124,6 +149,7 @@ class DaypartPatternSummaryBuilder {
     required String dayLabel,
     required String daypart,
     String? servicePeriodLabel,
+    int? servicePeriodSortOrder,
     required List<ShiftRecord> shifts,
   }) {
     final count = shifts.length;
@@ -211,6 +237,7 @@ class DaypartPatternSummaryBuilder {
       dayLabel: dayLabel,
       daypart: daypart,
       servicePeriodLabel: servicePeriodLabel,
+      servicePeriodSortOrder: servicePeriodSortOrder,
       closedShiftCount: count,
       benchmarkCount: benchmarkCount,
       leakCount: leakCount,
@@ -231,6 +258,63 @@ class DaypartPatternSummaryBuilder {
       avgVariancePts: count > 0 ? sumVariancePts / count : 0,
       exemplarSourceShiftIds: exemplarIds,
     );
+  }
+
+  static String _bucketKeyFor(
+    ShiftRecord shift, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+  }) {
+    if (timingLabelResolver?.hasSavedTimingIdentity(shift) ?? false) {
+      return timingLabelResolver!.bucketKeyFor(shift);
+    }
+    final servicePeriodKey = shift.servicePeriodKey?.trim();
+    if (servicePeriodDefinitions != null &&
+        servicePeriodKey != null &&
+        servicePeriodKey.isNotEmpty) {
+      return servicePeriodKey;
+    }
+    return shift.daypart;
+  }
+
+  static String? _servicePeriodLabelFor(
+    ShiftRecord shift, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+  }) {
+    final snapshot = timingLabelResolver?.snapshotFor(shift);
+    if (snapshot != null) return snapshot.label;
+
+    final servicePeriodKey = shift.servicePeriodKey?.trim();
+    if (servicePeriodDefinitions != null &&
+        servicePeriodKey != null &&
+        servicePeriodKey.isNotEmpty) {
+      return ServicePeriodDefinitionResolver.labelForId(
+        servicePeriodDefinitions,
+        servicePeriodKey,
+      );
+    }
+    return null;
+  }
+
+  static int? _servicePeriodSortOrderFor(
+    ShiftRecord shift, {
+    ClosedTimingLabelResolver? timingLabelResolver,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
+  }) {
+    final savedSortOrder = timingLabelResolver?.sortOrderFor(shift);
+    if (savedSortOrder != null) return savedSortOrder;
+
+    final servicePeriodKey = shift.servicePeriodKey?.trim();
+    if (servicePeriodDefinitions != null &&
+        servicePeriodKey != null &&
+        servicePeriodKey.isNotEmpty) {
+      return ServicePeriodDefinitionResolver.sortIndex(
+        servicePeriodDefinitions,
+        servicePeriodKey,
+      );
+    }
+    return null;
   }
 
   /// Returns the most common lever ID in [freq], using [tieBreakOrder]

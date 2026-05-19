@@ -166,6 +166,8 @@ void main() {
     final profile = await SqliteTargetProfileRepository.instance
         .getActiveTargetProfile(rid);
     expect(profile!.targetProfileId, 'profile-sync-1');
+    expect(profile.targetCycleId, 'cycle-sync-1');
+    expect(profile.targetProfileVersionId, 'tpv-sync-1');
     expect(profile.sourceType, 'cycle_manager_override');
     expect(
       profile.daypartFor('afternoon_tea')!.daypartTargetCPLH,
@@ -197,6 +199,70 @@ void main() {
     );
     expect(selectedCursor!.watermarkValue, 'selected-cursor-1');
     expect(cycleCursor!.watermarkValue, 'cycle-cursor-1');
+  });
+
+  test('active profile hydrates from its own synced cycle, not the latest '
+      'active cycle', () async {
+    const rid = 'rest_star_target_profile_pinned_cycle';
+    await _clearStarTargetRows(rid);
+
+    final client = _StarTargetSyncClient()
+      ..cyclePages.add(
+        TargetCycleSyncPage(
+          cycles: <TargetCycleSyncRow>[
+            TargetCycleSyncRow(
+              operatorId: _opId,
+              locationId: _locId,
+              cycle: _cycle(rid),
+            ),
+            TargetCycleSyncRow(
+              operatorId: _opId,
+              locationId: _locId,
+              cycle: _newerCycle(rid),
+            ),
+          ],
+          nextCursor: null,
+        ),
+      )
+      ..profilePages.add(
+        ActiveTargetProfileSyncPage(
+          profiles: <ActiveTargetProfileSyncRow>[
+            ActiveTargetProfileSyncRow(
+              operatorId: _opId,
+              locationId: _locId,
+              targetCycleId: 'cycle-sync-1',
+              targetProfileVersionId: 'tpv-sync-1',
+              profile: _profile(rid),
+            ),
+          ],
+          nextCursor: null,
+        ),
+      );
+
+    final sync = PostgresShiftRecordToMobileSync(
+      client: client,
+      shiftRepository: SqliteShiftRecordRepository.instance,
+      watermarkDao: watermarkDao,
+    );
+    final result = await sync.sync(
+      operatorId: _opId,
+      locationId: _locId,
+      restaurantId: rid,
+    );
+
+    expect(result.starTargetMirrors.targetCycles.rowsWritten, 2);
+    expect(result.starTargetMirrors.activeTargetProfiles.rowsWritten, 1);
+
+    final activeCycle = await SqliteTargetCycleRepository.instance
+        .getActiveCycle(rid);
+    expect(activeCycle!.cycleId, 'cycle-sync-newer');
+    expect(activeCycle.daypartFor('newer_only')!.targetPPA, 99);
+
+    final profile = await SqliteTargetProfileRepository.instance
+        .getActiveTargetProfile(rid);
+    expect(profile!.targetCycleId, 'cycle-sync-1');
+    expect(profile.daypartFor('supper_rush')!.daypartTargetPPA, 48);
+    expect(profile.daypartFor('newer_only'), isNull);
   });
 
   test(
@@ -348,9 +414,40 @@ TargetCycle _cycle(String restaurantId) => TargetCycle(
   ],
 );
 
+TargetCycle _newerCycle(String restaurantId) => TargetCycle(
+  cycleId: 'cycle-sync-newer',
+  restaurantId: restaurantId,
+  source: TargetCycleSource.recommended,
+  effectiveStart: '2026-07-01',
+  effectiveEnd: '2026-08-30',
+  calibrationWindowStart: '2026-05-01',
+  calibrationWindowEnd: '2026-06-30',
+  targetCPLH: 9.9,
+  targetSPLH: 222,
+  targetPPA: 99,
+  fohWage: 19,
+  bohWage: 24,
+  opzFloorCPLH: 8,
+  opzCeilingCPLH: 12,
+  createdAt: '2026-07-01T12:00:00Z',
+  dayparts: const <TargetCycleDaypart>[
+    TargetCycleDaypart(
+      servicePeriodId: 'newer_only',
+      targetCPLH: 9.9,
+      targetSPLH: 222,
+      targetPPA: 99,
+      opzFloorCPLH: 8,
+      opzCeilingCPLH: 12,
+      coverCount: 55,
+    ),
+  ],
+);
+
 ActiveTargetProfile _profile(String restaurantId) => ActiveTargetProfile(
   targetProfileId: 'profile-sync-1',
   restaurantId: restaurantId,
+  targetCycleId: 'cycle-sync-1',
+  targetProfileVersionId: 'tpv-sync-1',
   sourceType: 'cycle_manager_override',
   targetCPLH: 5.2,
   targetSPLH: 181,

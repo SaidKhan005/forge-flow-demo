@@ -21,6 +21,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../auth/permission_key_metadata.dart';
 import '../../auth/permission_keys.dart';
 import '../../domain/hierarchy/org_unit_depth_rule.dart';
 import '../../domain/models/inheritance_tree_node.dart';
@@ -352,10 +353,7 @@ class _RolesHierarchySessionsAdminScreenState
     final parentById = <String, String?>{
       for (final unit in _orgUnits) unit.orgUnitId: unit.parentOrgUnitId,
     };
-    return OrgUnitDepthRule.depthFromChain(
-      orgUnitId,
-      (id) => parentById[id],
-    );
+    return OrgUnitDepthRule.depthFromChain(orgUnitId, (id) => parentById[id]);
   }
 
   Future<void> _onAddChildOrgUnit(OrgUnitAdminNode parent) async {
@@ -458,10 +456,8 @@ class _RolesHierarchySessionsAdminScreenState
     };
     final newName = await showDialog<String>(
       context: context,
-      builder: (_) => _RenameOrgUnitDialog(
-        node: node,
-        existingNames: existingNames,
-      ),
+      builder: (_) =>
+          _RenameOrgUnitDialog(node: node, existingNames: existingNames),
     );
     if (newName == null) return;
     final reason = await _promptAdminReason('Rename ${node.name}');
@@ -2219,7 +2215,10 @@ class _DeleteOrgUnitConfirmDialog extends StatelessWidget {
     return AlertDialog(
       key: const Key('admin_rhs_delete_org_unit_dialog'),
       backgroundColor: AppColors.backgroundSurface,
-      title: Text('Delete ${node.name}?', style: AdminButtonStyles.dialogTitleStyle),
+      title: Text(
+        'Delete ${node.name}?',
+        style: AdminButtonStyles.dialogTitleStyle,
+      ),
       content: SizedBox(
         width: 460,
         child: Text(
@@ -2709,6 +2708,7 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
   final Set<String> _selectedPermissionKeys = <String>{};
   String? _displayNameError;
   String? _roleKeyError;
+  String? _permissionsError;
   String? _reasonError;
 
   @override
@@ -2724,6 +2724,9 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
     final displayName = _displayNameController.text.trim();
     final roleKey = _roleKeyController.text.trim();
     final reason = _reasonController.text.trim();
+    final effectivePermissions = PermissionKeyMetadataCatalog.expandImplies(
+      _selectedPermissionKeys,
+    );
     setState(() {
       _displayNameError = displayName.isEmpty
           ? 'Choose a name for this role.'
@@ -2733,10 +2736,14 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
           : widget.existingRoleKeys.contains(roleKey)
           ? 'A role with this key already exists.'
           : null;
+      _permissionsError = effectivePermissions.isEmpty
+          ? 'Pick at least one permission for this role.'
+          : null;
       _reasonError = reason.isEmpty ? 'Add a reason before continuing.' : null;
     });
     if (_displayNameError != null ||
         _roleKeyError != null ||
+        _permissionsError != null ||
         _reasonError != null) {
       return;
     }
@@ -2745,7 +2752,7 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
         roleKey: roleKey,
         displayName: displayName,
         description: _descriptionController.text.trim(),
-        permissionKeys: _orderedSelectedPermissionKeys(_selectedPermissionKeys),
+        permissionKeys: _orderedSelectedPermissionKeys(effectivePermissions),
         adminReason: reason,
       ),
     );
@@ -2758,6 +2765,7 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
       } else {
         _selectedPermissionKeys.remove(permissionKey);
       }
+      _permissionsError = null;
     });
   }
 
@@ -2811,6 +2819,16 @@ class _CreateCustomRoleDialogState extends State<CreateCustomRoleDialog> {
                 onToggle: _togglePermission,
               ),
             ),
+            if (_permissionsError != null) ...<Widget>[
+              const SizedBox(height: 8),
+              Text(
+                _permissionsError!,
+                key: const Key(
+                  'admin_rhs_create_custom_role_permissions_error',
+                ),
+                style: AppTextStyles.body12(color: AppColors.negative),
+              ),
+            ],
             const SizedBox(height: 10),
             TextField(
               key: const Key('admin_rhs_create_custom_role_reason'),
@@ -3035,10 +3053,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 /// `_promptAdminReason` step after this dialog returns (matching the
 /// delete affordance flow), so this dialog only captures the new name.
 class _RenameOrgUnitDialog extends StatefulWidget {
-  const _RenameOrgUnitDialog({
-    required this.node,
-    required this.existingNames,
-  });
+  const _RenameOrgUnitDialog({required this.node, required this.existingNames});
 
   final OrgUnitAdminNode node;
 
@@ -3080,10 +3095,7 @@ class _RenameOrgUnitDialogState extends State<_RenameOrgUnitDialog> {
     return AlertDialog(
       key: const Key('admin_rhs_rename_org_unit_dialog'),
       backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Rename org unit',
-        style: AdminButtonStyles.dialogTitleStyle,
-      ),
+      title: Text('Rename org unit', style: AdminButtonStyles.dialogTitleStyle),
       content: SizedBox(
         width: 500,
         child: Column(

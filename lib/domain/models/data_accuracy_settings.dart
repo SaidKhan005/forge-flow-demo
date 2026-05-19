@@ -18,8 +18,8 @@
 /// [ForgeFlowPollingTierAssignment]).
 library;
 
-/// Allowed values for the per-daypart covers source toggle.
-enum CoversSource { vendor, forecast, manual }
+/// Allowed values for the per-service-period covers source toggle.
+enum CoversSource { vendor, forecast, manual, reservationPlusWalkin }
 
 extension CoversSourceWire on CoversSource {
   /// Wire encoding matches the SQL CHECK constraint values.
@@ -31,6 +31,8 @@ extension CoversSourceWire on CoversSource {
         return 'forecast';
       case CoversSource.manual:
         return 'manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'reservation_plus_walkin';
     }
   }
 
@@ -42,11 +44,14 @@ extension CoversSourceWire on CoversSource {
         return CoversSource.forecast;
       case 'manual':
         return CoversSource.manual;
+      case 'reservation_plus_walkin':
+        return CoversSource.reservationPlusWalkin;
       default:
         throw ArgumentError.value(
           value,
           'covers_source',
-          'must be one of vendor / forecast / manual',
+          'must be one of vendor / forecast / manual / '
+              'reservation_plus_walkin',
         );
     }
   }
@@ -370,9 +375,8 @@ class DataAccuracySettings {
       try {
         out[key] = CoversSourceWire.fromWire(value);
       } on ArgumentError {
-        // Keyed table admits `reservation_plus_walkin`, which the
-        // operator-facing 3-way enum has no slot for; skip it so the
-        // period falls back to the vendor default rather than crash.
+        // Unknown values fall through to the vendor default rather than
+        // crashing a whole settings load.
       }
     });
     return out;

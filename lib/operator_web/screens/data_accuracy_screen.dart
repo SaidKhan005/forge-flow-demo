@@ -743,7 +743,15 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   bool get _hasReservationConnection => _bundle?.reservationConnection != null;
 
-  bool get _showWalkInCard => !_posExposesCovers && _hasReservationConnection;
+  bool get _anyDaypartReservationPlusWalkin => _servicePeriods.any(
+    (p) =>
+        (_coversSourcePerPeriod[p.id] ?? kDefaultCoversSource) ==
+        CoversSource.reservationPlusWalkin,
+  );
+
+  bool get _showWalkInCard =>
+      _hasReservationConnection &&
+      (!_posExposesCovers || _anyDaypartReservationPlusWalkin);
 
   bool get _showHistoricalSeedCard => !_posExposesCovers;
 

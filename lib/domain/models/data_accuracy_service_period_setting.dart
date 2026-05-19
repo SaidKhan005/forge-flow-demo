@@ -21,6 +21,8 @@
 /// the contract's "Wage source resolution" section names.
 library;
 
+import 'data_accuracy_settings.dart';
+
 /// Operator-controlled covers-source preference per service period.
 enum ServicePeriodCoversSource {
   vendor,
@@ -120,6 +122,7 @@ class DataAccuracyServicePeriodSetting {
     required this.effectiveAtBusinessDate,
     required this.createdAt,
     required this.updatedAt,
+    this.coversSourceSource,
     this.updatedBy,
   });
 
@@ -129,6 +132,7 @@ class DataAccuracyServicePeriodSetting {
   final String servicePeriodKey;
   final ServicePeriodCoversSource coversSource;
   final ServicePeriodWageSource wageSource;
+  final DataAccuracySettingSource? coversSourceSource;
 
   /// ISO `YYYY-MM-DD` business-local date the row becomes effective.
   /// Repository lookup picks the most recent row at-or-before the
@@ -141,9 +145,7 @@ class DataAccuracyServicePeriodSetting {
 
   /// Project from a row produced by the PostgresExecutor (UUIDs cast
   /// to text in SELECT, business_date cast to text).
-  factory DataAccuracyServicePeriodSetting.fromRow(
-    Map<String, Object?> row,
-  ) {
+  factory DataAccuracyServicePeriodSetting.fromRow(Map<String, Object?> row) {
     final id = row['id'];
     final operatorId = row['operator_id'];
     final locationId = row['location_id'];
@@ -184,11 +186,31 @@ class DataAccuracyServicePeriodSetting {
       servicePeriodKey: servicePeriodKey,
       coversSource: ServicePeriodCoversSourceWire.fromWire(coversSource),
       wageSource: ServicePeriodWageSourceWire.fromWire(wageSource),
+      coversSourceSource: DataAccuracySettingSource.fromMap(
+        row['covers_source_source'],
+      ),
       effectiveAtBusinessDate: effectiveDate,
       createdAt: createdAt,
       updatedAt: updatedAt,
-      updatedBy:
-          updatedBy is String && updatedBy.isNotEmpty ? updatedBy : null,
+      updatedBy: updatedBy is String && updatedBy.isNotEmpty ? updatedBy : null,
+    );
+  }
+
+  DataAccuracyServicePeriodSetting copyWith({
+    DataAccuracySettingSource? coversSourceSource,
+  }) {
+    return DataAccuracyServicePeriodSetting(
+      id: id,
+      operatorId: operatorId,
+      locationId: locationId,
+      servicePeriodKey: servicePeriodKey,
+      coversSource: coversSource,
+      wageSource: wageSource,
+      coversSourceSource: coversSourceSource ?? this.coversSourceSource,
+      effectiveAtBusinessDate: effectiveAtBusinessDate,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      updatedBy: updatedBy,
     );
   }
 

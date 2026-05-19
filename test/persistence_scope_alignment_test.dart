@@ -92,8 +92,10 @@ void main() {
   group('C â€” seeded records carry restaurant scope', () {
     test('shift records have restaurantId == demo_restaurant_001', () async {
       final repo = SqliteShiftRecordRepository.instance;
-      final shifts =
-          await repo.getShiftsForWeek('demo_restaurant_001', '2026-W13');
+      final shifts = await repo.getShiftsForWeek(
+        'demo_restaurant_001',
+        '2026-W13',
+      );
       expect(shifts, isNotEmpty);
       for (final s in shifts) {
         expect(s.restaurantId, 'demo_restaurant_001');
@@ -111,8 +113,10 @@ void main() {
 
     test('scoped query returns nothing for unknown restaurant', () async {
       final repo = SqliteShiftRecordRepository.instance;
-      final shifts =
-          await repo.getShiftsForWeek('unknown_restaurant', '2026-W13');
+      final shifts = await repo.getShiftsForWeek(
+        'unknown_restaurant',
+        '2026-W13',
+      );
       expect(shifts, isEmpty);
     });
   });
@@ -135,8 +139,7 @@ void main() {
       final repo = SqliteBaselineSelectionRepository.instance;
       const demoId = 'demo_restaurant_001';
 
-      await repo.replaceSelectedRecordKeys(
-          demoId, {'2026-W12|Mon|lunch'});
+      await repo.replaceSelectedRecordKeys(demoId, {'2026-W12|Mon|lunch'});
 
       final otherKeys = await repo.getSelectedRecordKeys('other_restaurant');
       expect(otherKeys, isEmpty);
@@ -146,44 +149,51 @@ void main() {
   // â”€â”€ E: Import tracking persists fixture replay metadata â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('E â€” import tracking', () {
-    test('at least one import_runs record exists for demo restaurant',
-        () async {
-      final db = await SqliteDatabase.instance.database;
-      final rows = await db.query(
-        'import_runs',
-        where: 'restaurant_id = ?',
-        whereArgs: ['demo_restaurant_001'],
-      );
-      expect(rows, isNotEmpty);
-      expect(rows.first['mode'], 'mock_pos_labor_replay');
-      expect(rows.first['status'], 'completed');
-    });
+    test(
+      'at least one import_runs record exists for demo restaurant',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        final rows = await db.query(
+          'import_runs',
+          where: 'restaurant_id = ?',
+          whereArgs: ['demo_restaurant_001'],
+        );
+        expect(rows, isNotEmpty);
+        expect(rows.first['mode'], 'mock_pos_labor_replay');
+        expect(rows.first['status'], 'completed');
+      },
+    );
 
-    test('at least one raw_import_records row exists for that import run',
-        () async {
-      final db = await SqliteDatabase.instance.database;
-      final runs = await db.query(
-        'import_runs',
-        where: 'restaurant_id = ?',
-        whereArgs: ['demo_restaurant_001'],
-      );
-      expect(runs, isNotEmpty);
-      final runId = runs.first['import_run_id'] as String;
+    test(
+      'at least one raw_import_records row exists for that import run',
+      () async {
+        final db = await SqliteDatabase.instance.database;
+        final runs = await db.query(
+          'import_runs',
+          where: 'restaurant_id = ?',
+          whereArgs: ['demo_restaurant_001'],
+        );
+        expect(runs, isNotEmpty);
+        final runId = runs.first['import_run_id'] as String;
 
-      final records = await db.query(
-        'raw_import_records',
-        where: 'import_run_id = ?',
-        whereArgs: [runId],
-      );
-      expect(records, isNotEmpty);
-      expect(records.first['source_type'], 'mock_pos_labor_replay');
-      expect(records.first['status'], 'applied');
-    });
+        final records = await db.query(
+          'raw_import_records',
+          where: 'import_run_id = ?',
+          whereArgs: [runId],
+        );
+        expect(records, isNotEmpty);
+        expect(records.first['source_type'], 'mock_pos_labor_replay');
+        expect(records.first['status'], 'applied');
+      },
+    );
 
     test('import tracking repository can read watermarks', () async {
       final repo = SqliteImportTrackingRepository.instance;
-      final watermark =
-          await repo.getWatermark('demo_restaurant_001', 'fixture', 'last_run');
+      final watermark = await repo.getWatermark(
+        'demo_restaurant_001',
+        'fixture',
+        'last_run',
+      );
       // No watermark seeded yet, but query works
       expect(watermark, isNull);
     });
@@ -193,21 +203,21 @@ void main() {
 
   group('F â€” scope propagation through builders', () {
     ActiveTargetProfile profileFor(String restaurantId) => ActiveTargetProfile(
-          targetProfileId: '${restaurantId}_active',
-          restaurantId: restaurantId,
-          sourceType: 'cycle_recommended',
-          targetCPLH: 4.75,
-          targetSPLH: 185.0,
-          targetPPA: 43.5,
-          fohWage: 17.0,
-          bohWage: 22.0,
-          opzFloorCPLH: 3.6,
-          opzCeilingCPLH: 5.9,
-          theoreticalFohLaborPct: 9.5,
-          theoreticalBohLaborPct: 11.9,
-          theoreticalLaborPct: 21.4,
-          builtAt: '2026-03-30T12:00:00',
-        );
+      targetProfileId: '${restaurantId}_active',
+      restaurantId: restaurantId,
+      sourceType: 'cycle_recommended',
+      targetCPLH: 4.75,
+      targetSPLH: 185.0,
+      targetPPA: 43.5,
+      fohWage: 17.0,
+      bohWage: 22.0,
+      opzFloorCPLH: 3.6,
+      opzCeilingCPLH: 5.9,
+      theoreticalFohLaborPct: 9.5,
+      theoreticalBohLaborPct: 11.9,
+      theoreticalLaborPct: 21.4,
+      builtAt: '2026-03-30T12:00:00',
+    );
 
     test('TargetSnapshotBuilder carries explicit restaurantId', () {
       final snapshot = TargetSnapshotBuilder.fromActiveTargetProfile(
@@ -267,8 +277,9 @@ void main() {
 
     test('baseline_selected_records has restaurant_id column', () async {
       final db = await SqliteDatabase.instance.database;
-      final columns =
-          await db.rawQuery('PRAGMA table_info(baseline_selected_records)');
+      final columns = await db.rawQuery(
+        'PRAGMA table_info(baseline_selected_records)',
+      );
       final colNames = columns.map((c) => c['name'] as String).toList();
       expect(colNames, contains('restaurant_id'));
     });
@@ -288,8 +299,16 @@ void main() {
     // v7-backfill invariant is therefore "every row belongs to a known
     // demo location and never NULL/orphan/foreign", with Downtown still
     // present (backward compat) — not "every row is Downtown".
-    final demoLocationIds =
-        DemoScope.locations.map((l) => l.restaurantId).toSet();
+    final demoLocationIds = DemoScope.locations
+        .map((l) => l.restaurantId)
+        .toSet();
+    final demoShiftRestaurantIds = <String>{
+      ...demoLocationIds,
+      // Dedicated Choose Star Shifts proof location. It intentionally
+      // stays outside DemoScope.locations, but it owns seeded
+      // shift_records so the de-hardcoded 4-period path is testable.
+      'demo_restaurant_four_period',
+    };
 
     test('all seeded shift rows carry a known demo location id '
         '(Downtown present; no NULL/orphan/foreign — HP #4)', () async {
@@ -297,7 +316,7 @@ void main() {
       final rows = await db.query('shift_records');
       expect(rows, isNotEmpty);
       for (final row in rows) {
-        expect(demoLocationIds, contains(row['restaurant_id']));
+        expect(demoShiftRestaurantIds, contains(row['restaurant_id']));
       }
       expect(
         rows.where((r) => r['restaurant_id'] == 'demo_restaurant_001'),
@@ -332,12 +351,17 @@ void main() {
       // Create a fresh in-memory-like temp db with old v6 schema
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
-      testDbPath =
-          p.join(Directory.systemTemp.path, 'forge_upgrade_test_${DateTime.now().millisecondsSinceEpoch}.db');
+      testDbPath = p.join(
+        Directory.systemTemp.path,
+        'forge_upgrade_test_${DateTime.now().millisecondsSinceEpoch}.db',
+      );
 
-      oldDb = await openDatabase(testDbPath, version: 1, onCreate: (db, v) async {
-        // Old v6-style week_records: no restaurant_id, UNIQUE on week_id only
-        await db.execute('''
+      oldDb = await openDatabase(
+        testDbPath,
+        version: 1,
+        onCreate: (db, v) async {
+          // Old v6-style week_records: no restaurant_id, UNIQUE on week_id only
+          await db.execute('''
           CREATE TABLE week_records (
             id                    INTEGER PRIMARY KEY AUTOINCREMENT,
             week_id               TEXT NOT NULL UNIQUE,
@@ -358,13 +382,14 @@ void main() {
           )
         ''');
 
-        // Old v6-style baseline_selected_records: no restaurant_id
-        await db.execute('''
+          // Old v6-style baseline_selected_records: no restaurant_id
+          await db.execute('''
           CREATE TABLE baseline_selected_records (
             record_key TEXT PRIMARY KEY NOT NULL
           )
         ''');
-      });
+        },
+      );
 
       // Seed old data
       await oldDb.insert('week_records', {
@@ -400,18 +425,20 @@ void main() {
       } catch (_) {}
     });
 
-    test('old week row survives migration with restaurant_id backfilled',
-        () async {
-      // Run the v7 migration on the old-schema db
-      await SqliteDatabase.instance.migrateToV7ForTest(oldDb);
+    test(
+      'old week row survives migration with restaurant_id backfilled',
+      () async {
+        // Run the v7 migration on the old-schema db
+        await SqliteDatabase.instance.migrateToV7ForTest(oldDb);
 
-      final rows = await oldDb.query('week_records');
-      expect(rows.length, 1);
-      expect(rows.first['week_id'], '2026-W10');
-      expect(rows.first['week_label'], 'Mar 3');
-      expect(rows.first['total_covers'], 2800);
-      expect(rows.first['restaurant_id'], 'demo_restaurant_001');
-    });
+        final rows = await oldDb.query('week_records');
+        expect(rows.length, 1);
+        expect(rows.first['week_id'], '2026-W10');
+        expect(rows.first['week_label'], 'Mar 3');
+        expect(rows.first['total_covers'], 2800);
+        expect(rows.first['restaurant_id'], 'demo_restaurant_001');
+      },
+    );
 
     test('upgraded week_records has restaurant-scoped uniqueness', () async {
       await SqliteDatabase.instance.migrateToV7ForTest(oldDb);
@@ -426,25 +453,31 @@ void main() {
       expect(tableSql, contains('UNIQUE'));
     });
 
-    test('old baseline keys survive migration under demo_restaurant_001',
-        () async {
-      await SqliteDatabase.instance.migrateToV7ForTest(oldDb);
+    test(
+      'old baseline keys survive migration under demo_restaurant_001',
+      () async {
+        await SqliteDatabase.instance.migrateToV7ForTest(oldDb);
 
-      final rows = await oldDb.query('baseline_selected_records',
+        final rows = await oldDb.query(
+          'baseline_selected_records',
           where: 'restaurant_id = ?',
-          whereArgs: ['demo_restaurant_001']);
-      final keys = rows.map((r) => r['record_key'] as String).toSet();
-      expect(keys, contains('2026-W10|Mon|lunch'));
-      expect(keys, contains('2026-W10|Tue|dinner'));
-      expect(keys.length, 2);
-    });
+          whereArgs: ['demo_restaurant_001'],
+        );
+        final keys = rows.map((r) => r['record_key'] as String).toSet();
+        expect(keys, contains('2026-W10|Mon|lunch'));
+        expect(keys, contains('2026-W10|Tue|dinner'));
+        expect(keys.length, 2);
+      },
+    );
 
     test('demo restaurant exists after migration', () async {
       await SqliteDatabase.instance.migrateToV7ForTest(oldDb);
 
-      final rows = await oldDb.query('restaurant_locations',
-          where: 'restaurant_id = ?',
-          whereArgs: ['demo_restaurant_001']);
+      final rows = await oldDb.query(
+        'restaurant_locations',
+        where: 'restaurant_id = ?',
+        whereArgs: ['demo_restaurant_001'],
+      );
       expect(rows.length, 1);
       expect(rows.first['display_name'], 'Barrio Legado');
       expect(rows.first['business_timezone'], 'America/St_Johns');
@@ -457,8 +490,8 @@ void main() {
     test('baseline selected keys round-trip through DatabaseHelper', () async {
       final keys = {'2026-W12|Mon|lunch', '2026-W12|Tue|dinner'};
       await DatabaseHelper.instance.replaceBaselineSelectedRecordKeys(keys);
-      final stored =
-          await DatabaseHelper.instance.getBaselineSelectedRecordKeys();
+      final stored = await DatabaseHelper.instance
+          .getBaselineSelectedRecordKeys();
       expect(stored, equals(keys));
     });
 
@@ -471,8 +504,7 @@ void main() {
     });
 
     test('shifts-for-week loads through DatabaseHelper', () async {
-      final shifts =
-          await DatabaseHelper.instance.getShiftsForWeek('2026-W13');
+      final shifts = await DatabaseHelper.instance.getShiftsForWeek('2026-W13');
       expect(shifts, isNotEmpty);
       for (final s in shifts) {
         expect(s.restaurantId, 'demo_restaurant_001');
@@ -482,46 +514,55 @@ void main() {
     // â”€â”€ Per-operator isolation (CODE_HEALTH Launch Blocker #1) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     test(
-        'DatabaseHelper.forScope routes reads to the requested scope, not DemoScope',
-        () async {
-      // Two distinct scope helpers must read against their own
-      // restaurant_id, not the historic DemoScope hardcoding. The demo
-      // scope is seeded with shifts; an unseeded scope must come back
-      // empty even though both helpers share the underlying SQLite file.
-      final demoHelper = DatabaseHelper.forScope(DemoScope.restaurantId);
-      final otherHelper = DatabaseHelper.forScope('other_tenant_xyz');
+      'DatabaseHelper.forScope routes reads to the requested scope, not DemoScope',
+      () async {
+        // Two distinct scope helpers must read against their own
+        // restaurant_id, not the historic DemoScope hardcoding. The demo
+        // scope is seeded with shifts; an unseeded scope must come back
+        // empty even though both helpers share the underlying SQLite file.
+        final demoHelper = DatabaseHelper.forScope(DemoScope.restaurantId);
+        final otherHelper = DatabaseHelper.forScope('other_tenant_xyz');
 
-      // forScope is cached per-scope, so two helpers for the same id
-      // must be identical, but different ids must return distinct
-      // helpers.
-      expect(
-          identical(demoHelper, DatabaseHelper.forScope(DemoScope.restaurantId)),
+        // forScope is cached per-scope, so two helpers for the same id
+        // must be identical, but different ids must return distinct
+        // helpers.
+        expect(
+          identical(
+            demoHelper,
+            DatabaseHelper.forScope(DemoScope.restaurantId),
+          ),
           isTrue,
-          reason: 'forScope must cache per-scope');
-      expect(identical(demoHelper, otherHelper), isFalse,
-          reason: 'distinct scopes must yield distinct helpers');
+          reason: 'forScope must cache per-scope',
+        );
+        expect(
+          identical(demoHelper, otherHelper),
+          isFalse,
+          reason: 'distinct scopes must yield distinct helpers',
+        );
 
-      final demoShifts = await demoHelper.getShiftsForWeek('2026-W13');
-      final otherShifts = await otherHelper.getShiftsForWeek('2026-W13');
+        final demoShifts = await demoHelper.getShiftsForWeek('2026-W13');
+        final otherShifts = await otherHelper.getShiftsForWeek('2026-W13');
 
-      expect(demoShifts, isNotEmpty,
-          reason: 'demo scope has seeded data');
-      expect(otherShifts, isEmpty,
+        expect(demoShifts, isNotEmpty, reason: 'demo scope has seeded data');
+        expect(
+          otherShifts,
+          isEmpty,
           reason:
               'unseeded scope must NOT return demo rows; forScope must not '
               'leak across tenants. Per CLAUDE.md: per-operator isolation '
-              'is non-negotiable.');
-      for (final s in demoShifts) {
-        expect(s.restaurantId, DemoScope.restaurantId);
-      }
-    });
+              'is non-negotiable.',
+        );
+        for (final s in demoShifts) {
+          expect(s.restaurantId, DemoScope.restaurantId);
+        }
+      },
+    );
   });
 
   // â”€â”€ J: Fixture replay raw-import businessDate is a real date â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('J â€” fixture replay businessDate correctness', () {
-    test('raw_import_records business_date is not a week id pattern',
-        () async {
+    test('raw_import_records business_date is not a week id pattern', () async {
       final db = await SqliteDatabase.instance.database;
       final records = await db.query('raw_import_records', limit: 10);
       expect(records, isNotEmpty);
@@ -531,10 +572,16 @@ void main() {
 
       for (final r in records) {
         final bd = r['business_date'] as String;
-        expect(bd, isNot(matches(weekIdPattern)),
-            reason: 'business_date should not be a week id: $bd');
-        expect(bd, matches(datePattern),
-            reason: 'business_date should be YYYY-MM-DD: $bd');
+        expect(
+          bd,
+          isNot(matches(weekIdPattern)),
+          reason: 'business_date should not be a week id: $bd',
+        );
+        expect(
+          bd,
+          matches(datePattern),
+          reason: 'business_date should be YYYY-MM-DD: $bd',
+        );
       }
     });
   });
@@ -548,13 +595,17 @@ void main() {
     setUp(() async {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
-      testDbPath = p.join(Directory.systemTemp.path,
-          'forge_v8_upgrade_test_${DateTime.now().millisecondsSinceEpoch}.db');
+      testDbPath = p.join(
+        Directory.systemTemp.path,
+        'forge_v8_upgrade_test_${DateTime.now().millisecondsSinceEpoch}.db',
+      );
 
       // Create a v7-style database: has restaurant_id but no locked-target columns
-      oldDb = await openDatabase(testDbPath, version: 1,
-          onCreate: (db, v) async {
-        await db.execute('''
+      oldDb = await openDatabase(
+        testDbPath,
+        version: 1,
+        onCreate: (db, v) async {
+          await db.execute('''
           CREATE TABLE restaurant_locations (
             restaurant_id TEXT PRIMARY KEY NOT NULL,
             display_name TEXT NOT NULL,
@@ -562,7 +613,7 @@ void main() {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE shift_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
@@ -591,7 +642,7 @@ void main() {
             source_system TEXT,
             source_shift_id TEXT)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE week_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
@@ -612,19 +663,19 @@ void main() {
             blended_boh_wage REAL NOT NULL DEFAULT 21.35,
             UNIQUE(restaurant_id, week_id))
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE baseline_selected_records (
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
             record_key TEXT NOT NULL,
             PRIMARY KEY (restaurant_id, record_key))
         ''');
 
-        // Tables introduced by later migrations that the v8 migration's
-        // seed path now transitively queries (target_cycles added in v15,
-        // wage_role_rows added in v14). Pre-seeding them empty lets
-        // _ensureDemoSeedCycle / _loadSeedAuthorityProfile run against this
-        // pre-v8 test fixture without crashing on "no such table".
-        await db.execute('''
+          // Tables introduced by later migrations that the v8 migration's
+          // seed path now transitively queries (target_cycles added in v15,
+          // wage_role_rows added in v14). Pre-seeding them empty lets
+          // _ensureDemoSeedCycle / _loadSeedAuthorityProfile run against this
+          // pre-v8 test fixture without crashing on "no such table".
+          await db.execute('''
           CREATE TABLE target_cycles (
             cycle_id                 TEXT PRIMARY KEY NOT NULL,
             restaurant_id            TEXT NOT NULL,
@@ -646,7 +697,7 @@ void main() {
             created_at               TEXT NOT NULL,
             deactivated_at           TEXT)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE wage_role_rows (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             restaurant_id   TEXT NOT NULL,
@@ -656,13 +707,13 @@ void main() {
             weighted_hours  REAL NOT NULL,
             UNIQUE(restaurant_id, role_name))
         ''');
-        // Per-Daypart V1 (Slice 1) per-(cycle, service_period) child rows.
-        // target_cycle_dao.saveCycle() now issues
-        // `DELETE FROM target_cycle_dayparts`; pre-create it so the seed
-        // path's cycle write doesn't crash on "no such table". Schema
-        // pinned to migration 202605160000 (its SQLite mirror in
-        // lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart).
-        await db.execute('''
+          // Per-Daypart V1 (Slice 1) per-(cycle, service_period) child rows.
+          // target_cycle_dao.saveCycle() now issues
+          // `DELETE FROM target_cycle_dayparts`; pre-create it so the seed
+          // path's cycle write doesn't crash on "no such table". Schema
+          // pinned to migration 202605160000 (its SQLite mirror in
+          // lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart).
+          await db.execute('''
           CREATE TABLE target_cycle_dayparts (
             cycle_id           TEXT NOT NULL,
             service_period_id  TEXT NOT NULL,
@@ -677,44 +728,45 @@ void main() {
             created_at         TEXT NOT NULL,
             PRIMARY KEY (cycle_id, service_period_id))
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE INDEX ix_target_cycle_dayparts_cycle
           ON target_cycle_dayparts(cycle_id)
         ''');
 
-        // Seed demo restaurant
-        final now = DateTime.now().toIso8601String();
-        await db.insert('restaurant_locations', {
-          'restaurant_id': 'demo_restaurant_001',
-          'display_name': 'Barrio Legado',
-          'business_timezone': 'America/St_Johns',
-          'created_at': now,
-          'updated_at': now,
-        });
+          // Seed demo restaurant
+          final now = DateTime.now().toIso8601String();
+          await db.insert('restaurant_locations', {
+            'restaurant_id': 'demo_restaurant_001',
+            'display_name': 'Barrio Legado',
+            'business_timezone': 'America/St_Johns',
+            'created_at': now,
+            'updated_at': now,
+          });
 
-        // Seed one old closed shift (no locked-target columns)
-        await db.insert('shift_records', {
-          'restaurant_id': 'demo_restaurant_001',
-          'week_id': '2026-W10',
-          'day_label': 'Mon',
-          'daypart': 'lunch',
-          'status': 'closed',
-          'covers': 154,
-          'forecast_covers': 180,
-          'ppa': 41.79,
-          'cplh': 4.28,
-          'splh': 180.5,
-          'blended_wage': 18.5,
-          'foh_hours': 36,
-          'boh_hours': 37,
-          'foh_labor_pct': 9.2,
-          'boh_labor_pct': 12.3,
-          'total_labor_pct': 21.5,
-          'theoretical_labor_pct': 20.48,
-          'variance_pts': 1.02,
-          'primary_lever': 'COVERS_DOWN',
-        });
-      });
+          // Seed one old closed shift (no locked-target columns)
+          await db.insert('shift_records', {
+            'restaurant_id': 'demo_restaurant_001',
+            'week_id': '2026-W10',
+            'day_label': 'Mon',
+            'daypart': 'lunch',
+            'status': 'closed',
+            'covers': 154,
+            'forecast_covers': 180,
+            'ppa': 41.79,
+            'cplh': 4.28,
+            'splh': 180.5,
+            'blended_wage': 18.5,
+            'foh_hours': 36,
+            'boh_hours': 37,
+            'foh_labor_pct': 9.2,
+            'boh_labor_pct': 12.3,
+            'total_labor_pct': 21.5,
+            'theoretical_labor_pct': 20.48,
+            'variance_pts': 1.02,
+            'primary_lever': 'COVERS_DOWN',
+          });
+        },
+      );
     });
 
     tearDown(() async {
@@ -724,78 +776,89 @@ void main() {
       } catch (_) {}
     });
 
-    test('old shift row survives v8 migration with locked targets backfilled',
-        () async {
-      await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
+    test(
+      'old shift row survives v8 migration with locked targets backfilled',
+      () async {
+        await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
 
-      final rows = await oldDb.query('shift_records');
-      expect(rows.length, 1);
-      expect(rows.first['week_id'], '2026-W10');
-      expect(rows.first['covers'], 154);
-      // Numeric locked targets backfilled
-      expect(rows.first['target_cplh'], isNotNull);
-      expect(rows.first['target_splh'], isNotNull);
-      expect(rows.first['target_ppa'], isNotNull);
-      expect(rows.first['target_foh_wage'], isNotNull);
-      expect(rows.first['target_boh_wage'], isNotNull);
-    });
+        final rows = await oldDb.query('shift_records');
+        expect(rows.length, 1);
+        expect(rows.first['week_id'], '2026-W10');
+        expect(rows.first['covers'], 154);
+        // Numeric locked targets backfilled
+        expect(rows.first['target_cplh'], isNotNull);
+        expect(rows.first['target_splh'], isNotNull);
+        expect(rows.first['target_ppa'], isNotNull);
+        expect(rows.first['target_foh_wage'], isNotNull);
+        expect(rows.first['target_boh_wage'], isNotNull);
+      },
+    );
 
-    test('old shift row has target-profile provenance after v8 migration',
-        () async {
-      await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
+    test(
+      'old shift row has target-profile provenance after v8 migration',
+      () async {
+        await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
 
-      final rows = await oldDb.query('shift_records');
-      expect(rows.first['target_profile_id'], isNotNull);
-      expect(rows.first['target_profile_id'], isNotEmpty);
-      expect(rows.first['target_profile_version_id'], isNotNull);
-      expect(rows.first['target_profile_version_id'],
-          'compat_demo_restaurant_001_v8_backfill');
-    });
+        final rows = await oldDb.query('shift_records');
+        expect(rows.first['target_profile_id'], isNotNull);
+        expect(rows.first['target_profile_id'], isNotEmpty);
+        expect(rows.first['target_profile_version_id'], isNotNull);
+        expect(
+          rows.first['target_profile_version_id'],
+          'compat_demo_restaurant_001_v8_backfill',
+        );
+      },
+    );
 
     test('compat version row exists after v8 migration', () async {
       await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
 
-      final versions = await oldDb.query('target_profile_versions',
-          where: 'target_profile_version_id = ?',
-          whereArgs: ['compat_demo_restaurant_001_v8_backfill']);
+      final versions = await oldDb.query(
+        'target_profile_versions',
+        where: 'target_profile_version_id = ?',
+        whereArgs: ['compat_demo_restaurant_001_v8_backfill'],
+      );
       expect(versions, isNotEmpty);
       expect(versions.first['restaurant_id'], 'demo_restaurant_001');
-      expect((versions.first['target_cplh'] as num).toDouble(),
-          greaterThan(0));
+      expect((versions.first['target_cplh'] as num).toDouble(), greaterThan(0));
     });
 
     test('active target profile exists after v8 migration', () async {
       await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
 
-      final profiles = await oldDb.query('active_target_profiles',
-          where: 'restaurant_id = ?',
-          whereArgs: ['demo_restaurant_001']);
+      final profiles = await oldDb.query(
+        'active_target_profiles',
+        where: 'restaurant_id = ?',
+        whereArgs: ['demo_restaurant_001'],
+      );
       expect(profiles, isNotEmpty);
     });
 
-    test('migrated shift row rehydrates as ShiftRecord with locked fields',
-        () async {
-      await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
+    test(
+      'migrated shift row rehydrates as ShiftRecord with locked fields',
+      () async {
+        await SqliteDatabase.instance.migrateToV8ForTest(oldDb);
 
-      final rows = await oldDb.query('shift_records');
-      expect(rows, isNotEmpty);
-      final record = ShiftRecord.fromMap(rows.first);
+        final rows = await oldDb.query('shift_records');
+        expect(rows, isNotEmpty);
+        final record = ShiftRecord.fromMap(rows.first);
 
-      expect(record.targetProfileId, isNotNull);
-      expect(record.targetProfileId, isNotEmpty);
-      expect(record.targetProfileVersionId, isNotNull);
-      expect(record.targetProfileVersionId, isNotEmpty);
-      expect(record.targetCPLH, isNotNull);
-      expect(record.targetCPLH, greaterThan(0));
-      expect(record.targetSPLH, isNotNull);
-      expect(record.targetPPA, isNotNull);
-      expect(record.targetFohWage, isNotNull);
-      expect(record.targetBohWage, isNotNull);
-      // Original operational data preserved
-      expect(record.weekId, '2026-W10');
-      expect(record.covers, 154);
-      expect(record.isClosed, isTrue);
-    });
+        expect(record.targetProfileId, isNotNull);
+        expect(record.targetProfileId, isNotEmpty);
+        expect(record.targetProfileVersionId, isNotNull);
+        expect(record.targetProfileVersionId, isNotEmpty);
+        expect(record.targetCPLH, isNotNull);
+        expect(record.targetCPLH, greaterThan(0));
+        expect(record.targetSPLH, isNotNull);
+        expect(record.targetPPA, isNotNull);
+        expect(record.targetFohWage, isNotNull);
+        expect(record.targetBohWage, isNotNull);
+        // Original operational data preserved
+        expect(record.weekId, '2026-W10');
+        expect(record.covers, 154);
+        expect(record.isClosed, isTrue);
+      },
+    );
   });
 
   // â”€â”€ L: Partial-migration provenance repair â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -807,13 +870,17 @@ void main() {
     setUp(() async {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
-      partialDbPath = p.join(Directory.systemTemp.path,
-          'forge_partial_test_${DateTime.now().millisecondsSinceEpoch}.db');
+      partialDbPath = p.join(
+        Directory.systemTemp.path,
+        'forge_partial_test_${DateTime.now().millisecondsSinceEpoch}.db',
+      );
 
       // Create a v8-ish database with locked-target columns but no provenance
-      partialDb = await openDatabase(partialDbPath, version: 1,
-          onCreate: (db, v) async {
-        await db.execute('''
+      partialDb = await openDatabase(
+        partialDbPath,
+        version: 1,
+        onCreate: (db, v) async {
+          await db.execute('''
           CREATE TABLE restaurant_locations (
             restaurant_id TEXT PRIMARY KEY NOT NULL,
             display_name TEXT NOT NULL,
@@ -821,7 +888,7 @@ void main() {
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE active_target_profiles (
             restaurant_id TEXT PRIMARY KEY NOT NULL,
             target_profile_id TEXT NOT NULL,
@@ -835,7 +902,7 @@ void main() {
             theoretical_labor_pct REAL NOT NULL,
             built_at TEXT NOT NULL)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE target_profile_versions (
             target_profile_version_id TEXT PRIMARY KEY NOT NULL,
             target_profile_id TEXT NOT NULL, restaurant_id TEXT NOT NULL,
@@ -848,7 +915,7 @@ void main() {
             theoretical_labor_pct REAL NOT NULL,
             created_at TEXT NOT NULL)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE shift_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
@@ -874,8 +941,8 @@ void main() {
             theoretical_foh_labor_pct REAL, theoretical_boh_labor_pct REAL)
         ''');
 
-        // v7-compat tables needed by v8 migration path
-        await db.execute('''
+          // v7-compat tables needed by v8 migration path
+          await db.execute('''
           CREATE TABLE week_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
@@ -890,16 +957,16 @@ void main() {
             blended_boh_wage REAL NOT NULL DEFAULT 21.35,
             UNIQUE(restaurant_id, week_id))
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE baseline_selected_records (
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
             record_key TEXT NOT NULL,
             PRIMARY KEY (restaurant_id, record_key))
         ''');
 
-        // Tables introduced by later migrations that the v8 migration's
-        // seed path now transitively queries (see K group for detail).
-        await db.execute('''
+          // Tables introduced by later migrations that the v8 migration's
+          // seed path now transitively queries (see K group for detail).
+          await db.execute('''
           CREATE TABLE target_cycles (
             cycle_id                 TEXT PRIMARY KEY NOT NULL,
             restaurant_id            TEXT NOT NULL,
@@ -921,7 +988,7 @@ void main() {
             created_at               TEXT NOT NULL,
             deactivated_at           TEXT)
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE TABLE wage_role_rows (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             restaurant_id   TEXT NOT NULL,
@@ -931,13 +998,13 @@ void main() {
             weighted_hours  REAL NOT NULL,
             UNIQUE(restaurant_id, role_name))
         ''');
-        // Per-Daypart V1 (Slice 1) per-(cycle, service_period) child rows.
-        // target_cycle_dao.saveCycle() now issues
-        // `DELETE FROM target_cycle_dayparts`; pre-create it so the seed
-        // path's cycle write doesn't crash on "no such table". Schema
-        // pinned to migration 202605160000 (its SQLite mirror in
-        // lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart).
-        await db.execute('''
+          // Per-Daypart V1 (Slice 1) per-(cycle, service_period) child rows.
+          // target_cycle_dao.saveCycle() now issues
+          // `DELETE FROM target_cycle_dayparts`; pre-create it so the seed
+          // path's cycle write doesn't crash on "no such table". Schema
+          // pinned to migration 202605160000 (its SQLite mirror in
+          // lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart).
+          await db.execute('''
           CREATE TABLE target_cycle_dayparts (
             cycle_id           TEXT NOT NULL,
             service_period_id  TEXT NOT NULL,
@@ -952,39 +1019,41 @@ void main() {
             created_at         TEXT NOT NULL,
             PRIMARY KEY (cycle_id, service_period_id))
         ''');
-        await db.execute('''
+          await db.execute('''
           CREATE INDEX ix_target_cycle_dayparts_cycle
           ON target_cycle_dayparts(cycle_id)
         ''');
 
-        final now = DateTime.now().toIso8601String();
-        await db.insert('restaurant_locations', {
-          'restaurant_id': 'demo_restaurant_001',
-          'display_name': 'Barrio Legado',
-          'business_timezone': 'America/St_Johns',
-          'created_at': now, 'updated_at': now,
-        });
+          final now = DateTime.now().toIso8601String();
+          await db.insert('restaurant_locations', {
+            'restaurant_id': 'demo_restaurant_001',
+            'display_name': 'Barrio Legado',
+            'business_timezone': 'America/St_Johns',
+            'created_at': now,
+            'updated_at': now,
+          });
 
-        // Insert a partially migrated shift: numeric targets present, provenance null
-        await db.insert('shift_records', {
-          'restaurant_id': 'demo_restaurant_001',
-          'week_id': '2026-W10', 'day_label': 'Mon', 'daypart': 'lunch',
-          'status': 'closed', 'covers': 154, 'forecast_covers': 180,
-          'ppa': 41.79, 'cplh': 4.28, 'splh': 180.5, 'blended_wage': 18.5,
-          'foh_hours': 36, 'boh_hours': 37,
-          'foh_labor_pct': 9.2, 'boh_labor_pct': 12.3,
-          'total_labor_pct': 21.5, 'theoretical_labor_pct': 20.48,
-          'variance_pts': 1.02, 'primary_lever': 'COVERS_DOWN',
-          // Numeric targets present but provenance null
-          'target_cplh': 4.58, 'target_splh': 180.0, 'target_ppa': 42.0,
-          'target_foh_wage': 16.50, 'target_boh_wage': 21.35,
-          'target_source_type': 'system_baseline',
-          'opz_floor_cplh': 3.5, 'opz_ceiling_cplh': 5.8,
-          'theoretical_foh_labor_pct': 8.7, 'theoretical_boh_labor_pct': 11.9,
-          'target_profile_id': null,
-          'target_profile_version_id': null,
-        });
-      });
+          // Insert a partially migrated shift: numeric targets present, provenance null
+          await db.insert('shift_records', {
+            'restaurant_id': 'demo_restaurant_001',
+            'week_id': '2026-W10', 'day_label': 'Mon', 'daypart': 'lunch',
+            'status': 'closed', 'covers': 154, 'forecast_covers': 180,
+            'ppa': 41.79, 'cplh': 4.28, 'splh': 180.5, 'blended_wage': 18.5,
+            'foh_hours': 36, 'boh_hours': 37,
+            'foh_labor_pct': 9.2, 'boh_labor_pct': 12.3,
+            'total_labor_pct': 21.5, 'theoretical_labor_pct': 20.48,
+            'variance_pts': 1.02, 'primary_lever': 'COVERS_DOWN',
+            // Numeric targets present but provenance null
+            'target_cplh': 4.58, 'target_splh': 180.0, 'target_ppa': 42.0,
+            'target_foh_wage': 16.50, 'target_boh_wage': 21.35,
+            'target_source_type': 'system_baseline',
+            'opz_floor_cplh': 3.5, 'opz_ceiling_cplh': 5.8,
+            'theoretical_foh_labor_pct': 8.7, 'theoretical_boh_labor_pct': 11.9,
+            'target_profile_id': null,
+            'target_profile_version_id': null,
+          });
+        },
+      );
     });
 
     tearDown(() async {
@@ -1002,22 +1071,32 @@ void main() {
       expect(rows.length, 1);
 
       // Numeric values preserved (not overwritten)
-      expect((rows.first['target_cplh'] as num).toDouble(), closeTo(4.58, 0.001));
-      expect((rows.first['target_ppa'] as num).toDouble(), closeTo(42.0, 0.001));
+      expect(
+        (rows.first['target_cplh'] as num).toDouble(),
+        closeTo(4.58, 0.001),
+      );
+      expect(
+        (rows.first['target_ppa'] as num).toDouble(),
+        closeTo(42.0, 0.001),
+      );
 
       // Provenance now populated
       expect(rows.first['target_profile_id'], isNotNull);
       expect(rows.first['target_profile_id'], isNotEmpty);
-      expect(rows.first['target_profile_version_id'],
-          'compat_demo_restaurant_001_v8_backfill');
+      expect(
+        rows.first['target_profile_version_id'],
+        'compat_demo_restaurant_001_v8_backfill',
+      );
     });
 
     test('compat version row exists after partial-migration repair', () async {
       await SqliteDatabase.instance.migrateToV8ForTest(partialDb);
 
-      final versions = await partialDb.query('target_profile_versions',
-          where: 'target_profile_version_id = ?',
-          whereArgs: ['compat_demo_restaurant_001_v8_backfill']);
+      final versions = await partialDb.query(
+        'target_profile_versions',
+        where: 'target_profile_version_id = ?',
+        whereArgs: ['compat_demo_restaurant_001_v8_backfill'],
+      );
       expect(versions, isNotEmpty);
     });
 

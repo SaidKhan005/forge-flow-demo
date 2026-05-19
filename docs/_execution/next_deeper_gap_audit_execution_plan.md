@@ -1,5 +1,7 @@
 # Next Deeper Gap Audit Execution Plan
 
+Status: closed/superseded after PR #1020-era cleanup. Preserve this file as
+historical execution context; do not dispatch new lanes from it.
 Branch: `codex/next-deeper-gap-audit`
 Started: 2026-05-19
 Base: `origin/master` after PR #1019 landed and was verified.
@@ -7,7 +9,8 @@ Base: `origin/master` after PR #1019 landed and was verified.
 ## Plain English Summary
 
 - The last PR fixed Admin role fixtures, Mobile Covers copy, and live role-contract wording.
-- The next audit found deeper gaps that are still active.
+- The next audit found deeper gaps that were active at dispatch time; the
+  execution status below records the follow-up cleanup that closed them.
 - Some old role names still appear in live launch scripts, checklists, comments, and success-path tests.
 - Covers source behavior is not fully enforcing the operator's selected source.
 - Admin Data Accuracy does not fully use configured service periods.
@@ -18,8 +21,8 @@ Base: `origin/master` after PR #1019 landed and was verified.
 
 1. Role drift:
    - Launch account role tooling still grants retired v1 roles.
-   - Operator Web comments/copy still mention phantom `operator_admin`.
-   - Integration verification checklists still require `operator_admin` as the successful actor.
+   - Operator Web comments/copy still mentioned phantom `operator_admin`.
+   - Integration verification checklists still required `operator_admin` as the successful actor.
    - A few success-path tests still seed retired or phantom roles as normal current actors.
 
 2. Covers source behavior:

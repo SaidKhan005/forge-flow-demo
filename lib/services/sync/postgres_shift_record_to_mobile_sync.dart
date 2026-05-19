@@ -43,6 +43,7 @@
 import 'dart:convert';
 
 import '../../domain/models/data_accuracy_service_period_setting.dart';
+import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/import_run.dart';
 import '../../domain/models/sync_watermark.dart';
 import '../../domain/models/wage_role_row.dart';
@@ -315,9 +316,7 @@ class PostgresShiftRecordToMobileSync {
   /// observe how many were loaded; the in-memory snapshot is also
   /// updated so existing getters keep working.
   Future<List<DataAccuracyServicePeriodSetting>>
-  hydrateDataAccuracyServicePeriodSettingsFromCache(
-    String restaurantId,
-  ) async {
+  hydrateDataAccuracyServicePeriodSettingsFromCache(String restaurantId) async {
     final cached = await dataAccuracyServicePeriodSettingsCacheRepository
         .getRows(restaurantId);
     _latestDataAccuracyServicePeriodSettings =
@@ -722,18 +721,22 @@ class PostgresShiftRecordToMobileSync {
     }
     _latestDemoModeStates = List<DemoModeRecord>.unmodifiable(demoModeStates);
     _latestDataAccuracySettings = dataAccuracySettings;
-    _latestDataAccuracyServicePeriodSettings =
-        List<DataAccuracyServicePeriodSetting>.unmodifiable(
-          dataAccuracyServicePeriodSettings,
-        );
     // Theme H#7 — persist the keyed DAS service-period rows so app
     // restart hydrates honest covers/wage source resolution before the
     // first sweep completes.
+    final servicePeriodRowsForCache = _attachCoversSourceMetadata(
+      dataAccuracyServicePeriodSettings,
+      dataAccuracySettings,
+    );
+    _latestDataAccuracyServicePeriodSettings =
+        List<DataAccuracyServicePeriodSetting>.unmodifiable(
+          servicePeriodRowsForCache,
+        );
     final servicePeriodCacheChanged =
         await dataAccuracyServicePeriodSettingsCacheRepository.replaceAll(
-      restaurantId,
-      dataAccuracyServicePeriodSettings,
-    );
+          restaurantId,
+          servicePeriodRowsForCache,
+        );
     if (servicePeriodCacheChanged) {
       invalidationBus.notifyImportCompletionPersisted();
     }
@@ -761,6 +764,24 @@ class PostgresShiftRecordToMobileSync {
       starTargetMirrors: starTargetMirrors,
       weeklyPlanMirrors: weeklyPlanMirrors,
     );
+  }
+
+  static List<DataAccuracyServicePeriodSetting> _attachCoversSourceMetadata(
+    List<DataAccuracyServicePeriodSetting> rows,
+    DataAccuracySettingsSnapshot? settings,
+  ) {
+    if (settings == null ||
+        settings.coversSourcePerServicePeriodSources.isEmpty) {
+      return rows;
+    }
+    return <DataAccuracyServicePeriodSetting>[
+      for (final row in rows)
+        row.copyWith(
+          coversSourceSource: DataAccuracySettingSource.fromMap(
+            settings.coversSourcePerServicePeriodSources[row.servicePeriodKey],
+          ),
+        ),
+    ];
   }
 
   Future<WeeklyPlanMirrorSyncResult> _syncWeeklyPlanMirrors({
@@ -1263,6 +1284,13 @@ class PostgresShiftRecordToMobileSync {
           rowLocationId: row.locationId,
         );
         if (row.profile.restaurantId != restaurantId) continue;
+        final rowCycleId = row.targetCycleId?.trim();
+        final profileCycleId = row.profile.targetCycleId?.trim();
+        if ((rowCycleId == null || rowCycleId.isEmpty) &&
+            (profileCycleId == null || profileCycleId.isEmpty) &&
+            row.profile.dayparts.isNotEmpty) {
+          continue;
+        }
         await targetProfileRepository.upsertActiveTargetProfile(row.profile);
         rowsWritten++;
       }

@@ -292,6 +292,8 @@ class _PerLocationDataAccuracyTableState
         return 'Forecast';
       case CoversSource.manual:
         return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
     }
   }
 

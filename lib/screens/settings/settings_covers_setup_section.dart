@@ -297,7 +297,9 @@ class _SettingsCoversSetupSectionState
     }
     return _CoversSourceStatus(
       label: _coversSourceLabel(best.coversSource),
-      sourceLabel: 'Last synced service-period setting',
+      sourceLabel:
+          best.coversSourceSource?.label ??
+          'Last synced service-period setting',
       effectiveAtBusinessDate: best.effectiveAtBusinessDate,
     );
   }

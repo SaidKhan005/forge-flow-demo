@@ -70,6 +70,37 @@ const ServicePeriodDefinition _dinnerPeriod = ServicePeriodDefinition(
 // dinner. Used by all three canonical fact tables.
 final DateTime _dinnerInstantUtc = DateTime.utc(2026, 5, 4, 22, 0, 0);
 
+void _seedReservationPlusWalkinPreference(
+  _FakePool pool,
+  String servicePeriodId,
+) {
+  pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+    'setting_id': 'das_reservation_plus_walkin_$servicePeriodId',
+    'operator_id': _opA,
+    'location_id': _locA,
+    'covers_manual_entries': <String, Map<String, int>>{},
+    'wage_source': 'vendor',
+    'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+    'walk_in_manual_entries': <String, Object?>{},
+    'created_at': DateTime.utc(2026, 5, 1),
+    'updated_at': DateTime.utc(2026, 5, 4),
+    'updated_by': null,
+  };
+  pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|$servicePeriodId'] =
+      <String, Object?>{
+        'id': 'das_rspw_$servicePeriodId',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'service_period_key': servicePeriodId,
+        'covers_source': 'reservation_plus_walkin',
+        'wage_source': 'vendor_per_employee',
+        'effective_at_business_date': '2026-05-01',
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 1),
+        'updated_by': null,
+      };
+}
+
 void main() {
   // ─────────────────────────── A — trio aggregation ───────────────────────
   group('aggregator — A. trio aggregation (Oracle + QBT + Libro)', () {
@@ -888,6 +919,7 @@ void main() {
     test('seated party_size sum + operator walk-in count -> '
         'vendor_libro_seated_plus_operator_walk_in_count', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
+      _seedReservationPlusWalkinPreference(pool, 'dinner');
       // Square fact with no covers (POS does not expose covers).
       pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
         <String, Object?>{
@@ -1058,6 +1090,19 @@ void main() {
         'updated_at': DateTime.utc(2026, 5, 4),
         'updated_by': 'operator-admin',
       };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': 'das_walk_in_dinner',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'reservation_plus_walkin',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': 'operator-admin',
+          };
       pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
         <String, Object?>{
           'vendor_id': 'square',
@@ -1115,6 +1160,85 @@ void main() {
         'vendor_libro_seated_plus_operator_walk_in_count',
       );
     });
+
+    test('vendor preference does not silently use reservation facts', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+        'setting_id': 'das_vendor_preference',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'covers_manual_entries': <String, Map<String, int>>{},
+        'wage_source': 'vendor',
+        'walk_in_handling_mode': 'reservations_only',
+        'walk_in_manual_entries': <String, Object?>{},
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': null,
+      };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': '99999999-9999-9999-9999-999999999993',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'vendor',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': null,
+          };
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'square',
+          'vendor_entity_id': 'order_no_covers',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 0,
+          'covers_source': 'not_exposed',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 525.00,
+        },
+      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_001',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 4,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_002',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 6,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+          ];
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: _dinnerPeriod,
+          );
+
+      expect(result, isNull);
+    });
   });
 
   // ─────────────────── F — Tock (no seated_at; serviceDateTimestamp) ──────
@@ -1122,6 +1246,7 @@ void main() {
     test('Tock reservation_facts with no seated_at still bucket by '
         'reservation_at; SEATED party_size sums', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);
+      _seedReservationPlusWalkinPreference(pool, 'dinner');
       pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
           [
             <String, Object?>{
@@ -2921,6 +3046,7 @@ void main() {
       // the canonical write path's `business_date` derivation
       // (an upstream sink resolves the reservation's business
       // date from `reservation_at` under the operator's cutoff).
+      _seedReservationPlusWalkinPreference(pool, 'late_night');
       pool.reservationFactsByOperatorLocation['$_opA|$_locA|$tuesdayBusinessDateIso'] =
           [
             <String, Object?>{
