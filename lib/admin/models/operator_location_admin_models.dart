@@ -263,6 +263,10 @@ class LocationCreateCommand {
   final String name;
   final String address;
   final String timezone;
+
+  /// Legacy create-time compatibility value. The current admin create
+  /// proxy contract still requires the column, but Business Timing owns
+  /// edits after creation.
   final int businessDayRolloverHour;
 
   /// Per-action idempotency key. The proxy stores it in
@@ -295,6 +299,10 @@ class LocationPatchCommand {
   final String? name;
   final String? address;
   final String? timezone;
+
+  /// Legacy compatibility field. Kept readable for old call sites, but
+  /// [toJson] deliberately omits it because Business Timing owns
+  /// business-day start edits.
   final int? businessDayRolloverHour;
 
   /// Per-action idempotency key. The proxy stores it in
@@ -307,9 +315,6 @@ class LocationPatchCommand {
     if (name != null) body['name'] = name;
     if (address != null) body['address'] = address;
     if (timezone != null) body['timezone'] = timezone;
-    if (businessDayRolloverHour != null) {
-      body['business_day_rollover_hour'] = businessDayRolloverHour;
-    }
     return body;
   }
 }
