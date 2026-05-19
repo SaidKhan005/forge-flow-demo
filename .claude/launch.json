@@ -17,6 +17,25 @@
       "port": 8181
     },
     {
+      "name": "operator-web-demo-profile",
+      "runtimeExecutable": "powershell",
+      "runtimeArgs": [
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/run_operator_web_dev.ps1",
+        "-Mode",
+        "demo",
+        "-Device",
+        "web-server",
+        "-WebPort",
+        "8183",
+        "-FlutterArgs",
+        "--profile"
+      ],
+      "port": 8183
+    },
+    {
       "name": "admin-console-demo",
       "runtimeExecutable": "powershell",
       "runtimeArgs": [
