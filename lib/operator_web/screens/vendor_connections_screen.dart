@@ -33,7 +33,7 @@
 // but does NOT wire it onto vendor rows inside
 // `VendorConnectionsWidget`'s picker, because the widget API in
 // Phase 8.0 does not expose an `onNotifyMeRequested` callback prop
-// (see `docs/_walkthroughs/11W.8.md` "Upstream blockers"). When
+// (see `docs/archive/_walkthroughs/11W.8.md` "Upstream blockers"). When
 // that callback lands, the integrator's checklist is:
 //
 //   1. Convert this class to `StatefulWidget`, accept

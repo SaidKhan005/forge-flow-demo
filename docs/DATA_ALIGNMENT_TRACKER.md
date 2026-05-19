@@ -112,7 +112,7 @@ App owns:
 - `docs/contracts/mobile_core_weekly_plan_server_truth_contract.md`
 - `docs/contracts/mobile_core_business_scope_contract.md`
 - `docs/contracts/mobile_core_first_connection_backfill_contract.md`
-- `docs/_walkthroughs/10.5.2.md`
+- `docs/archive/_walkthroughs/10.5.2.md`
 
 ## Archive And Reference
 

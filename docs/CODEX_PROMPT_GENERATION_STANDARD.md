@@ -103,7 +103,7 @@ A walkthrough is **not** "demo-mode walkthrough green." A walkthrough is a
 numbered click-path with expected visual states at each step, named widgets,
 and named values. If your slice ships an operator-facing surface, your
 walkthrough must be a click-path Codex (or you) can follow without reading
-the code. Bar set by `docs/_walkthroughs/7.58.UX.5.md`.
+the code. Bar set by `docs/archive/_walkthroughs/7.58.UX.5.md`.
 
 Required elements per walkthrough:
 
