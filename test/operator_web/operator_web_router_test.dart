@@ -21,6 +21,7 @@ import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_vendor_connections_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
+import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_team_audit_log_gateway.dart';
@@ -1128,10 +1129,12 @@ void main() {
       },
     );
 
-    testWidgets('Data accuracy uses session timezone and rollover for default '
-        'business date', (tester) async {
+    testWidgets('OW-G70 - live source missing the business-timing mixin: still '
+        'fails loud because Data accuracy needs the current business date', (
+      tester,
+    ) async {
       await sizeViewport(tester);
-      final source = _LiveDataAccuracyWiredOperatorWebSource(
+      final source = _LiveDataAccuracyNoTimingOperatorWebSource(
         dataAccuracyGateway: _StubDataAccuracyGateway(),
         vendorApplicabilityGateway: _StubVendorApplicabilityGateway(),
       );
@@ -1142,23 +1145,56 @@ void main() {
           OperatorWebRouter(
             source: source,
             initialNavId: kOperatorWebNavDataAccuracy,
-            nowUtc: () => DateTime.utc(2026, 5, 13, 7, 30),
           ),
         ),
       );
       await tester.pumpAndSettle();
 
-      final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
-      await tester.ensureVisible(addButton);
-      await tester.pumpAndSettle();
-      await tester.tap(addButton, warnIfMissed: false);
-      await tester.pumpAndSettle();
-
-      final dateField = tester.widget<TextField>(
-        find.byKey(kKeyedServicePeriodAccuracyEffectiveDateFieldKey),
+      expect(
+        find.byKey(
+          const Key('operator_web_surface_wiring_error_data_accuracy'),
+        ),
+        findsOneWidget,
       );
-      expect(dateField.controller!.text, '2026-05-12');
+      expect(
+        find.byKey(const Key('operator_web_data_accuracy_screen')),
+        findsNothing,
+      );
     });
+
+    testWidgets(
+      'Data accuracy uses Business Timing for default business date',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _LiveDataAccuracyWiredOperatorWebSource(
+          dataAccuracyGateway: _StubDataAccuracyGateway(),
+          vendorApplicabilityGateway: _StubVendorApplicabilityGateway(),
+        );
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(
+          wrap(
+            OperatorWebRouter(
+              source: source,
+              initialNavId: kOperatorWebNavDataAccuracy,
+              nowUtc: () => DateTime.utc(2026, 5, 13, 8, 15),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
+        await tester.ensureVisible(addButton);
+        await tester.pumpAndSettle();
+        await tester.tap(addButton, warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        final dateField = tester.widget<TextField>(
+          find.byKey(kKeyedServicePeriodAccuracyEffectiveDateFieldKey),
+        );
+        expect(dateField.controller!.text, '2026-05-12');
+      },
+    );
 
     testWidgets('OW-G70 — fully-wired live source (data-accuracy + vendor-'
         'applicability): real Data accuracy screen, NO wiring error, '
@@ -1470,11 +1506,11 @@ class _LiveDataAccuracyOnlyOperatorWebSource extends OperatorWebAuthSource
 /// surface. The embedded Wage Authority section is deliberately NOT
 /// gated here (it has a sanctioned demo fallback), so this fully-wired
 /// shape renders the real screen.
-class _LiveDataAccuracyWiredOperatorWebSource extends OperatorWebAuthSource
+class _LiveDataAccuracyNoTimingOperatorWebSource extends OperatorWebAuthSource
     implements
         OperatorWebDataAccuracyGatewayProvider,
         OperatorWebVendorApplicabilityGatewayProvider {
-  _LiveDataAccuracyWiredOperatorWebSource({
+  _LiveDataAccuracyNoTimingOperatorWebSource({
     required this.dataAccuracyGateway,
     required this.vendorApplicabilityGateway,
   }) {
@@ -1491,6 +1527,49 @@ class _LiveDataAccuracyWiredOperatorWebSource extends OperatorWebAuthSource
 
   @override
   final WebVendorApplicabilityGateway vendorApplicabilityGateway;
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+class _LiveDataAccuracyWiredOperatorWebSource extends OperatorWebAuthSource
+    implements
+        OperatorWebDataAccuracyGatewayProvider,
+        OperatorWebVendorApplicabilityGatewayProvider,
+        OperatorWebBusinessTimingWriteGatewayProvider {
+  _LiveDataAccuracyWiredOperatorWebSource({
+    required this.dataAccuracyGateway,
+    required this.vendorApplicabilityGateway,
+    WebBusinessTimingGateway? businessTimingWriteGateway,
+  }) : businessTimingWriteGateway =
+           businessTimingWriteGateway ?? const _StubBusinessTimingGateway() {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final OperatorWebDataAccuracyGateway dataAccuracyGateway;
+
+  @override
+  final WebVendorApplicabilityGateway vendorApplicabilityGateway;
+
+  @override
+  final WebBusinessTimingGateway businessTimingWriteGateway;
 
   @override
   Stream<OperatorWebAuthState> get stream => _controller.stream;
@@ -1589,4 +1668,91 @@ class _StubVendorApplicabilityGateway implements WebVendorApplicabilityGateway {
     required String settingKind,
     String? settingKey,
   }) async => const <WebVendorApplicabilityRow>[];
+}
+
+class _StubBusinessTimingGateway implements WebBusinessTimingGateway {
+  const _StubBusinessTimingGateway();
+
+  @override
+  Future<List<BusinessTimingProfileWriteResult>> listProfiles() async =>
+      const <BusinessTimingProfileWriteResult>[];
+
+  @override
+  Future<BusinessTimingResolutionResult> resolveForLocation({
+    required String locationId,
+    String? businessDate,
+  }) async => BusinessTimingResolutionResult(
+    operatorId: 'demo-operator',
+    locationId: locationId,
+    businessDate: businessDate ?? '2026-05-13',
+    ianaTimezone: 'America/Toronto',
+    candidates: <BusinessTimingResolutionCandidate>[
+      BusinessTimingResolutionCandidate(
+        profileId: 'timing-demo',
+        scopeType: 'operator',
+        scopeId: 'demo-operator',
+        scopeLabel: 'Demo Restaurant Group',
+        scopeDepthRank: 0,
+        ianaTimezone: 'America/Toronto',
+        effectiveAtBusinessDate: '2026-05-01',
+        weekStartDay: 'monday',
+        businessDayStartLocal: '04:30',
+        servicePeriods: _servicePeriods,
+      ),
+    ],
+  );
+
+  static const List<ServicePeriod> _servicePeriods = <ServicePeriod>[
+    ServicePeriod(
+      key: 'breakfast',
+      label: 'Breakfast',
+      shortLabel: 'B',
+      sortOrder: 1,
+      startLocal: '05:00',
+      endLocal: '11:00',
+      rollsPastMidnight: false,
+    ),
+    ServicePeriod(
+      key: 'lunch',
+      label: 'Lunch',
+      shortLabel: 'L',
+      sortOrder: 2,
+      startLocal: '11:00',
+      endLocal: '17:00',
+      rollsPastMidnight: false,
+    ),
+    ServicePeriod(
+      key: 'dinner',
+      label: 'Dinner',
+      shortLabel: 'D',
+      sortOrder: 3,
+      startLocal: '17:00',
+      endLocal: '01:00',
+      rollsPastMidnight: true,
+    ),
+  ];
+
+  @override
+  Future<BusinessTimingProfileWriteResult> createProfile(
+    BusinessTimingProfileCreate request,
+  ) async => throw UnimplementedError();
+
+  @override
+  Future<BusinessTimingProfileWriteResult> updateProfile({
+    required String profileId,
+    required BusinessTimingProfilePatch patch,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<BusinessTimingProfileWriteResult> addServicePeriod({
+    required String profileId,
+    required ServicePeriodCreate period,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<BusinessTimingProfileWriteResult> updateServicePeriod({
+    required String profileId,
+    required String key,
+    required ServicePeriodPatch patch,
+  }) async => throw UnimplementedError();
 }
