@@ -137,6 +137,27 @@ void main() {
       },
     );
 
+    test('on adapter throw: projection tap drains after poll_error', () async {
+      final tap = _RecordingProjectionTap();
+      final drainer = CanonicalFactProjectionCommitDrainer(
+        tapsByVendor: <String, CanonicalFactProjectionTap>{
+          'lightspeed_lsk': tap,
+        },
+      );
+      posAdapter.throwOnPoll = StateError('vendor 503 after page write');
+
+      await dispatcher.dispatchPollTick(
+        connectorConnectionRow: _posRow(),
+        adapterFactory: (_) => posAdapter,
+        canonicalSink: sink,
+        projectionCommitDrainer: drainer,
+      );
+
+      expect(sink.syncLogs.single.eventKind, 'poll_error');
+      expect(tap.drains, hasLength(1));
+      expect(tap.drains.single.connectionId, 'conn-1');
+    });
+
     test('throws StateError when vendor is not in the category registry '
         '+ writes a vendor_not_registered sync_log row (spine contract '
         'Lane .0 test req: "missing adapter returns null + logs")', () async {

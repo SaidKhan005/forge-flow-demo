@@ -118,6 +118,29 @@ void main() {
       expect(sink.syncLogs.single.eventKind, 'backfill_success');
     });
 
+    test('awaits async adapter factory before category type-check', () async {
+      adapter.backfillResult = BackfillResult(
+        batchesCommitted: 1,
+        recordsWritten: 4,
+        cursorToken: 'cursor-done',
+        lastModifiedSeen: DateTime.utc(2026, 5, 6, 13),
+      );
+      jobStore.enqueueClaim(_job());
+
+      final result = await dispatcher.dispatchNext(
+        operatorId: _opId,
+        locationId: _locId,
+        workerId: _workerId,
+        jobStore: jobStore,
+        adapterFactory: (_) async => adapter,
+        canonicalSink: sink,
+      );
+
+      expect(result.outcome, BackfillDispatchOutcome.succeeded);
+      expect(adapter.backfillCalls, 1);
+      expect(sink.syncLogs.single.eventKind, 'backfill_success');
+    });
+
     test('sanity hook is forced to isDeliberateBackfill true', () async {
       final seenFlags = <bool>[];
       adapter.invokeSanityHookDuringBackfill = true;
@@ -225,6 +248,30 @@ void main() {
       expect(sink.watermarkAdvances, isEmpty);
       expect(sink.demoFlips, isEmpty);
       expect(sink.syncLogs.single.eventKind, 'backfill_error');
+    });
+
+    test('adapter throw drains projection tap after backfill_error', () async {
+      final tap = _RecordingProjectionTap();
+      final drainer = CanonicalFactProjectionCommitDrainer(
+        tapsByVendor: <String, CanonicalFactProjectionTap>{_vendorId: tap},
+      );
+      adapter.throwOnBackfill = StateError('vendor 503 after page write');
+      jobStore.enqueueClaim(_job(cursorToken: 'cursor-before-error'));
+
+      final result = await dispatcher.dispatchNext(
+        operatorId: _opId,
+        locationId: _locId,
+        workerId: _workerId,
+        jobStore: jobStore,
+        adapterFactory: (_) => adapter,
+        canonicalSink: sink,
+        projectionCommitDrainer: drainer,
+      );
+
+      expect(result.outcome, BackfillDispatchOutcome.failed);
+      expect(sink.syncLogs.single.eventKind, 'backfill_error');
+      expect(tap.drains, hasLength(1));
+      expect(tap.drains.single.connectionId, _connId);
     });
 
     test(

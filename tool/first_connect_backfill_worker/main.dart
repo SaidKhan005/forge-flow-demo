@@ -942,7 +942,7 @@ class WorkerCanonicalSink implements CanonicalSink {
 /// fixture adapter. The dispatcher type-checks that the returned
 /// object matches `job.category`; a misconfigured factory throws.
 typedef WorkerBackfillAdapterFactory =
-    Object Function(FirstConnectionBackfillJob job);
+    FutureOr<Object> Function(FirstConnectionBackfillJob job);
 
 // ─── One-tick run + main loop ───────────────────────────────────────
 
@@ -1298,13 +1298,13 @@ class BinderBackedAdapterFactory {
   /// [WorkerBackfillAdapterFactory] typedef so callers can pass
   /// `factory.call` (or use the instance directly via Dart's
   /// `Function`/method tear-off).
-  Object call(FirstConnectionBackfillJob job) {
+  Future<Object> call(FirstConnectionBackfillJob job) async {
     final disabledReason = factories.disabledVendors[job.vendorId];
     switch (job.category) {
       case IntegrationCategory.pos:
         final factory = factories.posAdapterFactories[job.vendorId];
         if (factory != null) {
-          return factory(
+          return await factory(
             operatorId: job.operatorId,
             locationId: job.locationId,
           );
@@ -1323,7 +1323,7 @@ class BinderBackedAdapterFactory {
       case IntegrationCategory.labor:
         final factory = factories.laborAdapterFactories[job.vendorId];
         if (factory != null) {
-          return factory(
+          return await factory(
             operatorId: job.operatorId,
             locationId: job.locationId,
           );
@@ -1342,7 +1342,7 @@ class BinderBackedAdapterFactory {
       case IntegrationCategory.reservation:
         final factory = factories.reservationAdapterFactories[job.vendorId];
         if (factory != null) {
-          return factory(
+          return await factory(
             operatorId: job.operatorId,
             locationId: job.locationId,
           );

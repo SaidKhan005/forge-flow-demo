@@ -300,6 +300,13 @@ class IntegrationSyncWorkerDispatch {
         eventKind: 'poll_error',
         errorMessage: error.toString(),
       );
+      await projectionCommitDrainer?.drainIfCommitEvent(
+        vendorId: row.vendorId,
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        connectionId: row.connectionId,
+        eventKind: 'poll_error',
+      );
     } finally {
       await _resolveCadenceForRow(row, canonicalSink);
     }
