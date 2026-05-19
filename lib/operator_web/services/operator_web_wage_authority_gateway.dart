@@ -38,6 +38,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../domain/models/wage_role_row_record.dart';
+import '../../services/wage/wage_role_row_scope_resolver.dart';
 
 /// Wire path constants. The write paths mirror
 /// [wageRoleRowsPath] / [wageRoleRowsPrefix] in
@@ -57,6 +58,99 @@ String operatorWebWageRoleRowsReadPath({
     '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
     '${Uri.encodeComponent(locationId)}/wage_role_rows';
 
+/// GAP B2 — one effective wage row at a location after HP #11
+/// inheritance is walked. Pairs the underlying [WageRoleRowRecord] with
+/// the [WageRoleRowResolvedValue] so the screen can render the row's
+/// value AND its scope provenance (set-here vs inherited-from-Business
+/// / -org-unit) without re-deriving the resolution.
+class WageRoleRowEffectiveRow {
+  const WageRoleRowEffectiveRow({
+    required this.record,
+    required this.resolved,
+  });
+
+  /// The wage row that actually supplies the effective value. For an
+  /// inherited row this is the Business / org-unit row, not a row owned
+  /// by the location.
+  final WageRoleRowRecord record;
+
+  /// Resolution result: value + source scope type + plain-English
+  /// source label + whether it is inherited.
+  final WageRoleRowResolvedValue resolved;
+
+  bool get isInherited => resolved.inherited;
+}
+
+/// Resolve the effective wage rows for [locationId]. Groups the
+/// operator's wage rows by (role_name, labor_bucket) and runs each
+/// group through [WageRoleRowScopeResolver] so a location override
+/// beats an org-unit override beats the Business default. Pure
+/// projection — no I/O — so both the demo gateway and any test can
+/// reuse it.
+List<WageRoleRowEffectiveRow> resolveEffectiveWageRows({
+  required List<WageRoleRowRecord> rows,
+  required String operatorId,
+  required String locationId,
+  required List<String> ancestorOrgUnitIdsNearestFirst,
+  WageRoleRowScopeResolver resolver = const WageRoleRowScopeResolver(),
+}) {
+  final candidates = <WageRoleRowScopeCandidate>[
+    for (final r in rows)
+      WageRoleRowScopeCandidate(
+        wageRoleRowId: r.wageRoleRowId,
+        operatorId: r.operatorId,
+        scopeType: WageRoleRowScopeType.parse(r.scopeType),
+        orgUnitId: r.orgUnitId,
+        locationId: r.locationId,
+        roleName: r.roleName,
+        laborBucket: r.laborBucket,
+        hourlyRate: r.hourlyRate,
+        weightedHours: r.weightedHours,
+        effectiveAt: r.effectiveAt,
+        isActive: r.isActive,
+      ),
+  ];
+  final recordById = <String, WageRoleRowRecord>{
+    for (final r in rows) r.wageRoleRowId: r,
+  };
+  // Distinct (role_name, labor_bucket) keys across every active row the
+  // operator carries, so an inherited-only role (no location row)
+  // still surfaces at the location.
+  final keys = <String>{};
+  final out = <WageRoleRowEffectiveRow>[];
+  for (final r in rows) {
+    if (!r.isActive) continue;
+    final key = '${r.laborBucket}|${r.roleName}';
+    if (!keys.add(key)) continue;
+    final resolved = resolver.resolve(
+      roleName: r.roleName,
+      laborBucket: r.laborBucket,
+      operatorId: operatorId,
+      ancestorOrgUnitIdsNearestFirst: ancestorOrgUnitIdsNearestFirst,
+      locationId: locationId,
+      candidates: candidates,
+    );
+    if (resolved.sourceScopeType == WageRoleRowScopeType.fallback) {
+      // No active row at any scope for this (role, bucket) — nothing to
+      // show. (Happens only if every candidate for the key is inactive.)
+      continue;
+    }
+    final backing = resolved.wageRoleRowId == null
+        ? r
+        : (recordById[resolved.wageRoleRowId!] ?? r);
+    out.add(WageRoleRowEffectiveRow(record: backing, resolved: resolved));
+  }
+  out.sort((a, b) {
+    final byBucket =
+        a.record.laborBucket.compareTo(b.record.laborBucket);
+    if (byBucket != 0) return byBucket;
+    return a.record.roleName.toLowerCase().compareTo(
+          b.record.roleName.toLowerCase(),
+        );
+  });
+  return out;
+}
+
 /// Editor-side request payload sent to [OperatorWebWageAuthorityGateway.upsert].
 /// Mirrors the body the proxy `_handleUpsert` validates.
 class WageRoleRowUpsert {
@@ -71,6 +165,8 @@ class WageRoleRowUpsert {
     this.vendorRoleId,
     this.source,
     this.metadata = const <String, Object?>{},
+    this.scopeType = 'location',
+    this.orgUnitId,
   });
 
   final String restaurantId;
@@ -89,6 +185,17 @@ class WageRoleRowUpsert {
   final WageRoleRowSource? source;
   final Map<String, Object?> metadata;
 
+  /// GAP B2 HP #11 scope this wage row is being set at.
+  /// `'operator_wide' | 'org_unit' | 'location'`. Defaults to
+  /// `'location'` so existing callers (and any proxy write that omits
+  /// the key) keep their current Location-scoped behaviour — matches
+  /// the migration column default.
+  final String scopeType;
+
+  /// Required when [scopeType] is `'org_unit'` (the region/group the
+  /// row is set at). Null for operator_wide + location.
+  final String? orgUnitId;
+
   Map<String, Object?> toJson() => <String, Object?>{
         'restaurant_id': restaurantId,
         'role_name': roleName,
@@ -100,6 +207,11 @@ class WageRoleRowUpsert {
         if (vendorRoleId != null) 'vendor_role_id': vendorRoleId,
         if (source != null) 'source': source!.wire,
         if (metadata.isNotEmpty) 'metadata': metadata,
+        // Scope is always sent so a hierarchy-aware proxy can route the
+        // write; a legacy proxy ignores unknown keys and the column
+        // default keeps the row Location-scoped.
+        'scope_type': scopeType,
+        if (orgUnitId != null) 'org_unit_id': orgUnitId,
       };
 }
 
@@ -142,6 +254,32 @@ abstract class OperatorWebWageAuthorityGateway {
     required String wageRoleRowId,
     required String idempotencyKey,
   });
+}
+
+/// GAP B2 HP #11 projection seam. Resolves the rows that *effectively*
+/// apply at [locationId] after inheritance is walked (location override
+/// → nearest org-unit ancestor → Business default). Exposed as an
+/// extension so every gateway impl (live HTTP + in-memory demo) gets it
+/// for free without reimplementing — the resolution is pure projection
+/// over [OperatorWebWageAuthorityGateway.list], identical regardless of
+/// transport. A future hierarchy-aware proxy could add a server-side
+/// variant; until then this is the single source of truth and the
+/// screen + tests both call it.
+extension OperatorWebWageAuthorityGatewayEffective
+    on OperatorWebWageAuthorityGateway {
+  Future<List<WageRoleRowEffectiveRow>> listEffective({
+    required String operatorId,
+    required String locationId,
+    required List<String> ancestorOrgUnitIdsNearestFirst,
+  }) async {
+    final rows = await list(operatorId: operatorId, locationId: locationId);
+    return resolveEffectiveWageRows(
+      rows: rows,
+      operatorId: operatorId,
+      locationId: locationId,
+      ancestorOrgUnitIdsNearestFirst: ancestorOrgUnitIdsNearestFirst,
+    );
+  }
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it
@@ -497,6 +635,11 @@ class OperatorWebDemoWageAuthorityGateway
           ? now
           : existing.createdAt,
       updatedAt: now,
+      // GAP B2: round-trip the scope the editor saved at so a
+      // Business- or org-unit-scoped save reads back inherited at the
+      // child locations on the next list().
+      scopeType: request.scopeType,
+      orgUnitId: request.orgUnitId,
     );
     _store[id] = record;
     return record;
@@ -528,6 +671,9 @@ class OperatorWebDemoWageAuthorityGateway
       createdAt: existing.createdAt,
       updatedAt: _now().toUtc(),
       updatedBy: existing.updatedBy,
+      scopeType: existing.scopeType,
+      orgUnitId: existing.orgUnitId,
+      inheritedFromScopeId: existing.inheritedFromScopeId,
     );
     return true;
   }
@@ -587,6 +733,14 @@ WageRoleRowRecord _wageRoleRowRecordFromJson(Map<String, Object?> json) {
   final createdAt = _coerceDateTime(json['created_at']);
   final updatedAt = _coerceDateTime(json['updated_at']);
   final updatedBy = _readNullableString(json['updated_by']);
+  // GAP B2 scope fields. A legacy proxy that predates the migration
+  // omits these; default to Location scope (matches the column
+  // default) so older responses parse unchanged.
+  final scopeType =
+      _readNullableString(json['scope_type']) ?? 'location';
+  final orgUnitId = _readNullableString(json['org_unit_id']);
+  final inheritedFromScopeId =
+      _readNullableString(json['inherited_from_scope_id']);
 
   return WageRoleRowRecord(
     wageRoleRowId: id,
@@ -607,6 +761,9 @@ WageRoleRowRecord _wageRoleRowRecordFromJson(Map<String, Object?> json) {
     createdAt: createdAt,
     updatedAt: updatedAt,
     updatedBy: updatedBy,
+    scopeType: scopeType,
+    orgUnitId: orgUnitId,
+    inheritedFromScopeId: inheritedFromScopeId,
   );
 }
 

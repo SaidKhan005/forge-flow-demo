@@ -564,8 +564,9 @@ void main() {
     );
 
     testWidgets(
-      'renders HP #11 hierarchy scope notice (selected scope, inherited '
-      'from, effective value) at the top of the screen',
+      'GAP B2: no hierarchy → degrades to a Location notice + per-row '
+      'scope badge (the old hardcoded "coming in a later wave" notice '
+      'is gone)',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 900));
         final session = sessionWithRoles(<String>['operator_owner']);
@@ -578,45 +579,33 @@ void main() {
           locationId: session.primaryLocationId ?? '',
           locationName: session.primaryLocationName,
           gateway: gateway,
+          // No hierarchyNodes — the pre-GAP-B2 single-location host.
         )));
         await tester.pumpAndSettle();
+        // The old misleading screen-level notice is replaced.
         expect(
           find.byKey(const Key('wage_authority_hierarchy_scope')),
-          findsOneWidget,
+          findsNothing,
         );
-        // The triple is present.
+        expect(
+          find.textContaining('coming in a later wave'),
+          findsNothing,
+        );
+        // GAP B2 location-only notice renders instead.
         expect(
           find.byKey(
-            const Key('wage_authority_hierarchy_scope_selected_row'),
+            const Key('wage_authority_scope_editor_location_only'),
           ),
           findsOneWidget,
         );
+        // Each row carries its real resolved scope provenance badge.
         expect(
           find.byKey(
-            const Key('wage_authority_hierarchy_scope_inherited_row'),
+            const Key('wage_authority_row_scope_badge_row-foh'),
           ),
           findsOneWidget,
         );
-        expect(
-          find.byKey(
-            const Key('wage_authority_hierarchy_scope_effective_row'),
-          ),
-          findsOneWidget,
-        );
-        // Backend-only carve-out explainer renders for forward-looking
-        // inheritance coverage.
-        expect(
-          find.byKey(
-            const Key('wage_authority_hierarchy_scope_backend_only'),
-          ),
-          findsOneWidget,
-        );
-        // Plain-English copy (no engineering jargon like scope_id=…).
-        expect(
-          find.textContaining('Set here. Does not inherit'),
-          findsOneWidget,
-        );
-        expect(find.text('Location'), findsOneWidget);
+        expect(find.text('Set at this location'), findsOneWidget);
       },
     );
   });
