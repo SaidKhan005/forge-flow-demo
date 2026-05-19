@@ -183,6 +183,16 @@ Codex, orchestrator or executor):
    Non-destructively snapshot via `git stash create`, point a
    `rescue/<topic>` branch at the result, and `git push origin
    rescue/<topic>` — then report. Never destroy another session's work.
+5. **Stay-on-master + worktree-only execution.** The shared main checkout's
+   working tree STAYS on `master` at all times. No session, executor, agent,
+   or hook switches the shared checkout off `master`, commits feature/slice
+   work to it, or leaves it on a feature branch. ALL implementation work
+   happens in a dedicated worktree on a `claude/*` (or `codex/*`) branch. If
+   a post-merge hook or any process moves the shared checkout's HEAD off
+   `master`, restore it to `origin/master` immediately (after rescuing any
+   uncommitted content per rule 4). This is the positive form of rule 1
+   (own-worktree-only) and the direct fix for the repeated 2026-05-18/19
+   "HEAD landed on master mid-task" incidents.
 
 ## Cost & Convergence Discipline (binding — stops rework spend)
 
