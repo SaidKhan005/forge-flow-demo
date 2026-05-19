@@ -18,8 +18,8 @@ the lasting contract, CI integration, extension rules, and gap list
 that the next person extending these lanes (`p5_*`) must read first.
 
 References:
-- `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` Block B (B2).
-- `docs/_research/post_codex/r3_soak_pressure_testing.md` (full read, §1–§6).
+- `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` Block B (B2).
+- `docs/archive/_research/post_codex/r3_soak_pressure_testing.md` (full read, §1–§6).
 - `docs/_audits/code_health/a1_proxy_bug_root_cause.md` (Bug A / Bug B taxonomy).
 - `docs/contracts/slice_runtime_acceptance_contract.md`.
 - `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`.

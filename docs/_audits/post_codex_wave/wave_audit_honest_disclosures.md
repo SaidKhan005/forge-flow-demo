@@ -78,7 +78,7 @@ The one pre-existing test failure that's still on master and lacks a follow-up i
 |---|---|---|---|
 | C-1a / #599 | (a) Pre-existing runbook count drift recovered; (b) possible C-1b need (ECDSA pubkey column on `email_credentials`) | (a) recovered in PR diff; (b) `c_1_ecdsa_pubkey_gap_investigation.md` (read-only investigation; verdict: **c-1b-not-required** per Hard Promise #7 env-var-first posture) | **both tracked** |
 | C-1 / #611 | 3 honest disclosures: (a) `email_credentials.sendgrid_event_webhook_pubkey_pem` column deferred to conditional C-1b; (b) no `audit_logs` writes by design; (c) pubkey loader per-request for rotation-without-restart | (a) `c_1_ecdsa_pubkey_gap_investigation.md` documents env-var-first as V1 launch posture per HP #7; (b)+(c) design intent documented inline | **all 3 tracked (design-intentional)** |
-| C-2 / #617 | 5 stop-and-disclosed drafts (C/D/E/F/G) requiring operator architectural decisions | `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md` recorded operator picks; new ledger rows for each pick (C-2-C, C-2-D, C-2-F, C-2-Del) | **tracked + all closed** |
+| C-2 / #617 | 5 stop-and-disclosed drafts (C/D/E/F/G) requiring operator architectural decisions | `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md` recorded operator picks; new ledger rows for each pick (C-2-C, C-2-D, C-2-F, C-2-Del) | **tracked + all closed** |
 | C-2-C / #629 | (a) Removal-only sub-path (server-side enrollment hook deferred); (b) `accountSecurityUrl` hardcoded for V1 (future per-flavor parameterization) | (a) Slice notes in ledger row 86 mention "server-side enrollment hook deferred" inline but **NO follow-up row or POST_HARDENING entry**; (b) audit doc inline note only — **UNTRACKED** for closeout | **(a) partially tracked (slice notes); (b) UNTRACKED** |
 | C-2-D / #631 | "Production runtime binding NOT shipped in this slice" — observer defaults to null | C-2-D-binding ledger row 88 + PR #633 closed | **tracked + closed** |
 | C-2-D-binding / #633 | (none — closes C-2-D's production wire deferral) | n/a | — |
@@ -240,7 +240,7 @@ The wave doctrine treats "verified on clean master pre-PR" disclosures as honest
 - `docs/KNOWN_FAILING_TESTS.md` (1 open row at master tip) — pre-existing test failure quarantine
 - `docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` — sibling deep audit (5 P1 + 4 P2 + 2 P3 — all tracked correctly)
 - `docs/archive/_audits/post_codex_wave_2026-05-13/c_1_ecdsa_pubkey_gap_investigation.md` — operator-decision artifact pattern
-- `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md` — operator-pick matrix pattern
+- `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md` — operator-pick matrix pattern
 - `docs/archive/_audits/post_codex_wave_2026-05-13/orchestrator_bundle_33_b10_1_fallout.md` — orchestrator-bundle housekeeping pattern
 - `CLAUDE.md` "Hard Promises" #7 (server-side keys) + #10 (operator-facing UX before phase close) + addendum C4 (no silent failures)
 - `~/.claude/projects/.../memory/feedback_followups_doc_hygiene.md` — ledger-first discipline ("ledger first, followups doc second; if an audit finding has a clear next-slice home, fold into the ledger row's scope")

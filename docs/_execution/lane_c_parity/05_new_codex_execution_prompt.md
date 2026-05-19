@@ -18,8 +18,8 @@ writes, no contract amendments).
 
 Source-of-truth docs (read before coding, in this order):
 - CLAUDE.md (authority order; Hard Promises; agent-led-slices rules)
-- docs/_decisions/post_codex_wave_decisions_2026-05-12.md
-- docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
+- docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md
+- docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
   (esp. Block B B3 and Block C C3)
 - docs/_execution/lane_c_parity/01_product_rule_and_ia.md
   (HP #10 operationalization: every email scenario is wired,
@@ -31,7 +31,7 @@ Source-of-truth docs (read before coding, in this order):
 - docs/_audits/code_health/c_email_notification_scenario_inventory.md
   (every wired email scenario's delivery signal depends on the
    event webhook landing)
-- docs/_research/post_codex/r4_email_notification_testing.md §5A
+- docs/archive/_research/post_codex/r4_email_notification_testing.md §5A
   (the canonical pattern for this receiver — SendGrid Event
    Webhook → `email_event` table)
 - docs/contracts/slice_runtime_acceptance_contract.md
@@ -164,7 +164,7 @@ Final action:
   observability per addendum C3. ECDSA signature verification on
   every request; idempotent inserts; not on /readyz.
 
-  Authority: docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
+  Authority: docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
   C3 + B3; docs/_audits/code_health/c_email_notification_scenario_inventory.md
   "Quick wire-status rollup."
 
@@ -205,6 +205,6 @@ The orchestrator dispatches the C-2 wire-or-delete drafts (one PR per template d
 - `02_plumbing_audit_matrix.md` E1 — SendGrid event webhook gap citation.
 - `03_execution_slices.md` Slice C-1 — full slice definition.
 - `04_verification_deploy_and_e2e.md` — pressure-test matrix dependency.
-- `docs/_research/post_codex/r4_email_notification_testing.md` §5A — the pattern reference.
+- `docs/archive/_research/post_codex/r4_email_notification_testing.md` §5A — the pattern reference.
 - `db/migrations/202605040200_phase_9_8_email_provider.sql` — the `email_event` schema this slice writes into.
 - `tool/advisor_proxy/admin_email_routes.dart` — reference for proxy route mounting pattern (lines around 140 per the inventory).

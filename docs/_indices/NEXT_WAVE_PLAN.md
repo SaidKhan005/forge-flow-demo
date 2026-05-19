@@ -223,7 +223,7 @@ Lane checks main runs in parallel with the row-by-row pass:
 
 ### Step 2d — Main produces plain-English verification list for operator
 
-Single doc at `docs/_audits/wave_2/phase_2_walkthrough_verification.md`:
+Single doc at `docs/archive/_audits/wave_2/phase_2_walkthrough_verification.md`:
 - Every audit row, its outcome (✅ resolved / 🔧 fixed in PR #X / 🚧 escalated to Wave 2.5).
 - Plain-English summary of what main saw on each surface.
 - List of fix PRs main shipped during the walkthrough.
@@ -489,7 +489,7 @@ lib/<specific-subtree>` not the whole tree, when scope is local.
 ### 8. Cross-session audit fallback
 
 If main session caps out mid-audit on a Main-owned PR, second Claude
-MAY pick it up as a one-off. Audits write to `docs/_audits/wave_2/`
+MAY pick it up as a one-off. Audits write to `docs/archive/_audits/wave_2/`
 which both sessions can write to (only `WAVE_2_LEDGER.md` itself is
 main-only-writes). The audit doc carries the verdict; main session
 merges when it's back. **Use sparingly** — safety valve, not habit.
@@ -498,7 +498,7 @@ merges when it's back. **Use sparingly** — safety valve, not habit.
 
 ## Cross-references
 
-- Wave 1 closeout: `docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`
+- Wave 1 closeout: `docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`
 - Wave 1 ledger (closed): `docs/_indices/WAVE_EXECUTION_LEDGER.md`
 - Wave 2 ledger: `docs/_indices/WAVE_2_LEDGER.md`
 - Wave 2 parallel-lane handoff prompt: `docs/_indices/WAVE_2_PARALLEL_LANE_HANDOFF.md`

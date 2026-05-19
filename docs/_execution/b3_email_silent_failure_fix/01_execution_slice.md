@@ -1,7 +1,7 @@
 # B3 — Email silent-failure hot-fix (execution slice)
 
 Authority:
-- `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` Block B, B3.
+- `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` Block B, B3.
 - `docs/_audits/code_health/c_email_notification_scenario_inventory.md` (Hook-only with missing templates row).
 - `CLAUDE.md` Hard Promises + UX writing standard.
 
