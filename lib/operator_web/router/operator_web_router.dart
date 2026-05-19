@@ -878,6 +878,80 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     );
   }
 
+  OperatorWebManagementScopeOption? _businessTimingLocationContext(
+    OperatorWebSession session,
+    OperatorWebManagementScopeOption managementScope,
+  ) {
+    if (managementScope.kind == OperatorWebManagementScopeKind.location) {
+      return managementScope;
+    }
+    if (managementScope.kind == OperatorWebManagementScopeKind.orgUnit) {
+      for (final option in _managementScopeOptions) {
+        if (option.kind == OperatorWebManagementScopeKind.location &&
+            _locationHasOrgUnitAncestor(option, managementScope.id)) {
+          return option;
+        }
+      }
+    }
+    final primaryLocationId = session.primaryLocationId;
+    if (primaryLocationId == null || primaryLocationId.trim().isEmpty) {
+      return null;
+    }
+    final primaryKey = _scopeKey(
+      OperatorWebManagementScopeKind.location,
+      primaryLocationId,
+    );
+    for (final option in _managementScopeOptions) {
+      if (option.key == primaryKey) return option;
+    }
+    return _locationScopeOption(
+      locationId: primaryLocationId,
+      label: session.primaryLocationName,
+    );
+  }
+
+  OperatorWebManagementScopeOption? _businessTimingOrgUnitContext(
+    OperatorWebManagementScopeOption managementScope,
+    OperatorWebManagementScopeOption? locationScope,
+  ) {
+    if (managementScope.kind == OperatorWebManagementScopeKind.orgUnit) {
+      return managementScope;
+    }
+    if (locationScope == null) return null;
+    final ancestors = _wageAncestorOrgUnitIdsNearestFirst(locationScope);
+    if (ancestors.isEmpty) return null;
+    return _orgUnitScopeById(ancestors.first);
+  }
+
+  OperatorWebManagementScopeOption? _orgUnitScopeById(String orgUnitId) {
+    for (final option in _managementScopeOptions) {
+      if (option.kind == OperatorWebManagementScopeKind.orgUnit &&
+          option.id == orgUnitId) {
+        return option;
+      }
+    }
+    return null;
+  }
+
+  bool _locationHasOrgUnitAncestor(
+    OperatorWebManagementScopeOption locationScope,
+    String orgUnitId,
+  ) {
+    final orgUnitById = <String, OperatorWebManagementScopeOption>{
+      for (final option in _managementScopeOptions)
+        if (option.kind == OperatorWebManagementScopeKind.orgUnit)
+          option.id: option,
+    };
+    var current = locationScope.parentOrgUnitId;
+    final seen = <String>{};
+    while (current != null && current.isNotEmpty) {
+      if (!seen.add(current)) return false;
+      if (current == orgUnitId) return true;
+      current = orgUnitById[current]?.parentOrgUnitId;
+    }
+    return false;
+  }
+
   List<DemoTeamLocationFixture> _locationFixturesForMembers(
     OperatorWebSession session,
   ) {
@@ -1148,6 +1222,14 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         managementScope.kind == OperatorWebManagementScopeKind.location
         ? managementScope
         : null;
+    final businessTimingLocationScope = _businessTimingLocationContext(
+      session,
+      managementScope,
+    );
+    final businessTimingOrgUnitScope = _businessTimingOrgUnitContext(
+      managementScope,
+      businessTimingLocationScope,
+    );
     // Wave 2 OW-4 — the Locations nav row mounts the per-operator
     // hierarchy CRUD (`HierarchyScreen`: add / rename / move org
     // units, attach locations as leaves). That surface only makes
@@ -1309,6 +1391,23 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         if (businessSetupWiringError != null) {
           body = businessSetupWiringError;
+        } else if (managementScope.kind ==
+                OperatorWebManagementScopeKind.orgUnit &&
+            _webBusinessTimingGateway != null) {
+          body = BusinessTimingEditorScreen(
+            session: session,
+            locationId: businessTimingLocationScope?.id,
+            locationName: businessTimingLocationScope?.label,
+            orgUnitId: managementScope.id,
+            orgUnitName: managementScope.label,
+            orgUnitHelper: managementScope.helper,
+            initialScopeKind: 'org_unit',
+            gateway: _webBusinessTimingGateway,
+            existingProfile: _resolvedExistingTimingProfileForScope(
+              scopeKind: 'org_unit',
+              scopeId: managementScope.id,
+            ),
+          );
         } else if (locationScope == null) {
           body = _RequiresLocationScopeSurface(
             key: const Key('operator_web_business_setup_requires_location'),
@@ -1324,6 +1423,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             session: session,
             locationId: locationScope.id,
             locationName: locationScope.label,
+            orgUnitId: businessTimingOrgUnitScope?.id,
+            orgUnitName: businessTimingOrgUnitScope?.label,
+            orgUnitHelper: businessTimingOrgUnitScope?.helper,
             gateway: _webBusinessTimingGateway,
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
             onClose: () => setState(() => _editingBusinessTiming = false),
@@ -1802,9 +1904,28 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   BusinessTimingProfileWriteResult? _resolvedExistingTimingProfile(
     String locationId,
   ) {
+    final exact = _resolvedExistingTimingProfileForScope(
+      scopeKind: 'location',
+      scopeId: locationId,
+    );
+    if (exact != null) return exact;
     final gateway = _businessTimingGateway;
     if (gateway is HttpBusinessTimingReadGateway) {
       return gateway.selectProfileForLocation(locationId);
+    }
+    return null;
+  }
+
+  BusinessTimingProfileWriteResult? _resolvedExistingTimingProfileForScope({
+    required String scopeKind,
+    required String scopeId,
+  }) {
+    final gateway = _businessTimingGateway;
+    if (gateway is! HttpBusinessTimingReadGateway) return null;
+    for (final profile in gateway.lastProfiles) {
+      if (profile.scopeKind == scopeKind && profile.scopeId == scopeId) {
+        return profile;
+      }
     }
     return null;
   }

@@ -20,6 +20,7 @@ import 'package:forge_and_flow/operator_web/services/demo_team_audit_log_gateway
 import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_vendor_connections_fixtures.dart';
+import 'package:forge_and_flow/operator_web/services/business_timing_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
 import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
@@ -702,6 +703,50 @@ void main() {
         find.byKey(const Key('operator_web_business_setup_screen')),
         findsOneWidget,
       );
+    });
+
+    testWidgets('org-unit management scope opens editor and writes org_unit', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final writeGateway = _CapturingBusinessTimingGateway();
+      final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavBusinessSetup,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_management_scope_picker')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('East Region').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_business_timing_editor_screen')),
+        findsOneWidget,
+      );
+      expect(find.textContaining('East Region'), findsWidgets);
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(writeGateway.creates, hasLength(1));
+      expect(writeGateway.creates.single.scopeKind, 'org_unit');
+      expect(writeGateway.creates.single.scopeId, 'demo-org-east');
     });
 
     testWidgets('forbidden state renders the fail-closed surface', (
@@ -1586,6 +1631,47 @@ class _LiveDataAccuracyWiredOperatorWebSource extends OperatorWebAuthSource
   }
 }
 
+/// Fully-wired source for Business Timing plus hierarchy context.
+class _BusinessTimingHierarchyOperatorWebSource extends OperatorWebAuthSource
+    implements
+        OperatorWebBusinessTimingGatewayProvider,
+        OperatorWebBusinessTimingWriteGatewayProvider,
+        OperatorWebTeamHierarchyGatewayProvider {
+  _BusinessTimingHierarchyOperatorWebSource(this.businessTimingWriteGateway) {
+    _controller.add(_state);
+  }
+
+  final _controller = StreamController<OperatorWebAuthState>.broadcast();
+  final OperatorWebAuthState _state = const OperatorWebCompleted(
+    session: kDemoOperatorWebSession,
+  );
+
+  @override
+  final BusinessTimingGateway businessTimingGateway =
+      const DemoBusinessTimingGateway();
+
+  @override
+  final WebBusinessTimingGateway businessTimingWriteGateway;
+
+  @override
+  final WebTeamHierarchyGateway teamHierarchyGateway =
+      DemoWebTeamHierarchyGateway();
+
+  @override
+  Stream<OperatorWebAuthState> get stream => _controller.stream;
+
+  @override
+  OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signOut() async {}
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
 /// Fully-wired live source for the Schedule route — mixes
 /// `OperatorWebScheduleGatewayProvider`, exactly as the production
 /// `FirebaseOperatorWebAuthSource` does.
@@ -1668,6 +1754,66 @@ class _StubVendorApplicabilityGateway implements WebVendorApplicabilityGateway {
     required String settingKind,
     String? settingKey,
   }) async => const <WebVendorApplicabilityRow>[];
+}
+
+class _CapturingBusinessTimingGateway implements WebBusinessTimingGateway {
+  final List<BusinessTimingProfileCreate> creates =
+      <BusinessTimingProfileCreate>[];
+
+  @override
+  Future<List<BusinessTimingProfileWriteResult>> listProfiles() async =>
+      const <BusinessTimingProfileWriteResult>[];
+
+  @override
+  Future<BusinessTimingResolutionResult> resolveForLocation({
+    required String locationId,
+    String? businessDate,
+  }) async => BusinessTimingResolutionResult(
+    operatorId: 'demo-operator',
+    locationId: locationId,
+    businessDate: businessDate ?? '2026-05-13',
+    ianaTimezone: 'America/Toronto',
+    candidates: const <BusinessTimingResolutionCandidate>[],
+  );
+
+  @override
+  Future<BusinessTimingProfileWriteResult> createProfile(
+    BusinessTimingProfileCreate request,
+  ) async {
+    creates.add(request);
+    return BusinessTimingProfileWriteResult(
+      profileId: 'profile-new',
+      versionId: 'profile-new',
+      scopeKind: request.scopeKind,
+      scopeId: request.scopeId,
+      effectiveAtBusinessDate: request.effectiveAtBusinessDate,
+      ianaTimezone: request.ianaTimezone,
+      weekStartDay: request.weekStartDay,
+      businessDayStartLocal: request.businessDayStartLocal,
+      servicePeriods: const <ServicePeriod>[],
+      createdAt: DateTime.utc(2026, 5, 19),
+      updatedAt: DateTime.utc(2026, 5, 19),
+    );
+  }
+
+  @override
+  Future<BusinessTimingProfileWriteResult> updateProfile({
+    required String profileId,
+    required BusinessTimingProfilePatch patch,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<BusinessTimingProfileWriteResult> addServicePeriod({
+    required String profileId,
+    required ServicePeriodCreate period,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<BusinessTimingProfileWriteResult> updateServicePeriod({
+    required String profileId,
+    required String key,
+    required ServicePeriodPatch patch,
+  }) async => throw UnimplementedError();
 }
 
 class _StubBusinessTimingGateway implements WebBusinessTimingGateway {
