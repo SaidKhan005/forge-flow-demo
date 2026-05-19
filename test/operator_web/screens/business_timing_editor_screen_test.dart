@@ -17,6 +17,7 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
   final List<BusinessTimingProfileCreate> creates =
       <BusinessTimingProfileCreate>[];
+  final List<_ProfileUpdateCall> updates = <_ProfileUpdateCall>[];
 
   @override
   Future<List<BusinessTimingProfileWriteResult>> listProfiles() async =>
@@ -71,7 +72,35 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
   Future<BusinessTimingProfileWriteResult> updateProfile({
     required String profileId,
     required BusinessTimingProfilePatch patch,
-  }) async => throw UnimplementedError('not used in these tests');
+  }) async {
+    updates.add(_ProfileUpdateCall(profileId, patch));
+    return BusinessTimingProfileWriteResult(
+      profileId: profileId,
+      versionId: profileId,
+      scopeKind: patch.scopeKind ?? 'operator',
+      scopeId: patch.scopeId ?? 'op-1',
+      effectiveAtBusinessDate: patch.effectiveAtBusinessDate ?? '2026-05-01',
+      ianaTimezone: patch.ianaTimezone ?? 'America/Toronto',
+      weekStartDay: patch.weekStartDay ?? 'monday',
+      businessDayStartLocal: patch.businessDayStartLocal ?? '04:00',
+      servicePeriods: (patch.servicePeriods ?? const <ServicePeriodCreate>[])
+          .map(
+            (p) => ServicePeriod(
+              key: p.key,
+              label: p.label,
+              startLocal: p.startLocal,
+              endLocal: p.endLocal,
+              rollsPastMidnight: false,
+              applicableDays: p.applicableDays,
+              shortLabel: p.shortLabel,
+              sortOrder: p.sortOrder,
+            ),
+          )
+          .toList(),
+      createdAt: DateTime.utc(2026, 5, 6, 18),
+      updatedAt: DateTime.utc(2026, 5, 6, 18),
+    );
+  }
 
   @override
   Future<BusinessTimingProfileWriteResult> addServicePeriod({
@@ -85,6 +114,13 @@ class _FakeBusinessTimingGateway implements WebBusinessTimingGateway {
     required String key,
     required ServicePeriodPatch patch,
   }) async => throw UnimplementedError('not used in these tests');
+}
+
+class _ProfileUpdateCall {
+  const _ProfileUpdateCall(this.profileId, this.patch);
+
+  final String profileId;
+  final BusinessTimingProfilePatch patch;
 }
 
 OperatorWebSession sessionWithRole(String role) => OperatorWebSession(
@@ -115,6 +151,139 @@ Future<void> _sizeViewport(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets(
+    'org-unit scope save writes org_unit with the selected group id',
+    (tester) async {
+      await _sizeViewport(tester);
+      final gateway = _FakeBusinessTimingGateway();
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          BusinessTimingEditorScreen(
+            session: session,
+            gateway: gateway,
+            orgUnitId: 'org-east',
+            orgUnitName: 'East Region',
+            orgUnitHelper: 'Region',
+            locationId: 'loc-1',
+            locationName: 'Downtown',
+            initialScopeKind: 'org_unit',
+          ),
+        ),
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_editor_save')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(gateway.creates, hasLength(1));
+      final create = gateway.creates.single;
+      expect(create.scopeKind, 'org_unit');
+      expect(create.scopeId, 'org-east');
+      expect(find.textContaining('East Region'), findsWidgets);
+      expect(find.textContaining('scope_kind'), findsNothing);
+    },
+  );
+
+  testWidgets('selecting location scope still writes the location id', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeBusinessTimingGateway();
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(
+        BusinessTimingEditorScreen(
+          session: session,
+          gateway: gateway,
+          orgUnitId: 'org-east',
+          orgUnitName: 'East Region',
+          orgUnitHelper: 'Region',
+          locationId: 'loc-1',
+          locationName: 'Downtown',
+        ),
+      ),
+    );
+
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_scope_kind')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.textContaining('Just Downtown').last);
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gateway.creates, hasLength(1));
+    final create = gateway.creates.single;
+    expect(create.scopeKind, 'location');
+    expect(create.scopeId, 'loc-1');
+  });
+
+  testWidgets('updating an existing org-unit profile keeps org_unit scope', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeBusinessTimingGateway();
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(
+        BusinessTimingEditorScreen(
+          session: session,
+          gateway: gateway,
+          orgUnitId: 'org-east',
+          orgUnitName: 'East Region',
+          orgUnitHelper: 'Region',
+          locationId: 'loc-1',
+          locationName: 'Downtown',
+          existingProfile: BusinessTimingProfileWriteResult(
+            profileId: 'profile-east',
+            versionId: 'profile-east',
+            scopeKind: 'org_unit',
+            scopeId: 'org-east',
+            effectiveAtBusinessDate: '2026-05-10',
+            ianaTimezone: 'America/Toronto',
+            weekStartDay: 'monday',
+            businessDayStartLocal: '04:00',
+            servicePeriods: const <ServicePeriod>[
+              ServicePeriod(
+                key: 'lunch',
+                label: 'Lunch',
+                startLocal: '11:00',
+                endLocal: '15:00',
+                rollsPastMidnight: false,
+                sortOrder: 1,
+              ),
+            ],
+            createdAt: DateTime.utc(2026, 5, 6, 18),
+            updatedAt: DateTime.utc(2026, 5, 6, 18),
+          ),
+        ),
+      ),
+    );
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_editor_save')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gateway.creates, isEmpty);
+    expect(gateway.updates, hasLength(1));
+    expect(gateway.updates.single.profileId, 'profile-east');
+    expect(gateway.updates.single.patch.scopeKind, 'org_unit');
+    expect(gateway.updates.single.patch.scopeId, 'org-east');
+  });
+
   testWidgets('renders the editor + service-period editor', (tester) async {
     await _sizeViewport(tester);
     final session = sessionWithRole('operator_owner');
@@ -214,6 +383,7 @@ void main() {
     expect(gateway.creates, hasLength(1));
     final create = gateway.creates.single;
     expect(create.scopeKind, 'operator');
+    expect(create.scopeId, 'op-1');
     expect(create.weekStartDay, 'monday');
     expect(create.servicePeriods, isNotEmpty);
     expect(
