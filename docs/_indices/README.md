@@ -1,79 +1,51 @@
 # Indices
 
 Single canonical entry points for orchestrator + executor coordination.
-Executor-agnostic per CLAUDE.md "Workflow" — Claude lanes, Codex lanes,
+Executor-agnostic per CLAUDE.md "Workflow": Claude lanes, Codex lanes,
 or both run the same underlying pattern.
 
-## What lives here (active)
+`PROJECT_TRACKER.md` at repo root is the highest-level router; this
+directory is the second hop. Slice scope lives in
+`docs/_execution/`, phase plans in `docs/phases/`, audits in
+`docs/_audits/`, decision rationale in `docs/_decisions/`.
 
-| File | Audience | Purpose |
-|---|---|---|
-| `NEXT_WAVE_PLAN.md` | All | Forward 6-phase pipeline. **Phase 2.5 — Per-Daypart Targets V1 is the active feature work** (output of Phase 2 mobile walkthrough). |
-| `WAVE_2_LEDGER.md` | Reference | Wave 2's slice ledger. Operator-web + admin lanes CLOSED 2026-05-14. Mobile lane closed for walkthrough 2026-05-15; mobile work transitions to Per-Daypart Targets V1 implementation (separate plan doc). |
-| `DEBUG_MD_IMPLEMENTATION_STATUS.md` | All | Source-of-truth for every brain-dump ask from `debug.md` mapped to ✅ / 🚧 / ❌ / 🔍. Wave 2 ledger cites this. |
-| `INFRA_DEFERRALS_INVENTORY.md` | All | Discovery index (not authority) for the long tail of deliberate infra deferrals living only as code comments — GAP B6. |
-| `CLAUDE_HANDOFF_PROMPT.md` | Operator (paste-ready) | General Claude executor handoff. Wave 2 specialization archived 2026-05-15. |
-| `CODEX_HANDOFF_PROMPT.md` | Operator (paste-ready) | Same shape for Codex (currently dormant). |
+## Live files
 
-## Active feature plan
+| File | Purpose |
+|---|---|
+| `NEXT_WAVE_PLAN.md` | Forward pipeline. Phase 2.5, Per-Daypart Targets V1, is the active feature work (output of the Phase 2 mobile walkthrough). |
+| `PER_DAYPART_V1_MAIN_ORCHESTRATOR_BRIEF.md` | Cold-readable brief for the main orchestrator session driving Per-Daypart V1 (plan + execution context). |
+| `PER_DAYPART_V1_CLAUDE2_HANDOFF.md` | Paste-ready prompt to bootstrap a second Claude session into the Per-Daypart V1 parallel-lane role. |
+| `PER_DAYPART_V1_POST_SLICE1_DISPATCH.md` | Pre-staged worker prompts to fire as one parallel wave once the relevant Per-Daypart slice merges. |
+| `VARIANCE_COACHING_V2_LEDGER.md` | One row per Variance Coaching V2 lane. Lanes A to F MERGED; Lane G wave-close in review. Audit artifacts: `docs/_audits/variance_coaching_v2/`. |
+| `DEBUG_MD_IMPLEMENTATION_STATUS.md` | Source-of-truth mapping every `debug.md` brain-dump ask to done / in-progress / not-done / investigating, with citations. |
+| `INFRA_DEFERRALS_INVENTORY.md` | Discovery index (not authority) for deliberate infra deferrals that live only as code comments (GAP B6). |
 
-**Per-Daypart Targets V1** — `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`.
-Self-contained, cold-readable. 14 architectural decisions locked; 9
-slices (0 → 1 → 1.5 → 2 → 2.5 → 3 → 4 → 5 → 6); 44 gaps consolidated
-post-audit; reusable surface-coverage audit method appended.
+## Closed / archived ledgers
 
-4 operator decisions queued before any slice dispatches.
-
-## Workflow is executor-agnostic
-
-The underlying pattern (worktree + agent + audit + PR + merge) is the
-same whether the active executor is Claude, Codex, or both running in
-parallel.
-
-- Authority: [`CLAUDE.md`](../../CLAUDE.md) "Workflow" section.
-- Prompt-shape rules: [`docs/CODEX_PROMPT_GENERATION_STANDARD.md`](../CODEX_PROMPT_GENERATION_STANDARD.md).
-
-## Authority
-
-- Slice state: the current wave's ledger is canonical when active; when
-  closed, the ledger is frozen and the next wave opens its own.
-- Per-slice scope: `docs/_execution/lane_<x>_<name>/03_execution_slices.md`,
-  or inline in `PROJECT_TRACKER.md` per "Phase Doc Hygiene" in CLAUDE.md.
-- Per-slice authority: follows `CLAUDE.md` Authority Order.
-- Wave-specific lane-assignment artifacts retire to
-  `docs/archive/_indices/` when the wave closes.
-
-## When to read
-
-- **Orchestrator** (operator's main chat): read `NEXT_WAVE_PLAN.md` for
-  forward plan; the active feature plan in `docs/phases/per_daypart_targets_v1/`
-  for slice scope; the wave's ledger for closed state.
-- **Fresh Claude executor**: paste `CLAUDE_HANDOFF_PROMPT.md`.
-- **Fresh Codex executor**: paste `CODEX_HANDOFF_PROMPT.md`.
-- **Operator**: `PROJECT_TRACKER.md` at repo root is the highest-level
-  router; this directory is the second hop.
-
-## What does NOT live here
-
-- Slice-level execution details — `docs/_execution/lane_<x>_<name>/`.
-- Phase / feature plans — `docs/phases/<phase>/`.
-- Audit findings — `docs/_audits/<wave>/`.
-- Decision rationale — `docs/_decisions/`.
-- Tracker truth — `PROJECT_TRACKER.md` (lifecycle-of-record across phases).
-
-## Update cadence
-
-- Slice state change → main orchestrator updates the active ledger.
-- New slice added → main orchestrator adds a row.
-- Handoff prompts → updated only when cross-cutting workflow changes (rare).
-- `NEXT_WAVE_PLAN.md` → updated on operator pivot, phase close, or major decision.
-
-## Archived
-
-Closed-wave artifacts retired to `docs/archive/_indices/`:
-
-- `docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md` — Wave 1 (post-Codex wave) slice state machine.
-- `docs/archive/_indices/wave_2_closeout_2026_05_15/` — Wave 2 Claude2-lane handoffs + R-2L proposal + help queues (operator-web + admin lanes closed; mobile transitioned to Per-Daypart Targets V1).
-- `docs/archive/_indices/CLAUDE_LANE_INDEX_2026-05-13.md` + `CODEX_LANE_INDEX_2026-05-13.md` — Post-Codex wave lane indices.
+- `WAVE_2_LEDGER.md` (still in tree, frozen): Wave 2 slice ledger.
+  Operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for
+  walkthrough 2026-05-15 and transitioned to Per-Daypart Targets V1.
+- `docs/archive/_indices/wave_1_closed_2026_05_13/WAVE_EXECUTION_LEDGER.md`:
+  Wave 1 (post-Codex wave) slice state machine.
+- `docs/archive/_indices/wave_2_closeout_2026_05_15/`: Wave 2 Claude2-lane
+  handoffs + R-2L proposal + help queues.
+- `docs/archive/_indices/CLAUDE_LANE_INDEX_2026-05-13.md` +
+  `CODEX_LANE_INDEX_2026-05-13.md`: post-Codex wave lane indices.
+- The earlier general `CLAUDE_HANDOFF_PROMPT.md` /
+  `CODEX_HANDOFF_PROMPT.md` were retired; Per-Daypart V1 handoffs above
+  are the current paste-ready prompts.
 
 See `docs/archive/_indices/README.md` for the full archive map.
+
+## Authority + cadence
+
+- Slice state: the active wave/feature ledger is canonical while open;
+  once closed it is frozen and the next opens its own.
+- Per-slice authority follows `CLAUDE.md` Authority Order.
+- Prompt-shape rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+- Ledger row changes are made by the main orchestrator only.
+- `NEXT_WAVE_PLAN.md` updates on operator pivot, phase close, or major
+  decision.
+- Wave-specific lane-assignment artifacts retire to
+  `docs/archive/_indices/` when the wave closes.
