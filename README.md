@@ -74,8 +74,8 @@ Two-console framing detail: `memory/project_two_console_framing.md`.
 
 Deeper guides:
 
-- [docs/contracts/core_app_architecture.md](docs/contracts/core_app_architecture.md) — canonical Layer 1-12 contract.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — plain-English + technical walkthrough.
+- [docs/contracts/core_app_architecture.md](docs/contracts/core_app_architecture.md) — canonical Layer 1-12 contract (plain-English + technical walkthrough; absorbs the plain-english companion as Appendix A).
+- [docs/contracts/phase_7_55_plain_english_architecture.md](docs/contracts/phase_7_55_plain_english_architecture.md) — plain-English architecture explainer.
 - [docs/contracts/integration_spine_architecture_contract.md](docs/contracts/integration_spine_architecture_contract.md) — vendor adapter spine.
 - [docs/contracts/hardening_rls_and_repository_pattern_contract.md](docs/contracts/hardening_rls_and_repository_pattern_contract.md) — RLS + repository discipline.
 - [docs/contracts/phase_7_55_time_boundary_contract.md](docs/contracts/phase_7_55_time_boundary_contract.md) — timestamp + business-date rules.
