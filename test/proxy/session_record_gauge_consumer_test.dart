@@ -3,7 +3,7 @@
 // A11.1 (PR #522) wired the increment side: every 2xx from
 // POST /v1/auth/session/login calls `gauge.observe(...)` which buckets
 // per-(route, missing_field) counts in memory. The 2026-05-13 deep audit
-// (`docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
+// (`docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
 // finding #2) flagged that `.snapshot()` and `.totalIncrements()` were
 // never read by any production path — the metric was effectively dead.
 //

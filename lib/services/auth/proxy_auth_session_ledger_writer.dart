@@ -392,7 +392,7 @@ class ProxyAuthSessionLedgerWriter
     // every global-admin sign-in trips
     // `AuthLoginFailure(code: 'ledger_unavailable')` — the exact Bug 1
     // symptom A1 was tracking. See
-    // `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md` §1 and
+    // `docs/archive/_audits/post_codex_wave/pr_476_b1_b2_audit.md` §1 and
     // `tool/pressure/p4_session_record_predicate.dart` for the
     // symmetric harness predicate.
     final isGlobalAdmin = _isGlobalAdminCaller(login.roles);

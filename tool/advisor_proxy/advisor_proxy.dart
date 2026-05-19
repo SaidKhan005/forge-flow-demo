@@ -4976,7 +4976,7 @@ proxyHealthReservedMetrics = <String, ProxyHealthMetric>{
   // Slice A11.1.b — surface the per-instance SessionRecordIncompleteGauge
   // into the deep-health envelope. Multi-instance Cloud Run rolls up per-
   // pod gauge state at the observability sink because each pod emits its
-  // own /health JSON. Authority: docs/_audits/post_codex_wave/
+  // own /health JSON. Authority: docs/archive/_audits/post_codex_wave/
   // wave_completion_deep_audit_2026_05_13.md finding #2 + R3 §2 stretch
   // goal (consumer side, A11.1.b).
   'session_record_incomplete_count': ProxyHealthMetric(
@@ -5297,7 +5297,7 @@ class ProxyHealthRegistryContext {
   /// `session_record_incomplete_count`. Per-pod identity is conveyed by
   /// the envelope-level pod label produced separately by Cloud Run; this
   /// accessor exposes only the gauge state.
-  /// Authority: docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
+  /// Authority: docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
   /// finding #2 + docs/_execution/lane_a_code_health/03_execution_slices.md
   /// Slice A11.1 (consumer side, A11.1.b).
   final Map<String, Map<String, int>> Function()?

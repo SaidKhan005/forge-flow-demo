@@ -19,7 +19,7 @@
 // body's "Disclosed runs" section. Exit code is 1 if any frozen-surface
 // guard fails or any always-run hard lint exits non-zero; 0 otherwise.
 // `dart analyze --fatal-infos` is disclosed but its baseline does not
-// fail this script (see docs/_audits/wave_2/phase_0_smoke.md).
+// fail this script (see docs/archive/_audits/wave_2/phase_0_smoke.md).
 
 import 'dart:io';
 
@@ -469,7 +469,7 @@ class AgentSelfAuditRunner {
     }
 
     // Advisory disclosure: project-wide `dart analyze --fatal-infos`.
-    // Baseline carries 5 errors per docs/_audits/wave_2/phase_0_smoke.md
+    // Baseline carries 5 errors per docs/archive/_audits/wave_2/phase_0_smoke.md
     // (all in test/integration files); the row is advisory so the
     // worker discloses the number without the script gating on it.
     final analyze = subprocessRunner(

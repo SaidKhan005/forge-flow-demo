@@ -222,7 +222,7 @@ void main() {
     // contract: proxy returns 200 with empty-string `operator_id` /
     // `location_id` for these identities. The parser MUST accept that
     // shape for global admins and MUST still reject it for everyone
-    // else. See `docs/_audits/post_codex_wave/pr_476_b1_b2_audit.md`
+    // else. See `docs/archive/_audits/post_codex_wave/pr_476_b1_b2_audit.md`
     // §1.
     test(
       'ff_support: 200 with empty operator/location echo is accepted '

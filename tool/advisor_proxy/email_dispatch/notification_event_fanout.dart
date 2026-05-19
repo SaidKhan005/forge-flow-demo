@@ -486,7 +486,7 @@ class NotificationEventFanout {
           }
         } catch (e, st) {
           // B3 hot-fix (see
-          // `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
+          // `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
           // Block B, B3 and `c_email_notification_scenario_inventory.md`
           // "Hook-only with missing templates"): the previous
           // `catch (_)` swallowed every per-channel dispatch error
