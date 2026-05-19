@@ -91,7 +91,7 @@ CONCURRENTLY-rekeys five Phase 8 / Phase 9.8 fact-table indexes to lead with
 `operator_id` (preserves UNIQUE constraints + partial WHERE clauses), and
 `202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the
 `team.audit_log.export` permission key plus default grants for
-`operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+`operator_owner` so the 11W.5 audit-log export gate has
 catalog parity. Apply both on staging before claiming index hygiene parity or
 live audit-log export readiness, then carry into the next Production1 apply.
 The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds

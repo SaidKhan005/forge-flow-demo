@@ -84,10 +84,7 @@ void main() {
         auditCall.payload['categories_flipped'],
         containsAll(<String>['labor', 'pos']),
       );
-      expect(
-        auditCall.payload['operator_gate'],
-        'operator_owner_or_operator_admin',
-      );
+      expect(auditCall.payload['operator_gate'], 'operator_owner');
       expect(auditCall.payload['idempotency_key'], 'idem-demo-live');
     });
 

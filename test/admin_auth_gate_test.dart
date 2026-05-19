@@ -306,7 +306,7 @@ void main() {
         uid: 'u',
         email: 'e',
         displayName: 'd',
-        roles: <String>['operator_owner', 'operator_manager'],
+        roles: <String>['operator_owner', 'operator_general_manager'],
       );
       expect(session.isAdmin, isFalse);
     });

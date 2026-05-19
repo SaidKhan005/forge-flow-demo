@@ -108,8 +108,8 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
   /// Most recent save error, if any. Surfaces inline below the table.
   final String? saveError;
 
-  /// Mirrors the screen-level role gate: `operator_owner` /
-  /// `operator_admin` only. False for `location_manager`.
+  /// Mirrors the screen-level role gate: `operator_owner` only.
+  /// False for `location_manager`.
   final bool editingEnabled;
 
   /// Operator-configured service periods already loaded by the screen.

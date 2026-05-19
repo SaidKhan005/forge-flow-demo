@@ -720,7 +720,7 @@ until the post-tuning monitor window is clean.
   clauses. Apply on staging first; carry into the next Production1 batch.
 - `202605061600_phase_11W_5_team_audit_log_export_key.sql` seeds the new
   `team.audit_log.export` permission key plus default grants for
-  `operator_owner`/`operator_admin` so the 11W.5 audit log export gate has
+  `operator_owner` so the 11W.5 audit log export gate has
   catalog parity. Apply on staging first; carry into the next Production1 batch.
 - `202605061700_hardening_audit_anchor_daily_schedule.sql` adds the daily
   pg_cron tick `forge_audit_anchor_daily` at `0 2 * * *` (02:00 UTC) so the

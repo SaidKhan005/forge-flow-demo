@@ -54,7 +54,7 @@ that resolved each check that failed.
       `revoke_oauth` 404 tolerated cleanly.
       Test: `<test_path>:<line>`
 - [ ] **Permission gate.** `location_manager` 403 on
-      `integrations.configure`; `operator_admin` 200.
+      `integrations.configure`; `operator_owner` 200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
       flips `demo_mode_state.is_demo` to `false`.

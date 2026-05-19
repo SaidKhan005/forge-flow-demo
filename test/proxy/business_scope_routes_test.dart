@@ -31,7 +31,7 @@ void main() {
         userId: 'user-1',
         operatorId: 'op-1',
         locationId: 'loc-1',
-        roles: <String>['operator_manager'],
+        roles: <String>['operator_general_manager'],
       ),
     }) async {
       final guard = ProxyRequestGuard(verifier: _SettableVerifier(claims));

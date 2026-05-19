@@ -14,13 +14,13 @@ there.
 | Account | Intended role |
 | --- | --- |
 | `saidumarkhan005@gmail.com` | Highest admin, `super_admin` |
-| `newoundlandlimited@gmail.com` | Regular restaurant user, `operator_staff` |
+| `newoundlandlimited@gmail.com` | Regular restaurant user, `supervisor` |
 
 The target restaurant/operator is resolved from the regular user account. Said
 is granted `super_admin` for that operator and is written to `operator_admins`,
 so MFA recovery requests for Newfoundland's operator can find the assigned
 admin. Newfoundland has active seeded admin roles revoked, receives
-`operator_staff`, and is removed from `operator_admins`.
+`supervisor`, and is removed from `operator_admins`.
 
 ## Commands
 
@@ -70,9 +70,10 @@ fresh Firebase ID tokens.
 - Upserts Said into `operator_admins` for that operator with
   `scope_type = 'super_admin'`.
 - Revokes Newfoundland's active seeded elevated roles:
-  `super_admin`, `ff_support`, `operator_owner`, `operator_manager`, and
-  `operator_supervisor`.
-- Ensures Newfoundland has an active `operator_staff` grant.
+  `super_admin`, `ff_support`, `operator_owner`, `operator_general_manager`,
+  and stale retired v1 `operator_manager` / `operator_supervisor` /
+  `operator_staff` grants.
+- Ensures Newfoundland has an active `supervisor` grant.
 - Bumps `users.roles_version` only when the effective DB state changes.
 - With `-RefreshFirebaseClaims`, looks up both Firebase accounts by email,
   reconciles `public.users.firebase_uid` to those live Firebase UIDs, then

@@ -87,7 +87,7 @@ Do not re-open stale findings unless the repo regresses:
   `operator_id`, preserving UNIQUE constraints + WHERE clauses) and
   `202605061600_phase_11W_5_team_audit_log_export_key.sql` (seeds the
   `team.audit_log.export` permission key + default grants for
-  `operator_owner`/`operator_admin` so the 11W.5 audit-log export gate has
+  `operator_owner` so the 11W.5 audit-log export gate has
   catalog parity); apply both on staging before claiming index hygiene parity
   or live audit-log export readiness, then carry into the next Production1
   batch. The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds
@@ -233,8 +233,8 @@ Do not re-open stale findings unless the repo regresses:
   keyed by `(operator_id, location_id)` with NULL columns inheriting
   the business defaults from `public.operators`. RLS via
   `app_current_operator()` wrapper + operator-leading B-tree index per
-  HP #4; reuses the existing operator_owner / operator_admin role
-  gate (no new permission key). Prior cutoff
+  HP #4; reuses the existing operator_owner role gate (no new permission
+  key). Prior cutoff
   `202605150100_phase_r_followup_not_null_flip.sql` is the
   Wave 2 R-1L-FU + R-2L-FU contract migration: flips
   `permission_keys.product_label` + `category_label` + `scope_kind` +

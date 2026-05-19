@@ -94,7 +94,7 @@ void main() {
     // MO-1 — operator_owner is admin-tier for Setup but no longer
     // sees the Data tab; that surface is F&F-internal.
     // MP-1 — operator_owner DOES reach the new Integrations tab;
-    // it's gated by `showAdminTabs` (all operator admins).
+    // it's gated by `showAdminTabs` (operator leadership).
     final notifier = _notifier();
     await tester.pumpWidget(
       _wrap(

@@ -14,6 +14,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import 'package:forge_and_flow/screens/settings/settings_covers_setup_section.dart';
@@ -27,6 +28,7 @@ void main() {
     String? scopeLabel,
     ManualCoverEntryLoader? loader,
     ManualCoverEntryWriter? writer,
+    ServicePeriodCoversSourceLoader? coversSourceLoader,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -37,6 +39,7 @@ void main() {
             posVendorId: posVendorId,
             loader: loader ?? emptyLoader,
             writer: writer,
+            coversSourceLoader: coversSourceLoader ?? (_) async => const [],
             servicePeriodsLoader: (_) async =>
                 ServicePeriodDefinitionResolver.demoDefinitions,
             initialBusinessDate: DateTime.utc(2026, 5, 10),
@@ -100,6 +103,45 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('override'), findsNothing);
+  });
+
+  testWidgets('shows the selected service period effective covers source', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        coversSourceLoader: (_) async => <DataAccuracyServicePeriodSetting>[
+          DataAccuracyServicePeriodSetting(
+            id: 'setting-dinner',
+            operatorId: 'operator-1',
+            locationId: 'restaurant-1',
+            servicePeriodKey: 'dinner',
+            coversSource: ServicePeriodCoversSource.manual,
+            wageSource: ServicePeriodWageSource.vendorPerEmployee,
+            effectiveAtBusinessDate: '2026-05-01',
+            createdAt: DateTime.utc(2026, 5, 1),
+            updatedAt: DateTime.utc(2026, 5, 1),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('settings_covers_setup_effective_source')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('settings_covers_setup_effective_source_label')),
+      findsOneWidget,
+    );
+    expect(find.text('Manual entry'), findsOneWidget);
+    expect(
+      find.textContaining(
+        'Last synced service-period setting since 2026-05-01',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('renders hierarchy scope label per HP #11', (tester) async {

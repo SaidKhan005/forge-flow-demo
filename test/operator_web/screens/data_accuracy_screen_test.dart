@@ -1254,6 +1254,62 @@ void main() {
     );
 
     testWidgets(
+      'service-period save refreshes the primary covers/manual cards',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1400));
+
+        final gateway = _RecordingDataAccuracyGateway();
+        final configuredPeriods = <ServicePeriodDefinition>[
+          servicePeriodDefinition(id: 'lunch', label: 'Lunch', sortOrder: 1),
+        ];
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              gateway: InMemoryVendorConnectionsGateway(),
+              dataAccuracyGateway: gateway,
+              businessDateIso: '2026-05-08',
+              servicePeriodsLoader: () async => configuredPeriods,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
+          findsNothing,
+        );
+
+        final addButton = find.byKey(kKeyedServicePeriodAccuracyAddButtonKey);
+        await tester.ensureVisible(addButton);
+        await tester.pumpAndSettle();
+        await tester.tap(addButton, warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracyCoversFieldKey));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manual entry').last);
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracySubmitKey));
+        await tester.pumpAndSettle();
+
+        expect(gateway.servicePeriodSaveCalls, hasLength(1));
+        expect(gateway.servicePeriodLoadCalls, equals(2));
+        expect(gateway.settingsLoadCalls, equals(2));
+        expect(
+          find.byKey(const Key('data_accuracy_covers_manual_entry_card')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('covers_manual_entry_field_lunch')),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
       'invalid service period key surfaces inline error and skips save',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 1400));
@@ -1648,6 +1704,7 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   List<DataAccuracyServicePeriodSetting> seedServicePeriodRows =
       const <DataAccuracyServicePeriodSetting>[];
 
+  int settingsLoadCalls = 0;
   int servicePeriodLoadCalls = 0;
   final List<_ServicePeriodSaveCall> servicePeriodSaveCalls =
       <_ServicePeriodSaveCall>[];
@@ -1657,11 +1714,28 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
     required String operatorId,
     required String locationId,
   }) async {
+    settingsLoadCalls += 1;
+    final perPeriod = <String, CoversSource>{};
+    for (final row in seedServicePeriodRows) {
+      switch (row.coversSource) {
+        case ServicePeriodCoversSource.vendor:
+          perPeriod[row.servicePeriodKey] = CoversSource.vendor;
+          break;
+        case ServicePeriodCoversSource.forecast:
+          perPeriod[row.servicePeriodKey] = CoversSource.forecast;
+          break;
+        case ServicePeriodCoversSource.manual:
+          perPeriod[row.servicePeriodKey] = CoversSource.manual;
+          break;
+        case ServicePeriodCoversSource.reservationPlusWalkin:
+          break;
+      }
+    }
     return DataAccuracySettings(
       settingId: 'setting-1',
       operatorId: operatorId,
       locationId: locationId,
-      coversSourcePerServicePeriod: const <String, CoversSource>{},
+      coversSourcePerServicePeriod: perPeriod,
       coversManualEntries: const <String, Map<String, int>>{},
       wageSource: WageSource.vendor,
       walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,

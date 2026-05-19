@@ -141,7 +141,7 @@ void main() {
             userId: _userId,
             operatorId: _operatorId,
             locationId: _locationId,
-            roles: <String>['operator_manager'],
+            roles: <String>['operator_general_manager'],
           );
       final gateway = _RecordingSelectedStarGateway();
       final router = SelectedStarTargetRouter(gateway: gateway);
@@ -180,7 +180,7 @@ void main() {
     }
 
     test(
-      'POST select records a manager decision through repository seam',
+      'POST select records a general-manager decision through repository seam',
       () async {
         await withRealHttp(() async {
           final ctx = await spinUp();
@@ -628,16 +628,12 @@ void main() {
           final profiles =
               profileBody[activeTargetProfilesResource] as List<dynamic>;
           final profileJson = profiles.single as Map<String, Object?>;
-          expect(
-            profileJson['target_cycle_id'],
-            _cycleId,
-          );
+          expect(profileJson['target_cycle_id'], _cycleId);
           final profileDayparts = profileJson['dayparts'] as List<dynamic>;
           expect(profileDayparts, hasLength(2));
           expect(
-            (profileDayparts.last as Map<String, Object?>)[
-              'daypart_target_ppa'
-            ],
+            (profileDayparts.last
+                as Map<String, Object?>)['daypart_target_ppa'],
             48,
           );
           expect(
@@ -668,39 +664,36 @@ void main() {
       });
     });
 
-    test(
-      'read returns honest-unavailable shape when projection is empty '
-      '(Theme H#3)',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp();
-          try {
-            final response = await _httpGet(
-              ctx.client,
-              ctx.baseUri.resolve(
-                '$_basePath?modified_since=2026-05-06T18:00:00Z&page_size=25',
-              ),
-            );
+    test('read returns honest-unavailable shape when projection is empty '
+        '(Theme H#3)', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_basePath?modified_since=2026-05-06T18:00:00Z&page_size=25',
+            ),
+          );
 
-            expect(response.statusCode, equals(200));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            // The new honest-unavailable shape — sync clients short-circuit
-            // on `available:false` instead of treating zero rows as a synced
-            // empty page.
-            expect(body['available'], isFalse);
-            expect(body['status'], equals('unavailable'));
-            expect(body['unavailable_reason'], equals('no_projected_rows'));
-            expect(body['reason'], equals('no_projected_rows'));
-            expect(body['selected_star_shift_decisions'], isEmpty);
-            expect(body['next_cursor'], isNull);
-            expect(body['has_more'], isFalse);
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          // The new honest-unavailable shape — sync clients short-circuit
+          // on `available:false` instead of treating zero rows as a synced
+          // empty page.
+          expect(body['available'], isFalse);
+          expect(body['status'], equals('unavailable'));
+          expect(body['unavailable_reason'], equals('no_projected_rows'));
+          expect(body['reason'], equals('no_projected_rows'));
+          expect(body['selected_star_shift_decisions'], isEmpty);
+          expect(body['next_cursor'], isNull);
+          expect(body['has_more'], isFalse);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
     test('read rejects caller scope mismatch', () async {
       await withRealHttp(() async {
@@ -709,7 +702,7 @@ void main() {
             userId: _userId,
             operatorId: _operatorId,
             locationId: '99999999-9999-9999-9999-999999999999',
-            roles: <String>['operator_manager'],
+            roles: <String>['operator_general_manager'],
           ),
         );
         try {

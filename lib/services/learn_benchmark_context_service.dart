@@ -77,12 +77,10 @@ class LearnBenchmarkContextService {
       SqliteRestaurantScopeRepository.instance;
   final TargetProfileRepository _profileRepo =
       SqliteTargetProfileRepository.instance;
-  final TargetCycleRepository _cycleRepo =
-      SqliteTargetCycleRepository.instance;
+  final TargetCycleRepository _cycleRepo = SqliteTargetCycleRepository.instance;
   final BenchmarkSelectionSummaryRepository _summaryRepo =
       SqliteBenchmarkSelectionSummaryRepository.instance;
-  final ShiftRecordRepository _shiftRepo =
-      SqliteShiftRecordRepository.instance;
+  final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
 
   // ── Bridge-only override ─────────────────────────────────────────────────
   // When set, resolve() returns the bridge fallback without attempting
@@ -111,12 +109,12 @@ class LearnBenchmarkContextService {
 
   static Future<String> Function()? testGetRestaurantId;
   static Future<ActiveTargetProfile?> Function(String restaurantId)?
-      testGetProfile;
+  testGetProfile;
   static Future<TargetCycle?> Function(String restaurantId)? testGetCycle;
   static Future<BenchmarkSelectionSummary?> Function(String cycleId)?
-      testGetSummary;
+  testGetSummary;
   static Future<void> Function(BenchmarkSelectionSummary summary)?
-      testPersistSummary;
+  testPersistSummary;
 
   // 7.55l.8d: Per-repository test overrides for cycle recovery testing.
   // testGetAnchorDate: controls the mock-replay / latest-closed anchor
@@ -125,7 +123,7 @@ class LearnBenchmarkContextService {
 
   static Future<String?> Function(String restaurantId)? testGetAnchorDate;
   static Future<TargetCycle> Function(String restaurantId, String anchorDate)?
-      testRecoverCycle;
+  testRecoverCycle;
 
   Future<LearnBenchmarkContext> resolve() async {
     if (_useBridgeOnly) {
@@ -163,15 +161,18 @@ class LearnBenchmarkContextService {
 
         if (anchorDate == null) {
           throw StateError(
-              'Learn: active profile exists but no active cycle and no '
-              'anchor date available for cycle recovery. '
-              'restaurantId=${profile.restaurantId}');
+            'Learn: active profile exists but no active cycle and no '
+            'anchor date available for cycle recovery. '
+            'restaurantId=${profile.restaurantId}',
+          );
         }
 
         cycle = testRecoverCycle != null
             ? await testRecoverCycle!(profile.restaurantId, anchorDate)
-            : await TargetCycleService.instance
-                .getOrCreateActiveCycle(profile.restaurantId, anchorDate);
+            : await TargetCycleService.instance.getOrCreateActiveCycle(
+                profile.restaurantId,
+                anchorDate,
+              );
 
         // 7.55l.8d1: re-read profile since getOrCreateActiveCycle projects
         // and persists a fresh ActiveTargetProfile. The post-recovery
@@ -182,10 +183,11 @@ class LearnBenchmarkContextService {
             : await _profileRepo.getActiveTargetProfile(restaurantId);
         if (recoveredProfile == null) {
           throw StateError(
-              'Learn: cycle recovery succeeded but post-recovery active '
-              'profile is missing. '
-              'restaurantId=$restaurantId, '
-              'recoveredCycleId=${cycle.cycleId}');
+            'Learn: cycle recovery succeeded but post-recovery active '
+            'profile is missing. '
+            'restaurantId=$restaurantId, '
+            'recoveredCycleId=${cycle.cycleId}',
+          );
         }
         profile = recoveredProfile;
       }
@@ -205,9 +207,8 @@ class LearnBenchmarkContextService {
         // materialize and persist a BenchmarkSelectionSummary so
         // subsequent reads use the canonical persisted path instead of
         // silently falling back to transient compatibility analytics.
-        final analytics =
-            await BaselineSelectionAnalyticsService.instance.resolve(
-                sourceType: profile.sourceType);
+        final analytics = await BaselineSelectionAnalyticsService.instance
+            .resolve(sourceType: profile.sourceType);
         summary = BenchmarkSelectionSummary(
           summaryId: '${cycle.cycleId}_summary',
           restaurantId: cycle.restaurantId,
@@ -226,14 +227,24 @@ class LearnBenchmarkContextService {
       }
 
       return LearnBenchmarkContext(
-        benchmarkSourceLabel:
-            sourceLabelFromProfileType(profile.sourceType),
+        benchmarkSourceLabel: sourceLabelFromProfileType(profile.sourceType),
         selectedShiftCount: summary.selectedShiftCount,
         targetCPLH: profile.targetCPLH,
         targetSPLH: profile.targetSPLH,
         targetPPA: profile.targetPPA,
         rangeQualityLabel: summary.rangeQualityLabel,
         rangeQualityMessage: summary.rangeQualityMessage,
+        dayparts: [
+          for (final daypart in profile.dayparts)
+            LearnBenchmarkContextDaypart(
+              servicePeriodId: daypart.servicePeriodId,
+              daypartTargetCPLH: daypart.daypartTargetCPLH,
+              daypartTargetSPLH: daypart.daypartTargetSPLH,
+              daypartTargetPPA: daypart.daypartTargetPPA,
+              daypartOpzFloorCPLH: daypart.daypartOpzFloorCPLH,
+              daypartOpzCeilingCPLH: daypart.daypartOpzCeilingCPLH,
+            ),
+        ],
       );
     }
 
@@ -248,8 +259,9 @@ class LearnBenchmarkContextService {
   // 2. Latest closed business date
 
   Future<String?> _resolveAnchorDate(String restaurantId) async {
-    final mockDate = await SqliteDatabase.instance
-        .getMockReplayBusinessDate(restaurantId);
+    final mockDate = await SqliteDatabase.instance.getMockReplayBusinessDate(
+      restaurantId,
+    );
     if (mockDate != null) return mockDate;
     return _shiftRepo.getLatestClosedBusinessDate(restaurantId);
   }

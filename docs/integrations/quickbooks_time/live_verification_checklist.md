@@ -60,7 +60,7 @@ that resolved each check that failed.
       - `<field>`: documented as X, observed Y. Fix: `<diff or PR ref>`
 - [ ] **Disconnect → reconnect.** Watermark preserved; no data gap.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
@@ -114,7 +114,7 @@ passing — vendor sandboxes sometimes lie).
       `documented_per_quickbooks_time_v1` constant in fixtures.
 - [ ] **Disconnect → reconnect.** Watermark preserved.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit

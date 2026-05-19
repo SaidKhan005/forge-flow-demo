@@ -7,7 +7,7 @@ Owner: Phase 8 framework lane
 This doc specifies the per-(operator, location) Vendor Connections surface where vendor integrations (POS, Reservations, Scheduling) are configured. The widget tree is **dual-surface hosted** — same widget code, two host shells:
 
 - **F&F Operations Console** (Phase 11A) — F&F internal staff (`forge_admin` / `ff_support`) configure connections cross-operator during onboarding or support escalations.
-- **Operator Web Console** (Phase 11W) — operator senior roles (`operator_admin` / `operator_owner`) self-serve their own operator's connections.
+- **Operator Web Console** (Phase 11W) — operator owners self-serve their own operator's connections.
 
 The operator-facing mobile app has no integration configuration page; only a `kDemoMode` banner indicating which mode the data is in.
 
@@ -16,11 +16,11 @@ The operator-facing mobile app has no integration configuration page; only a `kD
 | Console | Host shell | URL pattern | User roles | Scope |
 |---|---|---|---|---|
 | F&F Operations Console (Phase 11A) | `lib/admin/screens/...` | `admin.forgeflow.app/operators/[op]/locations/[loc]/vendor-connections` | `forge_admin`, `ff_support` (read-only) | Cross-operator |
-| Operator Web Console (Phase 11W) | `lib/operator_web/screens/...` | `app.forgeflow.app/locations/[loc]/vendor-connections` | `operator_admin`, `operator_owner` | Single-operator (own only) |
+| Operator Web Console (Phase 11W) | `lib/operator_web/screens/...` | `app.forgeflow.app/locations/[loc]/vendor-connections` | `operator_owner` | Single-operator (own only) |
 
-The widget code itself is shared and operator/location-aware via host context. Proposed shared path: `lib/integrations/ui/vendor_connections/` (finalized in Phase 8 `8.0` slice). RLS via `OperatorScopedRepository` enforces scoping — operator_admin sees their own operator only; forge_admin sees all via admin-role RLS bypass.
+The widget code itself is shared and operator/location-aware via host context. Proposed shared path: `lib/integrations/ui/vendor_connections/` (finalized in Phase 8 `8.0` slice). RLS via `OperatorScopedRepository` enforces scoping — operator owners see their own operator only; forge_admin sees all via admin-role RLS bypass.
 
-Both shells consume the same backend routes (Cloud Run admin endpoints under `/v1/admin/integrations/*`). `forge_admin` requests carry `service_role` for cross-operator queries; `operator_admin` requests are scoped to their own operator via session claims.
+Both shells consume the same backend routes (Cloud Run admin endpoints under `/v1/admin/integrations/*`). `forge_admin` requests carry `service_role` for cross-operator queries; `operator_owner` requests are scoped to their own operator via session claims.
 
 ## Where it lives in each console
 
@@ -137,7 +137,7 @@ Every vendor sits at one of these states. State is canonical truth on `VendorCap
 | `live_with_operators` | No pill (same as `production_credentialed`). | **Live.** | "<N> operators connected" chip. Auto-promoted on first operator connect. |
 
 Hover behavior:
-- `documented` / `sandbox_verified` rows show a subtle "i" icon next to the pill. Tap → dialog explains the lifecycle in plain English: "We've built this integration but we're still in the partnership process with <vendor>. As soon as <vendor> issues us production credentials, the Connect button activates here. We'll email your operator admin when that happens." (UX writing standard.)
+- `documented` / `sandbox_verified` rows show a subtle "i" icon next to the pill. Tap → dialog explains the lifecycle in plain English: "We've built this integration but we're still in the partnership process with <vendor>. As soon as <vendor> issues us production credentials, the Connect button activates here. We'll email your operator owner when that happens." (UX writing standard.)
 - `production_credentialed` / `live_with_operators` rows show the standard Connect button + capability hints (auth mode, grant scope).
 
 Lifecycle promotion is owned by `*.live.sandbox` / `*.live.prod` slices per `docs/contracts/vendor_adapter_slice_contract.md`. Engineers do NOT mutate lifecycle on `connector_connection` writes; lifecycle is on `VendorCapabilityProfile`, not `connector_connection`.
@@ -340,7 +340,7 @@ When the operator clicks "Disconnect", the confirmation dialog explains in plain
 
 Behind the scenes: live sync stops, stored credentials are wiped from `vendor_credentials`, the sync watermark is preserved so reconnect resumes from the last successful point, and the webhook subscription is unregistered via the vendor's API where supported. Audited row is written to `audit_logs`.
 
-A separate **"Forget all data from this connector"** advanced action exists with stronger confirmation (re-type vendor name) for compliance scenarios. Rare. Gated behind `forge_admin` only, not `operator_admin`.
+A separate **"Forget all data from this connector"** advanced action exists with stronger confirmation (re-type vendor name) for compliance scenarios. Rare. Gated behind `forge_admin` only, not `operator_owner`.
 
 ## Multi-location connect flow
 
@@ -401,7 +401,7 @@ A new permission key `integrations.configure` gates this surface. Same key works
 Granted to:
 
 - **`forge_admin`** (F&F internal staff) — always. Cross-operator via admin RLS bypass through F&F Ops Console.
-- **`operator_admin`** / **`operator_owner`** (operator's GM-level role) — yes, scoped to their own operator's locations only via existing `OperatorScopedRepository` + RLS through Operator Web Console.
+- **`operator_owner`** — yes, scoped to their own operator's locations only via existing `OperatorScopedRepository` + RLS through Operator Web Console.
 
 Denied to:
 
@@ -551,7 +551,7 @@ This surface ships as part of `8.0` framework slice. Acceptance:
 - Multi-location apply-to-all flow works for an operator with 2+ test locations.
 - Webhook URL display + Copy button works for both auto-register and manual-paste vendor classes.
 - Disconnect preserves historical facts; reconnect resumes from preserved watermark. After disconnect, operator-app dashboard metric cards flip to `MetricCardNotYetAvailable` (per `docs/contracts/metric_card_honesty_contract.md`); no phantom zeroes. Top-left dashboard pill summarizes the disconnect state.
-- Permission gate: `location_manager` role gets a 403; `operator_admin` and `forge_admin` succeed.
+- Permission gate: `location_manager` role gets a 403; `operator_owner` and `forge_admin` succeed.
 - Demo-mode banner renders correctly in operator app when no vendor is connected at any (operator, location).
 - Walkthrough at acceptance is a click-path per `docs/CODEX_PROMPT_GENERATION_STANDARD.md` Walkthrough Specificity section — numbered steps, named widgets, named values.
 

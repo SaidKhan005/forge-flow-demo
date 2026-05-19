@@ -9,7 +9,7 @@
 // Auth + role gate
 // ----------------
 // Both routes resolve the operator id from the verified bearer token
-// and reuse the existing `operator_owner` / `operator_admin` role
+// and reuse the existing `operator_owner` role
 // gate (`kOperatorWriteRoles` in `operator_routes.dart`). No new
 // permission key is introduced — per the slice intent, this surface
 // rides on the same gate the rest of the operator-write surface uses
@@ -108,8 +108,9 @@ bool isOperatorLocationAccountOverridesPath(String path) {
   if (!path.startsWith(operatorLocationAccountOverridesPathPrefix)) {
     return false;
   }
-  final suffix =
-      path.substring(operatorLocationAccountOverridesPathPrefix.length);
+  final suffix = path.substring(
+    operatorLocationAccountOverridesPathPrefix.length,
+  );
   if (suffix.isEmpty) return false;
   // Reject nested paths (only one path segment after the prefix).
   if (suffix.contains('/')) return false;
@@ -147,13 +148,13 @@ class LocationAccountOverridesRecord {
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'operatorId': operatorId,
-        'locationId': locationId,
-        'effective': effective.toJson(),
-        'override': override.toJson(),
-        'businessDefault': businessDefault.toJson(),
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
-      };
+    'operatorId': operatorId,
+    'locationId': locationId,
+    'effective': effective.toJson(),
+    'override': override.toJson(),
+    'businessDefault': businessDefault.toJson(),
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 /// Wire-shape sub-object — one of `effective` / `override` /
@@ -176,13 +177,13 @@ class LocationAccountOverridesFieldSet {
   final String? contactPhone;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'ianaTimezone': ianaTimezone,
-        'localeCode': localeCode,
-        'currencyCode': currencyCode,
-        'businessDayRolloverHour': businessDayRolloverHour,
-        'contactEmail': contactEmail,
-        'contactPhone': contactPhone,
-      };
+    'ianaTimezone': ianaTimezone,
+    'localeCode': localeCode,
+    'currencyCode': currencyCode,
+    'businessDayRolloverHour': businessDayRolloverHour,
+    'contactEmail': contactEmail,
+    'contactPhone': contactPhone,
+  };
 }
 
 /// Validated patch the dispatcher hands to the gateway. Each field is
@@ -252,8 +253,8 @@ class ValidatedLocationAccountOverridesPatch {
 /// surface verbatim.
 class LocationAccountOverridesDecode {
   const LocationAccountOverridesDecode.success(this.patch)
-      : status = 200,
-        body = null;
+    : status = 200,
+      body = null;
   const LocationAccountOverridesDecode.failure({
     required this.status,
     required this.body,
@@ -487,10 +488,7 @@ LocationAccountOverridesDecode decodeLocationAccountOverridesPatchBody(
 LocationAccountOverridesDecode _failure(String error, String message) {
   return LocationAccountOverridesDecode.failure(
     status: 400,
-    body: <String, Object?>{
-      'error': error,
-      'message': message,
-    },
+    body: <String, Object?>{'error': error, 'message': message},
   );
 }
 
@@ -521,13 +519,13 @@ enum LocationAccountOverridesOutcomeKind {
 /// Outcome envelope returned by the gateway.
 class LocationAccountOverridesOutcome {
   const LocationAccountOverridesOutcome.ok(this.record)
-      : kind = LocationAccountOverridesOutcomeKind.ok;
+    : kind = LocationAccountOverridesOutcomeKind.ok;
   const LocationAccountOverridesOutcome.locationNotOwned()
-      : kind = LocationAccountOverridesOutcomeKind.locationNotOwned,
-        record = null;
+    : kind = LocationAccountOverridesOutcomeKind.locationNotOwned,
+      record = null;
   const LocationAccountOverridesOutcome.locationNotFound()
-      : kind = LocationAccountOverridesOutcomeKind.locationNotFound,
-        record = null;
+    : kind = LocationAccountOverridesOutcomeKind.locationNotFound,
+      record = null;
 
   final LocationAccountOverridesOutcomeKind kind;
   final LocationAccountOverridesRecord? record;
@@ -579,8 +577,7 @@ class OperatorLocationAccountOverridesHandler {
         statusCode: 400,
         body: const <String, Object?>{
           'error': 'invalid_location_id',
-          'message':
-              'location_id path segment must be a lowercase UUID.',
+          'message': 'location_id path segment must be a lowercase UUID.',
         },
       );
     }
@@ -606,7 +603,7 @@ class OperatorLocationAccountOverridesHandler {
           'error': 'operator_location_account_overrides_unavailable',
           'message':
               'per-location account overrides are unavailable; '
-                  'please retry.',
+              'please retry.',
           'detail': error.toString(),
         },
       );
@@ -625,13 +622,11 @@ class OperatorLocationAccountOverridesHandler {
         statusCode: 400,
         body: const <String, Object?>{
           'error': 'invalid_location_id',
-          'message':
-              'location_id path segment must be a lowercase UUID.',
+          'message': 'location_id path segment must be a lowercase UUID.',
         },
       );
     }
-    final adminReason =
-        'operator.location_account_overrides.load:$actorUserId';
+    final adminReason = 'operator.location_account_overrides.load:$actorUserId';
     final LocationAccountOverridesOutcome outcome;
     try {
       outcome = await _gateway.loadOverrides(
@@ -647,7 +642,7 @@ class OperatorLocationAccountOverridesHandler {
           'error': 'operator_location_account_overrides_unavailable',
           'message':
               'per-location account overrides are unavailable; '
-                  'please retry.',
+              'please retry.',
           'detail': error.toString(),
         },
       );

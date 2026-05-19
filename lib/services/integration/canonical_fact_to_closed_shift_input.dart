@@ -303,6 +303,7 @@ class CanonicalFactToClosedShiftInputAggregator
         exec,
         operatorId: operatorId,
         locationId: locationId,
+        businessDate: businessDate,
       );
 
       // Hardening Wave B1 — prefer the keyed
@@ -552,7 +553,7 @@ class CanonicalFactToClosedShiftInputAggregator
 
     // Stage 1 — operator manual entry (overrides everything when
     // the operator picked manual + entered a value for the slot).
-    if (operatorPreference == CoversSource.manual) {
+    if (operatorPreference == _OperatorCoversPreference.manual) {
       final manual = settings.manualCoversFor(isoBusinessDate, servicePeriodId);
       if (manual != null) {
         return _CoversResolution(
@@ -561,12 +562,25 @@ class CanonicalFactToClosedShiftInputAggregator
           sourceSystem: 'operator_manual_entry',
         );
       }
-      // Manual preferred but no value — fall through to vendor/forecast.
+      return null;
     }
 
-    // Stage 2 — vendor-supplied covers (POS adapter declared
+    if (operatorPreference == _OperatorCoversPreference.forecast) {
+      return _resolveForecastCovers(
+        dayLabel: dayLabel,
+        posVendorId: posVendorId,
+        forecastContext: forecastContext,
+        periodDefinition: periodDefinition,
+        periodDefinitions: periodDefinitions,
+        distributionWeights: distributionWeights,
+        explicitOperatorForecast: true,
+      );
+    }
+
+    // Stage 2: vendor-supplied covers (POS adapter declared
     // coversFieldExposed=true AND vendor fact populated covers).
-    if (posVendorId != null) {
+    if (operatorPreference == _OperatorCoversPreference.vendor &&
+        posVendorId != null) {
       final summed = coverFacts.fold<int>(0, (acc, row) {
         final raw = row['covers'];
         if (raw is int) return acc + raw;
@@ -605,6 +619,9 @@ class CanonicalFactToClosedShiftInputAggregator
           sourceSystem: reservationVendorId,
         );
       }
+    }
+    if (operatorPreference == _OperatorCoversPreference.reservationPlusWalkin) {
+      return null;
     }
 
     // Stage 3.5 — Wave 2 MO-2-FU (Option A, fallback-only) — operator
@@ -649,6 +666,26 @@ class CanonicalFactToClosedShiftInputAggregator
     // the operator's full configured period list + optional
     // distribution weights, instead of pretending every restaurant
     // has exactly three uniformly-weighted dayparts.
+    return _resolveForecastCovers(
+      dayLabel: dayLabel,
+      posVendorId: posVendorId,
+      forecastContext: forecastContext,
+      periodDefinition: periodDefinition,
+      periodDefinitions: periodDefinitions,
+      distributionWeights: distributionWeights,
+      explicitOperatorForecast: false,
+    );
+  }
+
+  _CoversResolution? _resolveForecastCovers({
+    required String dayLabel,
+    required String? posVendorId,
+    required DemandForecastContext? forecastContext,
+    required ServicePeriodDefinition periodDefinition,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required ScheduleDistributionWeights? distributionWeights,
+    required bool explicitOperatorForecast,
+  }) {
     final resolvedWeekly = forecastContext?.resolvedWeeklyForecastCovers;
     if (resolvedWeekly != null && resolvedWeekly > 0) {
       final dailyShare = (resolvedWeekly / 7).round();
@@ -677,6 +714,13 @@ class CanonicalFactToClosedShiftInputAggregator
         ),
       );
       final daypartShare = allocation.forecastCovers;
+      if (explicitOperatorForecast) {
+        return _CoversResolution(
+          covers: daypartShare,
+          provenance: 'app_forecast_60_day_avg',
+          sourceSystem: 'app_forecast',
+        );
+      }
       final vendorBase = posVendorId ?? 'unknown';
       return _CoversResolution(
         covers: daypartShare,
@@ -878,7 +922,7 @@ class CanonicalFactToClosedShiftInputAggregator
   // [DataAccuracySettings.coversSourceFor]. The legacy hardcoded
   // `covers_source_lunch` / `_dinner` / `_late_night` columns are
   // deprecated and no longer read here.
-  CoversSource _resolveOperatorCoversPreference({
+  _OperatorCoversPreference _resolveOperatorCoversPreference({
     required DataAccuracySettings settings,
     required DataAccuracyServicePeriodSetting? keyedServicePeriodSetting,
     required String servicePeriodId,
@@ -886,24 +930,23 @@ class CanonicalFactToClosedShiftInputAggregator
     if (keyedServicePeriodSetting != null) {
       switch (keyedServicePeriodSetting.coversSource) {
         case ServicePeriodCoversSource.vendor:
-          return CoversSource.vendor;
+          return _OperatorCoversPreference.vendor;
         case ServicePeriodCoversSource.forecast:
-          return CoversSource.forecast;
+          return _OperatorCoversPreference.forecast;
         case ServicePeriodCoversSource.manual:
-          return CoversSource.manual;
+          return _OperatorCoversPreference.manual;
         case ServicePeriodCoversSource.reservationPlusWalkin:
-          // The reservation+walk-in path runs at stage 3 of
-          // `_resolveCovers` whenever reservation_facts are present
-          // and a walk-in override is supplied. The legacy
-          // CoversSource enum has no equivalent value, so we map
-          // back to `vendor` (the default preference) and let the
-          // existing stage 3 logic flow. A future slice will
-          // promote `reservation_plus_walkin` to a first-class
-          // operator preference at stage 3.
-          return CoversSource.vendor;
+          return _OperatorCoversPreference.reservationPlusWalkin;
       }
     }
-    return settings.coversSourceFor(servicePeriodId);
+    switch (settings.coversSourceFor(servicePeriodId)) {
+      case CoversSource.vendor:
+        return _OperatorCoversPreference.vendor;
+      case CoversSource.forecast:
+        return _OperatorCoversPreference.forecast;
+      case CoversSource.manual:
+        return _OperatorCoversPreference.manual;
+    }
   }
 
   // ─── DAS read (inline, same tenant transaction) ────────────────────
@@ -912,6 +955,7 @@ class CanonicalFactToClosedShiftInputAggregator
     PostgresExecutor exec, {
     required String operatorId,
     required String locationId,
+    required DateTime businessDate,
   }) async {
     // Per-Daypart V1 Slice R5 (Gap 27/36): per-period covers source is
     // projected from the keyed `data_accuracy_service_period_settings`
@@ -931,8 +975,7 @@ class CanonicalFactToClosedShiftInputAggregator
       'from public.data_accuracy_service_period_settings sp '
       'where sp.operator_id = das.operator_id '
       'and sp.location_id = das.location_id '
-      'and sp.effective_at_business_date <= '
-      "(now() at time zone 'utc')::date "
+      'and sp.effective_at_business_date <= @business_date::date '
       'order by sp.service_period_key, sp.effective_at_business_date desc '
       ") k), '{}'::jsonb) as covers_source_per_service_period, "
       'das.covers_manual_entries, das.wage_source, '
@@ -944,6 +987,7 @@ class CanonicalFactToClosedShiftInputAggregator
       parameters: <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
+        'business_date': _isoDate(businessDate),
       },
     );
     if (rows.isNotEmpty) {
@@ -1597,6 +1641,13 @@ class CanonicalFactToClosedShiftInputAggregator
 }
 
 // ─── Internal value classes ─────────────────────────────────────────
+
+enum _OperatorCoversPreference {
+  vendor,
+  forecast,
+  manual,
+  reservationPlusWalkin,
+}
 
 class _CoversResolution {
   const _CoversResolution({

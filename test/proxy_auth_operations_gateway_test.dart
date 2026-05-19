@@ -40,7 +40,7 @@ void main() {
             operatorId: 'op',
             locationId: 'loc',
             email: 'new.user@example.test',
-            roleId: 'operator_staff',
+            roleId: 'supervisor',
             scopeType: 'operator_wide',
           ),
         );
@@ -57,7 +57,7 @@ void main() {
           call.body,
           equals(<String, Object?>{
             'email': 'new.user@example.test',
-            'role_id': 'operator_staff',
+            'role_id': 'supervisor',
             'scope_type': 'operator_wide',
           }),
         );
@@ -241,7 +241,7 @@ void main() {
             operatorId: 'op',
             locationId: 'loc',
             email: 'new.user@example.test',
-            roleId: 'operator_staff',
+            roleId: 'supervisor',
             scopeType: 'operator_wide',
           ),
         ),

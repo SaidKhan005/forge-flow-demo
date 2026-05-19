@@ -1,4 +1,4 @@
-﻿// Phase 11W.2 - Operator Web custom-role editor screen.
+// Phase 11W.2 - Operator Web custom-role editor screen.
 //
 // Builder UX for the operator self-service custom role flow per the
 // Team / Roles / Hierarchy / Sessions / Audit / Security console
@@ -66,7 +66,7 @@ class CustomRoleEditorScreen extends StatefulWidget {
     this.onSaved,
     this.onClose,
     this.readOnly = false,
-    this.roleScope = RoleScope.location,
+    this.roleScope = RoleScope.business,
     this.validator = const CustomRoleValidator(),
     RoleWarningDismissalStore? dismissalStore,
   }) : dismissalStore = dismissalStore ?? _kDefaultDismissalStore;
@@ -74,14 +74,12 @@ class CustomRoleEditorScreen extends StatefulWidget {
   final OperatorWebSession session;
   final WebTeamRolesGateway gateway;
 
-  /// Hierarchy scope this role is being authored at. The operator-web
-  /// custom role flow today is implicitly location-scoped (the
-  /// session carries a `primaryLocationId`); a future business-scope
-  /// editor surface can pass `RoleScope.business` to suppress the
-  /// org-wide-key-at-location-scope advisory.
+  /// Hierarchy scope this role is being authored at. Operator Web
+  /// custom roles are operator-scoped; individual grants carry the
+  /// location/org-unit scope later through `user_roles`.
   ///
-  /// Defaults to [RoleScope.location] so the warning surface is on by
-  /// default for the current operator-web shell.
+  /// Defaults to [RoleScope.business] so business-wide catalog keys
+  /// remain visible on the Roles surface.
   final RoleScope roleScope;
 
   /// Advisory validator that produces the inline warning list. Pure
@@ -233,7 +231,9 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     // Suffix with a short timestamp so two roles created with the same
     // display name don't collide on role_key. Falls within the 64-char
     // ceiling because we trim above first.
-    final suffix = DateTime.now().toUtc().millisecondsSinceEpoch
+    final suffix = DateTime.now()
+        .toUtc()
+        .millisecondsSinceEpoch
         .remainder(1000000)
         .toString();
     final maxBase = 64 - suffix.length - 1;
@@ -429,9 +429,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                 ),
                 const SizedBox(height: 16),
                 RolePermissionPickerCard(
-                  key: const Key(
-                    'operator_web_custom_role_editor_permissions',
-                  ),
+                  key: const Key('operator_web_custom_role_editor_permissions'),
                   selected: _selectedPermissions,
                   explicit: _explicitPermissions,
                   readOnly: widget.readOnly,
@@ -440,39 +438,41 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                   onToggle: _togglePermission,
                   keyPrefix: 'operator_web_custom_role_editor',
                 ),
-                Builder(builder: (context) {
-                  final warnings = widget.validator.validate(
-                    _selectedPermissions,
-                    scope: widget.roleScope,
-                    roleDisplayName: _displayNameController.text,
-                  );
-                  final roleId = widget.existing?.roleId;
-                  final visibleWarnings = warnings
-                      .where(
-                        (w) => !widget.dismissalStore.isDismissed(
-                          roleId: roleId,
-                          warning: w,
-                        ),
-                      )
-                      .toList(growable: false);
-                  if (visibleWarnings.isEmpty) {
-                    return const SizedBox.shrink();
-                  }
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 14),
-                    child: _RoleWarningPanel(
-                      warnings: visibleWarnings,
-                      onDismiss: (warning) async {
-                        await widget.dismissalStore.dismiss(
-                          roleId: roleId,
-                          warning: warning,
-                        );
-                        if (!mounted) return;
-                        setState(() {});
-                      },
-                    ),
-                  );
-                }),
+                Builder(
+                  builder: (context) {
+                    final warnings = widget.validator.validate(
+                      _selectedPermissions,
+                      scope: widget.roleScope,
+                      roleDisplayName: _displayNameController.text,
+                    );
+                    final roleId = widget.existing?.roleId;
+                    final visibleWarnings = warnings
+                        .where(
+                          (w) => !widget.dismissalStore.isDismissed(
+                            roleId: roleId,
+                            warning: w,
+                          ),
+                        )
+                        .toList(growable: false);
+                    if (visibleWarnings.isEmpty) {
+                      return const SizedBox.shrink();
+                    }
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: _RoleWarningPanel(
+                        warnings: visibleWarnings,
+                        onDismiss: (warning) async {
+                          await widget.dismissalStore.dismiss(
+                            roleId: roleId,
+                            warning: warning,
+                          );
+                          if (!mounted) return;
+                          setState(() {});
+                        },
+                      ),
+                    );
+                  },
+                ),
                 if (_saveError != null) ...<Widget>[
                   const SizedBox(height: 14),
                   _SaveErrorPanel(message: _saveError!),
@@ -534,7 +534,6 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
     );
   }
 }
-
 
 class _MetaCard extends StatelessWidget {
   const _MetaCard({
@@ -624,10 +623,7 @@ class _MetaCard extends StatelessWidget {
 /// affordance that fires [onDismiss] for the operator to persist via
 /// the editor's [RoleWarningDismissalStore].
 class _RoleWarningPanel extends StatelessWidget {
-  const _RoleWarningPanel({
-    required this.warnings,
-    required this.onDismiss,
-  });
+  const _RoleWarningPanel({required this.warnings, required this.onDismiss});
 
   final List<RoleWarning> warnings;
   final ValueChanged<RoleWarning> onDismiss;
@@ -691,10 +687,7 @@ class _RoleWarningPanel extends StatelessWidget {
 }
 
 class _RoleWarningRow extends StatelessWidget {
-  const _RoleWarningRow({
-    required this.warning,
-    required this.onDismiss,
-  });
+  const _RoleWarningRow({required this.warning, required this.onDismiss});
 
   final RoleWarning warning;
   final VoidCallback onDismiss;
@@ -702,9 +695,7 @@ class _RoleWarningRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      key: Key(
-        'operator_web_custom_role_editor_warning_${warning.code.name}',
-      ),
+      key: Key('operator_web_custom_role_editor_warning_${warning.code.name}'),
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
@@ -731,17 +722,12 @@ class _RoleWarningRow extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: AppColors.cardGlow,
-                    border: Border.all(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(999),
                   ),
                   child: Text(
                     key,
-                    style: AppTextStyles.mono10(
-                      color: AppColors.textPrimary,
-                    ),
+                    style: AppTextStyles.mono10(color: AppColors.textPrimary),
                   ),
                 ),
             ],
@@ -757,10 +743,7 @@ class _RoleWarningRow extends StatelessWidget {
               onPressed: onDismiss,
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.textMuted,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 minimumSize: const Size(0, 28),
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
