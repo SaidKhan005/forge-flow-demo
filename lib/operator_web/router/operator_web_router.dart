@@ -295,7 +295,7 @@ class OperatorWebRouter extends StatefulWidget {
   State<OperatorWebRouter> createState() => _OperatorWebRouterState();
 }
 
-String _dataAccuracyBusinessDateIso({
+String _fallbackDataAccuracyBusinessDateIso({
   required OperatorWebSession session,
   required DateTime instantUtc,
 }) {
@@ -320,6 +320,34 @@ String _dataAccuracyBusinessDateIso({
       ? utc.subtract(const Duration(days: 1))
       : utc;
   return _isoDate(adjusted);
+}
+
+Future<String> _dataAccuracyBusinessDateIso({
+  required OperatorWebSession session,
+  required String locationId,
+  required DateTime instantUtc,
+  required WebBusinessTimingGateway? timingGateway,
+  required bool isLiveSource,
+}) async {
+  if (timingGateway == null) {
+    if (isLiveSource) {
+      throw StateError(
+        'Data Accuracy needs Business Timing to resolve the current '
+        'business date.',
+      );
+    }
+    return _fallbackDataAccuracyBusinessDateIso(
+      session: session,
+      instantUtc: instantUtc,
+    );
+  }
+  final resolution = await timingGateway.resolveForLocation(
+    locationId: locationId,
+  );
+  return HttpBusinessTimingReadGateway.businessDateForInstant(
+    resolution: resolution,
+    instantUtc: instantUtc,
+  );
 }
 
 int? _validRolloverHour(int? value) {
@@ -1472,7 +1500,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         final dataAccuracyWiringError = _liveSurfaceMissingGateway(
           hasLiveProvider:
               widget.source is OperatorWebDataAccuracyGatewayProvider &&
-              widget.source is OperatorWebVendorApplicabilityGatewayProvider,
+              widget.source is OperatorWebVendorApplicabilityGatewayProvider &&
+              widget.source is OperatorWebBusinessTimingWriteGatewayProvider,
           surfaceTitle: 'Data accuracy',
         );
         if (dataAccuracyWiringError != null) {
@@ -1489,31 +1518,49 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             selectedScopeLabel: managementScope.label,
           );
         } else {
-          body = DataAccuracyScreen(
-            session: session,
-            locationId: locationScope.id,
-            locationName: locationScope.label,
-            dataAccuracyGateway: _dataAccuracyGateway,
-            vendorApplicabilityGateway: _vendorApplicabilityGateway,
-            businessDateIso: _dataAccuracyBusinessDateIso(
+          final instantUtc = (widget.nowUtc ?? DateTime.now)().toUtc();
+          body = FutureBuilder<String>(
+            key: ValueKey(
+              'operator_web_data_accuracy_business_date_${locationScope.id}',
+            ),
+            future: _dataAccuracyBusinessDateIso(
               session: session,
-              instantUtc: (widget.nowUtc ?? DateTime.now)().toUtc(),
+              locationId: locationScope.id,
+              instantUtc: instantUtc,
+              timingGateway: _webBusinessTimingGateway,
+              isLiveSource: !_isDemoAuthSource,
             ),
-            // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
-            // Authority section now mounts inside Data Accuracy.
-            // Re-use the same gateway resolution the standalone
-            // Wage Authority case below uses so the embedded
-            // section saves through the live proxy when wired and
-            // the in-memory demo gateway otherwise.
-            wageAuthorityGateway:
-                _wageAuthorityGateway ??
-                (_routerOwnedDemoWageAuthorityGateway ??=
-                    OperatorWebDemoWageAuthorityGateway()),
-            hierarchyNodes: _wageHierarchyNodes(),
-            ancestorOrgUnitIdsNearestFirst: _wageAncestorOrgUnitIdsNearestFirst(
-              locationScope,
-            ),
-            businessName: session.businessName,
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return const _DataAccuracyBusinessDateError();
+              }
+              final businessDateIso = snapshot.data;
+              if (businessDateIso == null) {
+                return const _DataAccuracyBusinessDateLoading();
+              }
+              return DataAccuracyScreen(
+                session: session,
+                locationId: locationScope.id,
+                locationName: locationScope.label,
+                dataAccuracyGateway: _dataAccuracyGateway,
+                vendorApplicabilityGateway: _vendorApplicabilityGateway,
+                businessDateIso: businessDateIso,
+                // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
+                // Authority section now mounts inside Data Accuracy.
+                // Re-use the same gateway resolution the standalone
+                // Wage Authority case below uses so the embedded
+                // section saves through the live proxy when wired and
+                // the in-memory demo gateway otherwise.
+                wageAuthorityGateway:
+                    _wageAuthorityGateway ??
+                    (_routerOwnedDemoWageAuthorityGateway ??=
+                        OperatorWebDemoWageAuthorityGateway()),
+                hierarchyNodes: _wageHierarchyNodes(),
+                ancestorOrgUnitIdsNearestFirst:
+                    _wageAncestorOrgUnitIdsNearestFirst(locationScope),
+                businessName: session.businessName,
+              );
+            },
           );
         }
         break;
@@ -2072,6 +2119,72 @@ class _RequiresBusinessScopeSurface extends StatelessWidget {
 /// honest-failure copy (`_maybeStartHandoffRedeem`) and the visual
 /// shape of [_RequiresBusinessScopeSurface], but uses an error tone
 /// because this is a defect, not a scope-picker nudge.
+class _DataAccuracyBusinessDateLoading extends StatelessWidget {
+  const _DataAccuracyBusinessDateLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: SizedBox(
+        width: 28,
+        height: 28,
+        child: CircularProgressIndicator(
+          strokeWidth: 2,
+          color: AppColors.sunsetDark,
+        ),
+      ),
+    );
+  }
+}
+
+class _DataAccuracyBusinessDateError extends StatelessWidget {
+  const _DataAccuracyBusinessDateError();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 22,
+                    color: AppColors.sunsetDark,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Data accuracy needs Business Timing',
+                      style: AppTextStyles.display20(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'We could not resolve the current business date for this '
+                'location. To protect your settings, this page is not '
+                'showing or saving data accuracy changes until Business '
+                'Timing is available.',
+                style: AppTextStyles.body13(color: AppColors.textPrimary),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SurfaceWiringError extends StatelessWidget {
   const _SurfaceWiringError({super.key, required this.surfaceTitle});
 
