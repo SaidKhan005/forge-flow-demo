@@ -3522,38 +3522,73 @@ class RepositoryMobileOperationalSyncProxyGateway
   }) {
     final businessDate = _bodyBusinessDate(body, 'business_date');
     final servicePeriodKey = _bodyServicePeriodKey(body);
-    final covers = _bodyCoversCount(body);
+    final clearManualCover = _bodyBool(body, 'clear') ?? false;
+    if (clearManualCover && body.containsKey('covers')) {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_manual_covers_clear',
+        message: 'clear manual covers requests must not include covers',
+      );
+    }
+    final covers = clearManualCover ? null : _bodyCoversCount(body);
 
     return _tenantRead(scope, operatorId, locationId, (exec) async {
       final rows = await exec.query(
-        'insert into public.data_accuracy_settings ('
-        'operator_id, location_id, covers_manual_entries, updated_by) '
-        'values ('
-        '@operator_id::uuid, @location_id::uuid, '
-        'jsonb_build_object('
-        '@business_date, jsonb_build_object(@service_period_key, @covers::int)'
-        '), @updated_by) '
-        'on conflict (operator_id, location_id) do update set '
-        'covers_manual_entries = coalesce('
-        'public.data_accuracy_settings.covers_manual_entries, '
-        "'{}'::jsonb) || jsonb_build_object("
-        '@business_date, coalesce('
-        'public.data_accuracy_settings.covers_manual_entries '
-        "-> @business_date, '{}'::jsonb"
-        ') || jsonb_build_object(@service_period_key, @covers::int)), '
-        'updated_at = now(), updated_by = excluded.updated_by '
-        'returning setting_id::text as setting_id, '
-        'operator_id::text as operator_id, '
-        'location_id::text as location_id, '
-        'covers_manual_entries, wage_source, '
-        'walk_in_handling_mode, walk_in_manual_entries, '
-        'created_at, updated_at, updated_by',
+        clearManualCover
+            ? 'insert into public.data_accuracy_settings ('
+                  'operator_id, location_id, covers_manual_entries, '
+                  'updated_by) '
+                  "values (@operator_id::uuid, @location_id::uuid, '{}'::jsonb, "
+                  '@updated_by) '
+                  'on conflict (operator_id, location_id) do update set '
+                  'covers_manual_entries = ('
+                  'select coalesce(jsonb_object_agg(day.key, day.value), '
+                  "'{}'::jsonb) "
+                  'from jsonb_each(coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries, '
+                  "'{}'::jsonb) || jsonb_build_object("
+                  '@business_date, coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries '
+                  "-> @business_date, '{}'::jsonb"
+                  ') - @service_period_key)) day '
+                  "where day.value <> '{}'::jsonb"
+                  '), '
+                  'updated_at = now(), updated_by = excluded.updated_by '
+                  'returning setting_id::text as setting_id, '
+                  'operator_id::text as operator_id, '
+                  'location_id::text as location_id, '
+                  'covers_manual_entries, wage_source, '
+                  'walk_in_handling_mode, walk_in_manual_entries, '
+                  'created_at, updated_at, updated_by'
+            : 'insert into public.data_accuracy_settings ('
+                  'operator_id, location_id, covers_manual_entries, updated_by) '
+                  'values ('
+                  '@operator_id::uuid, @location_id::uuid, '
+                  'jsonb_build_object('
+                  '@business_date, jsonb_build_object(@service_period_key, @covers::int)'
+                  '), @updated_by) '
+                  'on conflict (operator_id, location_id) do update set '
+                  'covers_manual_entries = coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries, '
+                  "'{}'::jsonb) || jsonb_build_object("
+                  '@business_date, coalesce('
+                  'public.data_accuracy_settings.covers_manual_entries '
+                  "-> @business_date, '{}'::jsonb"
+                  ') || jsonb_build_object(@service_period_key, @covers::int)), '
+                  'updated_at = now(), updated_by = excluded.updated_by '
+                  'returning setting_id::text as setting_id, '
+                  'operator_id::text as operator_id, '
+                  'location_id::text as location_id, '
+                  'covers_manual_entries, wage_source, '
+                  'walk_in_handling_mode, walk_in_manual_entries, '
+                  'created_at, updated_at, updated_by',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'location_id': locationId,
           'business_date': businessDate,
           'service_period_key': servicePeriodKey,
-          'covers': covers,
+          if (covers != null) 'covers': covers,
+          'clear_manual_cover': clearManualCover,
           'updated_by': _uuidOrNull(scope.userId),
         },
       );
@@ -4293,6 +4328,17 @@ class RepositoryMobileOperationalSyncProxyGateway
       statusCode: 400,
       code: 'invalid_$field',
       message: '$field must be a non-empty string',
+    );
+  }
+
+  static bool? _bodyBool(Map<String, Object?> body, String field) {
+    final raw = body[field];
+    if (raw == null) return null;
+    if (raw is bool) return raw;
+    throw MobileOperationalSyncProxyGatewayException(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be true or false',
     );
   }
 

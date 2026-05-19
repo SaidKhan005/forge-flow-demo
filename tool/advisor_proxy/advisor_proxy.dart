@@ -18063,6 +18063,28 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       },
     );
   }
+  final clearRaw = body['clear'];
+  if (clearRaw != null && clearRaw is! bool) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_clear',
+        'message': 'clear must be true or false',
+      },
+    );
+  }
+  if (clearRaw == true) {
+    if (body.containsKey('covers')) {
+      return (
+        400,
+        <String, Object?>{
+          'error': 'invalid_manual_covers_clear',
+          'message': 'clear manual covers requests must not include covers',
+        },
+      );
+    }
+    return null;
+  }
   final coversRaw = body['covers'];
   final covers = coversRaw is int
       ? coversRaw

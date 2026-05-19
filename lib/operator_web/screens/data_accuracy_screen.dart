@@ -600,6 +600,38 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
 
   // ── Handlers ────────────────────────────────────────────────────
 
+  Future<void> _clearManualCovers(
+    OperatorWebDataAccuracyGateway gateway, {
+    required String businessDateIso,
+    required String servicePeriodId,
+  }) async {
+    final generation = ++_settingsSaveGeneration;
+    setState(() {
+      _savingSettings = true;
+      _settingsSaveError = null;
+    });
+    try {
+      final saved = await gateway.clearManualCovers(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+        businessDateIso: businessDateIso,
+        servicePeriodKey: servicePeriodId,
+      );
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _applySettingsSeed(saved);
+        _savingSettings = false;
+        _settingsSaveError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _savingSettings = false;
+        _settingsSaveError = 'Could not clear manual covers: $error';
+      });
+    }
+  }
+
   void _handleWageSourceChanged(WageSource value) {
     setState(() => _wageSource = value);
     _emitSave();
@@ -616,8 +648,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   void _handleManualEntry(String servicePeriodId, int? covers) {
+    final today = widget.businessDateIso;
     setState(() {
-      final today = widget.businessDateIso;
       final dayMap = _manualEntries.putIfAbsent(today, () => <String, int>{});
       if (covers == null) {
         dayMap.remove(servicePeriodId);
@@ -626,6 +658,17 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         dayMap[servicePeriodId] = covers;
       }
     });
+    final gateway = widget.dataAccuracyGateway;
+    if (covers == null && gateway != null) {
+      unawaited(
+        _clearManualCovers(
+          gateway,
+          businessDateIso: today,
+          servicePeriodId: servicePeriodId,
+        ),
+      );
+      return;
+    }
     _emitSave();
   }
 

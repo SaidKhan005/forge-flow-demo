@@ -456,6 +456,75 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('blanking a saved manual cover sends explicit clear intent', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+
+      final gateway = _RecordingDataAccuracyGateway()
+        ..seedSettings = DataAccuracySettings(
+          settingId: 'setting-1',
+          operatorId: ownerSession.operatorId,
+          locationId: ownerSession.primaryLocationId ?? '',
+          coversSourcePerServicePeriod: const <String, CoversSource>{
+            'dinner': CoversSource.manual,
+          },
+          coversManualEntries: const <String, Map<String, int>>{
+            '2026-05-08': <String, int>{'lunch': 64, 'dinner': 187},
+            '2026-05-07': <String, int>{'dinner': 172},
+          },
+          wageSource: WageSource.vendor,
+          walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+          walkInManualEntries: const <String, int>{},
+          createdAt: DateTime.utc(2026, 5, 8),
+          updatedAt: DateTime.utc(2026, 5, 8),
+        );
+      final periods = <ServicePeriodDefinition>[
+        servicePeriodDefinition(id: 'lunch', label: 'Lunch', sortOrder: 1),
+        servicePeriodDefinition(id: 'dinner', label: 'Dinner', sortOrder: 2),
+      ];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+            businessDateIso: '2026-05-08',
+            servicePeriodsLoader: () async => periods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final dinnerField = find.byKey(
+        const Key('covers_manual_entry_field_dinner'),
+      );
+      await tester.ensureVisible(dinnerField);
+      await tester.pumpAndSettle();
+      expect(tester.widget<TextField>(dinnerField).controller!.text, '187');
+
+      await tester.enterText(dinnerField, '');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(gateway.settingsSaveCalls, isEmpty);
+      expect(gateway.manualCoverClearCalls, hasLength(1));
+      final call = gateway.manualCoverClearCalls.single;
+      expect(call.operatorId, ownerSession.operatorId);
+      expect(call.locationId, ownerSession.primaryLocationId);
+      expect(call.businessDateIso, '2026-05-08');
+      expect(call.servicePeriodKey, 'dinner');
+      expect(
+        gateway.seedSettings!.coversManualEntries,
+        equals(<String, Map<String, int>>{
+          '2026-05-08': <String, int>{'lunch': 64},
+          '2026-05-07': <String, int>{'dinner': 172},
+        }),
+      );
+    });
   });
 
   group('DataAccuracyScreen source metadata', () {
@@ -1699,6 +1768,20 @@ class _ServicePeriodSaveCall {
   final String effectiveAtBusinessDateIso;
 }
 
+class _ManualCoverClearCall {
+  const _ManualCoverClearCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDateIso,
+    required this.servicePeriodKey,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDateIso;
+  final String servicePeriodKey;
+}
+
 DataAccuracySettings _settingsWithWage(WageSource wageSource) {
   return DataAccuracySettings(
     settingId: 'settings-wage-$wageSource',
@@ -1792,11 +1875,15 @@ class _FakeWebVendorApplicabilityGateway
 class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   List<DataAccuracyServicePeriodSetting> seedServicePeriodRows =
       const <DataAccuracyServicePeriodSetting>[];
+  DataAccuracySettings? seedSettings;
 
   int settingsLoadCalls = 0;
   int servicePeriodLoadCalls = 0;
   final List<_ServicePeriodSaveCall> servicePeriodSaveCalls =
       <_ServicePeriodSaveCall>[];
+  final List<DataAccuracySettings> settingsSaveCalls = <DataAccuracySettings>[];
+  final List<_ManualCoverClearCall> manualCoverClearCalls =
+      <_ManualCoverClearCall>[];
 
   @override
   Future<DataAccuracySettings?> loadSettings({
@@ -1804,6 +1891,7 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
     required String locationId,
   }) async {
     settingsLoadCalls += 1;
+    if (seedSettings != null) return seedSettings;
     final perPeriod = <String, CoversSource>{};
     for (final row in seedServicePeriodRows) {
       switch (row.coversSource) {
@@ -1838,7 +1926,70 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   @override
   Future<DataAccuracySettings> saveSettings(
     DataAccuracySettings settings,
-  ) async => settings;
+  ) async {
+    settingsSaveCalls.add(settings);
+    seedSettings = settings;
+    return settings;
+  }
+
+  @override
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+  }) async {
+    manualCoverClearCalls.add(
+      _ManualCoverClearCall(
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDateIso: businessDateIso,
+        servicePeriodKey: servicePeriodKey,
+      ),
+    );
+    final base =
+        seedSettings ??
+        DataAccuracySettings(
+          settingId: 'setting-1',
+          operatorId: operatorId,
+          locationId: locationId,
+          coversSourcePerServicePeriod: const <String, CoversSource>{},
+          coversManualEntries: const <String, Map<String, int>>{},
+          wageSource: WageSource.vendor,
+          walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+          walkInManualEntries: const <String, int>{},
+          createdAt: DateTime.utc(2026, 5, 8),
+          updatedAt: DateTime.utc(2026, 5, 8),
+        );
+    final nextManualEntries = <String, Map<String, int>>{
+      for (final entry in base.coversManualEntries.entries)
+        entry.key: Map<String, int>.from(entry.value),
+    };
+    final dayMap = nextManualEntries[businessDateIso];
+    if (dayMap != null) {
+      dayMap.remove(servicePeriodKey);
+      if (dayMap.isEmpty) nextManualEntries.remove(businessDateIso);
+    }
+    final cleared = DataAccuracySettings(
+      settingId: base.settingId,
+      operatorId: operatorId,
+      locationId: locationId,
+      coversSourcePerServicePeriod: base.coversSourcePerServicePeriod,
+      coversSourcePerServicePeriodSources:
+          base.coversSourcePerServicePeriodSources,
+      coversManualEntries: nextManualEntries,
+      wageSource: base.wageSource,
+      wageSourceSource: base.wageSourceSource,
+      walkInHandlingMode: base.walkInHandlingMode,
+      walkInHandlingModeSource: base.walkInHandlingModeSource,
+      walkInManualEntries: base.walkInManualEntries,
+      createdAt: base.createdAt,
+      updatedAt: DateTime.utc(2026, 5, 8, 0, manualCoverClearCalls.length),
+      updatedBy: base.updatedBy,
+    );
+    seedSettings = cleared;
+    return cleared;
+  }
 
   @override
   Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({

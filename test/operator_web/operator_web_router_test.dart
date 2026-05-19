@@ -1721,6 +1721,23 @@ class _StubDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   ) async => settings;
 
   @override
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+  }) async => DataAccuracySettings(
+    settingId: 'stub-setting',
+    operatorId: operatorId,
+    locationId: locationId,
+    coversSourcePerServicePeriod: const <String, CoversSource>{},
+    coversManualEntries: const <String, Map<String, int>>{},
+    wageSource: WageSource.vendor,
+    createdAt: DateTime.utc(2026, 5, 16),
+    updatedAt: DateTime.utc(2026, 5, 16),
+  );
+
+  @override
   Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
     required String operatorId,
     required String locationId,

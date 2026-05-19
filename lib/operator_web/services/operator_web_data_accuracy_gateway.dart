@@ -16,6 +16,13 @@ abstract class OperatorWebDataAccuracyGateway {
 
   Future<DataAccuracySettings> saveSettings(DataAccuracySettings settings);
 
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+  });
+
   Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
     required String operatorId,
     required String locationId,
@@ -56,6 +63,14 @@ class OperatorWebHttpDataAccuracyGateway
       '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
       '${Uri.encodeComponent(locationId)}/'
       'data_accuracy_service_period_settings';
+
+  static String dataAccuracyManualCoversPath({
+    required String operatorId,
+    required String locationId,
+  }) =>
+      '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
+      '${Uri.encodeComponent(locationId)}/data_accuracy_settings/'
+      'manual_covers';
 
   @override
   Future<DataAccuracySettings?> loadSettings({
@@ -105,6 +120,47 @@ class OperatorWebHttpDataAccuracyGateway
         settings.locationId,
         body,
       ]),
+    );
+    final raw = response.body['data'];
+    if (raw is! Map<Object?, Object?>) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_data_accuracy_settings',
+        message: 'The proxy returned malformed data accuracy settings.',
+      );
+    }
+    return _settingsFromJson(Map<String, Object?>.from(raw));
+  }
+
+  @override
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+  }) async {
+    final token = await _requireToken();
+    final body = <String, Object?>{
+      'business_date': businessDateIso,
+      'service_period_key': servicePeriodKey,
+      'clear': true,
+    };
+    final response = await _client.patchJson(
+      dataAccuracyManualCoversPath(
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+      idToken: token,
+      body: body,
+      extraHeaders: _stableKeyHeader(
+        'data-accuracy-manual-cover-clear',
+        <Object?>[
+          operatorId,
+          locationId,
+          businessDateIso,
+          servicePeriodKey,
+          body,
+        ],
+      ),
     );
     final raw = response.body['data'];
     if (raw is! Map<Object?, Object?>) {

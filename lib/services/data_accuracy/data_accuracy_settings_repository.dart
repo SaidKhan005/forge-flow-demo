@@ -256,6 +256,45 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Clear one manual covers slot. Neighboring service periods on the
+  /// same business date and other dates are preserved.
+  Future<DataAccuracySettings> clearManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodId,
+    String? actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<DataAccuracySettings>(ctx, (exec) async {
+      final current = await _readRow(exec, operatorId, locationId);
+      if (current == null) {
+        throw StateError(
+          'data_accuracy_settings clearManualCovers called before '
+          'readOrCreateDefault - no row for this (operator, location)',
+        );
+      }
+      return _writeAndReturn(
+        exec: exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        manualEntries: _clearManualEntry(
+          current.coversManualEntries,
+          businessDateIso,
+          servicePeriodId,
+        ),
+        wageSource: current.wageSource,
+        walkInHandlingMode: current.walkInHandlingMode,
+        walkInManualEntries: current.walkInManualEntries,
+        actorUserId: actorUserId,
+      );
+    });
+  }
+
   /// Toggle the wage source binary. Other fields untouched.
   Future<DataAccuracySettings> updateWageSource({
     required String operatorId,
@@ -514,6 +553,22 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
     });
     final dayMap = out.putIfAbsent(businessDateIso, () => <String, int>{});
     dayMap[servicePeriodId] = covers;
+    return out;
+  }
+
+  static Map<String, Map<String, int>> _clearManualEntry(
+    Map<String, Map<String, int>> current,
+    String businessDateIso,
+    String servicePeriodId,
+  ) {
+    final out = <String, Map<String, int>>{};
+    current.forEach((key, value) {
+      out[key] = Map<String, int>.from(value);
+    });
+    final dayMap = out[businessDateIso];
+    if (dayMap == null) return out;
+    dayMap.remove(servicePeriodId);
+    if (dayMap.isEmpty) out.remove(businessDateIso);
     return out;
   }
 
