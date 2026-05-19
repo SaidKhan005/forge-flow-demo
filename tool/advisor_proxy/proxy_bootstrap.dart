@@ -8916,6 +8916,24 @@ class RepositoryObservabilityAdminProxyGateway
       final graphRow = graphRows.isEmpty
           ? const <String, Object?>{}
           : graphRows.single;
+      final projectionRetryCountRows = await exec.query(
+        _observabilityProjectionRetryCountsSql,
+        parameters: scopeParams,
+      );
+      final projectionRetryRecentRows = await exec.query(
+        _observabilityProjectionRetryRecentSql,
+        parameters: <String, Object?>{
+          ...scopeParams,
+          'limit': _projectionRetryRecentLimit,
+        },
+      );
+      final projectionRetryDeadLetterRows = await exec.query(
+        _observabilityProjectionRetryDeadLetterSql,
+        parameters: <String, Object?>{
+          ...scopeParams,
+          'limit': _projectionRetryDeadLetterLimit,
+        },
+      );
 
       return <String, Object?>{
         'as_of': asOf.toIso8601String(),
@@ -8988,6 +9006,23 @@ class RepositoryObservabilityAdminProxyGateway
             graphRow['projection_age_seconds'],
           ),
           'traversal_p95_ms': 0,
+        },
+        'projection_retries': <String, Object?>{
+          'status_counts': _projectionRetryStatusCounts(
+            projectionRetryCountRows,
+          ),
+          'recent_active': <Map<String, Object?>>[
+            for (final row in projectionRetryRecentRows)
+              _projectionRetryRowJson(row),
+          ],
+          'dead_lettered': <Map<String, Object?>>[
+            for (final row in projectionRetryDeadLetterRows)
+              _projectionRetryRowJson(row),
+          ],
+          'limits': const <String, Object?>{
+            'recent_active': _projectionRetryRecentLimit,
+            'dead_lettered': _projectionRetryDeadLetterLimit,
+          },
         },
         'route_latency': const <Map<String, Object?>>[],
         'cloud_run': const <Map<String, Object?>>[],
@@ -9171,6 +9206,78 @@ order by rows.total_usd desc, rows.request_count desc
 limit @limit::int
 ''';
 
+const int _projectionRetryRecentLimit = 25;
+const int _projectionRetryDeadLetterLimit = 25;
+
+const List<String> _projectionRetryKnownStatuses = <String>[
+  'pending',
+  'running',
+  'succeeded',
+  'dead_lettered',
+];
+
+const String _projectionRetryScopeWhere = '''
+where (@operator_id::uuid is null or operator_id = @operator_id::uuid)
+  and (@location_id::uuid is null or location_id = @location_id::uuid)
+  and (
+    @location_ids::text[] is null
+    or location_id::text = any(@location_ids::text[])
+  )
+''';
+
+const String _projectionRetryRowSelect = '''
+select
+  job_id::text as job_id,
+  operator_id::text as operator_id,
+  location_id::text as location_id,
+  restaurant_id,
+  connection_id::text as connection_id,
+  vendor_id,
+  category,
+  status,
+  fact_count,
+  attempt_count,
+  worker_id,
+  claimed_at,
+  next_attempt_at,
+  created_at,
+  updated_at,
+  completed_at,
+  dead_lettered_at,
+  input_hash,
+  last_error_class,
+  left(last_error_message, 500) as last_error_message,
+  left(coalesce(stack_first_frame, ''), 300) as stack_first_frame
+from public.canonical_fact_projection_retry_jobs
+''';
+
+const String _observabilityProjectionRetryCountsSql =
+    '''
+select status, count(*)::bigint as count
+from public.canonical_fact_projection_retry_jobs
+$_projectionRetryScopeWhere
+group by status
+order by status
+''';
+
+const String _observabilityProjectionRetryRecentSql =
+    '''
+$_projectionRetryRowSelect
+$_projectionRetryScopeWhere
+  and status in ('pending', 'running')
+order by updated_at desc, created_at desc, job_id desc
+limit @limit::int
+''';
+
+const String _observabilityProjectionRetryDeadLetterSql =
+    '''
+$_projectionRetryRowSelect
+$_projectionRetryScopeWhere
+  and status = 'dead_lettered'
+order by coalesce(dead_lettered_at, updated_at, created_at) desc, job_id desc
+limit @limit::int
+''';
+
 const String _observabilityCacheHitSql = '''
 select
   query_class,
@@ -9342,6 +9449,46 @@ Map<String, Object?> _costTelemetryRowJson(PostgresRow row) {
     'total_usd': _adminDouble(row['total_usd']),
     'request_count': _adminInt(row['request_count']),
     'business_name': row['business_name']?.toString(),
+  };
+}
+
+Map<String, Object?> _projectionRetryStatusCounts(List<PostgresRow> rows) {
+  final counts = <String, Object?>{
+    for (final status in _projectionRetryKnownStatuses) status: 0,
+  };
+  for (final row in rows) {
+    final status = row['status']?.toString();
+    if (status == null || status.trim().isEmpty) continue;
+    counts[status] = _adminInt(row['count']);
+  }
+  return counts;
+}
+
+Map<String, Object?> _projectionRetryRowJson(PostgresRow row) {
+  final stackFirstFrame = row['stack_first_frame']?.toString();
+  return <String, Object?>{
+    'job_id': row['job_id']?.toString() ?? '',
+    'operator_id': row['operator_id']?.toString() ?? '',
+    'location_id': row['location_id']?.toString() ?? '',
+    'restaurant_id': row['restaurant_id']?.toString() ?? '',
+    'connection_id': row['connection_id']?.toString() ?? '',
+    'vendor_id': row['vendor_id']?.toString() ?? '',
+    'category': row['category']?.toString() ?? '',
+    'status': row['status']?.toString() ?? '',
+    'fact_count': _adminInt(row['fact_count']),
+    'attempt_count': _adminInt(row['attempt_count']),
+    'worker_id': row['worker_id']?.toString(),
+    'claimed_at': _adminIsoOrNull(row['claimed_at']),
+    'next_attempt_at': _adminIso(row['next_attempt_at']),
+    'created_at': _adminIso(row['created_at']),
+    'updated_at': _adminIso(row['updated_at']),
+    'completed_at': _adminIsoOrNull(row['completed_at']),
+    'dead_lettered_at': _adminIsoOrNull(row['dead_lettered_at']),
+    'input_hash': row['input_hash']?.toString() ?? '',
+    'last_error_class': row['last_error_class']?.toString() ?? '',
+    'last_error_message': row['last_error_message']?.toString() ?? '',
+    if (stackFirstFrame != null && stackFirstFrame.trim().isNotEmpty)
+      'stack_first_frame': stackFirstFrame,
   };
 }
 
