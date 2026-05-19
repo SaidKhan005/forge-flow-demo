@@ -35,6 +35,29 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
   Future<void> recordProjectionFailure(
     CanonicalFactProjectionRetryRecord record,
   ) {
+    return _insertFailure(
+      record,
+      status: CanonicalFactProjectionRetryStatus.pending,
+      deadLettered: false,
+    );
+  }
+
+  @override
+  Future<void> recordPreInputProjectionFailure(
+    CanonicalFactProjectionPreInputFailureRecord record,
+  ) {
+    return _insertFailure(
+      record.toDeadLetterRetryRecord(),
+      status: CanonicalFactProjectionRetryStatus.deadLettered,
+      deadLettered: true,
+    );
+  }
+
+  Future<void> _insertFailure(
+    CanonicalFactProjectionRetryRecord record, {
+    required CanonicalFactProjectionRetryStatus status,
+    required bool deadLettered,
+  }) {
     final ctx = TenantContext(
       operatorId: record.operatorId,
       locationId: record.locationId,
@@ -46,14 +69,16 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
         'operator_id, location_id, restaurant_id, connection_id, '
         'vendor_id, category, status, changed_periods, '
         'open_current_fact_maps, input_hash, fact_count, '
-        'last_error_class, last_error_message, stack_first_frame, user_id'
+        'last_error_class, last_error_message, stack_first_frame, user_id, '
+        'dead_lettered_at'
         ') values ('
         '@operator_id::uuid, @location_id::uuid, @restaurant_id, '
         '@connection_id::uuid, @vendor_id, @category, '
-        "'pending', @changed_periods::jsonb, "
+        '@status, @changed_periods::jsonb, '
         '@open_current_fact_maps::jsonb, @input_hash, @fact_count, '
         '@last_error_class, @last_error_message, @stack_first_frame, '
-        '@user_id::uuid)',
+        '@user_id::uuid, '
+        'case when @dead_lettered then now() else null end)',
         parameters: <String, Object?>{
           'operator_id': record.operatorId,
           'location_id': record.locationId,
@@ -61,6 +86,7 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
           'connection_id': record.connectionId,
           'vendor_id': record.vendorId,
           'category': record.integrationCategory.backfillWire,
+          'status': status.wire,
           'changed_periods': jsonEncode(record.changedPeriods),
           'open_current_fact_maps': jsonEncode(record.openCurrentFactMaps),
           'input_hash': record.inputHash,
@@ -69,6 +95,7 @@ class CanonicalFactProjectionRetryRepository extends OperatorScopedRepository
           'last_error_message': record.errorMessage,
           'stack_first_frame': record.stackFirstFrame,
           'user_id': record.userId,
+          'dead_lettered': deadLettered,
         },
       );
     });

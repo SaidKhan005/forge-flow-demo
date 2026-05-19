@@ -26,6 +26,36 @@ void main() {
       expect(replay.changedPeriods.single.servicePeriodKey, 'dinner');
       expect(replay.openCurrentFactMaps.single['fact_type'], 'cover_fact');
     });
+
+    test('pre-input failure preserves fact maps without replay input', () {
+      final record = CanonicalFactProjectionPreInputFailureRecord.fromFailure(
+        operatorId: _operatorId,
+        locationId: _locationId,
+        restaurantId: _restaurantId,
+        integrationCategory: IntegrationCategory.pos,
+        vendorId: 'toast',
+        connectionId: _connectionId,
+        canonicalFactMaps: <Map<String, Object?>>[
+          <String, Object?>{
+            'fact_type': 'cover_fact',
+            'connection_id': _connectionId,
+            'business_date': '2026-05-06',
+            'service_period_key': 'dinner',
+            'occurred_at': DateTime.utc(2026, 5, 6, 18),
+          },
+        ],
+        error: StateError('business timing profile missing'),
+        stackFirstFrame: '#0 test',
+      );
+      final deadLetter = record.toDeadLetterRetryRecord();
+
+      expect(record.inputHash, hasLength(64));
+      expect(record.factCount, 1);
+      expect(record.errorMessage, contains('business timing profile missing'));
+      expect(record.canonicalFactMaps.single['occurred_at'], isA<String>());
+      expect(deadLetter.changedPeriods, isEmpty);
+      expect(deadLetter.openCurrentFactMaps.single['fact_type'], 'cover_fact');
+    });
   });
 
   group('CanonicalFactProjectionRetryDispatcher', () {
@@ -211,6 +241,11 @@ class _FakeRetryStore implements CanonicalFactProjectionRetryJobStore {
   @override
   Future<void> recordProjectionFailure(
     CanonicalFactProjectionRetryRecord record,
+  ) async {}
+
+  @override
+  Future<void> recordPreInputProjectionFailure(
+    CanonicalFactProjectionPreInputFailureRecord record,
   ) async {}
 }
 

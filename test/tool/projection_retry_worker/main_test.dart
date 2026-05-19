@@ -263,6 +263,11 @@ class _FakeRetryStore implements CanonicalFactProjectionRetryJobStore {
   Future<void> recordProjectionFailure(
     CanonicalFactProjectionRetryRecord record,
   ) async {}
+
+  @override
+  Future<void> recordPreInputProjectionFailure(
+    CanonicalFactProjectionPreInputFailureRecord record,
+  ) async {}
 }
 
 class _RecordingProjector implements CanonicalFactPostCommitProjector {

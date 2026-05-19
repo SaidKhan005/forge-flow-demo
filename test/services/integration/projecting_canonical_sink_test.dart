@@ -303,7 +303,130 @@ void main() {
       expect(record.openCurrentFactMaps, isEmpty);
       expect(record.errorMessage, contains('projector blew up'));
       expect(record.toInput().changedPeriods.single.servicePeriodKey, 'dinner');
+      expect(retryRecorder.preInputRecords, isEmpty);
     });
+
+    test(
+      'pre-input period resolution failure records durable audit row',
+      () async {
+        final underlying = _RecordingCanonicalSink();
+        final projector = _RecordingProjector();
+        final retryRecorder = _RecordingProjectionRetryRecorder();
+        final wrapper = _wrapper(
+          underlying: underlying,
+          projector: projector,
+          retryRecorder: retryRecorder,
+          periodResolver:
+              ({
+                required String operatorId,
+                required String locationId,
+                required IntegrationCategory category,
+                required String vendorId,
+                required String connectionId,
+                required Map<String, Object?> canonicalFact,
+              }) {
+                throw const CanonicalFactProjectionPreInputFailure(
+                  reason: 'business timing profile missing',
+                  details: <String, Object?>{
+                    'business_date': '2026-05-06',
+                    'service_period_key': 'dinner',
+                  },
+                );
+              },
+        );
+
+        await wrapper.upsertCoverFact(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          canonicalFact: _coverFact(connectionId: _connectionA),
+        );
+        await expectLater(
+          wrapper.appendSyncLog(
+            operatorId: _operatorA,
+            locationId: _locationA,
+            connectionId: _connectionA,
+            eventKind: 'backfill_success',
+          ),
+          completes,
+        );
+
+        expect(projector.invocations, isEmpty);
+        expect(retryRecorder.records, isEmpty);
+        expect(retryRecorder.preInputRecords, hasLength(1));
+        final record = retryRecorder.preInputRecords.single;
+        expect(record.operatorId, _operatorA);
+        expect(record.locationId, _locationA);
+        expect(record.restaurantId, _restaurantA);
+        expect(record.connectionId, _connectionA);
+        expect(record.factCount, 1);
+        expect(
+          record.errorMessage,
+          contains('business timing profile missing'),
+        );
+        expect(record.canonicalFactMaps.single['fact_type'], 'cover_fact');
+        expect(
+          record.toDeadLetterRetryRecord().changedPeriods,
+          isEmpty,
+          reason: 'pre-input rows do not enter the replay-input path',
+        );
+      },
+    );
+
+    test(
+      'direct projection tap records pre-input resolution failure',
+      () async {
+        final projector = _RecordingProjector();
+        final retryRecorder = _RecordingProjectionRetryRecorder();
+        final tap = BufferedCanonicalFactProjectionTap(
+          projector: projector,
+          category: IntegrationCategory.pos,
+          vendorId: 'toast',
+          periodResolver:
+              ({
+                required String operatorId,
+                required String locationId,
+                required IntegrationCategory category,
+                required String vendorId,
+                required String connectionId,
+                required Map<String, Object?> canonicalFact,
+              }) {
+                throw const CanonicalFactProjectionPreInputFailure(
+                  reason: 'service period missing',
+                  details: <String, Object?>{
+                    'business_date': '2026-05-06',
+                    'service_period_key': 'dinner',
+                  },
+                );
+              },
+          restaurantIdResolver: _stubRestaurantResolver,
+          retryRecorder: retryRecorder,
+        );
+        final drainer = CanonicalFactProjectionCommitDrainer(
+          tapsByVendor: <String, CanonicalFactProjectionTap>{'toast': tap},
+        );
+
+        tap.recordCommittedCoverFact(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          canonicalFact: _coverFact(connectionId: _connectionA),
+        );
+        await drainer.drainIfCommitEvent(
+          vendorId: 'toast',
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'webhook_received',
+        );
+
+        expect(projector.invocations, isEmpty);
+        expect(retryRecorder.records, isEmpty);
+        expect(retryRecorder.preInputRecords, hasLength(1));
+        expect(
+          retryRecorder.preInputRecords.single.errorMessage,
+          contains('service period missing'),
+        );
+      },
+    );
 
     test(
       'per-tenant buffers do not cross operator/location/connection',
@@ -802,12 +925,20 @@ class _RecordingProjector implements CanonicalFactPostCommitProjector {
 class _RecordingProjectionRetryRecorder
     implements CanonicalFactProjectionRetryRecorder {
   final records = <CanonicalFactProjectionRetryRecord>[];
+  final preInputRecords = <CanonicalFactProjectionPreInputFailureRecord>[];
 
   @override
   Future<void> recordProjectionFailure(
     CanonicalFactProjectionRetryRecord record,
   ) async {
     records.add(record);
+  }
+
+  @override
+  Future<void> recordPreInputProjectionFailure(
+    CanonicalFactProjectionPreInputFailureRecord record,
+  ) async {
+    preInputRecords.add(record);
   }
 }
 
