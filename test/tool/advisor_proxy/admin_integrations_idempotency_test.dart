@@ -315,7 +315,7 @@ class _RecordingGateway implements IntegrationRoutesGateway {
     return <String, Object?>{
       'operator_id': operatorId,
       'location_id': locationId,
-      'connection_id': 'conn-${connectKeyCalls}',
+      'connection_id': 'conn-$connectKeyCalls',
       'status': 'connected',
       // Force `_withFirstBackfillStatus` into the unavailable branch
       // so the test does not need an enqueue gateway.

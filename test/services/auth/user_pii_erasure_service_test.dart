@@ -64,9 +64,6 @@ class _FakeErasureRepo implements UserPiiErasureRepository {
   _FakeErasureRepo({
     this.snapshotResult,
     this.findPendingResult,
-    this.findLatestResult,
-    this.markReversedResult = 1,
-    this.applyResult = 1,
     this.dueRows = const <UserPiiErasureRequestRecord>[],
     this.locationForUser = _locA,
   });

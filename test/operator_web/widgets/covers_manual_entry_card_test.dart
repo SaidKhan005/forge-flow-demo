@@ -15,7 +15,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
-import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/operator_web/widgets/covers_manual_entry_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';

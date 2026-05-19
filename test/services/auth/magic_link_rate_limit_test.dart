@@ -36,7 +36,7 @@ void main() {
 
   group('RollingWindowAttemptCounter — per-email short window', () {
     test('allows first request within the window', () {
-      var fakeNow = DateTime.utc(2026, 5, 8, 9);
+      final fakeNow = DateTime.utc(2026, 5, 8, 9);
       final counter = RollingWindowAttemptCounter(
         window: kAuthPasswordResetEmailShortWindow,
         now: () => fakeNow,
