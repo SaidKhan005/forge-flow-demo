@@ -36,6 +36,56 @@ import '../tool/advisor_proxy/advisor_proxy.dart';
 import '../tool/advisor_proxy/proxy_bootstrap.dart';
 
 void main() {
+  group('RepositoryMobileOperationalSyncProxyGateway timing fallback', () {
+    test(
+      'uses location-local prior business date when request date is missing',
+      () async {
+        final datesQueried = <String>[];
+        final pool = _RecordingPostgresPool(
+          returningSessionId: '11111111-1111-4111-8111-111111111111',
+          onQuery: (sql, parameters) {
+            if (sql.contains('(now() at time zone loc.timezone)')) {
+              return const <PostgresRow>[
+                <String, Object?>{
+                  'local_date': '2026-05-06',
+                  'local_time': '03:30',
+                },
+              ];
+            }
+            if (sql.contains('from public.business_timing_profiles p')) {
+              final businessDate = parameters['business_date']! as String;
+              datesQueried.add(businessDate);
+              return <PostgresRow>[_timingProfileRow(businessDate)];
+            }
+            return const <PostgresRow>[];
+          },
+        );
+        final gateway = RepositoryMobileOperationalSyncProxyGateway(
+          tenantWrapper: TenantTransactionWrapper(pool),
+        );
+
+        final payload = await gateway.fetchResolvedTimingConfig(
+          scope: const OperatorContext(
+            userId: '22222222-2222-4222-8222-222222222222',
+            operatorId: '33333333-3333-4333-8333-333333333333',
+            locationId: '44444444-4444-4444-8444-444444444444',
+            roles: <String>['operator_owner'],
+          ),
+          operatorId: '33333333-3333-4333-8333-333333333333',
+          locationId: '44444444-4444-4444-8444-444444444444',
+          businessDate: null,
+        );
+
+        expect(datesQueried, <String>['2026-05-06', '2026-05-05']);
+        final timing = payload['timing_config']! as Map<String, Object?>;
+        expect(timing['business_timezone'], 'America/St_Johns');
+        expect(timing['business_day_start_local_time'], '04:00');
+        expect(timing['selected_scope_type'], 'location');
+        expect(timing['source_scope_type'], 'operator');
+      },
+    );
+  });
+
   group('buildAuthSessionLedgerWriter', () {
     test('uses POSTGRES_URL, not POSTGRES_ADMIN_URL, and opens no '
         'connection until the first ledger write', () async {
@@ -275,10 +325,7 @@ void main() {
       // below pin BOTH the non-null binding AND the production-backed
       // gateway so a future regression that drops back to a noop fails
       // this test loudly.
-      expect(
-        bindings.stepUpChallengeRouter,
-        isA<StepUpChallengeRouter>(),
-      );
+      expect(bindings.stepUpChallengeRouter, isA<StepUpChallengeRouter>());
       expect(
         bindings.stepUpChallengeRouter.gateway,
         isA<RepositoryStepUpChallengesGateway>(),
@@ -842,17 +889,56 @@ class _RecordingSystemAuditRepository extends AuthEventsAuditRepository {
   }
 }
 
+PostgresRow _timingProfileRow(String businessDate) {
+  return <String, Object?>{
+    'profile_id': '55555555-5555-4555-8555-555555555555',
+    'operator_id': '33333333-3333-4333-8333-333333333333',
+    'scope_type': 'operator',
+    'scope_id': '33333333-3333-4333-8333-333333333333',
+    'display_name': 'Default timing',
+    'business_day_start_local_time': '04:00:00',
+    'week_start_day': DateTime.monday,
+    'close_authority': 'vendor_finalization',
+    'local_close_fallback_time': null,
+    'effective_from_business_date': businessDate,
+    'effective_until_business_date': null,
+    'supersedes_profile_id': null,
+    'created_by': '22222222-2222-4222-8222-222222222222',
+    'updated_by': '22222222-2222-4222-8222-222222222222',
+    'created_at': '2026-05-01T12:00:00Z',
+    'updated_at': '2026-05-01T12:00:00Z',
+    'location_timezone': 'America/St_Johns',
+    'service_periods': const <Map<String, Object?>>[
+      <String, Object?>{
+        'service_period_id': '66666666-6666-4666-8666-666666666666',
+        'operator_id': '33333333-3333-4333-8333-333333333333',
+        'profile_id': '55555555-5555-4555-8555-555555555555',
+        'service_period_key': 'day',
+        'label': 'Day',
+        'short_label': 'Day',
+        'sort_order': 1,
+        'start_local_time': '06:00:00',
+        'end_local_time': '22:00:00',
+        'rolls_past_midnight': false,
+        'applicable_weekdays': <int>[1, 2, 3, 4, 5, 6, 7],
+      },
+    ],
+  };
+}
+
 class _RecordingPostgresPool implements PostgresPool {
-  _RecordingPostgresPool({required this.returningSessionId});
+  _RecordingPostgresPool({required this.returningSessionId, this.onQuery});
 
   final String returningSessionId;
+  final List<PostgresRow> Function(String sql, PostgresParameters parameters)?
+  onQuery;
   final transactions = <_RecordingPostgresTransaction>[];
   var beginTransactionCount = 0;
 
   @override
   Future<PostgresTransaction> beginTransaction() async {
     beginTransactionCount++;
-    final tx = _RecordingPostgresTransaction(returningSessionId);
+    final tx = _RecordingPostgresTransaction(returningSessionId, onQuery);
     transactions.add(tx);
     return tx;
   }
@@ -866,9 +952,11 @@ class _SqlCall {
 }
 
 class _RecordingPostgresTransaction implements PostgresTransaction {
-  _RecordingPostgresTransaction(this.returningSessionId);
+  _RecordingPostgresTransaction(this.returningSessionId, this.onQuery);
 
   final String returningSessionId;
+  final List<PostgresRow> Function(String sql, PostgresParameters parameters)?
+  onQuery;
   final executedSql = <String>[];
   final queryCalls = <_SqlCall>[];
   var committed = false;
@@ -892,6 +980,8 @@ class _RecordingPostgresTransaction implements PostgresTransaction {
         <String, Object?>{'event_id': 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'},
       ];
     }
+    final handler = onQuery;
+    if (handler != null) return handler(sql, parameters);
     return const <PostgresRow>[];
   }
 

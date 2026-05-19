@@ -446,6 +446,7 @@ void main() {
       operatorId: 'op',
       locationId: 'loc',
       restaurantId: 'loc',
+      businessDate: '2026-05-04',
     );
     final demo = await client.fetchDemoModeStates(
       operatorId: 'op',
@@ -531,6 +532,20 @@ void main() {
     expect(backfill.vendorId, 'toast');
     expect(backfill.isRunning, isTrue);
     expect(requests, hasLength(9));
+    expect(
+      fullUrls.where((url) => url.contains('/timing/resolved')).single,
+      Uri.parse(
+            'https://proxy.example/base/v1/operators/op/locations/loc/'
+            'timing/resolved',
+          )
+          .replace(
+            queryParameters: <String, String>{
+              'restaurant_id': 'loc',
+              'business_date': '2026-05-04',
+            },
+          )
+          .toString(),
+    );
     final wageRoleUrl = Uri.parse(
       'https://proxy.example/base/v1/operators/op/locations/loc/'
       'wage_role_rows',

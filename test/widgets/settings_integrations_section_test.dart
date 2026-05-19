@@ -37,54 +37,53 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   group('SettingsIntegrationsSection', () {
-    testWidgets(
-      'renders POS / Reservations / Labor rows with status pills',
-      (tester) async {
-        final client = _FakeSwitchClient(
-          records: <DemoModeRecord>[
-            DemoModeRecord(
-              operatorId: 'op-1',
-              locationId: 'loc-1',
-              category: IntegrationCategory.pos,
-              isDemo: true,
-            ),
-            DemoModeRecord(
-              operatorId: 'op-1',
-              locationId: 'loc-1',
-              category: IntegrationCategory.reservation,
-              isDemo: false,
-            ),
-            // Labor row omitted — exercises the `unknown` status path.
-          ],
-        );
-        final notifier = DemoModeStateNotifier(client: client);
-        await notifier.setScope(operatorId: 'op-1', locationId: 'loc-1');
+    testWidgets('renders POS / Reservations / Labor rows with status pills', (
+      tester,
+    ) async {
+      final client = _FakeSwitchClient(
+        records: <DemoModeRecord>[
+          DemoModeRecord(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            category: IntegrationCategory.pos,
+            isDemo: true,
+          ),
+          DemoModeRecord(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            category: IntegrationCategory.reservation,
+            isDemo: false,
+          ),
+          // Labor row omitted — exercises the `unknown` status path.
+        ],
+      );
+      final notifier = DemoModeStateNotifier(client: client);
+      await notifier.setScope(operatorId: 'op-1', locationId: 'loc-1');
 
-        await tester.pumpWidget(_wrap(client, notifier));
-        await tester.pump();
+      await tester.pumpWidget(_wrap(client, notifier));
+      await tester.pump();
 
-        expect(
-          find.byKey(const Key('settings_integrations_section')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('settings_integrations_status_pos')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('settings_integrations_status_reservation')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('settings_integrations_status_labor')),
-          findsOneWidget,
-        );
+      expect(
+        find.byKey(const Key('settings_integrations_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('settings_integrations_status_pos')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('settings_integrations_status_reservation')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('settings_integrations_status_labor')),
+        findsOneWidget,
+      );
 
-        expect(find.text('Demo'), findsOneWidget); // POS
-        expect(find.text('Live'), findsOneWidget); // Reservations
-        expect(find.text('Unknown'), findsOneWidget); // Labor (no row)
-      },
-    );
+      expect(find.text('Demo'), findsOneWidget); // POS
+      expect(find.text('Live'), findsOneWidget); // Reservations
+      expect(find.text('Unknown'), findsOneWidget); // Labor (no row)
+    });
 
     testWidgets('mounts the C-4 master Demo→Live switch', (tester) async {
       final client = _FakeSwitchClient(
@@ -113,50 +112,47 @@ void main() {
       );
     });
 
-    testWidgets(
-      'console pointer mints a handoff code and launches operator-web '
-      'with the opaque code in the URL — never a JWT',
-      (tester) async {
-        final gateway = _FakeHandoffGateway(
-          link: Uri.parse(
-            'https://app.forgeflow.app/handoff?code=opaque-abc&nav=vendor_connections',
+    testWidgets('console pointer mints a handoff code and launches operator-web '
+        'with the opaque code in the URL — never a JWT', (tester) async {
+      final gateway = _FakeHandoffGateway(
+        link: Uri.parse(
+          'https://app.forgeflow.app/handoff?code=opaque-abc&nav=vendor_connections',
+        ),
+      );
+      final launched = <Uri>[];
+
+      await tester.pumpWidget(
+        _wrap(
+          _FakeSwitchClient(records: const <DemoModeRecord>[]),
+          DemoModeStateNotifier(),
+          section: SettingsIntegrationsSection(
+            handoffCodeGateway: gateway,
+            launchExternalUrl: (url) async {
+              launched.add(url);
+              return true;
+            },
           ),
-        );
-        final launched = <Uri>[];
+        ),
+      );
+      await tester.pump();
 
-        await tester.pumpWidget(
-          _wrap(
-            _FakeSwitchClient(records: const <DemoModeRecord>[]),
-            DemoModeStateNotifier(),
-            section: SettingsIntegrationsSection(
-              handoffCodeGateway: gateway,
-              launchExternalUrl: (url) async {
-                launched.add(url);
-                return true;
-              },
-            ),
-          ),
-        );
-        await tester.pump();
+      // The InkWell inside `SettingsPointerRow` carries the row's
+      // tap target. Tapping by key is equivalent and stable.
+      await tester.tap(find.text('Manage Integrations on Ops Web'));
+      await tester.pump();
 
-        // The InkWell inside `SettingsPointerRow` carries the row's
-        // tap target. Tapping by key is equivalent and stable.
-        await tester.tap(find.text('Manage Integrations on Ops Web'));
-        await tester.pump();
-
-        expect(gateway.targets.single.navId, 'vendor_connections');
-        expect(gateway.targets.single.targetPath, '/vendor-connections');
-        expect(launched.single.host, 'app.forgeflow.app');
-        expect(launched.single.path, '/handoff');
-        expect(launched.single.queryParameters['code'], 'opaque-abc');
-        expect(launched.single.queryParameters['nav'], 'vendor_connections');
-        // Addendum A1 — code is short + opaque, not a JWT. JWTs are
-        // dot-delimited base64 segments; an opaque code never contains
-        // dots.
-        expect(launched.single.queryParameters['code']!.contains('.'), isFalse);
-        expect(find.text('Opening Operator Web'), findsOneWidget);
-      },
-    );
+      expect(gateway.targets.single.navId, 'vendor_connections');
+      expect(gateway.targets.single.targetPath, '/vendor-connections');
+      expect(launched.single.host, 'app.forgeflow.app');
+      expect(launched.single.path, '/handoff');
+      expect(launched.single.queryParameters['code'], 'opaque-abc');
+      expect(launched.single.queryParameters['nav'], 'vendor_connections');
+      // Addendum A1 — code is short + opaque, not a JWT. JWTs are
+      // dot-delimited base64 segments; an opaque code never contains
+      // dots.
+      expect(launched.single.queryParameters['code']!.contains('.'), isFalse);
+      expect(find.text('Opening Operator Web'), findsOneWidget);
+    });
 
     testWidgets(
       'console pointer falls back to clipboard when the proxy returns '
@@ -186,10 +182,9 @@ void main() {
         await tester.tap(find.text('Manage Integrations on Ops Web'));
         await tester.pump();
 
-        expect(
-          copied,
-          <String>['https://app.forgeflow.app/vendor-connections'],
-        );
+        expect(copied, <String>[
+          'https://app.forgeflow.app/vendor-connections',
+        ]);
         expect(
           find.text('Operator Web link copied - open in browser'),
           findsOneWidget,
@@ -264,6 +259,7 @@ class _FakeSwitchClient implements SyncProxyClient, DemoModeMasterSwitchClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) => throw UnimplementedError();
 
   @override

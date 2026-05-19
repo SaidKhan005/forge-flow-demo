@@ -1127,6 +1127,31 @@ void main() {
     });
 
     test(
+      'rejects invalid timing business date before gateway dispatch',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/timing/resolved'
+                '?business_date=2026-02-31',
+              ),
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'invalid_business_date');
+            expect(ctx.gateway.calls, isEmpty);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
       'POST demo master switch flips demo rows and replays durable idem key',
       () async {
         await withRealHttp(() async {

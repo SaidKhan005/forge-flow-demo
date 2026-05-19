@@ -217,104 +217,105 @@ void main() {
   // ── Task 1 / 5: Operator-scoped subset delivered + widget render ────────
 
   group('Task 1: operator-scoped subset delivered to mobile SQLite', () {
-    test('shift records: scoped subset materialises in shift_records',
-        (() async {
-      for (final vendorId in _posVendors) {
-        await wipeAllScopes();
-        final fixture = 'pos/$vendorId/shift_records';
-        final client = _StubSyncProxyClient()
-          ..scriptShiftPages(<_ShiftPage>[
-            _ShiftPage(
-              records: <ShiftRecord>[
-                _shift(
-                  _ridA,
-                  weekId: '2026-W19',
-                  day: 'Mon',
-                  daypart: 'lunch',
-                  source: vendorId,
-                  covers: 80,
-                ),
-                _shift(
-                  _ridA,
-                  weekId: '2026-W19',
-                  day: 'Mon',
-                  daypart: 'dinner',
-                  source: vendorId,
-                  covers: 140,
-                ),
-              ],
-              nextCursor: null,
-            ),
-          ]);
+    test(
+      'shift records: scoped subset materialises in shift_records',
+      (() async {
+        for (final vendorId in _posVendors) {
+          await wipeAllScopes();
+          final fixture = 'pos/$vendorId/shift_records';
+          final client = _StubSyncProxyClient()
+            ..scriptShiftPages(<_ShiftPage>[
+              _ShiftPage(
+                records: <ShiftRecord>[
+                  _shift(
+                    _ridA,
+                    weekId: '2026-W19',
+                    day: 'Mon',
+                    daypart: 'lunch',
+                    source: vendorId,
+                    covers: 80,
+                  ),
+                  _shift(
+                    _ridA,
+                    weekId: '2026-W19',
+                    day: 'Mon',
+                    daypart: 'dinner',
+                    source: vendorId,
+                    covers: 140,
+                  ),
+                ],
+                nextCursor: null,
+              ),
+            ]);
 
-        final sync = PostgresShiftRecordToMobileSync(
-          client: client,
-          shiftRepository: shiftRepo,
-          watermarkDao: watermarkDao,
-        );
-        final result = await sync.sync(
-          operatorId: _opA,
-          locationId: _locA,
-          restaurantId: _ridA,
-        );
+          final sync = PostgresShiftRecordToMobileSync(
+            client: client,
+            shiftRepository: shiftRepo,
+            watermarkDao: watermarkDao,
+          );
+          final result = await sync.sync(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _ridA,
+          );
 
-        if (result.recordsWritten != 2) {
-          _record(
-            'sync_records_not_written',
-            fixture: fixture,
-            severity: 'high',
-            message: 'expected 2 records written, got '
-                '${result.recordsWritten}',
-            details: <String, Object?>{
-              'vendor': vendorId,
-              'pages_pulled': result.pagesPulled,
-            },
+          if (result.recordsWritten != 2) {
+            _record(
+              'sync_records_not_written',
+              fixture: fixture,
+              severity: 'high',
+              message:
+                  'expected 2 records written, got '
+                  '${result.recordsWritten}',
+              details: <String, Object?>{
+                'vendor': vendorId,
+                'pages_pulled': result.pagesPulled,
+              },
+            );
+          }
+          final stored = await shiftRepo.getShiftsForWeek(_ridA, '2026-W19');
+          if (stored.length != 2) {
+            _record(
+              'shift_records_count_mismatch',
+              fixture: fixture,
+              severity: 'high',
+              message:
+                  'shift_records row count mismatch — expected 2 got '
+                  '${stored.length}',
+              details: <String, Object?>{'vendor': vendorId},
+            );
+          }
+          // Cross-tenant isolation: there must be no rows for op B's rid.
+          final crossStored = await shiftRepo.getShiftsForWeek(
+            _ridB,
+            '2026-W19',
           );
+          if (crossStored.isNotEmpty) {
+            _record(
+              'operator_data_leak_after_switch',
+              fixture: fixture,
+              severity: 'critical',
+              message:
+                  'rows for foreign restaurant_id materialised after '
+                  'scoped sync',
+              details: <String, Object?>{
+                'vendor': vendorId,
+                'foreign_rows': crossStored.length,
+              },
+            );
+          }
+          expect(stored.length, 2, reason: 'shift_records count for $vendorId');
         }
-        final stored =
-            await shiftRepo.getShiftsForWeek(_ridA, '2026-W19');
-        if (stored.length != 2) {
-          _record(
-            'shift_records_count_mismatch',
-            fixture: fixture,
-            severity: 'high',
-            message:
-                'shift_records row count mismatch — expected 2 got '
-                '${stored.length}',
-            details: <String, Object?>{'vendor': vendorId},
-          );
-        }
-        // Cross-tenant isolation: there must be no rows for op B's rid.
-        final crossStored =
-            await shiftRepo.getShiftsForWeek(_ridB, '2026-W19');
-        if (crossStored.isNotEmpty) {
-          _record(
-            'operator_data_leak_after_switch',
-            fixture: fixture,
-            severity: 'critical',
-            message:
-                'rows for foreign restaurant_id materialised after '
-                'scoped sync',
-            details: <String, Object?>{
-              'vendor': vendorId,
-              'foreign_rows': crossStored.length,
-            },
-          );
-        }
-        expect(stored.length, 2,
-            reason: 'shift_records count for $vendorId');
-      }
-    }));
+      }),
+    );
 
-    test('labor wage rows: scoped cache replaces prior data',
-        (() async {
+    test('labor wage rows: scoped cache replaces prior data', (() async {
       for (final vendorId in _laborVendors) {
         await wipeAllScopes();
         final fixture = 'labor/$vendorId/wage_role_rows';
         final client = _StubSyncProxyClient()
           ..scriptShiftPages(<_ShiftPage>[
-            _ShiftPage(
-                records: const <ShiftRecord>[], nextCursor: null),
+            _ShiftPage(records: const <ShiftRecord>[], nextCursor: null),
           ])
           ..scriptWageRoleRows(<WageRoleRow>[
             WageRoleRow(
@@ -418,7 +419,8 @@ void main() {
             'reservation_snapshot_count_mismatch',
             fixture: fixture,
             severity: 'high',
-            message: 'reservation_book_snapshots scoped read count '
+            message:
+                'reservation_book_snapshots scoped read count '
                 'mismatch — expected 1 got ${scopedRows.length}',
             details: <String, Object?>{'vendor': vendorId},
           );
@@ -445,8 +447,7 @@ void main() {
   // ── Task 2: Sync resumes after operator switch ─────────────────────────
 
   group('Task 2: scope flip tears down + re-bootstraps SQLite', () {
-    test('flipping operator wipes prior tenant rows before re-sync',
-        (() async {
+    test('flipping operator wipes prior tenant rows before re-sync', (() async {
       const fixture = 'scope_flip/op_a_to_op_b';
 
       // Boot operator A with rows.
@@ -454,16 +455,20 @@ void main() {
         ..scriptShiftPages(<_ShiftPage>[
           _ShiftPage(
             records: <ShiftRecord>[
-              _shift(_ridA,
-                  weekId: '2026-W19',
-                  day: 'Mon',
-                  daypart: 'lunch',
-                  source: 'toast'),
-              _shift(_ridA,
-                  weekId: '2026-W19',
-                  day: 'Tue',
-                  daypart: 'lunch',
-                  source: 'toast'),
+              _shift(
+                _ridA,
+                weekId: '2026-W19',
+                day: 'Mon',
+                daypart: 'lunch',
+                source: 'toast',
+              ),
+              _shift(
+                _ridA,
+                weekId: '2026-W19',
+                day: 'Tue',
+                daypart: 'lunch',
+                source: 'toast',
+              ),
             ],
             nextCursor: null,
           ),
@@ -544,11 +549,13 @@ void main() {
         ..scriptShiftPages(<_ShiftPage>[
           _ShiftPage(
             records: <ShiftRecord>[
-              _shift(_ridB,
-                  weekId: '2026-W19',
-                  day: 'Mon',
-                  daypart: 'lunch',
-                  source: 'oracle_micros_simphony'),
+              _shift(
+                _ridB,
+                weekId: '2026-W19',
+                day: 'Mon',
+                daypart: 'lunch',
+                source: 'oracle_micros_simphony',
+              ),
             ],
             nextCursor: null,
           ),
@@ -580,8 +587,7 @@ void main() {
       expect(bWage.single.roleName, 'B-Server');
 
       // Final assertion: operator A's tables are still empty.
-      final residualA =
-          await shiftRepo.getShiftsForWeek(_ridA, '2026-W19');
+      final residualA = await shiftRepo.getShiftsForWeek(_ridA, '2026-W19');
       if (residualA.isNotEmpty) {
         _record(
           'operator_data_leak_after_switch',
@@ -596,24 +602,24 @@ void main() {
       expect(residualA, isEmpty);
     }));
 
-    test('per-scope cursor watermarks remain isolated across flips',
-        (() async {
+    test('per-scope cursor watermarks remain isolated across flips', (() async {
       const fixture = 'scope_flip/cursor_isolation';
       // Op A advances watermark to "cursor-A1".
       final clientA = _StubSyncProxyClient()
         ..scriptShiftPages(<_ShiftPage>[
           _ShiftPage(
             records: <ShiftRecord>[
-              _shift(_ridA,
-                  weekId: '2026-W19',
-                  day: 'Wed',
-                  daypart: 'lunch',
-                  source: 'toast'),
+              _shift(
+                _ridA,
+                weekId: '2026-W19',
+                day: 'Wed',
+                daypart: 'lunch',
+                source: 'toast',
+              ),
             ],
             nextCursor: 'cursor-A1',
           ),
-          _ShiftPage(
-              records: const <ShiftRecord>[], nextCursor: null),
+          _ShiftPage(records: const <ShiftRecord>[], nextCursor: null),
         ]);
       final syncA = PostgresShiftRecordToMobileSync(
         client: clientA,
@@ -630,8 +636,7 @@ void main() {
       // cursor.
       final clientB = _StubSyncProxyClient()
         ..scriptShiftPages(<_ShiftPage>[
-          _ShiftPage(
-              records: const <ShiftRecord>[], nextCursor: null),
+          _ShiftPage(records: const <ShiftRecord>[], nextCursor: null),
         ]);
       final syncB = PostgresShiftRecordToMobileSync(
         client: clientB,
@@ -660,8 +665,7 @@ void main() {
   // ── Task 5: Synced data queryable per category ─────────────────────────
 
   group('Task 5: synced data queryable per category', () {
-    test(
-        'Synced shift, wage, and reservation rows are queryable per '
+    test('Synced shift, wage, and reservation rows are queryable per '
         'category without nulls in NOT NULL columns', () async {
       const fixture = 'render/sql_queryability_per_category';
       final db = await SqliteDatabase.instance.database;
@@ -688,9 +692,7 @@ void main() {
         ])
         ..scriptOpenShiftPages(<_OpenPage>[
           _OpenPage(
-            snapshots: <OpenShiftSnapshot>[
-              _openSnapshot(_ridA),
-            ],
+            snapshots: <OpenShiftSnapshot>[_openSnapshot(_ridA)],
             nextCursor: null,
           ),
         ])
@@ -710,11 +712,7 @@ void main() {
         openShiftSnapshotRepository: openSnapshotRepo,
         wageRoleRowRepository: wageRepo,
       );
-      await sync.sync(
-        operatorId: _opA,
-        locationId: _locA,
-        restaurantId: _ridA,
-      );
+      await sync.sync(operatorId: _opA, locationId: _locA, restaurantId: _ridA);
       await db.insert('reservation_book_snapshots', <String, Object?>{
         'restaurant_id': _ridA,
         'business_date': '2026-05-04',
@@ -725,8 +723,11 @@ void main() {
         'updated_at': '2026-05-04T18:00:00.000Z',
       });
 
-      final shiftRows = await db.query('shift_records',
-          where: 'restaurant_id = ?', whereArgs: <Object?>[_ridA]);
+      final shiftRows = await db.query(
+        'shift_records',
+        where: 'restaurant_id = ?',
+        whereArgs: <Object?>[_ridA],
+      );
       if (shiftRows.isEmpty) {
         _record(
           'sync_writes_did_not_persist',
@@ -757,8 +758,11 @@ void main() {
           }
         }
       }
-      final openRows = await db.query('open_shift_snapshots',
-          where: 'restaurant_id = ?', whereArgs: <Object?>[_ridA]);
+      final openRows = await db.query(
+        'open_shift_snapshots',
+        where: 'restaurant_id = ?',
+        whereArgs: <Object?>[_ridA],
+      );
       if (openRows.isEmpty) {
         _record(
           'open_shift_snapshot_not_persisted',
@@ -776,8 +780,11 @@ void main() {
           message: 'no wage_role_rows rows visible after sync',
         );
       }
-      final resvRows = await db.query('reservation_book_snapshots',
-          where: 'restaurant_id = ?', whereArgs: <Object?>[_ridA]);
+      final resvRows = await db.query(
+        'reservation_book_snapshots',
+        where: 'restaurant_id = ?',
+        whereArgs: <Object?>[_ridA],
+      );
       if (resvRows.isEmpty) {
         _record(
           'reservation_snapshot_not_persisted',
@@ -911,12 +918,10 @@ class _StubSyncProxyClient implements SyncProxyClient {
   }) async {
     shiftCursorsObserved.add(cursor);
     if (_shiftPages.isEmpty) {
-      return const ShiftRecordPage(
-          records: <ShiftRecord>[], nextCursor: null);
+      return const ShiftRecordPage(records: <ShiftRecord>[], nextCursor: null);
     }
     final page = _shiftPages.removeAt(0);
-    return ShiftRecordPage(
-        records: page.records, nextCursor: page.nextCursor);
+    return ShiftRecordPage(records: page.records, nextCursor: page.nextCursor);
   }
 
   @override
@@ -929,11 +934,15 @@ class _StubSyncProxyClient implements SyncProxyClient {
     openCursorsObserved.add(cursor);
     if (_openPages.isEmpty) {
       return const OpenShiftSnapshotPage(
-          snapshots: <OpenShiftSnapshot>[], nextCursor: null);
+        snapshots: <OpenShiftSnapshot>[],
+        nextCursor: null,
+      );
     }
     final page = _openPages.removeAt(0);
     return OpenShiftSnapshotPage(
-        snapshots: page.snapshots, nextCursor: page.nextCursor);
+      snapshots: page.snapshots,
+      nextCursor: page.nextCursor,
+    );
   }
 
   @override
@@ -941,50 +950,44 @@ class _StubSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
-  }) async =>
-      _timing;
+    String? businessDate,
+  }) async => _timing;
 
   @override
   Future<List<DemoModeRecord>> fetchDemoModeStates({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _demoStates;
+  }) async => _demoStates;
 
   @override
   Future<DataAccuracySettingsSnapshot?> fetchDataAccuracySettings({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _accuracy;
+  }) async => _accuracy;
 
   @override
   Future<List<DataAccuracyServicePeriodSetting>>
-      fetchDataAccuracyServicePeriodSettings({
+  fetchDataAccuracyServicePeriodSettings({
     required String operatorId,
     required String locationId,
-  }) async =>
-          _accuracyKeyed;
+  }) async => _accuracyKeyed;
 
   @override
   Future<List<WageRoleRow>> fetchWageRoleRows({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _wageRoleRows;
+  }) async => _wageRoleRows;
 
   @override
   Future<ForgeFlowPollingTierAssignmentSnapshot?>
-      fetchForgeFlowPollingTierAssignment({
+  fetchForgeFlowPollingTierAssignment({
     required String operatorId,
     required String locationId,
-  }) async =>
-          _polling;
+  }) async => _polling;
 
   @override
   Future<FirstBackfillStatusSnapshot?> fetchFirstBackfillStatus({
     required String operatorId,
     required String locationId,
-  }) async =>
-      _firstBackfill;
+  }) async => _firstBackfill;
 }

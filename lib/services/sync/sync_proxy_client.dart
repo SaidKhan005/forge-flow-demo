@@ -303,6 +303,7 @@ abstract class SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   });
 
   /// Pull every `demo_mode_state` row for this (operator, location).

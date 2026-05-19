@@ -139,13 +139,19 @@ class HttpSyncProxyClient
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async {
+    final query = <String, String>{'restaurant_id': restaurantId};
+    final date = businessDate?.trim();
+    if (date != null && date.isNotEmpty) {
+      query['business_date'] = date;
+    }
     final body = await _getJson(
       _locationPath(operatorId, locationId, const <String>[
         'timing',
         'resolved',
       ]),
-      queryParameters: <String, String>{'restaurant_id': restaurantId},
+      queryParameters: query,
     );
     final raw =
         body['timing_config'] ?? body['resolved_timing_config'] ?? body['data'];

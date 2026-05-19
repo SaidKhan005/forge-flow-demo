@@ -17674,6 +17674,16 @@ Future<void> _routeMobileOperationalSync({
       _nonBlankString(params['modified_since']) ??
       _nonBlankString(params['cursor']);
   if (!_mobileSyncCursorValidOrWrite(response, modifiedSince)) return;
+  final businessDate = _nonBlankString(params['business_date']);
+  if (target.resource == 'timing/resolved' &&
+      businessDate != null &&
+      !_isYyyyMmDdCalendarDate(businessDate)) {
+    _writeJson(response, 400, <String, Object?>{
+      'error': 'invalid_business_date',
+      'message': 'business_date must be an ISO calendar date (YYYY-MM-DD)',
+    });
+    return;
+  }
 
   try {
     final payload = switch (target.resource) {
@@ -17695,7 +17705,7 @@ Future<void> _routeMobileOperationalSync({
         scope: scope,
         operatorId: target.operatorId,
         locationId: target.locationId,
-        businessDate: _nonBlankString(params['business_date']),
+        businessDate: businessDate,
       ),
       'demo_mode_states' => await gateway.fetchDemoModeStates(
         scope: scope,

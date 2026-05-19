@@ -121,6 +121,7 @@ class _FakeSwitchClient implements SyncProxyClient, DemoModeMasterSwitchClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) => throw UnimplementedError();
 
   @override

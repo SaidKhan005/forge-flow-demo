@@ -78,6 +78,7 @@ import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/business_date_resolver.dart';
 import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
@@ -3170,24 +3171,49 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
     required String? businessDate,
   }) async {
-    final effectiveDate = businessDate ?? _todayUtcDate();
-    final candidates = await _timingProfilesRepository
-        .listCandidateProfilesForLocation(
-          operatorId: operatorId,
-          locationId: locationId,
-          businessDate: effectiveDate,
-          userId: _uuidOrNull(scope.userId),
-        );
-    if (candidates.isEmpty) {
-      return const <String, Object?>{'timing_config': null};
-    }
-
     try {
-      final resolved = BusinessTimingProfileResolver.resolve(
-        <BusinessTimingProfile>[
-          for (final row in candidates) _timingProfile(row),
-        ],
+      final localNow = businessDate == null
+          ? await _locationLocalNowParts(
+              scope: scope,
+              operatorId: operatorId,
+              locationId: locationId,
+            )
+          : null;
+      var effectiveDate =
+          businessDate ?? localNow?.localDate ?? _todayUtcDate();
+      var candidates = await _listTimingCandidatesForDate(
+        scope: scope,
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDate: effectiveDate,
       );
+      if (candidates.isEmpty) {
+        return const <String, Object?>{'timing_config': null};
+      }
+
+      var resolved = _resolveTimingCandidates(candidates);
+      if (businessDate == null && localNow != null) {
+        final localBusinessDate = _businessDateForLocalClock(
+          localDate: localNow.localDate,
+          localTime: localNow.localTime,
+          businessDayStartLocalTime: resolved.businessDayStartLocalTime,
+        );
+        if (localBusinessDate != effectiveDate) {
+          final correctedCandidates = await _listTimingCandidatesForDate(
+            scope: scope,
+            operatorId: operatorId,
+            locationId: locationId,
+            businessDate: localBusinessDate,
+          );
+          if (correctedCandidates.isEmpty) {
+            return const <String, Object?>{'timing_config': null};
+          }
+          effectiveDate = localBusinessDate;
+          candidates = correctedCandidates;
+          resolved = _resolveTimingCandidates(candidates);
+        }
+      }
+
       final newest = candidates
           .map((row) => row.updatedAt)
           .reduce((a, b) => a.isAfter(b) ? a : b);
@@ -3209,6 +3235,65 @@ class RepositoryMobileOperationalSyncProxyGateway
     } on BusinessTimingProfileResolutionException {
       return const <String, Object?>{'timing_config': null};
     }
+  }
+
+  Future<List<BusinessTimingProfileRow>> _listTimingCandidatesForDate({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required String businessDate,
+  }) {
+    return _timingProfilesRepository.listCandidateProfilesForLocation(
+      operatorId: operatorId,
+      locationId: locationId,
+      businessDate: businessDate,
+      userId: _uuidOrNull(scope.userId),
+    );
+  }
+
+  Future<_TimingLocalNowParts?> _locationLocalNowParts({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+  }) {
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      final rows = await exec.query(
+        "select (now() at time zone loc.timezone)::date::text as local_date, "
+        "to_char(now() at time zone loc.timezone, 'HH24:MI') as local_time "
+        'from public.locations loc '
+        'where loc.operator_id = @operator_id::uuid '
+        'and loc.location_id = @location_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final localDate = rows.single['local_date'];
+      final localTime = rows.single['local_time'];
+      if (localDate is! String || localTime is! String) return null;
+      return _TimingLocalNowParts(localDate: localDate, localTime: localTime);
+    });
+  }
+
+  static EffectiveBusinessTimingProfile _resolveTimingCandidates(
+    List<BusinessTimingProfileRow> candidates,
+  ) {
+    return BusinessTimingProfileResolver.resolve(<BusinessTimingProfile>[
+      for (final row in candidates) _timingProfile(row),
+    ]);
+  }
+
+  static String _businessDateForLocalClock({
+    required String localDate,
+    required String localTime,
+    required String businessDayStartLocalTime,
+  }) {
+    return BusinessDateResolver.resolveFromIso(
+      localIsoTimestamp: '${localDate}T$localTime:00',
+      businessDayStartLocalTime: businessDayStartLocalTime,
+    );
   }
 
   @override
@@ -4326,6 +4411,16 @@ class RepositoryMobileOperationalSyncProxyGateway
   static final RegExp _uuidPattern = RegExp(
     r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
   );
+}
+
+class _TimingLocalNowParts {
+  const _TimingLocalNowParts({
+    required this.localDate,
+    required this.localTime,
+  });
+
+  final String localDate;
+  final String localTime;
 }
 
 /// Production [OperatorLocationAdminProxyGateway] backed by
