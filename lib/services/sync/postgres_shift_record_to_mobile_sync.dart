@@ -559,17 +559,6 @@ class PostgresShiftRecordToMobileSync {
       weeklyPlanMirrors: WeeklyPlanMirrorSyncResult.skipped(),
     );
 
-    final timingConfig = await client.fetchResolvedTimingConfig(
-      operatorId: operatorId,
-      locationId: locationId,
-      restaurantId: restaurantId,
-    );
-    if (timingConfig != null) {
-      await timingConfigRepository.saveTimingConfig(timingConfig);
-      timingConfigSynced = true;
-      invalidationBus.notifyImportCompletionPersisted();
-    }
-
     while (true) {
       // BUG 2 (HIGH): re-check the auth context before each page
       // request so a sign-out / scope flip mid-sweep stops further
@@ -638,6 +627,25 @@ class PostgresShiftRecordToMobileSync {
         sourceType: openSnapshotSourceType,
       );
       openCursor = next;
+    }
+
+    if (aborted()) {
+      return abortedResult();
+    }
+
+    final timingBusinessDate = await openShiftSnapshotRepository
+        .getCurrentBusinessDate(restaurantId);
+    final timingConfig = await client.fetchResolvedTimingConfig(
+      operatorId: operatorId,
+      locationId: locationId,
+      restaurantId: restaurantId,
+      businessDate: timingBusinessDate,
+    );
+    if (aborted()) return abortedResult();
+    if (timingConfig != null) {
+      await timingConfigRepository.saveTimingConfig(timingConfig);
+      timingConfigSynced = true;
+      invalidationBus.notifyImportCompletionPersisted();
     }
 
     if (aborted()) {

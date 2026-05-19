@@ -367,6 +367,7 @@ class _FakeWeeklyPlanClient
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async => null;
 
   @override

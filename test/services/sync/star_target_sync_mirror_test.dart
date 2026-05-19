@@ -668,6 +668,7 @@ class _StarTargetSyncClient
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async {
     return null;
   }
@@ -752,6 +753,7 @@ class _LegacySyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async {
     return null;
   }

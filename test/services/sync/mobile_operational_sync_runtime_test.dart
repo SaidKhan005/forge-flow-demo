@@ -369,6 +369,7 @@ class _StubSyncProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async => null;
 
   @override
@@ -552,6 +553,7 @@ class _CountingProxyClient implements SyncProxyClient {
     required String operatorId,
     required String locationId,
     required String restaurantId,
+    String? businessDate,
   }) async {
     timingCallCount++;
     return null;
