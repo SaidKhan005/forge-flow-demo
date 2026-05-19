@@ -75,12 +75,253 @@ const Set<String> kProjectingCanonicalSinkCommitEventKinds = <String>{
   'backfill_success',
   'backfill_partial',
   'poll_success',
+  'webhook_received',
 };
+
+/// Fact-write observer used by direct vendor sink methods that do not
+/// enter through the unified [CanonicalSink] interface.
+abstract interface class CanonicalFactProjectionTap {
+  void recordCommittedCoverFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+  });
+
+  void recordCommittedLaborPunch({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  });
+
+  void recordCommittedReservationFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalReservation,
+  });
+
+  Future<void> drainCommittedFacts({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+  });
+}
+
+/// Drains the tap for the vendor that just committed a batch.
+class CanonicalFactProjectionCommitDrainer {
+  const CanonicalFactProjectionCommitDrainer({
+    required Map<String, CanonicalFactProjectionTap> tapsByVendor,
+  }) : _tapsByVendor = tapsByVendor;
+
+  final Map<String, CanonicalFactProjectionTap> _tapsByVendor;
+
+  Future<void> drainIfCommitEvent({
+    required String vendorId,
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+    required String eventKind,
+  }) async {
+    if (!kProjectingCanonicalSinkCommitEventKinds.contains(eventKind)) {
+      return;
+    }
+    final tap = _tapsByVendor[vendorId];
+    if (tap == null) return;
+    await tap.drainCommittedFacts(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+    );
+  }
+}
+
+/// Standalone projection tap for direct vendor sink methods.
+class BufferedCanonicalFactProjectionTap implements CanonicalFactProjectionTap {
+  BufferedCanonicalFactProjectionTap({
+    required CanonicalFactPostCommitProjector projector,
+    required IntegrationCategory category,
+    required String vendorId,
+    required CanonicalFactPeriodResolver periodResolver,
+    required CanonicalRestaurantIdResolver restaurantIdResolver,
+    String? userIdOverride,
+  }) : _projector = projector,
+       _category = category,
+       _vendorId = vendorId,
+       _periodResolver = periodResolver,
+       _restaurantIdResolver = restaurantIdResolver,
+       _userIdOverride = userIdOverride;
+
+  final CanonicalFactPostCommitProjector _projector;
+  final IntegrationCategory _category;
+  final String _vendorId;
+  final CanonicalFactPeriodResolver _periodResolver;
+  final CanonicalRestaurantIdResolver _restaurantIdResolver;
+  final String? _userIdOverride;
+
+  final Map<_BufferKey, _PendingFactBuffer> _buffers =
+      <_BufferKey, _PendingFactBuffer>{};
+
+  @override
+  void recordCommittedCoverFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+  }) {
+    _accumulate(
+      operatorId: operatorId,
+      locationId: locationId,
+      canonicalFact: canonicalFact,
+      factType: 'cover_fact',
+    );
+  }
+
+  @override
+  void recordCommittedLaborPunch({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  }) {
+    _accumulate(
+      operatorId: operatorId,
+      locationId: locationId,
+      canonicalFact: canonicalPunch,
+      factType: 'labor_punch',
+    );
+  }
+
+  @override
+  void recordCommittedReservationFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalReservation,
+  }) {
+    _accumulate(
+      operatorId: operatorId,
+      locationId: locationId,
+      canonicalFact: canonicalReservation,
+      factType: 'reservation_fact',
+    );
+  }
+
+  @override
+  Future<void> drainCommittedFacts({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+  }) async {
+    final buffers = <_PendingFactBuffer>[];
+    final exact = _buffers.remove(
+      _BufferKey(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+      ),
+    );
+    if (exact != null) buffers.add(exact);
+    if (connectionId.isNotEmpty) {
+      final unkeyed = _buffers.remove(
+        _BufferKey(
+          operatorId: operatorId,
+          locationId: locationId,
+          connectionId: '',
+        ),
+      );
+      if (unkeyed != null) buffers.add(unkeyed);
+    }
+    if (buffers.isEmpty || buffers.every((buffer) => buffer.facts.isEmpty)) {
+      return;
+    }
+    final facts = <Map<String, Object?>>[
+      for (final buffer in buffers) ...buffer.facts,
+    ];
+    try {
+      final periods = <CanonicalFactCommittedPeriod>[];
+      final openCurrentFacts = <Map<String, Object?>>[];
+      final seenIdentities = <String>{};
+      for (final fact in facts) {
+        final period = await _periodResolver(
+          operatorId: operatorId,
+          locationId: locationId,
+          category: _category,
+          vendorId: _vendorId,
+          connectionId: connectionId,
+          canonicalFact: fact,
+        );
+        if (period == null) continue;
+        if (seenIdentities.add(period.periodIdentity)) {
+          periods.add(period);
+        }
+        if (period.state == CanonicalFactPeriodState.openCurrent) {
+          openCurrentFacts.add(fact);
+        }
+      }
+      if (periods.isEmpty) return;
+      final restaurantId = await _restaurantIdResolver(
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      await _projector.project(
+        CanonicalFactPostCommitInput(
+          operatorId: operatorId,
+          locationId: locationId,
+          restaurantId: restaurantId,
+          integrationCategory: _category,
+          vendorId: _vendorId,
+          connectionId: connectionId,
+          changedPeriods: periods,
+          openCurrentFactMaps: openCurrentFacts,
+          userId: _userIdOverride,
+        ),
+      );
+    } catch (error, stack) {
+      log(
+        LogSeverity.warning,
+        'projecting_canonical_sink.projector_failed',
+        fields: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'connection_id': connectionId,
+          'integration_category': _category.name,
+          'vendor_id': _vendorId,
+          'error_class': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+          'fact_count': facts.length,
+        },
+      );
+    }
+  }
+
+  void _accumulate({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+    required String factType,
+  }) {
+    final connectionId = _stringValue(canonicalFact['connection_id']) ?? '';
+    final key = _BufferKey(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+    );
+    final buffer = _buffers.putIfAbsent(key, _PendingFactBuffer.new);
+    buffer.facts.add(
+      Map<String, Object?>.unmodifiable(<String, Object?>{
+        ...canonicalFact,
+        'operator_id': canonicalFact['operator_id'] ?? operatorId,
+        'location_id': canonicalFact['location_id'] ?? locationId,
+        'connection_id': canonicalFact['connection_id'] ?? connectionId,
+        'fact_type': canonicalFact['fact_type'] ?? factType,
+        'source_system': canonicalFact['source_system'] ?? _vendorId,
+      }),
+    );
+  }
+}
 
 /// Wraps a [CanonicalSink] so successful canonical fact writes drive
 /// [CanonicalFactPostCommitProjector] invocation after each batch
 /// commit. See file-header for the contract.
-class ProjectingCanonicalSink implements CanonicalSink {
+class ProjectingCanonicalSink
+    implements CanonicalSink, CanonicalFactProjectionTap {
   ProjectingCanonicalSink({
     required CanonicalSink underlying,
     required CanonicalFactPostCommitProjector projector,
@@ -252,6 +493,61 @@ class ProjectingCanonicalSink implements CanonicalSink {
   /// signals; tests use this to assert projector invocation without
   /// needing to call appendSyncLog.
   Future<void> flush({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+  }) {
+    return drainCommittedFacts(
+      operatorId: operatorId,
+      locationId: locationId,
+      connectionId: connectionId,
+    );
+  }
+
+  @override
+  void recordCommittedCoverFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+  }) {
+    _accumulate(
+      operatorId: operatorId,
+      locationId: locationId,
+      canonicalFact: canonicalFact,
+      factType: 'cover_fact',
+    );
+  }
+
+  @override
+  void recordCommittedLaborPunch({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  }) {
+    _accumulate(
+      operatorId: operatorId,
+      locationId: locationId,
+      canonicalFact: canonicalPunch,
+      factType: 'labor_punch',
+    );
+  }
+
+  @override
+  void recordCommittedReservationFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalReservation,
+  }) {
+    _accumulate(
+      operatorId: operatorId,
+      locationId: locationId,
+      canonicalFact: canonicalReservation,
+      factType: 'reservation_fact',
+    );
+  }
+
+  @override
+  Future<void> drainCommittedFacts({
     required String operatorId,
     required String locationId,
     required String connectionId,

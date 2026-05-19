@@ -76,6 +76,7 @@ import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/demo_mode_state.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -114,22 +115,27 @@ class AgendrixPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Agendrix no
   // longer reads `locations.business_day_rollover_hour`. The cutoff is
   // resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── CanonicalSink: covers / reservations are unsupported ─────────
@@ -169,12 +175,11 @@ class AgendrixPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) =>
-      _upsertLaborPunch(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalPunch: canonicalFact,
-      );
+  }) => _upsertLaborPunch(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalPunch: canonicalFact,
+  );
 
   /// `CanonicalSink.upsertLaborPunch` entry — the dispatcher passes
   /// the same dict shape; this method delegates to the shared writer.
@@ -183,12 +188,11 @@ class AgendrixPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) =>
-      _upsertLaborPunch(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalPunch: canonicalPunch,
-      );
+  }) => _upsertLaborPunch(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalPunch: canonicalPunch,
+  );
 
   /// Shared writer for the labor_punches insert. Required keys on
   /// [canonicalPunch]:
@@ -220,10 +224,12 @@ class AgendrixPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) {
+  }) async {
     final vendorEntityId = _requireString(canonicalPunch, 'vendor_entity_id');
-    final vendorModifiedAt =
-        _requireUtcInstant(canonicalPunch, 'vendor_modified_at');
+    final vendorModifiedAt = _requireUtcInstant(
+      canonicalPunch,
+      'vendor_modified_at',
+    );
     final shiftStart = _requireUtcInstant(canonicalPunch, 'shift_start');
     final shiftEnd = _readUtcInstant(canonicalPunch, 'shift_end');
     final employeeSourceId = _readString(canonicalPunch, 'employee_id');
@@ -233,13 +239,14 @@ class AgendrixPostgresSink extends OperatorScopedRepository
         : null;
     final rawPayload = _readPayload(canonicalPunch, 'raw_payload');
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
-    return withTenant<bool>(ctx, (exec) async {
-      final businessDate =
-          await _resolveBusinessDate(exec, operatorId, locationId, shiftStart);
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
+    final inserted = await withTenant<bool>(ctx, (exec) async {
+      final businessDate = await _resolveBusinessDate(
+        exec,
+        operatorId,
+        locationId,
+        shiftStart,
+      );
       final affected = await exec.execute(
         'insert into public.labor_punches ('
         'operator_id, location_id, '
@@ -288,6 +295,14 @@ class AgendrixPostgresSink extends OperatorScopedRepository
       );
       return affected > 0;
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedLaborPunch(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalPunch: canonicalPunch,
+      );
+    }
+    return inserted;
   }
 
   // ─── Watermark advance (widened: connectionId optional) ───────────
@@ -314,13 +329,12 @@ class AgendrixPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     String? connectionId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
-      final resolvedConnectionId =
-          await _resolveConnectionId(exec, explicit: connectionId);
+      final resolvedConnectionId = await _resolveConnectionId(
+        exec,
+        explicit: connectionId,
+      );
       await exec.execute(
         'insert into public.connector_sync_watermark ('
         'operator_id, location_id, connection_id, resource, '
@@ -361,13 +375,12 @@ class AgendrixPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
-      final resolvedConnectionId =
-          await _resolveConnectionId(exec, explicit: connectionId);
+      final resolvedConnectionId = await _resolveConnectionId(
+        exec,
+        explicit: connectionId,
+      );
       await exec.execute(
         'insert into public.connector_sync_log ('
         'operator_id, location_id, connection_id, event_kind, '
@@ -416,10 +429,7 @@ class AgendrixPostgresSink extends OperatorScopedRepository
         backfillRecordsWritten < 1) {
       return Future<void>.value();
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<void>(ctx, (exec) async {
       // INSERT a live row when missing, then flip is_demo only when
       // the row is still demo. The WHERE clause on the UPDATE path
@@ -459,15 +469,14 @@ class AgendrixPostgresSink extends OperatorScopedRepository
   /// so a reconnect resumes from the last canonical write rather than
   /// re-walking the 60-day window.
   @override
-  Future<({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})>
-      wipeCredentialsPreserveWatermark({
+  Future<
+    ({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})
+  >
+  wipeCredentialsPreserveWatermark({
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final credentialsWiped = await withTenant<bool>(ctx, (exec) async {
       final wiped = await exec.execute(
         'update public.vendor_credentials set '
@@ -538,9 +547,7 @@ class AgendrixPostgresSink extends OperatorScopedRepository
       'and location_id = public.app_current_location() '
       'and vendor_id = @vendor_id '
       'limit 1',
-      parameters: <String, Object?>{
-        'vendor_id': agendrixVendorId,
-      },
+      parameters: <String, Object?>{'vendor_id': agendrixVendorId},
     );
     if (rows.isEmpty) {
       throw StateError(

@@ -92,6 +92,7 @@ import '../../../integrations/pos/aloha_ncr_voyix_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -121,15 +122,19 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? clock,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _clock = clock ?? DateTime.now;
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _clock = clock ?? DateTime.now;
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Aloha (NCR Voyix)
   // no longer reads `locations.business_day_rollover_hour`. The cutoff
@@ -141,6 +146,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
   // so existing call sites continue to compile and so test suites can
   // inject a stub IANA converter; it is threaded into the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _clock;
 
   // ─── upsert ───────────────────────────────────────────────────────
@@ -151,13 +157,12 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     required String locationId,
     required Map<String, Object?> canonicalFact,
     required Map<String, Object?> rawPayload,
-  }) =>
-      _writeCoverFact(
-        operatorId: operatorId,
-        locationId: locationId,
-        canonicalFact: canonicalFact,
-        rawPayload: rawPayload,
-      );
+  }) => _writeCoverFact(
+    operatorId: operatorId,
+    locationId: locationId,
+    canonicalFact: canonicalFact,
+    rawPayload: rawPayload,
+  );
 
   @override
   Future<bool> upsertCoverFact({
@@ -191,8 +196,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   /// POS sink — reservations are the LB lane's job. See the
   /// [upsertLaborPunch] note.
@@ -201,8 +205,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      false;
+  }) async => false;
 
   Future<bool> _writeCoverFact({
     required String operatorId,
@@ -210,10 +213,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     required Map<String, Object?> canonicalFact,
     required Map<String, Object?> rawPayload,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final inserted = await withTenant<bool>(ctx, (exec) async {
       final closedAt = _coerceUtc(canonicalFact['closed_at']);
       if (closedAt == null) {
@@ -328,6 +328,13 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
       return rows.isNotEmpty;
     });
 
+    if (inserted) {
+      _projectionTap?.recordCommittedCoverFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalFact: canonicalFact,
+      );
+    }
     return inserted;
   }
 
@@ -339,13 +346,12 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     required String locationId,
     required String cursorToken,
     required DateTime lastModifiedSeen,
-  }) =>
-      advanceWatermark(
-        operatorId: operatorId,
-        locationId: locationId,
-        cursorToken: cursorToken,
-        lastModifiedSeen: lastModifiedSeen,
-      );
+  }) => advanceWatermark(
+    operatorId: operatorId,
+    locationId: locationId,
+    cursorToken: cursorToken,
+    lastModifiedSeen: lastModifiedSeen,
+  );
 
   @override
   Future<void> advanceWatermark({
@@ -355,10 +361,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     required DateTime lastModifiedSeen,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -412,8 +415,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
       );
       if (dmsRows.isNotEmpty) {
         final dmsRow = dmsRows.single;
-        final pendingCount =
-            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final pendingCount = (dmsRow['pending_inserts_count'] as int? ?? 0);
         final isDemo = dmsRow['is_demo'] as bool? ?? true;
         if (pendingCount >= 1 && isDemo) {
           await exec.execute(
@@ -450,10 +452,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     Map<String, Object?>? payloadPreview,
     String? connectionId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final resolvedConnectionId = await _resolveConnectionId(
       operatorId: operatorId,
       locationId: locationId,
@@ -500,10 +499,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     if (!firstBackfillCommitted) return;
     if (backfillRecordsWritten < 1) return;
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       // Read-or-create the row with default `is_demo = true`. The
       // `INSERT ... ON CONFLICT DO NOTHING` is idempotent: if the
@@ -549,15 +545,14 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
 
   // ─── disconnect ───────────────────────────────────────────────────
 
-  Future<({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})>
-      wipeCredentialsPreserveWatermark({
+  Future<
+    ({bool credentialsWiped, bool webhookUnregistered, bool watermarkPreserved})
+  >
+  wipeCredentialsPreserveWatermark({
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     final credentialsWiped = await withTenant<bool>(ctx, (exec) async {
       final wiped = await exec.execute(
         'update public.vendor_credentials set '
@@ -627,10 +622,7 @@ class AlohaNcrVoyixPostgresSink extends OperatorScopedRepository
     if (explicitConnectionId != null && explicitConnectionId.isNotEmpty) {
       return explicitConnectionId;
     }
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id '

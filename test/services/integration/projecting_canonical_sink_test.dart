@@ -142,6 +142,61 @@ void main() {
     );
 
     test(
+      'webhook_received drains the wrapper buffer as a commit signal',
+      () async {
+        final underlying = _RecordingCanonicalSink();
+        final projector = _RecordingProjector();
+        final wrapper = _wrapper(underlying: underlying, projector: projector);
+
+        await wrapper.upsertCoverFact(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          canonicalFact: _coverFact(connectionId: _connectionA),
+        );
+        await wrapper.appendSyncLog(
+          operatorId: _operatorA,
+          locationId: _locationA,
+          connectionId: _connectionA,
+          eventKind: 'webhook_received',
+          recordsCount: 1,
+        );
+
+        expect(projector.invocations, hasLength(1));
+        expect(projector.invocations.single.connectionId, _connectionA);
+      },
+    );
+
+    test('direct projection tap drains on webhook_received', () async {
+      final projector = _RecordingProjector();
+      final tap = BufferedCanonicalFactProjectionTap(
+        projector: projector,
+        category: IntegrationCategory.pos,
+        vendorId: 'toast',
+        periodResolver: _stubResolver,
+        restaurantIdResolver: _stubRestaurantResolver,
+      );
+      final drainer = CanonicalFactProjectionCommitDrainer(
+        tapsByVendor: <String, CanonicalFactProjectionTap>{'toast': tap},
+      );
+
+      tap.recordCommittedCoverFact(
+        operatorId: _operatorA,
+        locationId: _locationA,
+        canonicalFact: _coverFact(connectionId: _connectionA),
+      );
+      await drainer.drainIfCommitEvent(
+        vendorId: 'toast',
+        operatorId: _operatorA,
+        locationId: _locationA,
+        connectionId: _connectionA,
+        eventKind: 'webhook_received',
+      );
+
+      expect(projector.invocations, hasLength(1));
+      expect(projector.invocations.single.changedPeriods, hasLength(1));
+    });
+
+    test(
       'underlying sink throwing short-circuits before projector fires',
       () async {
         final underlying = _ThrowingCanonicalSink();

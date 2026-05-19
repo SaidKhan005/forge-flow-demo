@@ -14,6 +14,7 @@ import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/labor_adapter.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import '../../../tool/integration_sync_worker/dispatch.dart';
@@ -33,8 +34,7 @@ void main() {
       dispatcher = IntegrationSyncWorkerDispatch();
     });
 
-    test(
-        'calls adapter.pollIncremental exactly once with a non-null '
+    test('calls adapter.pollIncremental exactly once with a non-null '
         'sanityHook bound to the connection tenant', () async {
       await dispatcher.dispatchPollTick(
         connectorConnectionRow: _posRow(),
@@ -46,10 +46,13 @@ void main() {
       expect(posAdapter.lastCommand, isNotNull);
       expect(posAdapter.lastCommand!.operatorId, _opId);
       expect(posAdapter.lastCommand!.locationId, _locId);
-      expect(posAdapter.lastCommand!.actorUserId,
-          kSyncWorkerServicePrincipalId,
-          reason: 'worker stamps a UUID-shaped service-principal id so '
-              'TenantContext.userId validation passes downstream');
+      expect(
+        posAdapter.lastCommand!.actorUserId,
+        kSyncWorkerServicePrincipalId,
+        reason:
+            'worker stamps a UUID-shaped service-principal id so '
+            'TenantContext.userId validation passes downstream',
+      );
       expect(posAdapter.lastCommand!.sanityHook, isNotNull);
 
       // Sanity hook is callable + returns true (seam contract).
@@ -83,29 +86,60 @@ void main() {
       expect(sink.syncLogs.single.recordsCount, 7);
     });
 
-    test(
-        'on adapter throw: poll_error log fires + watermark NOT advanced',
-        () async {
-      posAdapter.throwOnPoll = StateError('vendor 503');
+    test('on success: projection tap drains after poll_success', () async {
+      final tap = _RecordingProjectionTap();
+      final drainer = CanonicalFactProjectionCommitDrainer(
+        tapsByVendor: <String, CanonicalFactProjectionTap>{
+          'lightspeed_lsk': tap,
+        },
+      );
+      posAdapter.pollResult = PollIncrementalResult(
+        recordsWritten: 2,
+        newCursorToken: 'cursor-after-tick',
+        newLastModifiedSeen: DateTime.utc(2026, 5, 4, 12),
+      );
 
       await dispatcher.dispatchPollTick(
         connectorConnectionRow: _posRow(),
         adapterFactory: (_) => posAdapter,
         canonicalSink: sink,
+        projectionCommitDrainer: drainer,
       );
 
-      expect(sink.watermarkAdvances, isEmpty,
-          reason: 'failed tick must NOT advance the watermark');
-      expect(sink.syncLogs, hasLength(1));
-      expect(sink.syncLogs.single.eventKind, 'poll_error');
-      expect(sink.syncLogs.single.errorMessage, contains('vendor 503'));
+      expect(tap.drains, hasLength(1));
+      expect(tap.drains.single.connectionId, 'conn-1');
+      expect(
+        sink.callOrder,
+        ['advanceWatermark', 'appendSyncLog'],
+        reason: 'projection drain happens outside CanonicalSink writes',
+      );
     });
 
     test(
-        'throws StateError when vendor is not in the category registry '
+      'on adapter throw: poll_error log fires + watermark NOT advanced',
+      () async {
+        posAdapter.throwOnPoll = StateError('vendor 503');
+
+        await dispatcher.dispatchPollTick(
+          connectorConnectionRow: _posRow(),
+          adapterFactory: (_) => posAdapter,
+          canonicalSink: sink,
+        );
+
+        expect(
+          sink.watermarkAdvances,
+          isEmpty,
+          reason: 'failed tick must NOT advance the watermark',
+        );
+        expect(sink.syncLogs, hasLength(1));
+        expect(sink.syncLogs.single.eventKind, 'poll_error');
+        expect(sink.syncLogs.single.errorMessage, contains('vendor 503'));
+      },
+    );
+
+    test('throws StateError when vendor is not in the category registry '
         '+ writes a vendor_not_registered sync_log row (spine contract '
-        'Lane .0 test req: "missing adapter returns null + logs")',
-        () async {
+        'Lane .0 test req: "missing adapter returns null + logs")', () async {
       await expectLater(
         dispatcher.dispatchPollTick(
           connectorConnectionRow: _posRow(vendorId: 'vendor_not_registered'),
@@ -115,71 +149,91 @@ void main() {
         throwsA(isA<StateError>()),
       );
 
-      expect(posAdapter.pollCalls, 0,
-          reason: 'unknown vendor must short-circuit before adapter '
-              'construction');
+      expect(
+        posAdapter.pollCalls,
+        0,
+        reason:
+            'unknown vendor must short-circuit before adapter '
+            'construction',
+      );
 
-      expect(sink.syncLogs, hasLength(1),
-          reason: 'vendor_not_registered must produce exactly one '
-              'durable log row');
+      expect(
+        sink.syncLogs,
+        hasLength(1),
+        reason:
+            'vendor_not_registered must produce exactly one '
+            'durable log row',
+      );
       expect(sink.syncLogs.single.eventKind, 'vendor_not_registered');
-      expect(sink.syncLogs.single.errorMessage,
-          contains('vendor_not_registered'));
-      expect(sink.watermarkAdvances, isEmpty,
-          reason: 'unregistered vendor must NOT advance the watermark');
+      expect(
+        sink.syncLogs.single.errorMessage,
+        contains('vendor_not_registered'),
+      );
+      expect(
+        sink.watermarkAdvances,
+        isEmpty,
+        reason: 'unregistered vendor must NOT advance the watermark',
+      );
     });
 
     test(
-        'throws StateError when adapterFactory returns wrong category type',
-        () async {
-      // POS row but factory hands back a labor adapter.
-      final laborAdapter = _RecordingLaborAdapter();
-      await expectLater(
-        dispatcher.dispatchPollTick(
+      'throws StateError when adapterFactory returns wrong category type',
+      () async {
+        // POS row but factory hands back a labor adapter.
+        final laborAdapter = _RecordingLaborAdapter();
+        await expectLater(
+          dispatcher.dispatchPollTick(
+            connectorConnectionRow: _posRow(),
+            adapterFactory: (_) => laborAdapter,
+            canonicalSink: sink,
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
+      'watermark atomicity: when the adapter throws AFTER the call '
+      'starts, watermark advance is NEVER issued (the only durable '
+      'side-effect on the failure path is the poll_error sync log)',
+      () async {
+        // Adapter records the call but throws — simulating the "vendor
+        // wrote some rows then we lost the connection" shape.
+        posAdapter.throwOnPoll = StateError('connection lost mid-poll');
+
+        await dispatcher.dispatchPollTick(
           connectorConnectionRow: _posRow(),
-          adapterFactory: (_) => laborAdapter,
+          adapterFactory: (_) => posAdapter,
           canonicalSink: sink,
-        ),
-        throwsA(isA<StateError>()),
-      );
-    });
+        );
 
-    test(
-        'watermark atomicity: when the adapter throws AFTER the call '
-        'starts, watermark advance is NEVER issued (the only durable '
-        'side-effect on the failure path is the poll_error sync log)',
-        () async {
-      // Adapter records the call but throws — simulating the "vendor
-      // wrote some rows then we lost the connection" shape.
-      posAdapter.throwOnPoll = StateError('connection lost mid-poll');
-
-      await dispatcher.dispatchPollTick(
-        connectorConnectionRow: _posRow(),
-        adapterFactory: (_) => posAdapter,
-        canonicalSink: sink,
-      );
-
-      // The dispatcher's transactional contract on the failure path:
-      // watermark MUST NOT advance. (Cross-tx atomicity between adapter
-      // writes and the watermark itself requires an executor-bearing
-      // adapter API, which is the multi-file rewrite documented in the
-      // CODE_HEALTH ledger.)
-      expect(sink.watermarkAdvances, isEmpty,
-          reason: 'failed adapter call must NOT advance the watermark; '
+        // The dispatcher's transactional contract on the failure path:
+        // watermark MUST NOT advance. (Cross-tx atomicity between adapter
+        // writes and the watermark itself requires an executor-bearing
+        // adapter API, which is the multi-file rewrite documented in the
+        // CODE_HEALTH ledger.)
+        expect(
+          sink.watermarkAdvances,
+          isEmpty,
+          reason:
+              'failed adapter call must NOT advance the watermark; '
               'idempotency on the next tick re-replays absorbed-or-not '
-              'vendor double writes from the prior cursor');
-      expect(posAdapter.pollCalls, 1,
-          reason: 'adapter was invoked exactly once');
-      expect(sink.syncLogs, hasLength(1));
-      expect(sink.syncLogs.single.eventKind, 'poll_error');
-    });
+              'vendor double writes from the prior cursor',
+        );
+        expect(
+          posAdapter.pollCalls,
+          1,
+          reason: 'adapter was invoked exactly once',
+        );
+        expect(sink.syncLogs, hasLength(1));
+        expect(sink.syncLogs.single.eventKind, 'poll_error');
+      },
+    );
 
-    test(
-        'watermark atomicity: on success the watermark advance and the '
+    test('watermark atomicity: on success the watermark advance and the '
         'poll_success log are the only sink writes, in that order, so a '
         'crash between fact upserts (inside the adapter) and the '
-        'watermark advance leaves the watermark unchanged',
-        () async {
+        'watermark advance leaves the watermark unchanged', () async {
       posAdapter.pollResult = PollIncrementalResult(
         recordsWritten: 3,
         newCursorToken: 'cursor-tx-test',
@@ -206,31 +260,32 @@ void main() {
     });
   });
 
-  group(
-      'IntegrationSyncWorkerDispatch cadence resolver: resolved value is '
+  group('IntegrationSyncWorkerDispatch cadence resolver: resolved value is '
       'now delivered to a consumer (CODE_HEALTH `dispatch.dart:373`)', () {
-    test(
-        'when resolvedCadenceSink is supplied, the resolved cadence '
+    test('when resolvedCadenceSink is supplied, the resolved cadence '
         'flows out of the dispatcher (no longer discarded)', () async {
       final cadenceCalls = <_ResolvedCadenceCall>[];
       final dispatcher = IntegrationSyncWorkerDispatch(
         tierAssignmentLookup: (operatorId, locationId) async => null,
         vendorMinimumCadenceLookup: (vendorId) => 300,
-        resolvedCadenceSink: ({
-          required connectionId,
-          required vendorId,
-          required operatorId,
-          required locationId,
-          required resolvedCadenceSeconds,
-        }) {
-          cadenceCalls.add(_ResolvedCadenceCall(
-            connectionId: connectionId,
-            vendorId: vendorId,
-            operatorId: operatorId,
-            locationId: locationId,
-            resolvedCadenceSeconds: resolvedCadenceSeconds,
-          ));
-        },
+        resolvedCadenceSink:
+            ({
+              required connectionId,
+              required vendorId,
+              required operatorId,
+              required locationId,
+              required resolvedCadenceSeconds,
+            }) {
+              cadenceCalls.add(
+                _ResolvedCadenceCall(
+                  connectionId: connectionId,
+                  vendorId: vendorId,
+                  operatorId: operatorId,
+                  locationId: locationId,
+                  resolvedCadenceSeconds: resolvedCadenceSeconds,
+                ),
+              );
+            },
       );
       final sink = _RecordingCanonicalSink();
       final adapter = _RecordingPosAdapter()
@@ -247,9 +302,13 @@ void main() {
         canonicalSink: sink,
       );
 
-      expect(cadenceCalls, hasLength(1),
-          reason: 'resolved cadence must be delivered exactly once per '
-              'poll tick when the resolver path is active');
+      expect(
+        cadenceCalls,
+        hasLength(1),
+        reason:
+            'resolved cadence must be delivered exactly once per '
+            'poll tick when the resolver path is active',
+      );
       expect(cadenceCalls.single.connectionId, 'conn-1');
       expect(cadenceCalls.single.vendorId, 'oracle_micros_simphony');
       expect(cadenceCalls.single.operatorId, _opId);
@@ -260,44 +319,46 @@ void main() {
 
       // The observability log emission still fires too.
       expect(
-          sink.syncLogs.where((log) =>
-              log.eventKind == 'tier_assignment_missing'),
-          hasLength(1));
+        sink.syncLogs.where(
+          (log) => log.eventKind == 'tier_assignment_missing',
+        ),
+        hasLength(1),
+      );
     });
 
-    test(
-        'resolved cadence reflects per-vendor JSONB override on the '
+    test('resolved cadence reflects per-vendor JSONB override on the '
         'tier assignment (premium tier, custom override)', () async {
       _ResolvedCadenceCall? cadenceCall;
       final dispatcher = IntegrationSyncWorkerDispatch(
         tierAssignmentLookup: (operatorId, locationId) async =>
             ForgeFlowPollingTierAssignment(
-          assignmentId: '00000000-0000-4000-8000-0000000000aa',
-          operatorId: operatorId,
-          locationId: locationId,
-          tierKey: PollingTierKey.premium,
-          pollingCadencePerVendorSeconds: const <String, int>{
-            'quickbooks_time': 90,
-          },
-          effectiveAt: DateTime.utc(2026, 5, 1),
-          createdAt: DateTime.utc(2026, 5, 1),
-        ),
+              assignmentId: '00000000-0000-4000-8000-0000000000aa',
+              operatorId: operatorId,
+              locationId: locationId,
+              tierKey: PollingTierKey.premium,
+              pollingCadencePerVendorSeconds: const <String, int>{
+                'quickbooks_time': 90,
+              },
+              effectiveAt: DateTime.utc(2026, 5, 1),
+              createdAt: DateTime.utc(2026, 5, 1),
+            ),
         vendorMinimumCadenceLookup: (vendorId) => 60,
-        resolvedCadenceSink: ({
-          required connectionId,
-          required vendorId,
-          required operatorId,
-          required locationId,
-          required resolvedCadenceSeconds,
-        }) {
-          cadenceCall = _ResolvedCadenceCall(
-            connectionId: connectionId,
-            vendorId: vendorId,
-            operatorId: operatorId,
-            locationId: locationId,
-            resolvedCadenceSeconds: resolvedCadenceSeconds,
-          );
-        },
+        resolvedCadenceSink:
+            ({
+              required connectionId,
+              required vendorId,
+              required operatorId,
+              required locationId,
+              required resolvedCadenceSeconds,
+            }) {
+              cadenceCall = _ResolvedCadenceCall(
+                connectionId: connectionId,
+                vendorId: vendorId,
+                operatorId: operatorId,
+                locationId: locationId,
+                resolvedCadenceSeconds: resolvedCadenceSeconds,
+              );
+            },
       );
       final sink = _RecordingCanonicalSink();
       final adapter = _RecordingLaborAdapter(vendorId: 'quickbooks_time');
@@ -317,32 +378,38 @@ void main() {
       );
 
       expect(cadenceCall, isNotNull);
-      expect(cadenceCall!.resolvedCadenceSeconds, 90,
-          reason: 'override of 90s is within [vendorMin=60, '
-              'frameworkMax=3600] so the resolver returns it as-is');
+      expect(
+        cadenceCall!.resolvedCadenceSeconds,
+        90,
+        reason:
+            'override of 90s is within [vendorMin=60, '
+            'frameworkMax=3600] so the resolver returns it as-is',
+      );
     });
 
-    test(
-        'resolvedCadenceSink is NOT invoked when either lookup is null '
+    test('resolvedCadenceSink is NOT invoked when either lookup is null '
         '(lane .0 baseline preserves backward compatibility)', () async {
       final cadenceCalls = <_ResolvedCadenceCall>[];
       final dispatcher = IntegrationSyncWorkerDispatch(
         // Both lookups omitted (null).
-        resolvedCadenceSink: ({
-          required connectionId,
-          required vendorId,
-          required operatorId,
-          required locationId,
-          required resolvedCadenceSeconds,
-        }) {
-          cadenceCalls.add(_ResolvedCadenceCall(
-            connectionId: connectionId,
-            vendorId: vendorId,
-            operatorId: operatorId,
-            locationId: locationId,
-            resolvedCadenceSeconds: resolvedCadenceSeconds,
-          ));
-        },
+        resolvedCadenceSink:
+            ({
+              required connectionId,
+              required vendorId,
+              required operatorId,
+              required locationId,
+              required resolvedCadenceSeconds,
+            }) {
+              cadenceCalls.add(
+                _ResolvedCadenceCall(
+                  connectionId: connectionId,
+                  vendorId: vendorId,
+                  operatorId: operatorId,
+                  locationId: locationId,
+                  resolvedCadenceSeconds: resolvedCadenceSeconds,
+                ),
+              );
+            },
       );
       final sink = _RecordingCanonicalSink();
       final adapter = _RecordingPosAdapter();
@@ -353,34 +420,40 @@ void main() {
         canonicalSink: sink,
       );
 
-      expect(cadenceCalls, isEmpty,
-          reason: 'sink must stay quiet when the resolver path is not '
-              'wired — production main.dart still passes neither lookup '
-              'and the dispatcher must not invoke the cadence sink');
+      expect(
+        cadenceCalls,
+        isEmpty,
+        reason:
+            'sink must stay quiet when the resolver path is not '
+            'wired — production main.dart still passes neither lookup '
+            'and the dispatcher must not invoke the cadence sink',
+      );
     });
 
-    test(
-        'resolvedCadenceSink is NOT invoked for vendors that are NOT '
+    test('resolvedCadenceSink is NOT invoked for vendors that are NOT '
         'in pollOnlyVendorIds (webhook-driven vendors)', () async {
       final cadenceCalls = <_ResolvedCadenceCall>[];
       final dispatcher = IntegrationSyncWorkerDispatch(
         tierAssignmentLookup: (operatorId, locationId) async => null,
         vendorMinimumCadenceLookup: (vendorId) => 60,
-        resolvedCadenceSink: ({
-          required connectionId,
-          required vendorId,
-          required operatorId,
-          required locationId,
-          required resolvedCadenceSeconds,
-        }) {
-          cadenceCalls.add(_ResolvedCadenceCall(
-            connectionId: connectionId,
-            vendorId: vendorId,
-            operatorId: operatorId,
-            locationId: locationId,
-            resolvedCadenceSeconds: resolvedCadenceSeconds,
-          ));
-        },
+        resolvedCadenceSink:
+            ({
+              required connectionId,
+              required vendorId,
+              required operatorId,
+              required locationId,
+              required resolvedCadenceSeconds,
+            }) {
+              cadenceCalls.add(
+                _ResolvedCadenceCall(
+                  connectionId: connectionId,
+                  vendorId: vendorId,
+                  operatorId: operatorId,
+                  locationId: locationId,
+                  resolvedCadenceSeconds: resolvedCadenceSeconds,
+                ),
+              );
+            },
       );
       final sink = _RecordingCanonicalSink();
       // 7shifts is webhook-driven (autoRegister) — NOT in pollOnly.
@@ -400,13 +473,16 @@ void main() {
         canonicalSink: sink,
       );
 
-      expect(cadenceCalls, isEmpty,
-          reason: 'webhook-driven vendors do not use polling cadence; '
-              'the dispatcher gate suppresses the resolver call entirely');
+      expect(
+        cadenceCalls,
+        isEmpty,
+        reason:
+            'webhook-driven vendors do not use polling cadence; '
+            'the dispatcher gate suppresses the resolver call entirely',
+      );
     });
 
-    test(
-        'resolvedCadenceSink is NOT invoked when the tier-assignment '
+    test('resolvedCadenceSink is NOT invoked when the tier-assignment '
         'lookup throws — failure surfaces as a '
         'tier_assignment_lookup_failed sync log row, then control '
         'returns without delivering a cadence value', () async {
@@ -416,21 +492,24 @@ void main() {
           throw StateError('tier repo down');
         },
         vendorMinimumCadenceLookup: (vendorId) => 300,
-        resolvedCadenceSink: ({
-          required connectionId,
-          required vendorId,
-          required operatorId,
-          required locationId,
-          required resolvedCadenceSeconds,
-        }) {
-          cadenceCalls.add(_ResolvedCadenceCall(
-            connectionId: connectionId,
-            vendorId: vendorId,
-            operatorId: operatorId,
-            locationId: locationId,
-            resolvedCadenceSeconds: resolvedCadenceSeconds,
-          ));
-        },
+        resolvedCadenceSink:
+            ({
+              required connectionId,
+              required vendorId,
+              required operatorId,
+              required locationId,
+              required resolvedCadenceSeconds,
+            }) {
+              cadenceCalls.add(
+                _ResolvedCadenceCall(
+                  connectionId: connectionId,
+                  vendorId: vendorId,
+                  operatorId: operatorId,
+                  locationId: locationId,
+                  resolvedCadenceSeconds: resolvedCadenceSeconds,
+                ),
+              );
+            },
       );
       final sink = _RecordingCanonicalSink();
       final adapter = _RecordingPosAdapter()
@@ -444,15 +523,16 @@ void main() {
 
       expect(cadenceCalls, isEmpty);
       expect(
-          sink.syncLogs
-              .where((log) => log.eventKind == 'tier_assignment_lookup_failed'),
-          hasLength(1));
+        sink.syncLogs.where(
+          (log) => log.eventKind == 'tier_assignment_lookup_failed',
+        ),
+        hasLength(1),
+      );
     });
   });
 
   group('IntegrationSyncWorkerDispatch.dispatchWebhook', () {
-    test(
-        'calls handleWebhook on the registered Libro adapter; does not '
+    test('calls handleWebhook on the registered Libro adapter; does not '
         'invoke any other-category adapter', () async {
       final libro = _RecordingReservationAdapter();
       final pos = _RecordingPosAdapter();
@@ -474,17 +554,26 @@ void main() {
       expect(libro.lastWebhookCommand!.vendorId, kLibroVendorId);
       expect(libro.lastWebhookCommand!.vendorEventId, 'libro-evt-1');
 
-      expect(pos.handleWebhookCalls, 0,
-          reason: 'reservation webhook must not touch POS adapter');
-      expect(labor.handleWebhookCalls, 0,
-          reason: 'reservation webhook must not touch labor adapter');
-      expect(sink.syncLogs, isEmpty,
-          reason: 'happy path: dispatchWebhook does not write sync_log; '
-              'the bound vendor sink owns post-write logging');
+      expect(
+        pos.handleWebhookCalls,
+        0,
+        reason: 'reservation webhook must not touch POS adapter',
+      );
+      expect(
+        labor.handleWebhookCalls,
+        0,
+        reason: 'reservation webhook must not touch labor adapter',
+      );
+      expect(
+        sink.syncLogs,
+        isEmpty,
+        reason:
+            'happy path: dispatchWebhook does not write sync_log; '
+            'the bound vendor sink owns post-write logging',
+      );
     });
 
-    test(
-        'ADP webhook routes through handleWebhook (architecture amendment: '
+    test('ADP webhook routes through handleWebhook (architecture amendment: '
         'ADP is autoRegister, NOT pollOnly — dispatch must NOT fall back '
         'to pollIncremental)', () async {
       final adp = _RecordingLaborAdapter(vendorId: kAdpVendorId);
@@ -503,55 +592,67 @@ void main() {
         headers: const <String, String>{'adp-signature': 'sha256=...'},
       );
 
-      expect(adp.handleWebhookCalls, 1,
-          reason: 'ADP webhook MUST be delivered to handleWebhook');
+      expect(
+        adp.handleWebhookCalls,
+        1,
+        reason: 'ADP webhook MUST be delivered to handleWebhook',
+      );
       expect(adp.lastWebhookCommand, isNotNull);
       expect(adp.lastWebhookCommand!.vendorId, kAdpVendorId);
       expect(adp.lastWebhookCommand!.vendorEventId, 'adp-evt-1');
 
-      expect(adp.pollIncrementalCalls, 0,
-          reason: 'ADP webhook MUST NOT trigger a polling fallback; dispatch '
-              'has no pollOnly-fallback branch and ADP is auto-registered.');
+      expect(
+        adp.pollIncrementalCalls,
+        0,
+        reason:
+            'ADP webhook MUST NOT trigger a polling fallback; dispatch '
+            'has no pollOnly-fallback branch and ADP is auto-registered.',
+      );
     });
 
     test(
-        'unregistered webhook vendor: throws StateError + writes a '
-        'vendor_not_registered sync_log row (parity with the poll path)',
-        () async {
-      final pos = _RecordingPosAdapter();
-      final sink = _RecordingCanonicalSink();
-      final dispatcher = IntegrationSyncWorkerDispatch();
+      'unregistered webhook vendor: throws StateError + writes a '
+      'vendor_not_registered sync_log row (parity with the poll path)',
+      () async {
+        final pos = _RecordingPosAdapter();
+        final sink = _RecordingCanonicalSink();
+        final dispatcher = IntegrationSyncWorkerDispatch();
 
-      await expectLater(
-        dispatcher.dispatchWebhook(
-          connectorConnectionRow: _posRow(vendorId: 'vendor_not_registered'),
-          adapterFactory: (_) => pos,
-          canonicalSink: sink,
-          vendorEventId: 'evt-x',
-          payload: const <String, Object?>{},
-          headers: const <String, String>{},
-        ),
-        throwsA(isA<StateError>()),
-      );
+        await expectLater(
+          dispatcher.dispatchWebhook(
+            connectorConnectionRow: _posRow(vendorId: 'vendor_not_registered'),
+            adapterFactory: (_) => pos,
+            canonicalSink: sink,
+            vendorEventId: 'evt-x',
+            payload: const <String, Object?>{},
+            headers: const <String, String>{},
+          ),
+          throwsA(isA<StateError>()),
+        );
 
-      expect(pos.handleWebhookCalls, 0,
-          reason: 'unregistered vendor must short-circuit before '
-              'adapter construction');
-      expect(sink.syncLogs, hasLength(1));
-      expect(sink.syncLogs.single.eventKind, 'vendor_not_registered');
-    });
+        expect(
+          pos.handleWebhookCalls,
+          0,
+          reason:
+              'unregistered vendor must short-circuit before '
+              'adapter construction',
+        );
+        expect(sink.syncLogs, hasLength(1));
+        expect(sink.syncLogs.single.eventKind, 'vendor_not_registered');
+      },
+    );
   });
 }
 
 ConnectorConnectionRow _adpRow() => ConnectorConnectionRow(
-      connectionId: 'conn-adp-1',
-      operatorId: _opId,
-      locationId: _locId,
-      vendorId: kAdpVendorId,
-      category: IntegrationCategory.labor,
-      status: ConnectionStatus.connected,
-      lastModifiedSeen: DateTime.utc(2026, 5, 3, 0, 0, 0),
-    );
+  connectionId: 'conn-adp-1',
+  operatorId: _opId,
+  locationId: _locId,
+  vendorId: kAdpVendorId,
+  category: IntegrationCategory.labor,
+  status: ConnectionStatus.connected,
+  lastModifiedSeen: DateTime.utc(2026, 5, 3, 0, 0, 0),
+);
 
 ConnectorConnectionRow _posRow({String vendorId = 'lightspeed_lsk'}) =>
     ConnectorConnectionRow(
@@ -565,14 +666,14 @@ ConnectorConnectionRow _posRow({String vendorId = 'lightspeed_lsk'}) =>
     );
 
 ConnectorConnectionRow _libroRow() => ConnectorConnectionRow(
-      connectionId: 'conn-libro-1',
-      operatorId: _opId,
-      locationId: _locId,
-      vendorId: kLibroVendorId,
-      category: IntegrationCategory.reservation,
-      status: ConnectionStatus.connected,
-      lastModifiedSeen: DateTime.utc(2026, 5, 3, 0, 0, 0),
-    );
+  connectionId: 'conn-libro-1',
+  operatorId: _opId,
+  locationId: _locId,
+  vendorId: kLibroVendorId,
+  category: IntegrationCategory.reservation,
+  status: ConnectionStatus.connected,
+  lastModifiedSeen: DateTime.utc(2026, 5, 3, 0, 0, 0),
+);
 
 // ─── Recording adapters ────────────────────────────────────────────
 
@@ -598,7 +699,8 @@ class _RecordingPosAdapter implements PosAdapter {
   @override
   String get displayName => 'Recording POS';
   @override
-  VendorCapabilityProfile get capabilityProfile => const VendorCapabilityProfile(
+  VendorCapabilityProfile get capabilityProfile =>
+      const VendorCapabilityProfile(
         vendorId: 'lightspeed_lsk',
         displayName: 'Recording POS',
         category: IntegrationCategory.pos,
@@ -633,7 +735,9 @@ class _RecordingPosAdapter implements PosAdapter {
   }
 
   @override
-  Future<HandleWebhookResult> handleWebhook(HandleWebhookCommand command) async {
+  Future<HandleWebhookResult> handleWebhook(
+    HandleWebhookCommand command,
+  ) async {
     handleWebhookCalls += 1;
     return const HandleWebhookResult(recordsWritten: 1);
   }
@@ -651,7 +755,8 @@ class _RecordingLaborAdapter implements LaborAdapter {
   @override
   String get displayName => 'Recording Labor';
   @override
-  VendorCapabilityProfile get capabilityProfile => const VendorCapabilityProfile(
+  VendorCapabilityProfile get capabilityProfile =>
+      const VendorCapabilityProfile(
         vendorId: 'seven_shifts',
         displayName: 'Recording Labor',
         category: IntegrationCategory.labor,
@@ -689,7 +794,9 @@ class _RecordingLaborAdapter implements LaborAdapter {
       throw UnimplementedError();
 
   @override
-  Future<HandleWebhookResult> handleWebhook(HandleWebhookCommand command) async {
+  Future<HandleWebhookResult> handleWebhook(
+    HandleWebhookCommand command,
+  ) async {
     handleWebhookCalls += 1;
     lastWebhookCommand = command;
     return const HandleWebhookResult(recordsWritten: 1);
@@ -705,7 +812,8 @@ class _RecordingReservationAdapter implements ReservationAdapter {
   @override
   String get displayName => 'Recording Libro';
   @override
-  VendorCapabilityProfile get capabilityProfile => const VendorCapabilityProfile(
+  VendorCapabilityProfile get capabilityProfile =>
+      const VendorCapabilityProfile(
         vendorId: kLibroVendorId,
         displayName: 'Recording Libro',
         category: IntegrationCategory.reservation,
@@ -727,14 +835,16 @@ class _RecordingReservationAdapter implements ReservationAdapter {
       throw UnimplementedError();
   @override
   Future<PollIncrementalResult> pollIncremental(
-          PollIncrementalCommand command) =>
-      throw UnimplementedError();
+    PollIncrementalCommand command,
+  ) => throw UnimplementedError();
   @override
   Future<DisconnectResult> disconnect(DisconnectCommand command) =>
       throw UnimplementedError();
 
   @override
-  Future<HandleWebhookResult> handleWebhook(HandleWebhookCommand command) async {
+  Future<HandleWebhookResult> handleWebhook(
+    HandleWebhookCommand command,
+  ) async {
     handleWebhookCalls += 1;
     lastWebhookCommand = command;
     return const HandleWebhookResult(recordsWritten: 1);
@@ -759,24 +869,21 @@ class _RecordingCanonicalSink implements CanonicalSink {
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) async =>
-      true;
+  }) async => true;
 
   @override
   Future<bool> upsertLaborPunch({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      true;
+  }) async => true;
 
   @override
   Future<bool> upsertReservationFact({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      true;
+  }) async => true;
 
   @override
   Future<void> advanceWatermark({
@@ -787,13 +894,15 @@ class _RecordingCanonicalSink implements CanonicalSink {
     required DateTime lastModifiedSeen,
   }) async {
     callOrder.add('advanceWatermark');
-    watermarkAdvances.add(_WatermarkAdvance(
-      operatorId: operatorId,
-      locationId: locationId,
-      connectionId: connectionId,
-      cursorToken: cursorToken,
-      lastModifiedSeen: lastModifiedSeen,
-    ));
+    watermarkAdvances.add(
+      _WatermarkAdvance(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+        cursorToken: cursorToken,
+        lastModifiedSeen: lastModifiedSeen,
+      ),
+    );
   }
 
   @override
@@ -807,14 +916,16 @@ class _RecordingCanonicalSink implements CanonicalSink {
     Map<String, Object?>? payloadPreview,
   }) async {
     callOrder.add('appendSyncLog');
-    syncLogs.add(_SyncLogEntry(
-      operatorId: operatorId,
-      locationId: locationId,
-      connectionId: connectionId,
-      eventKind: eventKind,
-      errorMessage: errorMessage,
-      recordsCount: recordsCount,
-    ));
+    syncLogs.add(
+      _SyncLogEntry(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+        eventKind: eventKind,
+        errorMessage: errorMessage,
+        recordsCount: recordsCount,
+      ),
+    );
   }
 
   @override
@@ -859,6 +970,57 @@ class _SyncLogEntry {
   final String eventKind;
   final String? errorMessage;
   final int? recordsCount;
+}
+
+class _RecordingProjectionTap implements CanonicalFactProjectionTap {
+  final List<_ProjectionDrain> drains = <_ProjectionDrain>[];
+
+  @override
+  void recordCommittedCoverFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+  }) {}
+
+  @override
+  void recordCommittedLaborPunch({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  }) {}
+
+  @override
+  void recordCommittedReservationFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalReservation,
+  }) {}
+
+  @override
+  Future<void> drainCommittedFacts({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+  }) async {
+    drains.add(
+      _ProjectionDrain(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+      ),
+    );
+  }
+}
+
+class _ProjectionDrain {
+  const _ProjectionDrain({
+    required this.operatorId,
+    required this.locationId,
+    required this.connectionId,
+  });
+  final String operatorId;
+  final String locationId;
+  final String connectionId;
 }
 
 class _ResolvedCadenceCall {

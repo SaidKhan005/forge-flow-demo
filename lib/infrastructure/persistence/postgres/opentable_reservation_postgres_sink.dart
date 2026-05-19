@@ -67,6 +67,7 @@ import '../../../integrations/reservation/opentable_reservation_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
 import '../../../services/integration/integration_adapter_common.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 import '_postgres_sink_log_helpers.dart';
 import 'operator_scoped_repository.dart';
@@ -98,16 +99,20 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? now,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _now = now ?? DateTime.now,
-        super(tenantWrapper);
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _now = now ?? DateTime.now,
+       super(tenantWrapper);
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): OpenTable no
   // longer reads `locations.business_day_rollover_hour`. The cutoff is
@@ -116,6 +121,7 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
   // also gone — the projector's `'04:00'` fallback applies (positive
   // default, not a sentinel).
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _now;
 
   // ─── OpenTableGateway: connect lifecycle ─────────────────────────────
@@ -206,7 +212,10 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
     required String locationId,
     required OpenTableWatermarkRow row,
   }) async {
-    final tenant = TenantContext(operatorId: operatorId, locationId: locationId);
+    final tenant = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+    );
     return withTenant<void>(tenant, (exec) async {
       final connectionId = await _resolveConnectionIdInTx(
         exec: exec,
@@ -265,12 +274,14 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
   @override
   Future<bool> writeReservationFact(
     OpenTableCanonicalReservationFact fact,
-  ) {
+  ) async {
     final tenant = TenantContext(
       operatorId: fact.operatorId,
       locationId: fact.locationId,
     );
-    return withTenant<bool>(tenant, (exec) async {
+    String? committedConnectionId;
+    String? committedBusinessDate;
+    final inserted = await withTenant<bool>(tenant, (exec) async {
       // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the SELECT
       // returns `timezone` only — no `business_day_rollover_hour`. The
       // cutoff itself comes from the canonical
@@ -298,12 +309,14 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
         restaurantTimezone: restaurantTimezone,
         instantUtc: fact.reservationAt.toUtc(),
       );
+      committedBusinessDate = _formatDate(businessDate);
 
       final connectionId = await _resolveConnectionIdInTx(
         exec: exec,
         operatorId: fact.operatorId,
         locationId: fact.locationId,
       );
+      committedConnectionId = connectionId;
 
       // OpenTable's documented envelope carries one `status` enum but
       // no per-status transition timestamps. The sink writes both
@@ -345,7 +358,7 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
           'vendor_entity_id': fact.vendorEntityId,
           'vendor_modified_at': fact.vendorModifiedAt.toUtc(),
           'reservation_at': fact.reservationAt.toUtc(),
-          'business_date': _formatDate(businessDate),
+          'business_date': committedBusinessDate,
           'party_size': fact.partySize,
           'status': _columnStatusFor(fact.status),
           'raw_payload': json.encode(fact.rawPayload),
@@ -353,6 +366,25 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
       );
       return affected >= 1;
     });
+    if (inserted) {
+      _projectionTap?.recordCommittedReservationFact(
+        operatorId: fact.operatorId,
+        locationId: fact.locationId,
+        canonicalReservation: <String, Object?>{
+          'connection_id': committedConnectionId,
+          'vendor_id': kOpenTableVendorId,
+          'vendor_entity_id': fact.vendorEntityId,
+          'vendor_modified_at': fact.vendorModifiedAt.toUtc(),
+          'reservation_at': fact.reservationAt.toUtc(),
+          'business_date': committedBusinessDate,
+          'party_size': fact.partySize,
+          'status': fact.status,
+          'status_transitions': const <String, DateTime>{},
+          'raw_payload': fact.rawPayload,
+        },
+      );
+    }
+    return inserted;
   }
 
   // ─── OpenTableGateway: credential wipe (no status flip here) ─────────
@@ -550,36 +582,31 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
   /// on every call so the helper is kept for symmetry with the spine
   /// fanout family.
   // ignore: unused_element
-  Future<TenantContext> _resolveTenantForConnection(
-    String connectionId,
-  ) async {
-    return withSystem<TenantContext>(
-      (exec) async {
-        final rows = await exec.query(
-          'select operator_id, location_id from public.connector_connection '
-          'where connection_id = @connection_id::uuid '
-          '  and vendor_id = @vendor_id '
-          'limit 1',
-          parameters: <String, Object?>{
-            'connection_id': connectionId,
-            'vendor_id': kOpenTableVendorId,
-          },
+  Future<TenantContext> _resolveTenantForConnection(String connectionId) async {
+    return withSystem<TenantContext>((exec) async {
+      final rows = await exec.query(
+        'select operator_id, location_id from public.connector_connection '
+        'where connection_id = @connection_id::uuid '
+        '  and vendor_id = @vendor_id '
+        'limit 1',
+        parameters: <String, Object?>{
+          'connection_id': connectionId,
+          'vendor_id': kOpenTableVendorId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError(
+          'OpenTableReservationPostgresSink could not resolve tenant for '
+          'connection_id=$connectionId; the connector_connection row is '
+          'missing or not bound to vendor_id=$kOpenTableVendorId.',
         );
-        if (rows.isEmpty) {
-          throw StateError(
-            'OpenTableReservationPostgresSink could not resolve tenant for '
-            'connection_id=$connectionId; the connector_connection row is '
-            'missing or not bound to vendor_id=$kOpenTableVendorId.',
-          );
-        }
-        final row = rows.single;
-        return TenantContext(
-          operatorId: row['operator_id']! as String,
-          locationId: row['location_id']! as String,
-        );
-      },
-      reason: 'opentable.sink.resolve_tenant_for_connection',
-    );
+      }
+      final row = rows.single;
+      return TenantContext(
+        operatorId: row['operator_id']! as String,
+        locationId: row['location_id']! as String,
+      );
+    }, reason: 'opentable.sink.resolve_tenant_for_connection');
   }
 
   /// Resolve the `connector_connection.connection_id` bound to
@@ -627,7 +654,7 @@ class OpenTableReservationPostgresSink extends OperatorScopedRepository
   /// differ only in the input shape.
   CanonicalSink asCanonicalSink({
     required String Function(String operatorId, String locationId)
-        connectionIdResolver,
+    connectionIdResolver,
   }) {
     return _OpenTableCanonicalSinkView(
       sink: this,
@@ -653,23 +680,21 @@ class _OpenTableCanonicalSinkView implements CanonicalSink {
 
   final OpenTableReservationPostgresSink sink;
   final String Function(String operatorId, String locationId)
-      connectionIdResolver;
+  connectionIdResolver;
 
   @override
   Future<bool> upsertCoverFact({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
-  }) async =>
-      false;
+  }) async => false;
 
   @override
   Future<bool> upsertLaborPunch({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   @override
   Future<bool> upsertReservationFact({
@@ -677,16 +702,15 @@ class _OpenTableCanonicalSinkView implements CanonicalSink {
     required String locationId,
     required Map<String, Object?> canonicalReservation,
   }) {
-    final vendorEntityId =
-        canonicalReservation['vendor_entity_id']! as String;
-    final vendorModifiedAt =
-        _coerceInstant(canonicalReservation['vendor_modified_at'])!;
-    final reservationAt =
-        _coerceInstant(canonicalReservation['reservation_at'])!;
-    final partySize =
-        (canonicalReservation['party_size']! as num).toInt();
-    final status =
-        (canonicalReservation['status'] as String?) ?? '';
+    final vendorEntityId = canonicalReservation['vendor_entity_id']! as String;
+    final vendorModifiedAt = _coerceInstant(
+      canonicalReservation['vendor_modified_at'],
+    )!;
+    final reservationAt = _coerceInstant(
+      canonicalReservation['reservation_at'],
+    )!;
+    final partySize = (canonicalReservation['party_size']! as num).toInt();
+    final status = (canonicalReservation['status'] as String?) ?? '';
     final rawPayloadRaw = canonicalReservation['raw_payload'];
     final rawPayload = rawPayloadRaw is Map
         ? rawPayloadRaw.cast<String, Object?>()

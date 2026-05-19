@@ -19,6 +19,7 @@ import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart
 import 'package:forge_and_flow/services/integration/inbound_webhook_signing_secret_cache.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
+import 'package:forge_and_flow/services/integration/projecting_canonical_sink.dart';
 
 void main() {
   group('InboundWebhookHandler', () {
@@ -69,8 +70,12 @@ void main() {
           'event_id': 'evt-1',
           'business_id': 'lsk-biz-7c2f',
           // Sane timestamps — sanity guard passes.
-          'opened_at': nowFixed.subtract(const Duration(hours: 2)).toIso8601String(),
-          'closed_at': nowFixed.subtract(const Duration(hours: 1)).toIso8601String(),
+          'opened_at': nowFixed
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
+          'closed_at': nowFixed
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
         },
         headers: const <String, String>{},
       );
@@ -81,8 +86,61 @@ void main() {
       expect(adapter.handleCalls, 1);
     });
 
-    test(
-        'fail-closed: missing webhook signing secret rejects 403 + no '
+    test('accepted webhook drains the matching projection tap', () async {
+      final tap = _RecordingProjectionTap();
+      handler = InboundWebhookHandler(
+        gateway: gateway,
+        posAdapterFactories: <String, PosAdapterFactory>{
+          adapter.vendorId:
+              ({required operatorId, required locationId}) async => adapter,
+        },
+        laborAdapterFactories: const <String, LaborAdapterFactory>{},
+        reservationAdapterFactories:
+            const <String, ReservationAdapterFactory>{},
+        signatureVerifiers: <String, VendorWebhookSignatureVerifier>{
+          verifier.vendorId: verifier,
+        },
+        bindingExtractor: WebhookBindingExtractor(),
+        projectionCommitDrainer: CanonicalFactProjectionCommitDrainer(
+          tapsByVendor: <String, CanonicalFactProjectionTap>{
+            'lightspeed_lsk': tap,
+          },
+        ),
+        now: () => nowFixed,
+      );
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-1',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      gateway.signingSecrets['lightspeed_lsk'] = 'secret';
+      verifier.shouldPass = true;
+      adapter.handleResult = const HandleWebhookResult(recordsWritten: 1);
+
+      final result = await handler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: <String, Object?>{
+          'event_id': 'evt-projection-drain',
+          'business_id': 'lsk-biz-7c2f',
+          'opened_at': nowFixed
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
+          'closed_at': nowFixed
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
+        },
+        headers: const <String, String>{},
+      );
+
+      expect(result.outcome, WebhookOutcome.accepted);
+      expect(tap.drains, hasLength(1));
+      expect(tap.drains.single.connectionId, 'conn-1');
+    });
+
+    test('fail-closed: missing webhook signing secret rejects 403 + no '
         'adapter dispatch (CODE_OPS_DEBT G#2)', () async {
       // Critical posture: when `vendor_credentials.webhook_signing_secret_ciphertext`
       // has not yet been provisioned for the (operator, location, vendor)
@@ -113,13 +171,20 @@ void main() {
 
       expect(result.outcome, WebhookOutcome.signatureInvalid);
       expect(result.statusCode, 403);
-      expect(result.message, contains('no signing secret on file'),
-          reason: 'message must reference the unprovisioned-secret cause '
-              'so triage knows to run the runbook flow');
-      expect(adapter.handleCalls, 0,
-          reason:
-              'fail-closed: adapter MUST NOT see the payload when the '
-              'webhook signing secret has not been provisioned');
+      expect(
+        result.message,
+        contains('no signing secret on file'),
+        reason:
+            'message must reference the unprovisioned-secret cause '
+            'so triage knows to run the runbook flow',
+      );
+      expect(
+        adapter.handleCalls,
+        0,
+        reason:
+            'fail-closed: adapter MUST NOT see the payload when the '
+            'webhook signing secret has not been provisioned',
+      );
     });
 
     test('rejected: signature invalid', () async {
@@ -147,8 +212,7 @@ void main() {
       expect(gateway.failedAttempts['evt-2'], 1);
     });
 
-    test(
-        'replay defense: rejects signature timestamp older than 24h '
+    test('replay defense: rejects signature timestamp older than 24h '
         '(V1 lean cut 2 — strict 5-min window deleted)', () async {
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
         connectionId: 'conn-1',
@@ -157,9 +221,7 @@ void main() {
       );
       gateway.signingSecrets['lightspeed_lsk'] = 'secret';
       verifier.shouldPass = true;
-      verifier.timestampOverride = nowFixed.subtract(
-        const Duration(hours: 25),
-      );
+      verifier.timestampOverride = nowFixed.subtract(const Duration(hours: 25));
 
       final result = await handler.dispatch(
         operatorId: _opId,
@@ -174,8 +236,7 @@ void main() {
       expect(result.statusCode, 403);
     });
 
-    test(
-        'replay defense: accepts signature timestamp within 24h tolerance '
+    test('replay defense: accepts signature timestamp within 24h tolerance '
         '(legitimate vendor retry)', () async {
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
         connectionId: 'conn-1',
@@ -244,10 +305,12 @@ void main() {
       final payload = <String, Object?>{
         'event_id': 'evt-5',
         'business_id': 'lsk-biz-7c2f',
-        'opened_at':
-            nowFixed.subtract(const Duration(hours: 2)).toIso8601String(),
-        'closed_at':
-            nowFixed.subtract(const Duration(hours: 1)).toIso8601String(),
+        'opened_at': nowFixed
+            .subtract(const Duration(hours: 2))
+            .toIso8601String(),
+        'closed_at': nowFixed
+            .subtract(const Duration(hours: 1))
+            .toIso8601String(),
       };
       final first = await handler.dispatch(
         operatorId: _opId,
@@ -291,15 +354,17 @@ void main() {
           'event_id': 'evt-future',
           'business_id': 'lsk-biz-7c2f',
           // Future-dated by 5 days — sanity guard rule 2 fires.
-          'opened_at':
-              nowFixed.add(const Duration(days: 5)).toIso8601String(),
+          'opened_at': nowFixed.add(const Duration(days: 5)).toIso8601String(),
         },
         headers: const <String, String>{},
       );
 
       expect(result.outcome, WebhookOutcome.sanityDropped);
-      expect(adapter.handleCalls, 0,
-          reason: 'sanity drop must run BEFORE adapter dispatch');
+      expect(
+        adapter.handleCalls,
+        0,
+        reason: 'sanity drop must run BEFORE adapter dispatch',
+      );
       expect(gateway.sanityDrops.length, 1);
       expect(gateway.sanityDrops.single['rule'], 'opened_in_future');
     });
@@ -321,10 +386,12 @@ void main() {
         payload: <String, Object?>{
           'event_id': 'evt-out-of-order',
           'business_id': 'lsk-biz-7c2f',
-          'opened_at':
-              nowFixed.subtract(const Duration(hours: 1)).toIso8601String(),
-          'closed_at':
-              nowFixed.subtract(const Duration(hours: 2)).toIso8601String(),
+          'opened_at': nowFixed
+              .subtract(const Duration(hours: 1))
+              .toIso8601String(),
+          'closed_at': nowFixed
+              .subtract(const Duration(hours: 2))
+              .toIso8601String(),
         },
         headers: const <String, String>{},
       );
@@ -334,8 +401,7 @@ void main() {
       expect(gateway.sanityDrops.single['rule'], 'closed_before_opened');
     });
 
-    test(
-        'per-tenant routing: same vendor, different (operator, location) '
+    test('per-tenant routing: same vendor, different (operator, location) '
         'tuples → factory called per delivery with the right tuple', () async {
       // Two tenants share the same vendor. The factory is invoked
       // per webhook delivery; each call must hand back the
@@ -346,8 +412,7 @@ void main() {
       final perTenantHandler = InboundWebhookHandler(
         gateway: gateway,
         posAdapterFactories: <String, PosAdapterFactory>{
-          'lightspeed_lsk':
-              ({required operatorId, required locationId}) async {
+          'lightspeed_lsk': ({required operatorId, required locationId}) async {
             factoryCalls.add(<String, String>{
               'operator_id': operatorId,
               'location_id': locationId,
@@ -385,13 +450,15 @@ void main() {
       const tenantBLocation = '00000000-0000-4000-8000-0000000000b1';
 
       Map<String, Object?> payloadFor(String eventId) => <String, Object?>{
-            'event_id': eventId,
-            'business_id': 'lsk-biz-7c2f',
-            'opened_at':
-                nowFixed.subtract(const Duration(hours: 2)).toIso8601String(),
-            'closed_at':
-                nowFixed.subtract(const Duration(hours: 1)).toIso8601String(),
-          };
+        'event_id': eventId,
+        'business_id': 'lsk-biz-7c2f',
+        'opened_at': nowFixed
+            .subtract(const Duration(hours: 2))
+            .toIso8601String(),
+        'closed_at': nowFixed
+            .subtract(const Duration(hours: 1))
+            .toIso8601String(),
+      };
 
       final resultA = await perTenantHandler.dispatch(
         operatorId: tenantAOperator,
@@ -444,8 +511,7 @@ void main() {
     //   (c) gateway exception still surfaces as `signatureInvalid`
     //       outcome without leaking the underlying message.
 
-    test('signing-secret cache: hit short-circuits the gateway call',
-        () async {
+    test('signing-secret cache: hit short-circuits the gateway call', () async {
       final cachedHandler = InboundWebhookHandler(
         gateway: gateway,
         posAdapterFactories: <String, PosAdapterFactory>{
@@ -460,9 +526,7 @@ void main() {
         },
         bindingExtractor: WebhookBindingExtractor(),
         now: () => nowFixed,
-        signingSecretCache: InMemorySigningSecretCache(
-          clock: () => nowFixed,
-        ),
+        signingSecretCache: InMemorySigningSecretCache(clock: () => nowFixed),
       );
 
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
@@ -475,15 +539,15 @@ void main() {
       adapter.handleResult = const HandleWebhookResult(recordsWritten: 1);
 
       Map<String, Object?> payloadFor(String eventId) => <String, Object?>{
-            'event_id': eventId,
-            'business_id': 'lsk-biz-7c2f',
-            'opened_at': nowFixed
-                .subtract(const Duration(hours: 2))
-                .toIso8601String(),
-            'closed_at': nowFixed
-                .subtract(const Duration(hours: 1))
-                .toIso8601String(),
-          };
+        'event_id': eventId,
+        'business_id': 'lsk-biz-7c2f',
+        'opened_at': nowFixed
+            .subtract(const Duration(hours: 2))
+            .toIso8601String(),
+        'closed_at': nowFixed
+            .subtract(const Duration(hours: 1))
+            .toIso8601String(),
+      };
 
       final first = await cachedHandler.dispatch(
         operatorId: _opId,
@@ -504,14 +568,16 @@ void main() {
 
       expect(first.outcome, WebhookOutcome.accepted);
       expect(second.outcome, WebhookOutcome.accepted);
-      expect(gateway.lookupSigningSecretCalls, 1,
-          reason:
-              'second dispatch must hit the cache; the gateway lookup '
-              'must NOT be invoked twice');
+      expect(
+        gateway.lookupSigningSecretCalls,
+        1,
+        reason:
+            'second dispatch must hit the cache; the gateway lookup '
+            'must NOT be invoked twice',
+      );
     });
 
-    test(
-        'signing-secret cache: miss falls through to gateway and '
+    test('signing-secret cache: miss falls through to gateway and '
         'populates', () async {
       final cache = InMemorySigningSecretCache(clock: () => nowFixed);
       final cachedHandler = InboundWebhookHandler(
@@ -562,14 +628,16 @@ void main() {
 
       expect(result.outcome, WebhookOutcome.accepted);
       expect(gateway.lookupSigningSecretCalls, 1);
-      expect(cache.debugSizeForOperator(_opId), 1,
-          reason:
-              'successful gateway lookup must populate the cache for '
-              'subsequent deliveries');
+      expect(
+        cache.debugSizeForOperator(_opId),
+        1,
+        reason:
+            'successful gateway lookup must populate the cache for '
+            'subsequent deliveries',
+      );
     });
 
-    test(
-        'signing-secret cache: gateway exception surfaces as 403 '
+    test('signing-secret cache: gateway exception surfaces as 403 '
         'without leaking underlying message', () async {
       final cachedHandler = InboundWebhookHandler(
         gateway: gateway,
@@ -585,9 +653,7 @@ void main() {
         },
         bindingExtractor: WebhookBindingExtractor(),
         now: () => nowFixed,
-        signingSecretCache: InMemorySigningSecretCache(
-          clock: () => nowFixed,
-        ),
+        signingSecretCache: InMemorySigningSecretCache(clock: () => nowFixed),
       );
 
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
@@ -644,8 +710,11 @@ void main() {
         },
         headers: const <String, String>{},
       );
-      expect(retry.outcome, WebhookOutcome.accepted,
-          reason: 'cache must not have been poisoned by the throw');
+      expect(
+        retry.outcome,
+        WebhookOutcome.accepted,
+        reason: 'cache must not have been poisoned by the throw',
+      );
     });
 
     test('dead-letter on 3rd consecutive failure', () async {
@@ -679,22 +748,13 @@ void main() {
 
   group('constantTimeBytesEquals', () {
     test('returns true for equal byte sequences', () {
-      expect(
-        constantTimeBytesEquals(<int>[1, 2, 3], <int>[1, 2, 3]),
-        true,
-      );
+      expect(constantTimeBytesEquals(<int>[1, 2, 3], <int>[1, 2, 3]), true);
     });
     test('returns false for differing-length sequences', () {
-      expect(
-        constantTimeBytesEquals(<int>[1, 2, 3], <int>[1, 2, 3, 4]),
-        false,
-      );
+      expect(constantTimeBytesEquals(<int>[1, 2, 3], <int>[1, 2, 3, 4]), false);
     });
     test('returns false for differing content', () {
-      expect(
-        constantTimeBytesEquals(<int>[1, 2, 3], <int>[1, 2, 4]),
-        false,
-      );
+      expect(constantTimeBytesEquals(<int>[1, 2, 3], <int>[1, 2, 4]), false);
     });
   });
 }
@@ -702,14 +762,64 @@ void main() {
 const String _opId = '00000000-0000-4000-8000-000000000001';
 const String _locId = '00000000-0000-4000-8000-0000000000a1';
 
+class _RecordingProjectionTap implements CanonicalFactProjectionTap {
+  final List<_ProjectionDrain> drains = <_ProjectionDrain>[];
+
+  @override
+  void recordCommittedCoverFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalFact,
+  }) {}
+
+  @override
+  void recordCommittedLaborPunch({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalPunch,
+  }) {}
+
+  @override
+  void recordCommittedReservationFact({
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> canonicalReservation,
+  }) {}
+
+  @override
+  Future<void> drainCommittedFacts({
+    required String operatorId,
+    required String locationId,
+    required String connectionId,
+  }) async {
+    drains.add(
+      _ProjectionDrain(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+      ),
+    );
+  }
+}
+
+class _ProjectionDrain {
+  const _ProjectionDrain({
+    required this.operatorId,
+    required this.locationId,
+    required this.connectionId,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String connectionId;
+}
+
 class _FakeWebhookGateway implements InboundWebhookGateway {
   final Map<String, ConnectionBinding> bindings = <String, ConnectionBinding>{};
   final Map<String, String> signingSecrets = <String, String>{};
   final Map<String, int> failedAttempts = <String, int>{};
-  final List<Map<String, Object?>> deadLetterCalls =
-      <Map<String, Object?>>[];
-  final List<Map<String, Object?>> processedWith =
-      <Map<String, Object?>>[];
+  final List<Map<String, Object?>> deadLetterCalls = <Map<String, Object?>>[];
+  final List<Map<String, Object?>> processedWith = <Map<String, Object?>>[];
   final List<Map<String, Object?>> sanityDrops = <Map<String, Object?>>[];
   final Set<String> seenIdempotencyKeys = <String>{};
   bool duplicateOnSecondCall = false;
@@ -775,9 +885,7 @@ class _FakeWebhookGateway implements InboundWebhookGateway {
     required String vendorEventId,
     required DateTime receivedAt,
   }) async {
-    processedWith.add(<String, Object?>{
-      'vendor_event_id': vendorEventId,
-    });
+    processedWith.add(<String, Object?>{'vendor_event_id': vendorEventId});
   }
 
   @override
@@ -879,15 +987,15 @@ class _StubPosAdapter implements PosAdapter {
 
   @override
   VendorCapabilityProfile get capabilityProfile => VendorCapabilityProfile(
-        vendorId: vendorId,
-        displayName: 'Stub POS',
-        category: IntegrationCategory.pos,
-        authMode: VendorAuthMode.oauth,
-        grantScope: VendorGrantScope.perLocation,
-        webhookSupport: VendorWebhookSupport.autoRegister,
-        coversFieldExposed: true,
-        lifecycle: VendorLifecycle.documented,
-      );
+    vendorId: vendorId,
+    displayName: 'Stub POS',
+    category: IntegrationCategory.pos,
+    authMode: VendorAuthMode.oauth,
+    grantScope: VendorGrantScope.perLocation,
+    webhookSupport: VendorWebhookSupport.autoRegister,
+    coversFieldExposed: true,
+    lifecycle: VendorLifecycle.documented,
+  );
 
   HandleWebhookResult handleResult = const HandleWebhookResult(
     recordsWritten: 0,
@@ -895,7 +1003,9 @@ class _StubPosAdapter implements PosAdapter {
   int handleCalls = 0;
 
   @override
-  Future<HandleWebhookResult> handleWebhook(HandleWebhookCommand command) async {
+  Future<HandleWebhookResult> handleWebhook(
+    HandleWebhookCommand command,
+  ) async {
     handleCalls++;
     return handleResult;
   }
@@ -911,8 +1021,8 @@ class _StubPosAdapter implements PosAdapter {
       throw UnimplementedError();
   @override
   Future<PollIncrementalResult> pollIncremental(
-          PollIncrementalCommand command) =>
-      throw UnimplementedError();
+    PollIncrementalCommand command,
+  ) => throw UnimplementedError();
   @override
   Future<DisconnectResult> disconnect(DisconnectCommand command) =>
       throw UnimplementedError();

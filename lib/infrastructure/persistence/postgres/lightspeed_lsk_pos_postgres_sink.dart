@@ -83,6 +83,7 @@ import 'dart:convert';
 import '../../../integrations/pos/lightspeed_lsk_pos_adapter.dart';
 import '../../../services/integration/canonical_sink.dart';
 import '../../../services/integration/iana_timezone_converter.dart';
+import '../../../services/integration/projecting_canonical_sink.dart';
 import '../../../services/integration/sink_business_date_projector.dart';
 
 import '../../../services/integration/integration_adapter_common.dart';
@@ -114,21 +115,26 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     IanaTimezoneConverter? timezoneConverter,
     SinkBusinessDateProjector? businessDateProjector,
     BusinessTimingProfilesRepository? profilesRepository,
+    CanonicalFactProjectionTap? projectionTap,
     DateTime Function()? clock,
-  })  : _businessDateProjector = businessDateProjector ??
-            SinkBusinessDateProjector(
-              profilesRepository: profilesRepository ??
-                  BusinessTimingProfilesRepository(tenantWrapper),
-              timezoneConverter:
-                  timezoneConverter ?? IanaTimezoneConverter.shared,
-            ),
-        _clock = clock ?? DateTime.now;
+  }) : _businessDateProjector =
+           businessDateProjector ??
+           SinkBusinessDateProjector(
+             profilesRepository:
+                 profilesRepository ??
+                 BusinessTimingProfilesRepository(tenantWrapper),
+             timezoneConverter:
+                 timezoneConverter ?? IanaTimezoneConverter.shared,
+           ),
+       _projectionTap = projectionTap,
+       _clock = clock ?? DateTime.now;
 
   // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): Lightspeed K-Series
   // no longer reads `locations.business_day_rollover_hour`. The cutoff
   // is resolved through the canonical `BusinessTimingProfilesRepository`
   // chain inside the projector.
   final SinkBusinessDateProjector _businessDateProjector;
+  final CanonicalFactProjectionTap? _projectionTap;
   final DateTime Function() _clock;
 
   // ─── LightspeedLskGateway: binding lookup ────────────────────────
@@ -138,10 +144,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<LightspeedLskConnectionBinding?>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id, '
@@ -174,10 +177,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     return withTenant<LightspeedLskDisconnectBinding?>(ctx, (exec) async {
       final rows = await exec.query(
         'select connection_id::text as connection_id, '
@@ -225,6 +225,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     return _upsertCoverFactInternal(
       operatorId: tenant.operatorId,
       locationId: tenant.locationId,
+      connectionId: connectionId,
       vendorEntityId: vendorEntityId,
       openedAt: openedAtUtc.toUtc(),
       closedAt: closedAtUtc.toUtc(),
@@ -253,11 +254,10 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     final covers = coversRaw is int
         ? coversRaw
         : coversRaw is num
-            ? coversRaw.round()
-            : 0;
+        ? coversRaw.round()
+        : 0;
     final actualSalesRaw = canonicalFact['actual_sales'];
-    final actualSales =
-        actualSalesRaw is num ? actualSalesRaw.toDouble() : 0.0;
+    final actualSales = actualSalesRaw is num ? actualSalesRaw.toDouble() : 0.0;
     final coversSource =
         (canonicalFact['covers_source'] as String?) ?? 'direct';
     final rawPayload = canonicalFact['raw_payload'] is Map<String, Object?>
@@ -266,6 +266,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     return _upsertCoverFactInternal(
       operatorId: operatorId,
       locationId: locationId,
+      connectionId: canonicalFact['connection_id']?.toString(),
       vendorEntityId: (canonicalFact['vendor_entity_id'] ?? '').toString(),
       openedAt: openedAt,
       closedAt: closedAt,
@@ -286,8 +287,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalPunch,
-  }) async =>
-      false;
+  }) async => false;
 
   /// POS sink — reservations are the LB lane's job. See the
   /// [upsertLaborPunch] note.
@@ -296,12 +296,12 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalReservation,
-  }) async =>
-      false;
+  }) async => false;
 
   Future<bool> _upsertCoverFactInternal({
     required String operatorId,
     required String locationId,
+    String? connectionId,
     required String vendorEntityId,
     required DateTime openedAt,
     required DateTime closedAt,
@@ -311,10 +311,8 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     required String coversSource,
     required Map<String, Object?> rawPayload,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
+    String? committedBusinessDate;
     final inserted = await withTenant<bool>(ctx, (exec) async {
       // Per-Daypart V1 / Slice 7b option (b) (2026-05-15): the SELECT
       // returns `timezone` only — no `business_day_rollover_hour`.
@@ -346,6 +344,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
           instantUtc: closedAt,
         ),
       );
+      committedBusinessDate = businessDate;
 
       final rows = await exec.query(
         'insert into public.cover_facts ('
@@ -415,6 +414,25 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
       return rows.isNotEmpty;
     });
 
+    if (inserted) {
+      _projectionTap?.recordCommittedCoverFact(
+        operatorId: operatorId,
+        locationId: locationId,
+        canonicalFact: <String, Object?>{
+          'connection_id': connectionId,
+          'vendor_id': kLightspeedLskVendorId,
+          'vendor_entity_id': vendorEntityId,
+          'vendor_modified_at': vendorModifiedAt,
+          'covers': covers,
+          'covers_source': coversSource,
+          'opened_at': openedAt,
+          'closed_at': closedAt,
+          'business_date': committedBusinessDate,
+          'actual_sales': actualSales,
+          'raw_payload': rawPayload,
+        },
+      );
+    }
     return inserted;
   }
 
@@ -460,10 +478,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     required String cursorToken,
     required DateTime lastModifiedSeen,
   }) async {
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       await exec.execute(
         'insert into public.connector_sync_watermark ('
@@ -512,8 +527,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
       );
       if (dmsRows.isNotEmpty) {
         final dmsRow = dmsRows.single;
-        final pendingCount =
-            (dmsRow['pending_inserts_count'] as int? ?? 0);
+        final pendingCount = (dmsRow['pending_inserts_count'] as int? ?? 0);
         final isDemo = dmsRow['is_demo'] as bool? ?? true;
         if (pendingCount >= 1 && isDemo) {
           await exec.execute(
@@ -600,10 +614,7 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
     if (!firstBackfillCommitted) return;
     if (backfillRecordsWritten < 1) return;
 
-    final ctx = TenantContext(
-      operatorId: operatorId,
-      locationId: locationId,
-    );
+    final ctx = TenantContext(operatorId: operatorId, locationId: locationId);
     await withTenant<void>(ctx, (exec) async {
       // Read-or-create the row with default `is_demo = true`. The
       // INSERT ... ON CONFLICT DO NOTHING is idempotent: if the row
@@ -753,35 +764,31 @@ class LightspeedLskPosPostgresSink extends OperatorScopedRepository
   /// with RLS; reading without tenant context requires the system
   /// path. Every system read is audited via the
   /// `app.bypass_rls_audit = 'system:...'` marker the wrapper sets.
-  Future<({String operatorId, String locationId})>
-      _resolveTenantFromConnection(String connectionId) {
-    return withSystem<({String operatorId, String locationId})>(
-      (exec) async {
-        final rows = await exec.query(
-          'select operator_id::text as operator_id, '
-          'location_id::text as location_id '
-          'from public.connector_connection '
-          'where connection_id = @connection_id::uuid '
-          'limit 1',
-          parameters: <String, Object?>{
-            'connection_id': connectionId,
-          },
+  Future<({String operatorId, String locationId})> _resolveTenantFromConnection(
+    String connectionId,
+  ) {
+    return withSystem<({String operatorId, String locationId})>((exec) async {
+      final rows = await exec.query(
+        'select operator_id::text as operator_id, '
+        'location_id::text as location_id '
+        'from public.connector_connection '
+        'where connection_id = @connection_id::uuid '
+        'limit 1',
+        parameters: <String, Object?>{'connection_id': connectionId},
+      );
+      if (rows.isEmpty) {
+        throw StateError(
+          'connector_connection row not found for '
+          'connection_id=$connectionId — bespoke gateway call '
+          'arrived before connect, or the connection was deleted',
         );
-        if (rows.isEmpty) {
-          throw StateError(
-            'connector_connection row not found for '
-            'connection_id=$connectionId — bespoke gateway call '
-            'arrived before connect, or the connection was deleted',
-          );
-        }
-        final row = rows.single;
-        return (
-          operatorId: row['operator_id'] as String,
-          locationId: row['location_id'] as String,
-        );
-      },
-      reason: 'lightspeed_lsk_postgres_sink._resolveTenantFromConnection',
-    );
+      }
+      final row = rows.single;
+      return (
+        operatorId: row['operator_id'] as String,
+        locationId: row['location_id'] as String,
+      );
+    }, reason: 'lightspeed_lsk_postgres_sink._resolveTenantFromConnection');
   }
 
   static DateTime? _coerceUtc(Object? raw) {
