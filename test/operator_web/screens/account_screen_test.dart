@@ -233,6 +233,18 @@ void main() {
       find.byKey(const Key('operator_web_account_section_business_day')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('operator_web_account_rollover_hour')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('operator_web_account_legacy_rollover_readonly')),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('Edit business-day start in Business Timing'),
+      findsOneWidget,
+    );
     expect(find.byKey(const Key('operator_web_account_save')), findsOneWidget);
   });
 
@@ -292,6 +304,7 @@ void main() {
 
     expect(gateway.calls, hasLength(1));
     expect(gateway.calls.single.businessName, 'Brio Restaurants');
+    expect(gateway.calls.single.rolloverHour, isNull);
     expect(
       find.byKey(const Key('operator_web_account_success')),
       findsOneWidget,
@@ -627,6 +640,7 @@ void main() {
       final call = gateway.overridesPatchCalls.single;
       expect(call.locationId, equals('loc-1'));
       expect(call.patch.contactEmail, equals('ops@brio-main.com'));
+      expect(call.patch.businessDayRolloverHour, isNull);
       expect(gateway.calls, isEmpty);
       // Success banner renders.
       expect(
@@ -721,7 +735,12 @@ void main() {
         ),
       );
       expect(find.textContaining('Week starts Monday'), findsWidgets);
+      expect(find.textContaining('Legacy rollover is'), findsWidgets);
       expect(find.textContaining('04:00 local'), findsWidgets);
+      expect(
+        find.textContaining('Edit business-day start in Business Timing'),
+        findsOneWidget,
+      );
     });
   });
 }

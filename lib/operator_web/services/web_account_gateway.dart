@@ -3,7 +3,8 @@
 // Thin HTTP client over the operator-scoped account write route. The
 // AccountScreen (business-identity editor) calls this gateway to
 // PATCH the operator's business name, logo URL, currency, locale,
-// week-start day, and rollover hour.
+// and week-start day. Legacy rollover values remain readable for
+// compatibility, but Business Timing owns business-day start edits.
 //
 // Route contract (operator-scoped, NOT /v1/admin/*):
 //   PATCH /v1/operator/account
@@ -65,7 +66,9 @@ abstract class WebAccountGateway {
   /// The proxy route `/v1/auth/self/profile` resolves the target user
   /// from the verified bearer token; a client never supplies a target
   /// user id.
-  Future<SelfProfilePatchResult> patchSelfProfile(SelfProfilePatchPayload patch);
+  Future<SelfProfilePatchResult> patchSelfProfile(
+    SelfProfilePatchPayload patch,
+  );
 
   /// Wave 2 U-FU-hp11-account — load the resolved effective / override
   /// / businessDefault triple for [locationId]. The AccountScreen
@@ -231,10 +234,9 @@ class HttpWebAccountGateway
       idToken: token,
       body: body,
       // G60 — caller-stable key per logical timezone write.
-      extraHeaders: _stableKeyHeader(
-        'location-timezone-patch',
-        <Object?>[body],
-      ),
+      extraHeaders: _stableKeyHeader('location-timezone-patch', <Object?>[
+        body,
+      ]),
     );
     return AccountLocationTimezone.fromJson(response.body);
   }
@@ -246,9 +248,7 @@ class HttpWebAccountGateway
     if (selfProfilePath.contains('/admin/')) {
       throw const _AdminRouteForbidden();
     }
-    final token = await _requireToken(
-      'Sign in again to update your profile.',
-    );
+    final token = await _requireToken('Sign in again to update your profile.');
     // Mirror the freshness gate the security section already uses for
     // sensitive writes. The operator's last sign-in must be inside the
     // `_freshMfaWindow` before we'll let them change email.
@@ -539,6 +539,10 @@ class AccountIdentityPatch {
   final String? currencyCode;
   final String? localeTag;
   final String? weekStartDay;
+
+  /// Legacy compatibility field. Kept so older call sites can still
+  /// construct patches safely, but [toJson] deliberately omits it
+  /// because Business Timing now owns business-day start writes.
   final int? rolloverHour;
 
   Map<String, Object?> toJson() {
@@ -552,7 +556,6 @@ class AccountIdentityPatch {
     if (currencyCode != null) json['currencyCode'] = currencyCode;
     if (localeTag != null) json['localeTag'] = localeTag;
     if (weekStartDay != null) json['weekStartDay'] = weekStartDay;
-    if (rolloverHour != null) json['rolloverHour'] = rolloverHour;
     return json;
   }
 }
@@ -572,8 +575,8 @@ class AccountLocationTimezonePatch {
   final String ianaTimezone;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'ianaTimezone': ianaTimezone,
-      };
+    'ianaTimezone': ianaTimezone,
+  };
 }
 
 /// Wave 2 W-6 - resolved location timezone returned by the proxy
@@ -605,8 +608,7 @@ class AccountLocationTimezone {
         updatedAtRaw == null) {
       throw const OperatorWebProxyException(
         code: 'malformed_location_timezone',
-        message:
-            'The proxy returned an incomplete location timezone record.',
+        message: 'The proxy returned an incomplete location timezone record.',
       );
     }
     return AccountLocationTimezone(
@@ -835,7 +837,8 @@ class _AdminRouteForbidden implements Exception {
 /// [WebAccountGateway.patchLocationAccountOverrides]. Every field is
 /// optional. Use the matching `clear*` flag to send `"<field>": null`
 /// (which the backend treats as "reset the override, inherit the
-/// business default").
+/// business default"). Legacy business-day rollover fields are kept
+/// readable but are no longer serialized by this payload.
 @immutable
 class LocationAccountOverridesPatchPayload {
   const LocationAccountOverridesPatchPayload({
@@ -856,6 +859,10 @@ class LocationAccountOverridesPatchPayload {
   final String? ianaTimezone;
   final String? localeCode;
   final String? currencyCode;
+
+  /// Legacy compatibility field. Kept readable on response field sets,
+  /// but [toJson] deliberately omits it because Business Timing now
+  /// owns business-day start writes.
   final int? businessDayRolloverHour;
   final String? contactEmail;
   final String? contactPhone;
@@ -863,6 +870,8 @@ class LocationAccountOverridesPatchPayload {
   final bool clearIanaTimezone;
   final bool clearLocaleCode;
   final bool clearCurrencyCode;
+
+  /// Legacy compatibility flag. No longer serialized.
   final bool clearBusinessDayRolloverHour;
   final bool clearContactEmail;
   final bool clearContactPhone;
@@ -883,11 +892,6 @@ class LocationAccountOverridesPatchPayload {
       json['currencyCode'] = currencyCode;
     } else if (clearCurrencyCode) {
       json['currencyCode'] = null;
-    }
-    if (businessDayRolloverHour != null) {
-      json['businessDayRolloverHour'] = businessDayRolloverHour;
-    } else if (clearBusinessDayRolloverHour) {
-      json['businessDayRolloverHour'] = null;
     }
     if (contactEmail != null) {
       json['contactEmail'] = contactEmail;
@@ -924,9 +928,7 @@ class LocationAccountOverridesEnvelope {
   final LocationAccountOverridesFieldSet businessDefault;
   final DateTime updatedAt;
 
-  static LocationAccountOverridesEnvelope fromJson(
-    Map<String, Object?> json,
-  ) {
+  static LocationAccountOverridesEnvelope fromJson(Map<String, Object?> json) {
     final operatorId = AccountIdentity._readString(json['operatorId']);
     final locationId = AccountIdentity._readString(json['locationId']);
     final updatedAtRaw = AccountIdentity._readString(json['updatedAt']);
@@ -984,9 +986,7 @@ class LocationAccountOverridesFieldSet {
   final String? contactEmail;
   final String? contactPhone;
 
-  static LocationAccountOverridesFieldSet _fromJson(
-    Map<String, Object?> json,
-  ) {
+  static LocationAccountOverridesFieldSet _fromJson(Map<String, Object?> json) {
     final raw = json['businessDayRolloverHour'];
     final int? rollover;
     if (raw == null) {
