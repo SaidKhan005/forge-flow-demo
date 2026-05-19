@@ -14,7 +14,14 @@ import 'settings_shared_widgets.dart';
 
 class TimingAuthoritySection extends StatelessWidget {
   final String restaurantId;
-  const TimingAuthoritySection({super.key, required this.restaurantId});
+  final String? scopeLabel;
+  final RestaurantTimingConfig? initialConfigForTest;
+  const TimingAuthoritySection({
+    super.key,
+    required this.restaurantId,
+    this.scopeLabel,
+    this.initialConfigForTest,
+  });
 
   static String _formatTime(String hhmm) {
     final parts = hhmm.split(':');
@@ -67,9 +74,11 @@ class TimingAuthoritySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<RestaurantTimingConfig?>(
-      future: RestaurantTimingConfigReadService.instance.getTimingConfig(
-        restaurantId,
-      ),
+      future: initialConfigForTest == null
+          ? RestaurantTimingConfigReadService.instance.getTimingConfig(
+              restaurantId,
+            )
+          : Future<RestaurantTimingConfig?>.value(initialConfigForTest),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return SettingsCard(
@@ -123,6 +132,10 @@ class TimingAuthoritySection extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (_hasScopeLabel) ...[
+                    _TimingScopeLabel(scopeLabel: scopeLabel!.trim()),
+                    const SizedBox(height: 8),
+                  ],
                   _TimingValueRow(
                     label: 'Timezone',
                     value: config.businessTimezone,
@@ -161,6 +174,24 @@ class TimingAuthoritySection extends StatelessWidget {
       },
     );
   }
+
+  bool get _hasScopeLabel =>
+      scopeLabel != null && scopeLabel!.trim().isNotEmpty;
+}
+
+class _TimingScopeLabel extends StatelessWidget {
+  const _TimingScopeLabel({required this.scopeLabel});
+
+  final String scopeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'Applies to: $scopeLabel',
+      key: const Key('settings_timing_authority_scope_label'),
+      style: AppTextStyles.body12(color: AppColors.textMuted),
+    );
+  }
 }
 
 class _TimingValueRow extends StatelessWidget {
@@ -194,4 +225,3 @@ class _TimingValueRow extends StatelessWidget {
     );
   }
 }
-

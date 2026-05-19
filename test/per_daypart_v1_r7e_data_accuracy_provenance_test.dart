@@ -58,26 +58,42 @@ void main() {
       );
     });
 
-    test('keeps existing value precedence expressions', () {
+    test('keyed service-period rows win over scoped fallback maps', () {
       final sql = _readMigration().toLowerCase();
+      final valueOrder = _extractMergeOrder(
+        sql,
+        startNeedle: ') as setting_id,',
+        endNeedle: ') as covers_source_per_service_period,',
+      );
+      final sourceOrder = _extractMergeOrder(
+        sql,
+        startNeedle: ') as updated_by,',
+        endNeedle: ') as covers_source_per_service_period_source,',
+      );
 
       expect(
-        sql,
-        contains(
-          "|| coalesce(business_scope.covers_source_per_service_period, '{}'::jsonb)",
-        ),
+        _mergeCoversSources(valueOrder),
+        containsPair('lunch', 'keyed_vendor'),
       );
       expect(
-        sql,
-        contains(
-          "|| coalesce(org_scope.covers_source_per_service_period, '{}'::jsonb)",
-        ),
+        _mergeCoversSources(valueOrder),
+        containsPair('breakfast', 'keyed_forecast'),
       );
       expect(
-        sql,
-        contains(
-          "|| coalesce(location_scope.covers_source_per_service_period, '{}'::jsonb)",
-        ),
+        _mergeCoversSources(valueOrder),
+        containsPair('dinner', 'location_manual'),
+      );
+      expect(
+        _mergeProvenanceSources(sourceOrder),
+        containsPair('lunch', 'keyed_service_period_setting'),
+      );
+      expect(
+        _mergeProvenanceSources(sourceOrder),
+        containsPair('breakfast', 'keyed_service_period_setting'),
+      );
+      expect(
+        _mergeProvenanceSources(sourceOrder),
+        containsPair('dinner', 'location_scoped_override'),
       );
       expect(sql, contains('coalesce(\n    location_scope.wage_source,'));
       expect(
@@ -145,4 +161,93 @@ void main() {
       expect(settings.walkInHandlingModeSource, isNull);
     });
   });
+}
+
+enum _MergeSource { business, orgUnit, location, keyed }
+
+List<_MergeSource> _extractMergeOrder(
+  String sql, {
+  required String startNeedle,
+  required String endNeedle,
+}) {
+  final start = sql.indexOf(startNeedle);
+  expect(start, isNonNegative, reason: 'start marker missing');
+  final end = sql.indexOf(endNeedle, start);
+  expect(end, isNonNegative, reason: 'end marker missing');
+  final block = sql.substring(start, end);
+  final tokens = <({int index, _MergeSource source})>[];
+  void add(String pattern, _MergeSource source) {
+    final index = block.indexOf(pattern);
+    expect(index, isNonNegative, reason: 'merge source $source missing');
+    tokens.add((index: index, source: source));
+  }
+
+  add('business_scope.covers_source_per_service_period', _MergeSource.business);
+  add('org_scope.covers_source_per_service_period', _MergeSource.orgUnit);
+  add('location_scope.covers_source_per_service_period', _MergeSource.location);
+  add(
+    'from public.data_accuracy_service_period_settings sp',
+    _MergeSource.keyed,
+  );
+  tokens.sort((a, b) => a.index.compareTo(b.index));
+  return tokens.map((token) => token.source).toList(growable: false);
+}
+
+Map<String, String> _mergeCoversSources(List<_MergeSource> order) {
+  return _mergeByExtractedSqlOrder(
+    order,
+    const <_MergeSource, Map<String, String>>{
+      _MergeSource.business: <String, String>{
+        'breakfast': 'business_manual',
+        'lunch': 'business_forecast',
+      },
+      _MergeSource.orgUnit: <String, String>{
+        'breakfast': 'org_manual',
+        'dinner': 'org_forecast',
+      },
+      _MergeSource.location: <String, String>{
+        'lunch': 'location_forecast',
+        'dinner': 'location_manual',
+      },
+      _MergeSource.keyed: <String, String>{
+        'breakfast': 'keyed_forecast',
+        'lunch': 'keyed_vendor',
+      },
+    },
+  );
+}
+
+Map<String, String> _mergeProvenanceSources(List<_MergeSource> order) {
+  return _mergeByExtractedSqlOrder(
+    order,
+    const <_MergeSource, Map<String, String>>{
+      _MergeSource.business: <String, String>{
+        'breakfast': 'business_scoped_override',
+        'lunch': 'business_scoped_override',
+      },
+      _MergeSource.orgUnit: <String, String>{
+        'breakfast': 'org_scoped_override',
+        'dinner': 'org_scoped_override',
+      },
+      _MergeSource.location: <String, String>{
+        'lunch': 'location_scoped_override',
+        'dinner': 'location_scoped_override',
+      },
+      _MergeSource.keyed: <String, String>{
+        'breakfast': 'keyed_service_period_setting',
+        'lunch': 'keyed_service_period_setting',
+      },
+    },
+  );
+}
+
+Map<String, String> _mergeByExtractedSqlOrder(
+  List<_MergeSource> order,
+  Map<_MergeSource, Map<String, String>> sourceMaps,
+) {
+  final merged = <String, String>{};
+  for (final source in order) {
+    merged.addAll(sourceMaps[source]!);
+  }
+  return merged;
 }

@@ -869,6 +869,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
             ),
             const SizedBox(height: 14),
           ],
+          _DataAccuracyScopeSummary(
+            locationLabel: locationLabel,
+            settings: settings,
+            servicePeriods: _servicePeriods,
+          ),
+          const SizedBox(height: 14),
           const _DataAccuracySectionHeading(title: 'Sources'),
           const SizedBox(height: 12),
           WageSourceToggle(
@@ -1027,6 +1033,154 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       case WalkInHandlingMode.walkInsTrackedSeparately:
         return DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately;
     }
+  }
+}
+
+class _DataAccuracyScopeSummary extends StatelessWidget {
+  const _DataAccuracyScopeSummary({
+    required this.locationLabel,
+    required this.settings,
+    required this.servicePeriods,
+  });
+
+  final String locationLabel;
+  final DataAccuracySettings settings;
+  final List<ServicePeriodDefinition> servicePeriods;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('operator_web_data_accuracy_scope_summary'),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        children: [
+          _ScopeSummaryChip(
+            chipKey: const Key('operator_web_data_accuracy_selected_scope'),
+            label: 'Selected scope',
+            value: locationLabel,
+          ),
+          _ScopeSummaryChip(
+            chipKey: const Key('operator_web_data_accuracy_inherited_source'),
+            label: 'Inherited source',
+            value: _sourceSummary(),
+          ),
+          _ScopeSummaryChip(
+            chipKey: const Key('operator_web_data_accuracy_effective_value'),
+            label: 'Effective value',
+            value: _effectiveSummary(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _sourceSummary() {
+    final labels = <String>[];
+    void add(DataAccuracySettingSource? source) {
+      final label = source?.label;
+      if (label == null || labels.contains(label)) return;
+      labels.add(label);
+    }
+
+    add(settings.wageSourceSource);
+    add(settings.walkInHandlingModeSource);
+    for (final period in servicePeriods) {
+      add(settings.coversSourceSourceFor(period.id));
+    }
+    return labels.isEmpty ? 'Not reported yet' : labels.join(', ');
+  }
+
+  String _effectiveSummary() {
+    final parts = <String>['Wage: ${_wageSourceLabel(settings.wageSource)}'];
+    if (servicePeriods.isNotEmpty) {
+      final covers = servicePeriods
+          .map((period) {
+            return '${period.label} ${_coversSourceLabel(settings.coversSourceFor(period.id))}';
+          })
+          .join(', ');
+      parts.add('Covers: $covers');
+    }
+    parts.add('Walk-ins: ${_walkInModeLabel(settings.walkInHandlingMode)}');
+    return parts.join('. ');
+  }
+
+  static String _coversSourceLabel(CoversSource source) {
+    switch (source) {
+      case CoversSource.vendor:
+        return 'Vendor';
+      case CoversSource.forecast:
+        return 'Forecast';
+      case CoversSource.manual:
+        return 'Manual';
+      case CoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
+    }
+  }
+
+  static String _wageSourceLabel(WageSource source) {
+    switch (source) {
+      case WageSource.vendor:
+        return 'Vendor';
+      case WageSource.manualMix:
+        return 'Manual mix';
+    }
+  }
+
+  static String _walkInModeLabel(DataAccuracyWalkInHandlingMode mode) {
+    switch (mode) {
+      case DataAccuracyWalkInHandlingMode.reservationsOnly:
+        return 'Reservations only';
+      case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
+        return 'Add walk-ins to reservations';
+      case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
+        return 'Track walk-ins separately';
+    }
+  }
+}
+
+class _ScopeSummaryChip extends StatelessWidget {
+  const _ScopeSummaryChip({
+    required this.chipKey,
+    required this.label,
+    required this.value,
+  });
+
+  final Key chipKey;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: chipKey,
+      constraints: const BoxConstraints(minWidth: 180, maxWidth: 420),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          const SizedBox(height: 3),
+          Text(
+            value,
+            style: AppTextStyles.body12(color: AppColors.textPrimary),
+          ),
+        ],
+      ),
+    );
   }
 }
 

@@ -356,6 +356,62 @@ void main() {
     );
 
     test(
+      '11A.4 POST .../rotate-sendgrid forwards to gateway as sendgrid',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeIntegrationAdminGateway();
+          gateway.rotateResult = <String, Object?>{
+            'row': <String, Object?>{
+              'credential_id': 'email-cred-new',
+              'key_kind': 'sendgrid',
+              'masked_value': 'SG.***1234',
+              'kms_secret_name': 'kms://stub/sendgrid-new',
+              'created_by': '11111111-1111-4111-8111-111111111111',
+              'updated_by': '11111111-1111-4111-8111-111111111111',
+              'rotated_at': '2026-05-01T12:00:00.000Z',
+            },
+            'plaintext_value': 'SG.newvalue1234',
+          };
+          const actorUuid = '11111111-1111-4111-8111-111111111111';
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: ProxyJwtClaims(
+              userId: actorUuid,
+              firebaseUid: actorUuid,
+              operatorId: null,
+              locationId: null,
+              roles: const <String>['super_admin'],
+              lastFreshAuthAt: freshAuthAt,
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminIntegrationsRotateSendgridPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'plaintext_value': 'SG.newvalue1234',
+              },
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['plaintext_value'], equals('SG.newvalue1234'));
+            expect(gateway.rotateCalls, hasLength(1));
+            expect(gateway.rotateCalls.single['key_kind'], equals('sendgrid'));
+            expect(
+              gateway.rotateCalls.single['plaintext_value'],
+              equals('SG.newvalue1234'),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
       '11A.4 POST .../rotate-anthropic with stale lastFreshAuthAt is 403 mfa_freshness_required',
       () async {
         await withRealHttp(() async {

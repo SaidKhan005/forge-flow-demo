@@ -14,12 +14,17 @@
 
 import '../domain/constants/app_defaults.dart';
 import '../domain/canonical_day_order.dart';
+import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/service_period_definition.dart';
+import '../domain/services/shift_boundary_resolver.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/shift_record.dart';
 import '../services/closed_timing_label_resolver.dart';
 import '../services/labor_model.dart';
+
+typedef DaypartPatternShiftCloseAuthorityResolver =
+    ShiftCloseAuthority Function(ShiftRecord shift);
 
 class DaypartPatternSummaryBuilder {
   DaypartPatternSummaryBuilder._();
@@ -63,7 +68,7 @@ class DaypartPatternSummaryBuilder {
 
   /// Builds aggregate summaries from closed [ShiftRecord]s.
   ///
-  /// - Only `status == 'closed'` rows are included.
+  /// - Only rows eligible for closed-truth surfaces are included.
   /// - Grouped by `restaurantId + dayLabel + daypart`.
   /// - [minSampleThreshold]: summaries with fewer closed shifts are
   ///   excluded from the output. Defaults to 1 (include all non-empty
@@ -74,6 +79,8 @@ class DaypartPatternSummaryBuilder {
     int minSampleThreshold = 1,
     ClosedTimingLabelResolver? timingLabelResolver,
     List<ServicePeriodDefinition>? servicePeriodDefinitions,
+    String? currentOperationalBusinessDate,
+    DaypartPatternShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
     final configuredDefinitions = servicePeriodDefinitions?.isNotEmpty == true
         ? servicePeriodDefinitions
@@ -82,7 +89,13 @@ class DaypartPatternSummaryBuilder {
     // ── 1. Group closed shifts by recurring bucket ────────────────────────
     final buckets = <String, List<ShiftRecord>>{};
     for (final shift in shifts) {
-      if (!shift.isClosed) continue;
+      if (!_isEligibleClosedTruth(
+        shift,
+        currentOperationalBusinessDate: currentOperationalBusinessDate,
+        shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
+      )) {
+        continue;
+      }
       final bucketKey = _bucketKeyFor(
         shift,
         timingLabelResolver: timingLabelResolver,
@@ -268,6 +281,9 @@ class DaypartPatternSummaryBuilder {
     if (timingLabelResolver?.hasSavedTimingIdentity(shift) ?? false) {
       return timingLabelResolver!.bucketKeyFor(shift);
     }
+    if (_hasSavedTimingIdentity(shift)) {
+      return shift.servicePeriodKey!.trim();
+    }
     final servicePeriodKey = shift.servicePeriodKey?.trim();
     if (servicePeriodDefinitions != null &&
         servicePeriodKey != null &&
@@ -284,6 +300,7 @@ class DaypartPatternSummaryBuilder {
   }) {
     final snapshot = timingLabelResolver?.snapshotFor(shift);
     if (snapshot != null) return snapshot.label;
+    if (_hasSavedTimingIdentity(shift)) return null;
 
     final servicePeriodKey = shift.servicePeriodKey?.trim();
     if (servicePeriodDefinitions != null &&
@@ -304,6 +321,7 @@ class DaypartPatternSummaryBuilder {
   }) {
     final savedSortOrder = timingLabelResolver?.sortOrderFor(shift);
     if (savedSortOrder != null) return savedSortOrder;
+    if (_hasSavedTimingIdentity(shift)) return null;
 
     final servicePeriodKey = shift.servicePeriodKey?.trim();
     if (servicePeriodDefinitions != null &&
@@ -315,6 +333,32 @@ class DaypartPatternSummaryBuilder {
       );
     }
     return null;
+  }
+
+  static bool _isEligibleClosedTruth(
+    ShiftRecord shift, {
+    required String? currentOperationalBusinessDate,
+    required DaypartPatternShiftCloseAuthorityResolver?
+    shiftCloseAuthorityForRow,
+  }) {
+    if (currentOperationalBusinessDate == null) return shift.isClosed;
+    return ShiftBoundaryResolver.isEligibleForClosedTruth(
+      rowStatus: shift.status,
+      shiftCloseAuthority:
+          shiftCloseAuthorityForRow?.call(shift) ??
+          ShiftCloseAuthority.appLocalCutoffFallback,
+      rowBusinessDate: shift.businessDate,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+    );
+  }
+
+  static bool _hasSavedTimingIdentity(ShiftRecord shift) {
+    final versionId = shift.businessTimingProfileVersionId?.trim();
+    final periodKey = shift.servicePeriodKey?.trim();
+    return versionId != null &&
+        versionId.isNotEmpty &&
+        periodKey != null &&
+        periodKey.isNotEmpty;
   }
 
   /// Returns the most common lever ID in [freq], using [tieBreakOrder]

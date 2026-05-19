@@ -283,12 +283,15 @@ ScheduleDistributionWeightsNotifier _buildNotifier({
   List<ShiftRecord>? shifts,
   ShiftRecordRepository? shiftRepo,
   MockReplayDateProvider? mockReplayDateProvider,
+  OperationalBusinessDateProvider? operationalBusinessDateProvider,
 }) {
   return ScheduleDistributionWeightsNotifier(
     scopeRepo: FakeRestaurantScopeRepository(),
     weekRepo: FakeWeekRecordRepository(weeks ?? []),
     shiftRepo: shiftRepo ?? FakeShiftRecordRepository(shifts ?? []),
     mockReplayDateProvider: mockReplayDateProvider,
+    operationalBusinessDateProvider:
+        operationalBusinessDateProvider ?? (_) async => null,
   );
 }
 

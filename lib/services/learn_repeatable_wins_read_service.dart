@@ -39,11 +39,15 @@ class LearnRepeatableWinsReadService {
     List<ShiftRecord> closedShifts, {
     ClosedTimingLabelResolver? timingLabelResolver,
     List<ServicePeriodDefinition>? servicePeriodDefinitions,
+    String? currentOperationalBusinessDate,
+    DaypartPatternShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
     final summaries = DaypartPatternSummaryBuilder.fromClosedShifts(
       closedShifts,
       timingLabelResolver: timingLabelResolver,
       servicePeriodDefinitions: servicePeriodDefinitions,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+      shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
     );
 
     // Filter to buckets with benchmark evidence and a known dominant lever.

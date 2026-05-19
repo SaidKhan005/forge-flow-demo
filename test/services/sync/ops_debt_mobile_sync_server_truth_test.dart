@@ -14,7 +14,11 @@
 // shape the proxy emits today and assert the mobile parsers + caches
 // hold every field.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
@@ -249,6 +253,99 @@ void main() {
       expect(lunch.coversSourceSource?.label, 'Business');
       expect(lunch.coversSourceSource?.scopeId, 'business-1');
     });
+
+    test(
+      'V38 upgrades old cache tables with no source metadata and reads safely',
+      () async {
+        sqfliteFfiInit();
+        final tempDir = await Directory.systemTemp.createTemp(
+          'ff_das_cache_upgrade_',
+        );
+        final dbPath = p.join(tempDir.path, 'old_cache.db');
+
+        try {
+          final oldDb = await databaseFactoryFfi.openDatabase(
+            dbPath,
+            options: OpenDatabaseOptions(
+              version: 37,
+              onCreate: (db, version) async {
+                await db.execute('''
+                  CREATE TABLE active_target_profiles (
+                    restaurant_id TEXT PRIMARY KEY NOT NULL,
+                    source_type TEXT NOT NULL
+                  )
+                ''');
+                await db.execute('''
+                  CREATE TABLE data_accuracy_service_period_settings_cache (
+                    restaurant_id              TEXT NOT NULL,
+                    service_period_key         TEXT NOT NULL,
+                    effective_at_business_date TEXT NOT NULL,
+                    id                         TEXT NOT NULL,
+                    operator_id                TEXT NOT NULL,
+                    location_id                TEXT NOT NULL,
+                    covers_source              TEXT NOT NULL,
+                    wage_source                TEXT NOT NULL,
+                    created_at                 TEXT NOT NULL,
+                    updated_at                 TEXT NOT NULL,
+                    updated_by                 TEXT,
+                    cached_at                  TEXT NOT NULL,
+                    PRIMARY KEY (
+                      restaurant_id,
+                      service_period_key,
+                      effective_at_business_date
+                    )
+                  )
+                ''');
+                await db.insert(
+                  'data_accuracy_service_period_settings_cache',
+                  <String, Object?>{
+                    'restaurant_id': 'rest-upgrade',
+                    'service_period_key': 'lunch',
+                    'effective_at_business_date': '2026-05-04',
+                    'id': 'das-old-1',
+                    'operator_id': 'op-1',
+                    'location_id': 'loc-1',
+                    'covers_source': 'vendor',
+                    'wage_source': 'vendor_per_employee',
+                    'created_at': '2026-05-04T12:00:00.000Z',
+                    'updated_at': '2026-05-04T12:05:00.000Z',
+                    'updated_by': null,
+                    'cached_at': '2026-05-04T12:06:00.000Z',
+                  },
+                );
+              },
+            ),
+          );
+          await oldDb.close();
+
+          await SqliteDatabase.instance.useDatabasePath(dbPath);
+          final db = await SqliteDatabase.instance.database;
+          final columns = await db.rawQuery(
+            'PRAGMA table_info(data_accuracy_service_period_settings_cache)',
+          );
+          final names = columns.map((row) => row['name']).toSet();
+          expect(names, contains('covers_source_scope_type'));
+          expect(names, contains('covers_source_source_kind'));
+          expect(names, contains('covers_source_scope_id'));
+          expect(names, contains('covers_source_setting_id'));
+          expect(names, contains('covers_source_override_id'));
+
+          final dao = DataAccuracyServicePeriodSettingsCacheDao(db);
+          final rows = await dao.getRows('rest-upgrade');
+
+          expect(rows, hasLength(1));
+          expect(rows.single.coversSource, ServicePeriodCoversSource.vendor);
+          expect(
+            rows.single.wageSource,
+            ServicePeriodWageSource.vendorPerEmployee,
+          );
+          expect(rows.single.coversSourceSource, isNull);
+        } finally {
+          await SqliteDatabase.instance.close();
+          await tempDir.delete(recursive: true);
+        }
+      },
+    );
   });
 
   group('Theme H#9 — restaurant_users scope invalidation', () {

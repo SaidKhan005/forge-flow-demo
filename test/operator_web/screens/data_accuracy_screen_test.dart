@@ -567,6 +567,37 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
+          find.byKey(const Key('operator_web_data_accuracy_scope_summary')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('operator_web_data_accuracy_selected_scope'),
+            ),
+            matching: find.textContaining('Brio - Chicago Loop'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('operator_web_data_accuracy_inherited_source'),
+            ),
+            matching: find.textContaining('Business'),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(
+            of: find.byKey(
+              const Key('operator_web_data_accuracy_effective_value'),
+            ),
+            matching: find.textContaining('Lunch Manual'),
+          ),
+          findsOneWidget,
+        );
+        expect(
           _textByKey(tester, const Key('covers_source_source_breakfast')),
           'Source: Default',
         );

@@ -1,5 +1,7 @@
 # Post-1020 Gap Fix Execution Plan
 
+Status: closed/superseded after PR #1021. Preserve this file as historical
+execution context; do not dispatch new lanes from it.
 Created: 2026-05-19
 Branch: `codex/post-1020-gap-fix`
 Base: `origin/master` at `152adea1`

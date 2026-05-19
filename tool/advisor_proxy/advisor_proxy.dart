@@ -8014,6 +8014,8 @@ const String adminIntegrationsRotateAzureDbPath =
     '/v1/admin/integrations/rotate-azure-db';
 const String adminIntegrationsRotateGeminiPath =
     '/v1/admin/integrations/rotate-gemini';
+const String adminIntegrationsRotateSendgridPath =
+    '/v1/admin/integrations/rotate-sendgrid';
 const String adminIntegrationsStatusPath = '/v1/admin/integrations/status';
 
 /// Read-side role admit set for `/v1/admin/integrations*`. Mirrors
@@ -8056,6 +8058,8 @@ const Set<String> kProxyIntegrationKeyKinds = <String>{
   'anthropic',
   'voyage',
   'azure_db',
+  'gemini',
+  'sendgrid',
 };
 
 /// Gateway the proxy delegates to for `/v1/admin/integrations/*`
@@ -16348,6 +16352,7 @@ bool _isAdminIntegrationsPath(String path) {
       path == adminIntegrationsRotateVoyagePath ||
       path == adminIntegrationsRotateAzureDbPath ||
       path == adminIntegrationsRotateGeminiPath ||
+      path == adminIntegrationsRotateSendgridPath ||
       path == adminIntegrationsStatusPath;
 }
 
@@ -16370,7 +16375,8 @@ bool _isAdminIntegrationsOperation(String path, String method) {
       (path == adminIntegrationsRotateAnthropicPath ||
           path == adminIntegrationsRotateVoyagePath ||
           path == adminIntegrationsRotateAzureDbPath ||
-          path == adminIntegrationsRotateGeminiPath)) {
+          path == adminIntegrationsRotateGeminiPath ||
+          path == adminIntegrationsRotateSendgridPath)) {
     return true;
   }
   return false;
@@ -16459,6 +16465,7 @@ String? _integrationKeyKindForRoute(String path) {
   if (path == adminIntegrationsRotateVoyagePath) return 'voyage';
   if (path == adminIntegrationsRotateAzureDbPath) return 'azure_db';
   if (path == adminIntegrationsRotateGeminiPath) return 'gemini';
+  if (path == adminIntegrationsRotateSendgridPath) return 'sendgrid';
   return null;
 }
 

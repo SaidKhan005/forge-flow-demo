@@ -1,5 +1,7 @@
 # Deeper Gap Audit Execution Plan
 
+Status: closed/superseded by the later next-deeper and post-1020 cleanup
+plans. Preserve this file as historical execution context only.
 Branch: `codex/deeper-gap-audit-pass`
 Started: 2026-05-19
 Base: `origin/master` after PR #1018 landed and was verified.

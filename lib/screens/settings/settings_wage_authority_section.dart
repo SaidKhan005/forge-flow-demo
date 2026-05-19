@@ -34,6 +34,7 @@ class WageAuthoritySection extends StatefulWidget {
   /// reachable under `flutter test`.
   final WageStandardContext? initialWageContextForTest;
   final List<WageRoleRow>? initialRowsForTest;
+  final String? scopeLabel;
 
   const WageAuthoritySection({
     super.key,
@@ -41,6 +42,7 @@ class WageAuthoritySection extends StatefulWidget {
     this.viewOnly = false,
     this.initialWageContextForTest,
     this.initialRowsForTest,
+    this.scopeLabel,
   });
 
   @override
@@ -148,6 +150,10 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (_hasScopeLabel) ...[
+            _WageScopeBanner(scopeLabel: widget.scopeLabel!.trim()),
+            const SizedBox(height: 10),
+          ],
           // Blended-wage summary — mirrors operator-web's
           // BlendedWageSummaryCard. HP #11: the "Source" line states
           // provenance; the front/back/average lines are the effective
@@ -207,6 +213,9 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       ),
     );
   }
+
+  bool get _hasScopeLabel =>
+      widget.scopeLabel != null && widget.scopeLabel!.trim().isNotEmpty;
 }
 
 // ─── Whole-mix editor result (7.55p.5f1a) ───────────────────────────────
@@ -757,6 +766,29 @@ class _WageMixSectionCard extends StatelessWidget {
   }
 }
 
+class _WageScopeBanner extends StatelessWidget {
+  const _WageScopeBanner({required this.scopeLabel});
+
+  final String scopeLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('settings_wage_setup_scope_label'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        'Applies to: $scopeLabel',
+        style: AppTextStyles.body12(color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
 class _WageMixStat extends StatelessWidget {
   final String label;
   final String value;
@@ -972,10 +1004,7 @@ class _WageBucketCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 2),
-          Text(
-            helper,
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
+          Text(helper, style: AppTextStyles.body12(color: AppColors.textMuted)),
           const SizedBox(height: 12),
           if (rows.isEmpty)
             Text(
@@ -988,10 +1017,7 @@ class _WageBucketCard extends StatelessWidget {
               if (i != rows.length - 1)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 10),
-                  child: Divider(
-                    height: 1,
-                    color: AppColors.borderSubtle,
-                  ),
+                  child: Divider(height: 1, color: AppColors.borderSubtle),
                 ),
             ],
         ],

@@ -39,10 +39,14 @@ class HistoryBenchmarkDaypartReadService {
   List<HistoryBenchmarkDaypartSummary> build(
     List<ShiftRecord> closedShifts, {
     ClosedTimingLabelResolver? timingLabelResolver,
+    String? currentOperationalBusinessDate,
+    DaypartPatternShiftCloseAuthorityResolver? shiftCloseAuthorityForRow,
   }) {
     final summaries = DaypartPatternSummaryBuilder.fromClosedShifts(
       closedShifts,
       timingLabelResolver: timingLabelResolver,
+      currentOperationalBusinessDate: currentOperationalBusinessDate,
+      shiftCloseAuthorityForRow: shiftCloseAuthorityForRow,
     );
 
     // Filter to buckets with benchmark evidence.

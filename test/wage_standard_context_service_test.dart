@@ -12,9 +12,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/wage_standard_context_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/target_cycle.dart';
+import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_source.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
@@ -845,5 +848,94 @@ void main() {
         expect(repaired.bohWage, closeTo(seeded.bohWage, 0.001));
       },
     );
+
+    test('loadOrBootstrapProfile keeps a stored pinned cycle and profile '
+        'version instead of the latest active cycle', () async {
+      const restaurantId = 'pinned_profile_identity_restaurant';
+
+      await SqliteTargetCycleRepository.instance.upsertCycle(
+        _targetCycle(
+          restaurantId: restaurantId,
+          cycleId: 'cycle-pinned',
+          createdAt: '2026-05-01T00:00:00Z',
+          servicePeriodId: 'supper_rush',
+          targetPPA: 44,
+        ),
+      );
+      await SqliteTargetCycleRepository.instance.upsertCycle(
+        _targetCycle(
+          restaurantId: restaurantId,
+          cycleId: 'cycle-newer',
+          createdAt: '2026-05-02T00:00:00Z',
+          servicePeriodId: 'newer_only',
+          targetPPA: 99,
+        ),
+      );
+      await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+        const ActiveTargetProfile(
+          targetProfileId: 'profile-pinned',
+          restaurantId: restaurantId,
+          targetCycleId: 'cycle-pinned',
+          targetProfileVersionId: 'tpv-pinned',
+          sourceType: 'cycle_manager_override',
+          targetCPLH: 5.2,
+          targetSPLH: 181,
+          targetPPA: 44,
+          fohWage: 18,
+          bohWage: 23,
+          opzFloorCPLH: 3.5,
+          opzCeilingCPLH: 7,
+          theoreticalFohLaborPct: 7.87,
+          theoreticalBohLaborPct: 12.7,
+          theoreticalLaborPct: 20.57,
+          builtAt: '2026-05-01T00:00:00Z',
+        ),
+      );
+
+      final profile = await WageStandardContextService.instance
+          .loadOrBootstrapProfile(restaurantId);
+
+      expect(profile.targetCycleId, 'cycle-pinned');
+      expect(profile.targetProfileVersionId, 'tpv-pinned');
+      expect(profile.daypartFor('supper_rush'), isNotNull);
+      expect(profile.daypartFor('supper_rush')!.daypartTargetPPA, 44);
+      expect(profile.daypartFor('newer_only'), isNull);
+    });
   });
 }
+
+TargetCycle _targetCycle({
+  required String restaurantId,
+  required String cycleId,
+  required String createdAt,
+  required String servicePeriodId,
+  required double targetPPA,
+}) => TargetCycle(
+  cycleId: cycleId,
+  restaurantId: restaurantId,
+  source: TargetCycleSource.managerOverride,
+  effectiveStart: '2026-05-01',
+  effectiveEnd: '2026-06-30',
+  calibrationWindowStart: '2026-03-01',
+  calibrationWindowEnd: '2026-04-30',
+  targetCPLH: 5.2,
+  targetSPLH: 181,
+  targetPPA: targetPPA,
+  fohWage: 18,
+  bohWage: 23,
+  opzFloorCPLH: 3.5,
+  opzCeilingCPLH: 7,
+  managerOverrideUsed: true,
+  createdAt: createdAt,
+  dayparts: <TargetCycleDaypart>[
+    TargetCycleDaypart(
+      servicePeriodId: servicePeriodId,
+      targetCPLH: 6.8,
+      targetSPLH: 190,
+      targetPPA: targetPPA,
+      opzFloorCPLH: 5.4,
+      opzCeilingCPLH: 8.2,
+      coverCount: 55,
+    ),
+  ],
+);
