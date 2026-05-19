@@ -1,14 +1,16 @@
 // Phase 8 W2.B - Notifications screen widget tests.
 //
 // Coverage:
-//   * renders all events for a manager-role actor
-//   * admin-only event row hidden for a manager-only role
+//   * renders all events for an operator-owner actor
+//   * admin-only event row hidden for a v2 manager role
+//   * manager-only events render for the current v2 manager roles
+//   * retired v1 roles do not satisfy admin-only or manager-only gates
 //   * manager-only events hidden for a non-manager role
 //   * toggle fires PUT through the gateway
 //   * gateway failure rolls the toggle back + surfaces error snackbar
 //
 // Slice C-8 (catalog completeness):
-//   * every catalog entry renders for an admin actor
+//   * every catalog entry renders for an operator-owner actor
 //   * "Coming soon" rows render disabled switches + the plain-English
 //     subcopy and never call the gateway when tapped
 //   * "Backend-only" rows (audit-chain integrity) render disabled
@@ -25,10 +27,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -39,22 +41,22 @@ void main() {
     });
   }
 
-  OperatorWebSession sessionWithRoles(List<String> roles) =>
-      OperatorWebSession(
-        uid: 'demo-uid',
-        email: 'alex@brio-restaurants.com',
-        displayName: 'Alex Morrison',
-        operatorId: 'demo-operator',
-        businessName: 'Brio Restaurants',
-        primaryLocationId: 'demo-location',
-        primaryLocationName: 'Brio Main Street',
-        roles: roles,
-        mfaEnrolled: false,
-      );
+  OperatorWebSession sessionWithRoles(List<String> roles) => OperatorWebSession(
+    uid: 'demo-uid',
+    email: 'alex@brio-restaurants.com',
+    displayName: 'Alex Morrison',
+    operatorId: 'demo-operator',
+    businessName: 'Brio Restaurants',
+    primaryLocationId: 'demo-location',
+    primaryLocationName: 'Brio Main Street',
+    roles: roles,
+    mfaEnrolled: false,
+  );
 
   group('SettingsNotificationsScreen', () {
-    testWidgets('admin actor sees every event including audit row',
-        (tester) async {
+    testWidgets('operator owner sees every event including audit row', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway();
@@ -66,21 +68,22 @@ void main() {
         find.byKey(const Key('settings_notifications_screen')),
         findsOneWidget,
       );
-      // Every catalog event for an admin (manager + adminOnly + any).
+      // Every catalog event for an owner (managerOnly + adminOnly + any).
       for (final event in kNotificationCatalog) {
         expect(
           find.byKey(Key('settings_notifications_event_${event.eventKey}')),
           findsOneWidget,
-          reason: 'admin should see ${event.eventKey}',
+          reason: 'operator owner should see ${event.eventKey}',
         );
       }
     });
 
-    testWidgets('non-admin manager hides the audit-only row but keeps shift row',
-        (tester) async {
+    testWidgets('v2 manager hides the audit-only row but keeps shift row', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
-      // operator_manager satisfies managerOnly but NOT adminOnly.
-      final session = sessionWithRoles(<String>['operator_manager']);
+      // operator_general_manager satisfies managerOnly but NOT adminOnly.
+      final session = sessionWithRoles(<String>['operator_general_manager']);
       final gateway = _FakeGateway();
       await tester.pumpWidget(
         wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
@@ -88,7 +91,9 @@ void main() {
       await tester.pumpAndSettle();
       // adminOnly hidden.
       expect(
-        find.byKey(const Key('settings_notifications_event_notif.audit.anchor_failure')),
+        find.byKey(
+          const Key('settings_notifications_event_notif.audit.anchor_failure'),
+        ),
         findsNothing,
         reason: 'audit anchor row is admin-only',
       );
@@ -99,14 +104,107 @@ void main() {
       );
       // any-role visible.
       expect(
-        find.byKey(const Key('settings_notifications_event_notif.backfill.complete')),
+        find.byKey(
+          const Key('settings_notifications_event_notif.backfill.complete'),
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets(
-        'non-manager actor (operator_staff) hides manager-only rows',
-        (tester) async {
+    testWidgets('manager-only rows render for every current v2 manager role', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 768));
+      const managerRoles = <String>[
+        'operator_general_manager',
+        'location_manager',
+        'supervisor',
+      ];
+      for (final role in managerRoles) {
+        final session = sessionWithRoles(<String>[role]);
+        final gateway = _FakeGateway();
+        await tester.pumpWidget(
+          wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(
+            const Key(
+              'settings_notifications_event_notif.audit.anchor_failure',
+            ),
+          ),
+          findsNothing,
+          reason: '$role is not adminOnly',
+        );
+        expect(
+          find.byKey(
+            const Key('settings_notifications_event_notif.shift.stale'),
+          ),
+          findsOneWidget,
+          reason: '$role satisfies managerOnly',
+        );
+        expect(
+          find.byKey(
+            const Key('settings_notifications_event_notif.plan.updated'),
+          ),
+          findsOneWidget,
+          reason: '$role satisfies managerOnly',
+        );
+        await tester.pumpWidget(wrap(const SizedBox.shrink()));
+        await tester.pump();
+      }
+    });
+
+    testWidgets('retired v1 roles do not satisfy notification gates', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1024, 768));
+      const retiredRoles = <String>['operator_admin', 'operator_manager'];
+      for (final role in retiredRoles) {
+        final session = sessionWithRoles(<String>[role]);
+        final gateway = _FakeGateway();
+        await tester.pumpWidget(
+          wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(
+            const Key(
+              'settings_notifications_event_notif.audit.anchor_failure',
+            ),
+          ),
+          findsNothing,
+          reason: '$role must not satisfy adminOnly',
+        );
+        expect(
+          find.byKey(
+            const Key('settings_notifications_event_notif.shift.stale'),
+          ),
+          findsNothing,
+          reason: '$role must not satisfy managerOnly',
+        );
+        expect(
+          find.byKey(
+            const Key('settings_notifications_event_notif.plan.updated'),
+          ),
+          findsNothing,
+          reason: '$role must not satisfy managerOnly',
+        );
+        expect(
+          find.byKey(
+            const Key('settings_notifications_event_notif.backfill.complete'),
+          ),
+          findsOneWidget,
+          reason: '$role can still see any-role events',
+        );
+        await tester.pumpWidget(wrap(const SizedBox.shrink()));
+        await tester.pump();
+      }
+    });
+
+    testWidgets('non-manager actor (operator_staff) hides manager-only rows', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
       // operator_staff satisfies neither managerOnly nor adminOnly.
       final session = sessionWithRoles(<String>['operator_staff']);
@@ -117,7 +215,9 @@ void main() {
       await tester.pumpAndSettle();
       // Audit + shift staleness + plan all hidden.
       expect(
-        find.byKey(const Key('settings_notifications_event_notif.audit.anchor_failure')),
+        find.byKey(
+          const Key('settings_notifications_event_notif.audit.anchor_failure'),
+        ),
         findsNothing,
       );
       expect(
@@ -125,37 +225,47 @@ void main() {
         findsNothing,
       );
       expect(
-        find.byKey(const Key('settings_notifications_event_notif.plan.updated')),
+        find.byKey(
+          const Key('settings_notifications_event_notif.plan.updated'),
+        ),
         findsNothing,
       );
       // any-role event still visible.
       expect(
-        find.byKey(const Key('settings_notifications_event_notif.backfill.complete')),
+        find.byKey(
+          const Key('settings_notifications_event_notif.backfill.complete'),
+        ),
         findsOneWidget,
       );
     });
 
-    testWidgets('toggle fires PUT through the gateway with a fresh idem key',
-        (tester) async {
+    testWidgets('toggle fires PUT through the gateway with a fresh idem key', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway();
       var idemSeq = 0;
       await tester.pumpWidget(
-        wrap(SettingsNotificationsScreen(
-          session: session,
-          gateway: gateway,
-          idempotencyKeyFactory: () {
-            idemSeq += 1;
-            return 'test-idem-$idemSeq';
-          },
-        )),
+        wrap(
+          SettingsNotificationsScreen(
+            session: session,
+            gateway: gateway,
+            idempotencyKeyFactory: () {
+              idemSeq += 1;
+              return 'test-idem-$idemSeq';
+            },
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       // Toggle the push channel for backfill complete (default = on).
       await tester.tap(
-        find.byKey(const Key(
-            'settings_notifications_toggle_notif.backfill.complete_push')),
+        find.byKey(
+          const Key(
+            'settings_notifications_toggle_notif.backfill.complete_push',
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       expect(gateway.upsertCalls, hasLength(1));
@@ -169,103 +279,107 @@ void main() {
     // ---- Slice C-8: catalog completeness --------------------------------
 
     testWidgets(
-        'C-8: admin actor sees every catalog entry with a state badge',
-        (tester) async {
-      await sizeViewport(tester, const Size(1024, 1600));
-      final session = sessionWithRoles(<String>['operator_owner']);
-      final gateway = _FakeGateway();
-      await tester.pumpWidget(
-        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
-      );
-      await tester.pumpAndSettle();
-      for (final event in kNotificationCatalog) {
-        expect(
-          find.byKey(Key('settings_notifications_event_${event.eventKey}')),
-          findsOneWidget,
-          reason: 'C-8 contract: render every catalog entry (${event.eventKey})',
+      'C-8: operator owner sees every catalog entry with a state badge',
+      (tester) async {
+        await sizeViewport(tester, const Size(1024, 1600));
+        final session = sessionWithRoles(<String>['operator_owner']);
+        final gateway = _FakeGateway();
+        await tester.pumpWidget(
+          wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
         );
-        expect(
-          find.byKey(
-              Key('settings_notifications_state_badge_${event.eventKey}')),
-          findsOneWidget,
-          reason: 'state badge present for ${event.eventKey}',
-        );
-      }
-    });
-
-    testWidgets(
-        'C-8: "Coming soon" rows render disabled switches + subcopy and '
-        'never call the gateway when tapped', (tester) async {
-      await sizeViewport(tester, const Size(1024, 1600));
-      final session = sessionWithRoles(<String>['operator_owner']);
-      final gateway = _FakeGateway();
-      await tester.pumpWidget(
-        wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
-      );
-      await tester.pumpAndSettle();
-
-      // The 3 "Coming soon" entries per the audit matrix E4:
-      //   notif.shift.stale, notif.star.override, notif.plan.updated.
-      const comingSoon = <String>{
-        'notif.shift.stale',
-        'notif.star.override',
-        'notif.plan.updated',
-      };
-      for (final key in comingSoon) {
-        // Badge text "Coming soon" is present in the row.
-        final badgeFinder = find.byKey(Key(
-          'settings_notifications_state_badge_$key',
-        ));
-        expect(badgeFinder, findsOneWidget);
-        expect(
-          find.descendant(
-            of: badgeFinder,
-            matching: find.text('Coming soon'),
-          ),
-          findsOneWidget,
-          reason: '$key badge reads "Coming soon"',
-        );
-        // Plain-English subcopy present.
-        expect(
-          find.byKey(Key('settings_notifications_subcopy_$key')),
-          findsOneWidget,
-          reason: '$key has plain-English subcopy',
-        );
-        // Every channel toggle for this row is disabled (Switch.onChanged
-        // == null when the row is coming-soon).
-        for (final channel in kNotificationChannelOrder) {
-          final toggle = tester.widget<Switch>(
-            find.byKey(Key('settings_notifications_toggle_${key}_$channel')),
+        await tester.pumpAndSettle();
+        for (final event in kNotificationCatalog) {
+          expect(
+            find.byKey(Key('settings_notifications_event_${event.eventKey}')),
+            findsOneWidget,
+            reason:
+                'C-8 contract: render every catalog entry (${event.eventKey})',
           );
           expect(
-            toggle.onChanged,
-            isNull,
-            reason: '$key channel $channel toggle must be disabled',
+            find.byKey(
+              Key('settings_notifications_state_badge_${event.eventKey}'),
+            ),
+            findsOneWidget,
+            reason: 'state badge present for ${event.eventKey}',
           );
         }
-      }
-
-      // Tapping a coming-soon switch must NOT call the gateway. We tap
-      // the underlying Switch widget regardless of disabled state to
-      // prove the guard short-circuits.
-      gateway.upsertCalls.clear();
-      // ignore: lines_longer_than_80_chars
-      final switchFinder = find.byKey(
-        const Key('settings_notifications_toggle_notif.shift.stale_push'),
-      );
-      // Disabled switches ignore taps; this acts as a regression guard
-      // in case the disabled-state regresses later.
-      await tester.tap(switchFinder, warnIfMissed: false);
-      await tester.pump();
-      expect(
-        gateway.upsertCalls,
-        isEmpty,
-        reason: 'coming-soon toggle must not call the gateway',
-      );
-    });
+      },
+    );
 
     testWidgets(
-        'C-8: "Backend-only" rows render disabled switches + audit-log '
+      'C-8: "Coming soon" rows render disabled switches + subcopy and '
+      'never call the gateway when tapped',
+      (tester) async {
+        await sizeViewport(tester, const Size(1024, 1600));
+        final session = sessionWithRoles(<String>['operator_owner']);
+        final gateway = _FakeGateway();
+        await tester.pumpWidget(
+          wrap(SettingsNotificationsScreen(session: session, gateway: gateway)),
+        );
+        await tester.pumpAndSettle();
+
+        // The 3 "Coming soon" entries per the audit matrix E4:
+        //   notif.shift.stale, notif.star.override, notif.plan.updated.
+        const comingSoon = <String>{
+          'notif.shift.stale',
+          'notif.star.override',
+          'notif.plan.updated',
+        };
+        for (final key in comingSoon) {
+          // Badge text "Coming soon" is present in the row.
+          final badgeFinder = find.byKey(
+            Key('settings_notifications_state_badge_$key'),
+          );
+          expect(badgeFinder, findsOneWidget);
+          expect(
+            find.descendant(
+              of: badgeFinder,
+              matching: find.text('Coming soon'),
+            ),
+            findsOneWidget,
+            reason: '$key badge reads "Coming soon"',
+          );
+          // Plain-English subcopy present.
+          expect(
+            find.byKey(Key('settings_notifications_subcopy_$key')),
+            findsOneWidget,
+            reason: '$key has plain-English subcopy',
+          );
+          // Every channel toggle for this row is disabled (Switch.onChanged
+          // == null when the row is coming-soon).
+          for (final channel in kNotificationChannelOrder) {
+            final toggle = tester.widget<Switch>(
+              find.byKey(Key('settings_notifications_toggle_${key}_$channel')),
+            );
+            expect(
+              toggle.onChanged,
+              isNull,
+              reason: '$key channel $channel toggle must be disabled',
+            );
+          }
+        }
+
+        // Tapping a coming-soon switch must NOT call the gateway. We tap
+        // the underlying Switch widget regardless of disabled state to
+        // prove the guard short-circuits.
+        gateway.upsertCalls.clear();
+        // ignore: lines_longer_than_80_chars
+        final switchFinder = find.byKey(
+          const Key('settings_notifications_toggle_notif.shift.stale_push'),
+        );
+        // Disabled switches ignore taps; this acts as a regression guard
+        // in case the disabled-state regresses later.
+        await tester.tap(switchFinder, warnIfMissed: false);
+        await tester.pump();
+        expect(
+          gateway.upsertCalls,
+          isEmpty,
+          reason: 'coming-soon toggle must not call the gateway',
+        );
+      },
+    );
+
+    testWidgets('C-8: "Backend-only" rows render disabled switches + audit-log '
         'subcopy', (tester) async {
       await sizeViewport(tester, const Size(1024, 1600));
       final session = sessionWithRoles(<String>['operator_owner']);
@@ -293,9 +407,7 @@ void main() {
       // All channel toggles disabled.
       for (final channel in kNotificationChannelOrder) {
         final toggle = tester.widget<Switch>(
-          find.byKey(
-            Key('settings_notifications_toggle_${auditKey}_$channel'),
-          ),
+          find.byKey(Key('settings_notifications_toggle_${auditKey}_$channel')),
         );
         expect(
           toggle.onChanged,
@@ -305,9 +417,9 @@ void main() {
       }
     });
 
-    testWidgets(
-        'C-8: "Available" rows have no subcopy and stay interactive',
-        (tester) async {
+    testWidgets('C-8: "Available" rows have no subcopy and stay interactive', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1024, 1600));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway();
@@ -326,7 +438,8 @@ void main() {
       expect(
         find.descendant(
           of: find.byKey(
-              Key('settings_notifications_state_badge_$availableKey')),
+            Key('settings_notifications_state_badge_$availableKey'),
+          ),
           matching: find.text('Available'),
         ),
         findsOneWidget,
@@ -346,8 +459,7 @@ void main() {
       }
     });
 
-    testWidgets(
-        'C-8: catalog rendering preserves declared order within each '
+    testWidgets('C-8: catalog rendering preserves declared order within each '
         'category', (tester) async {
       await sizeViewport(tester, const Size(1024, 1600));
       final session = sessionWithRoles(<String>['operator_owner']);
@@ -358,8 +470,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Group expected order by category from the catalog.
-      final expectedByCategory =
-          <NotificationCategory, List<String>>{};
+      final expectedByCategory = <NotificationCategory, List<String>>{};
       for (final entry in kNotificationCatalog) {
         expectedByCategory
             .putIfAbsent(entry.category, () => <String>[])
@@ -371,36 +482,42 @@ void main() {
       final shiftEvents = expectedByCategory[NotificationCategory.shift]!;
       double? lastY;
       for (final key in shiftEvents) {
-        final element = tester
-            .element(find.byKey(Key('settings_notifications_event_$key')));
+        final element = tester.element(
+          find.byKey(Key('settings_notifications_event_$key')),
+        );
         final box = element.renderObject as RenderBox?;
         if (box == null) continue;
         final y = box.localToGlobal(Offset.zero).dy;
         if (lastY != null) {
-          expect(y, greaterThan(lastY),
-              reason: 'catalog order must hold within shift category');
+          expect(
+            y,
+            greaterThan(lastY),
+            reason: 'catalog order must hold within shift category',
+          );
         }
         lastY = y;
       }
     });
 
-    testWidgets(
-        'gateway failure rolls back the optimistic flip and shows '
+    testWidgets('gateway failure rolls back the optimistic flip and shows '
         'an error snackbar', (tester) async {
       await sizeViewport(tester, const Size(1024, 768));
       final session = sessionWithRoles(<String>['operator_owner']);
       final gateway = _FakeGateway()..upsertShouldThrow = true;
       await tester.pumpWidget(
-        wrap(SettingsNotificationsScreen(
-          session: session,
-          gateway: gateway,
-          idempotencyKeyFactory: () => 'test-idem-1',
-        )),
+        wrap(
+          SettingsNotificationsScreen(
+            session: session,
+            gateway: gateway,
+            idempotencyKeyFactory: () => 'test-idem-1',
+          ),
+        ),
       );
       await tester.pumpAndSettle();
       // Default email channel for backfill complete is on; toggle off.
       final toggleKey = const Key(
-          'settings_notifications_toggle_notif.backfill.complete_email');
+        'settings_notifications_toggle_notif.backfill.complete_email',
+      );
       final beforeSwitch = tester.widget<Switch>(find.byKey(toggleKey));
       expect(beforeSwitch.value, isTrue);
       await tester.tap(find.byKey(toggleKey));
