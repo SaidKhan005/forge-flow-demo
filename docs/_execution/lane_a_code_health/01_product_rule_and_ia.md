@@ -9,10 +9,10 @@ Authority order this lane respects (top wins on conflict):
 
 1. The active prompt.
 2. `docs/contracts/core_app_architecture.md` (Layers 1-12).
-3. `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
+3. `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
    (Block A / B / C, supersedes the original 8-decision lock where
    they conflict).
-4. `docs/_decisions/post_codex_wave_decisions_2026-05-12.md`.
+4. `docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md`.
 5. `docs/contracts/**` and `docs/frameworks/**`.
 6. `PROJECT_TRACKER.md`, `docs/DATA_ALIGNMENT_TRACKER.md`,
    `docs/POST_HARDENING_FOLLOWUPS.md`.

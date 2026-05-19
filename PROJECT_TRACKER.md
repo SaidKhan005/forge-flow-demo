@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-16. Routing map only — shows **only what is left**.
+Updated: 2026-05-18. Routing map only: shows **only what is left**.
 Completed phases/slices: `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 Stale sprint-execution docs: `docs/archive/_execution/`. `docs/archive/**`
 is history; ignore unless explicitly named.
@@ -17,7 +17,8 @@ Owner: You · Execution: We think, agents code (orchestrator-audited).
 **Index:** Authority Order · Indices · Hard Product Rule
 (Hierarchy-Scoped Settings) · Open Work (operator-blocked · cutover ·
 engineering) · Vendor live rollout · Paused · Prompt Fetch Map ·
-North Star · Active Lanes · Hard Gates · Notes.
+North Star · Active Lanes · Hard Gates · Notes ·
+Recently landed · Recently archived.
 
 Phases retired to `docs/archive/phases/` 2026-05-13: `phase_10b`,
 `phase_11b`, `phase_12_workflow_platform`, `phase_8_5_external_integrations`
@@ -121,13 +122,14 @@ Plan: `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`.
 
 | Slice | Status | Plan |
 |---|---|---|
-| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active planning; 4 operator decisions queued before slice dispatch** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`** — 9 slices (0 → 1 → 1.5 → 2 → 2.5 → 3 → 4 → 5 → 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. |
+| **Per-Daypart Targets V1** (Phase 2 mobile walkthrough output) | **active implementation; Slices 0 to 5 landed (covers-source per-period schema + bottom-up locked weekly-plan snapshot + per-period verdict carry); later slices + benchmark-rework follow-ups in flight** | **`docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`**: 9 slices (0 to 1 to 1.5 to 2 to 2.5 to 3 to 4 to 5 to 6); 44 gaps consolidated post-audit; removes recommendation engine's pooling kludge so per-period targets flow end-to-end; restores Promise 3 / Layer 9. Slice 0 amends `phase_7_55_time_boundary_contract.md` Rules 5+6 and `phase_7_55_target_cycle_weekly_plan_rules.md` Rule E for Option 2 cycle gating. Landed covers-source de-hardcode R5/R7a to R7d (#943/#972/#975 to #977; **#977 schema-destructive: drops legacy whole-day columns + trims view scalars**); run `migration_drift_scanner` + `migration_cutoff_lint` after any further `db/migrations` change. |
 | `11A.8` Support audit | not started | `phase_11A_operations_console/*` |
 | `11A.9` Cross-operator reads | not started | `phase_11A_operations_console/*` |
 | `11A.10` Operator impersonation | not started | `phase_11A_operations_console/*` |
 | `9.8` inbound vendor T&Cs (code lane) | code-ready; operator-self-served content seeding pending | `phase_9_8/*` |
 | `business-timing-live` full hierarchy + settings lanes | future | `phase_business_timing_live/*` |
 | `admin-hierarchy-settings-overhaul` | complete (2026-05-12; evidence: `docs/_execution/admin_hierarchy_settings_overhaul/06_closure_evidence_2026-05-12.md`) | `docs/_execution/admin_hierarchy_settings_overhaul/` (plan archived to `docs/archive/_execution/admin_hierarchy_settings_overhaul_plan_2026-05-08.md`) |
+| HP#11 cross-surface parity (admin DI wiring) | complete (closed 2026-05-16; real admin timing-surface effective-value resolution + My Account / business-timing-resolution production DI hops landed #906/#923/#925) | cross-surface-parity backlog wave closed |
 | Doc 1 item 7 — physical connected-device E2E | simulated proof documented; physical/emulator proof pending | new sprint `8.connected-device-e2e-smoke`; needs physical device |
 | Doc 1 item 9 — push delivery proof | preflight documented; needs staging apply + device | `8.push-notification-connected-device-proof` |
 | Group / region / company rollup truth | future | follows server rollup snapshots |
@@ -239,6 +241,60 @@ arrive.
   infrastructure choice, surface it in Block 1.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
+
+## Recently landed (2026-05-16 to 2026-05-18; 92 non-merge commits on `origin/master`)
+
+Themed digest of what landed since the last tracker refresh (commit
+`54dbd2f5`). None of this changes the V1 launch path above; it is
+feature build-out, doc alignment, and repo hygiene.
+
+- **Covers-source per-period schema (Per-Daypart V1 Slice 0 to 5):**
+  R5 covers-source de-hardcode + keyed-table backfill (#943); R7a
+  per-period hierarchy view + scoped-override re-key, additive (#972);
+  R7b proxy onto per-period keyed view, wire-compatible (#975); R7c
+  dead legacy-column Dart removed (#976); **R7d FINAL,
+  schema-destructive: drops legacy whole-day columns + trims view
+  scalars (#977)**. Bottom-up locked weekly-plan snapshot (#917/#941);
+  Slice 5 Variance Full Week non-closed rows read locked sub-rows
+  (#951); SA/SD/SE benchmark-rework + per-period verdict carry
+  (#907/#919/#926/#934).
+- **Doc-alignment audit Phases 1 to 4 (contracts vs code):** Phase 1
+  core_app_architecture.md alignment + 4 drift corrections
+  (#981/#982); Phase 2 Tier-2 contracts + corrections (#983/#985);
+  Phase 3 priority code/schema-binding contracts + corrections
+  (#984/#985); Phase 4 remaining contracts (#986); full-scope fixes
+  for 3 flagged items: ToS impl, migrations summary, 7.58 + accuracy
+  lags (#987). Contract edits owned by that audit lane, not this
+  tracker.
+- **Choose Star Shifts redesign (R1 to R10):** operator-config daypart
+  lens + 2-state hero calendar + pre-commit gate (#932); tap-day
+  bottom sheet whole-day rollup (#940); Lean/Balanced/Generous band
+  (#946); 4-period demo operator proving daypart de-hardcode (#929);
+  align to committed prototype (#952); single continuous scroll +
+  PLAN IMPACT dropdown (#959); per-daypart mix-and-match band +
+  scope-label header (#966); spec + prototype docs (#947).
+- **Variance Coaching V2 (Lanes A to G):** evolved copy catalog,
+  Primary Driver arrow-chain widget, This Week / History V2 parity,
+  History CPLH-vs-OPZ 60-day band, Learn restructure (#898 to #969
+  range); Lane G wave-close test re-pin + verification (#915).
+- **Mobile-UX polish:** readable type scale + spacing tokens + OS
+  text scaling, premium surface system, off-scale spacing
+  normalization across baseline_tracker / notifications / schedule /
+  shift_dashboard, Shift gradient-card unification (#953 to #971
+  range).
+- **Advisor-proxy size discipline:** route groups extracted so the
+  proxy falls back under its size ceiling, no behavior change (#979).
+- **Repo hygiene + safety:** repo_janitor wired via the `post-merge`
+  git hook with `pre_merge_gate` mandated while CI is dark;
+  repo_janitor hardened to never auto-prune session/loop worktrees
+  (#980); auto-hygiene enabled (dry-run default); repo-wide
+  branch/worktree cleanup done; full lost-work rescue sweep completed
+  (`rescue/*` branches pushed to `origin`).
+- **Misc fixes:** closed-state Shift dashboard + closed-shift chrome
+  suppression (#937/#950/#962), audit-panel RenderFlex overflow +
+  wage-at-lock-time reframe (#920/#948), settings/integrations copy
+  and DI fixes, deterministic polling-vendor filter test (#978),
+  demo-seed reservation apportionment (#956).
 
 ## Recently archived
 

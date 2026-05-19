@@ -443,7 +443,7 @@ void main() {
 
   // ---------------------------------------------------------------
   // B3 hot-fix coverage (silent-swallow site -> structured log).
-  // Source: docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
+  // Source: docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md
   // Block B, B3.
   // ---------------------------------------------------------------
   group('NotificationEventFanout - B3 structured log', () {

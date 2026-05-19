@@ -5,7 +5,7 @@
 --     wire `vendor_sync_error_alert` with a first-failure-of-outage
 --     detector; per-row email would spam on transients. Operator
 --     picked WIRE option (D) in the C-2 matrix.
---   * docs/_decisions/c_2_email_template_wire_or_delete_decisions.md
+--   * docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md
 --     — draft D rationale + outage-detector design. Operator picks
 --     section 2026-05-13.
 --   * CLAUDE.md "RLS-Ready Schema" — operator-scoped fact tables

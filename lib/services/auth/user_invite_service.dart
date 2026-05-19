@@ -34,7 +34,7 @@
 // decision-doc-only to source-of-truth comment so future readers
 // see the split without grepping decision docs.
 //
-// Source: `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+// Source: `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`
 // Draft A; addendum B4 path 1; `docs/_indices/DEBUG_MD_IMPLEMENTATION_STATUS.md`
 // row BC-1.
 

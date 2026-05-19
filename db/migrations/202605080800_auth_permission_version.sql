@@ -23,7 +23,7 @@
 -- `docs/POST_HARDENING_FOLLOWUPS.md`). Future migrations MUST follow
 -- the expand-contract pattern (new migration drops + recreates the
 -- index) once the migration has been applied anywhere downstream.
--- See `docs/_audits/post_codex_wave/pr_481_retroactive_audit.md` for
+-- See `docs/archive/_audits/post_codex_wave/pr_481_retroactive_audit.md` for
 -- the full rationale.
 
 alter table public.users

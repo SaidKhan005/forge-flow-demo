@@ -17,7 +17,7 @@
 #
 # The dev-relaxed CSP block is kept in sync with
 # `scripts/apply_operator_web_dev_csp.sh` (Docker side) and the canonical
-# block in `docs/_audits/wave_2/phase_2_walkthrough_master_plan.md` Patch 1.
+# block in `docs/archive/_audits/wave_2/phase_2_walkthrough_master_plan.md` Patch 1.
 #
 # Usage:
 #

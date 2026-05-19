@@ -2,7 +2,7 @@
 
 > Status: research draft, 2026-05-12
 > Author: research agent (worktree `nifty-clarke-d3ec25`)
-> Companion to: `docs/_decisions/post_codex_wave_decisions_2026-05-12.md` (8 locked decisions)
+> Companion to: `docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md` (8 locked decisions)
 > Stack context: Flutter mobile + Flutter Web (admin + operator) + Dart proxy on Cloud Run + Postgres 16 (AGE, pgvector, pg_diskann, pg_cron, pg_partman, pgcrypto) + Firebase Auth + SendGrid. No `pgmq`. RLS-ready operator-scoped tables. Hash-chained `audit_logs` (SHA-256, daily Azure Blob anchor, per-operator/day partitioning). `OperatorScopedRepository<T>` is the primary defense; RLS is backup. Proxy writes are idempotent (`proxy_requests` UNIQUE key).
 > Cap: 800 lines.
 

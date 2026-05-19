@@ -420,7 +420,7 @@ inherit the session PATH update.
 
 - [`docs/POST_HARDENING_FOLLOWUPS.md`](../docs/POST_HARDENING_FOLLOWUPS.md)
   — wave bug ledger (W-1, W-2).
-- [`docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`](../docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md)
+- [`docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`](../docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md)
   — the wave closeout that motivated full-stack local validation.
 - [`runbooks/phase_9_production1_migration_apply_runbook.md`](phase_9_production1_migration_apply_runbook.md)
   — the production counterpart; SAME migrations, SAME cutoff, different

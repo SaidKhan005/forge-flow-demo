@@ -1284,7 +1284,7 @@ ProxyProductionBindings buildProxyProductionBindings(
   // Without this hoist the gauge that gets snapshotted would be a
   // different instance from the one being incremented — defeating the
   // whole consumer-side observability path. Authority:
-  // docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
+  // docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
   // finding #2.
   final sessionRecordIncompleteGauge = SessionRecordIncompleteGauge();
 

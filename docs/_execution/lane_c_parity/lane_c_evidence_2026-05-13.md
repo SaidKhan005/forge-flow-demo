@@ -2,7 +2,7 @@
 
 Created for C-11 (Wave Execution Ledger row 93). This is a **lane evidence log**, not a closure doc. It records what the C-11 pressure-test harnesses exercise, what they defer, and the architectural disclosures the operator should hold while reviewing.
 
-Authority source: `docs/_execution/lane_c_parity/03_execution_slices.md` C-11 (lines 209-225). Inventory matrix: `docs/_audits/code_health/c_email_notification_scenario_inventory.md`. C-2 wire-or-delete decisions: `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`.
+Authority source: `docs/_execution/lane_c_parity/03_execution_slices.md` C-11 (lines 209-225). Inventory matrix: `docs/_audits/code_health/c_email_notification_scenario_inventory.md`. C-2 wire-or-delete decisions: `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`.
 
 ## What landed
 

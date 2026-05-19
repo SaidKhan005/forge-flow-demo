@@ -105,7 +105,7 @@ class EmailTemplateIds {
   /// route is its live consumer and deleting it would break the
   /// SendGrid connectivity test surface with no replacement.
   /// Sources:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`
   /// Draft A, addendum B4 path 1, and the Q-3 PR body.
   static const String operatorInviteFirstAdmin =
       'operator_invite_first_admin';
@@ -124,7 +124,7 @@ class EmailTemplateIds {
   /// operator pick: removal only). Catalog entry:
   /// `notif.mfa.factor_changed` in
   /// `lib/domain/models/notification_event_catalog.dart`. Source:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`
   /// Draft C, operator pick 2026-05-13.
   static const String mfaFactorChangedNotice = 'mfa_factor_changed_notice';
 
@@ -147,7 +147,7 @@ class EmailTemplateIds {
   /// polling tier via `tool/integration_sync_worker` so a crash
   /// between the email INSERT and the `notified_at` stamp rolls
   /// both back. Source:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`
   /// Draft D, operator pick 2026-05-13.
   static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
 
@@ -167,7 +167,7 @@ class EmailTemplateIds {
   /// `(operator_id, credential_id, cap_tripped_at)` idempotency key,
   /// inserts on the same executor as the cap-trip transaction.
   /// Source:
-  /// `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+  /// `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`
   /// Draft F, operator pick 2026-05-13.
   static const String vendorConnectionAutoDisabled =
       'vendor_connection_auto_disabled';
@@ -189,7 +189,7 @@ class EmailTemplateIds {
   /// `markSucceeded`. Hook helper:
   /// `tool/advisor_proxy/email_dispatch/notification_event_hooks.dart`
   /// (`emitBackfillComplete`). Registered as part of the B3 hot-fix
-  /// slice (`docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
+  /// slice (`docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`
   /// Block B, B3) which closed the silent-failure path where the
   /// hook referenced a template id that was not in `all`.
   static const String backfillComplete = 'backfill_complete';

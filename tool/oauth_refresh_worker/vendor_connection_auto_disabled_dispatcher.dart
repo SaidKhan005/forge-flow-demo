@@ -11,7 +11,7 @@
 // row up on the next claim tick and hands it to SendGrid.
 //
 // Decision provenance:
-//   * `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`
+//   * `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`
 //     Draft F — operator picked WIRE on 2026-05-13, worker pre-
 //     recommended Path (b) `~400 LoC outbox enqueue` over Path (a)
 //     `~600 LoC full fanout` for lower scope and a narrower blast

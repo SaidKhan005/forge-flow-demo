@@ -1,8 +1,8 @@
 # 01 — Product Rule And Information Architecture (Lane B — Features)
 
 Status: planning draft, 2026-05-12 (post-Codex wave Step 3, Lane B).
-Authority: CLAUDE.md, `docs/_decisions/post_codex_wave_decisions_2026-05-12.md`,
-`docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`,
+Authority: CLAUDE.md, `docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md`,
+`docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`,
 `docs/contracts/auth_permission_key_catalog.md`, HP #11.
 
 ## Plain-English Product Rule

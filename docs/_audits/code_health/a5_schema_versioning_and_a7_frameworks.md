@@ -8,10 +8,10 @@ Date: 2026-05-12.
 Authority read for this audit:
 
 - `CLAUDE.md` (RLS-Ready Schema; Proxy & API Conventions — hash-chained audit_logs rule).
-- `docs/_decisions/post_codex_wave_decisions_2026-05-12.md` (8 locks; lock #8 = read-side join only on audit_logs; open item: "schema versioning + migration system shape — pending Wave A5").
-- `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` (addendum A7 — expand-contract migration convention + `UPDATE audit_logs` allowlist guardrail).
+- `docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md` (8 locks; lock #8 = read-side join only on audit_logs; open item: "schema versioning + migration system shape — pending Wave A5").
+- `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` (addendum A7 — expand-contract migration convention + `UPDATE audit_logs` allowlist guardrail).
 - `docs/contracts/hardening_rls_and_repository_pattern_contract.md` (closed, retained as historical authority).
-- `docs/_research/post_codex/r2_engineering_patterns.md` §80-103 (the originating rationale for the three additions: `post_deploy/` dir, `--require-expand-contract` flag, `UPDATE audit_logs` lint).
+- `docs/archive/_research/post_codex/r2_engineering_patterns.md` §80-103 (the originating rationale for the three additions: `post_deploy/` dir, `--require-expand-contract` flag, `UPDATE audit_logs` lint).
 - `docs/_audits/code_health/a1_proxy_bug_root_cause.md` (shape precedent for this doc).
 - `docs/POST_HARDENING_FOLLOWUPS.md` (37-migration Production1 apply queue; one row pending CI).
 - `PROJECT_TRACKER.md` (frameworks listed at Authority Order item 7).
@@ -125,7 +125,7 @@ This was the most important grep in the audit. Per CLAUDE.md "Proxy & API Conven
 | `db/` (migrations + verification) | `db/migrations/202605131010_admin_audit_logs_business_date.sql:14` | **1** | One `update public.audit_logs set business_date = chain_date where business_date is null;` This is the **only** UPDATE audit_logs in the entire repo. |
 | `lib/` (all service / repository / state code) | — | **0** | Clean. |
 | `tool/` (proxy, workers, harnesses) | — | **0** | Clean. |
-| `docs/` (decisions, research, audits) | `docs/_research/post_codex/r2_engineering_patterns.md:98`, `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md:27` | 2 | Both are prose references to the *future* lint guardrail, not SQL. |
+| `docs/` (decisions, research, audits) | `docs/archive/_research/post_codex/r2_engineering_patterns.md:98`, `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md:27` | 2 | Both are prose references to the *future* lint guardrail, not SQL. |
 
 **Detailed read of the single UPDATE site.** `db/migrations/202605131010_admin_audit_logs_business_date.sql:9-19`:
 
@@ -331,7 +331,7 @@ Runbook updates needed:
 
 - `runbooks/phase_9_production1_migration_apply_runbook.md` — add a "Post-deploy migrations" section. Production1 apply gate: standard migrations apply at deploy time; post-deploy migrations apply via a separate operator-triggered runbook step after the feature is verified in production.
 - `scripts/postgres_staging_setup.ps1` — second sentinel block `# MIGRATION_CUTOFF_POST_DEPLOY_BEGIN` / `_END` for the latest `post_deploy/` filename. The cutoff lint extends to enforce both sentinels.
-- `tool/migration_drift_scanner.dart:16-23` watched-docs list — add `docs/_decisions/post_codex_wave_decisions_2026-05-12.md` + `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`.
+- `tool/migration_drift_scanner.dart:16-23` watched-docs list — add `docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md` + `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`.
 
 ### 3.4 Migration sequencing for in-flight schema changes
 

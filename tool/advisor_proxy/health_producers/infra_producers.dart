@@ -398,7 +398,7 @@ ProxyHealthMetric _sessionRecordIncompleteCountTemplate() =>
 ///     identifiers, matching the gauge's own contract (see
 ///     `SessionRecordIncompleteGauge` doc comment in advisor_proxy.dart).
 ///
-/// Authority: docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
+/// Authority: docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md
 /// finding #2 (gauge data invisible to observability surface) +
 /// docs/_execution/lane_a_code_health/03_execution_slices.md Slice A11.1
 /// (consumer side).
