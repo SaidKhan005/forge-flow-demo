@@ -7,7 +7,7 @@ Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
 summary stands in for them so the graph captures migration shape.
 
-Migration count: **139**
+Migration count: **145**
 
 ## `202604250000_advisor_roles.sql`
 
@@ -7088,22 +7088,118 @@ Migration count: **139**
 
 ## `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
 
-- Per-Daypart V1 R7e Data Accuracy provenance.
-- Redefines `public.effective_data_accuracy_settings_v` additively.
-- Preserves every existing value column and HP #11 precedence from R7d.
-- Appends three source-metadata columns:
-  - `covers_source_per_service_period_source`
-  - `wage_source_source`
-  - `walk_in_handling_mode_source`
-- The per-service-period source map mirrors the effective value map:
-  keyed service-period rows first, then business, org-unit, and
-  location scoped overrides, with later scopes winning on key
-  collision.
-- Scalar source metadata reports the winning scope for wage source and
-  walk-in handling mode, or a default source object when no configured
-  row owns the value.
-- No table columns, indexes, policies, or grants are changed beyond
-  re-granting select on the view to `service_role` and `forge_admin`.
-- No down migration. This is additive view metadata used by proxy and
-  Flutter surfaces to show honest source labels without client-side
-  inheritance guesses.
+- **Applied:** 2026-05-19 09:00
+- **Title:** per daypart v1 r7e data accuracy provenance
+- **Description:**
+
+  Per-Daypart V1 R7e data accuracy provenance.
+
+  Adds source metadata to public.effective_data_accuracy_settings_v so
+  clients can show where effective data-accuracy values came from
+  without guessing inheritance in Flutter.
+
+  Additive only:
+  * existing view columns stay in the same order and keep the same
+  expressions
+  * new source columns are appended at the end
+  * no table shape changes
+
+## `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
+
+- **Applied:** 2026-05-19 10:00
+- **Title:** per daypart v1 r7f data accuracy precedence fix
+- **Description:**
+
+  Per-Daypart V1 R7f data accuracy precedence/source parity.
+
+  R7e added source metadata to public.effective_data_accuracy_settings_v
+  but accidentally merged scoped override maps before keyed
+  service-period rows. Because jsonb concat keeps the right-hand value
+  on key collision, that let keyed rows overwrite hierarchy overrides.
+
+  This migration restores the R7a/R7d hierarchy rule:
+  keyed service-period rows are the base fallback
+  then business, org-unit, and location scoped overrides win per key
+  and applies the same order to covers_source_per_service_period_source.
+
+## `202605191200_wage_role_rows_hierarchy_scope_refresh.sql`
+
+- **Applied:** 2026-05-19 12:00
+- **Title:** wage role rows hierarchy scope refresh
+- **Description:**
+
+  Wage Role Rows hierarchy scope refresh.
+
+  Schema-touching risk:
+  * Adds hierarchy scope columns to public.wage_role_rows.
+  * Allows location_id to be NULL only for business/org-unit scoped rows.
+  * Relaxes the wage_role_rows RLS policy from operator+location to
+  operator-only so operator owners can read/write higher-scope wage rows.
+
+  This intentionally reuses the unmerged PR #836 direction, but fixes two
+  live-path gaps from that closed branch:
+  * The prior migration described NULL location_id rows without dropping the
+  NOT NULL constraint.
+  * The uniqueness/upsert path still only targeted location rows.
+
+## `202605191830_canonical_fact_projection_retry_jobs.sql`
+
+- **Applied:** 2026-05-19 18:30
+- **Title:** canonical fact projection retry jobs
+- **Description:**
+
+  Canonical fact projection retry jobs.
+
+  Why this exists
+  ---------------
+  Canonical fact writes must stay successful even when the downstream
+  projection layer fails. The in-memory projection buffer is not durable,
+  so a projector failure needs a tenant-scoped retry row that can be
+  claimed and replayed later without asking the vendor to re-send data.
+
+  Schema notes
+  ------------
+  * One row stores the exact post-commit projector input that failed.
+  * `attempt_count` is incremented by the replay dispatcher when it claims.
+  * `dead_lettered_at` is set after the bounded retry budget is exhausted.
+  * Operator-leading indexes and RLS mirror the integration fact tables.
+
+  Operator approval gate
+  ----------------------
+  This is schema-touching. Per CLAUDE.md, it requires explicit operator
+  approval before merge regardless of audit verdict.
+
+## `202605191845_data_accuracy_cover_facts_nullable_covers.sql`
+
+- **Applied:** 2026-05-19 18:45
+- **Title:** data accuracy cover facts nullable covers
+- **Description:**
+
+  Data Accuracy cover_facts nullable covers.
+
+  Why this exists
+  ---------------
+  Some POS vendors, including Square and Clover, do not expose cover counts
+  through their public APIs. Their sink rows must preserve NULL covers so the
+  closed-shift aggregator can distinguish "vendor sent zero covers" from
+  "vendor sent no covers field".
+
+## `202605191900_canonical_fact_projection_retry_evidence.sql`
+
+- **Applied:** 2026-05-19 19:00
+- **Title:** canonical fact projection retry evidence
+- **Description:**
+
+  Projection retry evidence hardening.
+
+  Why this exists
+  ---------------
+  The retry ledger now records both post-input projector failures and
+  pre-input failures where the projector input could not be built. Support
+  needs to see that failure point directly, and hard-deleting a location or
+  connector must not silently remove terminal retry evidence.
+
+  Operator approval gate
+  ----------------------
+  This is schema-touching. Per CLAUDE.md, it requires explicit operator
+  approval before merge regardless of audit verdict.
