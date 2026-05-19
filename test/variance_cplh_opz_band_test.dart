@@ -409,7 +409,7 @@ void main() {
     /// first run is the bold lead-in). Scoped this way so the OPZ scale's
     /// own coloured `.opzlab` labels (which legitimately use
     /// AppColors.positive) never bleed into the teaching-copy assertions.
-    List<(String, TextStyle?)> _runs(WidgetTester tester) {
+    List<(String, TextStyle?)> runs0(WidgetTester tester) {
       final richTexts = tester.widgetList<RichText>(find.byType(RichText));
       for (final rt in richTexts) {
         final local = <(String, TextStyle?)>[];
@@ -427,7 +427,7 @@ void main() {
       return const [];
     }
 
-    bool _isBold(TextStyle? s) =>
+    bool isBold(TextStyle? s) =>
         s != null && (s.fontWeight?.index ?? 0) >= FontWeight.w700.index;
 
     // Regression guard for the all-same-weight paragraph defect (prior
@@ -437,19 +437,19 @@ void main() {
     // bold lead/colour runs use AppTextStyles.body15Bold (w700), instead
     // of a post-hoc `.copyWith(fontWeight: ...)` that google_fonts ignores
     // on a runtime-resolved style.
-    bool _isRegular(TextStyle? s) =>
+    bool isRegular(TextStyle? s) =>
         s != null &&
         s.fontWeight != FontWeight.w700 &&
         (s.fontWeight?.index ?? FontWeight.w700.index) <
             FontWeight.w700.index;
 
-    Future<List<(String, TextStyle?)>> _pump(
+    Future<List<(String, TextStyle?)>> pump(
       WidgetTester tester,
       CplhOpzBandData d,
     ) async {
       await tester.pumpWidget(_wrap(CplhOpzBandCard(data: d)));
       await tester.pump();
-      return _runs(tester);
+      return runs0(tester);
     }
 
     testWidgets('unfavourable (below-zone) variant: bold lead + RED span, '
@@ -467,7 +467,7 @@ void main() {
       expect(d.weekCount, 6);
       expect(d.weeksBelowFloor, 5);
 
-      final runs = await _pump(tester, d);
+      final runs = await pump(tester, d);
 
       // (a) bold lead-in present, bold weight, default ink (not a
       // sentiment colour).
@@ -476,7 +476,7 @@ void main() {
         orElse: () => ('', null),
       );
       expect(lead.$1, 'What the zone is telling you. ');
-      expect(_isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
+      expect(isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
       expect(lead.$2?.color, isNot(AppColors.negative));
       expect(lead.$2?.color, isNot(AppColors.positive));
 
@@ -488,9 +488,9 @@ void main() {
         orElse: () => ('', null),
       );
       expect(plain.$1, isNotEmpty, reason: 'plain intro run must exist');
-      expect(_isBold(plain.$2), isFalse,
+      expect(isBold(plain.$2), isFalse,
           reason: 'plain body must NOT be bold');
-      expect(_isRegular(plain.$2), isTrue,
+      expect(isRegular(plain.$2), isTrue,
           reason: 'plain body must be regular weight (w400)');
 
       // (b) the key stat span is red (unfavourable) and carries the REAL
@@ -507,7 +507,7 @@ void main() {
       // (c) the coloured emphasis span is BOTH red AND bold (mockup
       // `.em-bad {color:red; font-weight:700}`).
       expect(badRun.$2?.color, AppColors.negative);
-      expect(_isBold(badRun.$2), isTrue,
+      expect(isBold(badRun.$2), isTrue,
           reason: 'red emphasis stat must be bold+coloured');
       // No green span in an unfavourable message.
       expect(
@@ -539,14 +539,14 @@ void main() {
       expect(d.weekCount, 4);
       expect(d.weeksBelowFloor, 4);
 
-      final runs = await _pump(tester, d);
+      final runs = await pump(tester, d);
 
       final lead = runs.firstWhere(
         (r) => r.$1.startsWith('What the zone is telling you.'),
         orElse: () => ('', null),
       );
       expect(lead.$1, 'What the zone is telling you. ');
-      expect(_isBold(lead.$2), isTrue);
+      expect(isBold(lead.$2), isTrue);
 
       final badRun = runs.firstWhere(
         (r) => r.$2?.color == AppColors.negative,
@@ -578,14 +578,14 @@ void main() {
       expect(d.weekCount, 5);
       expect(d.weeksBelowFloor, 0);
 
-      final runs = await _pump(tester, d);
+      final runs = await pump(tester, d);
 
       final lead = runs.firstWhere(
         (r) => r.$1.startsWith('What the zone is telling you.'),
         orElse: () => ('', null),
       );
       expect(lead.$1, 'What the zone is telling you. ');
-      expect(_isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
+      expect(isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
       expect(lead.$2?.color, isNot(AppColors.positive));
       expect(lead.$2?.color, isNot(AppColors.negative));
 
@@ -596,9 +596,9 @@ void main() {
         orElse: () => ('', null),
       );
       expect(plain.$1, isNotEmpty, reason: 'plain tail run must exist');
-      expect(_isBold(plain.$2), isFalse,
+      expect(isBold(plain.$2), isFalse,
           reason: 'plain body must NOT be bold');
-      expect(_isRegular(plain.$2), isTrue,
+      expect(isRegular(plain.$2), isTrue,
           reason: 'plain body must be regular weight (w400)');
 
       // (b) the positive stat clause is GREEN and carries the REAL count.
@@ -613,7 +613,7 @@ void main() {
       // (c) the coloured emphasis span is BOTH green AND bold (mockup
       // `.em-good {color:green; font-weight:700}`).
       expect(goodRun.$2?.color, AppColors.positive);
-      expect(_isBold(goodRun.$2), isTrue,
+      expect(isBold(goodRun.$2), isTrue,
           reason: 'green emphasis stat must be bold+coloured');
       // No red span in a favourable message.
       expect(
@@ -651,14 +651,14 @@ void main() {
       expect(d.canRenderBand, isTrue);
       expect(d.weekCount, 0);
 
-      final runs = await _pump(tester, d);
+      final runs = await pump(tester, d);
 
       final lead = runs.firstWhere(
         (r) => r.$1.startsWith('What the zone is telling you.'),
         orElse: () => ('', null),
       );
       expect(lead.$1, 'What the zone is telling you. ');
-      expect(_isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
+      expect(isBold(lead.$2), isTrue, reason: 'lead-in must be bold');
 
       // No fabricated colour emphasis when there is no real stat.
       expect(

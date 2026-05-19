@@ -41,12 +41,10 @@ const String _kLoc = '33333333-3333-3333-3333-333333333333';
 const String _kUser = '44444444-4444-4444-4444-444444444444';
 const String _kTargetLoc = '55555555-5555-5555-5555-555555555555';
 
-const String _kPath =
-    '/v1/operator/location-account-overrides/$_kTargetLoc';
+const String _kPath = '/v1/operator/location-account-overrides/$_kTargetLoc';
 
 void main() {
-  group('PATCH /v1/operator/location-account-overrides/{location_id}',
-      () {
+  group('PATCH /v1/operator/location-account-overrides/{location_id}', () {
     Future<T> withRealHttp<T>(Future<T> Function() body) async {
       final saved = HttpOverrides.current;
       HttpOverrides.global = null;
@@ -57,20 +55,24 @@ void main() {
       }
     }
 
-    Future<({
-      HttpServer server,
-      HttpClient client,
-      Uri baseUri,
-      _StubOverridesGateway gateway,
-      _RecordingAuditSink auditSink,
-      _SettableVerifier verifier,
-    })> spinUp({
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _StubOverridesGateway gateway,
+        _RecordingAuditSink auditSink,
+        _SettableVerifier verifier,
+      })
+    >
+    spinUp({
       ProxyJwtClaims? initialClaims,
       LocationAccountOverridesOutcome? outcomeOverride,
       bool registerHandler = true,
     }) async {
       final verifier = _SettableVerifier();
-      verifier.claims = initialClaims ??
+      verifier.claims =
+          initialClaims ??
           const ProxyJwtClaims(
             userId: _kUser,
             operatorId: _kOpA,
@@ -89,16 +91,11 @@ void main() {
         auditSink: auditSink,
         locationAccountOverridesHandler: handler,
       );
-      final server =
-          await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       // ignore: unawaited_futures
       server.listen((request) async {
         try {
-          await routeRequest(
-            request,
-            guard,
-            operatorWriteRouter: router,
-          );
+          await routeRequest(request, guard, operatorWriteRouter: router);
         } catch (_) {
           try {
             request.response.statusCode = 500;
@@ -107,8 +104,7 @@ void main() {
         }
       });
       final client = HttpClient();
-      final baseUri =
-          Uri.parse('http://${server.address.host}:${server.port}');
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
       return (
         server: server,
         client: client,
@@ -119,8 +115,7 @@ void main() {
       );
     }
 
-    test('200 happy path PATCH returns the resolved triple + audits',
-        () async {
+    test('200 happy path PATCH returns the resolved triple + audits', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
         try {
@@ -135,26 +130,26 @@ void main() {
             },
           );
           expect(response.statusCode, equals(200));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
           expect(decoded['operatorId'], equals(_kOpA));
           expect(decoded['locationId'], equals(_kTargetLoc));
-          final effective =
-              (decoded['effective'] as Map).cast<String, Object?>();
+          final effective = (decoded['effective'] as Map)
+              .cast<String, Object?>();
           expect(effective['ianaTimezone'], equals('Europe/London'));
           expect(effective['currencyCode'], equals('GBP'));
           // Audit row emitted with the field triple.
-          final auditedEvents =
-              ctx.auditSink.events.map((e) => e.eventKind).toList();
+          final auditedEvents = ctx.auditSink.events
+              .map((e) => e.eventKind)
+              .toList();
           expect(
             auditedEvents,
             contains('operator_location_account_overrides_updated'),
           );
           final payload = ctx.auditSink.events.last.payload;
           expect(payload['location_id'], equals(_kTargetLoc));
-          expect(payload['override'], isA<Map>());
-          expect(payload['business_default'], isA<Map>());
-          expect(payload['effective'], isA<Map>());
+          expect(payload['override'], isA<Map<String, Object?>>());
+          expect(payload['business_default'], isA<Map<String, Object?>>());
+          expect(payload['effective'], isA<Map<String, Object?>>());
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -162,35 +157,37 @@ void main() {
       });
     });
 
-    test('200 happy path GET returns the triple without Idempotency-Key',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final response = await _httpGet(
-            ctx.client,
-            ctx.baseUri.resolve(_kPath),
-            authorization: 'Bearer fake.token',
-          );
-          expect(response.statusCode, equals(200));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
-          expect(decoded['locationId'], equals(_kTargetLoc));
-          // GET MUST NOT emit an audit row (read-only).
-          final auditedKinds =
-              ctx.auditSink.events.map((e) => e.eventKind).toSet();
-          expect(
-            auditedKinds.contains(
-              'operator_location_account_overrides_updated',
-            ),
-            isFalse,
-          );
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      '200 happy path GET returns the triple without Idempotency-Key',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(_kPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
+            expect(decoded['locationId'], equals(_kTargetLoc));
+            // GET MUST NOT emit an audit row (read-only).
+            final auditedKinds = ctx.auditSink.events
+                .map((e) => e.eventKind)
+                .toSet();
+            expect(
+              auditedKinds.contains(
+                'operator_location_account_overrides_updated',
+              ),
+              isFalse,
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
     test('400 invalid_location_id on a non-UUID path segment', () async {
       await withRealHttp(() async {
@@ -203,13 +200,10 @@ void main() {
             ),
             authorization: 'Bearer fake.token',
             idempotencyKey: 'idem-2',
-            jsonBody: <String, Object?>{
-              'currencyCode': 'USD',
-            },
+            jsonBody: <String, Object?>{'currencyCode': 'USD'},
           );
           expect(response.statusCode, equals(400));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
           expect(decoded['error'], equals('invalid_location_id'));
         } finally {
           ctx.client.close(force: true);
@@ -227,13 +221,10 @@ void main() {
             ctx.baseUri.resolve(_kPath),
             authorization: 'Bearer fake.token',
             idempotencyKey: 'idem-3',
-            jsonBody: <String, Object?>{
-              'ianaTimezone': 'Mars/Olympus',
-            },
+            jsonBody: <String, Object?>{'ianaTimezone': 'Mars/Olympus'},
           );
           expect(response.statusCode, equals(400));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
           expect(decoded['error'], equals('invalid_iana_timezone'));
         } finally {
           ctx.client.close(force: true);
@@ -251,13 +242,10 @@ void main() {
             ctx.baseUri.resolve(_kPath),
             authorization: 'Bearer fake.token',
             idempotencyKey: 'idem-4',
-            jsonBody: <String, Object?>{
-              'businessDayRolloverHour': 25,
-            },
+            jsonBody: <String, Object?>{'businessDayRolloverHour': 25},
           );
           expect(response.statusCode, equals(400));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
           expect(decoded['error'], equals('invalid_rollover_hour'));
         } finally {
           ctx.client.close(force: true);
@@ -278,8 +266,7 @@ void main() {
             jsonBody: const <String, Object?>{},
           );
           expect(response.statusCode, equals(400));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
           expect(decoded['error'], equals('no_fields_to_update'));
         } finally {
           ctx.client.close(force: true);
@@ -302,13 +289,10 @@ void main() {
               ctx.baseUri.resolve(_kPath),
               authorization: 'Bearer fake.token',
               idempotencyKey: 'idem-6',
-              jsonBody: <String, Object?>{
-                'currencyCode': 'USD',
-              },
+              jsonBody: <String, Object?>{'currencyCode': 'USD'},
             );
             expect(response.statusCode, equals(404));
-            final decoded =
-                jsonDecode(response.body) as Map<String, Object?>;
+            final decoded = jsonDecode(response.body) as Map<String, Object?>;
             expect(decoded['error'], equals('location_not_found'));
             // Audit row MUST NOT fire on failure.
             expect(
@@ -327,40 +311,34 @@ void main() {
       },
     );
 
-    test(
-      '403 when caller lacks operator_owner / operator_admin',
-      () async {
-        await withRealHttp(() async {
-          final ctx = await spinUp(
-            initialClaims: const ProxyJwtClaims(
-              userId: _kUser,
-              operatorId: _kOpA,
-              locationId: _kLoc,
-              roles: <String>['operator_member'],
-            ),
+    test('403 when caller lacks operator_owner / operator_admin', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: _kUser,
+            operatorId: _kOpA,
+            locationId: _kLoc,
+            roles: <String>['operator_member'],
+          ),
+        );
+        try {
+          final response = await _httpPatch(
+            ctx.client,
+            ctx.baseUri.resolve(_kPath),
+            authorization: 'Bearer fake.token',
+            idempotencyKey: 'idem-7',
+            jsonBody: <String, Object?>{'currencyCode': 'USD'},
           );
-          try {
-            final response = await _httpPatch(
-              ctx.client,
-              ctx.baseUri.resolve(_kPath),
-              authorization: 'Bearer fake.token',
-              idempotencyKey: 'idem-7',
-              jsonBody: <String, Object?>{
-                'currencyCode': 'USD',
-              },
-            );
-            expect(response.statusCode, equals(403));
-            expect(ctx.gateway.patchCalls, equals(0));
-          } finally {
-            ctx.client.close(force: true);
-            await ctx.server.close(force: true);
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(403));
+          expect(ctx.gateway.patchCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
 
-    test('503 when handler is not configured (null injection)',
-        () async {
+    test('503 when handler is not configured (null injection)', () async {
       await withRealHttp(() async {
         final ctx = await spinUp(registerHandler: false);
         try {
@@ -369,13 +347,10 @@ void main() {
             ctx.baseUri.resolve(_kPath),
             authorization: 'Bearer fake.token',
             idempotencyKey: 'idem-8',
-            jsonBody: <String, Object?>{
-              'currencyCode': 'USD',
-            },
+            jsonBody: <String, Object?>{'currencyCode': 'USD'},
           );
           expect(response.statusCode, equals(503));
-          final decoded =
-              jsonDecode(response.body) as Map<String, Object?>;
+          final decoded = jsonDecode(response.body) as Map<String, Object?>;
           expect(
             decoded['error'],
             equals('operator_location_account_overrides_not_configured'),
@@ -421,8 +396,7 @@ void main() {
       },
     );
 
-    test('cross-tenant isolation: gateway sees JWT operatorId only',
-        () async {
+    test('cross-tenant isolation: gateway sees JWT operatorId only', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
         try {
@@ -532,16 +506,15 @@ void main() {
     });
 
     test('accepts the full kitchen-sink valid body', () {
-      final decode = decodeLocationAccountOverridesPatchBody(
-        const <String, Object?>{
-          'ianaTimezone': 'Europe/London',
-          'localeCode': 'en-GB',
-          'currencyCode': 'GBP',
-          'businessDayRolloverHour': 4,
-          'contactEmail': 'ops@example.com',
-          'contactPhone': '+44 20 7000 0000',
-        },
-      );
+      final decode =
+          decodeLocationAccountOverridesPatchBody(const <String, Object?>{
+            'ianaTimezone': 'Europe/London',
+            'localeCode': 'en-GB',
+            'currencyCode': 'GBP',
+            'businessDayRolloverHour': 4,
+            'contactEmail': 'ops@example.com',
+            'contactPhone': '+44 20 7000 0000',
+          });
       expect(decode.ok, isTrue);
       final patch = decode.patch!;
       expect(patch.ianaTimezone, equals('Europe/London'));
@@ -582,10 +555,9 @@ void main() {
   });
 }
 
-class _StubOverridesGateway
-    implements LocationAccountOverridesWriteGateway {
+class _StubOverridesGateway implements LocationAccountOverridesWriteGateway {
   _StubOverridesGateway({LocationAccountOverridesOutcome? outcomeOverride})
-      : _outcomeOverride = outcomeOverride;
+    : _outcomeOverride = outcomeOverride;
 
   final LocationAccountOverridesOutcome? _outcomeOverride;
 
@@ -707,14 +679,12 @@ class _UnusedAccountGateway implements OperatorAccountWriteGateway {
     required String idempotencyKey,
     required ValidatedOperatorAccountPatch patch,
     required String adminReason,
-  }) async =>
-      throw UnimplementedError();
+  }) async => throw UnimplementedError();
 
   @override
   Future<OperatorAccountRecord?> loadAccount({
     required String operatorId,
-  }) async =>
-      null;
+  }) async => null;
 }
 
 class _UnusedTimingGateway implements OperatorBusinessTimingWriteGateway {
@@ -725,15 +695,13 @@ class _UnusedTimingGateway implements OperatorBusinessTimingWriteGateway {
     required String idempotencyKey,
     required ValidatedBusinessTimingProfile validated,
     required String adminReason,
-  }) async =>
-      throw UnimplementedError();
+  }) async => throw UnimplementedError();
 
   @override
   Future<OperatorBusinessTimingProfileRecord?> loadProfile({
     required String operatorId,
     required String profileId,
-  }) async =>
-      null;
+  }) async => null;
 
   @override
   Future<OperatorBusinessTimingResolutionResult> resolveForLocation({
@@ -770,8 +738,7 @@ class _UnusedTimingGateway implements OperatorBusinessTimingWriteGateway {
   @override
   Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
     required String operatorId,
-  }) async =>
-      const <OperatorBusinessTimingProfileRecord>[];
+  }) async => const <OperatorBusinessTimingProfileRecord>[];
 
   @override
   Future<OperatorBusinessTimingProfileRecord> replaceServicePeriodSet({
@@ -783,8 +750,7 @@ class _UnusedTimingGateway implements OperatorBusinessTimingWriteGateway {
     required String eventKind,
     required Map<String, Object?> auditPayload,
     required String adminReason,
-  }) async =>
-      throw UnimplementedError();
+  }) async => throw UnimplementedError();
 
   @override
   Future<OperatorBusinessTimingProfileRecord> updateProfile({
@@ -794,8 +760,7 @@ class _UnusedTimingGateway implements OperatorBusinessTimingWriteGateway {
     required String profileId,
     required ValidatedBusinessTimingProfile validated,
     required String adminReason,
-  }) async =>
-      throw UnimplementedError();
+  }) async => throw UnimplementedError();
 }
 
 class _SettableVerifier implements ProxyJwtVerifier {
@@ -813,10 +778,7 @@ class _SettableVerifier implements ProxyJwtVerifier {
 }
 
 class _HttpResponseSnapshot {
-  const _HttpResponseSnapshot({
-    required this.statusCode,
-    required this.body,
-  });
+  const _HttpResponseSnapshot({required this.statusCode, required this.body});
   final int statusCode;
   final String body;
 }

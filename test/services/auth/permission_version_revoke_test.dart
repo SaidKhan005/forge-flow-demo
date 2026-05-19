@@ -22,11 +22,13 @@ void main() {
       expect(await checker.fetch('user-1'), equals(3));
     });
 
-    test('InMemoryPermissionVersionChecker returns null for unknown user',
-        () async {
-      final checker = InMemoryPermissionVersionChecker(<String, int>{});
-      expect(await checker.fetch('unknown'), isNull);
-    });
+    test(
+      'InMemoryPermissionVersionChecker returns null for unknown user',
+      () async {
+        final checker = InMemoryPermissionVersionChecker(<String, int>{});
+        expect(await checker.fetch('unknown'), isNull);
+      },
+    );
   });
 
   group('routeRequest — permission_version gate', () {
@@ -34,7 +36,7 @@ void main() {
     // permission_version in the JWT payload, a ProxyRequestGuard wrapping it,
     // and an InMemoryPermissionVersionChecker that holds the DB-side value.
 
-    ProxyJwtVerifier _verifierWith({
+    ProxyJwtVerifier verifierWith({
       required String userId,
       required int permissionVersion,
     }) {
@@ -49,32 +51,13 @@ void main() {
       );
     }
 
-    Future<HttpResponse?> _issueGet({
-      required int jwtVersion,
-      required int dbVersion,
-    }) async {
-      final response = _FakeHttpResponse();
-      await routeRequest(
-        _buildFakeRequest('/v1/scope', 'GET'),
-        ProxyRequestGuard(
-          verifier: _verifierWith(userId: 'user-1', permissionVersion: jwtVersion),
-        ),
-        permissionVersionChecker: InMemoryPermissionVersionChecker(
-          <String, int>{'user-1': dbVersion},
-        ),
-      );
-      return response;
-    }
-
     test('returns 401 when JWT version is behind DB value', () async {
       // Simulate: token issued at permission_version=1, then admin revoked a
       // role bumping DB to 2. The next request should be rejected.
-      final captured = <Map<String, Object?>>[];
-      final fakeResponse = _FakeHttpResponse(onWrite: captured.add);
       await routeRequest(
         _buildFakeRequest('/v1/scope', 'GET'),
         ProxyRequestGuard(
-          verifier: _verifierWith(userId: 'user-1', permissionVersion: 1),
+          verifier: verifierWith(userId: 'user-1', permissionVersion: 1),
         ),
         permissionVersionChecker: InMemoryPermissionVersionChecker(
           <String, int>{'user-1': 2},
@@ -98,8 +81,9 @@ void main() {
 
     test('versions match → no 401 raised from version gate', () async {
       // When JWT and DB carry the same version, the gate is a no-op.
-      final checker =
-          InMemoryPermissionVersionChecker(<String, int>{'user-1': 5});
+      final checker = InMemoryPermissionVersionChecker(<String, int>{
+        'user-1': 5,
+      });
       // Versions match → fetch returns same value as JWT claim.
       final dbVersion = await checker.fetch('user-1');
       const jwtVersion = 5;
@@ -125,8 +109,9 @@ void main() {
           permissionVersion: null, // no claim → skip
         ),
       );
-      final checker =
-          InMemoryPermissionVersionChecker(<String, int>{'user-1': 99});
+      final checker = InMemoryPermissionVersionChecker(<String, int>{
+        'user-1': 99,
+      });
       // The helper inside routeRequest only checks when scope.permissionVersion
       // != null. A null JWT claim → no DB query → no 401.
       // We validate the logic by inspecting the guard directly.
@@ -190,10 +175,6 @@ class _FakeHttpHeaders implements HttpHeaders {
 }
 
 class _FakeHttpResponse implements HttpResponse {
-  _FakeHttpResponse({void Function(Map<String, Object?> body)? onWrite})
-    : _onWrite = onWrite;
-
-  final void Function(Map<String, Object?> body)? _onWrite;
   final _FakeHttpResponseHeaders _headers = _FakeHttpResponseHeaders();
   int? _writtenStatusCode;
 

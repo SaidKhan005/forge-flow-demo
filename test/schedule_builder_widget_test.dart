@@ -58,12 +58,23 @@ void main() {
 
       expect(notifier.plan, isNotNull);
       expect(servicePlan, isNotNull);
-      expect(notifier.plan!.forecastCovers, equals(servicePlan!.forecastCovers));
+      expect(
+        notifier.plan!.forecastCovers,
+        equals(servicePlan!.forecastCovers),
+      );
       expect(notifier.plan!.forecastSales, equals(servicePlan.forecastSales));
-      expect(notifier.plan!.requiredFohHours, equals(servicePlan.requiredFohHours));
-      expect(notifier.plan!.requiredBohHours, equals(servicePlan.requiredBohHours));
-      expect(notifier.plan!.theoreticalLaborPct,
-          equals(servicePlan.theoreticalLaborPct));
+      expect(
+        notifier.plan!.requiredFohHours,
+        equals(servicePlan.requiredFohHours),
+      );
+      expect(
+        notifier.plan!.requiredBohHours,
+        equals(servicePlan.requiredBohHours),
+      );
+      expect(
+        notifier.plan!.theoreticalLaborPct,
+        equals(servicePlan.theoreticalLaborPct),
+      );
 
       notifier.dispose();
     });
@@ -72,8 +83,9 @@ void main() {
   // ── B: Plan section labels — real widget (7.55m.6a) ─────────────────────
 
   group('B — Plan section labels (7.55m.6a)', () {
-    testWidgets('real ScheduleBuilder content renders section labels',
-        (tester) async {
+    testWidgets('real ScheduleBuilder content renders section labels', (
+      tester,
+    ) async {
       final notifier = ScheduleForecastNotifier(
         targetCPLH: testCPLH,
         targetPPA: testPPA,
@@ -85,9 +97,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
@@ -99,8 +109,9 @@ void main() {
       notifier.dispose();
     });
 
-    testWidgets('old in-card chart caption is absent from real widget tree',
-        (tester) async {
+    testWidgets('old in-card chart caption is absent from real widget tree', (
+      tester,
+    ) async {
       final notifier = ScheduleForecastNotifier(
         targetCPLH: testCPLH,
         targetPPA: testPPA,
@@ -112,9 +123,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
@@ -147,8 +156,7 @@ void main() {
   // packages.
 
   group('C — 7.55q.6 planned labor package killed', () {
-    testWidgets(
-        'weekly summary card keeps LABOR % label but uses the '
+    testWidgets('weekly summary card keeps LABOR % label but uses the '
         'benchmark-owned theoretical seam', (tester) async {
       final notifier = ScheduleForecastNotifier(
         targetCPLH: testCPLH,
@@ -161,17 +169,19 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
 
       // The killed planned-labor label must NOT be present anywhere.
-      expect(find.text('PLANNED LABOR %'), findsNothing,
-          reason: '7.55q.6: planned labor package is dead — the label '
-              'must not appear in the active runtime');
+      expect(
+        find.text('PLANNED LABOR %'),
+        findsNothing,
+        reason:
+            '7.55q.6: planned labor package is dead — the label '
+            'must not appear in the active runtime',
+      );
       // The replacement THEORETICAL label is rendered.
       expect(find.text('LABOR %'), findsOneWidget);
 
@@ -183,8 +193,11 @@ void main() {
       // _plan?.theoreticalLaborPct — the weekly theoretical % is a
       // Benchmark-owned metric, not a snapshot-plan projection.
       final theoPct = notifier.theoreticalLaborPct;
-      expect(theoPct, greaterThan(0),
-          reason: 'demo inputs should produce a valid theoretical %');
+      expect(
+        theoPct,
+        greaterThan(0),
+        reason: 'demo inputs should produce a valid theoretical %',
+      );
       final pctText = '${theoPct.toStringAsFixed(1)}%';
       expect(find.text(pctText), findsWidgets);
 
@@ -192,40 +205,43 @@ void main() {
     });
 
     testWidgets(
-        'day-by-day table no longer has a PLANNED LABOR / labor % column',
-        (tester) async {
-      final notifier = ScheduleForecastNotifier(
-        targetCPLH: testCPLH,
-        targetPPA: testPPA,
-        targetSPLH: testSPLH,
-        fohWage: testFohWage,
-        bohWage: testBohWage,
-        historicalWeeklyAvgCovers: testCovers,
-      );
+      'day-by-day table no longer has a PLANNED LABOR / labor % column',
+      (tester) async {
+        final notifier = ScheduleForecastNotifier(
+          targetCPLH: testCPLH,
+          targetPPA: testPPA,
+          targetSPLH: testSPLH,
+          fohWage: testFohWage,
+          bohWage: testBohWage,
+          historicalWeeklyAvgCovers: testCovers,
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
           ),
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      // The PLANNED column header span is gone.
-      expect(find.text('PLANNED'), findsNothing,
-          reason: 'day-by-day PLANNED column header was removed in '
+        // The PLANNED column header span is gone.
+        expect(
+          find.text('PLANNED'),
+          findsNothing,
+          reason:
+              'day-by-day PLANNED column header was removed in '
               '7.55q.6 — no honest same-scope theoretical labor % '
-              'exists at day/daypart granularity');
-      // No `—` placeholder cells are sitting around either.
-      // (The remaining day-row columns are day / covers / sales /
-      //  FOH HRS / BOH HRS — all Plan-owned values that always render
-      //  a number, never `—`.)
-      // Note: SALES is a Plan-owned column header, so it stays.
-      expect(find.text('SALES'), findsAtLeastNWidgets(1));
+              'exists at day/daypart granularity',
+        );
+        // No `—` placeholder cells are sitting around either.
+        // (The remaining day-row columns are day / covers / sales /
+        //  FOH HRS / BOH HRS — all Plan-owned values that always render
+        //  a number, never `—`.)
+        // Note: SALES is a Plan-owned column header, so it stays.
+        expect(find.text('SALES'), findsAtLeastNWidgets(1));
 
-      notifier.dispose();
-    });
+        notifier.dispose();
+      },
+    );
 
     test('ScheduleDayView and ScheduleDaySubrow no longer carry a '
         'plannedLabor field — Plan-owned values only', () {
@@ -327,61 +343,71 @@ void main() {
         salesSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
         dayPlans: const [
           ScheduleDayPlan(
-              day: 'Mon',
-              forecastCovers: 150,
-              forecastSales: 6000,
-              requiredFohHours: 35,
-              requiredBohHours: 40),
+            day: 'Mon',
+            forecastCovers: 150,
+            forecastSales: 6000,
+            requiredFohHours: 35,
+            requiredBohHours: 40,
+          ),
           ScheduleDayPlan(
-              day: 'Tue',
-              forecastCovers: 160,
-              forecastSales: 6500,
-              requiredFohHours: 38,
-              requiredBohHours: 42),
+            day: 'Tue',
+            forecastCovers: 160,
+            forecastSales: 6500,
+            requiredFohHours: 38,
+            requiredBohHours: 42,
+          ),
           ScheduleDayPlan(
-              day: 'Wed',
-              forecastCovers: 170,
-              forecastSales: 7000,
-              requiredFohHours: 40,
-              requiredBohHours: 44),
+            day: 'Wed',
+            forecastCovers: 170,
+            forecastSales: 7000,
+            requiredFohHours: 40,
+            requiredBohHours: 44,
+          ),
           ScheduleDayPlan(
-              day: 'Thu',
-              forecastCovers: 175,
-              forecastSales: 7200,
-              requiredFohHours: 42,
-              requiredBohHours: 46),
+            day: 'Thu',
+            forecastCovers: 175,
+            forecastSales: 7200,
+            requiredFohHours: 42,
+            requiredBohHours: 46,
+          ),
           ScheduleDayPlan(
-              day: 'Fri',
-              forecastCovers: 200,
-              forecastSales: 8500,
-              requiredFohHours: 48,
-              requiredBohHours: 52),
+            day: 'Fri',
+            forecastCovers: 200,
+            forecastSales: 8500,
+            requiredFohHours: 48,
+            requiredBohHours: 52,
+          ),
           ScheduleDayPlan(
-              day: 'Sat',
-              forecastCovers: 215,
-              forecastSales: 9000,
-              requiredFohHours: 50,
-              requiredBohHours: 55),
+            day: 'Sat',
+            forecastCovers: 215,
+            forecastSales: 9000,
+            requiredFohHours: 50,
+            requiredBohHours: 55,
+          ),
           ScheduleDayPlan(
-              day: 'Sun',
-              forecastCovers: 130,
-              forecastSales: 5800,
-              requiredFohHours: 30,
-              requiredBohHours: 35),
+            day: 'Sun',
+            forecastCovers: 130,
+            forecastSales: 5800,
+            requiredFohHours: 30,
+            requiredBohHours: 35,
+          ),
         ],
       );
     }
 
     test('D1: lockedAuthority constructor sets locked mode + idle state '
         '+ null plan (no eager resolveFromInputs)', () {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
 
       expect(notifier.isLockedAuthority, isTrue);
-      expect(notifier.lockedPlanLoadState,
-          ScheduleLockedPlanLoadState.idle);
-      expect(notifier.plan, isNull,
-          reason: 'locked-authority must NOT eagerly resolveFromInputs');
+      expect(notifier.lockedPlanLoadState, ScheduleLockedPlanLoadState.idle);
+      expect(
+        notifier.plan,
+        isNull,
+        reason: 'locked-authority must NOT eagerly resolveFromInputs',
+      );
       expect(notifier.hasPlan, isFalse);
 
       notifier.dispose();
@@ -389,10 +415,12 @@ void main() {
 
     test('D2a: locked-mode updateTargets does NOT mutate the plan '
         '(wages/PPA refresh only; plan stays locked)', () {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
       notifier.setLockedPlanForTest(
-          makePlan(requiredFohHours: 280, requiredBohHours: 300));
+        makePlan(requiredFohHours: 280, requiredBohHours: 300),
+      );
 
       // Push a meaningfully different profile.
       final newProfile = makeProfile(
@@ -415,26 +443,32 @@ void main() {
 
     test('D2b: locked-mode updateDemandCovers is a no-op '
         '(plan stays locked even when demand changes wildly)', () {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
       notifier.setLockedPlanForTest(
-          makePlan(forecastCovers: 1200, forecastSales: 50000));
+        makePlan(forecastCovers: 1200, forecastSales: 50000),
+      );
 
       notifier.updateDemandCovers(50); // wildly different
       expect(notifier.plan!.forecastCovers, equals(1200));
       expect(notifier.plan!.forecastSales, equals(50000));
 
       notifier.updateDemandCovers(null);
-      expect(notifier.plan!.forecastCovers, equals(1200),
-          reason: 'null demand must not clear the locked plan');
+      expect(
+        notifier.plan!.forecastCovers,
+        equals(1200),
+        reason: 'null demand must not clear the locked plan',
+      );
 
       notifier.dispose();
     });
 
     test('D2c: locked-mode updateDistributionWeights leaves the plan '
         'unchanged (only daypart presentation may shift)', () {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
       notifier.setLockedPlanForTest(makePlan(requiredFohHours: 280));
 
       notifier.updateDistributionWeights(null);
@@ -446,35 +480,51 @@ void main() {
     test('D2d: locked daypart subrow sales split the locked day-row sales, '
         'not the current profile PPA', () {
       final profile = makeProfile(targetPPA: 42.0);
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: profile);
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: profile,
+      );
       notifier.setLockedPlanForTest(makePlan());
 
-      final monday = notifier.adjustedDayViews
-          .firstWhere((d) => d.day == 'Mon');
+      final monday = notifier.adjustedDayViews.firstWhere(
+        (d) => d.day == 'Mon',
+      );
       final subrowSalesTotal = monday.subrows.fold<double>(
-          0, (sum, sub) => sum + sub.forecastSales);
+        0,
+        (sum, sub) => sum + sub.forecastSales,
+      );
 
-      expect(subrowSalesTotal, closeTo(monday.forecastSales, 0.001),
-          reason: 'daypart sales should partition the locked day-row sales');
-      expect(subrowSalesTotal, isNot(closeTo(monday.forecastCovers * 42.0, 0.001)),
-          reason: 'locked mode must not rebuild daypart sales from the '
-              'current benchmark PPA');
+      expect(
+        subrowSalesTotal,
+        closeTo(monday.forecastSales, 0.001),
+        reason: 'daypart sales should partition the locked day-row sales',
+      );
+      expect(
+        subrowSalesTotal,
+        isNot(closeTo(monday.forecastCovers * 42.0, 0.001)),
+        reason:
+            'locked mode must not rebuild daypart sales from the '
+            'current benchmark PPA',
+      );
 
       notifier.dispose();
     });
 
     test('D3: honest degradation — null plan coexists with unavailable '
         'load state; hasPlan is false', () {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
-      notifier.setLockedPlanForTest(null,
-          state: ScheduleLockedPlanLoadState.unavailable);
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
+      notifier.setLockedPlanForTest(
+        null,
+        state: ScheduleLockedPlanLoadState.unavailable,
+      );
 
       expect(notifier.plan, isNull);
       expect(notifier.hasPlan, isFalse);
-      expect(notifier.lockedPlanLoadState,
-          ScheduleLockedPlanLoadState.unavailable);
+      expect(
+        notifier.lockedPlanLoadState,
+        ScheduleLockedPlanLoadState.unavailable,
+      );
       // Surface fallbacks (week getters) degrade honestly.
       expect(notifier.weeklyCovers, equals(0));
       expect(notifier.requiredFohHours, equals(0));
@@ -496,72 +546,95 @@ void main() {
 
     testWidgets('D3b: real widget renders -- for weekly labor % when the '
         'locked plan is unavailable', (tester) async {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
-      notifier.setLockedPlanForTest(null,
-          state: ScheduleLockedPlanLoadState.unavailable);
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
+      notifier.setLockedPlanForTest(
+        null,
+        state: ScheduleLockedPlanLoadState.unavailable,
+      );
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
 
       expect(find.text('LABOR %'), findsOneWidget);
-      expect(find.text('--'), findsWidgets,
-          reason: 'unavailable locked-plan state should render an honest '
-              'placeholder instead of 0.0%');
+      expect(
+        find.text('--'),
+        findsWidgets,
+        reason:
+            'unavailable locked-plan state should render an honest '
+            'placeholder instead of 0.0%',
+      );
 
       notifier.dispose();
     });
 
     testWidgets('D3c: unavailable locked snapshot renders explicit server '
         'setup state and no generated plan numbers', (tester) async {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
-      notifier.setLockedPlanForTest(null,
-          state: ScheduleLockedPlanLoadState.unavailable);
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
+      notifier.setLockedPlanForTest(
+        null,
+        state: ScheduleLockedPlanLoadState.unavailable,
+      );
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
 
       expect(find.text('No locked server weekly plan yet'), findsWidgets);
-      expect(find.text('--'), findsAtLeastNWidgets(6),
-          reason: 'header and labor summary values should be placeholders '
-              'when no server-backed locked snapshot exists');
-      expect(find.text('1200'), findsNothing,
-          reason: 'must not show the generated/live fixture covers value');
-      expect(find.text('\$50,000'), findsNothing,
-          reason: 'must not show the generated/live fixture sales value');
-      expect(find.text('280'), findsNothing,
-          reason: 'must not show generated/live fixture FOH hours');
-      expect(find.text('300'), findsNothing,
-          reason: 'must not show generated/live fixture BOH hours');
+      expect(
+        find.text('--'),
+        findsAtLeastNWidgets(6),
+        reason:
+            'header and labor summary values should be placeholders '
+            'when no server-backed locked snapshot exists',
+      );
+      expect(
+        find.text('1200'),
+        findsNothing,
+        reason: 'must not show the generated/live fixture covers value',
+      );
+      expect(
+        find.text('\$50,000'),
+        findsNothing,
+        reason: 'must not show the generated/live fixture sales value',
+      );
+      expect(
+        find.text('280'),
+        findsNothing,
+        reason: 'must not show generated/live fixture FOH hours',
+      );
+      expect(
+        find.text('300'),
+        findsNothing,
+        reason: 'must not show generated/live fixture BOH hours',
+      );
 
       notifier.dispose();
     });
 
     testWidgets('D3d: loading locked snapshot renders loading state with '
         'placeholders', (tester) async {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
-      notifier.setLockedPlanForTest(null,
-          state: ScheduleLockedPlanLoadState.loading);
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
+      notifier.setLockedPlanForTest(
+        null,
+        state: ScheduleLockedPlanLoadState.loading,
+      );
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
@@ -575,15 +648,14 @@ void main() {
     testWidgets('D4: real ScheduleBuilder.testContent renders section '
         'labels with a locked-authority notifier whose plan was injected '
         '(surface is authority-agnostic)', (tester) async {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
       notifier.setLockedPlanForTest(makePlan());
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
@@ -653,13 +725,22 @@ void main() {
       // notifier were still reading `_plan?.theoreticalLaborPct`, the
       // getter would return 22.05. The new rule makes it return 27.5
       // (the profile's value captured at construction).
-      notifier.setLockedPlanForTest(makePlan()); // plan.theoreticalLaborPct = 22.05
+      notifier.setLockedPlanForTest(
+        makePlan(),
+      ); // plan.theoreticalLaborPct = 22.05
 
-      expect(notifier.plan!.theoreticalLaborPct, equals(22.05),
-          reason: 'fixture precondition — plan carries a distinct value');
-      expect(notifier.theoreticalLaborPct, equals(27.5),
-          reason: 'getter must follow the profile (benchmark-owned), '
-              'not the plan');
+      expect(
+        notifier.plan!.theoreticalLaborPct,
+        equals(22.05),
+        reason: 'fixture precondition — plan carries a distinct value',
+      );
+      expect(
+        notifier.theoreticalLaborPct,
+        equals(27.5),
+        reason:
+            'getter must follow the profile (benchmark-owned), '
+            'not the plan',
+      );
 
       notifier.dispose();
     });
@@ -675,15 +756,19 @@ void main() {
     // catches that immediately at the unit-test layer.
     test('F: notifier.adjustedDayViews subrows match '
         'DaypartPlanAllocator.allocate output exactly', () {
-      final notifier =
-          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      final notifier = ScheduleForecastNotifier.lockedAuthority(
+        profile: makeProfile(),
+      );
       notifier.setLockedPlanForTest(makePlan());
 
-      final monday =
-          notifier.adjustedDayViews.firstWhere((d) => d.day == 'Mon');
-      final monPlan =
-          notifier.plan!.dayPlans.firstWhere((dp) => dp.day == 'Mon');
+      final monday = notifier.adjustedDayViews.firstWhere(
+        (d) => d.day == 'Mon',
+      );
+      final monPlan = notifier.plan!.dayPlans.firstWhere(
+        (dp) => dp.day == 'Mon',
+      );
 
+      // ignore: deprecated_member_use_from_same_package
       final expected = DaypartPlanAllocator.allocate(
         day: 'Mon',
         dayCovers: monPlan.forecastCovers,
@@ -694,26 +779,38 @@ void main() {
         distributionWeights: null,
       );
 
-      expect(monday.subrows.length, equals(expected.length),
-          reason: 'subrow count must match the shared allocator output');
+      expect(
+        monday.subrows.length,
+        equals(expected.length),
+        reason: 'subrow count must match the shared allocator output',
+      );
       for (var i = 0; i < expected.length; i++) {
         expect(monday.subrows[i].label, equals(expected[i].label));
-        expect(monday.subrows[i].forecastCovers,
-            equals(expected[i].forecastCovers));
-        expect(monday.subrows[i].forecastSales,
-            closeTo(expected[i].forecastSales, 0.001));
-        expect(monday.subrows[i].requiredFohHours,
-            equals(expected[i].requiredFohHours));
-        expect(monday.subrows[i].requiredBohHours,
-            equals(expected[i].requiredBohHours));
+        expect(
+          monday.subrows[i].forecastCovers,
+          equals(expected[i].forecastCovers),
+        );
+        expect(
+          monday.subrows[i].forecastSales,
+          closeTo(expected[i].forecastSales, 0.001),
+        );
+        expect(
+          monday.subrows[i].requiredFohHours,
+          equals(expected[i].requiredFohHours),
+        );
+        expect(
+          monday.subrows[i].requiredBohHours,
+          equals(expected[i].requiredBohHours),
+        );
       }
 
       notifier.dispose();
     });
 
     testWidgets('E (widget): weekly summary card renders the PROFILE '
-        'theoretical % (27.5), not the plan theoretical % (22.05)',
-        (tester) async {
+        'theoretical % (27.5), not the plan theoretical % (22.05)', (
+      tester,
+    ) async {
       final profile = makeProfile();
       final notifier = ScheduleForecastNotifier.lockedAuthority(
         profile: ActiveTargetProfile(
@@ -737,19 +834,24 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(
-            body: ScheduleBuilder.testContent(notifier),
-          ),
+          home: Scaffold(body: ScheduleBuilder.testContent(notifier)),
         ),
       );
       await tester.pump();
 
       expect(find.text('LABOR %'), findsOneWidget);
-      expect(find.text('27.5%'), findsWidgets,
-          reason: 'benchmark-owned value rendered');
-      expect(find.text('22.1%'), findsNothing,
-          reason: 'plan.theoreticalLaborPct must NOT leak into the '
-              'weekly card under the 7.55q.8 ownership rule');
+      expect(
+        find.text('27.5%'),
+        findsWidgets,
+        reason: 'benchmark-owned value rendered',
+      );
+      expect(
+        find.text('22.1%'),
+        findsNothing,
+        reason:
+            'plan.theoreticalLaborPct must NOT leak into the '
+            'weekly card under the 7.55q.8 ownership rule',
+      );
 
       notifier.dispose();
     });

@@ -22,13 +22,12 @@ class _FakeAccountGateway implements WebAccountGateway {
   _FakeAccountGateway({
     this.failWith,
     this.timezoneFailWith,
-    this.overridesFailWith,
     this.initialOverrides,
   });
 
   final OperatorWebProxyException? failWith;
   final OperatorWebProxyException? timezoneFailWith;
-  final OperatorWebProxyException? overridesFailWith;
+  OperatorWebProxyException? overridesFailWith;
 
   /// Wave 2 U-FU-hp11-account — when non-null, `getLocationAccountOverrides`
   /// returns this envelope; otherwise the fake returns a synthetic "no
@@ -40,7 +39,7 @@ class _FakeAccountGateway implements WebAccountGateway {
   final List<AccountLocationTimezonePatch> timezoneCalls =
       <AccountLocationTimezonePatch>[];
   final List<({String locationId, LocationAccountOverridesPatchPayload patch})>
-      overridesPatchCalls =
+  overridesPatchCalls =
       <({String locationId, LocationAccountOverridesPatchPayload patch})>[];
   final List<String> overridesGetCalls = <String>[];
   int getCalls = 0;
@@ -157,12 +156,11 @@ class _FakeAccountGateway implements WebAccountGateway {
       operatorId: 'op-1',
       locationId: locationId,
       effective: LocationAccountOverridesFieldSet(
-        ianaTimezone:
-            patch.ianaTimezone ?? businessDefault.ianaTimezone,
+        ianaTimezone: patch.ianaTimezone ?? businessDefault.ianaTimezone,
         localeCode: patch.localeCode ?? businessDefault.localeCode,
-        currencyCode:
-            patch.currencyCode ?? businessDefault.currencyCode,
-        businessDayRolloverHour: patch.businessDayRolloverHour ??
+        currencyCode: patch.currencyCode ?? businessDefault.currencyCode,
+        businessDayRolloverHour:
+            patch.businessDayRolloverHour ??
             businessDefault.businessDayRolloverHour,
         contactEmail: patch.contactEmail,
         contactPhone: patch.contactPhone,
@@ -184,27 +182,26 @@ class _FakeAccountGateway implements WebAccountGateway {
 OperatorWebSession sessionWithRole(
   String role, {
   String? primaryLocationTimezone = 'America/Toronto',
-}) =>
-    OperatorWebSession(
-      uid: 'uid-$role',
-      email: 'alex@brio-restaurants.com',
-      displayName: 'Alex Morrison',
-      operatorId: 'op-1',
-      businessName: 'Brio Restaurants',
-      primaryLocationId: 'loc-1',
-      primaryLocationName: 'Brio Main',
-      roles: <String>[role],
-      currencyCode: 'USD',
-      localeTag: 'en-US',
-      weekStartDay: 'monday',
-      rolloverHour: 4,
-      primaryLocationTimezone: primaryLocationTimezone,
-    );
+}) => OperatorWebSession(
+  uid: 'uid-$role',
+  email: 'alex@brio-restaurants.com',
+  displayName: 'Alex Morrison',
+  operatorId: 'op-1',
+  businessName: 'Brio Restaurants',
+  primaryLocationId: 'loc-1',
+  primaryLocationName: 'Brio Main',
+  roles: <String>[role],
+  currencyCode: 'USD',
+  localeTag: 'en-US',
+  weekStartDay: 'monday',
+  rolloverHour: 4,
+  primaryLocationTimezone: primaryLocationTimezone,
+);
 
 Widget wrap(Widget child) => MaterialApp(
-      theme: AppTheme.themeData,
-      home: Scaffold(body: child),
-    );
+  theme: AppTheme.themeData,
+  home: Scaffold(body: child),
+);
 
 Future<void> _sizeViewport(WidgetTester tester) async {
   tester.view.physicalSize = const Size(1280, 1600);
@@ -236,10 +233,7 @@ void main() {
       find.byKey(const Key('operator_web_account_section_business_day')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('operator_web_account_save')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('operator_web_account_save')), findsOneWidget);
   });
 
   testWidgets('unavailable banner shows when gateway absent', (tester) async {
@@ -260,12 +254,7 @@ void main() {
     await _sizeViewport(tester);
     final session = sessionWithRole('location_manager');
     await tester.pumpWidget(
-      wrap(
-        AccountScreen(
-          session: session,
-          gateway: _FakeAccountGateway(),
-        ),
-      ),
+      wrap(AccountScreen(session: session, gateway: _FakeAccountGateway())),
     );
     expect(
       find.byKey(const Key('operator_web_account_readonly')),
@@ -277,8 +266,9 @@ void main() {
     expect(saveButton.onPressed, isNull);
   });
 
-  testWidgets('happy-path save calls gateway with patch fields',
-      (tester) async {
+  testWidgets('happy-path save calls gateway with patch fields', (
+    tester,
+  ) async {
     await _sizeViewport(tester);
     final gateway = _FakeAccountGateway();
     final session = sessionWithRole('operator_owner');
@@ -308,8 +298,9 @@ void main() {
     );
   });
 
-  testWidgets('gateway error surfaces in the inline error banner',
-      (tester) async {
+  testWidgets('gateway error surfaces in the inline error banner', (
+    tester,
+  ) async {
     await _sizeViewport(tester);
     final gateway = _FakeAccountGateway(
       failWith: const OperatorWebProxyException(
@@ -329,10 +320,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('operator_web_account_save')));
     await tester.pumpAndSettle();
-    expect(
-      find.byKey(const Key('operator_web_account_error')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('operator_web_account_error')), findsOneWidget);
     expect(
       find.text('Currency code must be three uppercase letters.'),
       findsOneWidget,
@@ -350,9 +338,7 @@ void main() {
         wrap(AccountScreen(session: session, gateway: _FakeAccountGateway())),
       );
       expect(
-        find.byKey(
-          const Key('operator_web_account_section_location_timezone'),
-        ),
+        find.byKey(const Key('operator_web_account_section_location_timezone')),
         findsOneWidget,
       );
       expect(
@@ -360,9 +346,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('operator_web_account_timezone_scope_scope_pill'),
-        ),
+        find.byKey(const Key('operator_web_account_timezone_scope_scope_pill')),
         findsOneWidget,
       );
       expect(
@@ -374,10 +358,7 @@ void main() {
         findsOneWidget,
       );
       // HP #11 effective row carries the seeded America/Toronto value.
-      expect(
-        find.textContaining('America/Toronto'),
-        findsWidgets,
-      );
+      expect(find.textContaining('America/Toronto'), findsWidgets);
     },
   );
 
@@ -406,8 +387,7 @@ void main() {
         find.byKey(const Key('operator_web_account_timezone_shortlist')),
       );
       await tester.pumpAndSettle();
-      await tester
-          .tap(find.text('London / Dublin').last);
+      await tester.tap(find.text('London / Dublin').last);
       await tester.pumpAndSettle();
 
       await tester.ensureVisible(
@@ -428,41 +408,40 @@ void main() {
     },
   );
 
-  testWidgets(
-    'timezone gateway error surfaces in the inline timezone banner',
-    (tester) async {
-      await _sizeViewport(tester);
-      final gateway = _FakeAccountGateway(
-        timezoneFailWith: const OperatorWebProxyException(
-          code: 'invalid_iana_timezone',
-          message: 'That timezone is not in the IANA database.',
-        ),
-      );
-      final session = sessionWithRole('operator_owner');
-      await tester.pumpWidget(
-        wrap(AccountScreen(session: session, gateway: gateway)),
-      );
-      // Wave 2 U-FU-hp11-account — three new HP #11 scope notices
-      // pushed the timezone save button below the 1600px viewport.
-      // Scroll it into view before tapping.
-      await tester.ensureVisible(
-        find.byKey(const Key('operator_web_account_timezone_save')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('operator_web_account_timezone_save')),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('operator_web_account_timezone_error')),
-        findsOneWidget,
-      );
-      expect(
-        find.text('That timezone is not in the IANA database.'),
-        findsOneWidget,
-      );
-    },
-  );
+  testWidgets('timezone gateway error surfaces in the inline timezone banner', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeAccountGateway(
+      timezoneFailWith: const OperatorWebProxyException(
+        code: 'invalid_iana_timezone',
+        message: 'That timezone is not in the IANA database.',
+      ),
+    );
+    final session = sessionWithRole('operator_owner');
+    await tester.pumpWidget(
+      wrap(AccountScreen(session: session, gateway: gateway)),
+    );
+    // Wave 2 U-FU-hp11-account — three new HP #11 scope notices
+    // pushed the timezone save button below the 1600px viewport.
+    // Scroll it into view before tapping.
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_account_timezone_save')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('operator_web_account_timezone_save')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('operator_web_account_timezone_error')),
+      findsOneWidget,
+    );
+    expect(
+      find.text('That timezone is not in the IANA database.'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'session with no primary location timezone shows the empty-state copy',
@@ -568,9 +547,7 @@ void main() {
         // The three operator-set cards show an inheritance copy
         // carrying the business default value.
         expect(
-          find.textContaining(
-            'Inherits the business default from Business:',
-          ),
+          find.textContaining('Inherits the business default from Business:'),
           findsNWidgets(3),
         );
         // The backend-only explainer is NO LONGER rendered at Location
@@ -605,146 +582,115 @@ void main() {
       },
     );
 
-    testWidgets(
-      'Location scope save round-trips an override patch through the '
-      'gateway',
-      (tester) async {
-        // U-FU-hp11-account adds the contact-email + contact-phone
-        // fields at the bottom of the Identity card, plus the
-        // location-overrides banner; the default 1600px viewport
-        // pushes Save below the fold. Use a taller viewport so the
-        // tap hits.
-        tester.view.physicalSize = const Size(1280, 2400);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(() {
-          tester.view.resetPhysicalSize();
-          tester.view.resetDevicePixelRatio();
-        });
-        final session = sessionWithRole('operator_owner');
-        final gateway = _FakeAccountGateway();
-        await tester.pumpWidget(
-          wrap(
-            AccountScreen(
-              session: session,
-              gateway: gateway,
-              selectedScope: locationScope,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        // Type a new contact email so the patch carries it.
-        await tester.ensureVisible(
-          find.byKey(const Key('operator_web_account_contact_email')),
-        );
-        await tester.enterText(
-          find.byKey(const Key('operator_web_account_contact_email')),
-          'ops@brio-main.com',
-        );
-        await tester.ensureVisible(
-          find.byKey(const Key('operator_web_account_save')),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key('operator_web_account_save')),
-        );
-        await tester.pumpAndSettle();
-        // The override gateway must have been called; the operator-
-        // level patchAccount path must NOT have been touched.
-        expect(gateway.overridesPatchCalls.length, equals(1));
-        final call = gateway.overridesPatchCalls.single;
-        expect(call.locationId, equals('loc-1'));
-        expect(call.patch.contactEmail, equals('ops@brio-main.com'));
-        expect(gateway.calls, isEmpty);
-        // Success banner renders.
-        expect(
-          find.byKey(const Key('operator_web_account_success')),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets(
-      'Location scope with an existing override renders the '
-      '"Set here" inheritance line carrying the business default',
-      (tester) async {
-        await _sizeViewport(tester);
-        final session = sessionWithRole('operator_owner');
-        final gateway = _FakeAccountGateway(
-          initialOverrides: LocationAccountOverridesEnvelope(
-            operatorId: 'op-1',
-            locationId: 'loc-1',
-            effective: const LocationAccountOverridesFieldSet(
-              ianaTimezone: 'Europe/London',
-              localeCode: 'en-GB',
-              currencyCode: 'GBP',
-              businessDayRolloverHour: 4,
-              contactEmail: 'ops@example.com',
-            ),
-            override: const LocationAccountOverridesFieldSet(
-              currencyCode: 'GBP',
-              localeCode: 'en-GB',
-              contactEmail: 'ops@example.com',
-            ),
-            businessDefault: const LocationAccountOverridesFieldSet(
-              ianaTimezone: 'America/Toronto',
-              localeCode: 'en-US',
-              currencyCode: 'USD',
-              businessDayRolloverHour: 4,
-            ),
-            updatedAt: DateTime.utc(2026, 5, 14, 12),
-          ),
-        );
-        await tester.pumpWidget(
-          wrap(
-            AccountScreen(
-              session: session,
-              gateway: gateway,
-              selectedScope: locationScope,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        // The region card carries the "Set here at <location>. Business
-        // default: <value>." copy because the override row is on file
-        // for currency + locale.
-        expect(
-          find.textContaining('Set here at Brio Main.'),
-          findsWidgets,
-        );
-        // At least one card surfaces the business default value
-        // alongside the override.
-        expect(
-          find.textContaining('Business default: USD / en-US'),
-          findsWidgets,
-        );
-      },
-    );
-
-    testWidgets('Region card carries the effective value summary',
-        (tester) async {
-      await _sizeViewport(tester);
+    testWidgets('Location scope save round-trips an override patch through the '
+        'gateway', (tester) async {
+      // U-FU-hp11-account adds the contact-email + contact-phone
+      // fields at the bottom of the Identity card, plus the
+      // location-overrides banner; the default 1600px viewport
+      // pushes Save below the fold. Use a taller viewport so the
+      // tap hits.
+      tester.view.physicalSize = const Size(1280, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
       final session = sessionWithRole('operator_owner');
+      final gateway = _FakeAccountGateway();
       await tester.pumpWidget(
         wrap(
           AccountScreen(
             session: session,
-            gateway: _FakeAccountGateway(),
-            selectedScope: businessScope,
+            gateway: gateway,
+            selectedScope: locationScope,
           ),
         ),
       );
-      expect(
-        find.textContaining('Currency is USD'),
-        findsWidgets,
+      await tester.pumpAndSettle();
+      // Type a new contact email so the patch carries it.
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_contact_email')),
       );
+      await tester.enterText(
+        find.byKey(const Key('operator_web_account_contact_email')),
+        'ops@brio-main.com',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_save')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('operator_web_account_save')));
+      await tester.pumpAndSettle();
+      // The override gateway must have been called; the operator-
+      // level patchAccount path must NOT have been touched.
+      expect(gateway.overridesPatchCalls.length, equals(1));
+      final call = gateway.overridesPatchCalls.single;
+      expect(call.locationId, equals('loc-1'));
+      expect(call.patch.contactEmail, equals('ops@brio-main.com'));
+      expect(gateway.calls, isEmpty);
+      // Success banner renders.
       expect(
-        find.textContaining('locale is en-US'),
+        find.byKey(const Key('operator_web_account_success')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Location scope with an existing override renders the '
+        '"Set here" inheritance line carrying the business default', (
+      tester,
+    ) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      final gateway = _FakeAccountGateway(
+        initialOverrides: LocationAccountOverridesEnvelope(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          effective: const LocationAccountOverridesFieldSet(
+            ianaTimezone: 'Europe/London',
+            localeCode: 'en-GB',
+            currencyCode: 'GBP',
+            businessDayRolloverHour: 4,
+            contactEmail: 'ops@example.com',
+          ),
+          override: const LocationAccountOverridesFieldSet(
+            currencyCode: 'GBP',
+            localeCode: 'en-GB',
+            contactEmail: 'ops@example.com',
+          ),
+          businessDefault: const LocationAccountOverridesFieldSet(
+            ianaTimezone: 'America/Toronto',
+            localeCode: 'en-US',
+            currencyCode: 'USD',
+            businessDayRolloverHour: 4,
+          ),
+          updatedAt: DateTime.utc(2026, 5, 14, 12),
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: gateway,
+            selectedScope: locationScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      // The region card carries the "Set here at <location>. Business
+      // default: <value>." copy because the override row is on file
+      // for currency + locale.
+      expect(find.textContaining('Set here at Brio Main.'), findsWidgets);
+      // At least one card surfaces the business default value
+      // alongside the override.
+      expect(
+        find.textContaining('Business default: USD / en-US'),
         findsWidgets,
       );
     });
 
-    testWidgets('Business day card carries the effective value summary',
-        (tester) async {
+    testWidgets('Region card carries the effective value summary', (
+      tester,
+    ) async {
       await _sizeViewport(tester);
       final session = sessionWithRole('operator_owner');
       await tester.pumpWidget(
@@ -756,14 +702,26 @@ void main() {
           ),
         ),
       );
-      expect(
-        find.textContaining('Week starts Monday'),
-        findsWidgets,
+      expect(find.textContaining('Currency is USD'), findsWidgets);
+      expect(find.textContaining('locale is en-US'), findsWidgets);
+    });
+
+    testWidgets('Business day card carries the effective value summary', (
+      tester,
+    ) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: _FakeAccountGateway(),
+            selectedScope: businessScope,
+          ),
+        ),
       );
-      expect(
-        find.textContaining('04:00 local'),
-        findsWidgets,
-      );
+      expect(find.textContaining('Week starts Monday'), findsWidgets);
+      expect(find.textContaining('04:00 local'), findsWidgets);
     });
   });
 }

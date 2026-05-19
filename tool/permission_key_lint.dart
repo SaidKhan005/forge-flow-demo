@@ -273,14 +273,15 @@ class PermissionKeyLintResult {
   Iterable<PermissionKeyFinding> get rawLiterals =>
       findings.where((f) => f.code == PermissionKeyFindingCode.rawLiteral);
 
-  Iterable<PermissionKeyFinding> get metadataMissing => findings
-      .where((f) => f.code == PermissionKeyFindingCode.metadataMissing);
+  Iterable<PermissionKeyFinding> get metadataMissing =>
+      findings.where((f) => f.code == PermissionKeyFindingCode.metadataMissing);
 
-  Iterable<PermissionKeyFinding> get metadataInvalid => findings
-      .where((f) => f.code == PermissionKeyFindingCode.metadataInvalid);
+  Iterable<PermissionKeyFinding> get metadataInvalid =>
+      findings.where((f) => f.code == PermissionKeyFindingCode.metadataInvalid);
 
-  Iterable<PermissionKeyFinding> get humanLabelInvalid => findings
-      .where((f) => f.code == PermissionKeyFindingCode.humanLabelInvalid);
+  Iterable<PermissionKeyFinding> get humanLabelInvalid => findings.where(
+    (f) => f.code == PermissionKeyFindingCode.humanLabelInvalid,
+  );
 
   bool get isClean => findings.isEmpty;
 }
@@ -339,10 +340,12 @@ class PermissionKeyLintRunner {
     final allSetMembers = _parseAllSetMembers(permissionKeysSource);
     final catalogKeys = _parseCatalogKeys(catalogMarkdown);
 
-    final classMemberCount =
-        constants.where((c) => c.shape == PermissionKeyShape.classMember).length;
-    final topLevelCount =
-        constants.where((c) => c.shape == PermissionKeyShape.topLevel).length;
+    final classMemberCount = constants
+        .where((c) => c.shape == PermissionKeyShape.classMember)
+        .length;
+    final topLevelCount = constants
+        .where((c) => c.shape == PermissionKeyShape.topLevel)
+        .length;
 
     final codeKeysByValue = <String, String>{};
     for (final c in constants) {
@@ -369,49 +372,58 @@ class PermissionKeyLintRunner {
       // constants are referenced bare.
       final searchNeedle = c.name;
       final used = referenceFiles.values.any((body) {
-        return RegExp(r'\b' + RegExp.escape(searchNeedle) + r'\b')
-            .hasMatch(body);
+        return RegExp(
+          r'\b' + RegExp.escape(searchNeedle) + r'\b',
+        ).hasMatch(body);
       });
       if (!used) {
-        findings.add(PermissionKeyFinding(
-          code: PermissionKeyFindingCode.orphan,
-          constName: c.name,
-          dottedKey: c.value,
-          detail: c.shape == PermissionKeyShape.classMember
-              ? 'declared as PermissionKeys.${c.name} but not added to '
-                  'PermissionKeys.all and not referenced under lib/. '
-                  'Either add it to PermissionKeys.all or remove the '
-                  'declaration.'
-              : 'declared in lib/auth/permission_keys.dart but no '
-                  'references found under lib/. Either wire it up or '
-                  'add the constant name to _exemptKeys with a reason.',
-        ));
+        findings.add(
+          PermissionKeyFinding(
+            code: PermissionKeyFindingCode.orphan,
+            constName: c.name,
+            dottedKey: c.value,
+            detail: c.shape == PermissionKeyShape.classMember
+                ? 'declared as PermissionKeys.${c.name} but not added to '
+                      'PermissionKeys.all and not referenced under lib/. '
+                      'Either add it to PermissionKeys.all or remove the '
+                      'declaration.'
+                : 'declared in lib/auth/permission_keys.dart but no '
+                      'references found under lib/. Either wire it up or '
+                      'add the constant name to _exemptKeys with a reason.',
+          ),
+        );
       }
     }
 
     // CATALOG_MISSING — code defines a key, catalog doesn't.
     for (final c in constants) {
       if (!catalogKeys.contains(c.value)) {
-        findings.add(PermissionKeyFinding(
-          code: PermissionKeyFindingCode.catalogMissing,
-          constName: c.name,
-          dottedKey: c.value,
-          detail: 'add a row for `${c.value}` to '
-              'docs/contracts/auth_permission_key_catalog.md.',
-        ));
+        findings.add(
+          PermissionKeyFinding(
+            code: PermissionKeyFindingCode.catalogMissing,
+            constName: c.name,
+            dottedKey: c.value,
+            detail:
+                'add a row for `${c.value}` to '
+                'docs/contracts/auth_permission_key_catalog.md.',
+          ),
+        );
       }
     }
 
     // CATALOG_DRIFT — catalog row exists, no constant declares the key.
     for (final ck in catalogKeys) {
       if (!codeKeysByValue.containsKey(ck)) {
-        findings.add(PermissionKeyFinding(
-          code: PermissionKeyFindingCode.catalogDrift,
-          constName: '',
-          dottedKey: ck,
-          detail: 'remove the row from the catalog OR add a '
-              'matching constant in lib/auth/permission_keys.dart.',
-        ));
+        findings.add(
+          PermissionKeyFinding(
+            code: PermissionKeyFindingCode.catalogDrift,
+            constName: '',
+            dottedKey: ck,
+            detail:
+                'remove the row from the catalog OR add a '
+                'matching constant in lib/auth/permission_keys.dart.',
+          ),
+        );
       }
     }
 
@@ -420,11 +432,13 @@ class PermissionKeyLintRunner {
     // `rawLiteralScanScope` whose path is not in
     // `rawLiteralFileAllowlist`. Per-line escape hatch:
     // `// ignore-permission-key-lint: <reason>` on the same line.
-    findings.addAll(_scanRawLiterals(
-      referenceFiles: referenceFiles,
-      scanScope: rawLiteralScanScope,
-      fileAllowlist: rawLiteralFileAllowlist,
-    ));
+    findings.addAll(
+      _scanRawLiterals(
+        referenceFiles: referenceFiles,
+        scanScope: rawLiteralScanScope,
+        fileAllowlist: rawLiteralFileAllowlist,
+      ),
+    );
 
     // Wave 2 R-1L — METADATA pass. Every constant in
     // `PermissionKeys.all` (i.e. shipped to the runtime resolver)
@@ -445,48 +459,60 @@ class PermissionKeyLintRunner {
         if (!allSetMembers.contains(c.name)) continue;
         final meta = parsedMetadata[c.name];
         if (meta == null) {
-          findings.add(PermissionKeyFinding(
-            code: PermissionKeyFindingCode.metadataMissing,
-            constName: c.name,
-            dottedKey: c.value,
-            detail: 'add a PermissionKeyMetadata entry for '
-                '`${c.value}` to lib/auth/permission_key_metadata.dart '
-                'with productLabel + categoryLabel + scopeKind. '
-                'Wave 2 R-1L requires every grantable permission key '
-                'to carry product / category / scope metadata so the '
-                'R-2L editor can group + scope-validate it.',
-          ));
+          findings.add(
+            PermissionKeyFinding(
+              code: PermissionKeyFindingCode.metadataMissing,
+              constName: c.name,
+              dottedKey: c.value,
+              detail:
+                  'add a PermissionKeyMetadata entry for '
+                  '`${c.value}` to lib/auth/permission_key_metadata.dart '
+                  'with productLabel + categoryLabel + scopeKind. '
+                  'Wave 2 R-1L requires every grantable permission key '
+                  'to carry product / category / scope metadata so the '
+                  'R-2L editor can group + scope-validate it.',
+            ),
+          );
           continue;
         }
         if (meta.productLabel.isEmpty) {
-          findings.add(PermissionKeyFinding(
-            code: PermissionKeyFindingCode.metadataInvalid,
-            constName: c.name,
-            dottedKey: c.value,
-            detail: 'metadata entry for `${c.value}` carries empty '
-                'productLabel. Set the product grouping (e.g. '
-                "'forgeflow', 'team', 'integration').",
-          ));
+          findings.add(
+            PermissionKeyFinding(
+              code: PermissionKeyFindingCode.metadataInvalid,
+              constName: c.name,
+              dottedKey: c.value,
+              detail:
+                  'metadata entry for `${c.value}` carries empty '
+                  'productLabel. Set the product grouping (e.g. '
+                  "'forgeflow', 'team', 'integration').",
+            ),
+          );
         }
         if (meta.categoryLabel.isEmpty) {
-          findings.add(PermissionKeyFinding(
-            code: PermissionKeyFindingCode.metadataInvalid,
-            constName: c.name,
-            dottedKey: c.value,
-            detail: 'metadata entry for `${c.value}` carries empty '
-                'categoryLabel. Set the UI grouping label (e.g. '
-                "'Team management').",
-          ));
+          findings.add(
+            PermissionKeyFinding(
+              code: PermissionKeyFindingCode.metadataInvalid,
+              constName: c.name,
+              dottedKey: c.value,
+              detail:
+                  'metadata entry for `${c.value}` carries empty '
+                  'categoryLabel. Set the UI grouping label (e.g. '
+                  "'Team management').",
+            ),
+          );
         }
         if (!_validScopeKinds.contains(meta.scopeKind)) {
-          findings.add(PermissionKeyFinding(
-            code: PermissionKeyFindingCode.metadataInvalid,
-            constName: c.name,
-            dottedKey: c.value,
-            detail: 'metadata entry for `${c.value}` has scopeKind '
-                "'${meta.scopeKind}' which is not one of "
-                "${_validScopeKinds.join(', ')}.",
-          ));
+          findings.add(
+            PermissionKeyFinding(
+              code: PermissionKeyFindingCode.metadataInvalid,
+              constName: c.name,
+              dottedKey: c.value,
+              detail:
+                  'metadata entry for `${c.value}` has scopeKind '
+                  "'${meta.scopeKind}' which is not one of "
+                  "${_validScopeKinds.join(', ')}.",
+            ),
+          );
         }
         // Wave 2 R-2L — HUMAN_LABEL_INVALID gate. The role editor +
         // permission explainer render `humanLabel` instead of the raw
@@ -494,25 +520,31 @@ class PermissionKeyLintRunner {
         // label per memory/project_ux_writing_standard.md. Empty or
         // underscore-bearing labels fail the lint.
         if (meta.humanLabel.isEmpty) {
-          findings.add(PermissionKeyFinding(
-            code: PermissionKeyFindingCode.humanLabelInvalid,
-            constName: c.name,
-            dottedKey: c.value,
-            detail: 'metadata entry for `${c.value}` carries empty '
-                'humanLabel. Set a Title Case English label that '
-                'reads as the action (e.g. "Invite team members", '
-                '"Edit shift details") per the UX writing standard.',
-          ));
+          findings.add(
+            PermissionKeyFinding(
+              code: PermissionKeyFindingCode.humanLabelInvalid,
+              constName: c.name,
+              dottedKey: c.value,
+              detail:
+                  'metadata entry for `${c.value}` carries empty '
+                  'humanLabel. Set a Title Case English label that '
+                  'reads as the action (e.g. "Invite team members", '
+                  '"Edit shift details") per the UX writing standard.',
+            ),
+          );
         } else if (meta.humanLabel.contains('_')) {
-          findings.add(PermissionKeyFinding(
-            code: PermissionKeyFindingCode.humanLabelInvalid,
-            constName: c.name,
-            dottedKey: c.value,
-            detail: 'metadata entry for `${c.value}` has humanLabel '
-                '"${meta.humanLabel}" which contains an underscore. '
-                'Operator-facing labels must be Title Case English '
-                'with spaces; no underscores or engineering jargon.',
-          ));
+          findings.add(
+            PermissionKeyFinding(
+              code: PermissionKeyFindingCode.humanLabelInvalid,
+              constName: c.name,
+              dottedKey: c.value,
+              detail:
+                  'metadata entry for `${c.value}` has humanLabel '
+                  '"${meta.humanLabel}" which contains an underscore. '
+                  'Operator-facing labels must be Title Case English '
+                  'with spaces; no underscores or engineering jargon.',
+            ),
+          );
         }
       }
     }
@@ -565,7 +597,7 @@ const Set<String> _validScopeKinds = <String>{
 ///     productLabel: 'foo',
 ///     categoryLabel: 'Foo group',
 ///     scopeKind: PermissionScopeKind.either,
-///     implies: <String>[...],
+///     implies: String list,
 ///   ),
 ///
 /// Captured groups:
@@ -680,7 +712,8 @@ Iterable<PermissionKeyFinding> _scanRawLiterals({
           constName: '',
           dottedKey: dotted,
           location: '$path:${i + 1}',
-          detail: 'route this through the frozen catalog at '
+          detail:
+              'route this through the frozen catalog at '
               'lib/auth/permission_keys.dart (e.g. PermissionKeys.<name>) '
               'or add `// ignore-permission-key-lint: <reason>` on the '
               'same line if the literal is intentional.',
@@ -753,20 +786,24 @@ List<_ParsedConstant> _parseConstants(String source) {
   for (final m in _classMemberPattern.allMatches(source)) {
     final value = m.group(2)!;
     if (!_permissionKeyValueShape.hasMatch(value)) continue;
-    out.add(_ParsedConstant(
-      name: m.group(1)!,
-      value: value,
-      shape: PermissionKeyShape.classMember,
-    ));
+    out.add(
+      _ParsedConstant(
+        name: m.group(1)!,
+        value: value,
+        shape: PermissionKeyShape.classMember,
+      ),
+    );
   }
   for (final m in _topLevelConstPattern.allMatches(source)) {
     final value = m.group(2)!;
     if (!_permissionKeyValueShape.hasMatch(value)) continue;
-    out.add(_ParsedConstant(
-      name: m.group(1)!,
-      value: value,
-      shape: PermissionKeyShape.topLevel,
-    ));
+    out.add(
+      _ParsedConstant(
+        name: m.group(1)!,
+        value: value,
+        shape: PermissionKeyShape.topLevel,
+      ),
+    );
   }
   return out;
 }
@@ -819,29 +856,34 @@ Set<String> _parseCatalogKeys(String markdown) {
 /// Production CLI entrypoint.
 Future<void> main(List<String> args) async {
   final permissionKeysFile = File('lib/auth/permission_keys.dart');
-  final catalogFile =
-      File('docs/contracts/auth_permission_key_catalog.md');
+  final catalogFile = File('docs/contracts/auth_permission_key_catalog.md');
   // Wave 2 R-1L — metadata mirror.
   final metadataFile = File('lib/auth/permission_key_metadata.dart');
 
   if (!permissionKeysFile.existsSync()) {
-    stderr.writeln('permission_key_lint: '
-        'lib/auth/permission_keys.dart not found '
-        '(run from repository root).');
+    stderr.writeln(
+      'permission_key_lint: '
+      'lib/auth/permission_keys.dart not found '
+      '(run from repository root).',
+    );
     exitCode = 2;
     return;
   }
   if (!catalogFile.existsSync()) {
-    stderr.writeln('permission_key_lint: '
-        'docs/contracts/auth_permission_key_catalog.md not found '
-        '(run from repository root).');
+    stderr.writeln(
+      'permission_key_lint: '
+      'docs/contracts/auth_permission_key_catalog.md not found '
+      '(run from repository root).',
+    );
     exitCode = 2;
     return;
   }
   if (!metadataFile.existsSync()) {
-    stderr.writeln('permission_key_lint: '
-        'lib/auth/permission_key_metadata.dart not found '
-        '(run from repository root).');
+    stderr.writeln(
+      'permission_key_lint: '
+      'lib/auth/permission_key_metadata.dart not found '
+      '(run from repository root).',
+    );
     exitCode = 2;
     return;
   }
@@ -849,10 +891,7 @@ Future<void> main(List<String> args) async {
   final referenceFiles = <String, String>{};
   final libDir = Directory('lib');
   if (libDir.existsSync()) {
-    for (final entity in libDir.listSync(
-      recursive: true,
-      followLinks: false,
-    )) {
+    for (final entity in libDir.listSync(recursive: true, followLinks: false)) {
       if (entity is! File) continue;
       if (!entity.path.toLowerCase().endsWith('.dart')) continue;
       final rel = entity.path.replaceAll(r'\', '/');
@@ -882,15 +921,19 @@ Future<void> main(List<String> args) async {
   );
 
   if (result.isClean) {
-    stdout.writeln('permission_key_lint: clean — no orphans / drift / '
-        'missing entries / raw literals / missing or invalid '
-        'PermissionKeyMetadata entries / invalid humanLabel '
-        'entries.');
+    stdout.writeln(
+      'permission_key_lint: clean — no orphans / drift / '
+      'missing entries / raw literals / missing or invalid '
+      'PermissionKeyMetadata entries / invalid humanLabel '
+      'entries.',
+    );
     return;
   }
 
-  stderr.writeln('permission_key_lint: '
-      '${result.findings.length} finding(s):');
+  stderr.writeln(
+    'permission_key_lint: '
+    '${result.findings.length} finding(s):',
+  );
   for (final f in result.findings) {
     stderr.writeln('  - $f');
   }

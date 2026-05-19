@@ -63,95 +63,87 @@ PostgresRow _erasureRequestRow({
     'requested_by_user_id': requestedByUserId,
     'requested_at': requestedAt ?? DateTime.utc(2026, 5, 8, 12),
     'business_date': businessDate,
-    'grace_period_ends_at':
-        gracePeriodEndsAt ?? DateTime.utc(2026, 5, 9, 12),
+    'grace_period_ends_at': gracePeriodEndsAt ?? DateTime.utc(2026, 5, 9, 12),
     'applied_at': appliedAt,
     'reversed_at': reversedAt,
     'reversed_by_user_id': reversedByUserId,
     'reversal_reason': reversalReason,
-    'pii_snapshot':
-        jsonEncode(piiSnapshot ?? const <String, Object?>{
-          'display_name': 'Aria Operator',
-          'email': 'aria@example.test',
-          'first_name': 'Aria',
-          'last_name': 'Operator',
-          'avatar_url': null,
-        }),
+    'pii_snapshot': jsonEncode(
+      piiSnapshot ??
+          const <String, Object?>{
+            'display_name': 'Aria Operator',
+            'email': 'aria@example.test',
+            'first_name': 'Aria',
+            'last_name': 'Operator',
+            'avatar_url': null,
+          },
+    ),
   };
 }
 
 void main() {
   group('UserPiiErasureRepository.snapshotPiiAndInsertPending', () {
-    test(
-      'reads PII from public.users + inserts the pending row in one tx; '
-      'pii_snapshot::jsonb carries the captured columns',
-      () async {
-        final pool = _ErasurePool(
-          userRow: _userRow(),
-          insertedRow: _erasureRequestRow(),
-        );
-        final repo = UserPiiErasureRepository(
-          TenantTransactionWrapper(pool),
-        );
-        final result = await repo.snapshotPiiAndInsertPending(
-          erasureId: _erasureA,
-          operatorId: _opA,
-          locationId: _locA,
-          userId: _userA,
-          requestedByUserId: _adminA,
-          requestedAt: DateTime.utc(2026, 5, 8, 12),
-          businessDate: '2026-05-08',
-          gracePeriodEndsAt: DateTime.utc(2026, 5, 9, 12),
-        );
-        expect(result, isNotNull);
-        expect(result!.erasureId, equals(_erasureA));
-        expect(result.isPending, isTrue);
+    test('reads PII from public.users + inserts the pending row in one tx; '
+        'pii_snapshot::jsonb carries the captured columns', () async {
+      final pool = _ErasurePool(
+        userRow: _userRow(),
+        insertedRow: _erasureRequestRow(),
+      );
+      final repo = UserPiiErasureRepository(TenantTransactionWrapper(pool));
+      final result = await repo.snapshotPiiAndInsertPending(
+        erasureId: _erasureA,
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        requestedByUserId: _adminA,
+        requestedAt: DateTime.utc(2026, 5, 8, 12),
+        businessDate: '2026-05-08',
+        gracePeriodEndsAt: DateTime.utc(2026, 5, 9, 12),
+      );
+      expect(result, isNotNull);
+      expect(result!.erasureId, equals(_erasureA));
+      expect(result.isPending, isTrue);
 
-        final tx = pool.transactions.single;
-        // 1) tenant SET LOCAL precedes both reads + writes.
-        expect(tx.executedSql[0], contains("'app.operator_id'"));
-        // 2) PII read happens first — the snapshot capture lives in
-        //    the same transaction as the insert.
-        expect(
-          tx.executedSql.any(
-            (s) =>
-                s.contains('select display_name') &&
-                s.contains('from public.users'),
-          ),
-          isTrue,
-          reason: 'PII snapshot must be captured from public.users',
-        );
-        // 3) Insert into the ledger.
-        final insertSql = tx.executedSql.firstWhere(
-          (s) => s.contains(
-              'insert into public.user_pii_erasure_requests'),
-        );
-        expect(insertSql, contains('pii_snapshot'));
-        expect(insertSql, contains('@pii_snapshot::jsonb'));
-        // 4) Audit row appended in the same tx.
-        expect(
-          tx.executedSql.any(
-            (s) =>
-                s.contains('insert into public.audit_logs') &&
-                s.contains('action'),
-          ),
-          isTrue,
-          reason:
-              'audit row must be appended in the same tenant tx so '
-              'the chain commits atomically with the ledger row',
-        );
-      },
-    );
+      final tx = pool.transactions.single;
+      // 1) tenant SET LOCAL precedes both reads + writes.
+      expect(tx.executedSql[0], contains("'app.operator_id'"));
+      // 2) PII read happens first — the snapshot capture lives in
+      //    the same transaction as the insert.
+      expect(
+        tx.executedSql.any(
+          (s) =>
+              s.contains('select display_name') &&
+              s.contains('from public.users'),
+        ),
+        isTrue,
+        reason: 'PII snapshot must be captured from public.users',
+      );
+      // 3) Insert into the ledger.
+      final insertSql = tx.executedSql.firstWhere(
+        (s) => s.contains('insert into public.user_pii_erasure_requests'),
+      );
+      expect(insertSql, contains('pii_snapshot'));
+      expect(insertSql, contains('@pii_snapshot::jsonb'));
+      // 4) Audit row appended in the same tx.
+      expect(
+        tx.executedSql.any(
+          (s) =>
+              s.contains('insert into public.audit_logs') &&
+              s.contains('action'),
+        ),
+        isTrue,
+        reason:
+            'audit row must be appended in the same tenant tx so '
+            'the chain commits atomically with the ledger row',
+      );
+    });
 
-    test('returns null when the target user row is not found',
-        () async {
+    test('returns null when the target user row is not found', () async {
       final pool = _ErasurePool(
         userRow: null,
         insertedRow: _erasureRequestRow(),
       );
-      final repo = UserPiiErasureRepository(
-        TenantTransactionWrapper(pool),
-      );
+      final repo = UserPiiErasureRepository(TenantTransactionWrapper(pool));
       final result = await repo.snapshotPiiAndInsertPending(
         erasureId: _erasureA,
         operatorId: _opA,
@@ -167,59 +159,47 @@ void main() {
   });
 
   group('UserPiiErasureRepository.markReversed', () {
-    test(
-      'pending-only guard: WHERE clause requires applied_at IS NULL '
-      'AND reversed_at IS NULL AND grace_period_ends_at > now',
-      () async {
-        final pool = _ErasurePool(updateAffectedRows: 1);
-        final repo = UserPiiErasureRepository(
-          TenantTransactionWrapper(pool),
-        );
-        final affected = await repo.markReversed(
-          operatorId: _opA,
-          locationId: _locA,
-          userId: _userA,
-          erasureId: _erasureA,
-          reversedByUserId: _adminA,
-          reversalReason: 'admin changed their mind',
-          reversedAt: DateTime.utc(2026, 5, 8, 14),
-        );
-        expect(affected, equals(1));
-
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql.firstWhere(
-          (s) =>
-              s.contains('update public.user_pii_erasure_requests') &&
-              s.contains('reversed_at = '),
-        );
-        expect(updateSql, contains('and applied_at is null'));
-        expect(updateSql, contains('and reversed_at is null'));
-        expect(
-          updateSql,
-          contains(
-            'and grace_period_ends_at > @reversed_at::timestamptz',
-          ),
-        );
-        // pii_snapshot wiped to '{}'::jsonb so PII does not linger
-        // past the grace window.
-        expect(updateSql, contains("pii_snapshot = '{}'::jsonb"));
-        // Audit row appended only when the row was actually updated
-        // (rowcount > 0).
-        expect(
-          tx.executedSql.any(
-            (s) => s.contains('insert into public.audit_logs'),
-          ),
-          isTrue,
-        );
-      },
-    );
-
-    test('returns 0 when row is terminal — no audit row appended',
-        () async {
-      final pool = _ErasurePool(updateAffectedRows: 0);
-      final repo = UserPiiErasureRepository(
-        TenantTransactionWrapper(pool),
+    test('pending-only guard: WHERE clause requires applied_at IS NULL '
+        'AND reversed_at IS NULL AND grace_period_ends_at > now', () async {
+      final pool = _ErasurePool(updateAffectedRows: 1);
+      final repo = UserPiiErasureRepository(TenantTransactionWrapper(pool));
+      final affected = await repo.markReversed(
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        erasureId: _erasureA,
+        reversedByUserId: _adminA,
+        reversalReason: 'admin changed their mind',
+        reversedAt: DateTime.utc(2026, 5, 8, 14),
       );
+      expect(affected, equals(1));
+
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) =>
+            s.contains('update public.user_pii_erasure_requests') &&
+            s.contains('reversed_at = '),
+      );
+      expect(updateSql, contains('and applied_at is null'));
+      expect(updateSql, contains('and reversed_at is null'));
+      expect(
+        updateSql,
+        contains('and grace_period_ends_at > @reversed_at::timestamptz'),
+      );
+      // pii_snapshot wiped to '{}'::jsonb so PII does not linger
+      // past the grace window.
+      expect(updateSql, contains("pii_snapshot = '{}'::jsonb"));
+      // Audit row appended only when the row was actually updated
+      // (rowcount > 0).
+      expect(
+        tx.executedSql.any((s) => s.contains('insert into public.audit_logs')),
+        isTrue,
+      );
+    });
+
+    test('returns 0 when row is terminal — no audit row appended', () async {
+      final pool = _ErasurePool(updateAffectedRows: 0);
+      final repo = UserPiiErasureRepository(TenantTransactionWrapper(pool));
       final affected = await repo.markReversed(
         operatorId: _opA,
         locationId: _locA,
@@ -233,72 +213,60 @@ void main() {
       final tx = pool.transactions.single;
       // No audit-log insert when the WHERE clause refused.
       expect(
-        tx.executedSql.any(
-          (s) => s.contains('insert into public.audit_logs'),
-        ),
+        tx.executedSql.any((s) => s.contains('insert into public.audit_logs')),
         isFalse,
       );
     });
   });
 
   group('UserPiiErasureRepository.applyRowAndWipeSnapshot', () {
-    test(
-      'NULLs the user PII columns + stamps applied_at + wipes snapshot '
-      'inside one tenant tx; audit row attributed to '
-      'sp:pii-erasure-worker',
-      () async {
-        final pool = _ErasurePool(updateAffectedRows: 1);
-        final repo = UserPiiErasureRepository(
-          TenantTransactionWrapper(pool),
-        );
-        final affected = await repo.applyRowAndWipeSnapshot(
-          operatorId: _opA,
-          locationId: _locA,
-          userId: _userA,
-          erasureId: _erasureA,
-          appliedAt: DateTime.utc(2026, 5, 9, 12, 1),
-        );
-        expect(affected, equals(1));
+    test('NULLs the user PII columns + stamps applied_at + wipes snapshot '
+        'inside one tenant tx; audit row attributed to '
+        'sp:pii-erasure-worker', () async {
+      final pool = _ErasurePool(updateAffectedRows: 1);
+      final repo = UserPiiErasureRepository(TenantTransactionWrapper(pool));
+      final affected = await repo.applyRowAndWipeSnapshot(
+        operatorId: _opA,
+        locationId: _locA,
+        userId: _userA,
+        erasureId: _erasureA,
+        appliedAt: DateTime.utc(2026, 5, 9, 12, 1),
+      );
+      expect(affected, equals(1));
 
-        final tx = pool.transactions.single;
-        // 1) NULL the PII columns.
-        final userUpdate = tx.executedSql.firstWhere(
-          (s) =>
-              s.contains('update public.users') &&
-              s.contains('display_name = null'),
-        );
-        expect(userUpdate, contains('email = null'));
-        expect(userUpdate, contains('first_name = null'));
-        expect(userUpdate, contains('last_name = null'));
-        expect(userUpdate, contains('avatar_url = null'));
-        // 2) Stamp the request row + wipe snapshot.
-        final ledgerUpdate = tx.executedSql.firstWhere(
-          (s) =>
-              s.contains('update public.user_pii_erasure_requests') &&
-              s.contains('applied_at = '),
-        );
-        expect(ledgerUpdate, contains("pii_snapshot = '{}'::jsonb"));
-        // 3) Audit row — actor_kind = service.
-        final auditInsert = tx.executedSql.firstWhere(
-          (s) => s.contains('insert into public.audit_logs'),
-        );
-        expect(auditInsert, contains('actor_kind'));
-      },
-    );
+      final tx = pool.transactions.single;
+      // 1) NULL the PII columns.
+      final userUpdate = tx.executedSql.firstWhere(
+        (s) =>
+            s.contains('update public.users') &&
+            s.contains('display_name = null'),
+      );
+      expect(userUpdate, contains('email = null'));
+      expect(userUpdate, contains('first_name = null'));
+      expect(userUpdate, contains('last_name = null'));
+      expect(userUpdate, contains('avatar_url = null'));
+      // 2) Stamp the request row + wipe snapshot.
+      final ledgerUpdate = tx.executedSql.firstWhere(
+        (s) =>
+            s.contains('update public.user_pii_erasure_requests') &&
+            s.contains('applied_at = '),
+      );
+      expect(ledgerUpdate, contains("pii_snapshot = '{}'::jsonb"));
+      // 3) Audit row — actor_kind = service.
+      final auditInsert = tx.executedSql.firstWhere(
+        (s) => s.contains('insert into public.audit_logs'),
+      );
+      expect(auditInsert, contains('actor_kind'));
+    });
   });
 }
 
 class _ErasurePool implements PostgresPool {
-  _ErasurePool({
-    this.userRow,
-    this.insertedRow,
-    this.dueRows = const <PostgresRow>[],
-    this.updateAffectedRows = 0,
-  });
+  _ErasurePool({this.userRow, this.insertedRow, this.updateAffectedRows = 0});
 
   final PostgresRow? userRow;
   final PostgresRow? insertedRow;
-  final List<PostgresRow> dueRows;
+  final List<PostgresRow> dueRows = const <PostgresRow>[];
   final int updateAffectedRows;
   final List<_ErasureTransaction> transactions = <_ErasureTransaction>[];
 
@@ -352,7 +320,9 @@ class _ErasureTransaction extends PostgresTransaction {
     if (sql.contains('insert into public.audit_logs')) {
       // The repository's audit-log writer expects a `returning id`
       // shape. We synthesize a single dummy row.
-      return const <PostgresRow>[<String, Object?>{'id': 1}];
+      return const <PostgresRow>[
+        <String, Object?>{'id': 1},
+      ];
     }
     if (sql.contains('from public.user_pii_erasure_requests')) {
       return dueRows;

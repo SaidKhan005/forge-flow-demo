@@ -28,7 +28,7 @@ void main() {
   });
 
   group('InMemoryAuthLockoutEnforcer', () {
-    InMemoryAuthLockoutEnforcer _makeEnforcer(DateTime Function() now) {
+    InMemoryAuthLockoutEnforcer makeEnforcer(DateTime Function() now) {
       return InMemoryAuthLockoutEnforcer(
         threshold: kAuthLoginLockoutThreshold,
         window: kAuthLoginLockoutWindow,
@@ -37,8 +37,8 @@ void main() {
     }
 
     test('evaluate returns not-locked when no attempts', () async {
-      var fakeNow = DateTime.utc(2026, 5, 8, 10);
-      final enforcer = _makeEnforcer(() => fakeNow);
+      final fakeNow = DateTime.utc(2026, 5, 8, 10);
+      final enforcer = makeEnforcer(() => fakeNow);
 
       final eval = await enforcer.evaluate(
         email: 'op@example.test',
@@ -51,7 +51,7 @@ void main() {
 
     test('trips locked after threshold failures', () async {
       var fakeNow = DateTime.utc(2026, 5, 8, 10);
-      final enforcer = _makeEnforcer(() => fakeNow);
+      final enforcer = makeEnforcer(() => fakeNow);
       const email = 'target@example.test';
       const ip = '192.168.1.1';
 
@@ -70,7 +70,7 @@ void main() {
 
     test('success inside window resets failure count', () async {
       var fakeNow = DateTime.utc(2026, 5, 8, 11);
-      final enforcer = _makeEnforcer(() => fakeNow);
+      final enforcer = makeEnforcer(() => fakeNow);
       const email = 'reset@example.test';
       const ip = '10.1.2.3';
 
@@ -107,7 +107,7 @@ void main() {
 
     test('failures outside the window are not counted', () async {
       var fakeNow = DateTime.utc(2026, 5, 8, 12);
-      final enforcer = _makeEnforcer(() => fakeNow);
+      final enforcer = makeEnforcer(() => fakeNow);
       const email = 'old@example.test';
       const ip = '172.16.0.1';
 

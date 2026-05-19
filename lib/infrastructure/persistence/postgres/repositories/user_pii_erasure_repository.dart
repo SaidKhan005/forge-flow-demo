@@ -392,7 +392,7 @@ class UserPiiErasureRepository extends OperatorScopedRepository {
         'set reversed_at = @reversed_at::timestamptz, '
         '    reversed_by_user_id = @reversed_by_user_id::uuid, '
         '    reversal_reason = @reversal_reason, '
-        '    pii_snapshot = ' + "'{}'::jsonb, "
+        '    pii_snapshot = ' "'{}'::jsonb, "
         '    updated_at = now() '
         'where erasure_id = @erasure_id::uuid '
         'and operator_id = @operator_id::uuid '
@@ -507,7 +507,7 @@ class UserPiiErasureRepository extends OperatorScopedRepository {
       final updated = await exec.execute(
         'update public.user_pii_erasure_requests '
         'set applied_at = @applied_at::timestamptz, '
-        '    pii_snapshot = ' + "'{}'::jsonb, "
+        '    pii_snapshot = ' "'{}'::jsonb, "
         '    updated_at = now() '
         'where erasure_id = @erasure_id::uuid '
         'and operator_id = @operator_id::uuid '

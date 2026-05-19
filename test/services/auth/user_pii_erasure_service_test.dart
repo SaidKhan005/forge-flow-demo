@@ -36,17 +36,18 @@ UserPiiErasureRequestRecord _record({
     requestedByUserId: _adminA,
     requestedAt: DateTime.utc(2026, 5, 8, 12),
     businessDate: '2026-05-08',
-    gracePeriodEndsAt:
-        gracePeriodEndsAt ?? DateTime.utc(2026, 5, 9, 12),
+    gracePeriodEndsAt: gracePeriodEndsAt ?? DateTime.utc(2026, 5, 9, 12),
     appliedAt: appliedAt,
     reversedAt: reversedAt,
-    piiSnapshot: piiSnapshot ?? const <String, Object?>{
-      'display_name': 'Aria',
-      'email': 'aria@example.test',
-      'first_name': 'Aria',
-      'last_name': 'Op',
-      'avatar_url': null,
-    },
+    piiSnapshot:
+        piiSnapshot ??
+        const <String, Object?>{
+          'display_name': 'Aria',
+          'email': 'aria@example.test',
+          'first_name': 'Aria',
+          'last_name': 'Op',
+          'avatar_url': null,
+        },
   );
 }
 
@@ -64,9 +65,6 @@ class _FakeErasureRepo implements UserPiiErasureRepository {
   _FakeErasureRepo({
     this.snapshotResult,
     this.findPendingResult,
-    this.findLatestResult,
-    this.markReversedResult = 1,
-    this.applyResult = 1,
     this.dueRows = const <UserPiiErasureRequestRecord>[],
     this.locationForUser = _locA,
   });
@@ -74,8 +72,8 @@ class _FakeErasureRepo implements UserPiiErasureRepository {
   UserPiiErasureRequestRecord? snapshotResult;
   UserPiiErasureRequestRecord? findPendingResult;
   UserPiiErasureRequestRecord? findLatestResult;
-  int markReversedResult;
-  int applyResult;
+  int markReversedResult = 1;
+  int applyResult = 1;
   List<UserPiiErasureRequestRecord> dueRows;
   String? locationForUser;
 
@@ -193,25 +191,21 @@ class _FakeErasureRepo implements UserPiiErasureRepository {
     required String businessDate,
     required DateTime gracePeriodEndsAt,
     required UserPiiSnapshot piiSnapshot,
-  }) =>
-      throw UnimplementedError();
+  }) => throw UnimplementedError();
 
   @override
-  AuditLogsRepository get auditLogsRepository =>
-      const AuditLogsRepository();
+  AuditLogsRepository get auditLogsRepository => const AuditLogsRepository();
 
   // The base also exposes withTenant / withSystem from
   // OperatorScopedRepository; the fake's overrides above bypass them
   // entirely. noSuchMethod swallows any incidental calls.
   @override
-  dynamic noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 void main() {
   group('UserPiiErasureService.requestErasure', () {
-    test('returns the erasure summary on a successful insert',
-        () async {
+    test('returns the erasure summary on a successful insert', () async {
       final repo = _FakeErasureRepo(snapshotResult: _record());
       final service = UserPiiErasureService(
         erasureRepository: repo,
@@ -248,187 +242,142 @@ void main() {
     });
   });
 
-  group(
-    'UserPiiErasureService.requestErasure — IANA-tz business_date '
-    'resolver (carry-over follow-up #3)',
-    () {
-      test(
-        '04:00 UTC for America/Los_Angeles → business_date is the prior '
-        'PT day, not the UTC day',
-        () async {
-          final repo = _FakeErasureRepo(snapshotResult: _record());
-          // 2026-05-08 04:00 UTC = 2026-05-07 21:00 PDT (UTC-7).
-          // Default rollover hour 0 means the local wall clock at
-          // 21:00 belongs to 2026-05-07. The resolver MUST win over
-          // the UTC fallback.
-          final resolverCalls = <String>[];
-          final service = UserPiiErasureService(
-            erasureRepository: repo,
-            gracePeriod: const Duration(hours: 24),
-            now: () => DateTime.utc(2026, 5, 8, 4),
-            businessDateResolver: ({
+  group('UserPiiErasureService.requestErasure — IANA-tz business_date '
+      'resolver (carry-over follow-up #3)', () {
+    test('04:00 UTC for America/Los_Angeles → business_date is the prior '
+        'PT day, not the UTC day', () async {
+      final repo = _FakeErasureRepo(snapshotResult: _record());
+      // 2026-05-08 04:00 UTC = 2026-05-07 21:00 PDT (UTC-7).
+      // Default rollover hour 0 means the local wall clock at
+      // 21:00 belongs to 2026-05-07. The resolver MUST win over
+      // the UTC fallback.
+      final resolverCalls = <String>[];
+      final service = UserPiiErasureService(
+        erasureRepository: repo,
+        gracePeriod: const Duration(hours: 24),
+        now: () => DateTime.utc(2026, 5, 8, 4),
+        businessDateResolver:
+            ({
               required String operatorId,
               required String locationId,
               required DateTime requestedAt,
             }) async {
-              resolverCalls.add('$operatorId:$locationId:'
-                  '${requestedAt.toIso8601String()}');
+              resolverCalls.add(
+                '$operatorId:$locationId:'
+                '${requestedAt.toIso8601String()}',
+              );
               // Hand-rolled IANA projection so the test does not need
               // the timezone database initialised. 2026-05-08T04:00Z
               // → 2026-05-07T21:00 PDT → business date 2026-05-07.
               expect(requestedAt, equals(DateTime.utc(2026, 5, 8, 4)));
               return '2026-05-07';
             },
-          );
-          final result = await service.requestErasure(
-            operatorId: _opA,
-            locationId: _locA,
-            targetUserId: _userA,
-            requestedByUserId: _adminA,
-          );
-          expect(result, isNotNull);
-          expect(repo.lastBusinessDate, equals('2026-05-07'));
-          expect(resolverCalls, hasLength(1));
-        },
       );
-
-      test(
-        'falls back to UTC truncation when no resolver is bound and no '
-        'override is passed',
-        () async {
-          final repo = _FakeErasureRepo(snapshotResult: _record());
-          final service = UserPiiErasureService(
-            erasureRepository: repo,
-            gracePeriod: const Duration(hours: 24),
-            now: () => DateTime.utc(2026, 5, 8, 4),
-          );
-          await service.requestErasure(
-            operatorId: _opA,
-            locationId: _locA,
-            targetUserId: _userA,
-            requestedByUserId: _adminA,
-          );
-          expect(repo.lastBusinessDate, equals('2026-05-08'));
-        },
+      final result = await service.requestErasure(
+        operatorId: _opA,
+        locationId: _locA,
+        targetUserId: _userA,
+        requestedByUserId: _adminA,
       );
+      expect(result, isNotNull);
+      expect(repo.lastBusinessDate, equals('2026-05-07'));
+      expect(resolverCalls, hasLength(1));
+    });
 
-      test(
-        'caller-provided businessDate override wins when no resolver is '
-        'bound',
-        () async {
-          final repo = _FakeErasureRepo(snapshotResult: _record());
-          final service = UserPiiErasureService(
-            erasureRepository: repo,
-            gracePeriod: const Duration(hours: 24),
-            now: () => DateTime.utc(2026, 5, 8, 4),
-          );
-          await service.requestErasure(
-            operatorId: _opA,
-            locationId: _locA,
-            targetUserId: _userA,
-            requestedByUserId: _adminA,
-            businessDate: '2026-05-07',
-          );
-          expect(repo.lastBusinessDate, equals('2026-05-07'));
-        },
+    test('falls back to UTC truncation when no resolver is bound and no '
+        'override is passed', () async {
+      final repo = _FakeErasureRepo(snapshotResult: _record());
+      final service = UserPiiErasureService(
+        erasureRepository: repo,
+        gracePeriod: const Duration(hours: 24),
+        now: () => DateTime.utc(2026, 5, 8, 4),
       );
+      await service.requestErasure(
+        operatorId: _opA,
+        locationId: _locA,
+        targetUserId: _userA,
+        requestedByUserId: _adminA,
+      );
+      expect(repo.lastBusinessDate, equals('2026-05-08'));
+    });
 
-      test(
-        'resolver returning null → falls back to UTC truncation '
-        '(does not block the erasure)',
-        () async {
-          final repo = _FakeErasureRepo(snapshotResult: _record());
-          final service = UserPiiErasureService(
-            erasureRepository: repo,
-            gracePeriod: const Duration(hours: 24),
-            now: () => DateTime.utc(2026, 5, 8, 4),
-            businessDateResolver: ({
+    test('caller-provided businessDate override wins when no resolver is '
+        'bound', () async {
+      final repo = _FakeErasureRepo(snapshotResult: _record());
+      final service = UserPiiErasureService(
+        erasureRepository: repo,
+        gracePeriod: const Duration(hours: 24),
+        now: () => DateTime.utc(2026, 5, 8, 4),
+      );
+      await service.requestErasure(
+        operatorId: _opA,
+        locationId: _locA,
+        targetUserId: _userA,
+        requestedByUserId: _adminA,
+        businessDate: '2026-05-07',
+      );
+      expect(repo.lastBusinessDate, equals('2026-05-07'));
+    });
+
+    test('resolver returning null → falls back to UTC truncation '
+        '(does not block the erasure)', () async {
+      final repo = _FakeErasureRepo(snapshotResult: _record());
+      final service = UserPiiErasureService(
+        erasureRepository: repo,
+        gracePeriod: const Duration(hours: 24),
+        now: () => DateTime.utc(2026, 5, 8, 4),
+        businessDateResolver:
+            ({
               required String operatorId,
               required String locationId,
               required DateTime requestedAt,
-            }) async =>
-                null,
-          );
-          await service.requestErasure(
-            operatorId: _opA,
-            locationId: _locA,
-            targetUserId: _userA,
-            requestedByUserId: _adminA,
-          );
-          expect(repo.lastBusinessDate, equals('2026-05-08'));
-        },
+            }) async => null,
       );
+      await service.requestErasure(
+        operatorId: _opA,
+        locationId: _locA,
+        targetUserId: _userA,
+        requestedByUserId: _adminA,
+      );
+      expect(repo.lastBusinessDate, equals('2026-05-08'));
+    });
 
-      test(
-        'resolver throwing → falls back to UTC truncation (transient '
-        'tz read does not block the erasure write)',
-        () async {
-          final repo = _FakeErasureRepo(snapshotResult: _record());
-          final service = UserPiiErasureService(
-            erasureRepository: repo,
-            gracePeriod: const Duration(hours: 24),
-            now: () => DateTime.utc(2026, 5, 8, 4),
-            businessDateResolver: ({
+    test('resolver throwing → falls back to UTC truncation (transient '
+        'tz read does not block the erasure write)', () async {
+      final repo = _FakeErasureRepo(snapshotResult: _record());
+      final service = UserPiiErasureService(
+        erasureRepository: repo,
+        gracePeriod: const Duration(hours: 24),
+        now: () => DateTime.utc(2026, 5, 8, 4),
+        businessDateResolver:
+            ({
               required String operatorId,
               required String locationId,
               required DateTime requestedAt,
-            }) async =>
-                throw StateError('tz read flapped'),
-          );
-          await service.requestErasure(
-            operatorId: _opA,
-            locationId: _locA,
-            targetUserId: _userA,
-            requestedByUserId: _adminA,
-          );
-          expect(repo.lastBusinessDate, equals('2026-05-08'));
-        },
+            }) async => throw StateError('tz read flapped'),
       );
-    },
-  );
+      await service.requestErasure(
+        operatorId: _opA,
+        locationId: _locA,
+        targetUserId: _userA,
+        requestedByUserId: _adminA,
+      );
+      expect(repo.lastBusinessDate, equals('2026-05-08'));
+    });
+  });
 
   group('UserPiiErasureService.reverseErasure', () {
-    test(
-      'within grace window: reads snapshot, marks reversed, restores '
-      'PII back onto users',
-      () async {
-        final repo = _FakeErasureRepo(
-          findPendingResult: _record(
-            gracePeriodEndsAt: DateTime.utc(2026, 5, 9, 12),
-          ),
-        );
-        final service = UserPiiErasureService(
-          erasureRepository: repo,
-          gracePeriod: const Duration(hours: 24),
-          now: () => DateTime.utc(2026, 5, 8, 14),
-        );
-        final outcome = await service.reverseErasure(
-          operatorId: _opA,
-          locationId: _locA,
-          targetUserId: _userA,
-          erasureId: _erasureA,
-          reversedByUserId: _adminA,
-          reversalReason: 'admin changed mind',
-        );
-        expect(outcome.reversed, isTrue);
-        expect(outcome.graceExpired, isFalse);
-        expect(repo.restoredSnapshots, hasLength(1));
-        expect(repo.restoredSnapshots.single.email,
-            equals('aria@example.test'));
-      },
-    );
-
-    test('outside grace window: returns graceExpired=true; no restore',
-        () async {
+    test('within grace window: reads snapshot, marks reversed, restores '
+        'PII back onto users', () async {
       final repo = _FakeErasureRepo(
         findPendingResult: _record(
-          gracePeriodEndsAt: DateTime.utc(2026, 5, 8, 13),
+          gracePeriodEndsAt: DateTime.utc(2026, 5, 9, 12),
         ),
       );
       final service = UserPiiErasureService(
         erasureRepository: repo,
         gracePeriod: const Duration(hours: 24),
-        now: () => DateTime.utc(2026, 5, 9, 12),
+        now: () => DateTime.utc(2026, 5, 8, 14),
       );
       final outcome = await service.reverseErasure(
         operatorId: _opA,
@@ -436,11 +385,39 @@ void main() {
         targetUserId: _userA,
         erasureId: _erasureA,
         reversedByUserId: _adminA,
+        reversalReason: 'admin changed mind',
       );
-      expect(outcome.reversed, isFalse);
-      expect(outcome.graceExpired, isTrue);
-      expect(repo.restoredSnapshots, isEmpty);
+      expect(outcome.reversed, isTrue);
+      expect(outcome.graceExpired, isFalse);
+      expect(repo.restoredSnapshots, hasLength(1));
+      expect(repo.restoredSnapshots.single.email, equals('aria@example.test'));
     });
+
+    test(
+      'outside grace window: returns graceExpired=true; no restore',
+      () async {
+        final repo = _FakeErasureRepo(
+          findPendingResult: _record(
+            gracePeriodEndsAt: DateTime.utc(2026, 5, 8, 13),
+          ),
+        );
+        final service = UserPiiErasureService(
+          erasureRepository: repo,
+          gracePeriod: const Duration(hours: 24),
+          now: () => DateTime.utc(2026, 5, 9, 12),
+        );
+        final outcome = await service.reverseErasure(
+          operatorId: _opA,
+          locationId: _locA,
+          targetUserId: _userA,
+          erasureId: _erasureA,
+          reversedByUserId: _adminA,
+        );
+        expect(outcome.reversed, isFalse);
+        expect(outcome.graceExpired, isTrue);
+        expect(repo.restoredSnapshots, isEmpty);
+      },
+    );
 
     test('row missing: returns notFound=true', () async {
       final repo = _FakeErasureRepo(findPendingResult: null);
@@ -479,27 +456,21 @@ void main() {
       },
     );
 
-    test(
-      'skips rows whose location cannot be resolved (no apply, '
-      'increments skippedNoLocation)',
-      () async {
-        final repo = _FakeErasureRepo(
-          dueRows: <UserPiiErasureRequestRecord>[_record()],
-          locationForUser: null,
-        );
-        final service = UserPiiErasureService(
-          erasureRepository: repo,
-          gracePeriod: const Duration(hours: 24),
-        );
-        final batch = await service.applyDuePending();
-        expect(batch.scanned, equals(1));
-        expect(batch.applied, equals(0));
-        expect(batch.skippedNoLocation, equals(1));
-        expect(
-          repo.calls,
-          isNot(contains('applyRowAndWipeSnapshot:$_erasureA')),
-        );
-      },
-    );
+    test('skips rows whose location cannot be resolved (no apply, '
+        'increments skippedNoLocation)', () async {
+      final repo = _FakeErasureRepo(
+        dueRows: <UserPiiErasureRequestRecord>[_record()],
+        locationForUser: null,
+      );
+      final service = UserPiiErasureService(
+        erasureRepository: repo,
+        gracePeriod: const Duration(hours: 24),
+      );
+      final batch = await service.applyDuePending();
+      expect(batch.scanned, equals(1));
+      expect(batch.applied, equals(0));
+      expect(batch.skippedNoLocation, equals(1));
+      expect(repo.calls, isNot(contains('applyRowAndWipeSnapshot:$_erasureA')));
+    });
   });
 }

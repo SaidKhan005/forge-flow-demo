@@ -76,8 +76,7 @@ class ShiftService {
   ShiftService._();
   static final ShiftService instance = ShiftService._();
 
-  final ShiftRecordRepository _shiftRepo =
-      SqliteShiftRecordRepository.instance;
+  final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
   final WeekRecordRepository _weekRepo = SqliteWeekRecordRepository.instance;
   final RestaurantScopeRepository _scopeRepo =
       SqliteRestaurantScopeRepository.instance;
@@ -95,8 +94,9 @@ class ShiftService {
   /// Loads the active target profile, bootstrapping with wage authority
   /// if no persisted profile exists.
   Future<ActiveTargetProfile> _loadActiveProfile(String restaurantId) async {
-    return WageStandardContextService.instance
-        .loadOrBootstrapProfile(restaurantId);
+    return WageStandardContextService.instance.loadOrBootstrapProfile(
+      restaurantId,
+    );
   }
 
   // ── Week-to-date rollup from closed shift_records ────────────────────────────
@@ -108,26 +108,46 @@ class ShiftService {
     final closed = shifts.where((s) => s.isClosed).toList();
     if (closed.isEmpty) return null;
 
-    final totalCovers        = closed.fold<int>(0, (s, r) => s + r.covers);
-    final totalFoh           = closed.fold<int>(0, (s, r) => s + r.fohHours);
-    final totalBoh           = closed.fold<int>(0, (s, r) => s + r.bohHours);
-    final totalSales         = closed.fold<double>(0, (s, r) => s + r.actualSales);
-    final wtdForecastCovers       = closed.fold<int>(0, (s, r) => s + r.forecastCovers);
-    final totalWeekForecastCovers = shifts.fold<int>(0, (s, r) => s + r.forecastCovers);
+    final totalCovers = closed.fold<int>(0, (s, r) => s + r.covers);
+    final totalFoh = closed.fold<int>(0, (s, r) => s + r.fohHours);
+    final totalBoh = closed.fold<int>(0, (s, r) => s + r.bohHours);
+    final totalSales = closed.fold<double>(0, (s, r) => s + r.actualSales);
+    final wtdForecastCovers = closed.fold<int>(
+      0,
+      (s, r) => s + r.forecastCovers,
+    );
+    final totalWeekForecastCovers = shifts.fold<int>(
+      0,
+      (s, r) => s + r.forecastCovers,
+    );
 
-    final totalFohLaborDollar = closed.fold<double>(0, (s, r) => s + r.fohLaborDollar);
-    final totalBohLaborDollar = closed.fold<double>(0, (s, r) => s + r.bohLaborDollar);
+    final totalFohLaborDollar = closed.fold<double>(
+      0,
+      (s, r) => s + r.fohLaborDollar,
+    );
+    final totalBohLaborDollar = closed.fold<double>(
+      0,
+      (s, r) => s + r.bohLaborDollar,
+    );
     final blendedFohWage = totalFoh > 0
-        ? totalFohLaborDollar / totalFoh : profile.fohWage;
+        ? totalFohLaborDollar / totalFoh
+        : profile.fohWage;
     final blendedBohWage = totalBoh > 0
-        ? totalBohLaborDollar / totalBoh : profile.bohWage;
+        ? totalBohLaborDollar / totalBoh
+        : profile.bohWage;
 
-    final avgPPA  = totalCovers > 0 ? totalSales / totalCovers : 0.0;
-    final avgCPLH = totalFoh    > 0 ? totalCovers / totalFoh   : 0.0;
-    final avgSPLH = totalBoh    > 0 ? totalSales  / totalBoh   : 0.0;
+    final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
+    final avgCPLH = totalFoh > 0 ? totalCovers / totalFoh : 0.0;
+    final avgSPLH = totalBoh > 0 ? totalSales / totalBoh : 0.0;
 
-    final wtdModelFoh = LaborModel.modelFohHours(totalCovers, profile.targetCPLH);
-    final wtdModelBoh = LaborModel.modelBohHoursFromSales(totalSales, profile.targetSPLH);
+    final wtdModelFoh = LaborModel.modelFohHours(
+      totalCovers,
+      profile.targetCPLH,
+    );
+    final wtdModelBoh = LaborModel.modelBohHoursFromSales(
+      totalSales,
+      profile.targetSPLH,
+    );
 
     // 7.58.0a / Finding F-2: week-level aggregate producer. On-model
     // weeks (no axis past threshold) yield the `on_model` sentinel
@@ -136,33 +156,37 @@ class ShiftService {
     // LeverCardNotYetAvailable. Per-shift facts stay on the contract-
     // pinned `determineLever` (7.61 catalog discipline).
     final primaryLeverId = LaborModel.determineLeverGated(
-      actualCovers:      totalCovers,
-      forecastCovers:    wtdForecastCovers,
-      avgCPLH:           avgCPLH,
-      avgPPA:            avgPPA,
-      targetCPLH:        profile.targetCPLH,
-      targetPPA:         profile.targetPPA,
-      avgSPLH:           avgSPLH,
-      targetSPLH:        profile.targetSPLH,
+      actualCovers: totalCovers,
+      forecastCovers: wtdForecastCovers,
+      avgCPLH: avgCPLH,
+      avgPPA: avgPPA,
+      targetCPLH: profile.targetCPLH,
+      targetPPA: profile.targetPPA,
+      avgSPLH: avgSPLH,
+      targetSPLH: profile.targetSPLH,
       avgFohBlendedWage: blendedFohWage,
-      targetFohWage:     profile.fohWage,
+      targetFohWage: profile.fohWage,
       avgBohBlendedWage: blendedBohWage,
-      targetBohWage:     profile.bohWage,
+      targetBohWage: profile.bohWage,
       scheduledFohHours: totalFoh,
-      modelFohHours:     wtdModelFoh,
+      modelFohHours: wtdModelFoh,
       scheduledBohHours: totalBoh,
-      modelBohHours:     wtdModelBoh,
+      modelBohHours: wtdModelBoh,
     );
 
     final lastDayLabel = closed
         .map((s) => s.dayLabel)
-        .reduce((a, b) =>
-            (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
-                    (BusinessDateAuthorityService.dayNumber(b) ?? 0)
-                ? a
-                : b);
-    final closedDayNum = BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
-    final lastClosedDay = BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
+        .reduce(
+          (a, b) =>
+              (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
+                  (BusinessDateAuthorityService.dayNumber(b) ?? 0)
+              ? a
+              : b,
+        );
+    final closedDayNum =
+        BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
+    final lastClosedDay =
+        BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
 
     // ── Dollar Impact accumulation (7.55p.3a) ─────────────────────────
     // Compat path: derive month and 60-day windows from closed business
@@ -180,33 +204,40 @@ class ShiftService {
     if (maxClosedDate != null) {
       final closedDt = _parseDate(maxClosedDate);
       final monthStartDate = _formatDate(
-          DateTime.utc(closedDt.year, closedDt.month, 1));
+        DateTime.utc(closedDt.year, closedDt.month, 1),
+      );
       final monthShifts = await _shiftRepo.getClosedShiftsInDateRange(
-          restaurantId, monthStartDate, maxClosedDate);
+        restaurantId,
+        monthStartDate,
+        maxClosedDate,
+      );
       monthDollarImpact = _accumulateDollarImpact(monthShifts);
 
       final sixtyDayStartDt = closedDt.subtract(const Duration(days: 59));
       final sixtyDayStartDate = _formatDate(sixtyDayStartDt);
       final sixtyDayShifts = await _shiftRepo.getClosedShiftsInDateRange(
-          restaurantId, sixtyDayStartDate, maxClosedDate);
+        restaurantId,
+        sixtyDayStartDate,
+        maxClosedDate,
+      );
       sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
     }
 
     return WeekData(
-      weekId:             weekId,
-      weekLabel:          weekLabel,
-      totalCovers:        totalCovers,
-      totalSales:         totalSales,
-      totalFohHours:      totalFoh,
-      totalBohHours:      totalBoh,
-      shiftsCompleted:    closed.length,
-      shiftsTotal:        14,
-      wtdForecastCovers:       wtdForecastCovers,
+      weekId: weekId,
+      weekLabel: weekLabel,
+      totalCovers: totalCovers,
+      totalSales: totalSales,
+      totalFohHours: totalFoh,
+      totalBohHours: totalBoh,
+      shiftsCompleted: closed.length,
+      shiftsTotal: 14,
+      wtdForecastCovers: wtdForecastCovers,
       totalWeekForecastCovers: totalWeekForecastCovers,
-      primaryLeverId:          primaryLeverId,
-      lastClosedDay:           lastClosedDay,
-      closedDayNumber:         closedDayNum,
-      lastClosedBusinessDate:  maxClosedDate,
+      primaryLeverId: primaryLeverId,
+      lastClosedDay: lastClosedDay,
+      closedDayNumber: closedDayNum,
+      lastClosedBusinessDate: maxClosedDate,
       storedTotalFohLaborDollar: totalFohLaborDollar,
       storedTotalBohLaborDollar: totalBohLaborDollar,
       monthDollarImpact: monthDollarImpact,
@@ -237,8 +268,10 @@ class ShiftService {
     final weekLabelsById = {for (final w in weeks) w.weekId: w.weekLabel};
     final weekIds = weeks.map((w) => w.weekId).toList();
     final restaurantId = await _activeRestaurantId();
-    final closedShifts =
-        await _shiftRepo.getClosedShiftsForWeeks(restaurantId, weekIds);
+    final closedShifts = await _shiftRepo.getClosedShiftsForWeeks(
+      restaurantId,
+      weekIds,
+    );
     return HistoryPatternBuilder.fromClosedShifts(closedShifts, weekLabelsById);
   }
 
@@ -260,7 +293,8 @@ class ShiftService {
 
     // 2. Create an immutable target profile version
     final now = nowIsoUtc();
-    final versionId = 'tpv_${now.replaceAll(RegExp(r'[^0-9]'), '')}_${input.weekId}_${input.dayLabel}_${input.daypart}';
+    final versionId =
+        'tpv_${now.replaceAll(RegExp(r'[^0-9]'), '')}_${input.weekId}_${input.dayLabel}_${input.daypart}';
     final version = TargetProfileVersion(
       targetProfileVersionId: versionId,
       targetProfileId: profile.targetProfileId,
@@ -295,7 +329,10 @@ class ShiftService {
     );
 
     // 4. Build normalized shift fact
-    final shiftFact = ShiftFactBuilder.fromClosedShiftInput(input, targetSnapshot);
+    final shiftFact = ShiftFactBuilder.fromClosedShiftInput(
+      input,
+      targetSnapshot,
+    );
 
     // 5. Convert to ShiftRecord with locked target fields
     final record = _shiftRecordFromFact(shiftFact);
@@ -304,8 +341,10 @@ class ShiftService {
     await _shiftRepo.replaceShiftForSlot(record);
 
     // 7. Re-read all shifts for the week
-    final allShifts =
-        await _shiftRepo.getShiftsForWeek(input.restaurantId, input.weekId);
+    final allShifts = await _shiftRepo.getShiftsForWeek(
+      input.restaurantId,
+      input.weekId,
+    );
     final closedShifts = allShifts.where((s) => s.isClosed).toList();
 
     // 8. Upsert WeekRecord only when the week is fully closed.
@@ -319,11 +358,14 @@ class ShiftService {
     // `period_count × 7`. When the operator hasn't persisted a timing
     // config yet, falls back to the legacy 14-row gate (honest
     // degradation — same behavior as pre-1.5 callers).
-    final expectedClosedShifts =
-        await _expectedClosedShiftsPerWeek(input.restaurantId);
+    final expectedClosedShifts = await _expectedClosedShiftsPerWeek(
+      input.restaurantId,
+    );
     if (closedShifts.length == expectedClosedShifts) {
       final weekRecord = await _buildWeekRecord(
-        input.restaurantId, input.weekId, closedShifts,
+        input.restaurantId,
+        input.weekId,
+        closedShifts,
       );
       await _weekRepo.upsertWeekRecord(weekRecord);
     }
@@ -366,8 +408,7 @@ class ShiftService {
   Future<int> _expectedClosedShiftsPerWeek(String restaurantId) async {
     final timingConfig = await RestaurantTimingConfigReadService.instance
         .getTimingConfig(restaurantId);
-    if (timingConfig == null ||
-        timingConfig.servicePeriodDefinitions.isEmpty) {
+    if (timingConfig == null || timingConfig.servicePeriodDefinitions.isEmpty) {
       return 14;
     }
     var total = 0;
@@ -469,40 +510,58 @@ class ShiftService {
     String weekId,
     List<ShiftRecord> closedShifts,
   ) async {
-    final totalCovers       = closedShifts.fold<int>(0, (s, r) => s + r.covers);
-    final forecastCovers    = closedShifts.fold<int>(0, (s, r) => s + r.forecastCovers);
-    final totalFohHours     = closedShifts.fold<int>(0, (s, r) => s + r.fohHours);
-    final totalBohHours     = closedShifts.fold<int>(0, (s, r) => s + r.bohHours);
-    final totalSales        = closedShifts.fold<double>(0, (s, r) => s + r.actualSales);
-    final totalFohLaborDollar = closedShifts.fold<double>(0, (s, r) => s + r.fohLaborDollar);
-    final totalBohLaborDollar = closedShifts.fold<double>(0, (s, r) => s + r.bohLaborDollar);
-    final totalLaborDollar  = totalFohLaborDollar + totalBohLaborDollar;
+    final totalCovers = closedShifts.fold<int>(0, (s, r) => s + r.covers);
+    final forecastCovers = closedShifts.fold<int>(
+      0,
+      (s, r) => s + r.forecastCovers,
+    );
+    final totalFohHours = closedShifts.fold<int>(0, (s, r) => s + r.fohHours);
+    final totalBohHours = closedShifts.fold<int>(0, (s, r) => s + r.bohHours);
+    final totalSales = closedShifts.fold<double>(
+      0,
+      (s, r) => s + r.actualSales,
+    );
+    final totalFohLaborDollar = closedShifts.fold<double>(
+      0,
+      (s, r) => s + r.fohLaborDollar,
+    );
+    final totalBohLaborDollar = closedShifts.fold<double>(
+      0,
+      (s, r) => s + r.bohLaborDollar,
+    );
+    final totalLaborDollar = totalFohLaborDollar + totalBohLaborDollar;
 
-    final avgPPA  = totalCovers > 0 ? totalSales / totalCovers : 0.0;
+    final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
     final avgCPLH = totalFohHours > 0 ? totalCovers / totalFohHours : 0.0;
 
     // Zero-hour fallback uses the locked target wages from the shifts
     // instead of MeridianConfig, preserving closed-truth provenance.
-    final fallbackFohWage = closedShifts.first.targetFohWage ?? MeridianConfig.fohWage;
-    final fallbackBohWage = closedShifts.first.targetBohWage ?? MeridianConfig.bohWage;
+    final fallbackFohWage =
+        closedShifts.first.targetFohWage ?? MeridianConfig.fohWage;
+    final fallbackBohWage =
+        closedShifts.first.targetBohWage ?? MeridianConfig.bohWage;
     final blendedFohWage = totalFohHours > 0
-        ? totalFohLaborDollar / totalFohHours : fallbackFohWage;
+        ? totalFohLaborDollar / totalFohHours
+        : fallbackFohWage;
     final blendedBohWage = totalBohHours > 0
-        ? totalBohLaborDollar / totalBohHours : fallbackBohWage;
+        ? totalBohLaborDollar / totalBohHours
+        : fallbackBohWage;
 
     final actualLaborPct = totalSales > 0
-        ? totalLaborDollar / totalSales * 100 : 0.0;
+        ? totalLaborDollar / totalSales * 100
+        : 0.0;
 
     // ── Materialize week-level locked targets from shift locked targets ────
-    double weightedAvg(double Function(ShiftRecord) field,
-        double Function(ShiftRecord) weight) {
+    double weightedAvg(
+      double Function(ShiftRecord) field,
+      double Function(ShiftRecord) weight,
+    ) {
       final totalW = closedShifts.fold<double>(0, (s, r) => s + weight(r));
       if (totalW == 0) {
         return closedShifts.fold<double>(0, (s, r) => s + field(r)) /
             closedShifts.length;
       }
-      return closedShifts.fold<double>(
-              0, (s, r) => s + field(r) * weight(r)) /
+      return closedShifts.fold<double>(0, (s, r) => s + field(r) * weight(r)) /
           totalW;
     }
 
@@ -517,38 +576,59 @@ class ShiftService {
     }
 
     final wkTargetCPLH = weightedAvg(
-        (r) => requireShiftField(r, r.targetCPLH, 'targetCPLH'),
-        (r) => r.covers.toDouble());
+      (r) => requireShiftField(r, r.targetCPLH, 'targetCPLH'),
+      (r) => r.covers.toDouble(),
+    );
     final wkTargetSPLH = weightedAvg(
-        (r) => requireShiftField(r, r.targetSPLH, 'targetSPLH'),
-        (r) => r.actualSales);
+      (r) => requireShiftField(r, r.targetSPLH, 'targetSPLH'),
+      (r) => r.actualSales,
+    );
     final wkTargetPPA = weightedAvg(
-        (r) => requireShiftField(r, r.targetPPA, 'targetPPA'),
-        (r) => r.covers.toDouble());
+      (r) => requireShiftField(r, r.targetPPA, 'targetPPA'),
+      (r) => r.covers.toDouble(),
+    );
     final wkTargetFohWage = weightedAvg(
-        (r) => requireShiftField(r, r.targetFohWage, 'targetFohWage'),
-        (r) => r.fohHours.toDouble());
+      (r) => requireShiftField(r, r.targetFohWage, 'targetFohWage'),
+      (r) => r.fohHours.toDouble(),
+    );
     final wkTargetBohWage = weightedAvg(
-        (r) => requireShiftField(r, r.targetBohWage, 'targetBohWage'),
-        (r) => r.bohHours.toDouble());
+      (r) => requireShiftField(r, r.targetBohWage, 'targetBohWage'),
+      (r) => r.bohHours.toDouble(),
+    );
     final wkTheoFohPct = weightedAvg(
-        (r) => requireShiftField(r, r.theoreticalFohLaborPct, 'theoreticalFohLaborPct'),
-        (r) => r.actualSales);
+      (r) => requireShiftField(
+        r,
+        r.theoreticalFohLaborPct,
+        'theoreticalFohLaborPct',
+      ),
+      (r) => r.actualSales,
+    );
     final wkTheoBohPct = weightedAvg(
-        (r) => requireShiftField(r, r.theoreticalBohLaborPct, 'theoreticalBohLaborPct'),
-        (r) => r.actualSales);
+      (r) => requireShiftField(
+        r,
+        r.theoreticalBohLaborPct,
+        'theoreticalBohLaborPct',
+      ),
+      (r) => r.actualSales,
+    );
     final wkTheoTotalPct = weightedAvg(
-        (r) => r.theoreticalLaborPct,
-        (r) => r.actualSales);
+      (r) => r.theoreticalLaborPct,
+      (r) => r.actualSales,
+    );
 
     // Dollar gap from locked shift truth
     final summedTheoreticalLaborDollar = closedShifts.fold<double>(
-      0, (s, r) => s + (r.actualSales * r.theoreticalLaborPct / 100));
+      0,
+      (s, r) => s + (r.actualSales * r.theoreticalLaborPct / 100),
+    );
     final dollarGap = totalLaborDollar - summedTheoreticalLaborDollar;
 
     // Primary lever from locked targets
     final wkModelFoh = LaborModel.modelFohHours(totalCovers, wkTargetCPLH);
-    final wkModelBoh = LaborModel.modelBohHoursFromSales(totalSales, wkTargetSPLH);
+    final wkModelBoh = LaborModel.modelBohHoursFromSales(
+      totalSales,
+      wkTargetSPLH,
+    );
 
     // 7.58.0a / Finding F-2: week-level aggregate producer. On-model
     // weeks (no axis past threshold) yield the `on_model` sentinel
@@ -557,22 +637,22 @@ class ShiftService {
     // LeverCardNotYetAvailable. Per-shift facts stay on the contract-
     // pinned `determineLever` (7.61 catalog discipline).
     final primaryLeverId = LaborModel.determineLeverGated(
-      actualCovers:      totalCovers,
-      forecastCovers:    forecastCovers,
-      avgCPLH:           avgCPLH,
-      avgPPA:            avgPPA,
-      targetCPLH:        wkTargetCPLH,
-      targetPPA:         wkTargetPPA,
-      avgSPLH:           totalBohHours > 0 ? totalSales / totalBohHours : 0,
-      targetSPLH:        wkTargetSPLH,
+      actualCovers: totalCovers,
+      forecastCovers: forecastCovers,
+      avgCPLH: avgCPLH,
+      avgPPA: avgPPA,
+      targetCPLH: wkTargetCPLH,
+      targetPPA: wkTargetPPA,
+      avgSPLH: totalBohHours > 0 ? totalSales / totalBohHours : 0,
+      targetSPLH: wkTargetSPLH,
       avgFohBlendedWage: blendedFohWage,
-      targetFohWage:     wkTargetFohWage,
+      targetFohWage: wkTargetFohWage,
       avgBohBlendedWage: blendedBohWage,
-      targetBohWage:     wkTargetBohWage,
+      targetBohWage: wkTargetBohWage,
       scheduledFohHours: totalFohHours,
-      modelFohHours:     wkModelFoh,
+      modelFohHours: wkModelFoh,
       scheduledBohHours: totalBohHours,
-      modelBohHours:     wkModelBoh,
+      modelBohHours: wkModelBoh,
     );
 
     // Source type: use the first shift's source type as representative
@@ -591,12 +671,16 @@ class ShiftService {
     String? targetCalibrationWindowEnd;
     final anchorBusinessDate = _anchorBusinessDate(closedShifts);
     if (anchorBusinessDate != null) {
-      final snapshot = await _weeklyPlanSnapshotRepo
-          .getSnapshotForBusinessDate(restaurantId, anchorBusinessDate);
+      final snapshot = await _weeklyPlanSnapshotRepo.getSnapshotForBusinessDate(
+        restaurantId,
+        anchorBusinessDate,
+      );
       if (snapshot != null) {
         lockedRequiredFohHours = snapshot.requiredFohHours;
         lockedRequiredBohHours = snapshot.requiredBohHours;
-        final cycle = await _targetCycleRepo.getCycleById(snapshot.targetCycleId);
+        final cycle = await _targetCycleRepo.getCycleById(
+          snapshot.targetCycleId,
+        );
         if (cycle != null) {
           targetCalibrationWindowStart = cycle.calibrationWindowStart;
           targetCalibrationWindowEnd = cycle.calibrationWindowEnd;
@@ -623,20 +707,30 @@ class ShiftService {
     final maxClosedDate = closedShifts
         .map((s) => s.businessDate)
         .whereType<String>()
-        .fold<String?>(null, (max, d) =>
-            max == null || d.compareTo(max) > 0 ? d : max);
+        .fold<String?>(
+          null,
+          (max, d) => max == null || d.compareTo(max) > 0 ? d : max,
+        );
     if (maxClosedDate != null) {
       closedAt = maxClosedDate;
       final closedDt = _parseDate(maxClosedDate);
-      final monthStart =
-          _formatDate(DateTime.utc(closedDt.year, closedDt.month, 1));
+      final monthStart = _formatDate(
+        DateTime.utc(closedDt.year, closedDt.month, 1),
+      );
       final monthShifts = await _shiftRepo.getClosedShiftsInDateRange(
-          restaurantId, monthStart, maxClosedDate);
+        restaurantId,
+        monthStart,
+        maxClosedDate,
+      );
       monthDollarImpact = _accumulateDollarImpact(monthShifts);
-      final sixtyDayStart =
-          _formatDate(closedDt.subtract(const Duration(days: 59)));
+      final sixtyDayStart = _formatDate(
+        closedDt.subtract(const Duration(days: 59)),
+      );
       final sixtyDayShifts = await _shiftRepo.getClosedShiftsInDateRange(
-          restaurantId, sixtyDayStart, maxClosedDate);
+        restaurantId,
+        sixtyDayStart,
+        maxClosedDate,
+      );
       sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
     }
 
@@ -698,8 +792,18 @@ class ShiftService {
     final labelDate = monday.add(const Duration(days: 1));
 
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     final month = months[labelDate.month - 1];
     return '$month ${labelDate.day}';
@@ -743,8 +847,8 @@ class ShiftService {
     final weekLabel = _weekLabelFromWeekId(weekId);
 
     // Try locked weekly snapshot for current-week Plan-owned truth.
-    final snapshot =
-        await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+    final snapshot = await WeeklyPlanSnapshotService.instance
+        .getCurrentWeekSnapshot();
     if (snapshot != null) {
       return _buildLockedWeekToDate(weekId, weekLabel, snapshot);
     }
@@ -793,7 +897,10 @@ class ShiftService {
     // query so actual closed-truth membership follows the configured
     // week span, not the ISO/Monday-based weekId bucket.
     final allClosed = await _shiftRepo.getClosedShiftsInDateRange(
-        restaurantId, snapshot.weekStartDate, snapshot.weekEndDate);
+      restaurantId,
+      snapshot.weekStartDate,
+      snapshot.weekEndDate,
+    );
     if (allClosed.isEmpty) return null;
 
     // ── Finalization filter (7.55n.5) ────────────────────────────────
@@ -810,19 +917,21 @@ class ShiftService {
     // the row's business date. When the operational business date is
     // unknown, all closed rows pass through (honest legacy degradation
     // matching pre-1.5 behavior).
-    final operationalBusinessDate =
-        await _openShiftRepo.getCurrentBusinessDate(restaurantId);
+    final operationalBusinessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
 
     final List<ShiftRecord> closed;
     if (operationalBusinessDate != null) {
       closed = allClosed
-          .where((s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
-                rowStatus: s.status,
-                shiftCloseAuthority:
-                    _closeAuthorityForRow(s.sourceSystem),
-                rowBusinessDate: s.businessDate,
-                currentOperationalBusinessDate: operationalBusinessDate,
-              ))
+          .where(
+            (s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
+              rowStatus: s.status,
+              shiftCloseAuthority: _closeAuthorityForRow(s.sourceSystem),
+              rowBusinessDate: s.businessDate,
+              currentOperationalBusinessDate: operationalBusinessDate,
+            ),
+          )
           .toList();
       if (closed.isEmpty) return null;
     } else {
@@ -858,13 +967,14 @@ class ShiftService {
       // Fallback: no business dates available — use canonical day ordering.
       final lastDayLabel = closed
           .map((s) => s.dayLabel)
-          .reduce((a, b) =>
-              (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
-                      (BusinessDateAuthorityService.dayNumber(b) ?? 0)
-                  ? a
-                  : b);
-      closedDayNum =
-          BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
+          .reduce(
+            (a, b) =>
+                (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
+                    (BusinessDateAuthorityService.dayNumber(b) ?? 0)
+                ? a
+                : b,
+          );
+      closedDayNum = BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
       lastClosedDay =
           BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
     }
@@ -881,44 +991,66 @@ class ShiftService {
     // Filter snapshot day rows through the last closed business date.
     final closedDayRows = maxClosedDate != null
         ? snapshot.dayRows
-            .where((d) =>
-                d.businessDate.compareTo(snapshot.weekStartDate) >= 0 &&
-                d.businessDate.compareTo(maxClosedDate) <= 0)
-            .toList()
+              .where(
+                (d) =>
+                    d.businessDate.compareTo(snapshot.weekStartDate) >= 0 &&
+                    d.businessDate.compareTo(maxClosedDate) <= 0,
+              )
+              .toList()
         : snapshot.dayRows
-            .where((d) =>
-                (BusinessDateAuthorityService.dayNumber(d.day) ?? 0) <=
-                closedDayNum)
-            .toList();
+              .where(
+                (d) =>
+                    (BusinessDateAuthorityService.dayNumber(d.day) ?? 0) <=
+                    closedDayNum,
+              )
+              .toList();
 
-    final wtdForecastCovers =
-        closedDayRows.fold<int>(0, (s, d) => s + d.forecastCovers);
-    final wtdForecastSales =
-        closedDayRows.fold<double>(0, (s, d) => s + d.forecastSales);
+    final wtdForecastCovers = closedDayRows.fold<int>(
+      0,
+      (s, d) => s + d.forecastCovers,
+    );
+    final wtdForecastSales = closedDayRows.fold<double>(
+      0,
+      (s, d) => s + d.forecastSales,
+    );
 
     // ── Locked WTD plan hours from snapshot day rows ─────────────────
-    final planFohHoursWtd =
-        closedDayRows.fold<int>(0, (s, d) => s + d.requiredFohHours);
-    final planBohHoursWtd =
-        closedDayRows.fold<int>(0, (s, d) => s + d.requiredBohHours);
+    final planFohHoursWtd = closedDayRows.fold<int>(
+      0,
+      (s, d) => s + d.requiredFohHours,
+    );
+    final planBohHoursWtd = closedDayRows.fold<int>(
+      0,
+      (s, d) => s + d.requiredBohHours,
+    );
 
-    final totalFohLaborDollar =
-        closed.fold<double>(0, (s, r) => s + r.fohLaborDollar);
-    final totalBohLaborDollar =
-        closed.fold<double>(0, (s, r) => s + r.bohLaborDollar);
-    final blendedFohWage =
-        totalFoh > 0 ? totalFohLaborDollar / totalFoh : profile.fohWage;
-    final blendedBohWage =
-        totalBoh > 0 ? totalBohLaborDollar / totalBoh : profile.bohWage;
+    final totalFohLaborDollar = closed.fold<double>(
+      0,
+      (s, r) => s + r.fohLaborDollar,
+    );
+    final totalBohLaborDollar = closed.fold<double>(
+      0,
+      (s, r) => s + r.bohLaborDollar,
+    );
+    final blendedFohWage = totalFoh > 0
+        ? totalFohLaborDollar / totalFoh
+        : profile.fohWage;
+    final blendedBohWage = totalBoh > 0
+        ? totalBohLaborDollar / totalBoh
+        : profile.bohWage;
 
     final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
     final avgCPLH = totalFoh > 0 ? totalCovers / totalFoh : 0.0;
     final avgSPLH = totalBoh > 0 ? totalSales / totalBoh : 0.0;
 
-    final wtdModelFoh =
-        LaborModel.modelFohHours(totalCovers, profile.targetCPLH);
-    final wtdModelBoh =
-        LaborModel.modelBohHoursFromSales(totalSales, profile.targetSPLH);
+    final wtdModelFoh = LaborModel.modelFohHours(
+      totalCovers,
+      profile.targetCPLH,
+    );
+    final wtdModelBoh = LaborModel.modelBohHoursFromSales(
+      totalSales,
+      profile.targetSPLH,
+    );
 
     // 7.58.0a / Finding F-2: week-level aggregate producer. On-model
     // weeks (no axis past threshold) yield the `on_model` sentinel
@@ -954,15 +1086,22 @@ class ShiftService {
     if (maxClosedDate != null) {
       final closedDt = _parseDate(maxClosedDate);
       final monthStartDate = _formatDate(
-          DateTime.utc(closedDt.year, closedDt.month, 1));
+        DateTime.utc(closedDt.year, closedDt.month, 1),
+      );
       final monthShifts = await _shiftRepo.getClosedShiftsInDateRange(
-          restaurantId, monthStartDate, maxClosedDate);
+        restaurantId,
+        monthStartDate,
+        maxClosedDate,
+      );
       monthDollarImpact = _accumulateDollarImpact(monthShifts);
 
       final sixtyDayStartDt = closedDt.subtract(const Duration(days: 59));
       final sixtyDayStartDate = _formatDate(sixtyDayStartDt);
       final sixtyDayShifts = await _shiftRepo.getClosedShiftsInDateRange(
-          restaurantId, sixtyDayStartDate, maxClosedDate);
+        restaurantId,
+        sixtyDayStartDate,
+        maxClosedDate,
+      );
       sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
     }
 
@@ -1010,13 +1149,16 @@ class ShiftService {
     final profile = await _loadActiveProfile(restaurantId);
 
     // Find the business date with an open shift
-    final businessDate =
-        await _openShiftRepo.getCurrentBusinessDate(restaurantId);
+    final businessDate = await _openShiftRepo.getCurrentBusinessDate(
+      restaurantId,
+    );
     if (businessDate == null) return null;
 
     // Load ALL daypart snapshots for this business day
-    final snapshots =
-        await _openShiftRepo.getSnapshotsForDay(restaurantId, businessDate);
+    final snapshots = await _openShiftRepo.getSnapshotsForDay(
+      restaurantId,
+      businessDate,
+    );
     if (snapshots.isEmpty) return null;
 
     // Resolve plan from the persisted locked weekly snapshot only.
@@ -1026,9 +1168,9 @@ class ShiftService {
         .getExistingCurrentLockedWeeklyPlan();
 
     // Pick the day row matching the open shift
-    final openSnap = snapshots
-        .where((s) => s.status == 'open')
-        .firstOrNull ?? snapshots.first;
+    final openSnap =
+        snapshots.where((s) => s.status == 'open').firstOrNull ??
+        snapshots.first;
     final dayPlan = plan?.dayPlans
         .where((d) => d.day == openSnap.dayLabel)
         .firstOrNull;
@@ -1037,8 +1179,10 @@ class ShiftService {
     // Aggregate reservation unseated covers for the whole day
     final resSnapshots = await SqliteReservationBookSnapshotRepository.instance
         .getForDay(restaurantId, businessDate);
-    final totalUnseated =
-        resSnapshots.fold<int>(0, (s, r) => s + r.unseatedCovers);
+    final totalUnseated = resSnapshots.fold<int>(
+      0,
+      (s, r) => s + r.unseatedCovers,
+    );
 
     // Per-location vendor provenance (Defect 1): same fixture-derived
     // resolver as the notifier path, so every Shift surface tells the
@@ -1062,10 +1206,11 @@ class ShiftService {
 
   Future<List<ShiftRecord>> getFullWeekShifts(String weekId) async {
     final restaurantId = await _activeRestaurantId();
-    final dbShifts =
-        await _shiftRepo.getShiftsForWeek(restaurantId, weekId);
-    final openSnapshots =
-        await _openShiftRepo.getOpenShiftsForWeek(restaurantId, weekId);
+    final dbShifts = await _shiftRepo.getShiftsForWeek(restaurantId, weekId);
+    final openSnapshots = await _openShiftRepo.getOpenShiftsForWeek(
+      restaurantId,
+      weekId,
+    );
 
     // Build snapshot key set — these override projected shift_records rows
     final snapshotKeys = openSnapshots
@@ -1074,8 +1219,11 @@ class ShiftService {
 
     // Keep closed shift_records rows always; keep projected only if no snapshot
     final kept = dbShifts
-        .where((s) =>
-            s.isClosed || !snapshotKeys.contains('${s.dayLabel}|${s.daypart}'))
+        .where(
+          (s) =>
+              s.isClosed ||
+              !snapshotKeys.contains('${s.dayLabel}|${s.daypart}'),
+        )
         .toList();
 
     // Convert open/projected snapshots to ShiftRecord shape.
@@ -1127,8 +1275,7 @@ class ShiftService {
     return [...keptWithPlanTargets, ...openAsRecords];
   }
 
-  ShiftRecord _withPlanTargets(
-      ShiftRecord s, DaypartAllocation allocation) {
+  ShiftRecord _withPlanTargets(ShiftRecord s, DaypartAllocation allocation) {
     final isClosed = s.isClosed;
     return ShiftRecord(
       id: s.id,
@@ -1192,7 +1339,7 @@ class ShiftService {
   ///     sub-rows for that business date, NOT the render-time resolver.
   ///   - When `dayDayparts` is EMPTY (legacy snapshot written before
   ///     Slice 1, or Gap-42 insufficient-recommendation fallback), and
-  ///     ONLY then, the deprecated render-time [DaypartPlanAllocator]
+  ///     ONLY then, the deprecated render-time `DaypartPlanAllocator`
   ///     supplies the sub-rows so the screen still renders honestly.
   ///
   /// Returns an empty map (every lookup falls back to snapshot values)
@@ -1204,7 +1351,7 @@ class ShiftService {
   /// still holds because this path skips the snapshot lookup unless
   /// `weekId` matches the current operational week.
   Future<Map<String, Map<String, DaypartAllocation>>>
-      _resolvePlanDaypartOverrides({
+  _resolvePlanDaypartOverrides({
     required String restaurantId,
     required String weekId,
   }) async {
@@ -1220,7 +1367,8 @@ class ShiftService {
 
     final config = await RestaurantTimingConfigReadService.instance
         .getActiveTimingConfig();
-    final defs = config?.servicePeriodDefinitions ??
+    final defs =
+        config?.servicePeriodDefinitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
 
     final out = <String, Map<String, DaypartAllocation>>{};
@@ -1278,9 +1426,7 @@ class ShiftService {
         distributionWeights: distributionWeights,
       );
       if (allocations.isEmpty) continue;
-      out[dayRow.day] = {
-        for (final a in allocations) a.daypartId: a,
-      };
+      out[dayRow.day] = {for (final a in allocations) a.daypartId: a};
     }
     return out;
   }
@@ -1299,7 +1445,9 @@ class ShiftService {
   /// [CurrentWeekState.shiftRecordFromSnapshot]; only the
   /// Benchmark-owned target fields are now sourced here.
   Future<ActiveTargetProfile> _resolveProfileForFullWeek(
-      String restaurantId, String weekId) async {
+    String restaurantId,
+    String weekId,
+  ) async {
     return _loadActiveProfile(restaurantId);
   }
 
@@ -1311,7 +1459,9 @@ class ShiftService {
   /// the full-week shift list. Returns null when locked WTD truth is not
   /// available for the in-force week.
   Future<CurrentWeekState?> getCurrentWeekState(
-      String weekId, String weekLabel) async {
+    String weekId,
+    String weekLabel,
+  ) async {
     // Use the locked current-week WTD path (7.55l.7b/7b1).
     final weekData = await getLiveWeekToDate();
     if (weekData == null) return null;
@@ -1347,13 +1497,17 @@ class ShiftService {
   /// Advances the mock replay by one calendar day and reseeds coherently.
   Future<void> advanceMockReplayDay() async {
     final restaurantId = await _activeRestaurantId();
-    final currentDate = await SqliteDatabase.instance
-        .getMockReplayBusinessDate(restaurantId);
+    final currentDate = await SqliteDatabase.instance.getMockReplayBusinessDate(
+      restaurantId,
+    );
     final base = currentDate ?? MockIntegrationReplaySeed.defaultBusinessDate;
 
     final parts = base.split('-');
     final dt = DateTime(
-        int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
     final next = DateTime(dt.year, dt.month, dt.day + 1);
     final nextDate =
         '${next.year}-${next.month.toString().padLeft(2, '0')}'
@@ -1388,9 +1542,12 @@ class ShiftService {
       final splh = s.targetSPLH;
       final fohWage = s.targetFohWage;
       final bohWage = s.targetBohWage;
-      if (cplh == null || cplh <= 0 ||
-          splh == null || splh <= 0 ||
-          fohWage == null || bohWage == null) {
+      if (cplh == null ||
+          cplh <= 0 ||
+          splh == null ||
+          splh <= 0 ||
+          fohWage == null ||
+          bohWage == null) {
         return sum;
       }
       final actualLabor = s.fohLaborDollar + s.bohLaborDollar;

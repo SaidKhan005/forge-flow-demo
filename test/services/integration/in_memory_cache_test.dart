@@ -123,7 +123,7 @@ void main() {
 
     test('remove deletes and returns value if not expired', () {
       final now = DateTime(2026, 5, 8, 12, 0, 0);
-      var clock = now;
+      final clock = now;
 
       final cache = LruTtlMap<String, int>(
         ttl: const Duration(minutes: 1),

@@ -213,9 +213,7 @@ class PreflightConfig {
     }
 
     if (run && (connectionString == null || connectionString.isEmpty)) {
-      throw const UsageException(
-        '--connection-string is required with --run',
-      );
+      throw const UsageException('--connection-string is required with --run');
     }
     if (includeRlsIsolation && run) {
       if (operatorAUuid == null ||
@@ -414,18 +412,10 @@ String formatPlan(PreflightConfig config) {
     ..writeln(r'    --connection-string=postgres://user:****@host/db \\')
     ..writeln('    --report-out=build/cutover/preflight_smoke.json \\')
     ..writeln('    --include-rls-isolation \\')
-    ..writeln(
-      '    --rls-operator-a=11111111-1111-1111-1111-111111111111 \\',
-    )
-    ..writeln(
-      '    --rls-operator-b=22222222-2222-2222-2222-222222222222 \\',
-    )
-    ..writeln(
-      '    --rls-location-a=33333333-3333-3333-3333-333333333333 \\',
-    )
-    ..writeln(
-      '    --rls-location-b=44444444-4444-4444-4444-444444444444 \\',
-    )
+    ..writeln('    --rls-operator-a=11111111-1111-1111-1111-111111111111 \\')
+    ..writeln('    --rls-operator-b=22222222-2222-2222-2222-222222222222 \\')
+    ..writeln('    --rls-location-a=33333333-3333-3333-3333-333333333333 \\')
+    ..writeln('    --rls-location-b=44444444-4444-4444-4444-444444444444 \\')
     ..writeln('    --dns-hostname=app.forgeflow.app \\')
     ..writeln('    --skip-secrets');
   return buffer.toString();
@@ -438,12 +428,12 @@ String formatReport(PreflightReport report) {
   if (report.label != null) buffer.writeln('label: ${report.label}');
   buffer
     ..writeln('require_all: ${report.requireAll}')
-    ..writeln('overall: ${report.overall.toJsonString()} '
-        '(green=${report.overallGreen})')
-    ..writeln('')
     ..writeln(
-      'check                              status   ms      message',
+      'overall: ${report.overall.toJsonString()} '
+      '(green=${report.overallGreen})',
     )
+    ..writeln('')
+    ..writeln('check                              status   ms      message')
     ..writeln(
       '----------------------------------- -------- ------- -------------------',
     );
@@ -614,9 +604,11 @@ Future<void> runMain(
     }
   }
 
-  final SecretReadProbe secretRead = secretReadOverride ??
+  final SecretReadProbe secretRead =
+      secretReadOverride ??
       _buildDefaultSecretRead(
-        gcpProjectId: config.gcpProjectId ??
+        gcpProjectId:
+            config.gcpProjectId ??
             env['GOOGLE_CLOUD_PROJECT'] ??
             env['GCP_PROJECT'],
       );
@@ -725,12 +717,11 @@ class _GcpSecretManagerSecretReadProbe {
     required this.projectId,
     required OAuthAccessTokenProvider accessTokenProvider,
     required http.Client httpClient,
-    this.timeout = const Duration(seconds: 10),
-  })  : _accessTokenProvider = accessTokenProvider,
-        _httpClient = httpClient;
+  }) : _accessTokenProvider = accessTokenProvider,
+       _httpClient = httpClient;
 
   final String projectId;
-  final Duration timeout;
+  final Duration timeout = const Duration(seconds: 10);
   final OAuthAccessTokenProvider _accessTokenProvider;
   final http.Client _httpClient;
 

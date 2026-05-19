@@ -17,6 +17,7 @@ import '../../domain/models/schedule_forecast_demand.dart';
 import '../../domain/models/schedule_plan.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/models/weekly_plan_snapshot.dart';
+import '../../domain/services/locked_daypart_int_hours.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
 import '../../domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
 import '../../services/daypart_plan_allocator.dart';
@@ -101,7 +102,7 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// The Plan tab's expandable daypart sub-rows read the locked
   /// per-(day, service_period) values stamped at lock time
   /// (`weekly_plan_snapshot_day_dayparts`) from this snapshot rather
-  /// than regenerating them at render time via [DaypartPlanAllocator]
+  /// than regenerating them at render time via `DaypartPlanAllocator`
   /// (plan Gap 6 / Gap 12, Design Rule 4 — read through the persisted
   /// canonical write path; do not bypass it).
   ///
@@ -265,8 +266,8 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   Future<void> _loadDistributionWeightsIfUnavailable() async {
     if (_distributionWeights != null) return;
     try {
-      final restaurantId =
-          await RestaurantScopeService.instance.getActiveRestaurantId();
+      final restaurantId = await RestaurantScopeService.instance
+          .getActiveRestaurantId();
       _distributionWeights =
           await SchedulePlanReadService.loadDistributionWeights(restaurantId);
     } catch (_) {
@@ -493,7 +494,7 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// locked snapshot's persisted `weekly_plan_snapshot_day_dayparts`
   /// rows when a locked snapshot with per-period rows is loaded — the
   /// canonical, lock-time-stamped values (plan Gap 6 / Gap 12, Design
-  /// Rule 4). The read-time [DaypartPlanAllocator] regeneration is
+  /// Rule 4). The read-time `DaypartPlanAllocator` regeneration is
   /// retired from the production locked path; it survives only as the
   /// honest fallback for:
   ///   - live / preview mode (no persisted snapshot exists — the plan
@@ -525,8 +526,7 @@ class ScheduleForecastNotifier extends ChangeNotifier {
 
     return _plan!.dayPlans.map((dp) {
       final subrows = hasPersistedDayparts
-          ? _persistedSubrowsForDay(
-              snapshot, businessDateByDay[dp.day])
+          ? _persistedSubrowsForDay(snapshot, businessDateByDay[dp.day])
           : _allocatorSubrowsForDay(dp);
 
       return ScheduleDayView(
@@ -556,35 +556,29 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     String? businessDate,
   ) {
     if (businessDate == null) return const [];
-    final rows = snapshot.dayDayparts
-        .where((d) => d.businessDate == businessDate)
-        .toList()
-      ..sort((a, b) => ServicePeriodDefinitionResolver.sortKey(
-              _servicePeriodDefinitions, a.servicePeriodId)
-          .compareTo(ServicePeriodDefinitionResolver.sortKey(
-              _servicePeriodDefinitions, b.servicePeriodId)));
+    final rows = reconcileLockedDaypartIntHours(
+      snapshot: snapshot,
+      businessDate: businessDate,
+      definitions: _servicePeriodDefinitions,
+    );
     return rows
         .map(
           (r) => ScheduleDaySubrow(
-            label: ServicePeriodDefinitionResolver.labelForId(
-                _servicePeriodDefinitions, r.servicePeriodId),
+            label: r.label,
             forecastCovers: r.forecastCovers,
             forecastSales: r.forecastSales,
-            // Persisted per-period hours are doubles (Design Rule 5 —
-            // period hours × whole-day wage). The Plan sub-row view
-            // model contract is integer hours; round at the read seam
-            // so the rendered table is unchanged. No `0`-as-null
-            // substitution (Design Rule 2) — a genuine zero-hour
-            // period stays an honest 0.
-            requiredFohHours: r.requiredFohHours.round(),
-            requiredBohHours: r.requiredBohHours.round(),
+            // Shared integer reconciliation keeps Schedule, Shift and
+            // Full Week rows from drifting by independently rounding
+            // the same persisted hour doubles.
+            requiredFohHours: r.requiredFohHours,
+            requiredBohHours: r.requiredBohHours,
           ),
         )
         .toList();
   }
 
   /// Fallback daypart sub-rows for [dp] via the read-time
-  /// [DaypartPlanAllocator].
+  /// `DaypartPlanAllocator`.
   ///
   /// Per-Daypart V1 (Slice 3): retired from the production locked path
   /// (replaced by [_persistedSubrowsForDay]). Retained for live /
@@ -592,6 +586,7 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// `dayDayparts` (legacy / Gap 42 fallback) so the Plan tab still
   /// renders honest sub-rows.
   List<ScheduleDaySubrow> _allocatorSubrowsForDay(ScheduleDayPlan dp) {
+    // ignore: deprecated_member_use_from_same_package
     final allocations = DaypartPlanAllocator.allocate(
       day: dp.day,
       dayCovers: dp.forecastCovers,
