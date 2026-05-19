@@ -472,6 +472,12 @@ Future<void> _createAllTables(Database db) async {
       business_day_start_local_time    TEXT NOT NULL,
       week_start_day                   INTEGER NOT NULL,
       service_period_definitions_json  TEXT NOT NULL,
+      selected_scope_type              TEXT,
+      selected_scope_id                TEXT,
+      source_scope_type                TEXT,
+      source_scope_id                  TEXT,
+      source_scope_label               TEXT,
+      inherited_from_ancestor          INTEGER,
       created_at                       TEXT NOT NULL,
       updated_at                       TEXT NOT NULL
     )

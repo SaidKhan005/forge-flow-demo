@@ -71,6 +71,31 @@ class TimingAuthoritySection extends StatelessWidget {
     return true;
   }
 
+  static String? _sourceLine(RestaurantTimingConfig config) {
+    final rawLabel = config.sourceScopeLabel?.trim();
+    final label = rawLabel == null || rawLabel.isEmpty
+        ? _fallbackSourceLabel(config.sourceScopeType)
+        : rawLabel;
+    if (label == null || label.isEmpty) return null;
+    final prefix = config.inheritedFromAncestor == true
+        ? 'Inherited from'
+        : 'Source';
+    return '$prefix: $label';
+  }
+
+  static String? _fallbackSourceLabel(String? sourceScopeType) {
+    switch (sourceScopeType) {
+      case 'operator':
+      case 'business':
+        return 'Business default';
+      case 'org_unit':
+        return 'Org unit override';
+      case 'location':
+        return 'Location override';
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<RestaurantTimingConfig?>(
@@ -116,6 +141,7 @@ class TimingAuthoritySection extends StatelessWidget {
         }
 
         final periods = config.servicePeriodDefinitions;
+        final sourceLine = _sourceLine(config);
         // U-7 MO-3a/MO-3b (debug.md:264) — mobile is view-only.
         //
         // Per-Daypart V1 Slice 1.5: the "Shift close rule" row was
@@ -134,6 +160,10 @@ class TimingAuthoritySection extends StatelessWidget {
                 children: [
                   if (_hasScopeLabel) ...[
                     _TimingScopeLabel(scopeLabel: scopeLabel!.trim()),
+                    const SizedBox(height: 8),
+                  ],
+                  if (sourceLine != null) ...[
+                    _TimingSourceLabel(sourceLine: sourceLine),
                     const SizedBox(height: 8),
                   ],
                   _TimingValueRow(
@@ -189,6 +219,21 @@ class _TimingScopeLabel extends StatelessWidget {
     return Text(
       'Applies to: $scopeLabel',
       key: const Key('settings_timing_authority_scope_label'),
+      style: AppTextStyles.body12(color: AppColors.textMuted),
+    );
+  }
+}
+
+class _TimingSourceLabel extends StatelessWidget {
+  const _TimingSourceLabel({required this.sourceLine});
+
+  final String sourceLine;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      sourceLine,
+      key: const Key('settings_timing_authority_source_label'),
       style: AppTextStyles.body12(color: AppColors.textMuted),
     );
   }

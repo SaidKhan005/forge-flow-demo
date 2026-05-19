@@ -303,7 +303,7 @@ class _PerLocationDataAccuracyTableState
       return <_MiniFact>[
         for (final period in servicePeriodRows)
           _MiniFact(
-            _servicePeriodLabel(period.servicePeriodKey),
+            _servicePeriodLabelFor(row, period.servicePeriodKey),
             _servicePeriodCoversLabel(period.coversSource),
             sourceLabel: row.settings
                 .coversSourceSourceFor(period.servicePeriodKey)
@@ -319,28 +319,29 @@ class _PerLocationDataAccuracyTableState
       return <_MiniFact>[
         for (final entry in entries)
           _MiniFact(
-            _servicePeriodLabel(entry.key),
+            _servicePeriodLabelFor(row, entry.key),
             _coversLabel(entry.value),
             sourceLabel: row.settings.coversSourceSourceFor(entry.key)?.label,
           ),
       ];
     }
 
+    final configured = row.configuredServicePeriods;
+    if (configured.isNotEmpty) {
+      return <_MiniFact>[
+        for (final period in configured)
+          _MiniFact(
+            _servicePeriodLabelFor(row, period.id),
+            _coversLabel(row.settings.coversSourceFor(period.id)),
+            sourceLabel: row.settings.coversSourceSourceFor(period.id)?.label,
+          ),
+      ];
+    }
+
     return <_MiniFact>[
       _MiniFact(
-        'Lunch',
-        _coversLabel(row.settings.coversSourceFor('lunch')),
-        sourceLabel: row.settings.coversSourceSourceFor('lunch')?.label,
-      ),
-      _MiniFact(
-        'Dinner',
-        _coversLabel(row.settings.coversSourceFor('dinner')),
-        sourceLabel: row.settings.coversSourceSourceFor('dinner')?.label,
-      ),
-      _MiniFact(
-        'Late night',
-        _coversLabel(row.settings.coversSourceFor('late_night')),
-        sourceLabel: row.settings.coversSourceSourceFor('late_night')?.label,
+        'Service periods',
+        '${_coversLabel(kDefaultCoversSource)} default',
       ),
     ];
   }
@@ -358,9 +359,15 @@ class _PerLocationDataAccuracyTableState
       return keyed.values.any((source) => source == CoversSource.vendor);
     }
 
-    return row.settings.coversSourceFor('lunch') == CoversSource.vendor ||
-        row.settings.coversSourceFor('dinner') == CoversSource.vendor ||
-        row.settings.coversSourceFor('late_night') == CoversSource.vendor;
+    final configured = row.configuredServicePeriods;
+    if (configured.isNotEmpty) {
+      return configured.any(
+        (period) =>
+            row.settings.coversSourceFor(period.id) == CoversSource.vendor,
+      );
+    }
+
+    return true;
   }
 
   static String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {
@@ -386,6 +393,15 @@ class _PerLocationDataAccuracyTableState
               : '${part[0].toUpperCase()}${part.substring(1)}',
         )
         .join(' ');
+  }
+
+  static String _servicePeriodLabelFor(DataAccuracyAdminRow row, String key) {
+    for (final period in row.configuredServicePeriods) {
+      if (period.id == key && period.label.trim().isNotEmpty) {
+        return period.label.trim();
+      }
+    }
+    return _servicePeriodLabel(key);
   }
 
   static String _modifiedAtLabel(DataAccuracyAdminRow row) {

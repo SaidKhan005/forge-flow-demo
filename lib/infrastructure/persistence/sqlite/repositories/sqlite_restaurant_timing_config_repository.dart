@@ -67,6 +67,12 @@ class SqliteRestaurantTimingConfigRepository
       servicePeriodDefinitions: definitions,
       createdAt: raw['created_at'] as String,
       updatedAt: raw['updated_at'] as String,
+      selectedScopeType: raw['selected_scope_type'] as String?,
+      selectedScopeId: raw['selected_scope_id'] as String?,
+      sourceScopeType: raw['source_scope_type'] as String?,
+      sourceScopeId: raw['source_scope_id'] as String?,
+      sourceScopeLabel: raw['source_scope_label'] as String?,
+      inheritedFromAncestor: _nullableBool(raw['inherited_from_ancestor']),
     );
   }
 
@@ -81,7 +87,24 @@ class SqliteRestaurantTimingConfigRepository
       servicePeriodDefinitions: config.servicePeriodDefinitions,
       createdAt: config.createdAt,
       updatedAt: config.updatedAt,
+      selectedScopeType: config.selectedScopeType,
+      selectedScopeId: config.selectedScopeId,
+      sourceScopeType: config.sourceScopeType,
+      sourceScopeId: config.sourceScopeId,
+      sourceScopeLabel: config.sourceScopeLabel,
+      inheritedFromAncestor: config.inheritedFromAncestor,
     );
+  }
+
+  static bool? _nullableBool(Object? value) {
+    if (value == null) return null;
+    if (value is bool) return value;
+    if (value is int) return value != 0;
+    if (value is String) {
+      if (value == '1' || value.toLowerCase() == 'true') return true;
+      if (value == '0' || value.toLowerCase() == 'false') return false;
+    }
+    return null;
   }
 
   Future<void> _hydrateScopeTimezone(RestaurantTimingConfig config) async {

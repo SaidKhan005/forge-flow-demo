@@ -15,6 +15,7 @@ import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.da
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -306,15 +307,80 @@ void main() {
         );
         await tester.pumpAndSettle();
 
-        expect(find.text('Lunch'), findsOneWidget);
-        expect(find.text('Dinner'), findsOneWidget);
-        expect(find.text('Late night'), findsOneWidget);
+        expect(find.text('Service periods'), findsOneWidget);
+        expect(find.text('Vendor default'), findsOneWidget);
+        expect(find.text('Lunch'), findsNothing);
+        expect(find.text('Dinner'), findsNothing);
+        expect(find.text('Late night'), findsNothing);
         expect(find.text('Covers and wage data accuracy'), findsOneWidget);
         expect(find.textContaining('Covers are shown as'), findsNothing);
         expect(find.text('Vendor'), findsWidgets);
         expect(find.text('No override yet'), findsOneWidget);
         expect(find.textContaining('1969'), findsNothing);
         expect(find.textContaining('1970'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'data accuracy table uses configured service-period labels for defaults',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1600, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        await tester.pumpWidget(
+          wrap(
+            PerLocationDataAccuracyTable(
+              rows: <DataAccuracyAdminRow>[
+                DataAccuracyAdminRow(
+                  operatorRef: ref,
+                  configuredServicePeriods: const <ServicePeriodDefinition>[
+                    ServicePeriodDefinition(
+                      id: 'breakfast_service',
+                      label: 'Breakfast service',
+                      shortLabel: 'B',
+                      sortOrder: 1,
+                      startLocalTime: '08:00',
+                      endLocalTime: '11:00',
+                      rollsPastMidnight: false,
+                      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                    ),
+                    ServicePeriodDefinition(
+                      id: 'late_service',
+                      label: 'Late service',
+                      shortLabel: 'L',
+                      sortOrder: 2,
+                      startLocalTime: '21:00',
+                      endLocalTime: '01:00',
+                      rollsPastMidnight: true,
+                      applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+                    ),
+                  ],
+                  settings: DataAccuracySettings(
+                    settingId: 'default:op-1:loc-1',
+                    operatorId: 'op-1',
+                    locationId: 'loc-1',
+                    coversSourcePerServicePeriod:
+                        const <String, CoversSource>{},
+                    coversManualEntries: const <String, Map<String, int>>{},
+                    wageSource: WageSource.vendor,
+                    createdAt: DateTime.utc(1970),
+                    updatedAt: DateTime.utc(1970),
+                  ),
+                ),
+              ],
+              editingEnabled: false,
+              onEditRow: (_) {},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Breakfast service'), findsOneWidget);
+        expect(find.text('Late service'), findsOneWidget);
+        expect(find.text('Service periods'), findsNothing);
+        expect(find.text('Lunch'), findsNothing);
+        expect(find.text('Dinner'), findsNothing);
+        expect(find.text('Late night'), findsNothing);
       },
     );
 

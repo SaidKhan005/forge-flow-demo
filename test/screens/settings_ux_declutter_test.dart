@@ -149,6 +149,12 @@ Widget _timingHarness({required String scopeLabel}) {
             servicePeriodDefinitions: [],
             createdAt: '2026-05-15T00:00:00Z',
             updatedAt: '2026-05-15T00:00:00Z',
+            selectedScopeType: 'location',
+            selectedScopeId: 'demo_restaurant_001',
+            sourceScopeType: 'org_unit',
+            sourceScopeId: 'district-1',
+            sourceScopeLabel: 'Metro District',
+            inheritedFromAncestor: true,
           ),
         ),
       ),
@@ -281,6 +287,11 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Applies to: Barrio Legado: St Johns'), findsOneWidget);
+      expect(
+        find.byKey(const Key('settings_timing_authority_source_label')),
+        findsOneWidget,
+      );
+      expect(find.text('Inherited from: Metro District'), findsOneWidget);
       expect(find.text('Timezone'), findsOneWidget);
       expect(find.text('America/St_Johns'), findsOneWidget);
     },

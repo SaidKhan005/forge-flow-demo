@@ -283,6 +283,12 @@ void main() {
                 'business_day_start_local_time': '05:00:00',
                 'week_start_day': 1,
                 'close_authority': 'vendor_finalization',
+                'selected_scope_type': 'location',
+                'selected_scope_id': 'loc',
+                'source_scope_type': 'org_unit',
+                'source_scope_id': 'district-1',
+                'source_scope_label': 'Metro District',
+                'inherited_from_ancestor': true,
                 'service_period_definitions_json': jsonEncode(<Object?>[
                   <String, Object?>{
                     'service_period_key': 'brunch',
@@ -472,6 +478,12 @@ void main() {
     expect(open.snapshots.single.servicePeriodKey, 'lunch');
     expect(timing!.businessDayStartLocalTime, '05:00');
     expect(timing.businessTimezone, 'America/St_Johns');
+    expect(timing.selectedScopeType, 'location');
+    expect(timing.selectedScopeId, 'loc');
+    expect(timing.sourceScopeType, 'org_unit');
+    expect(timing.sourceScopeId, 'district-1');
+    expect(timing.sourceScopeLabel, 'Metro District');
+    expect(timing.inheritedFromAncestor, isTrue);
     expect(timing.servicePeriodDefinitions.single.id, 'brunch');
     expect(timing.servicePeriodDefinitions.single.startLocalTime, '09:00');
     expect(timing.servicePeriodDefinitions.single.applicableDays, <int>[6, 7]);
