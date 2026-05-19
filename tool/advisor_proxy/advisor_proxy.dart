@@ -9594,7 +9594,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -15273,7 +15273,7 @@ Future<void> routeRequest(
 
         // Fix #4 / S1 — operator-web location-scoped business-timing
         // resolution route. GET only, read-only, no Idempotency-Key.
-        // Same operator owner / admin role gate as the write router,
+        // Same operator owner role gate as the write router,
         // plus an explicit tenant scope-mismatch reject (mirrors the
         // auth-location-integrations route): the path locationId must
         // equal the signed-in location scope. operatorId is ALWAYS the
@@ -15297,7 +15297,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -15372,7 +15372,7 @@ Future<void> routeRequest(
 
         // Phase 11W.7 / Wave A2 - operator-scoped account + business-
         // timing write router. Five operator-write routes that all
-        // share auth (operator owner / admin) + Idempotency-Key.
+        // share auth (operator owner) + Idempotency-Key.
         if (OperatorWriteRouter.matches(path, request.method)) {
           if (operatorWriteRouter == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -15391,7 +15391,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -15853,7 +15853,7 @@ Future<void> routeRequest(
 
         // Phase 8 W5.A.1 - operator-scoped wage role rows write router.
         // Dedicated POST/DELETE seam that mirrors the OperatorWriteRouter
-        // discipline (operator owner / admin role, Idempotency-Key, body
+        // discipline (operator owner role, Idempotency-Key, body
         // validation) but lives in its own router so the wage editor's
         // proxy contract stays narrow and op-web W3.D parity can call it
         // directly.
@@ -15874,7 +15874,7 @@ Future<void> routeRequest(
           if (!scope.roles.any(kOperatorWriteRoles.contains)) {
             _writeJson(response, 403, <String, Object?>{
               'error': 'forbidden',
-              'message': 'operator owner or operator admin role is required',
+              'message': 'operator owner role is required',
               'required_roles': kOperatorWriteRoles.toList(),
             });
             return;
@@ -17751,10 +17751,7 @@ Future<void> _routeMobileOperationalSync({
   }
 }
 
-const Set<String> _operatorDataAccuracyWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-};
+const Set<String> _operatorDataAccuracyWriteRoles = <String>{'operator_owner'};
 
 Future<void> _routeOperatorDataAccuracySettingsWrite({
   required HttpRequest request,
@@ -17783,7 +17780,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   if (!_rolesIntersect(claims.roles, _operatorDataAccuracyWriteRoles)) {
     _writeJson(response, 403, <String, Object?>{
       'error': 'permission_denied',
-      'message': 'operator data accuracy writes require owner or admin role',
+      'message': 'operator data accuracy writes require owner role',
     });
     return;
   }

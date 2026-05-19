@@ -22,9 +22,9 @@
 //   * Reads are open to any role with operator-web access; the shared
 //     `VendorConnectionsScreen` already gates configure-write access via
 //     `integrations.configure`. Read-only progress is admitted for
-//     `operator_owner`, `operator_admin`, and `location_manager` so a
-//     manager session lands on the read-only forbidden surface for the
-//     screen as a whole, not a 403 from this route.
+//     `operator_owner` and `location_manager` so a manager session lands
+//     on the read-only forbidden surface for the screen as a whole, not
+//     a 403 from this route.
 //
 // Idempotency:
 //   * Read-only — no Idempotency-Key header required.
@@ -45,7 +45,6 @@ const String operatorConnectorBackfillJobsPath =
 /// itself renders the friendly forbidden body for the configure path).
 const Set<String> kOperatorConnectorBackfillJobsReadRoles = <String>{
   'operator_owner',
-  'operator_admin',
   'location_manager',
 };
 
@@ -78,8 +77,9 @@ class ConnectorBackfillJobsRouteResult {
 /// Self-contained router for the read surface. Mounted by
 /// `routeRequest` next to the other operator GET routes.
 class ConnectorBackfillJobsRouter {
-  ConnectorBackfillJobsRouter({required ConnectorBackfillJobsReadGateway gateway})
-      : _gateway = gateway;
+  ConnectorBackfillJobsRouter({
+    required ConnectorBackfillJobsReadGateway gateway,
+  }) : _gateway = gateway;
 
   final ConnectorBackfillJobsReadGateway _gateway;
 

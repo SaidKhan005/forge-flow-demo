@@ -1,9 +1,9 @@
 // Phase 11W.7 / Wave A2 - operator-scoped account + business-timing
 // proxy routes.
 //
-// Seven routes, all operator-scoped, all role-gated to operator owner /
-// operator admin. Writes are idempotent by Idempotency-Key. Reads
-// (GETs) skip the Idempotency-Key check.
+// Seven routes, all operator-scoped, all role-gated to operator owner.
+// Writes are idempotent by Idempotency-Key. Reads (GETs) skip the
+// Idempotency-Key check.
 //
 //   GET   /v1/operator/account                       (11W.7 ops-debt)
 //   PATCH /v1/operator/account
@@ -20,7 +20,7 @@
 //
 // Auth:
 //   * Bearer token resolves to OperatorContext (operatorId required).
-//   * Caller must hold operator_owner or operator_admin role.
+//   * Caller must hold operator_owner role.
 //
 // Idempotency:
 //   * Idempotency-Key header is required on every write. Missing /
@@ -140,12 +140,8 @@ String? operatorLocationBusinessTimingResolutionIdOf(String path) {
 bool isOperatorLocationBusinessTimingResolutionPath(String path) =>
     operatorLocationBusinessTimingResolutionIdOf(path) != null;
 
-/// Operator role allow-list. Two strings: operator_owner is the
-/// seat-zero role, operator_admin is the delegated equivalent.
-const Set<String> kOperatorWriteRoles = <String>{
-  'operator_owner',
-  'operator_admin',
-};
+/// Owner-only operator write role allow-list.
+const Set<String> kOperatorWriteRoles = <String>{'operator_owner'};
 
 /// In-memory replay cache for operator-scoped writes. Keyed by
 /// `(operatorId, route, idempotencyKey)`; bounded so a malicious or
@@ -175,7 +171,7 @@ class OperatorWriteIdempotencyCache {
     required String idempotencyKey,
     required String requestBodyHash,
     required Future<({int statusCode, Map<String, Object?> body})> Function()
-        compute,
+    compute,
   }) async {
     _gc();
     final key = '$operatorId|$route|$idempotencyKey';
@@ -283,14 +279,13 @@ class OperatorWriteRouter {
     OperatorBusinessTimingMutationListener? mutationListener,
     BusinessLogoUploadHandler? businessLogoUploadHandler,
     OperatorLocationTimezoneHandler? locationTimezoneHandler,
-    OperatorLocationAccountOverridesHandler?
-        locationAccountOverridesHandler,
-  })  : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
-        _now = now ?? DateTime.now,
-        _mutationListener = mutationListener,
-        _businessLogoUploadHandler = businessLogoUploadHandler,
-        _locationTimezoneHandler = locationTimezoneHandler,
-        _locationAccountOverridesHandler = locationAccountOverridesHandler;
+    OperatorLocationAccountOverridesHandler? locationAccountOverridesHandler,
+  }) : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
+       _now = now ?? DateTime.now,
+       _mutationListener = mutationListener,
+       _businessLogoUploadHandler = businessLogoUploadHandler,
+       _locationTimezoneHandler = locationTimezoneHandler,
+       _locationAccountOverridesHandler = locationAccountOverridesHandler;
 
   final OperatorAccountWriteGateway accountGateway;
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
@@ -317,7 +312,7 @@ class OperatorWriteRouter {
   /// resolve to a calm 503 (matching the rest of the operator-write
   /// surface's "not configured" posture).
   final OperatorLocationAccountOverridesHandler?
-      _locationAccountOverridesHandler;
+  _locationAccountOverridesHandler;
 
   Future<void> _notifyTimingMutation({
     required String operatorId,
@@ -612,9 +607,7 @@ class OperatorWriteRouter {
   }
 
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleBusinessTimingList({
-    required String operatorId,
-  }) async {
+  _handleBusinessTimingList({required String operatorId}) async {
     try {
       final records = await businessTimingGateway.listProfiles(
         operatorId: operatorId,
@@ -650,7 +643,7 @@ class OperatorWriteRouter {
   /// canonical `listCandidateProfilesForLocation` CTE. No resolver
   /// fork, no write, no audit.
   Future<({int statusCode, Map<String, Object?> body})>
-      handleBusinessTimingResolution({
+  handleBusinessTimingResolution({
     required String operatorId,
     required String locationId,
     String? businessDate,
@@ -717,9 +710,7 @@ class OperatorWriteRouter {
         actorUserId: actorUserId,
         actorKind: actorKind,
         eventKind: 'operator_account_updated',
-        payload: <String, Object?>{
-          'fields_changed': patch.changedFieldNames,
-        },
+        payload: <String, Object?>{'fields_changed': patch.changedFieldNames},
         occurredAt: _now().toUtc(),
       );
       return (statusCode: 200, body: record.toJson());
@@ -874,7 +865,7 @@ class OperatorWriteRouter {
   }
 
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleServicePeriodAdd({
+  _handleServicePeriodAdd({
     required String operatorId,
     required String actorUserId,
     required String actorKind,
@@ -896,10 +887,8 @@ class OperatorWriteRouter {
       );
     }
     final existingValidated = _toValidated(existing);
-    final ({
-      ValidatedServicePeriod added,
-      List<ValidatedServicePeriod> merged
-    }) outcome;
+    final ({ValidatedServicePeriod added, List<ValidatedServicePeriod> merged})
+    outcome;
     try {
       outcome = validateAddServicePeriod(
         body: body,
@@ -957,7 +946,7 @@ class OperatorWriteRouter {
   }
 
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleServicePeriodPatch({
+  _handleServicePeriodPatch({
     required String operatorId,
     required String actorUserId,
     required String actorKind,
@@ -990,8 +979,7 @@ class OperatorWriteRouter {
     } on BusinessTimingValidationError catch (error) {
       // service_period_not_found maps to 404 per contract; everything
       // else is 400.
-      final statusCode =
-          error.code == 'service_period_not_found' ? 404 : 400;
+      final statusCode = error.code == 'service_period_not_found' ? 404 : 400;
       return (statusCode: statusCode, body: error.toJson());
     }
     try {
@@ -1050,7 +1038,7 @@ class OperatorWriteRouter {
   /// Returns 503 when the handler is not wired (build without an
   /// Azure Blob env binding).
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleBusinessLogoUpload({
+  _handleBusinessLogoUpload({
     required String operatorId,
     required String actorUserId,
     required String actorKind,
@@ -1103,7 +1091,7 @@ class OperatorWriteRouter {
   /// location timezone change. Returns 503 when the handler is not
   /// wired (build without a Postgres binding).
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleLocationTimezonePatch({
+  _handleLocationTimezonePatch({
     required String operatorId,
     required String actorUserId,
     required String actorKind,
@@ -1149,7 +1137,7 @@ class OperatorWriteRouter {
   /// the call bypasses the idempotency cache + Idempotency-Key
   /// requirement. Returns 503 when the handler is not wired.
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleLocationAccountOverridesGet({
+  _handleLocationAccountOverridesGet({
     required String operatorId,
     required String actorUserId,
     required String locationId,
@@ -1162,7 +1150,7 @@ class OperatorWriteRouter {
           'error': 'operator_location_account_overrides_not_configured',
           'message':
               'per-location account overrides are not available on '
-                  'this build; please retry later.',
+              'this build; please retry later.',
         },
       );
     }
@@ -1179,7 +1167,7 @@ class OperatorWriteRouter {
   /// so the operator's audit log reflects every per-location override
   /// change. Returns 503 when the handler is not wired.
   Future<({int statusCode, Map<String, Object?> body})>
-      _handleLocationAccountOverridesPatch({
+  _handleLocationAccountOverridesPatch({
     required String operatorId,
     required String actorUserId,
     required String actorKind,
@@ -1194,7 +1182,7 @@ class OperatorWriteRouter {
           'error': 'operator_location_account_overrides_not_configured',
           'message':
               'per-location account overrides are not available on '
-                  'this build; please retry later.',
+              'this build; please retry later.',
         },
       );
     }
@@ -1214,13 +1202,13 @@ class OperatorWriteRouter {
       // businessDefault merge).
       final override =
           (result.body['override'] as Map?)?.cast<String, Object?>() ??
-              const <String, Object?>{};
+          const <String, Object?>{};
       final businessDefault =
           (result.body['businessDefault'] as Map?)?.cast<String, Object?>() ??
-              const <String, Object?>{};
+          const <String, Object?>{};
       final effective =
           (result.body['effective'] as Map?)?.cast<String, Object?>() ??
-              const <String, Object?>{};
+          const <String, Object?>{};
       await auditSink.record(
         operatorId: operatorId,
         actorUserId: actorUserId,
@@ -1313,15 +1301,17 @@ int _hhmmToMinute(String hhmm) {
 /// Reads the JSON body, allowing empty bodies (mapped to {}) so an
 /// empty PATCH does not crash. Returns null on parse failure with the
 /// status/body the caller should write.
-Future<({Map<String, Object?>? body, int? errorStatus, Map<String, Object?>? errorBody})>
-    readOperatorJsonBody(HttpRequest request) async {
+Future<
+  ({
+    Map<String, Object?>? body,
+    int? errorStatus,
+    Map<String, Object?>? errorBody,
+  })
+>
+readOperatorJsonBody(HttpRequest request) async {
   final raw = await utf8.decodeStream(request);
   if (raw.isEmpty) {
-    return (
-      body: <String, Object?>{},
-      errorStatus: null,
-      errorBody: null,
-    );
+    return (body: <String, Object?>{}, errorStatus: null, errorBody: null);
   }
   dynamic decoded;
   try {

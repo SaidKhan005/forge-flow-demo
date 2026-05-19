@@ -341,6 +341,34 @@ void main() {
         });
       },
     );
+
+    test(
+      'GET denies phantom operator_admin before permission lookup',
+      () async {
+        await _withRealHttp(() async {
+          final ctx = await _spinUp(
+            allowBaselineOverride: true,
+            roles: const <String>['operator_admin'],
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'GET',
+              ctx.baseUri.resolve(operatorBenchmarkOverridesPath),
+            );
+
+            expect(response.statusCode, HttpStatus.forbidden);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'forbidden');
+            expect(ctx.permissionResolver.loadCalls, 0);
+            expect(ctx.gateway.listCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
   });
 }
 
@@ -456,16 +484,19 @@ Future<
     _StaticPermissionResolver permissionResolver,
   })
 >
-_spinUp({required bool allowBaselineOverride}) async {
+_spinUp({
+  required bool allowBaselineOverride,
+  List<String> roles = const <String>['operator_owner'],
+}) async {
   final gateway = _FakeGateway();
   final auditSink = _RecordingAuditSink();
   final guard = ProxyRequestGuard(
-    verifier: const _StaticVerifier(
+    verifier: _StaticVerifier(
       ProxyJwtClaims(
         userId: '11111111-1111-4111-8111-111111111111',
         operatorId: '22222222-2222-4222-8222-222222222222',
         locationId: '33333333-3333-4333-8333-333333333333',
-        roles: <String>['operator_admin'],
+        roles: roles,
       ),
     ),
   );

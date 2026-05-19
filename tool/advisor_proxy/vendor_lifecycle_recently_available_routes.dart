@@ -22,7 +22,7 @@
 //   * Bearer token resolves to OperatorContext (operatorId).
 //   * Per-tenant RLS enforced via `SET LOCAL` inside the gateway.
 //   * Reads are open to operator-web roles that already see the
-//     Vendor Connections screen — owner / admin write the screen,
+//     Vendor Connections screen. Owner configures the screen;
 //     `location_manager` lands on the read-only forbidden body but the
 //     route still admits the role so the badge poll returns honestly.
 //
@@ -47,17 +47,16 @@ const Duration kOperatorVendorLifecycleRecentlyAvailableDefaultWindow =
 /// Hard upper bound on the look-back window the caller may request.
 /// Anything older than the email subscription itself is irrelevant; the
 /// Notify-me capture itself is at most a few months old in practice.
-const Duration kOperatorVendorLifecycleRecentlyAvailableMaxWindow =
-    Duration(days: 90);
+const Duration kOperatorVendorLifecycleRecentlyAvailableMaxWindow = Duration(
+  days: 90,
+);
 
 /// Roles permitted to read the recently-available list. Mirrors the
 /// admit set on the Vendor Connections screen so a `location_manager`
 /// session sees the same read surface (the screen itself renders the
 /// friendly forbidden body for the configure path).
-const Set<String> kOperatorVendorLifecycleRecentlyAvailableReadRoles =
-    <String>{
+const Set<String> kOperatorVendorLifecycleRecentlyAvailableReadRoles = <String>{
   'operator_owner',
-  'operator_admin',
   'location_manager',
 };
 
@@ -100,9 +99,8 @@ class OperatorRecentlyAvailableVendor {
 /// the existing capability registries; tests pin a fixed map. Returns
 /// null when the vendor id is unknown — the route then falls back to
 /// the raw vendor id so the screen still renders an honest row.
-typedef OperatorRecentlyAvailableVendorDisplayNameResolver = String? Function(
-  String vendorId,
-);
+typedef OperatorRecentlyAvailableVendorDisplayNameResolver =
+    String? Function(String vendorId);
 
 /// Narrow gateway seam the route reads against. Production binds this
 /// to a tenant-pool query against `vendor_lifecycle_notification`
@@ -158,11 +156,11 @@ class OperatorVendorLifecycleRecentlyAvailableRouter {
   OperatorVendorLifecycleRecentlyAvailableRouter({
     required OperatorRecentlyAvailableVendorsGateway gateway,
     required OperatorRecentlyAvailableVendorDisplayNameResolver
-        displayNameResolver,
+    displayNameResolver,
     DateTime Function()? now,
-  })  : _gateway = gateway,
-        _resolveDisplayName = displayNameResolver,
-        _now = now ?? DateTime.now;
+  }) : _gateway = gateway,
+       _resolveDisplayName = displayNameResolver,
+       _now = now ?? DateTime.now;
 
   final OperatorRecentlyAvailableVendorsGateway _gateway;
   final OperatorRecentlyAvailableVendorDisplayNameResolver _resolveDisplayName;
@@ -187,8 +185,9 @@ class OperatorVendorLifecycleRecentlyAvailableRouter {
     final raw = queryParameters['since'];
     DateTime since;
     if (raw == null) {
-      since = now
-          .subtract(kOperatorVendorLifecycleRecentlyAvailableDefaultWindow);
+      since = now.subtract(
+        kOperatorVendorLifecycleRecentlyAvailableDefaultWindow,
+      );
     } else {
       final trimmed = raw.trim();
       if (trimmed.isEmpty) {
@@ -224,8 +223,9 @@ class OperatorVendorLifecycleRecentlyAvailableRouter {
           },
         );
       }
-      final earliest = now
-          .subtract(kOperatorVendorLifecycleRecentlyAvailableMaxWindow);
+      final earliest = now.subtract(
+        kOperatorVendorLifecycleRecentlyAvailableMaxWindow,
+      );
       if (since.isBefore(earliest)) {
         since = earliest;
       }
