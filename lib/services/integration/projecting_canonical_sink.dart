@@ -47,24 +47,25 @@ import 'integration_adapter_common.dart';
 /// `service_period_key`). The wrapper does NOT throw on null — a null
 /// resolver result is legitimate for backfill rows that the
 /// post-commit projector cannot yet reason about.
-typedef CanonicalFactPeriodResolver = FutureOr<CanonicalFactCommittedPeriod?>
-    Function({
-  required String operatorId,
-  required String locationId,
-  required IntegrationCategory category,
-  required String vendorId,
-  required String connectionId,
-  required Map<String, Object?> canonicalFact,
-});
+typedef CanonicalFactPeriodResolver =
+    FutureOr<CanonicalFactCommittedPeriod?> Function({
+      required String operatorId,
+      required String locationId,
+      required IntegrationCategory category,
+      required String vendorId,
+      required String connectionId,
+      required Map<String, Object?> canonicalFact,
+    });
 
 /// Resolves the canonical `restaurant_id` for an `(operatorId,
 /// locationId)` tuple. The post-commit projector input requires it
 /// alongside the operator/location pair. The resolver is a callback so
 /// the wrapper has no Postgres dependency.
-typedef CanonicalRestaurantIdResolver = FutureOr<String> Function({
-  required String operatorId,
-  required String locationId,
-});
+typedef CanonicalRestaurantIdResolver =
+    FutureOr<String> Function({
+      required String operatorId,
+      required String locationId,
+    });
 
 /// Sync-log event kinds that signal "this batch committed". The
 /// wrapper drains accumulated facts into the projector when the
@@ -88,13 +89,13 @@ class ProjectingCanonicalSink implements CanonicalSink {
     required CanonicalFactPeriodResolver periodResolver,
     required CanonicalRestaurantIdResolver restaurantIdResolver,
     String? userIdOverride,
-  })  : _underlying = underlying,
-        _projector = projector,
-        _category = category,
-        _vendorId = vendorId,
-        _periodResolver = periodResolver,
-        _restaurantIdResolver = restaurantIdResolver,
-        _userIdOverride = userIdOverride;
+  }) : _underlying = underlying,
+       _projector = projector,
+       _category = category,
+       _vendorId = vendorId,
+       _periodResolver = periodResolver,
+       _restaurantIdResolver = restaurantIdResolver,
+       _userIdOverride = userIdOverride;
 
   final CanonicalSink _underlying;
   final CanonicalFactPostCommitProjector _projector;
@@ -108,7 +109,8 @@ class ProjectingCanonicalSink implements CanonicalSink {
   /// wrapper drains a buffer when the underlying sink reports a batch
   /// commit (via [appendSyncLog] with a commit-signal event kind) or
   /// when [flush] is called explicitly (test seam).
-  final Map<_BufferKey, _PendingFactBuffer> _buffers = <_BufferKey, _PendingFactBuffer>{};
+  final Map<_BufferKey, _PendingFactBuffer> _buffers =
+      <_BufferKey, _PendingFactBuffer>{};
 
   /// Underlying sink the wrapper composes. Test-only accessor.
   CanonicalSink get underlying => _underlying;
@@ -129,6 +131,7 @@ class ProjectingCanonicalSink implements CanonicalSink {
         operatorId: operatorId,
         locationId: locationId,
         canonicalFact: canonicalFact,
+        factType: 'cover_fact',
       );
     }
     return wrote;
@@ -150,6 +153,7 @@ class ProjectingCanonicalSink implements CanonicalSink {
         operatorId: operatorId,
         locationId: locationId,
         canonicalFact: canonicalPunch,
+        factType: 'labor_punch',
       );
     }
     return wrote;
@@ -171,6 +175,7 @@ class ProjectingCanonicalSink implements CanonicalSink {
         operatorId: operatorId,
         locationId: locationId,
         canonicalFact: canonicalReservation,
+        factType: 'reservation_fact',
       );
     }
     return wrote;
@@ -262,15 +267,25 @@ class ProjectingCanonicalSink implements CanonicalSink {
     required String operatorId,
     required String locationId,
     required Map<String, Object?> canonicalFact,
+    required String factType,
   }) {
-    final connectionId = canonicalFact['connection_id'] as String? ?? '';
+    final connectionId = _stringValue(canonicalFact['connection_id']) ?? '';
     final key = _BufferKey(
       operatorId: operatorId,
       locationId: locationId,
       connectionId: connectionId,
     );
     final buffer = _buffers.putIfAbsent(key, _PendingFactBuffer.new);
-    buffer.facts.add(Map<String, Object?>.unmodifiable(canonicalFact));
+    buffer.facts.add(
+      Map<String, Object?>.unmodifiable(<String, Object?>{
+        ...canonicalFact,
+        'operator_id': canonicalFact['operator_id'] ?? operatorId,
+        'location_id': canonicalFact['location_id'] ?? locationId,
+        'connection_id': canonicalFact['connection_id'] ?? connectionId,
+        'fact_type': canonicalFact['fact_type'] ?? factType,
+        'source_system': canonicalFact['source_system'] ?? _vendorId,
+      }),
+    );
   }
 
   Future<void> _drain({
@@ -278,20 +293,36 @@ class ProjectingCanonicalSink implements CanonicalSink {
     required String locationId,
     required String connectionId,
   }) async {
-    final key = _BufferKey(
-      operatorId: operatorId,
-      locationId: locationId,
-      connectionId: connectionId,
+    final buffers = <_PendingFactBuffer>[];
+    final exact = _buffers.remove(
+      _BufferKey(
+        operatorId: operatorId,
+        locationId: locationId,
+        connectionId: connectionId,
+      ),
     );
-    final buffer = _buffers.remove(key);
-    if (buffer == null || buffer.facts.isEmpty) {
+    if (exact != null) buffers.add(exact);
+    if (connectionId.isNotEmpty) {
+      final unkeyed = _buffers.remove(
+        _BufferKey(
+          operatorId: operatorId,
+          locationId: locationId,
+          connectionId: '',
+        ),
+      );
+      if (unkeyed != null) buffers.add(unkeyed);
+    }
+    if (buffers.isEmpty || buffers.every((buffer) => buffer.facts.isEmpty)) {
       return;
     }
+    final facts = <Map<String, Object?>>[
+      for (final buffer in buffers) ...buffer.facts,
+    ];
     try {
       final periods = <CanonicalFactCommittedPeriod>[];
       final openCurrentFacts = <Map<String, Object?>>[];
       final seenIdentities = <String>{};
-      for (final fact in buffer.facts) {
+      for (final fact in facts) {
         final period = await _periodResolver(
           operatorId: operatorId,
           locationId: locationId,
@@ -342,11 +373,17 @@ class ProjectingCanonicalSink implements CanonicalSink {
           'error_class': error.runtimeType.toString(),
           'error_message': error.toString(),
           'stack_first_frame': firstStackFrame(stack),
-          'fact_count': buffer.facts.length,
+          'fact_count': facts.length,
         },
       );
     }
   }
+}
+
+String? _stringValue(Object? value) {
+  if (value == null) return null;
+  final text = value.toString();
+  return text.isEmpty ? null : text;
 }
 
 class _BufferKey {
