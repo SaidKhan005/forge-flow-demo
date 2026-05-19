@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**62 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605191830_canonical_fact_projection_retry_jobs.sql`;
+**63 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605191845_data_accuracy_cover_facts_nullable_covers.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -100,8 +100,9 @@ Production1 apply.
 | `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql` | Per-Daypart V1 R7e Data Accuracy provenance. Additive `create or replace view` appends source metadata to `public.effective_data_accuracy_settings_v` for per-service-period covers source, wage source, and walk-in handling mode while preserving existing value columns and HP #11 precedence. No table shape change, no policy/index change, no down migration. Enables Admin/Operator Web to show honest inherited-source labels from server truth instead of guessing in Flutter. | code-ready |
 | `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql` | Per-Daypart V1 R7f Data Accuracy precedence and source parity. `create or replace view` repairs `public.effective_data_accuracy_settings_v` so keyed service-period rows are base defaults, while business, org-unit, and location scoped overrides win above them per HP #11. Source metadata follows the same winning scope. No table shape change, no policy/index change, no down migration. | code-ready |
 | `202605191830_canonical_fact_projection_retry_jobs.sql` | Canonical fact projection retry ledger. Adds `public.canonical_fact_projection_retry_jobs` so post-commit projection failures can be replayed from saved projector input without re-running vendor writes. Tenant-scoped RLS, operator-leading indexes, bounded retry state, and JSON payload checks. Schema-touching and requires explicit operator approval before merge/apply. | code-ready |
+| `202605191845_data_accuracy_cover_facts_nullable_covers.sql` | Data Accuracy covers truth. Drops default/not-null from `public.cover_facts.covers` so NULL means the POS did not expose cover count and zero means a cover-capable POS sent zero. | code-ready |
 
-**Action:** apply all 62 in next Production1 event per
+**Action:** apply all 63 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

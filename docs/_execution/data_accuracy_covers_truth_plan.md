@@ -24,7 +24,8 @@ Branch: codex/data-accuracy-covers-truth
 
 ## Fix Plan
 
-- Update `cover_facts.covers` in the Phase 8 legacy fact-table migration so it can be null.
+- Update `cover_facts.covers` in the Phase 8 legacy fact-table migration so fresh databases create it as nullable.
+- Add a forward migration so already-applied databases also drop the old default and not-null constraint.
 - Update closed-shift cover aggregation so:
   - vendor covers are used only when the POS vendor is marked as cover-capable;
   - a numeric vendor value of `0` is accepted as real vendor truth;
@@ -45,6 +46,6 @@ Branch: codex/data-accuracy-covers-truth
 
 - Run focused service integration tests for `canonical_fact_to_closed_shift_input`.
 - Run focused proxy route/gateway tests for Data Accuracy writes.
-- Run migration drift and cutoff lints because a migration file changes.
+- Run migration drift and cutoff lints because migration files change.
 - Run targeted `dart analyze` for touched Dart files and tests.
 - Run `git diff --check`.

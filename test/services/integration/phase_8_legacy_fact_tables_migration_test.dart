@@ -25,4 +25,16 @@ void main() {
     expect(coverFactsDdl, contains('covers integer,'));
     expect(coverFactsDdl, isNot(contains('covers integer not null default 0')));
   });
+
+  test('forward migration drops the old cover_facts covers default and '
+      'not-null constraint for already-applied databases', () {
+    final sql = File(
+      'db/migrations/202605191845_data_accuracy_cover_facts_nullable_covers.sql',
+    ).readAsStringSync().toLowerCase();
+
+    expect(sql, contains('alter table public.cover_facts'));
+    expect(sql, contains('alter column covers drop default'));
+    expect(sql, contains('alter column covers drop not null'));
+    expect(sql, contains('zero means a cover-capable vendor sent zero'));
+  });
 }

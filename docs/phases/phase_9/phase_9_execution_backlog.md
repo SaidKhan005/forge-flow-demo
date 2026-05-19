@@ -176,10 +176,14 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605191845_data_accuracy_cover_facts_nullable_covers.sql`
+  (Data Accuracy covers truth: drops default/not-null from
+  `public.cover_facts.covers` so NULL means the POS did not expose cover
+  count and zero means a cover-capable POS sent zero). The prior cutoff
   `202605191830_canonical_fact_projection_retry_jobs.sql`
   (canonical fact projection retry ledger: tenant-scoped durable retry
   rows for post-commit projection failures, with operator-leading
-  indexes, bounded status, and replay payload checks). The prior cutoff
+  indexes, bounded status, and replay payload checks). The earlier cutoff
   `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
   (Per-Daypart V1 / R7f Data Accuracy precedence and source parity:
   view repair that treats keyed service-period rows as base defaults,
