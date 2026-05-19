@@ -673,8 +673,8 @@ void main() {
           findsOneWidget,
         );
         expect(
-          _textByKey(tester, const Key('covers_source_source_breakfast')),
-          'Source: Default',
+          find.byKey(const Key('covers_source_source_breakfast')),
+          findsNothing,
         );
         expect(
           _textByKey(tester, const Key('covers_source_source_lunch')),
@@ -714,8 +714,8 @@ void main() {
         expect(saves.last.wageSourceSource?.label, 'Business');
         expect(saves.last.walkInHandlingModeSource?.label, 'Location setting');
         expect(
-          _textByKey(tester, const Key('covers_source_source_breakfast')),
-          'Source: Default',
+          find.byKey(const Key('covers_source_source_breakfast')),
+          findsNothing,
         );
       },
     );

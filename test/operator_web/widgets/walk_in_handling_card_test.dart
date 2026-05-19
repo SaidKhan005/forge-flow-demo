@@ -79,9 +79,7 @@ void main() {
       );
     });
 
-    testWidgets('source label renders when server metadata exists', (
-      tester,
-    ) async {
+    testWidgets('default source label stays hidden', (tester) async {
       await sizeViewport(tester);
 
       await tester.pumpWidget(
@@ -103,9 +101,9 @@ void main() {
 
       expect(
         find.byKey(const Key('walk_in_handling_source_label')),
-        findsOneWidget,
+        findsNothing,
       );
-      expect(find.text('Source: Default'), findsOneWidget);
+      expect(find.text('Source: Default'), findsNothing);
     });
 
     testWidgets('tapping a mode emits onModeChanged', (tester) async {

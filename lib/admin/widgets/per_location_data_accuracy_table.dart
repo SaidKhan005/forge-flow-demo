@@ -173,12 +173,12 @@ class _PerLocationDataAccuracyTableState
       _MiniFact(
         'Wage source',
         _wageLabel(row.settings.wageSource),
-        sourceLabel: row.settings.wageSourceSource?.label,
+        sourceLabel: row.settings.wageSourceSource?.operatorFacingLabel,
       ),
       _MiniFact(
         'Walk-ins',
         _walkInLabel(row.settings.walkInHandlingMode),
-        sourceLabel: row.settings.walkInHandlingModeSource?.label,
+        sourceLabel: row.settings.walkInHandlingModeSource?.operatorFacingLabel,
       ),
       _MiniFact('Last override', updatedAt),
       _MiniFact('Changed by', updatedBy),
@@ -309,7 +309,9 @@ class _PerLocationDataAccuracyTableState
           _MiniFact(
             _servicePeriodLabelFor(row, entry.key),
             _coversLabel(entry.value),
-            sourceLabel: row.settings.coversSourceSourceFor(entry.key)?.label,
+            sourceLabel: row.settings
+                .coversSourceSourceFor(entry.key)
+                ?.operatorFacingLabel,
           ),
       ];
     }
@@ -321,7 +323,9 @@ class _PerLocationDataAccuracyTableState
           _MiniFact(
             _servicePeriodLabelFor(row, period.id),
             _coversLabel(row.settings.coversSourceFor(period.id)),
-            sourceLabel: row.settings.coversSourceSourceFor(period.id)?.label,
+            sourceLabel: row.settings
+                .coversSourceSourceFor(period.id)
+                ?.operatorFacingLabel,
           ),
       ];
     }
@@ -425,7 +429,9 @@ class _PerLocationDataAccuracyTableState
       return _MiniFact(
         _servicePeriodLabelFor(row, key),
         _servicePeriodCoversLabel(keyedRow.coversSource),
-        sourceLabel: row.settings.coversSourceSourceFor(key)?.label,
+        sourceLabel: row.settings
+            .coversSourceSourceFor(key)
+            ?.operatorFacingLabel,
       );
     }
     return _MiniFact(_servicePeriodLabelFor(row, key), 'Vendor default');

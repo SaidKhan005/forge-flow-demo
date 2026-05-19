@@ -49,6 +49,7 @@ class WageSourceToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sourceLabel = source?.operatorFacingLabel;
     final vendorSelectable =
         !vendorApplicabilityBound || applicableWageVendorSlugs.isNotEmpty;
     return _DataAccuracyCard(
@@ -88,10 +89,10 @@ class WageSourceToggle extends StatelessWidget {
                 'or if you have not yet built confidence in them.',
             onTap: () => onChanged(WageSource.manualMix),
           ),
-          if (source != null) ...[
+          if (sourceLabel != null) ...[
             const SizedBox(height: 10),
             Text(
-              'Source: ${source!.label}',
+              'Source: $sourceLabel',
               key: const Key('wage_source_source_label'),
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
