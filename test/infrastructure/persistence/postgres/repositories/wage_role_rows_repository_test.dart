@@ -55,6 +55,9 @@ PostgresRow _wageRow({
   String source = 'operator_manual',
   bool isActive = true,
   String? updatedBy = _actorA,
+  String scopeType = 'location',
+  String? orgUnitId,
+  String? inheritedFromScopeId,
 }) {
   return <String, Object?>{
     'wage_role_row_id': wageRoleRowId,
@@ -75,76 +78,82 @@ PostgresRow _wageRow({
     'created_at': DateTime.utc(2026, 5, 7, 9),
     'updated_at': DateTime.utc(2026, 5, 7, 10),
     'updated_by': updatedBy,
+    'scope_type': scopeType,
+    'org_unit_id': orgUnitId,
+    'inherited_from_scope_id': inheritedFromScopeId,
   };
 }
 
 void main() {
   group('WageRoleRowsRepository.upsert', () {
-    test(
-      'INSERT … ON CONFLICT (operator_id, location_id, restaurant_id, '
-      'role_name) DO UPDATE rewrites editable fields and bumps '
-      'updated_at; created_at preserved on conflict',
-      () async {
-        final pool = _Pool(upsertRows: <PostgresRow>[_wageRow()]);
-        final repo = WageRoleRowsRepository(TenantTransactionWrapper(pool));
-        final result = await repo.upsert(
-          operatorId: _opA,
-          locationId: _locA,
-          restaurantId: 'rest-1',
-          roleName: 'Server',
-          laborBucket: 'foh',
-          hourlyRate: 18.5,
-          weightedHours: 30.0,
-          actorUserId: _actorA,
-        );
-        expect(result.wageRoleRowId, equals(_wageRowId));
-        expect(result.restaurantId, equals('rest-1'));
-        expect(result.roleName, equals('Server'));
-        expect(result.laborBucket, equals('foh'));
-        expect(result.hourlyRate, equals(18.5));
-        expect(result.weightedHours, equals(30.0));
-        expect(result.source, equals(WageRoleRowSource.operatorManual));
-        expect(result.isActive, isTrue);
-        expect(result.updatedBy, equals(_actorA));
+    test('INSERT … ON CONFLICT (operator_id, location_id, restaurant_id, '
+        'role_name) DO UPDATE rewrites editable fields and bumps '
+        'updated_at; created_at preserved on conflict', () async {
+      final pool = _Pool(upsertRows: <PostgresRow>[_wageRow()]);
+      final repo = WageRoleRowsRepository(TenantTransactionWrapper(pool));
+      final result = await repo.upsert(
+        operatorId: _opA,
+        locationId: _locA,
+        restaurantId: 'rest-1',
+        roleName: 'Server',
+        laborBucket: 'foh',
+        hourlyRate: 18.5,
+        weightedHours: 30.0,
+        actorUserId: _actorA,
+      );
+      expect(result.wageRoleRowId, equals(_wageRowId));
+      expect(result.restaurantId, equals('rest-1'));
+      expect(result.roleName, equals('Server'));
+      expect(result.laborBucket, equals('foh'));
+      expect(result.hourlyRate, equals(18.5));
+      expect(result.weightedHours, equals(30.0));
+      expect(result.source, equals(WageRoleRowSource.operatorManual));
+      expect(result.isActive, isTrue);
+      expect(result.updatedBy, equals(_actorA));
 
-        final tx = pool.transactions.single;
-        final upsertSql = tx.executedSql.firstWhere(
-          (s) => s.contains('insert into public.wage_role_rows'),
-        );
-        expect(
-          upsertSql,
-          contains('on conflict (operator_id, location_id, restaurant_id, '
-              'role_name)'),
-        );
-        expect(upsertSql, contains('do update set'));
-        expect(upsertSql, contains('labor_bucket = excluded.labor_bucket'));
-        expect(upsertSql, contains('hourly_rate = excluded.hourly_rate'));
-        expect(upsertSql, contains('weighted_hours = excluded.weighted_hours'));
-        expect(upsertSql, contains('source = excluded.source'));
-        expect(upsertSql, contains('is_active = excluded.is_active'));
-        expect(upsertSql, contains('metadata = excluded.metadata'));
-        expect(upsertSql, contains('updated_at = now()'));
-        expect(upsertSql, contains('updated_by = excluded.updated_by'));
-        expect(
-          upsertSql,
-          isNot(contains('created_at = excluded.created_at')),
-          reason: 'created_at must be preserved on conflict so the audit '
-              'trail shows the original creation time, not the latest edit',
-        );
-        // Wire values bound parametrically — never interpolated.
-        final params = tx.parameters
-            .firstWhere((p) => p['restaurant_id'] == 'rest-1');
-        expect(params['operator_id'], equals(_opA));
-        expect(params['location_id'], equals(_locA));
-        expect(params['role_name'], equals('Server'));
-        expect(params['labor_bucket'], equals('foh'));
-        expect(params['hourly_rate'], equals(18.5));
-        expect(params['weighted_hours'], equals(30.0));
-        expect(params['source'], equals('operator_manual'));
-        expect(params['is_active'], isTrue);
-        expect(params['updated_by'], equals(_actorA));
-      },
-    );
+      final tx = pool.transactions.single;
+      final upsertSql = tx.executedSql.firstWhere(
+        (s) => s.contains('insert into public.wage_role_rows'),
+      );
+      expect(upsertSql, contains('on conflict (operator_id, scope_type, '));
+      expect(upsertSql, contains('coalesce(org_unit_id'));
+      expect(upsertSql, contains('coalesce(location_id'));
+      expect(upsertSql, contains('do update set'));
+      expect(upsertSql, contains('location_id = excluded.location_id'));
+      expect(upsertSql, contains('scope_type = excluded.scope_type'));
+      expect(upsertSql, contains('org_unit_id = excluded.org_unit_id'));
+      expect(upsertSql, contains('labor_bucket = excluded.labor_bucket'));
+      expect(upsertSql, contains('hourly_rate = excluded.hourly_rate'));
+      expect(upsertSql, contains('weighted_hours = excluded.weighted_hours'));
+      expect(upsertSql, contains('source = excluded.source'));
+      expect(upsertSql, contains('is_active = excluded.is_active'));
+      expect(upsertSql, contains('metadata = excluded.metadata'));
+      expect(upsertSql, contains('updated_at = now()'));
+      expect(upsertSql, contains('updated_by = excluded.updated_by'));
+      expect(
+        upsertSql,
+        isNot(contains('created_at = excluded.created_at')),
+        reason:
+            'created_at must be preserved on conflict so the audit '
+            'trail shows the original creation time, not the latest edit',
+      );
+      // Wire values bound parametrically — never interpolated.
+      final params = tx.parameters.firstWhere(
+        (p) => p['restaurant_id'] == 'rest-1',
+      );
+      expect(params['operator_id'], equals(_opA));
+      expect(params['location_id'], equals(_locA));
+      expect(params['row_location_id'], equals(_locA));
+      expect(params['scope_type'], equals('location'));
+      expect(params['org_unit_id'], isNull);
+      expect(params['role_name'], equals('Server'));
+      expect(params['labor_bucket'], equals('foh'));
+      expect(params['hourly_rate'], equals(18.5));
+      expect(params['weighted_hours'], equals(30.0));
+      expect(params['source'], equals('operator_manual'));
+      expect(params['is_active'], isTrue);
+      expect(params['updated_by'], equals(_actorA));
+    });
 
     test(
       'tenant SET LOCAL ordering precedes the upsert and never '
@@ -173,7 +182,8 @@ void main() {
         expect(
           tx.executedSql.where((s) => s.contains('set local role forge_admin')),
           isEmpty,
-          reason: 'wage_role_rows has NO admin BYPASSRLS path — '
+          reason:
+              'wage_role_rows has NO admin BYPASSRLS path — '
               'operator-controlled wage rows are read and written through '
               'the tenant SET LOCAL path',
         );
@@ -208,14 +218,16 @@ void main() {
     );
 
     test('forwards optional vendor mapping fields and source enum', () async {
-      final pool = _Pool(upsertRows: <PostgresRow>[
-        _wageRow(
-          jobCode: 'COOK-1',
-          vendorId: 'quickbooks_time',
-          vendorRoleId: 'pos-42',
-          source: 'vendor_per_position',
-        ),
-      ]);
+      final pool = _Pool(
+        upsertRows: <PostgresRow>[
+          _wageRow(
+            jobCode: 'COOK-1',
+            vendorId: 'quickbooks_time',
+            vendorRoleId: 'pos-42',
+            source: 'vendor_per_position',
+          ),
+        ],
+      );
       final repo = WageRoleRowsRepository(TenantTransactionWrapper(pool));
       final result = await repo.upsert(
         operatorId: _opA,
@@ -236,58 +248,100 @@ void main() {
       expect(result.vendorRoleId, equals('pos-42'));
       expect(result.source, equals(WageRoleRowSource.vendorPerPosition));
       final tx = pool.transactions.single;
-      final params = tx.parameters
-          .firstWhere((p) => p['source'] == 'vendor_per_position');
+      final params = tx.parameters.firstWhere(
+        (p) => p['source'] == 'vendor_per_position',
+      );
       expect(params['job_code'], equals('COOK-1'));
       expect(params['vendor_id'], equals('quickbooks_time'));
       expect(params['vendor_role_id'], equals('pos-42'));
     });
+
+    test(
+      'org-unit scope writes NULL location_id and binds org_unit_id',
+      () async {
+        const orgUnitId = '77777777-7777-7777-7777-777777777777';
+        final pool = _Pool(
+          upsertRows: <PostgresRow>[
+            _wageRow(
+              locationId: '',
+              scopeType: 'org_unit',
+              orgUnitId: orgUnitId,
+            ),
+          ],
+        );
+        final repo = WageRoleRowsRepository(TenantTransactionWrapper(pool));
+
+        final result = await repo.upsert(
+          operatorId: _opA,
+          locationId: _locA,
+          restaurantId: 'rest-1',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 18.5,
+          weightedHours: 30.0,
+          actorUserId: _actorA,
+          scopeType: 'org_unit',
+          orgUnitId: orgUnitId,
+        );
+
+        expect(result.scopeType, equals('org_unit'));
+        expect(result.locationId, isEmpty);
+        expect(result.orgUnitId, equals(orgUnitId));
+        final params = pool.transactions.single.parameters.firstWhere(
+          (p) => p['restaurant_id'] == 'rest-1',
+        );
+        expect(params['location_id'], equals(_locA));
+        expect(params['row_location_id'], isNull);
+        expect(params['scope_type'], equals('org_unit'));
+        expect(params['org_unit_id'], equals(orgUnitId));
+      },
+    );
   });
 
   group('WageRoleRowsRepository.softDelete', () {
-    test(
-      'UPDATE sets is_active=false and bumps updated_at; returns true '
-      'when a row was updated',
-      () async {
-        final pool = _Pool(softDeleteAffected: 1);
-        final repo = WageRoleRowsRepository(TenantTransactionWrapper(pool));
-        final removed = await repo.softDelete(
-          operatorId: _opA,
-          locationId: _locA,
-          wageRoleRowId: _wageRowId,
-          actorUserId: _actorA,
-        );
-        expect(removed, isTrue);
-        final tx = pool.transactions.single;
-        final updateSql = tx.executedSql.firstWhere(
-          (s) => s.contains('update public.wage_role_rows'),
-        );
-        expect(updateSql, contains('set is_active = false'));
-        expect(updateSql, contains('updated_at = now()'));
-        expect(updateSql, contains('updated_by = @updated_by'));
-        expect(
-          updateSql,
-          contains('where wage_role_row_id = @wage_role_row_id::uuid'),
-        );
-        expect(updateSql, contains('and operator_id = @operator_id::uuid'));
-        expect(updateSql, contains('and location_id = @location_id::uuid'));
-        expect(
-          updateSql,
-          contains('and is_active is true'),
-          reason: 'idempotent soft-delete must skip rows already inactive',
-        );
-        // Tenant SET LOCAL precedes the UPDATE.
-        expect(tx.executedSql[0], contains("'app.operator_id'"));
-        expect(tx.parameters[0]['value'], equals(_opA));
-        expect(tx.executedSql[1], contains("'app.location_id'"));
-        expect(tx.parameters[1]['value'], equals(_locA));
-        // No admin BYPASSRLS escalation.
-        expect(
-          tx.executedSql.where((s) => s.contains('set local role forge_admin')),
-          isEmpty,
-        );
-      },
-    );
+    test('UPDATE sets is_active=false and bumps updated_at; returns true '
+        'when a row was updated', () async {
+      final pool = _Pool(softDeleteAffected: 1);
+      final repo = WageRoleRowsRepository(TenantTransactionWrapper(pool));
+      final removed = await repo.softDelete(
+        operatorId: _opA,
+        locationId: _locA,
+        wageRoleRowId: _wageRowId,
+        actorUserId: _actorA,
+      );
+      expect(removed, isTrue);
+      final tx = pool.transactions.single;
+      final updateSql = tx.executedSql.firstWhere(
+        (s) => s.contains('update public.wage_role_rows'),
+      );
+      expect(updateSql, contains('set is_active = false'));
+      expect(updateSql, contains('updated_at = now()'));
+      expect(updateSql, contains('updated_by = @updated_by'));
+      expect(
+        updateSql,
+        contains('where wage_role_row_id = @wage_role_row_id::uuid'),
+      );
+      expect(updateSql, contains('and operator_id = @operator_id::uuid'));
+      expect(
+        updateSql,
+        isNot(contains('and location_id = @location_id::uuid')),
+      );
+      expect(
+        updateSql,
+        contains('and is_active is true'),
+        reason: 'idempotent soft-delete must skip rows already inactive',
+      );
+      // Tenant SET LOCAL precedes the UPDATE.
+      expect(tx.executedSql[0], contains("'app.operator_id'"));
+      expect(tx.parameters[0]['value'], equals(_opA));
+      expect(tx.executedSql[1], contains("'app.location_id'"));
+      expect(tx.parameters[1]['value'], equals(_locA));
+      // No admin BYPASSRLS escalation.
+      expect(
+        tx.executedSql.where((s) => s.contains('set local role forge_admin')),
+        isEmpty,
+      );
+    });
 
     test(
       'returns false when no row was updated (cross-tenant or already '
@@ -307,47 +361,47 @@ void main() {
   });
 
   group('WageRoleRowsRepository tenant isolation', () {
-    test(
-      'cross-tenant write is impossible: operator A repository SETs '
-      'operator A; operator B repository SETs operator B — there is no '
-      'shared seam where the tenant id could leak across',
-      () async {
-        final poolA = _Pool(upsertRows: <PostgresRow>[_wageRow()]);
-        final poolB = _Pool(upsertRows: <PostgresRow>[_wageRow(operatorId: _opB)]);
-        final repoA = WageRoleRowsRepository(TenantTransactionWrapper(poolA));
-        final repoB = WageRoleRowsRepository(TenantTransactionWrapper(poolB));
-        await repoA.upsert(
-          operatorId: _opA,
-          locationId: _locA,
-          restaurantId: 'rest-1',
-          roleName: 'Server',
-          laborBucket: 'foh',
-          hourlyRate: 18.5,
-          weightedHours: 30.0,
-          actorUserId: _actorA,
+    test('cross-tenant write is impossible: operator A repository SETs '
+        'operator A; operator B repository SETs operator B — there is no '
+        'shared seam where the tenant id could leak across', () async {
+      final poolA = _Pool(upsertRows: <PostgresRow>[_wageRow()]);
+      final poolB = _Pool(
+        upsertRows: <PostgresRow>[_wageRow(operatorId: _opB)],
+      );
+      final repoA = WageRoleRowsRepository(TenantTransactionWrapper(poolA));
+      final repoB = WageRoleRowsRepository(TenantTransactionWrapper(poolB));
+      await repoA.upsert(
+        operatorId: _opA,
+        locationId: _locA,
+        restaurantId: 'rest-1',
+        roleName: 'Server',
+        laborBucket: 'foh',
+        hourlyRate: 18.5,
+        weightedHours: 30.0,
+        actorUserId: _actorA,
+      );
+      await repoB.upsert(
+        operatorId: _opB,
+        locationId: _locA,
+        restaurantId: 'rest-1',
+        roleName: 'Server',
+        laborBucket: 'foh',
+        hourlyRate: 18.5,
+        weightedHours: 30.0,
+        actorUserId: _actorA,
+      );
+      expect(poolA.transactions.single.parameters[0]['value'], equals(_opA));
+      expect(poolB.transactions.single.parameters[0]['value'], equals(_opB));
+      // Neither side ever escalated to forge_admin.
+      for (final pool in <_Pool>[poolA, poolB]) {
+        expect(
+          pool.transactions.single.executedSql.where(
+            (s) => s.contains('set local role forge_admin'),
+          ),
+          isEmpty,
         );
-        await repoB.upsert(
-          operatorId: _opB,
-          locationId: _locA,
-          restaurantId: 'rest-1',
-          roleName: 'Server',
-          laborBucket: 'foh',
-          hourlyRate: 18.5,
-          weightedHours: 30.0,
-          actorUserId: _actorA,
-        );
-        expect(poolA.transactions.single.parameters[0]['value'], equals(_opA));
-        expect(poolB.transactions.single.parameters[0]['value'], equals(_opB));
-        // Neither side ever escalated to forge_admin.
-        for (final pool in <_Pool>[poolA, poolB]) {
-          expect(
-            pool.transactions.single.executedSql
-                .where((s) => s.contains('set local role forge_admin')),
-            isEmpty,
-          );
-        }
-      },
-    );
+      }
+    });
   });
 }
 
@@ -357,10 +411,7 @@ void main() {
 /// parameter map, then returns canned rows for recognized statement
 /// shapes.
 class _Pool implements PostgresPool {
-  _Pool({
-    this.upsertRows = const <PostgresRow>[],
-    this.softDeleteAffected = 0,
-  });
+  _Pool({this.upsertRows = const <PostgresRow>[], this.softDeleteAffected = 0});
 
   final List<PostgresRow> upsertRows;
   final int softDeleteAffected;
@@ -378,10 +429,7 @@ class _Pool implements PostgresPool {
 }
 
 class _Tx extends PostgresTransaction {
-  _Tx({
-    required this.upsertRows,
-    required this.softDeleteAffected,
-  });
+  _Tx({required this.upsertRows, required this.softDeleteAffected});
 
   final List<PostgresRow> upsertRows;
   final int softDeleteAffected;

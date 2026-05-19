@@ -7573,6 +7573,7 @@ abstract class MobileOperationalSyncProxyGateway {
     required String locationId,
     required String? modifiedSince,
     required int pageSize,
+    required bool includeHierarchy,
   });
 
   Future<Map<String, Object?>> fetchPollingTierAssignment({
@@ -17674,6 +17675,10 @@ Future<void> _routeMobileOperationalSync({
       _nonBlankString(params['modified_since']) ??
       _nonBlankString(params['cursor']);
   if (!_mobileSyncCursorValidOrWrite(response, modifiedSince)) return;
+  final includeHierarchy = _optionalQueryBool(
+    params['include_hierarchy'],
+    defaultValue: false,
+  );
   final businessDate = _nonBlankString(params['business_date']);
   if (target.resource == 'timing/resolved' &&
       businessDate != null &&
@@ -17729,6 +17734,7 @@ Future<void> _routeMobileOperationalSync({
         locationId: target.locationId,
         modifiedSince: modifiedSince,
         pageSize: pageSize,
+        includeHierarchy: includeHierarchy,
       ),
       'polling_tier_assignment' => await gateway.fetchPollingTierAssignment(
         scope: scope,

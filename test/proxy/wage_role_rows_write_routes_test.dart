@@ -410,6 +410,8 @@ class _RecordingWageGateway implements WageRoleRowsGateway {
     bool isActive = true,
     Map<String, Object?> metadata = const <String, Object?>{},
     String? actorUserId,
+    String scopeType = 'location',
+    String? orgUnitId,
   }) async {
     upsertCalls.add(<String, Object?>{
       'operatorId': operatorId,
@@ -426,6 +428,8 @@ class _RecordingWageGateway implements WageRoleRowsGateway {
       'isActive': isActive,
       'metadata': metadata,
       'actorUserId': actorUserId,
+      'scopeType': scopeType,
+      'orgUnitId': orgUnitId,
     });
     return WageRoleRowRecord(
       wageRoleRowId: _kRowId,
@@ -446,6 +450,8 @@ class _RecordingWageGateway implements WageRoleRowsGateway {
       createdAt: DateTime.utc(2026, 5, 8, 12),
       updatedAt: DateTime.utc(2026, 5, 8, 12),
       updatedBy: actorUserId,
+      scopeType: scopeType,
+      orgUnitId: orgUnitId,
     );
   }
 
@@ -483,6 +489,8 @@ class _RecordingAuditSink implements WageRoleRowsAuditSink {
     required double hourlyRate,
     required double weightedHours,
     required String source,
+    required String scopeType,
+    required String? orgUnitId,
     required DateTime occurredAt,
   }) async {
     upsertCalls.add(<String, Object?>{
@@ -497,6 +505,8 @@ class _RecordingAuditSink implements WageRoleRowsAuditSink {
       'hourlyRate': hourlyRate,
       'weightedHours': weightedHours,
       'source': source,
+      'scopeType': scopeType,
+      'orgUnitId': orgUnitId,
       'occurredAt': occurredAt,
     });
   }
@@ -539,6 +549,7 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
     required String locationId,
     required String? modifiedSince,
     required int pageSize,
+    required bool includeHierarchy,
   }) async {
     final filtered = _published
         .where((r) => r.operatorId == operatorId && r.locationId == locationId)
