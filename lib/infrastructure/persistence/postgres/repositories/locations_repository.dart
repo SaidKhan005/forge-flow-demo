@@ -14,6 +14,7 @@
 
 import '../operator_scoped_repository.dart';
 import '../postgres_executor.dart';
+import 'business_timing_starter_repository.dart';
 
 class LocationsRepository extends OperatorScopedRepository {
   LocationsRepository(super.tenantWrapper);
@@ -83,9 +84,14 @@ class LocationsRepository extends OperatorScopedRepository {
     required String adminReason,
   }) {
     return withSystem<LocationAdminRow>((exec) async {
-      await _assertOperatorBusinessTimingProfileExists(
+      await _ensureOperatorBusinessTimingProfileExists(
         exec,
         operatorId: operatorId,
+        businessTimezone: timezone,
+        businessDayStartLocal: _businessDayStartLocalFromHour(
+          businessDayRolloverHour,
+        ),
+        adminReason: adminReason,
       );
       final rows = await exec.query(
         'insert into locations ('
@@ -318,29 +324,46 @@ class MissingOperatorBusinessTimingProfileException implements Exception {
       '$operatorId has no active operator-scope Business Timing profile';
 }
 
-Future<void> _assertOperatorBusinessTimingProfileExists(
+Future<void> _ensureOperatorBusinessTimingProfileExists(
   PostgresExecutor exec, {
   required String operatorId,
+  required String businessTimezone,
+  required String businessDayStartLocal,
+  required String adminReason,
 }) async {
+  const localBusinessDateSql = kRestaurantLocalBusinessDateSql;
   final rows = await exec.query(
     'select profile_id::text as profile_id '
     'from public.business_timing_profiles '
     'where operator_id = @operator_id::uuid '
     "and scope_type = 'operator' "
     'and scope_id = @operator_id::uuid '
-    'and effective_from_business_date <= current_date '
+    'and effective_from_business_date <= $localBusinessDateSql '
     'and ('
     'effective_until_business_date is null '
-    'or current_date < effective_until_business_date'
+    'or $localBusinessDateSql < effective_until_business_date'
     ') '
     'order by effective_from_business_date desc, created_at desc '
     'limit 1',
-    parameters: <String, Object?>{'operator_id': operatorId},
+    parameters: <String, Object?>{
+      'operator_id': operatorId,
+      'business_timezone': businessTimezone,
+      'business_day_start_local_time': businessDayStartLocal,
+    },
   );
-  if (rows.isEmpty) {
-    throw MissingOperatorBusinessTimingProfileException(operatorId);
-  }
+  if (rows.isNotEmpty) return;
+  await insertStarterBusinessTimingProfile(
+    exec,
+    operatorId: operatorId,
+    businessTimezone: businessTimezone,
+    businessDayStartLocal: businessDayStartLocal,
+    adminReason: adminReason,
+    metadataSource: 'admin_location_missing_operator_timing_bootstrap',
+  );
 }
+
+String _businessDayStartLocalFromHour(int hour) =>
+    '${hour.toString().padLeft(2, '0')}:00';
 
 class LocationAdminRow {
   const LocationAdminRow({
