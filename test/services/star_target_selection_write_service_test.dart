@@ -1,6 +1,8 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/forge_flow_bootstrap.dart'
+    show buildStarTargetProjectionDayparts;
 import 'package:forge_and_flow/auth/auth_session.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
@@ -134,6 +136,105 @@ void main() {
   );
 
   test(
+    'AuthSessionStarTargetSelectionWriter projects selected service periods',
+    () async {
+      final client = _RecordingStarTargetSelectionWriteClient();
+      final writer = AuthSessionStarTargetSelectionWriter(
+        client: client,
+        authSessionProvider: () => _session(),
+        clock: () => DateTime.utc(2026, 5, 6, 12),
+        projectionContextProvider:
+            ({required restaurantId, required selectedCandidates}) async {
+              return StarTargetProjectionContext(
+                effectiveStart: '2026-05-06',
+                effectiveEnd: '2026-07-04',
+                calibrationWindowStart: '2026-03-08',
+                calibrationWindowEnd: '2026-05-06',
+                targetCplh: 99.0,
+                targetSplh: 199.0,
+                targetPpa: 59.0,
+                fohWage: 18.0,
+                bohWage: 20.0,
+                opzFloorCplh: 9.0,
+                opzCeilingCplh: 21.0,
+                reason: 'manager selected star target on mobile',
+                dayparts: buildStarTargetProjectionDayparts(selectedCandidates),
+              );
+            },
+      );
+
+      await writer.replaceSelection(
+        restaurantId: 'restaurant-1',
+        selectedCandidates: <BaselineCandidateShift>[
+          _candidate(
+            'brunch-1',
+            selected: false,
+            daypart: 'morning',
+            servicePeriodKey: 'brunch',
+            covers: 40,
+            cplh: 10.0,
+            splh: 100.0,
+            ppa: 20.0,
+          ),
+          _candidate(
+            'brunch-2',
+            selected: false,
+            daypart: 'morning',
+            servicePeriodKey: 'brunch',
+            covers: 60,
+            cplh: 14.0,
+            splh: 140.0,
+            ppa: 30.0,
+          ),
+          _candidate(
+            'supper-1',
+            selected: false,
+            daypart: 'dinner',
+            servicePeriodKey: 'supper_rush',
+            covers: 120,
+            cplh: 20.0,
+            splh: 220.0,
+            ppa: 50.0,
+          ),
+        ],
+        previouslySelectedCandidates: const <BaselineCandidateShift>[],
+      );
+
+      expect(client.calls, hasLength(3));
+      expect(client.projections, hasLength(1));
+      final standards =
+          client.projections.single.body['standards'] as Map<String, Object?>;
+      expect(standards['target_cplh'], 99.0);
+      final dayparts = standards['target_cycle_dayparts'] as List<Object?>;
+      expect(dayparts, hasLength(2));
+      final brunch = dayparts[0] as Map<String, Object?>;
+      expect(brunch['service_period_id'], 'brunch');
+      expect(brunch['service_period_key'], 'brunch');
+      expect(brunch['target_cplh'], 12.0);
+      expect(brunch['target_splh'], 120.0);
+      expect(brunch['target_ppa'], 25.0);
+      expect(brunch['opz_floor_cplh'], 10.0);
+      expect(brunch['opz_ceiling_cplh'], 14.0);
+      expect(brunch['cover_count'], 100);
+      final supper = dayparts[1] as Map<String, Object?>;
+      expect(supper['service_period_id'], 'supper_rush');
+      expect(supper['target_cplh'], 20.0);
+      expect(supper['cover_count'], 120);
+    },
+  );
+
+  test('buildStarTargetProjectionDayparts falls back to legacy daypart', () {
+    final dayparts = buildStarTargetProjectionDayparts(<BaselineCandidateShift>[
+      _candidate('legacy-1', selected: true, daypart: 'midday'),
+    ]);
+
+    expect(dayparts, hasLength(1));
+    expect(dayparts.single.servicePeriodId, 'midday');
+    expect(dayparts.single.servicePeriodKey, 'midday');
+    expect(dayparts.single.coverCount, 120);
+  });
+
+  test(
     'AuthSessionStarTargetSelectionWriter rejects candidate without date',
     () async {
       final writer = AuthSessionStarTargetSelectionWriter(
@@ -179,19 +280,24 @@ BaselineCandidateShift _candidate(
   String recordKey, {
   required bool selected,
   String? businessDate = '2026-05-06',
+  String daypart = 'dinner',
   String? servicePeriodKey,
+  int covers = 120,
+  double cplh = 12.4,
+  double splh = 152.0,
+  double ppa = 42.5,
 }) {
   return BaselineCandidateShift(
     recordKey: recordKey,
     weekId: '2026-W19',
     weekLabel: 'Week 19',
     dayLabel: 'Wednesday',
-    daypart: 'dinner',
+    daypart: daypart,
     servicePeriodKey: servicePeriodKey,
-    covers: 120,
-    cplh: 12.4,
-    splh: 152.0,
-    ppa: 42.5,
+    covers: covers,
+    cplh: cplh,
+    splh: splh,
+    ppa: ppa,
     primaryLeverId: 'labor',
     isSelected: selected,
     businessDate: businessDate,

@@ -219,7 +219,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // the read-only essentials in 3 tabs.
     final effectiveTeamActor = widget.teamActor;
     // Non-admin signed-in users see only the Account tab. Admin tier
-    // (operator_owner / operator_manager / super_admin / ff_support)
+    // (operator_owner / operator_general_manager / super_admin / ff_support)
     // sees the rest. The gate is opt-in: a null teamActor (e.g.
     // demo / unauth flows or pre-Phase-9 test setups) keeps admin
     // tabs visible. Once the Phase 9 permission snapshot bridge
@@ -281,7 +281,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // "Demo vs live data" per MO-1-FU; the long-term home is here),
       // and a B11.1 short-opaque-code handoff link to operator-web's
       // Vendor Connections screen. Gated by `showAdminTabs` so every
-      // operator admin (owner / manager / super_admin / ff_support)
+      // operator admin (owner / general manager / super_admin / ff_support)
       // reaches it; the Data tab keeps its tighter F&F gate.
       if (showAdminTabs) _integrationsSettingsTab,
       if (showDataTab) _dataSettingsTab,
@@ -594,19 +594,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
 }
 
 /// Tabs other than Account are only visible to admin-tier roles.
-/// Operator owners, operator managers, super_admin, and ff_support
-/// qualify. operator_supervisor / operator_staff / null actors do not.
+/// Operator owners, operator_general_manager, super_admin, and ff_support
+/// qualify. Retired v1 roles and null actors do not.
 bool _isAdminTier(TeamScopeActor? actor) {
   if (actor == null) return false;
   return actor.actorRoles.contains('operator_owner') ||
-      actor.actorRoles.contains('operator_manager') ||
+      actor.actorRoles.contains('operator_general_manager') ||
       actor.actorRoles.contains('super_admin') ||
       actor.actorRoles.contains('ff_support');
 }
 
 /// W3.A â€” F&F support gate. The Data alignment section in the Data tab
 /// surfaces canonical-fact diagnostics that only super_admin /
-/// ff_support actors should see. Operators (owner / manager / etc.)
+/// ff_support actors should see. Operators (owner / general manager / etc.)
 /// stay out â€” the section is removed from their Data tab.
 bool _isFFAccount(TeamScopeActor? actor) {
   if (actor == null) return false;

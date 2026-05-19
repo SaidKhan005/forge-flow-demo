@@ -7,7 +7,8 @@
 //
 // MO-1 (Wave 2) — the Data tab itself is now restricted to seeded
 // F&F admin users (super_admin / ff_support). Operator-tier actors
-// (owner / manager / supervisor / staff) no longer see the tab.
+// (owner / general manager / location manager / supervisor) no longer see
+// the tab.
 // Tests covering the Data tab's body therefore use the F&F support
 // actor; the operator_owner test asserts the tab is hidden.
 //
@@ -33,6 +34,13 @@ import 'package:forge_and_flow/state/auth_session_notifier.dart';
 
 const TeamScopeActor _ownerActor = TeamScopeActor(
   actorRoles: <String>{'operator_owner'},
+  actorOperatorId: 'op-1',
+  actorAssignedLocationIds: <String>{},
+  actorPermissions: <String>{},
+);
+
+const TeamScopeActor _generalManagerActor = TeamScopeActor(
+  actorRoles: <String>{'operator_general_manager'},
   actorOperatorId: 'op-1',
   actorAssignedLocationIds: <String>{},
   actorPermissions: <String>{},
@@ -81,21 +89,46 @@ Widget _wrap({required AuthSessionNotifier notifier, required Widget child}) {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  testWidgets('renders Account + Setup + Integrations tabs for operator_owner '
+      '(Data tab gated to F&F admin)', (tester) async {
+    // MO-1 — operator_owner is admin-tier for Setup but no longer
+    // sees the Data tab; that surface is F&F-internal.
+    // MP-1 — operator_owner DOES reach the new Integrations tab;
+    // it's gated by `showAdminTabs` (all operator admins).
+    final notifier = _notifier();
+    await tester.pumpWidget(
+      _wrap(
+        notifier: notifier,
+        child: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          teamActor: _ownerActor,
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_integrations')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_data')), findsNothing);
+    expect(find.byKey(const Key('settings_tab_team')), findsNothing);
+    expect(find.byKey(const Key('settings_tab_developer')), findsNothing);
+  });
+
   testWidgets(
-    'renders Account + Setup + Integrations tabs for operator_owner '
+    'renders Account + Setup + Integrations tabs for operator_general_manager '
     '(Data tab gated to F&F admin)',
     (tester) async {
-      // MO-1 — operator_owner is admin-tier for Setup but no longer
-      // sees the Data tab; that surface is F&F-internal.
-      // MP-1 — operator_owner DOES reach the new Integrations tab;
-      // it's gated by `showAdminTabs` (all operator admins).
+      // R-2L v2: operator_general_manager is the current GM role that
+      // reaches operator admin surfaces. The retired v1 operator_manager
+      // is tested below and must not satisfy this gate.
       final notifier = _notifier();
       await tester.pumpWidget(
         _wrap(
           notifier: notifier,
           child: SettingsScreen(
             initialStatus: AppDataStatus.current(),
-            teamActor: _ownerActor,
+            teamActor: _generalManagerActor,
           ),
         ),
       );
@@ -108,75 +141,61 @@ void main() {
         findsOneWidget,
       );
       expect(find.byKey(const Key('settings_tab_data')), findsNothing);
-      expect(find.byKey(const Key('settings_tab_team')), findsNothing);
-      expect(find.byKey(const Key('settings_tab_developer')), findsNothing);
     },
   );
 
-  testWidgets(
-    'renders all four tabs (Account, Setup, Integrations, Data) for '
-    'F&F support actor',
-    (tester) async {
-      // MO-1 — F&F support is the seeded role that retains Data tab
-      // visibility post-gate.
-      // MP-1 — F&F support also sees the Integrations tab.
-      final notifier = _notifier();
-      await tester.pumpWidget(
-        _wrap(
-          notifier: notifier,
-          child: SettingsScreen(
-            initialStatus: AppDataStatus.current(),
-            teamActor: _ffSupportActor,
-          ),
+  testWidgets('renders all four tabs (Account, Setup, Integrations, Data) for '
+      'F&F support actor', (tester) async {
+    // MO-1 — F&F support is the seeded role that retains Data tab
+    // visibility post-gate.
+    // MP-1 — F&F support also sees the Integrations tab.
+    final notifier = _notifier();
+    await tester.pumpWidget(
+      _wrap(
+        notifier: notifier,
+        child: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          teamActor: _ffSupportActor,
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
-      expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
-      expect(
-        find.byKey(const Key('settings_tab_integrations')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
-    },
-  );
+    expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_integrations')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
+  });
 
-  testWidgets(
-    'renders all four tabs (Account, Setup, Integrations, Data) for '
-    'super_admin actor',
-    (tester) async {
-      // MO-1 — super_admin is the second seeded F&F admin role that
-      // retains Data tab visibility.
-      // MP-1 — super_admin also sees the Integrations tab.
-      final notifier = _notifier();
-      await tester.pumpWidget(
-        _wrap(
-          notifier: notifier,
-          child: SettingsScreen(
-            initialStatus: AppDataStatus.current(),
-            teamActor: _superAdminActor,
-          ),
+  testWidgets('renders all four tabs (Account, Setup, Integrations, Data) for '
+      'super_admin actor', (tester) async {
+    // MO-1 — super_admin is the second seeded F&F admin role that
+    // retains Data tab visibility.
+    // MP-1 — super_admin also sees the Integrations tab.
+    final notifier = _notifier();
+    await tester.pumpWidget(
+      _wrap(
+        notifier: notifier,
+        child: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          teamActor: _superAdminActor,
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
-      expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
-      expect(
-        find.byKey(const Key('settings_tab_integrations')),
-        findsOneWidget,
-      );
-      expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
-    },
-  );
+    expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_integrations')), findsOneWidget);
+    expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
+  });
 
   testWidgets(
-    'Data tab is hidden from operator_manager (Wave 2 MO-1)',
+    'retired operator_manager is not treated as current General Manager',
     (tester) async {
-      // MO-1 — operator_manager is admin-tier for Setup but no longer
-      // sees the Data tab. Mirrors the operator_owner expectation;
-      // every operator-tier role is gated out.
+      // R-2L v2: operator_manager is a retired migration-history role.
+      // Runtime gates admit operator_general_manager instead, so a stale
+      // v1-only actor falls back to Account-only.
       const managerActor = TeamScopeActor(
         actorRoles: <String>{'operator_manager'},
         actorOperatorId: 'op-1',
@@ -195,6 +214,12 @@ void main() {
       );
       await tester.pump();
 
+      expect(
+        find.byType(SettingsAccountSection, skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('settings_tab_authority')), findsNothing);
+      expect(find.byKey(const Key('settings_tab_integrations')), findsNothing);
       expect(find.byKey(const Key('settings_tab_data')), findsNothing);
     },
   );
@@ -217,38 +242,35 @@ void main() {
     expect(find.text('Audit log', skipOffstage: false), findsNothing);
   });
 
-  testWidgets(
-    'Active Sessions section does not render revoke or sign-out-all '
-    'buttons in viewOnly',
-    (tester) async {
-      final notifier = _notifier();
-      await tester.pumpWidget(
-        _wrap(
-          notifier: notifier,
-          child: SettingsScreen(
-            initialStatus: AppDataStatus.current(),
-            teamActor: _ownerActor,
-          ),
+  testWidgets('Active Sessions section does not render revoke or sign-out-all '
+      'buttons in viewOnly', (tester) async {
+    final notifier = _notifier();
+    await tester.pumpWidget(
+      _wrap(
+        notifier: notifier,
+        child: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          teamActor: _ownerActor,
         ),
-      );
-      await tester.pump();
+      ),
+    );
+    await tester.pump();
 
-      expect(
-        find.byKey(const Key('active_sessions_sign_out_everywhere')),
-        findsNothing,
-      );
-      expect(
-        find.byWidgetPredicate(
-          (w) =>
-              w.key is ValueKey<String> &&
-              (w.key as ValueKey<String>).value.startsWith(
-                'active_sessions_revoke_',
-              ),
-        ),
-        findsNothing,
-      );
-    },
-  );
+    expect(
+      find.byKey(const Key('active_sessions_sign_out_everywhere')),
+      findsNothing,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey<String> &&
+            (w.key as ValueKey<String>).value.startsWith(
+              'active_sessions_revoke_',
+            ),
+      ),
+      findsNothing,
+    );
+  });
 
   testWidgets('Setup tab Wage section renders no editor button in viewOnly', (
     tester,
@@ -464,102 +486,87 @@ void main() {
     },
   );
 
-  testWidgets(
-    'MO-5b-FU-mobile-recanonicalize — Account tab uses V1 canonical '
-    '"Two-factor sign-in" labeling',
-    (tester) async {
-      // MO-5b-FU-mobile-recanonicalize — flip the mobile-side label
-      // from Wave 2 MO-5b's "Two-factor authentication" to the V1
-      // canonical phrase "Two-factor sign-in" picked by the operator
-      // on 2026-05-14 (PR #747 swept operator-web + admin; this
-      // mirrors the sweep on the mobile side).
-      //
-      // This test pins the Account tab surfaces:
-      //   1. Section header (`_settingsSection` title) —
-      //      "Two-factor authentication" → "Two-factor sign-in".
-      //   2. Account info card row label —
-      //      "Two-factor authentication" → "Two-factor sign-in"
-      //      (wraps to 2 lines inside the 128-px label cell;
-      //      constraint documented in `settings_data_sections.dart`).
-      //
-      // Mobile-native 2FA (operator-directed 2026-05-17): the
-      // "Manage two-factor sign-in on Ops Web" pointer row was
-      // removed when the section went interactive on mobile, so it
-      // must now be absent.
-      tester.view.physicalSize = const Size(1080, 2400);
-      tester.view.devicePixelRatio = 1.0;
-      addTearDown(tester.view.resetPhysicalSize);
+  testWidgets('MO-5b-FU-mobile-recanonicalize — Account tab uses V1 canonical '
+      '"Two-factor sign-in" labeling', (tester) async {
+    // MO-5b-FU-mobile-recanonicalize — flip the mobile-side label
+    // from Wave 2 MO-5b's "Two-factor authentication" to the V1
+    // canonical phrase "Two-factor sign-in" picked by the operator
+    // on 2026-05-14 (PR #747 swept operator-web + admin; this
+    // mirrors the sweep on the mobile side).
+    //
+    // This test pins the Account tab surfaces:
+    //   1. Section header (`_settingsSection` title) —
+    //      "Two-factor authentication" → "Two-factor sign-in".
+    //   2. Account info card row label —
+    //      "Two-factor authentication" → "Two-factor sign-in"
+    //      (wraps to 2 lines inside the 128-px label cell;
+    //      constraint documented in `settings_data_sections.dart`).
+    //
+    // Mobile-native 2FA (operator-directed 2026-05-17): the
+    // "Manage two-factor sign-in on Ops Web" pointer row was
+    // removed when the section went interactive on mobile, so it
+    // must now be absent.
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
 
-      final notifier = _notifier();
-      await tester.pumpWidget(
-        _wrap(
-          notifier: notifier,
-          child: SettingsScreen(
-            initialStatus: AppDataStatus.current(),
-            teamActor: _ownerActor,
-          ),
+    final notifier = _notifier();
+    await tester.pumpWidget(
+      _wrap(
+        notifier: notifier,
+        child: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          teamActor: _ownerActor,
         ),
-      );
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 200));
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
 
-      // For operator_owner the tab order (post-MP-1) is Setup,
-      // Integrations, Account; the default landing tab is Setup. We
-      // tap Account to mount the surfaces we're pinning.
-      await tester.tap(find.byKey(const Key('settings_tab_account')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 300));
+    // For operator_owner the tab order (post-MP-1) is Setup,
+    // Integrations, Account; the default landing tab is Setup. We
+    // tap Account to mount the surfaces we're pinning.
+    await tester.tap(find.byKey(const Key('settings_tab_account')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
 
-      // V1 canonical label appears (the section sticky header renders
-      // "Two-factor sign-in"; the account info row label also
-      // renders "Two-factor sign-in" — both mount under the
-      // CustomScrollView's wide cacheExtent, so use findsWidgets).
-      expect(
-        find.text('Two-factor sign-in', skipOffstage: false),
-        findsWidgets,
-      );
-      // Mobile-native 2FA: the Ops Web pointer row is gone.
-      expect(
-        find.text(
-          'Manage two-factor sign-in on Ops Web',
-          skipOffstage: false,
-        ),
-        findsNothing,
-      );
+    // V1 canonical label appears (the section sticky header renders
+    // "Two-factor sign-in"; the account info row label also
+    // renders "Two-factor sign-in" — both mount under the
+    // CustomScrollView's wide cacheExtent, so use findsWidgets).
+    expect(find.text('Two-factor sign-in', skipOffstage: false), findsWidgets);
+    // Mobile-native 2FA: the Ops Web pointer row is gone.
+    expect(
+      find.text('Manage two-factor sign-in on Ops Web', skipOffstage: false),
+      findsNothing,
+    );
 
-      // Old labels removed (including the previous Wave 2 canonical
-      // "Two-factor authentication", which is now divergent against
-      // the V1 phrase chosen 2026-05-14).
-      expect(
-        find.text('Two-factor authentication', skipOffstage: false),
-        findsNothing,
-      );
-      expect(
-        find.text('Two-factor security', skipOffstage: false),
-        findsNothing,
-      );
-      expect(
-        find.text('Two-factor verification', skipOffstage: false),
-        findsNothing,
-      );
-      expect(
-        find.text(
-          'Manage two-factor authentication on Ops Web',
-          skipOffstage: false,
-        ),
-        findsNothing,
-      );
-      expect(
-        find.text(
-          'Manage two-factor security on Ops Web',
-          skipOffstage: false,
-        ),
-        findsNothing,
-      );
-      // The bare "MFA" account-info-row label is gone (other "MFA"
-      // mentions live inside message bodies, not as standalone row
-      // labels, and remain intentional copy on this surface).
-      expect(find.text('MFA', skipOffstage: false), findsNothing);
-    },
-  );
+    // Old labels removed (including the previous Wave 2 canonical
+    // "Two-factor authentication", which is now divergent against
+    // the V1 phrase chosen 2026-05-14).
+    expect(
+      find.text('Two-factor authentication', skipOffstage: false),
+      findsNothing,
+    );
+    expect(find.text('Two-factor security', skipOffstage: false), findsNothing);
+    expect(
+      find.text('Two-factor verification', skipOffstage: false),
+      findsNothing,
+    );
+    expect(
+      find.text(
+        'Manage two-factor authentication on Ops Web',
+        skipOffstage: false,
+      ),
+      findsNothing,
+    );
+    expect(
+      find.text('Manage two-factor security on Ops Web', skipOffstage: false),
+      findsNothing,
+    );
+    // The bare "MFA" account-info-row label is gone (other "MFA"
+    // mentions live inside message bodies, not as standalone row
+    // labels, and remain intentional copy on this surface).
+    expect(find.text('MFA', skipOffstage: false), findsNothing);
+  });
 }

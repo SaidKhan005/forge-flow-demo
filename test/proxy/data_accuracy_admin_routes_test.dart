@@ -30,6 +30,7 @@ void main() {
         Uri baseUri,
         _SettableVerifier verifier,
         _FakeDataAccuracyAdminGateway gateway,
+        _FakeAdminRequestIdempotencyStore idempotencyStore,
       })
     >
     spinUp({
@@ -48,6 +49,7 @@ void main() {
           );
       final guard = ProxyRequestGuard(verifier: verifier);
       final gateway = customGateway ?? _FakeDataAccuracyAdminGateway();
+      final idempotencyStore = _FakeAdminRequestIdempotencyStore();
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       // ignore: unawaited_futures
       server.listen((request) async {
@@ -56,6 +58,7 @@ void main() {
             request,
             guard,
             dataAccuracyAdminGateway: gatewayConfigured ? gateway : null,
+            adminRequestIdempotencyStore: idempotencyStore,
             adminCorsAllowList: const <String>['https://admin.forgeflow.app'],
           );
         } catch (_) {
@@ -73,6 +76,7 @@ void main() {
         baseUri: baseUri,
         verifier: verifier,
         gateway: gateway,
+        idempotencyStore: idempotencyStore,
       );
     }
 
@@ -176,6 +180,7 @@ void main() {
                 },
                 'reason_note': 'Set lunch source for the region',
               },
+              idempotencyKey: 'data-accuracy-scope-1',
             );
             expect(response.statusCode, equals(200));
             expect(gateway.scopeOverrideCalls, equals(1));
@@ -219,6 +224,7 @@ void main() {
                 },
                 'reason_note': 'Set breakfast source for launch',
               },
+              idempotencyKey: 'data-accuracy-settings-1',
             );
             expect(response.statusCode, equals(200));
             expect(gateway.lastCoversSourceLunch, equals('manual'));
@@ -229,6 +235,91 @@ void main() {
                 'lunch': 'vendor',
               }),
             );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('PATCH data accuracy requires Idempotency-Key', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(customGateway: gateway);
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminDataAccuracySettingsPrefix}op-1/loc-1'),
+            body: const <String, Object?>{
+              'covers_source_lunch': 'manual',
+              'reason_note': 'Set lunch source for launch',
+            },
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('idempotency_key_missing'));
+          expect(gateway.settingsOverrideCalls, equals(0));
+          expect(ctx.idempotencyStore.reserveCalls, equals(0));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH data accuracy replays same key and rejects conflicting body',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeDataAccuracyAdminGateway();
+          final ctx = await spinUp(customGateway: gateway);
+          try {
+            final uri = ctx.baseUri.resolve(
+              '${adminDataAccuracySettingsPrefix}op-1/loc-1',
+            );
+            const firstBody = <String, Object?>{
+              'covers_source_lunch': 'manual',
+              'reason_note': 'Set lunch source for launch',
+            };
+            final first = await _httpJson(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: firstBody,
+              idempotencyKey: 'data-accuracy-replay-key',
+            );
+            final replay = await _httpJson(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: firstBody,
+              idempotencyKey: 'data-accuracy-replay-key',
+            );
+            final conflict = await _httpJson(
+              ctx.client,
+              'PATCH',
+              uri,
+              body: const <String, Object?>{
+                'covers_source_lunch': 'forecast',
+                'reason_note': 'Different write under same key',
+              },
+              idempotencyKey: 'data-accuracy-replay-key',
+            );
+
+            expect(first.statusCode, equals(200));
+            expect(replay.statusCode, equals(200));
+            expect(jsonDecode(replay.body), equals(jsonDecode(first.body)));
+            expect(conflict.statusCode, equals(409));
+            final conflictBody =
+                jsonDecode(conflict.body) as Map<String, Object?>;
+            expect(conflictBody['error'], equals('idempotency_key_conflict'));
+            expect(gateway.settingsOverrideCalls, equals(1));
+            expect(ctx.idempotencyStore.reserveCalls, equals(1));
+            expect(ctx.idempotencyStore.reserveActorUserIds, <String?>[
+              'user_admin',
+            ]);
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -283,6 +374,7 @@ void main() {
               'effective_at_business_date': '2026-06-01',
               'reason_note': 'Breakfast is now manual for launch week',
             },
+            idempotencyKey: 'data-accuracy-service-period-1',
           );
           expect(response.statusCode, equals(200));
           expect(gateway.servicePeriodOverrideCalls, equals(1));
@@ -352,6 +444,7 @@ void main() {
                 'tier_key': 'premium',
                 'reason_note': 'Move the business to premium polling',
               },
+              idempotencyKey: 'polling-pricing-scope-1',
             );
             expect(response.statusCode, equals(200));
             expect(gateway.scopeAssignCalls, equals(1));
@@ -418,6 +511,7 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastCoversSourceLunch;
   Map<String, String>? lastCoversSourcePerServicePeriod;
   int assignTierCalls = 0;
+  int settingsOverrideCalls = 0;
   int scopeOverrideCalls = 0;
   int scopeAssignCalls = 0;
   int servicePeriodListCalls = 0;
@@ -460,6 +554,7 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     lastActorUserId = actorUserId;
     lastCoversSourceLunch = coversSourceLunch;
     lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
+    settingsOverrideCalls += 1;
     return const <String, Object?>{'ok': true};
   }
 
@@ -671,9 +766,13 @@ Future<_HttpResponseData> _httpJson(
   String method,
   Uri uri, {
   required Map<String, Object?> body,
+  String? idempotencyKey,
 }) async {
   final request = await client.openUrl(method, uri);
   request.headers.set(HttpHeaders.authorizationHeader, 'Bearer fake.token');
+  if (idempotencyKey != null) {
+    request.headers.set('Idempotency-Key', idempotencyKey);
+  }
   request.headers.contentType = ContentType.json;
   final payload = utf8.encode(jsonEncode(body));
   request.contentLength = payload.length;
@@ -703,6 +802,114 @@ Map<String, Object?> _servicePeriodRow({
     'updated_at': '2026-05-01T00:00:00.000Z',
     'updated_by': 'user_admin',
   };
+}
+
+class _FakeAdminRequestIdempotencyStore
+    implements AdminRequestIdempotencyStore {
+  final Map<String, _FakeAdminRequestIdempotencyRow> _rows =
+      <String, _FakeAdminRequestIdempotencyRow>{};
+  final List<String?> reserveActorUserIds = <String?>[];
+  int reserveCalls = 0;
+
+  @override
+  Future<AdminRequestIdempotencyEntry?> lookup({
+    required String idempotencyKey,
+    required String requestType,
+    required String requestBodyHash,
+  }) async {
+    final row = _rows[idempotencyKey];
+    if (row == null) return null;
+    if (row.requestType != requestType ||
+        row.requestBodyHash != requestBodyHash) {
+      throw const AdminIdempotencyKeyConflict(
+        message: 'Idempotency-Key was already used for another request',
+      );
+    }
+    return AdminRequestIdempotencyEntry(
+      idempotencyKey: idempotencyKey,
+      requestType: row.requestType,
+      responseStatus: row.responseStatus,
+      responsePayload: row.responsePayload,
+      completedAt: row.completedAt,
+      expiresAt: row.expiresAt,
+    );
+  }
+
+  @override
+  Future<bool> reserve({
+    required String idempotencyKey,
+    required String requestType,
+    required String? actorUserId,
+    required String requestBodyHash,
+  }) async {
+    reserveCalls += 1;
+    reserveActorUserIds.add(actorUserId);
+    if (_rows.containsKey(idempotencyKey)) return false;
+    _rows[idempotencyKey] = _FakeAdminRequestIdempotencyRow(
+      requestType: requestType,
+      requestBodyHash: requestBodyHash,
+      expiresAt: DateTime.utc(2026, 5, 19, 12, 15),
+    );
+    return true;
+  }
+
+  @override
+  Future<void> completeReservation({
+    required String idempotencyKey,
+    required int responseStatus,
+    required Map<String, Object?> responsePayload,
+  }) async {
+    final row = _rows[idempotencyKey];
+    if (row == null) return;
+    _rows[idempotencyKey] = row.copyWith(
+      responseStatus: responseStatus,
+      responsePayload: responsePayload,
+      completedAt: DateTime.utc(2026, 5, 19, 12, 1),
+    );
+  }
+
+  @override
+  Future<bool> tryReclaimOrphan({required String idempotencyKey}) async {
+    return false;
+  }
+
+  @override
+  Future<int> sweepExpiredOrphans() async {
+    return 0;
+  }
+}
+
+class _FakeAdminRequestIdempotencyRow {
+  const _FakeAdminRequestIdempotencyRow({
+    required this.requestType,
+    required this.requestBodyHash,
+    required this.expiresAt,
+    this.responseStatus,
+    this.responsePayload,
+    this.completedAt,
+  });
+
+  final String requestType;
+  final String requestBodyHash;
+  final DateTime? expiresAt;
+  final int? responseStatus;
+  final Map<String, Object?>? responsePayload;
+  final DateTime? completedAt;
+
+  _FakeAdminRequestIdempotencyRow copyWith({
+    int? responseStatus,
+    Map<String, Object?>? responsePayload,
+    DateTime? completedAt,
+  }) {
+    return _FakeAdminRequestIdempotencyRow(
+      requestType: requestType,
+      requestBodyHash: requestBodyHash,
+      expiresAt: expiresAt,
+      responseStatus: responseStatus ?? this.responseStatus,
+      responsePayload: responsePayload ?? this.responsePayload,
+      completedAt: completedAt ?? this.completedAt,
+    );
+  }
 }
 
 class _HttpResponseData {

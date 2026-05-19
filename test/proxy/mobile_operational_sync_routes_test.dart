@@ -506,6 +506,40 @@ void main() {
     );
 
     test(
+      'PATCH service-period settings rejects impossible business date',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/'
+                'data_accuracy_service_period_settings',
+              ),
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'covers_source': 'vendor',
+                'wage_source': 'vendor_per_employee',
+                'effective_at_business_date': '2026-02-31',
+              },
+              idempotencyKey: 'period-impossible-date-key',
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'invalid_effective_at_business_date');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
       'PATCH service-period settings rejects URL scope different from bearer',
       () async {
         await withRealHttp(() async {
@@ -710,6 +744,37 @@ void main() {
           expect(response.statusCode, 400);
           final body = jsonDecode(response.body) as Map<String, Object?>;
           expect(body['error'], 'idempotency_key_missing');
+          expect(ctx.gateway.calls, isEmpty);
+          expect(ctx.idempotencyStore.reserveCalls, 0);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('PATCH manual covers rejects impossible business date', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final response = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '/v1/operators/op-1/locations/loc-1/'
+              'data_accuracy_settings/manual_covers',
+            ),
+            body: const <String, Object?>{
+              'restaurant_id': 'loc-1',
+              'business_date': '2026-02-31',
+              'service_period_key': 'dinner',
+              'covers': 84,
+            },
+            idempotencyKey: 'manual-cover-impossible-date-key',
+          );
+          expect(response.statusCode, 400);
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], 'invalid_business_date');
           expect(ctx.gateway.calls, isEmpty);
           expect(ctx.idempotencyStore.reserveCalls, 0);
         } finally {
