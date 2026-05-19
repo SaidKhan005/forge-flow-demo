@@ -309,7 +309,8 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
 /// [seed]. Validation rules mirror the proxy:
 ///
 ///   * IANA timezone validation on every location write.
-///   * `business_day_rollover_hour` 0–23.
+///   * legacy create-time `business_day_rollover_hour` 0–23.
+///     PATCH rollover writes are retired; Business Timing owns edits.
 ///   * `preferred_currency` exactly three uppercase letters.
 ///   * Cannot remove a location that is the operator's
 ///     `primary_location_id`.
@@ -508,9 +509,6 @@ class InMemoryOperatorLocationAdminGateway
     final cached = _idempotentResults[command.idempotencyKey];
     if (cached is LocationAdminRecord) return cached;
     if (command.timezone != null) _validateTimezone(command.timezone!);
-    if (command.businessDayRolloverHour != null) {
-      _validateRolloverHour(command.businessDayRolloverHour!);
-    }
     final bundle = _findLocationBundleOrThrow(command.locationId);
     final index = bundle.locations.indexWhere(
       (l) => l.locationId == command.locationId,
@@ -523,8 +521,7 @@ class InMemoryOperatorLocationAdminGateway
       name: command.name?.trim() ?? existing.name,
       address: command.address ?? existing.address,
       timezone: command.timezone ?? existing.timezone,
-      businessDayRolloverHour:
-          command.businessDayRolloverHour ?? existing.businessDayRolloverHour,
+      businessDayRolloverHour: existing.businessDayRolloverHour,
       suspendedAt: existing.suspendedAt,
       deletedAt: existing.deletedAt,
       createdAt: existing.createdAt,

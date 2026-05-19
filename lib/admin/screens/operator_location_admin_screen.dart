@@ -4,8 +4,9 @@
 // locations (`locations` table). Supports onboarding a new operator
 // (creates the row, primary location, subscription tier, currency,
 // and admin assignment), editing existing operators, suspending +
-// reactivating, and add/edit/remove locations with IANA timezone +
-// business-day rollover hour validation.
+// reactivating, and add/edit/remove locations with IANA timezone.
+// Legacy rollover values remain readable, but Business Timing owns
+// business-day start edits.
 //
 // The screen takes an [OperatorLocationAdminGateway] from the
 // outside; production passes the HTTP gateway, demo + widget tests
@@ -41,6 +42,8 @@ import '../widgets/admin_responsive_layout.dart';
 // Append-only addition; the existing Edit / Remove / Make-primary
 // affordances stay untouched.
 import 'vendor_connections/vendor_connections_admin_mount.dart';
+
+const int _kLegacyRolloverHourDefault = 4;
 
 class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
@@ -3253,7 +3256,7 @@ class _LocationRow extends StatelessWidget {
         ),
         const SizedBox(height: 2),
         Text(
-          '${location.timezone} - business day starts ${rolloverHour.toString().padLeft(2, '0')}:00',
+          '${location.timezone} - legacy rollover ${rolloverHour.toString().padLeft(2, '0')}:00',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
           overflow: TextOverflow.ellipsis,
         ),
@@ -3533,7 +3536,7 @@ class _ActionRowWrap extends StatelessWidget {
 /// profile yet" state instead of fabricating values. Production
 /// passes a real [HttpAdminBusinessTimingResolutionGateway].
 final AdminBusinessTimingResolutionGateway
-    _fallbackAdminTimingResolutionGateway =
+_fallbackAdminTimingResolutionGateway =
     InMemoryAdminBusinessTimingResolutionGateway();
 
 class _AdminLocationTimingDialog extends StatelessWidget {
@@ -3559,10 +3562,9 @@ class _AdminLocationTimingDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bannerScope = _timingBannerScope(selectedScope);
-    final scopeLabel =
-        selectedScope.isLocationScope && timingLocation != null
-            ? '$operatorName / ${timingLocation!.name}'
-            : selectedScope.displayLabel;
+    final scopeLabel = selectedScope.isLocationScope && timingLocation != null
+        ? '$operatorName / ${timingLocation!.name}'
+        : selectedScope.displayLabel;
     final gateway =
         timingResolutionGateway ?? _fallbackAdminTimingResolutionGateway;
     return AlertDialog(
@@ -3668,9 +3670,7 @@ class _AdminLocationTimingDialog extends StatelessWidget {
 /// verbatim from the deleted synthetic resolver. Admin still NEVER
 /// writes timing cross-tenant (operator decision Q3); the only S4
 /// change is that the displayed values become real.
-AdminHierarchyScopeIntent _timingBannerScope(
-  AdminHierarchyScopeIntent scope,
-) {
+AdminHierarchyScopeIntent _timingBannerScope(AdminHierarchyScopeIntent scope) {
   switch (scope.scopeType) {
     case AdminHierarchyScopeType.business:
       return AdminHierarchyScopeIntent.business(
@@ -3727,10 +3727,7 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<AdminBusinessTimingResolution>(
-      future: gateway.resolve(
-        operatorId: operatorId,
-        locationId: locationId,
-      ),
+      future: gateway.resolve(operatorId: operatorId, locationId: locationId),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return const Padding(
@@ -3760,8 +3757,9 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
         }
         final AdminEffectiveTimingProjection projection;
         try {
-          projection =
-              AdminBusinessTimingResolutionProjection.project(resolution);
+          projection = AdminBusinessTimingResolutionProjection.project(
+            resolution,
+          );
         } on BusinessTimingProfileResolutionException {
           return Text(
             'Effective timing could not load. The operator owns these '
@@ -3818,9 +3816,7 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
                 children: <Widget>[
                   Text(
                     'Effective service periods',
-                    style: AppTextStyles.mono11(
-                      color: AppColors.sunsetDark,
-                    ),
+                    style: AppTextStyles.mono11(color: AppColors.sunsetDark),
                   ),
                   const SizedBox(height: 8),
                   for (final period in periods)
@@ -3831,8 +3827,8 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
                       source: sourceLabel,
                       daysLabel:
                           AdminBusinessTimingResolutionProjection.daysLabel(
-                        period.applicableDays,
-                      ),
+                            period.applicableDays,
+                          ),
                     ),
                 ],
               ),
@@ -3918,7 +3914,13 @@ class _TimingPeriodLine extends StatelessWidget {
             style: AppTextStyles.mono11(color: AppColors.textPrimary),
           ),
           const SizedBox(width: 10),
-          Text(source, style: AppTextStyles.mono8(color: AppColors.textMuted)),
+          Flexible(
+            child: Text(
+              source,
+              textAlign: TextAlign.right,
+              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
+          ),
         ],
       ),
     );
@@ -4192,7 +4194,6 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
   String _locationTimezone = 'America/Toronto';
   final String _subscriptionTier = 'launch';
   String _preferredCurrency = 'CAD';
-  int _rolloverHour = 4;
 
   @override
   void dispose() {
@@ -4213,7 +4214,10 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
         preferredCurrency: _preferredCurrency,
         primaryLocationName: _locationName.text.trim(),
         primaryLocationTimezone: _locationTimezone,
-        primaryLocationRolloverHour: _rolloverHour,
+        // Compatibility bridge: the current admin create route still
+        // requires this legacy column. Business Timing owns edits after
+        // onboarding.
+        primaryLocationRolloverHour: _kLegacyRolloverHourDefault,
         adminUserEmail: _adminEmail.text.trim(),
         idempotencyKey: widget.idempotencyKey,
       ),
@@ -4290,9 +4294,9 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                   onChanged: (v) => setState(() => _locationTimezone = v),
                 ),
                 const SizedBox(height: 12),
-                _RolloverHourDropdown(
-                  value: _rolloverHour,
-                  onChanged: (v) => setState(() => _rolloverHour = v),
+                const _LegacyRolloverReadOnly(
+                  key: Key('admin_onboard_legacy_rollover_readonly'),
+                  rolloverHour: _kLegacyRolloverHourDefault,
                 ),
               ],
             ),
@@ -4468,7 +4472,6 @@ class _LocationDialog extends StatefulWidget {
 class _LocationDialogState extends State<_LocationDialog> {
   late final TextEditingController _name;
   late String _timezone;
-  late int _rolloverHour;
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -4476,7 +4479,6 @@ class _LocationDialogState extends State<_LocationDialog> {
     super.initState();
     _name = TextEditingController(text: widget.existing?.name ?? '');
     _timezone = widget.existing?.timezone ?? 'America/Toronto';
-    _rolloverHour = widget.existing?.businessDayRolloverHour ?? 4;
   }
 
   @override
@@ -4494,7 +4496,10 @@ class _LocationDialogState extends State<_LocationDialog> {
           parentOrgUnitId: widget.parentOrgUnitId?.trim(),
           name: _name.text.trim(),
           timezone: _timezone,
-          businessDayRolloverHour: _rolloverHour,
+          // Compatibility bridge: the current admin create route still
+          // requires this legacy column. Business Timing owns edits after
+          // creation.
+          businessDayRolloverHour: _kLegacyRolloverHourDefault,
           idempotencyKey: widget.idempotencyKey,
         ),
       );
@@ -4504,7 +4509,6 @@ class _LocationDialogState extends State<_LocationDialog> {
           locationId: widget.existing!.locationId,
           name: _name.text.trim(),
           timezone: _timezone,
-          businessDayRolloverHour: _rolloverHour,
           idempotencyKey: widget.idempotencyKey,
         ),
       );
@@ -4552,9 +4556,11 @@ class _LocationDialogState extends State<_LocationDialog> {
                 onChanged: (v) => setState(() => _timezone = v),
               ),
               const SizedBox(height: 12),
-              _RolloverHourDropdown(
-                value: _rolloverHour,
-                onChanged: (v) => setState(() => _rolloverHour = v),
+              _LegacyRolloverReadOnly(
+                key: const Key('admin_location_legacy_rollover_readonly'),
+                rolloverHour:
+                    widget.existing?.businessDayRolloverHour ??
+                    _kLegacyRolloverHourDefault,
               ),
             ],
           ),
@@ -5063,35 +5069,40 @@ class _TimezonePickerDialogState extends State<_TimezonePickerDialog> {
   }
 }
 
-class _RolloverHourDropdown extends StatelessWidget {
-  const _RolloverHourDropdown({required this.value, required this.onChanged});
+class _LegacyRolloverReadOnly extends StatelessWidget {
+  const _LegacyRolloverReadOnly({super.key, required this.rolloverHour});
 
-  final int value;
-  final ValueChanged<int> onChanged;
+  final int? rolloverHour;
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<int>(
-      key: const Key('admin_rollover_hour_dropdown'),
-      initialValue: value,
-      decoration: InputDecoration(
-        labelText: 'Business-day rollover hour (0-23)',
-        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
+    final display = rolloverHour == null
+        ? 'No legacy rollover on file'
+        : '${rolloverHour!.toString().padLeft(2, '0')}:00 local';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
       ),
-      items: <DropdownMenuItem<int>>[
-        for (var hour = 0; hour < 24; hour++)
-          DropdownMenuItem<int>(
-            value: hour,
-            child: Text('${hour.toString().padLeft(2, '0')}:00'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Legacy rollover',
+            style: AppTextStyles.mono14(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
           ),
-      ],
-      onChanged: (v) {
-        if (v != null) onChanged(v);
-      },
+          const SizedBox(height: 4),
+          Text(
+            '$display. Edit business-day start in Business Timing.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }

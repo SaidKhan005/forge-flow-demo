@@ -16199,12 +16199,14 @@ Future<void> _routeOperatorLocationAdmin({
     if (body.containsKey('timezone')) {
       timezone = _requireBodyTimezone(body, 'timezone');
     }
-    int? rolloverHour;
     if (body.containsKey('business_day_rollover_hour')) {
-      rolloverHour = _requireBodyRolloverHour(
-        body,
-        'business_day_rollover_hour',
-      );
+      _writeJson(response, 410, <String, Object?>{
+        'error': 'legacy_location_rollover_writes_disabled',
+        'message':
+            'Business Timing owns business-day start. Edit timing profiles '
+            'instead of the legacy location rollover field.',
+      });
+      return;
     }
     await _runAdminIdempotent(
       response: response,
@@ -16220,7 +16222,7 @@ Future<void> _routeOperatorLocationAdmin({
           name: _optionalBodyString(body, 'name'),
           address: _optionalBodyString(body, 'address'),
           timezone: timezone,
-          businessDayRolloverHour: rolloverHour,
+          businessDayRolloverHour: null,
           adminReason: adminReason!,
         );
         if (patched == null) {

@@ -108,7 +108,8 @@ void main() {
             effectiveAtBusinessDate: '2026-05-01',
             weekStartDay: weekStart,
             businessDayStartLocal: dayStart,
-            servicePeriods: periods ??
+            servicePeriods:
+                periods ??
                 <AdminResolutionServicePeriod>[
                   const AdminResolutionServicePeriod(
                     key: 'lunch',
@@ -916,6 +917,11 @@ void main() {
       find.byKey(const Key('admin_onboard_operator_dialog')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('admin_rollover_hour_dropdown')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_onboard_legacy_rollover_readonly')),
+      findsOneWidget,
+    );
 
     await tester.enterText(
       find.byKey(const Key('admin_onboard_business_name')),
@@ -1685,6 +1691,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
+    expect(find.byKey(const Key('admin_rollover_hour_dropdown')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_location_legacy_rollover_readonly')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const Key('admin_location_parent_org_unit_field')),
       findsOneWidget,
@@ -1730,6 +1741,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_location_edit_dialog')), findsOneWidget);
+    expect(find.byKey(const Key('admin_rollover_hour_dropdown')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_location_legacy_rollover_readonly')),
+      findsOneWidget,
+    );
 
     await tester.enterText(
       find.byKey(const Key('admin_location_name_field')),
