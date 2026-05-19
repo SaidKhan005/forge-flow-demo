@@ -24,6 +24,7 @@ import 'package:flutter/material.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../services/integration/iana_timezone_converter.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../auth/operator_web_handoff_redeem_gateway.dart';
@@ -1065,10 +1066,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     } else if (locationScope != null && _vendorOutageCountKey != outageKey) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        unawaited(_refreshVendorOutageCount(
-          operatorId: session.operatorId,
-          locationId: locationScope.id,
-        ));
+        unawaited(
+          _refreshVendorOutageCount(
+            operatorId: session.operatorId,
+            locationId: locationScope.id,
+          ),
+        );
       });
     }
 
@@ -1143,8 +1146,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         alertCount: locationScope == null ? 0 : _vendorOutageCount,
         alertTooltip: _vendorOutageCount == 0
             ? null
-            : '${_vendorOutageCount} vendor ${_vendorOutageCount == 1 ? "connection is" : "connections are"} '
-                'in an error state. Open Vendor integrations to reconnect.',
+            : '$_vendorOutageCount vendor ${_vendorOutageCount == 1 ? "connection is" : "connections are"} '
+                  'in an error state. Open Vendor integrations to reconnect.',
       ),
       const OperatorWebNavItem(
         id: kOperatorWebNavDataAccuracy,
@@ -1540,6 +1543,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           session: session,
           gateway: _teamRolesGateway,
           existing: _rolesEditTarget,
+          roleScope: RoleScope.business,
           onSaved: (_) => _closeRolesSubRoute(reload: true),
           onClose: () => _closeRolesSubRoute(),
         );
@@ -2215,8 +2219,8 @@ class _ForbiddenScreen extends StatelessWidget {
                         'Signed in as '
                         '${session.email.isEmpty ? session.uid : session.email}, '
                         'but the Forge & Flow Operator Web Console is for '
-                        'operator owners, operator admins, and location '
-                        'managers. Floor staff and other roles can keep '
+                        'operator owners, general managers, and location '
+                        'managers. Other roles can keep '
                         'using the Forge & Flow mobile app. Most '
                         'day-to-day actions live there.',
                         style: AppTextStyles.body13(

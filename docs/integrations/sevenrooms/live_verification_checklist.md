@@ -59,7 +59,7 @@ that resolved each check that failed.
       no data gap on reconnect; operator re-pastes the F&F webhook
       URL into the SevenRooms portal cleanly.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200 on the connect / disconnect routes.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
@@ -112,7 +112,7 @@ prod passing — vendor sandboxes sometimes lie).
       Test: `<test_path>:<line>`
 - [ ] **Disconnect → reconnect.** Watermark preserved; no data gap.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit

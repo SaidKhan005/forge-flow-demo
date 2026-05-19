@@ -185,7 +185,8 @@ class WageAuthoritySection extends StatefulWidget {
 class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   /// Current rows, keyed by `wage_role_row_id`. Mirrors what the
   /// gateway returned on the most recent list call.
-  final Map<String, WageRoleRowRecord> _rowsById = <String, WageRoleRowRecord>{};
+  final Map<String, WageRoleRowRecord> _rowsById =
+      <String, WageRoleRowRecord>{};
 
   bool _loading = true;
   String? _loadError;
@@ -202,14 +203,12 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   /// every time the operator types in the edit form so the blended-
   /// wage summary card recomputes without waiting for a save round-
   /// trip. Cleared when the form closes (save / cancel).
-  final Map<String, _DraftRowValues> _draftEdits =
-      <String, _DraftRowValues>{};
+  final Map<String, _DraftRowValues> _draftEdits = <String, _DraftRowValues>{};
 
   /// In-flight values for an open add-row form, keyed by `laborBucket`.
   /// Updated by the same typing seam as [_draftEdits] so newly typed
   /// rows roll into the blended-wage summary immediately.
-  final Map<String, _DraftRowValues> _draftAdds =
-      <String, _DraftRowValues>{};
+  final Map<String, _DraftRowValues> _draftAdds = <String, _DraftRowValues>{};
 
   int _idemCounter = 0;
 
@@ -264,12 +263,14 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   }
 
   List<WageRoleRowRecord> _rowsForBucket(String wireBucket) {
-    final list = _rowsById.values
-        .where((r) => r.laborBucket == wireBucket && r.isActive)
-        .toList()
-      ..sort((a, b) => a.roleName.toLowerCase().compareTo(
-            b.roleName.toLowerCase(),
-          ));
+    final list =
+        _rowsById.values
+            .where((r) => r.laborBucket == wireBucket && r.isActive)
+            .toList()
+          ..sort(
+            (a, b) =>
+                a.roleName.toLowerCase().compareTo(b.roleName.toLowerCase()),
+          );
     return list;
   }
 
@@ -389,28 +390,34 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       if (!row.isActive) continue;
       final draft = _draftEdits[row.wageRoleRowId];
       if (draft != null) {
-        inputs.add(BlendedWageInputRow(
-          laborBucket: row.laborBucket,
-          hourlyRate: draft.hourlyRate ?? row.hourlyRate,
-          weightedHours: draft.weightedHours ?? row.weightedHours,
-        ));
+        inputs.add(
+          BlendedWageInputRow(
+            laborBucket: row.laborBucket,
+            hourlyRate: draft.hourlyRate ?? row.hourlyRate,
+            weightedHours: draft.weightedHours ?? row.weightedHours,
+          ),
+        );
       } else {
-        inputs.add(BlendedWageInputRow(
-          laborBucket: row.laborBucket,
-          hourlyRate: row.hourlyRate,
-          weightedHours: row.weightedHours,
-        ));
+        inputs.add(
+          BlendedWageInputRow(
+            laborBucket: row.laborBucket,
+            hourlyRate: row.hourlyRate,
+            weightedHours: row.weightedHours,
+          ),
+        );
       }
     }
     for (final entry in _draftAdds.entries) {
       final hr = entry.value.hourlyRate;
       final wh = entry.value.weightedHours;
       if (hr == null || wh == null) continue;
-      inputs.add(BlendedWageInputRow(
-        laborBucket: entry.key,
-        hourlyRate: hr,
-        weightedHours: wh,
-      ));
+      inputs.add(
+        BlendedWageInputRow(
+          laborBucket: entry.key,
+          hourlyRate: hr,
+          weightedHours: wh,
+        ),
+      );
     }
     return inputs;
   }
@@ -431,11 +438,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
     return widget.connectedLaborVendorIds;
   }
 
-  void _showSnackBar(
-    String message, {
-    required bool isError,
-    String? keyName,
-  }) {
+  void _showSnackBar(String message, {required bool isError, String? keyName}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         key: keyName != null ? Key(keyName) : null,
@@ -506,7 +509,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           const SizedBox(height: 12),
           _ReadOnlyBanner(
             message:
-                'Only operator owners and operator admins can change wage rows. '
+                'Only operator owners can change wage rows. '
                 'Ask one of them to make the change for you.',
           ),
         ],
@@ -526,9 +529,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
         BlendedWageSummaryCard(
           summary: computeBlendedWageSummary(
             rows: _summaryInputs(),
-            bucketOrder: <String>[
-              for (final b in _kBuckets) b.wire,
-            ],
+            bucketOrder: <String>[for (final b in _kBuckets) b.wire],
           ),
         ),
         const SizedBox(height: 18),
@@ -579,10 +580,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
               form: form,
               existingRowId: row.wageRoleRowId,
             ),
-            onSaveAdd: (form) => _saveRow(
-              laborBucket: bucket.wire,
-              form: form,
-            ),
+            onSaveAdd: (form) => _saveRow(laborBucket: bucket.wire, form: form),
             onDelete: _confirmAndDelete,
           ),
           const SizedBox(height: 14),
@@ -771,17 +769,19 @@ class _BucketSection extends StatelessWidget {
               child: Text(
                 canWrite
                     ? "No wage rates set at this scope yet. Add rates and "
-                        "Forge & Flow will inherit them down to lower scopes."
-                    : "No roles yet for this group. An operator owner or "
-                        "admin can add one so Forge & Flow knows the typical "
-                        "hourly cost.",
+                          "Forge & Flow will inherit them down to lower scopes."
+                    : "No roles yet for this group. An operator owner "
+                          "can add one so Forge & Flow knows the typical "
+                          "hourly cost.",
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
             ),
           for (var i = 0; i < rows.length; i++) ...<Widget>[
             isEditing(rows[i].wageRoleRowId)
                 ? _WageRowForm(
-                    key: Key('wage_authority_row_edit_${rows[i].wageRoleRowId}'),
+                    key: Key(
+                      'wage_authority_row_edit_${rows[i].wageRoleRowId}',
+                    ),
                     initial: rows[i],
                     onCancel: () => onCancelEdit(rows[i].wageRoleRowId),
                     onSave: (form) => onSaveEdit(rows[i], form),
@@ -1023,10 +1023,12 @@ class _WageRowFormState extends State<_WageRowForm> {
   void _emitDraft() {
     final cb = widget.onDraftChanged;
     if (cb == null) return;
-    cb(_DraftRowValues(
-      hourlyRate: double.tryParse(_hourlyRate.text.trim()),
-      weightedHours: double.tryParse(_weightedHours.text.trim()),
-    ));
+    cb(
+      _DraftRowValues(
+        hourlyRate: double.tryParse(_hourlyRate.text.trim()),
+        weightedHours: double.tryParse(_weightedHours.text.trim()),
+      ),
+    );
   }
 
   Future<void> _onSave() async {
@@ -1054,15 +1056,17 @@ class _WageRowFormState extends State<_WageRowForm> {
       _saving = true;
     });
     try {
-      await widget.onSave(_WageRowFormResult(
-        restaurantId: restaurantId,
-        roleName: roleName,
-        hourlyRate: hourlyRate,
-        weightedHours: weightedHours,
-        jobCode: jobCode.isEmpty ? null : jobCode,
-        vendorId: vendorId.isEmpty ? null : vendorId,
-        vendorRoleId: vendorRoleId.isEmpty ? null : vendorRoleId,
-      ));
+      await widget.onSave(
+        _WageRowFormResult(
+          restaurantId: restaurantId,
+          roleName: roleName,
+          hourlyRate: hourlyRate,
+          weightedHours: weightedHours,
+          jobCode: jobCode.isEmpty ? null : jobCode,
+          vendorId: vendorId.isEmpty ? null : vendorId,
+          vendorRoleId: vendorRoleId.isEmpty ? null : vendorRoleId,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }

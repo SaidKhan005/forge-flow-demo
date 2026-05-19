@@ -23,8 +23,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
+import '../../infrastructure/persistence/sqlite/dao/data_accuracy_service_period_settings_cache_dao.dart';
 import '../../infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
@@ -40,6 +42,12 @@ import 'settings_shared_widgets.dart';
 /// `lib/services/benchmark_tracker_read_service.dart`.
 typedef ServicePeriodDefinitionsLoader =
     Future<List<ServicePeriodDefinition>> Function(String restaurantId);
+
+/// Loads the most recent synced per-service-period data accuracy rows.
+typedef ServicePeriodCoversSourceLoader =
+    Future<List<DataAccuracyServicePeriodSetting>> Function(
+      String restaurantId,
+    );
 
 /// Loader abstraction. Production reads from SQLite; widget tests
 /// inject a fake to skip database setup.
@@ -58,6 +66,7 @@ class SettingsCoversSetupSection extends StatefulWidget {
     this.loader,
     this.writer,
     this.servicePeriodsLoader,
+    this.coversSourceLoader,
     this.initialBusinessDate,
     this.initialDaypart = 'dinner',
     this.onAfterSave,
@@ -90,6 +99,10 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// canonical fixture-era definitions only when no config exists.
   final ServicePeriodDefinitionsLoader? servicePeriodsLoader;
 
+  /// Optional loader for the synced keyed Covers-source settings. The
+  /// default reads the local proxy-sync cache.
+  final ServicePeriodCoversSourceLoader? coversSourceLoader;
+
   /// Optional initial date for the picker. When null, falls back to
   /// today (restaurant-local approximation = device-local date).
   final DateTime? initialBusinessDate;
@@ -119,6 +132,8 @@ class _SettingsCoversSetupSectionState
   List<ManualCoverEntry> _recentEntries = const <ManualCoverEntry>[];
   List<ServicePeriodDefinition> _servicePeriods =
       const <ServicePeriodDefinition>[];
+  List<DataAccuracyServicePeriodSetting> _servicePeriodSettings =
+      const <DataAccuracyServicePeriodSetting>[];
 
   @override
   void initState() {
@@ -128,6 +143,7 @@ class _SettingsCoversSetupSectionState
     _selectedDaypart = widget.initialDaypart;
     _loadRecent();
     _loadServicePeriods();
+    _loadCoversSourceSettings();
   }
 
   @override
@@ -136,6 +152,7 @@ class _SettingsCoversSetupSectionState
     if (oldWidget.restaurantId != widget.restaurantId) {
       _loadRecent();
       _loadServicePeriods();
+      _loadCoversSourceSettings();
     }
   }
 
@@ -169,6 +186,27 @@ class _SettingsCoversSetupSectionState
         }
       });
     }
+  }
+
+  Future<void> _loadCoversSourceSettings() async {
+    final loader = widget.coversSourceLoader ?? _defaultCoversSourceLoader;
+    try {
+      final rows = await loader(widget.restaurantId);
+      if (!mounted) return;
+      setState(() => _servicePeriodSettings = rows);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _servicePeriodSettings = const <DataAccuracyServicePeriodSetting>[];
+      });
+    }
+  }
+
+  static Future<List<DataAccuracyServicePeriodSetting>>
+  _defaultCoversSourceLoader(String restaurantId) async {
+    final db = await SqliteDatabase.instance.database;
+    final dao = DataAccuracyServicePeriodSettingsCacheDao(db);
+    return dao.getRows(restaurantId);
   }
 
   static Future<List<ServicePeriodDefinition>> _defaultServicePeriodsLoader(
@@ -236,6 +274,45 @@ class _SettingsCoversSetupSectionState
     final db = await SqliteDatabase.instance.database;
     final dao = ManualCoverEntryDao(db);
     await dao.upsert(entry);
+  }
+
+  _CoversSourceStatus _coversSourceStatusFor(String servicePeriodId) {
+    final selectedDate = _isoDate(_selectedDate);
+    DataAccuracyServicePeriodSetting? best;
+    for (final row in _servicePeriodSettings) {
+      if (row.servicePeriodKey != servicePeriodId) continue;
+      if (row.effectiveAtBusinessDate.compareTo(selectedDate) > 0) continue;
+      if (best == null ||
+          row.effectiveAtBusinessDate.compareTo(best.effectiveAtBusinessDate) >
+              0) {
+        best = row;
+      }
+    }
+    if (best == null) {
+      return const _CoversSourceStatus(
+        label: 'Vendor feed',
+        sourceLabel: 'Default',
+        effectiveAtBusinessDate: null,
+      );
+    }
+    return _CoversSourceStatus(
+      label: _coversSourceLabel(best.coversSource),
+      sourceLabel: 'Last synced service-period setting',
+      effectiveAtBusinessDate: best.effectiveAtBusinessDate,
+    );
+  }
+
+  static String _coversSourceLabel(ServicePeriodCoversSource source) {
+    switch (source) {
+      case ServicePeriodCoversSource.vendor:
+        return 'Vendor feed';
+      case ServicePeriodCoversSource.forecast:
+        return 'Forecast';
+      case ServicePeriodCoversSource.manual:
+        return 'Manual entry';
+      case ServicePeriodCoversSource.reservationPlusWalkin:
+        return 'Reservations + walk-ins';
+    }
   }
 
   Future<void> _onPickDate() async {
@@ -341,6 +418,12 @@ class _SettingsCoversSetupSectionState
                       _confirmation = null;
                     });
                   },
+                ),
+              ),
+              _FormRow(
+                label: 'Covers source',
+                child: _CoversSourcePill(
+                  status: _coversSourceStatusFor(_selectedDaypart),
                 ),
               ),
               _FormRow(
@@ -491,6 +574,57 @@ class _Header extends StatelessWidget {
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
+    );
+  }
+}
+
+class _CoversSourceStatus {
+  const _CoversSourceStatus({
+    required this.label,
+    required this.sourceLabel,
+    required this.effectiveAtBusinessDate,
+  });
+
+  final String label;
+  final String sourceLabel;
+  final String? effectiveAtBusinessDate;
+}
+
+class _CoversSourcePill extends StatelessWidget {
+  const _CoversSourcePill({required this.status});
+
+  final _CoversSourceStatus status;
+
+  @override
+  Widget build(BuildContext context) {
+    final effective = status.effectiveAtBusinessDate;
+    final detail = effective == null
+        ? status.sourceLabel
+        : '${status.sourceLabel} since $effective';
+    return Container(
+      key: const Key('settings_covers_setup_effective_source'),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            status.label,
+            key: const Key('settings_covers_setup_effective_source_label'),
+            style: AppTextStyles.body14(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            detail,
+            key: const Key('settings_covers_setup_effective_source_detail'),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ],
+      ),
     );
   }
 }

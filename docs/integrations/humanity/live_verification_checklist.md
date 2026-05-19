@@ -70,7 +70,7 @@ that resolved each check that failed.
       (no refresh-token magic on legacy auth).
       Test: `<test_path>:<line>`
 - [ ] **Permission gate.** `location_manager` 403;
-      `operator_admin` 200.
+      `operator_owner` 200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
       flips `demo_mode_state.is_demo` to `false`.

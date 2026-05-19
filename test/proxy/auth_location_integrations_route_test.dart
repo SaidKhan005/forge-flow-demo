@@ -60,7 +60,7 @@ Future<({HttpServer server, HttpClient client, Uri baseUri})> _spinUp({
     userId: 'user-1',
     operatorId: 'op-1',
     locationId: 'loc-1',
-    roles: <String>['operator_admin'],
+    roles: <String>['operator_owner'],
   ),
   bool unauthenticated = false,
 }) async {
@@ -202,15 +202,19 @@ void main() {
         expect(response.statusCode, HttpStatus.ok);
         final connections = body['connections']! as List<Object?>;
         expect(connections, hasLength(2));
-        final pos = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'toast',
-        )! as Map<String, Object?>;
+        final pos =
+            connections.firstWhere(
+                  (c) => (c! as Map<String, Object?>)['vendor_id'] == 'toast',
+                )!
+                as Map<String, Object?>;
         expect(pos['category'], 'pos');
         expect(pos['status'], 'connected');
         expect(pos['connection_id'], 'cnx-1');
-        final labor = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == '7shifts',
-        )! as Map<String, Object?>;
+        final labor =
+            connections.firstWhere(
+                  (c) => (c! as Map<String, Object?>)['vendor_id'] == '7shifts',
+                )!
+                as Map<String, Object?>;
         expect(labor['category'], 'labor');
         expect(labor['status'], 'connected');
 
@@ -295,6 +299,7 @@ void main() {
         ),
       );
     }
+
     return _withRealHttp(() async {
       final ctx = await _spinUp(projection: countingProjection);
       try {
@@ -422,9 +427,11 @@ void main() {
         final connections = body['connections']! as List<Object?>;
         expect(connections, hasLength(5));
 
-        final running = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'toast',
-        )! as Map<String, Object?>;
+        final running =
+            connections.firstWhere(
+                  (c) => (c! as Map<String, Object?>)['vendor_id'] == 'toast',
+                )!
+                as Map<String, Object?>;
         expect(running.containsKey('first_backfill'), isTrue);
         final runningBackfill =
             running['first_backfill']! as Map<String, Object?>;
@@ -435,37 +442,46 @@ void main() {
         expect(runningBackfill['processed_days'], 12);
         expect(runningBackfill['total_days'], 60);
 
-        final done = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'humanity',
-        )! as Map<String, Object?>;
-        final doneBackfill =
-            done['first_backfill']! as Map<String, Object?>;
+        final done =
+            connections.firstWhere(
+                  (c) =>
+                      (c! as Map<String, Object?>)['vendor_id'] == 'humanity',
+                )!
+                as Map<String, Object?>;
+        final doneBackfill = done['first_backfill']! as Map<String, Object?>;
         expect(doneBackfill['status'], 'succeeded');
         expect(doneBackfill['completed_at'], '2026-05-06T22:22:00.000Z');
 
-        final failed = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'square',
-        )! as Map<String, Object?>;
+        final failed =
+            connections.firstWhere(
+                  (c) => (c! as Map<String, Object?>)['vendor_id'] == 'square',
+                )!
+                as Map<String, Object?>;
         final failedBackfill =
             failed['first_backfill']! as Map<String, Object?>;
         expect(failedBackfill['status'], 'failed');
         expect(failedBackfill['failure_reason'], 'token revoked mid-pull');
 
-        final dl = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == 'opentable',
-        )! as Map<String, Object?>;
-        final dlBackfill =
-            dl['first_backfill']! as Map<String, Object?>;
+        final dl =
+            connections.firstWhere(
+                  (c) =>
+                      (c! as Map<String, Object?>)['vendor_id'] == 'opentable',
+                )!
+                as Map<String, Object?>;
+        final dlBackfill = dl['first_backfill']! as Map<String, Object?>;
         expect(dlBackfill['status'], 'dead_lettered');
         expect(dlBackfill['failure_reason'], 'attempts exhausted');
 
-        final legacy = connections.firstWhere(
-          (c) => (c! as Map<String, Object?>)['vendor_id'] == '7shifts',
-        )! as Map<String, Object?>;
+        final legacy =
+            connections.firstWhere(
+                  (c) => (c! as Map<String, Object?>)['vendor_id'] == '7shifts',
+                )!
+                as Map<String, Object?>;
         expect(
           legacy.containsKey('first_backfill'),
           isFalse,
-          reason: 'legacy rows without a job row must not emit '
+          reason:
+              'legacy rows without a job row must not emit '
               'first_backfill so the operator-web client renders no '
               'progress UI for them',
         );

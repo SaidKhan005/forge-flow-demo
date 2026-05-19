@@ -169,435 +169,418 @@ void main() {
   });
 
   group('HARD-H feature flags admin live-binding', () {
-    test(
-      'toggle round-trip: POST /v1/admin/feature-flags/toggle as '
-      'super_admin returns 200 + lands exactly one audit_logs row '
-      'tagged $_adminEventType for the per-operator flag',
-      () async {
-        verifier.claims = _adminClaims();
-        final priorAuditLogsCount = await _countAuditLogsForFlag(
-          adminPool,
-          flagId: _flagA,
-        );
+    test('toggle round-trip: POST /v1/admin/feature-flags/toggle as '
+        'super_admin returns 200 + lands exactly one audit_logs row '
+        'tagged $_adminEventType for the per-operator flag', () async {
+      verifier.claims = _adminClaims();
+      final priorAuditLogsCount = await _countAuditLogsForFlag(
+        adminPool,
+        flagId: _flagA,
+      );
 
-        final response = await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': 'hardh-toggle-roundtrip-key',
-          },
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
-        );
+      final response = await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': 'hardh-toggle-roundtrip-key',
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
+      );
 
-        expect(
-          response.statusCode,
-          equals(200),
-          reason:
-              'POST as super_admin must return 200; got ${response.statusCode} '
-              'body=${response.body}',
-        );
-        final body = jsonDecode(response.body) as Map<String, Object?>;
-        final flag = (body['flag'] as Map).cast<String, Object?>();
-        expect(flag['flag_id'], equals(_flagA));
-        expect(flag['enabled'], isTrue);
-        expect(flag['updated_by'], equals(_userAdminId));
+      expect(
+        response.statusCode,
+        equals(200),
+        reason:
+            'POST as super_admin must return 200; got ${response.statusCode} '
+            'body=${response.body}',
+      );
+      final body = jsonDecode(response.body) as Map<String, Object?>;
+      final flag = (body['flag'] as Map).cast<String, Object?>();
+      expect(flag['flag_id'], equals(_flagA));
+      expect(flag['enabled'], isTrue);
+      expect(flag['updated_by'], equals(_userAdminId));
 
-        final newAuditLogsCount = await _countAuditLogsForFlag(
-          adminPool,
-          flagId: _flagA,
-        );
-        expect(
-          newAuditLogsCount,
-          equals(priorAuditLogsCount + 1),
-          reason:
-              'POST must land exactly one new audit_logs row for $_flagA; '
-              'the HARD-H gateway fix at proxy_bootstrap.dart:2386 passes '
-              "the flag's operator_id + location_id through to "
-              'insertSystemEvent so the audit_logs fan-out actually fires '
-              'for per-operator flags',
-        );
-      },
-    );
+      final newAuditLogsCount = await _countAuditLogsForFlag(
+        adminPool,
+        flagId: _flagA,
+      );
+      expect(
+        newAuditLogsCount,
+        equals(priorAuditLogsCount + 1),
+        reason:
+            'POST must land exactly one new audit_logs row for $_flagA; '
+            'the HARD-H gateway fix at proxy_bootstrap.dart:2386 passes '
+            "the flag's operator_id + location_id through to "
+            'insertSystemEvent so the audit_logs fan-out actually fires '
+            'for per-operator flags',
+      );
+    });
 
-    test(
-      'idempotent retry: two POSTs with the same Idempotency-Key + '
-      'identical body collapse to one audit_logs row + one toggle. '
-      'Backed by HARD-H admin_request_idempotency table.',
-      () async {
-        verifier.claims = _adminClaims();
-        const idempotencyKey = 'hardh-idem-key-second-test';
-        final priorAuditCount = await _countAuditLogsForKey(
-          adminPool,
-          key: idempotencyKey,
-        );
-        expect(
-          priorAuditCount,
-          equals(0),
-          reason: 'precondition: this idempotency_key must not be in use yet',
-        );
+    test('idempotent retry: two POSTs with the same Idempotency-Key + '
+        'identical body collapse to one audit_logs row + one toggle. '
+        'Backed by HARD-H admin_request_idempotency table.', () async {
+      verifier.claims = _adminClaims();
+      const idempotencyKey = 'hardh-idem-key-second-test';
+      final priorAuditCount = await _countAuditLogsForKey(
+        adminPool,
+        key: idempotencyKey,
+      );
+      expect(
+        priorAuditCount,
+        equals(0),
+        reason: 'precondition: this idempotency_key must not be in use yet',
+      );
 
-        Future<HttpClientResponseRecord> sendOnce() => _post(
-              httpClient,
-              baseUri.resolve('/v1/admin/feature-flags/toggle'),
-              headers: <String, String>{
-                'Authorization': 'Bearer test-admin-token',
-                'Idempotency-Key': idempotencyKey,
-              },
-              body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
-            );
+      Future<HttpClientResponseRecord> sendOnce() => _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
+      );
 
-        // First POST executes the gateway and records the response.
-        final first = await sendOnce();
-        expect(
-          first.statusCode,
-          equals(200),
-          reason:
-              'first POST must succeed; got ${first.statusCode} '
-              'body=${first.body}',
-        );
+      // First POST executes the gateway and records the response.
+      final first = await sendOnce();
+      expect(
+        first.statusCode,
+        equals(200),
+        reason:
+            'first POST must succeed; got ${first.statusCode} '
+            'body=${first.body}',
+      );
 
-        // Second POST with the same key + body must replay the cached
-        // response, NOT execute the gateway again.
-        final second = await sendOnce();
-        expect(
-          second.statusCode,
-          equals(200),
-          reason:
-              'duplicate POST must replay cached 200 result; got '
-              '${second.statusCode} body=${second.body}',
-        );
-        expect(
-          second.body,
-          equals(first.body),
-          reason: 'duplicate POST must return the byte-identical '
-              'cached response',
-        );
+      // Second POST with the same key + body must replay the cached
+      // response, NOT execute the gateway again.
+      final second = await sendOnce();
+      expect(
+        second.statusCode,
+        equals(200),
+        reason:
+            'duplicate POST must replay cached 200 result; got '
+            '${second.statusCode} body=${second.body}',
+      );
+      expect(
+        second.body,
+        equals(first.body),
+        reason:
+            'duplicate POST must return the byte-identical '
+            'cached response',
+      );
 
-        // Exactly one audit_logs row for the key — the wire-side
-        // dedup at HARD-H admin_request_idempotency caught the retry
-        // before the gateway ran a second toggle.
-        final newAuditCount = await _countAuditLogsForKey(
-          adminPool,
-          key: idempotencyKey,
-        );
-        expect(
-          newAuditCount,
-          equals(1),
-          reason:
-              'idempotent retry must collapse to a single audit row — '
-              'two rows would mean the dedup at admin_request_idempotency '
-              'is broken',
-        );
-      },
-    );
+      // Exactly one audit_logs row for the key — the wire-side
+      // dedup at HARD-H admin_request_idempotency caught the retry
+      // before the gateway ran a second toggle.
+      final newAuditCount = await _countAuditLogsForKey(
+        adminPool,
+        key: idempotencyKey,
+      );
+      expect(
+        newAuditCount,
+        equals(1),
+        reason:
+            'idempotent retry must collapse to a single audit row — '
+            'two rows would mean the dedup at admin_request_idempotency '
+            'is broken',
+      );
+    });
 
-    test(
-      'idempotency conflict: same Idempotency-Key with a DIFFERENT body '
-      'returns 409 idempotency_key_conflict',
-      () async {
-        verifier.claims = _adminClaims();
-        const idempotencyKey = 'hardh-idem-conflict-key';
+    test('idempotency conflict: same Idempotency-Key with a DIFFERENT body '
+        'returns 409 idempotency_key_conflict', () async {
+      verifier.claims = _adminClaims();
+      const idempotencyKey = 'hardh-idem-conflict-key';
 
-        final first = await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': idempotencyKey,
-          },
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
-        );
-        expect(first.statusCode, equals(200));
+      final first = await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': idempotencyKey,
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
+      );
+      expect(first.statusCode, equals(200));
 
-        final second = await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': idempotencyKey,
-          },
-          // Different enabled value.
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': false},
-        );
-        expect(
-          second.statusCode,
-          equals(409),
-          reason:
-              'reusing the key with a different body must surface as 409 '
-              'idempotency_key_conflict, not silently replay the prior '
-              'response. Got ${second.statusCode} body=${second.body}',
-        );
-        final body = jsonDecode(second.body) as Map<String, Object?>;
-        expect(body['error'], equals('idempotency_key_conflict'));
-      },
-    );
+      final second = await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': idempotencyKey,
+        },
+        // Different enabled value.
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': false},
+      );
+      expect(
+        second.statusCode,
+        equals(409),
+        reason:
+            'reusing the key with a different body must surface as 409 '
+            'idempotency_key_conflict, not silently replay the prior '
+            'response. Got ${second.statusCode} body=${second.body}',
+      );
+      final body = jsonDecode(second.body) as Map<String, Object?>;
+      expect(body['error'], equals('idempotency_key_conflict'));
+    });
 
-    test(
-      'RLS isolation: tenant A query of audit_logs returns at least '
-      'its own row and zero operator B rows; tenant B sees the mirror '
-      '— verifies audit_logs_per_tenant_select policy',
-      () async {
-        // Drive the toggles through the production route so the
-        // gateway-issued audit_logs rows carry the per-operator
-        // operator_id (post-HARD-H gateway fix). Then verify the
-        // tenant-scoped SELECT under each operator's app.operator_id
-        // sees only its own rows.
-        verifier.claims = _adminClaims();
-        await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': 'hardh-rls-key-A',
-          },
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
-        );
-        // Same super_admin actor toggles operator B's flag — the
-        // gateway picks up the flag's operator_id (not the actor's
-        // operator_id), so the audit_logs row for $_flagB lands under
-        // operator B's chain.
-        await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': 'hardh-rls-key-B',
-          },
-          body: <String, Object?>{'flag_id': _flagB, 'enabled': true},
-        );
+    test('RLS isolation: tenant A query of audit_logs returns at least '
+        'its own row and zero operator B rows; tenant B sees the mirror '
+        '— verifies audit_logs_per_tenant_select policy', () async {
+      // Drive the toggles through the production route so the
+      // gateway-issued audit_logs rows carry the per-operator
+      // operator_id (post-HARD-H gateway fix). Then verify the
+      // tenant-scoped SELECT under each operator's app.operator_id
+      // sees only its own rows.
+      verifier.claims = _adminClaims();
+      await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': 'hardh-rls-key-A',
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
+      );
+      // Same super_admin actor toggles operator B's flag — the
+      // gateway picks up the flag's operator_id (not the actor's
+      // operator_id), so the audit_logs row for $_flagB lands under
+      // operator B's chain.
+      await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': 'hardh-rls-key-B',
+        },
+        body: <String, Object?>{'flag_id': _flagB, 'enabled': true},
+      );
 
-        final allRows = await _selectAuditLogsAsAdmin(
-          adminPool,
-          action: _adminEventType,
-        );
-        expect(
-          allRows.where((r) => r.operatorId == _opA).length,
-          greaterThanOrEqualTo(1),
-          reason:
-              'precondition: BYPASSRLS read must see operator A\'s '
-              'audit_logs row (the toggle actually wrote)',
-        );
-        expect(
-          allRows.where((r) => r.operatorId == _opB).length,
-          greaterThanOrEqualTo(1),
-          reason:
-              'precondition: BYPASSRLS read must see operator B\'s '
-              'audit_logs row',
-        );
+      final allRows = await _selectAuditLogsAsAdmin(
+        adminPool,
+        action: _adminEventType,
+      );
+      expect(
+        allRows.where((r) => r.operatorId == _opA).length,
+        greaterThanOrEqualTo(1),
+        reason:
+            'precondition: BYPASSRLS read must see operator A\'s '
+            'audit_logs row (the toggle actually wrote)',
+      );
+      expect(
+        allRows.where((r) => r.operatorId == _opB).length,
+        greaterThanOrEqualTo(1),
+        reason:
+            'precondition: BYPASSRLS read must see operator B\'s '
+            'audit_logs row',
+      );
 
-        final viewForA = await _selectAuditLogsAsTenant(
-          tenantWrapper,
-          ctx: TenantContext(
-            operatorId: _opA,
-            locationId: _locA,
-            userId: _userAdminId,
-          ),
-          action: _adminEventType,
-        );
-        final viewForB = await _selectAuditLogsAsTenant(
-          tenantWrapper,
-          ctx: TenantContext(
-            operatorId: _opB,
-            locationId: _locB,
-            userId: _userAdminId,
-          ),
-          action: _adminEventType,
-        );
-
-        // Non-empty + every row is the right operator's. The empty-list
-        // case alone passes `every`, which would mask a broken RLS
-        // policy that filters every row away — both axes must hold.
-        expect(
-          viewForA.where((r) => r.operatorId == _opA).length,
-          greaterThanOrEqualTo(1),
-          reason:
-              'tenant A must see at least its own audit_logs row; an '
-              'over-restrictive RLS policy that filters every row away '
-              'would also pass an .every() check',
-        );
-        expect(
-          viewForA.where((r) => r.operatorId == _opB).length,
-          equals(0),
-          reason:
-              'tenant A must NOT see operator B\'s rows. Got operatorIds: '
-              '${viewForA.map((r) => r.operatorId).toSet()}',
-        );
-        expect(
-          viewForB.where((r) => r.operatorId == _opB).length,
-          greaterThanOrEqualTo(1),
-          reason: 'tenant B must see at least its own audit_logs row',
-        );
-        expect(
-          viewForB.where((r) => r.operatorId == _opA).length,
-          equals(0),
-          reason:
-              'tenant B must NOT see operator A\'s rows. Got operatorIds: '
-              '${viewForB.map((r) => r.operatorId).toSet()}',
-        );
-      },
-    );
-
-    test(
-      'permission gating: POST with a non-admin JWT returns 403 and '
-      'writes zero audit_logs rows',
-      () async {
-        verifier.claims = _nonAdminClaims();
-        final priorAuditLogsCount = await _countAuditLogsForFlag(
-          adminPool,
-          flagId: _flagA,
-        );
-
-        final response = await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-non-admin-token',
-            'Idempotency-Key': 'hardh-permission-denied-key',
-          },
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
-        );
-
-        expect(
-          response.statusCode,
-          equals(403),
-          reason:
-              'non-admin POST must be short-circuited with 403; got '
-              '${response.statusCode} body=${response.body}',
-        );
-        final body = jsonDecode(response.body) as Map<String, Object?>;
-        expect(body['error'], equals('permission_denied'));
-
-        final newAuditLogsCount = await _countAuditLogsForFlag(
-          adminPool,
-          flagId: _flagA,
-        );
-        expect(
-          newAuditLogsCount,
-          equals(priorAuditLogsCount),
-          reason:
-              'permission denial must short-circuit before the audit '
-              'insert; got prior=$priorAuditLogsCount, '
-              'new=$newAuditLogsCount',
-        );
-      },
-    );
-
-    test(
-      'audit_logs row_hash chain validates per (operator_id, chain_date) '
-      'scope — AuditChainHasher.verifyChain returns zero violations '
-      'after two POSTs through the production route',
-      () async {
-        verifier.claims = _adminClaims();
-
-        // Pin the rows-belonging-to-this-test by their unique
-        // idempotency keys. Earlier tests in the same suite write
-        // operator A audit_logs rows too, so length-based assertions
-        // alone would let a regression where these two POSTs fail to
-        // write still pass on prior rows. Capture the exact rows that
-        // are supposed to land here.
-        const k1 = 'hardh-chain-key-1';
-        const k2 = 'hardh-chain-key-2';
-        final priorK1 = await _countAuditLogsForKey(adminPool, key: k1);
-        final priorK2 = await _countAuditLogsForKey(adminPool, key: k2);
-        expect(
-          priorK1 + priorK2,
-          equals(0),
-          reason:
-              'precondition: $k1 + $k2 must not already have rows in '
-              'audit_logs (clean per-test idempotency keys)',
-        );
-
-        final response1 = await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': k1,
-          },
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': false},
-        );
-        expect(
-          response1.statusCode,
-          equals(200),
-          reason: 'first POST must succeed; got ${response1.statusCode}',
-        );
-        final response2 = await _post(
-          httpClient,
-          baseUri.resolve('/v1/admin/feature-flags/toggle'),
-          headers: <String, String>{
-            'Authorization': 'Bearer test-admin-token',
-            'Idempotency-Key': k2,
-          },
-          body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
-        );
-        expect(
-          response2.statusCode,
-          equals(200),
-          reason: 'second POST must succeed; got ${response2.statusCode}',
-        );
-
-        // Verify each POST produced exactly one audit_logs row (the
-        // delta-by-key check the hash-chain test would otherwise
-        // pass-through on prior rows).
-        expect(
-          await _countAuditLogsForKey(adminPool, key: k1),
-          equals(1),
-          reason: 'first POST must land exactly one audit_logs row for $k1',
-        );
-        expect(
-          await _countAuditLogsForKey(adminPool, key: k2),
-          equals(1),
-          reason: 'second POST must land exactly one audit_logs row for $k2',
-        );
-
-        final reader = PostgresAuditChainReader(
-          wrapper: adminWrapper,
-          defaultLocationId: _locA,
-          defaultUserId: _userAdminId,
-        );
-        final today = DateTime.now().toUtc();
-        final chainDate = DateTime.utc(today.year, today.month, today.day);
-
-        final rows = await reader.readChainRows(
+      final viewForA = await _selectAuditLogsAsTenant(
+        tenantWrapper,
+        ctx: TenantContext(
           operatorId: _opA,
-          chainDate: chainDate,
-        );
-        expect(
-          rows.length,
-          greaterThanOrEqualTo(2),
-          reason:
-              'two POSTs through the production route must produce at '
-              'least two rows in operator A\'s chain on today\'s UTC date',
-        );
-        // Defense against chain mixing: every row read for verification
-        // must belong to the same (operator_id, chain_date) chain. The
-        // reader filters by operator_id; this assertion documents that
-        // any future regression in the SELECT shape (e.g. removing the
-        // operator_id filter) is caught immediately.
-        expect(
-          rows.every((row) => row.operatorId == _opA),
-          isTrue,
-          reason:
-              'every row in the verifier input must belong to operator A\'s '
-              'chain — the audit_logs chain is scoped per '
-              '(operator_id, chain_date) and mixing chains would let a '
-              'broken chain in one operator hide behind a healthy one '
-              "in another",
-        );
+          locationId: _locA,
+          userId: _userAdminId,
+        ),
+        action: _adminEventType,
+      );
+      final viewForB = await _selectAuditLogsAsTenant(
+        tenantWrapper,
+        ctx: TenantContext(
+          operatorId: _opB,
+          locationId: _locB,
+          userId: _userAdminId,
+        ),
+        action: _adminEventType,
+      );
 
-        final violations = const AuditChainHasher().verifyChain(rows);
-        expect(
-          violations,
-          isEmpty,
-          reason:
-              'AuditChainHasher.verifyChain must report zero violations — '
-              'a prev_row_hash mismatch OR a row_hash that does not '
-              'recompute from SHA-256(prev_row_hash || canonical_payload) '
-              'would surface here. Violations: $violations',
-        );
-      },
-    );
+      // Non-empty + every row is the right operator's. The empty-list
+      // case alone passes `every`, which would mask a broken RLS
+      // policy that filters every row away — both axes must hold.
+      expect(
+        viewForA.where((r) => r.operatorId == _opA).length,
+        greaterThanOrEqualTo(1),
+        reason:
+            'tenant A must see at least its own audit_logs row; an '
+            'over-restrictive RLS policy that filters every row away '
+            'would also pass an .every() check',
+      );
+      expect(
+        viewForA.where((r) => r.operatorId == _opB).length,
+        equals(0),
+        reason:
+            'tenant A must NOT see operator B\'s rows. Got operatorIds: '
+            '${viewForA.map((r) => r.operatorId).toSet()}',
+      );
+      expect(
+        viewForB.where((r) => r.operatorId == _opB).length,
+        greaterThanOrEqualTo(1),
+        reason: 'tenant B must see at least its own audit_logs row',
+      );
+      expect(
+        viewForB.where((r) => r.operatorId == _opA).length,
+        equals(0),
+        reason:
+            'tenant B must NOT see operator A\'s rows. Got operatorIds: '
+            '${viewForB.map((r) => r.operatorId).toSet()}',
+      );
+    });
+
+    test('permission gating: POST with a non-admin JWT returns 403 and '
+        'writes zero audit_logs rows', () async {
+      verifier.claims = _nonAdminClaims();
+      final priorAuditLogsCount = await _countAuditLogsForFlag(
+        adminPool,
+        flagId: _flagA,
+      );
+
+      final response = await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-non-admin-token',
+          'Idempotency-Key': 'hardh-permission-denied-key',
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
+      );
+
+      expect(
+        response.statusCode,
+        equals(403),
+        reason:
+            'non-admin POST must be short-circuited with 403; got '
+            '${response.statusCode} body=${response.body}',
+      );
+      final body = jsonDecode(response.body) as Map<String, Object?>;
+      expect(body['error'], equals('permission_denied'));
+
+      final newAuditLogsCount = await _countAuditLogsForFlag(
+        adminPool,
+        flagId: _flagA,
+      );
+      expect(
+        newAuditLogsCount,
+        equals(priorAuditLogsCount),
+        reason:
+            'permission denial must short-circuit before the audit '
+            'insert; got prior=$priorAuditLogsCount, '
+            'new=$newAuditLogsCount',
+      );
+    });
+
+    test('audit_logs row_hash chain validates per (operator_id, chain_date) '
+        'scope — AuditChainHasher.verifyChain returns zero violations '
+        'after two POSTs through the production route', () async {
+      verifier.claims = _adminClaims();
+
+      // Pin the rows-belonging-to-this-test by their unique
+      // idempotency keys. Earlier tests in the same suite write
+      // operator A audit_logs rows too, so length-based assertions
+      // alone would let a regression where these two POSTs fail to
+      // write still pass on prior rows. Capture the exact rows that
+      // are supposed to land here.
+      const k1 = 'hardh-chain-key-1';
+      const k2 = 'hardh-chain-key-2';
+      final priorK1 = await _countAuditLogsForKey(adminPool, key: k1);
+      final priorK2 = await _countAuditLogsForKey(adminPool, key: k2);
+      expect(
+        priorK1 + priorK2,
+        equals(0),
+        reason:
+            'precondition: $k1 + $k2 must not already have rows in '
+            'audit_logs (clean per-test idempotency keys)',
+      );
+
+      final response1 = await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': k1,
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': false},
+      );
+      expect(
+        response1.statusCode,
+        equals(200),
+        reason: 'first POST must succeed; got ${response1.statusCode}',
+      );
+      final response2 = await _post(
+        httpClient,
+        baseUri.resolve('/v1/admin/feature-flags/toggle'),
+        headers: <String, String>{
+          'Authorization': 'Bearer test-admin-token',
+          'Idempotency-Key': k2,
+        },
+        body: <String, Object?>{'flag_id': _flagA, 'enabled': true},
+      );
+      expect(
+        response2.statusCode,
+        equals(200),
+        reason: 'second POST must succeed; got ${response2.statusCode}',
+      );
+
+      // Verify each POST produced exactly one audit_logs row (the
+      // delta-by-key check the hash-chain test would otherwise
+      // pass-through on prior rows).
+      expect(
+        await _countAuditLogsForKey(adminPool, key: k1),
+        equals(1),
+        reason: 'first POST must land exactly one audit_logs row for $k1',
+      );
+      expect(
+        await _countAuditLogsForKey(adminPool, key: k2),
+        equals(1),
+        reason: 'second POST must land exactly one audit_logs row for $k2',
+      );
+
+      final reader = PostgresAuditChainReader(
+        wrapper: adminWrapper,
+        defaultLocationId: _locA,
+        defaultUserId: _userAdminId,
+      );
+      final today = DateTime.now().toUtc();
+      final chainDate = DateTime.utc(today.year, today.month, today.day);
+
+      final rows = await reader.readChainRows(
+        operatorId: _opA,
+        chainDate: chainDate,
+      );
+      expect(
+        rows.length,
+        greaterThanOrEqualTo(2),
+        reason:
+            'two POSTs through the production route must produce at '
+            'least two rows in operator A\'s chain on today\'s UTC date',
+      );
+      // Defense against chain mixing: every row read for verification
+      // must belong to the same (operator_id, chain_date) chain. The
+      // reader filters by operator_id; this assertion documents that
+      // any future regression in the SELECT shape (e.g. removing the
+      // operator_id filter) is caught immediately.
+      expect(
+        rows.every((row) => row.operatorId == _opA),
+        isTrue,
+        reason:
+            'every row in the verifier input must belong to operator A\'s '
+            'chain — the audit_logs chain is scoped per '
+            '(operator_id, chain_date) and mixing chains would let a '
+            'broken chain in one operator hide behind a healthy one '
+            "in another",
+      );
+
+      final violations = const AuditChainHasher().verifyChain(rows);
+      expect(
+        violations,
+        isEmpty,
+        reason:
+            'AuditChainHasher.verifyChain must report zero violations — '
+            'a prev_row_hash mismatch OR a row_hash that does not '
+            'recompute from SHA-256(prev_row_hash || canonical_payload) '
+            'would surface here. Violations: $violations',
+      );
+    });
   });
 }
 
@@ -619,22 +602,22 @@ class _MutableVerifier implements ProxyJwtVerifier {
 }
 
 ProxyJwtClaims _adminClaims() => ProxyJwtClaims(
-      userId: _userAdminId,
-      operatorId: _opA,
-      locationId: _locA,
-      roles: const <String>['super_admin'],
-      firebaseUid: _userAdminFirebaseUid,
-      lastFreshAuthAt: DateTime.now().toUtc(),
-    );
+  userId: _userAdminId,
+  operatorId: _opA,
+  locationId: _locA,
+  roles: const <String>['super_admin'],
+  firebaseUid: _userAdminFirebaseUid,
+  lastFreshAuthAt: DateTime.now().toUtc(),
+);
 
 ProxyJwtClaims _nonAdminClaims() => ProxyJwtClaims(
-      userId: _userNonAdminId,
-      operatorId: _opB,
-      locationId: _locB,
-      roles: const <String>['ff_support'],
-      firebaseUid: _userNonAdminFirebaseUid,
-      lastFreshAuthAt: DateTime.now().toUtc(),
-    );
+  userId: _userNonAdminId,
+  operatorId: _opB,
+  locationId: _locB,
+  roles: const <String>['ff_support'],
+  firebaseUid: _userNonAdminFirebaseUid,
+  lastFreshAuthAt: DateTime.now().toUtc(),
+);
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────
 
@@ -656,10 +639,7 @@ Future<HttpClientResponseRecord> _post(
   request.add(utf8.encode(jsonEncode(body)));
   final response = await request.close();
   final raw = await response.transform(utf8.decoder).join();
-  return HttpClientResponseRecord(
-    statusCode: response.statusCode,
-    body: raw,
-  );
+  return HttpClientResponseRecord(statusCode: response.statusCode, body: raw);
 }
 
 // ─── Fixture seed + cleanup ───────────────────────────────────────────
@@ -778,7 +758,7 @@ Future<void> _seedFixtures(PostgresExecutor exec) async {
   }
 
   // Role grants — userAdmin → super_admin (carries
-  // `admin.feature_flag.toggle`); userNonAdmin → operator_staff.
+  // `admin.feature_flag.toggle`); userNonAdmin → supervisor.
   for (final entry in <Map<String, String>>[
     <String, String>{
       'user': _userAdminId,
@@ -788,7 +768,7 @@ Future<void> _seedFixtures(PostgresExecutor exec) async {
     <String, String>{
       'user': _userNonAdminId,
       'op': _opB,
-      'role_key': 'operator_staff',
+      'role_key': 'supervisor',
     },
   ]) {
     await exec.execute(
@@ -922,10 +902,7 @@ Future<int> _countAuditLogsForFlag(
       'select count(*) as cnt from public.audit_logs '
       'where action = @act '
       "and payload ->> 'flag_id' = @flag_id",
-      parameters: <String, Object?>{
-        'act': _adminEventType,
-        'flag_id': flagId,
-      },
+      parameters: <String, Object?>{'act': _adminEventType, 'flag_id': flagId},
     );
     count = _readCount(rows.single['cnt']);
   });

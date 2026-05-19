@@ -122,7 +122,7 @@ void main() {
             userId: _userId,
             operatorId: _operatorId,
             locationId: _locationId,
-            roles: <String>['operator_manager'],
+            roles: <String>['operator_general_manager'],
           );
       final gateway = _RecordingWeeklyPlanGateway();
       final router = WeeklyPlanRouter(gateway: gateway);
@@ -280,10 +280,7 @@ void main() {
           expect(snapshot['day_dayparts'], isNotEmpty);
           final wageAtLock =
               snapshot['wage_at_lock_time_json'] as Map<String, dynamic>;
-          expect(
-            wageAtLock['blended_wage'],
-            equals(19.0),
-          );
+          expect(wageAtLock['blended_wage'], equals(19.0));
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -444,7 +441,7 @@ void main() {
             userId: _userId,
             operatorId: _operatorId,
             locationId: '99999999-9999-9999-9999-999999999999',
-            roles: <String>['operator_manager'],
+            roles: <String>['operator_general_manager'],
           ),
         );
         try {

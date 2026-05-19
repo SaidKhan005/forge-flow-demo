@@ -176,6 +176,10 @@ void main() {
           find.byKey(const Key('admin_data_accuracy_service_period_dialog')),
           findsOneWidget,
         );
+        expect(
+          find.byKey(const Key('admin_data_accuracy_service_period_picker')),
+          findsOneWidget,
+        );
 
         await tester.enterText(
           find.byKey(const Key('admin_data_accuracy_service_period_key')),

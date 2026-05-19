@@ -8,7 +8,7 @@
 //     PNG magic prefix
 //   * 413 payload_too_large for payloads over the 600 KB cap
 //   * 503 when the uploader is unconfigured (no Azure env vars)
-//   * 403 when caller lacks operator_owner / operator_admin role
+//   * 403 when caller lacks operator_owner role
 //   * Cross-tenant isolation: gateway sees JWT operatorId only
 //   * Audit sink records `operator_business_logo_uploaded` on success
 
@@ -268,7 +268,7 @@ void main() {
       });
     });
 
-    test('403 when caller lacks operator_owner / operator_admin',
+    test('403 when caller lacks operator_owner',
         () async {
       await withRealHttp(() async {
         final ctx = await spinUp(

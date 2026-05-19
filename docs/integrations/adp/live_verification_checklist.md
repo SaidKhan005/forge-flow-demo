@@ -116,7 +116,7 @@ that resolved each check that failed.
         window. Fix: `<diff or PR ref>`
 - [ ] **Disconnect → reconnect.** Watermark preserved; no data gap.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
@@ -174,7 +174,7 @@ mTLS cert pair lands as part of the production credential issuance.
 - [ ] **Disconnect → reconnect.** Watermark preserved.
       Test: `<test_path>:<line>`
 - [ ] **Permission gate.** `location_manager` 403;
-      `operator_admin` 200.
+      `operator_owner` 200.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First production connect flips
       `demo_mode_state.is_demo`.

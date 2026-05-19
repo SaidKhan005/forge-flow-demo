@@ -28,15 +28,14 @@ HistoryPatternRecord _rec(
   String daypart,
   String leverId, {
   bool isBenchmark = false,
-}) =>
-    HistoryPatternRecord(
-      weekId: weekId,
-      weekLabel: 'Week $weekId',
-      dayLabel: dayLabel,
-      daypart: daypart,
-      leverId: leverId,
-      isBenchmark: isBenchmark,
-    );
+}) => HistoryPatternRecord(
+  weekId: weekId,
+  weekLabel: 'Week $weekId',
+  dayLabel: dayLabel,
+  daypart: daypart,
+  leverId: leverId,
+  isBenchmark: isBenchmark,
+);
 
 /// 8 weeks. Friday dinner leaks `ppa_down` every week (the recurring
 /// period leak). Friday lunch holds as a recurring `ppa_up` benchmark
@@ -80,8 +79,10 @@ void main() {
       expect(summary.primaryFixLine, contains('PPA'));
       expect(summary.primaryFixLine, contains('running low'));
       // Real seeded recurrence (8 of 8), not a fabricated magnitude.
-      expect(summary.primaryFixLine,
-          contains('every one of the last 8 tracked weeks'));
+      expect(
+        summary.primaryFixLine,
+        contains('every one of the last 8 tracked weeks'),
+      );
       // Decision 13 same-day period contrast, from a real benchmark.
       expect(summary.primaryFixLine, contains('Fri Lunch holds on plan'));
     });
@@ -101,8 +102,10 @@ void main() {
       expect(friday.primaryFixLine, isNot(equals(saturday.primaryFixLine)));
       expect(saturday.primaryFixLine, contains('Sat Dinner'));
       expect(saturday.primaryFixLine, contains('CPLH'));
-      expect(saturday.primaryFixLine,
-          contains('5 of the last 8 tracked weeks'));
+      expect(
+        saturday.primaryFixLine,
+        contains('5 of the last 8 tracked weeks'),
+      );
       // No same-day benchmark seeded → contrast clause omitted, not invented.
       expect(saturday.primaryFixLine, isNot(contains('holds on plan')));
     });
@@ -122,8 +125,10 @@ void main() {
         weekCount: 0,
         benchmarkContext: _ctx,
       );
-      expect(summary.primaryFixLine,
-          equals('Keep closing shifts so Learn can detect repeating leaks.'));
+      expect(
+        summary.primaryFixLine,
+        equals('Keep closing shifts so Learn can detect repeating leaks.'),
+      );
       expect(summary.primaryFixLine, isNot(contains('Dinner')));
       expect(summary.primaryFixLine, isNot(contains('Lunch')));
     });
@@ -153,10 +158,11 @@ void main() {
         benchmarkContext: _ctx,
       );
       expect(summary.coachToLine, contains('whole-day'));
+      expect(summary.coachToLine, contains("set from that period's own"));
       expect(
-          summary.coachToLine, contains("set from that period's own"));
-      expect(summary.coachToLine,
-          contains('one period can leak while the day still looks on plan'));
+        summary.coachToLine,
+        contains('one period can leak while the day still looks on plan'),
+      );
       // UX Writing Standard: no engineering jargon in the training copy.
       for (final jargon in const [
         'pooled',
@@ -166,8 +172,11 @@ void main() {
         'RLS',
         'kDemoMode',
       ]) {
-        expect(summary.coachToLine, isNot(contains(jargon)),
-            reason: 'training copy must avoid engineering jargon: $jargon');
+        expect(
+          summary.coachToLine,
+          isNot(contains(jargon)),
+          reason: 'training copy must avoid engineering jargon: $jargon',
+        );
       }
     });
 
@@ -177,12 +186,88 @@ void main() {
         weekCount: 0,
         benchmarkContext: _ctx,
       );
-      expect(summary.coachToLine,
-          contains('one period can leak while the day still looks on plan'));
+      expect(
+        summary.coachToLine,
+        contains('one period can leak while the day still looks on plan'),
+      );
       // The whole-day coach numbers still ride the same slot.
       expect(summary.coachToLine, contains('4.5 CPLH'));
       expect(summary.coachToLine, contains('180 SPLH'));
       expect(summary.coachToLine, contains('42 PPA'));
+    });
+  });
+
+  group('Gap 39 - per-daypart benchmark targets', () {
+    const periodCtx = LearnBenchmarkContext(
+      benchmarkSourceLabel: 'SYSTEM BENCHMARK SET',
+      selectedShiftCount: 12,
+      targetCPLH: 4.5,
+      targetSPLH: 180.0,
+      targetPPA: 42.0,
+      rangeQualityLabel: 'Good',
+      rangeQualityMessage: 'Range is adequate.',
+      dayparts: [
+        LearnBenchmarkContextDaypart(
+          servicePeriodId: 'dinner',
+          daypartTargetCPLH: 4.9,
+          daypartTargetSPLH: 205.0,
+          daypartTargetPPA: 47.0,
+          daypartOpzFloorCPLH: 4.4,
+          daypartOpzCeilingCPLH: 5.4,
+        ),
+      ],
+    );
+
+    test('coach line uses matching service-period targets', () {
+      final summary = LearnTeachingAnalyzer.summarize(
+        patternRecords: _fridayDinnerPpaLeak(),
+        weekCount: 8,
+        benchmarkContext: periodCtx,
+      );
+
+      expect(
+        summary.coachToLine,
+        contains('Coach Fri Dinner to 4.9 CPLH / 205 SPLH / 47 PPA'),
+      );
+      expect(
+        summary.coachToLine,
+        contains('These are your Fri Dinner numbers'),
+      );
+      expect(summary.coachToLine, isNot(contains('Coach to 4.5 CPLH')));
+      expect(summary.dayparts, hasLength(1));
+      expect(summary.dayparts.single.servicePeriodId, 'dinner');
+    });
+
+    test('missing service-period row keeps whole-day coach fallback', () {
+      final summary = LearnTeachingAnalyzer.summarize(
+        patternRecords: _satDinnerCplhLeak(),
+        weekCount: 8,
+        benchmarkContext: const LearnBenchmarkContext(
+          benchmarkSourceLabel: 'SYSTEM BENCHMARK SET',
+          selectedShiftCount: 12,
+          targetCPLH: 4.5,
+          targetSPLH: 180.0,
+          targetPPA: 42.0,
+          rangeQualityLabel: 'Good',
+          rangeQualityMessage: 'Range is adequate.',
+          dayparts: [
+            LearnBenchmarkContextDaypart(
+              servicePeriodId: 'lunch',
+              daypartTargetCPLH: 5.5,
+              daypartTargetSPLH: 220.0,
+              daypartTargetPPA: 39.0,
+              daypartOpzFloorCPLH: 5.0,
+              daypartOpzCeilingCPLH: 6.0,
+            ),
+          ],
+        ),
+      );
+
+      expect(
+        summary.coachToLine,
+        contains('Coach to 4.5 CPLH / 180 SPLH / 42 PPA'),
+      );
+      expect(summary.coachToLine, contains('These are your whole-day numbers'));
     });
   });
 }

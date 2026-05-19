@@ -64,7 +64,7 @@ that resolved each check that failed.
       cycle; no data gap on reconnect; re-issued JWT bearer scoped
       to the same establishment.
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** Admin route returns 200 for `operator_admin`,
+- [ ] **Permission gate.** Admin route returns 200 for `operator_owner`,
       403 for `location_manager`. Verifies the
       `integrations.configure` permission key per
       `docs/contracts/auth_permission_key_catalog.md`.

@@ -13,7 +13,7 @@
 //     (gateway returned noPrimaryLocation).
 //   * 404 location_not_found — primary-location pointer dangling
 //     (gateway returned locationNotFound).
-//   * 403 forbidden — caller lacks operator_owner / operator_admin
+//   * 403 forbidden — caller lacks operator_owner
 //     role (dispatcher-level gate).
 //   * Idempotency replay — same Idempotency-Key + same body within
 //     TTL returns the cached 200 response without re-invoking the
@@ -285,7 +285,7 @@ void main() {
       });
     });
 
-    test('403 when caller lacks operator_owner / operator_admin',
+    test('403 when caller lacks operator_owner',
         () async {
       await withRealHttp(() async {
         final ctx = await spinUp(

@@ -87,18 +87,15 @@ void main() {
               session: session(),
               gateway: DemoWebTeamRolesGateway(),
               roleScope: RoleScope.business,
-              existing: roleWith(
-                <String>[
-                  // Triggers Rule 6a (barrio.* without product gate)
-                  // and Rule 6b (forgeflow.* write without product
-                  // gate; the matching view is supplied to avoid
-                  // double-firing on Rule 3).
-                  PermissionKeys.barrioHandbookView,
-                  PermissionKeys.forgeflowShiftEdit,
-                  PermissionKeys.forgeflowShiftView,
-                ],
-                displayName: 'Floor Supervisor',
-              ),
+              existing: roleWith(<String>[
+                // Triggers Rule 6a (barrio.* without product gate)
+                // and Rule 6b (forgeflow.* write without product
+                // gate; the matching view is supplied to avoid
+                // double-firing on Rule 3).
+                PermissionKeys.barrioHandbookView,
+                PermissionKeys.forgeflowShiftEdit,
+                PermissionKeys.forgeflowShiftView,
+              ], displayName: 'Floor Supervisor'),
               dismissalStore: MemoryRoleWarningDismissalStore(),
             ),
           ),
@@ -129,205 +126,185 @@ void main() {
       },
     );
 
-    testWidgets(
-      "Dismissing a warning hides its row and the dismissal is "
-      "remembered by the injected store",
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 1600));
-        final store = MemoryRoleWarningDismissalStore();
-        final existing = roleWith(
-          <String>[
-            PermissionKeys.barrioHandbookView,
-            PermissionKeys.productForgeflowAccess,
-          ],
-        );
-        await tester.pumpWidget(
-          wrapBare(
-            CustomRoleEditorScreen(
-              session: session(),
-              gateway: DemoWebTeamRolesGateway(),
-              roleScope: RoleScope.business,
-              existing: existing,
-              dismissalStore: store,
-            ),
+    testWidgets("Dismissing a warning hides its row and the dismissal is "
+        "remembered by the injected store", (tester) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final store = MemoryRoleWarningDismissalStore();
+      final existing = roleWith(<String>[
+        PermissionKeys.barrioHandbookView,
+        PermissionKeys.productForgeflowAccess,
+      ]);
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: session(),
+            gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
+            existing: existing,
+            dismissalStore: store,
           ),
-        );
-        await tester.pumpAndSettle();
-        final warningRow = find.byKey(
+        ),
+      );
+      await tester.pumpAndSettle();
+      final warningRow = find.byKey(
+        Key(
+          'operator_web_custom_role_editor_warning_'
+          '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
+        ),
+      );
+      expect(warningRow, findsOneWidget);
+
+      // Dismiss the row. ensureVisible scrolls the button into
+      // view because the editor's scroll-view is taller than the
+      // test viewport.
+      final dismissButton = find.byKey(
+        Key(
+          'operator_web_custom_role_editor_warning_dismiss_'
+          '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
+        ),
+      );
+      await tester.ensureVisible(dismissButton);
+      await tester.pumpAndSettle();
+      await tester.tap(dismissButton);
+      await tester.pumpAndSettle();
+
+      // The row should be gone.
+      expect(warningRow, findsNothing);
+      // The entire panel should disappear because that was the
+      // only outstanding warning for this role.
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_warnings')),
+        findsNothing,
+      );
+
+      // The store should have remembered the dismissal under the
+      // role id.
+      expect(store.debugFingerprintsFor(existing.roleId), isNotEmpty);
+    });
+
+    testWidgets('two warnings render simultaneously and each can be dismissed '
+        'independently', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1800));
+      final store = MemoryRoleWarningDismissalStore();
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: session(),
+            gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
+            existing: roleWith(<String>[
+              // Rule 6a (Barrio) and Rule 6b (Forge & Flow write)
+              // both fire here. Rule 6c is suppressed because the
+              // role name does not include billing.subscription.manage.
+              PermissionKeys.barrioHandbookView,
+              PermissionKeys.forgeflowShiftEdit,
+              PermissionKeys.forgeflowShiftView,
+            ]),
+            dismissalStore: store,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Both rows present.
+      expect(
+        find.byKey(
           Key(
             'operator_web_custom_role_editor_warning_'
             '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
           ),
-        );
-        expect(warningRow, findsOneWidget);
-
-        // Dismiss the row. ensureVisible scrolls the button into
-        // view because the editor's scroll-view is taller than the
-        // test viewport.
-        final dismissButton = find.byKey(
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
           Key(
-            'operator_web_custom_role_editor_warning_dismiss_'
+            'operator_web_custom_role_editor_warning_'
+            '${RoleWarningCode.forgeflowWriteMissingProductAccess.name}',
+          ),
+        ),
+        findsOneWidget,
+      );
+
+      // Dismiss only the Barrio row.
+      final barrioDismiss = find.byKey(
+        Key(
+          'operator_web_custom_role_editor_warning_dismiss_'
+          '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
+        ),
+      );
+      await tester.ensureVisible(barrioDismiss);
+      await tester.pumpAndSettle();
+      await tester.tap(barrioDismiss);
+      await tester.pumpAndSettle();
+
+      // Barrio row is gone; Forge & Flow row remains.
+      expect(
+        find.byKey(
+          Key(
+            'operator_web_custom_role_editor_warning_'
             '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
           ),
-        );
-        await tester.ensureVisible(dismissButton);
-        await tester.pumpAndSettle();
-        await tester.tap(dismissButton);
-        await tester.pumpAndSettle();
-
-        // The row should be gone.
-        expect(warningRow, findsNothing);
-        // The entire panel should disappear because that was the
-        // only outstanding warning for this role.
-        expect(
-          find.byKey(const Key('operator_web_custom_role_editor_warnings')),
-          findsNothing,
-        );
-
-        // The store should have remembered the dismissal under the
-        // role id.
-        expect(store.debugFingerprintsFor(existing.roleId), isNotEmpty);
-      },
-    );
-
-    testWidgets(
-      'two warnings render simultaneously and each can be dismissed '
-      'independently',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 1800));
-        final store = MemoryRoleWarningDismissalStore();
-        await tester.pumpWidget(
-          wrapBare(
-            CustomRoleEditorScreen(
-              session: session(),
-              gateway: DemoWebTeamRolesGateway(),
-              roleScope: RoleScope.business,
-              existing: roleWith(
-                <String>[
-                  // Rule 6a (Barrio) and Rule 6b (Forge & Flow write)
-                  // both fire here. Rule 6c is suppressed because the
-                  // role name does not include billing.subscription.manage.
-                  PermissionKeys.barrioHandbookView,
-                  PermissionKeys.forgeflowShiftEdit,
-                  PermissionKeys.forgeflowShiftView,
-                ],
-              ),
-              dismissalStore: store,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        // Both rows present.
-        expect(
-          find.byKey(
-            Key(
-              'operator_web_custom_role_editor_warning_'
-              '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
-            ),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            Key(
-              'operator_web_custom_role_editor_warning_'
-              '${RoleWarningCode.forgeflowWriteMissingProductAccess.name}',
-            ),
-          ),
-          findsOneWidget,
-        );
-
-        // Dismiss only the Barrio row.
-        final barrioDismiss = find.byKey(
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
           Key(
-            'operator_web_custom_role_editor_warning_dismiss_'
-            '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
+            'operator_web_custom_role_editor_warning_'
+            '${RoleWarningCode.forgeflowWriteMissingProductAccess.name}',
           ),
-        );
-        await tester.ensureVisible(barrioDismiss);
-        await tester.pumpAndSettle();
-        await tester.tap(barrioDismiss);
-        await tester.pumpAndSettle();
+        ),
+        findsOneWidget,
+      );
+      // Panel still visible because at least one warning is left.
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_warnings')),
+        findsOneWidget,
+      );
+    });
 
-        // Barrio row is gone; Forge & Flow row remains.
-        expect(
-          find.byKey(
-            Key(
-              'operator_web_custom_role_editor_warning_'
-              '${RoleWarningCode.barrioKeyMissingProductAccess.name}',
-            ),
+    testWidgets("Save button stays enabled regardless of warning count "
+        '(warnings are advisory, not blockers)', (tester) async {
+      await sizeViewport(tester, const Size(1280, 1800));
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: session(),
+            gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
+            existing: roleWith(<String>[
+              PermissionKeys.barrioHandbookView,
+              PermissionKeys.forgeflowShiftEdit,
+              PermissionKeys.forgeflowShiftView,
+            ]),
+            dismissalStore: MemoryRoleWarningDismissalStore(),
           ),
-          findsNothing,
-        );
-        expect(
-          find.byKey(
-            Key(
-              'operator_web_custom_role_editor_warning_'
-              '${RoleWarningCode.forgeflowWriteMissingProductAccess.name}',
-            ),
-          ),
-          findsOneWidget,
-        );
-        // Panel still visible because at least one warning is left.
-        expect(
-          find.byKey(const Key('operator_web_custom_role_editor_warnings')),
-          findsOneWidget,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    testWidgets(
-      "Save button stays enabled regardless of warning count "
-      '(warnings are advisory, not blockers)',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 1800));
-        await tester.pumpWidget(
-          wrapBare(
-            CustomRoleEditorScreen(
-              session: session(),
-              gateway: DemoWebTeamRolesGateway(),
-              roleScope: RoleScope.business,
-              existing: roleWith(
-                <String>[
-                  PermissionKeys.barrioHandbookView,
-                  PermissionKeys.forgeflowShiftEdit,
-                  PermissionKeys.forgeflowShiftView,
-                ],
-              ),
-              dismissalStore: MemoryRoleWarningDismissalStore(),
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_warnings')),
+        findsOneWidget,
+      );
 
-        expect(
-          find.byKey(const Key('operator_web_custom_role_editor_warnings')),
-          findsOneWidget,
-        );
-
-        final saveButton = tester.widget<FilledButton>(
-          find.byKey(const Key('operator_web_custom_role_editor_save')),
-        );
-        expect(
-          saveButton.onPressed,
-          isNotNull,
-          reason:
-              'Warnings must not gate the save button - they are advisory.',
-        );
-      },
-    );
+      final saveButton = tester.widget<FilledButton>(
+        find.byKey(const Key('operator_web_custom_role_editor_save')),
+      );
+      expect(
+        saveButton.onPressed,
+        isNotNull,
+        reason: 'Warnings must not gate the save button - they are advisory.',
+      );
+    });
 
     testWidgets(
       'pre-dismissed warnings (from the store) do not render on first paint',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 1600));
         final store = MemoryRoleWarningDismissalStore();
-        final existing = roleWith(
-          <String>[
-            PermissionKeys.barrioHandbookView,
-          ],
-        );
+        final existing = roleWith(<String>[PermissionKeys.barrioHandbookView]);
 
         // Manually pre-seed the dismissal store for this role.
         await store.dismiss(
@@ -399,60 +376,73 @@ void main() {
   );
 
   group('RP-14: product → category grouping + search', () {
-    testWidgets(
-      'renders product sections + category sections + a search box',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 4000));
-        await tester.pumpWidget(
-          wrapBare(
-            CustomRoleEditorScreen(
-              session: ownerSession(),
-              gateway: DemoWebTeamRolesGateway(),
-              roleScope: RoleScope.business,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_permissions'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_product_forgeflow'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_product_team'),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key(
-              'operator_web_custom_role_editor_category_'
-              'forgeflow_Forge & Flow surfaces',
-            ),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_search'),
-          ),
-          findsOneWidget,
-        );
-      },
-    );
-
-    testWidgets('search filters rows by humanLabel substring', (
+    testWidgets('defaults to business scope so org-wide keys are visible', (
       tester,
     ) async {
+      await sizeViewport(tester, const Size(1280, 4000));
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: ownerSession(),
+            gateway: DemoWebTeamRolesGateway(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('operator_web_custom_role_editor_perm_account.configure'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('renders product sections + category sections + a search box', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 4000));
+      await tester.pumpWidget(
+        wrapBare(
+          CustomRoleEditorScreen(
+            session: ownerSession(),
+            gateway: DemoWebTeamRolesGateway(),
+            roleScope: RoleScope.business,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_permissions')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_custom_role_editor_product_forgeflow'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_product_team')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key(
+            'operator_web_custom_role_editor_category_'
+            'forgeflow_Forge & Flow surfaces',
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_custom_role_editor_search')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('search filters rows by humanLabel substring', (tester) async {
       await sizeViewport(tester, const Size(1280, 4000));
       await tester.pumpWidget(
         wrapBare(
@@ -569,9 +559,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final editRow = find.byKey(
-        const Key(
-          'operator_web_custom_role_editor_perm_forgeflow.shift.edit',
-        ),
+        const Key('operator_web_custom_role_editor_perm_forgeflow.shift.edit'),
       );
       await tester.ensureVisible(editRow);
       await tester.tap(
@@ -585,9 +573,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       final viewRow = find.byKey(
-        const Key(
-          'operator_web_custom_role_editor_perm_forgeflow.shift.view',
-        ),
+        const Key('operator_web_custom_role_editor_perm_forgeflow.shift.view'),
       );
       final viewCheckbox = tester.widget<Checkbox>(
         find.descendant(of: viewRow, matching: find.byType(Checkbox)),
@@ -596,16 +582,13 @@ void main() {
       expect(viewCheckbox.onChanged, isNotNull);
     });
 
-    test(
-      'rolePermissionPickerRequiredBy names the explicit ancestor',
-      () {
-        final pullers = rolePermissionPickerRequiredBy(
-          'forgeflow.shift.view',
-          <String>{'forgeflow.shift.edit'},
-        );
-        expect(pullers, contains('forgeflow.shift.edit'));
-      },
-    );
+    test('rolePermissionPickerRequiredBy names the explicit ancestor', () {
+      final pullers = rolePermissionPickerRequiredBy(
+        'forgeflow.shift.view',
+        <String>{'forgeflow.shift.edit'},
+      );
+      expect(pullers, contains('forgeflow.shift.edit'));
+    });
   });
 
   group('RP-14 + Q3: location-scoped picker filters org_wide keys', () {
@@ -625,9 +608,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_scope_notice'),
-          ),
+          find.byKey(const Key('operator_web_custom_role_editor_scope_notice')),
           findsOneWidget,
         );
         // billing.invoice.view is `org_wide` per the catalog metadata
@@ -644,9 +625,7 @@ void main() {
         // Tapping "What's hidden?" expands the dropped keys list.
         await tester.tap(
           find.byKey(
-            const Key(
-              'operator_web_custom_role_editor_scope_notice_toggle',
-            ),
+            const Key('operator_web_custom_role_editor_scope_notice_toggle'),
           ),
         );
         await tester.pumpAndSettle();
@@ -678,9 +657,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.byKey(
-            const Key('operator_web_custom_role_editor_scope_notice'),
-          ),
+          find.byKey(const Key('operator_web_custom_role_editor_scope_notice')),
           findsNothing,
         );
         expect(

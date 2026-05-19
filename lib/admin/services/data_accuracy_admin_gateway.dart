@@ -36,6 +36,8 @@ import 'package:http/http.dart' as http;
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
+import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/service_period_definition_resolver.dart';
 import 'admin_http_timeout.dart';
 
 typedef DataAccuracyAdminBearerTokenProvider = Future<String> Function();
@@ -177,20 +179,25 @@ class DataAccuracyAdminRow {
     required this.operatorRef,
     required this.settings,
     this.servicePeriodSettings = const <DataAccuracyServicePeriodSetting>[],
+    this.configuredServicePeriods = const <ServicePeriodDefinition>[],
   });
 
   final OperatorLocationRef operatorRef;
   final DataAccuracySettings settings;
   final List<DataAccuracyServicePeriodSetting> servicePeriodSettings;
+  final List<ServicePeriodDefinition> configuredServicePeriods;
 
   DataAccuracyAdminRow copyWith({
     List<DataAccuracyServicePeriodSetting>? servicePeriodSettings,
+    List<ServicePeriodDefinition>? configuredServicePeriods,
   }) {
     return DataAccuracyAdminRow(
       operatorRef: operatorRef,
       settings: settings,
       servicePeriodSettings:
           servicePeriodSettings ?? this.servicePeriodSettings,
+      configuredServicePeriods:
+          configuredServicePeriods ?? this.configuredServicePeriods,
     );
   }
 }
@@ -1052,6 +1059,10 @@ DataAccuracyAdminRow _dataAccuracyRowFromJson(Map<String, Object?> json) {
       (json['service_period_settings'] as List?) ??
       (json['data_accuracy_service_period_settings'] as List?) ??
       const [];
+  final configuredPeriods =
+      (json['service_period_definitions'] as List?) ??
+      (json['configured_service_periods'] as List?) ??
+      const [];
   return DataAccuracyAdminRow(
     operatorRef: _operatorRefFromJson(_asMap(json['operator_ref'])),
     settings: _settingsFromJson(_asMap(json['settings'])),
@@ -1059,6 +1070,12 @@ DataAccuracyAdminRow _dataAccuracyRowFromJson(Map<String, Object?> json) {
       for (final row in serviceRows)
         _servicePeriodSettingFromJson((row as Map).cast<String, Object?>()),
     ],
+    configuredServicePeriods: ServicePeriodDefinitionResolver.ordered(
+      <ServicePeriodDefinition>[
+        for (final row in configuredPeriods)
+          ServicePeriodDefinition.fromMap((row as Map).cast<String, dynamic>()),
+      ],
+    ),
   );
 }
 
@@ -1482,6 +1499,8 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
                 _servicePeriodSettings[_key(ref.operatorId, ref.locationId)] ??
                     const <DataAccuracyServicePeriodSetting>[],
               ),
+          configuredServicePeriods:
+              ServicePeriodDefinitionResolver.demoDefinitions,
         ),
     ];
   }

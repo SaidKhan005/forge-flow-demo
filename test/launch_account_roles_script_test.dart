@@ -7,23 +7,36 @@ void main() {
     final script = File('scripts/set_launch_account_roles.ps1');
     final runbook = File('runbooks/launch_account_roles_runbook.md');
 
-    test('pins Said as highest admin and Newfoundland as regular staff', () {
-      final body = script.readAsStringSync();
+    test(
+      'pins Said as highest admin and Newfoundland as regular supervisor',
+      () {
+        final body = script.readAsStringSync();
 
-      expect(body, contains('saidumarkhan005@gmail.com'));
-      expect(body, contains('newoundlandlimited@gmail.com'));
-      expect(body, contains("r.role_key = 'super_admin'"));
-      expect(body, contains("r.role_key = 'operator_staff'"));
-      expect(body, contains("scope_type = 'super_admin'"));
-      expect(body, contains('operator_admins'));
-      expect(body, contains("set_config('forge_flow.launch_admin_email'"));
-      expect(
-        body,
-        contains("current_setting('forge_flow.launch_admin_email')"),
-      );
-      expect(body, contains('New-SystemRootCertBundle'));
-      expect(body, contains('sslrootcert'));
-    });
+        expect(body, contains('saidumarkhan005@gmail.com'));
+        expect(body, contains('newoundlandlimited@gmail.com'));
+        expect(body, contains("r.role_key = 'super_admin'"));
+        expect(body, contains("r.role_key = 'supervisor'"));
+        expect(
+          body,
+          isNot(contains("into staff_role_id")),
+          reason: 'The launch repair must grant the v2 supervisor role.',
+        );
+        expect(
+          body,
+          contains("'operator_staff'"),
+          reason: 'Stale v1 staff grants should still be revoked.',
+        );
+        expect(body, contains("scope_type = 'super_admin'"));
+        expect(body, contains('operator_admins'));
+        expect(body, contains("set_config('forge_flow.launch_admin_email'"));
+        expect(
+          body,
+          contains("current_setting('forge_flow.launch_admin_email')"),
+        );
+        expect(body, contains('New-SystemRootCertBundle'));
+        expect(body, contains('sslrootcert'));
+      },
+    );
 
     test('keeps secrets out of the repo script', () {
       final body = script.readAsStringSync();

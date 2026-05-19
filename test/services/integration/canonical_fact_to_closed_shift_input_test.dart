@@ -386,6 +386,80 @@ void main() {
       );
       expect(result.input.sourceSystem, 'square');
     });
+
+    test(
+      'explicit forecast source wins before vendor covers are aggregated',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_forecast_explicit',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_manual_entries': <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': null,
+        };
+        pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+            <String, Object?>{
+              'id': '99999999-9999-9999-9999-999999999993',
+              'operator_id': _opA,
+              'location_id': _locA,
+              'service_period_key': 'dinner',
+              'covers_source': 'forecast',
+              'wage_source': 'vendor_per_employee',
+              'effective_at_business_date': '2026-05-01',
+              'created_at': DateTime.utc(2026, 5, 1),
+              'updated_at': DateTime.utc(2026, 5, 1),
+              'updated_by': null,
+            };
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'toast',
+            'vendor_entity_id': 'check_toast_forecast_explicit',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 92,
+            'covers_source': 'direct',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 2310.50,
+          },
+        ];
+
+        final forecast = DemandForecastContext(
+          restaurantId: _restaurantA,
+          anchorBusinessDate: _businessDateIso,
+          baselineTotalCovers: 1500,
+          baselineWeeklyAvgCovers: 175,
+          baselineWeeksRepresented: 60 / 7,
+          resolvedWeeklyForecastCovers: 210,
+          coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+          builtAt: _businessDateIso,
+        );
+
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: _dinnerPeriod,
+              forecastContext: forecast,
+            );
+
+        expect(result, isNotNull);
+        expect(result!.input.covers, 30);
+        expect(result.input.sourceSystem, 'app_forecast');
+        expect(result.provenance.coversProvenance, 'app_forecast_60_day_avg');
+      },
+    );
   });
 
   // ─────────────────── D — operator manual entry ──────────────────────────
@@ -458,6 +532,81 @@ void main() {
       expect(
         result.provenance.coversProvenance,
         'operator_manual_entry_per_daypart',
+      );
+    });
+
+    test('manual source with no value returns null even when vendor and '
+        'forecast data are present', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+        'setting_id': 'das_manual_missing',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'covers_manual_entries': <String, Map<String, int>>{},
+        'wage_source': 'vendor',
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': null,
+      };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': '99999999-9999-9999-9999-999999999992',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'manual',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': null,
+          };
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'toast',
+          'vendor_entity_id': 'check_toast_manual_missing',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 92,
+          'covers_source': 'direct',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 2310.50,
+        },
+      ];
+
+      final forecast = DemandForecastContext(
+        restaurantId: _restaurantA,
+        anchorBusinessDate: _businessDateIso,
+        baselineTotalCovers: 1500,
+        baselineWeeklyAvgCovers: 175,
+        baselineWeeksRepresented: 60 / 7,
+        resolvedWeeklyForecastCovers: 210,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: _businessDateIso,
+      );
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: _dinnerPeriod,
+            forecastContext: forecast,
+          );
+
+      expect(
+        result,
+        isNull,
+        reason:
+            'Manual is an explicit operator choice; missing manual covers '
+            'means no closed shift for the period.',
       );
     });
   });
@@ -796,6 +945,93 @@ void main() {
 
       expect(result, isNotNull);
       // 4 + 6 seated + 25 walk-in = 35.
+      expect(result!.input.covers, 35);
+      expect(result.input.sourceSystem, 'libro');
+      expect(
+        result.provenance.coversProvenance,
+        'vendor_libro_seated_plus_operator_walk_in_count',
+      );
+    });
+
+    test('keyed reservation_plus_walkin source is preserved instead of '
+        'collapsing to vendor', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+        'setting_id': 'das_reservation_plus_walkin',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'covers_manual_entries': <String, Map<String, int>>{},
+        'wage_source': 'vendor',
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': null,
+      };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': '99999999-9999-9999-9999-999999999994',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'reservation_plus_walkin',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': null,
+          };
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'toast',
+          'vendor_entity_id': 'check_toast_reservation_choice',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 92,
+          'covers_source': 'direct',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 2310.50,
+        },
+      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_001',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 4,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_002',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 6,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+          ];
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: _dinnerPeriod,
+            walkInOverride: const ReservationWalkInOverride(
+              operatorWalkInCount: 25,
+            ),
+          );
+
+      expect(result, isNotNull);
       expect(result!.input.covers, 35);
       expect(result.input.sourceSystem, 'libro');
       expect(
@@ -3007,8 +3243,15 @@ class _FakeTransaction implements PostgresTransaction {
       // remain as the backward-compat fallback fromRow honours.
       final perPeriod = <String, Object?>{};
       final prefix = '$operatorId|$locationId|';
+      final businessDate = parameters['business_date'] as String?;
       pool.dataAccuracyServicePeriodSettingsByTenant.forEach((key, kr) {
         if (!key.startsWith(prefix)) return;
+        final effectiveAt = kr['effective_at_business_date'];
+        if (businessDate != null &&
+            effectiveAt is String &&
+            effectiveAt.compareTo(businessDate) > 0) {
+          return;
+        }
         final spk = kr['service_period_key'];
         final cs = kr['covers_source'];
         if (spk is String && cs is String) perPeriod[spk] = cs;

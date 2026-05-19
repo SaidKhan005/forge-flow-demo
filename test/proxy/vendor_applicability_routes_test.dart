@@ -262,7 +262,7 @@ void main() {
           userId: 'operator-user',
           operatorId: _operatorId,
           locationId: _locationId,
-          roles: <String>['operator_admin'],
+          roles: <String>['operator_owner'],
         ),
         gateway: gateway,
       );

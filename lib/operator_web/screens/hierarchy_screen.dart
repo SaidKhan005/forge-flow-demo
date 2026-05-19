@@ -13,7 +13,7 @@
 //   * Move semantics: gated on `team.roles.assign`. Audited via the
 //     existing proxy route + audit-log producer.
 //   * Read-only audiences: floor managers (`location_manager`) and
-//     `operator_supervisor` see read-only; mutate buttons hidden;
+//     supervisors (`supervisor`) see read-only; mutate buttons hidden;
 //     tree expand/collapse stays interactive.
 //   * Validation copy locked verbatim against the parity contract:
 //       - empty name -> "Org unit name is required."
@@ -1123,10 +1123,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
 /// re-validated client-side here with the same locked copy the server
 /// returns, so the operator sees the guidance without a round-trip.
 class _RenameOrgUnitDialog extends StatefulWidget {
-  const _RenameOrgUnitDialog({
-    required this.unit,
-    required this.existingNames,
-  });
+  const _RenameOrgUnitDialog({required this.unit, required this.existingNames});
 
   final TeamOrgUnitEntry unit;
 

@@ -22,10 +22,10 @@
 // stubs for real proxy calls (mirrors the gateway-follows-shell
 // pattern Phase 11A used).
 //
-// Permission gate: keys off `session.roles`. Operator owners and
-// admins get the full security surface; location managers see Profile
+// Permission gate: keys off `session.roles`. Operator owners get the
+// full security surface; location managers see Profile
 // and Active Sessions and the MFA / Password buttons render disabled with
-// tooltip copy ("Only operator admins can change MFA"). Mirrors the
+// tooltip copy ("Only operator owners can change MFA"). Mirrors the
 // gate the Phase 9 proxy enforces server-side — the UI is the
 // friendly-error layer.
 //
@@ -206,11 +206,11 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
   }
 
   String get _readOnlyTooltipMfa =>
-      'Only operator admins can change MFA. If your role should include '
+      'Only operator owners can change MFA. If your role should include '
       'this, ask the operator owner on your account to update your role.';
 
   String get _readOnlyTooltipPassword =>
-      'Only operator admins can change account passwords from the web '
+      'Only operator owners can change account passwords from the web '
       'console. Floor staff and location managers can rotate their own '
       'password from the operator mobile app under Settings → Security.';
 
@@ -625,10 +625,7 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _SectionHeader(
-                icon: Icons.person_outline,
-                title: 'My account',
-              ),
+              _SectionHeader(icon: Icons.person_outline, title: 'My account'),
               const SizedBox(height: 18),
               _ProfileSection(
                 session: widget.session,
@@ -685,10 +682,7 @@ class _MyAccountScreenState extends State<MyAccountScreen> {
 // ─── Sections ───────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.icon,
-    required this.title,
-  });
+  const _SectionHeader({required this.icon, required this.title});
 
   final IconData icon;
   final String title;

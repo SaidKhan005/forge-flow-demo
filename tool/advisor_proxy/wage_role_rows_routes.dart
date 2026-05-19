@@ -11,8 +11,8 @@
 //
 // Auth:
 //   * Bearer token resolves to OperatorContext (operatorId required).
-//   * Caller must hold an operator-write role (operator_owner /
-//     operator_admin); the dispatcher in advisor_proxy.dart checks
+//   * Caller must hold an operator-write role (`operator_owner`);
+//     the dispatcher in advisor_proxy.dart checks
 //     `kOperatorWriteRoles` before delegating here.
 //   * RLS on the table is the backup defense; the repository pattern
 //     SET LOCALs the operator + location every transaction.
@@ -135,23 +135,22 @@ class RepositoryWageRoleRowsGateway implements WageRoleRowsGateway {
     bool isActive = true,
     Map<String, Object?> metadata = const <String, Object?>{},
     String? actorUserId,
-  }) =>
-      repository.upsert(
-        operatorId: operatorId,
-        locationId: locationId,
-        restaurantId: restaurantId,
-        roleName: roleName,
-        laborBucket: laborBucket,
-        hourlyRate: hourlyRate,
-        weightedHours: weightedHours,
-        jobCode: jobCode,
-        vendorId: vendorId,
-        vendorRoleId: vendorRoleId,
-        source: source,
-        isActive: isActive,
-        metadata: metadata,
-        actorUserId: actorUserId,
-      );
+  }) => repository.upsert(
+    operatorId: operatorId,
+    locationId: locationId,
+    restaurantId: restaurantId,
+    roleName: roleName,
+    laborBucket: laborBucket,
+    hourlyRate: hourlyRate,
+    weightedHours: weightedHours,
+    jobCode: jobCode,
+    vendorId: vendorId,
+    vendorRoleId: vendorRoleId,
+    source: source,
+    isActive: isActive,
+    metadata: metadata,
+    actorUserId: actorUserId,
+  );
 
   @override
   Future<bool> softDelete({
@@ -159,13 +158,12 @@ class RepositoryWageRoleRowsGateway implements WageRoleRowsGateway {
     required String locationId,
     required String wageRoleRowId,
     String? actorUserId,
-  }) =>
-      repository.softDelete(
-        operatorId: operatorId,
-        locationId: locationId,
-        wageRoleRowId: wageRoleRowId,
-        actorUserId: actorUserId,
-      );
+  }) => repository.softDelete(
+    operatorId: operatorId,
+    locationId: locationId,
+    wageRoleRowId: wageRoleRowId,
+    actorUserId: actorUserId,
+  );
 }
 
 /// In-memory replay cache for POST / DELETE routes. Mirrors
@@ -192,7 +190,7 @@ class WageRoleRowsIdempotencyCache {
     required String idempotencyKey,
     required String requestBodyHash,
     required Future<({int statusCode, Map<String, Object?> body})> Function()
-        compute,
+    compute,
   }) async {
     _gc();
     final key = '$operatorId|$locationId|$route|$idempotencyKey';
@@ -349,9 +347,9 @@ class WageRoleRowsRouter {
     WageRoleRowsIdempotencyCache? idempotencyCache,
     WageRoleRowsAuditSink? auditSink,
     DateTime Function()? now,
-  })  : _idempotencyCache = idempotencyCache ?? WageRoleRowsIdempotencyCache(),
-        _auditSink = auditSink ?? const NoopWageRoleRowsAuditSink(),
-        _now = now ?? DateTime.now;
+  }) : _idempotencyCache = idempotencyCache ?? WageRoleRowsIdempotencyCache(),
+       _auditSink = auditSink ?? const NoopWageRoleRowsAuditSink(),
+       _now = now ?? DateTime.now;
 
   final WageRoleRowsGateway gateway;
   final WageRoleRowsIdempotencyCache _idempotencyCache;
@@ -458,7 +456,7 @@ class WageRoleRowsRouter {
     required String idempotencyKey,
     required Map<String, Object?> body,
     required Future<({int statusCode, Map<String, Object?> body})> Function()
-        compute,
+    compute,
   }) {
     final bodyHash = hashWageRoleRowsRequest(body);
     return _idempotencyCache.runOrReplay(
@@ -501,8 +499,11 @@ class WageRoleRowsRouter {
 
     final jobCode = _optionalString(body, 'job_code', maxLength: 128);
     final vendorId = _optionalString(body, 'vendor_id', maxLength: 64);
-    final vendorRoleId =
-        _optionalString(body, 'vendor_role_id', maxLength: 128);
+    final vendorRoleId = _optionalString(
+      body,
+      'vendor_role_id',
+      maxLength: 128,
+    );
 
     final sourceWire = body['source'];
     WageRoleRowSource source = WageRoleRowSource.operatorManual;

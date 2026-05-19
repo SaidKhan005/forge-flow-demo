@@ -56,6 +56,22 @@ class LearnTeachingAnalyzer {
     return '$count weeks running';
   }
 
+  static String? _servicePeriodIdForTopLeak({
+    required List<HistoryPatternRecord> patternRecords,
+    required String leakId,
+    required String fullLabel,
+  }) {
+    if (leakId.isEmpty || fullLabel.isEmpty) return null;
+    for (final record in patternRecords) {
+      if (!record.isBenchmark &&
+          record.leverId == leakId &&
+          record.fullLabel == fullLabel) {
+        return record.daypart;
+      }
+    }
+    return null;
+  }
+
   static LearnTeachingSummary summarize({
     required List<HistoryPatternRecord> patternRecords,
     required int weekCount,
@@ -99,6 +115,8 @@ class LearnTeachingAnalyzer {
     int primaryBenchmarkCount;
     bool hasBenchmarkPatterns;
     List<CrossAxisPairRecord> crossAxisPairs;
+    String? primaryLeakServicePeriodId;
+    String? primaryLeakPeriodLabel;
 
     if (historySummary == null) {
       primaryLeakId = '';
@@ -114,6 +132,8 @@ class LearnTeachingAnalyzer {
       primaryBenchmarkCount = 0;
       hasBenchmarkPatterns = false;
       crossAxisPairs = const [];
+      primaryLeakServicePeriodId = null;
+      primaryLeakPeriodLabel = null;
     } else {
       primaryLeakId = historySummary.mostCommonLeakId;
       primaryLeakSideLabel = historySummary.mostCommonLeakSideLabel;
@@ -125,6 +145,14 @@ class LearnTeachingAnalyzer {
       primaryBenchmarkCount = historySummary.mostCommonBenchmarkCount;
       hasBenchmarkPatterns = historySummary.mostCommonBenchmarkCount > 0;
       crossAxisPairs = historySummary.crossAxisPairs;
+      primaryLeakPeriodLabel = historySummary.topLeakDaypartLabel.isEmpty
+          ? null
+          : historySummary.topLeakDaypartLabel;
+      primaryLeakServicePeriodId = _servicePeriodIdForTopLeak(
+        patternRecords: patternRecords,
+        leakId: primaryLeakId,
+        fullLabel: historySummary.topLeakDaypartLabel,
+      );
 
       // Per-Daypart V1 (Slice D, Gap 39) — resolve the fix line to the
       // service period the leak actually lives in, with its real seeded
@@ -141,14 +169,14 @@ class LearnTeachingAnalyzer {
           weekCount,
         );
         final contrast = historySummary.contrastBenchmarkDaypartLabel;
-        final contrastClause =
-            contrast == null ? '' : ', while $contrast holds on plan';
+        final contrastClause = contrast == null
+            ? ''
+            : ', while $contrast holds on plan';
         primaryFixLine =
             '${leakCard.shortLabel} is $direction at $periodLabel — it has '
             'leaked $recurrence$contrastClause. Tighten $periodLabel first.';
       } else if (topLeakDayparts.isEmpty) {
-        primaryFixLine =
-            'Fix ${primaryLeakSideLabel.toLowerCase()} first.';
+        primaryFixLine = 'Fix ${primaryLeakSideLabel.toLowerCase()} first.';
       } else {
         primaryFixLine =
             'Fix ${primaryLeakSideLabel.toLowerCase()} first in ${topLeakDayparts.join(' / ')}.';
@@ -166,11 +194,29 @@ class LearnTeachingAnalyzer {
     // keep their existing slot; the per-period derivation training line
     // rides the same slot so the operator learns how the targets are
     // built without a new card/section (Decision 13 — no UX overhaul).
+    final primaryLeakDaypart = primaryLeakServicePeriodId == null
+        ? null
+        : benchmarkContext.daypartFor(primaryLeakServicePeriodId);
+    final coachTargetCPLH = primaryLeakDaypart?.daypartTargetCPLH ?? targetCPLH;
+    final coachTargetSPLH = primaryLeakDaypart?.daypartTargetSPLH ?? targetSPLH;
+    final coachTargetPPA = primaryLeakDaypart?.daypartTargetPPA ?? targetPPA;
+    final periodName = primaryLeakDaypart == null
+        ? null
+        : primaryLeakPeriodLabel;
+    final coachScope = periodName == null ? '' : ' $periodName';
+    final derivationLine = periodName == null
+        ? _perPeriodDerivationLine
+        : 'These are your $periodName numbers. Each service '
+              'period carries its own target, set from that period\'s own '
+              'benchmark shifts; the whole-day figure blends those period '
+              'targets by how busy each period runs, so one period can leak '
+              'while the day still looks on plan.';
+
     final coachToLine =
-        'Coach to ${targetCPLH.toStringAsFixed(1)} CPLH / '
-        '${targetSPLH.toStringAsFixed(0)} SPLH / '
-        '${targetPPA.toStringAsFixed(0)} PPA. '
-        '$_perPeriodDerivationLine';
+        'Coach$coachScope to ${coachTargetCPLH.toStringAsFixed(1)} CPLH / '
+        '${coachTargetSPLH.toStringAsFixed(0)} SPLH / '
+        '${coachTargetPPA.toStringAsFixed(0)} PPA. '
+        '$derivationLine';
 
     // 7.58.3 — debug-mode invariant guard. Catches a caller passing
     // an explicit `coverageCount` smaller than the leak count it is
@@ -206,6 +252,7 @@ class LearnTeachingAnalyzer {
       primaryBenchmarkCount: primaryBenchmarkCount,
       hasBenchmarkPatterns: hasBenchmarkPatterns,
       crossAxisPairs: crossAxisPairs,
+      dayparts: benchmarkContext.dayparts,
     );
   }
 }

@@ -271,7 +271,7 @@ AuthSession _session() {
     issuedAt: DateTime.utc(2026, 5, 6, 11),
     expiresAt: DateTime.utc(2026, 5, 6, 13),
     lastFreshAuthAt: DateTime.utc(2026, 5, 6, 11),
-    roles: const <String>['operator_manager'],
+    roles: const <String>['operator_general_manager'],
     mfaEnrolled: true,
   );
 }

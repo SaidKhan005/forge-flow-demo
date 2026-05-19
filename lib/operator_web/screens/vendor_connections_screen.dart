@@ -13,7 +13,7 @@
 // (`PermissionKeys.integrationsConfigure` in
 // `lib/auth/permission_keys.dart`; row in
 // `docs/contracts/auth_permission_key_catalog.md`) gates this
-// surface. Granted to `operator_admin` / `operator_owner`; denied
+// surface. Granted to `operator_owner`; denied
 // to `location_manager`. The operator-web shell admits
 // `location_manager` to the console at large for read-only views,
 // so this gate is per-screen — a location-manager session reaches
@@ -73,7 +73,7 @@ import '../../theme/app_theme.dart';
 /// Roles permitted to configure inbound vendor connections from the
 /// operator-web console. Mirrors the `integrations.configure` row
 /// in `docs/contracts/auth_permission_key_catalog.md`: granted to
-/// `operator_admin` and `operator_owner`; denied to
+/// `operator_owner`; denied to
 /// `location_manager` (read-only role, no integration mutate
 /// access).
 ///
@@ -126,7 +126,7 @@ class VendorConnectionsScreen extends StatefulWidget {
   /// fan-out. Null in demo mode and during early wiring; the panel
   /// hides itself entirely in that case.
   final OperatorWebVendorLifecycleRecentlyAvailableGateway?
-      recentlyAvailableGateway;
+  recentlyAvailableGateway;
 
   @override
   State<VendorConnectionsScreen> createState() =>
@@ -138,11 +138,12 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
     debugLabel: 'operator_web_vendor_connections_widget_host',
   );
 
-  /// True iff the session has `integrations.configure` (i.e. role
-  /// is `operator_admin` or `operator_owner`).
+  /// True iff the session has `integrations.configure` (currently
+  /// `operator_owner`).
   bool get _canConfigureIntegrations =>
-      widget.session.roles
-          .any(kOperatorWebVendorConnectionsAdmittedRoles.contains) ||
+      widget.session.roles.any(
+        kOperatorWebVendorConnectionsAdmittedRoles.contains,
+      ) ||
       widget.session.permissions.contains(PermissionKeys.integrationsConfigure);
 
   void _handleConnectFromRecentlyAvailable(
@@ -208,9 +209,7 @@ class _VendorConnectionsScreenState extends State<VendorConnectionsScreen> {
           ),
           const SizedBox(height: 12),
           VendorConnectionsBackfillProgressPanel(
-            key: const Key(
-              'operator_web_vendor_connections_backfill_progress',
-            ),
+            key: const Key('operator_web_vendor_connections_backfill_progress'),
             gateway: widget.backfillJobsGateway,
           ),
           const SizedBox(height: 12),
@@ -314,7 +313,7 @@ class _ForbiddenSurface extends StatelessWidget {
                       'Connecting Forge & Flow to your POS, '
                       'reservations, and scheduling systems writes '
                       'authentication tokens for the entire '
-                      'business. Only operator admins and owners '
+                      'business. Only operator owners '
                       'can do that. Location managers can keep '
                       'reading dashboards and shift views in the '
                       'mobile app; most day-to-day actions live '

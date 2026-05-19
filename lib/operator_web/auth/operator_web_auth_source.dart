@@ -180,9 +180,9 @@ enum OnboardingStage {
   completed,
 
   /// Authenticated but the role catalog does not include
-  /// `operator_admin` / `operator_owner` / `location_manager`. The
-  /// operator-web console is for operator-side senior roles only —
-  /// staff hit the forbidden surface.
+  /// `operator_owner` / `operator_general_manager` / `location_manager`.
+  /// The operator-web console is for operator-side leadership roles
+  /// only. Other roles hit the forbidden surface.
   forbidden,
 
   /// No session / signed out / token revoked. Router redirects to
@@ -569,7 +569,6 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
     _controller.close();
   }
 }
-
 
 /// Wave 2 W-5 — demo placeholder logo URL.
 ///

@@ -21,8 +21,8 @@
 // mount in a follow-up `8.spine-bridge.B.live` slice — same gateway-
 // follows-shell pattern Lane 11W.7 / 11W.8 used.
 //
-// Permission gate: mirrors Vendor connections — operator_owner /
-// operator_admin admit; location_manager lands on a friendly
+// Permission gate: mirrors Vendor connections. `operator_owner`
+// admits; `location_manager` lands on a friendly
 // forbidden surface explaining who manages data accuracy. Mirrors the
 // Phase 9 proxy gate the live wiring will enforce server-side.
 //
@@ -62,8 +62,8 @@ import '../../services/integration/polling_tier_presets.dart';
 import '../../theme/app_theme.dart';
 
 /// Roles permitted to edit data accuracy from the operator-web
-/// console. Mirrors the Vendor connections gate — operator owners +
-/// admins read+write; location managers see a friendly forbidden
+/// console. Mirrors the Vendor connections gate. Operator owners
+/// read+write; location managers see a friendly forbidden
 /// surface (read-mostly role).
 // G7d (spec §2.B/§3): v2 catalog constant. Phantom
 // `'operator_admin'` dropped (folded into `operator_owner`).
@@ -541,11 +541,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _savingServicePeriod = false;
         _servicePeriodSaveError = null;
       });
-      // Refresh the keyed list so the new row (or superseded row) is
-      // visible immediately. The mobile cache is invalidated through
-      // the realtime sync surface; the operator-web view reads
-      // straight from the proxy.
-      await _loadServicePeriodSettings();
+      // Refresh both the keyed list and the primary source state so
+      // the covers/manual cards do not stay on stale effective values.
+      await Future.wait(<Future<void>>[
+        _loadServicePeriodSettings(),
+        _loadSettings(),
+      ]);
     } catch (error) {
       if (!mounted || generation != _servicePeriodSaveGeneration) return;
       setState(() {
@@ -1179,7 +1180,7 @@ class _ForbiddenSurface extends StatelessWidget {
                     Text(
                       'Where your dashboard reads labor dollars and '
                       'covers from is a business-wide decision. Only '
-                      'operator admins and owners can change it. '
+                      'operator owners can change it. '
                       'Location managers can keep reading dashboards '
                       'and shift views in the mobile app. Most '
                       'day-to-day actions live there.',

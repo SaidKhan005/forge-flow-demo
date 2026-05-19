@@ -66,7 +66,7 @@ that resolved each check that failed.
       `DELETE /v3/apps/{aId}/webhooks/{subscriptionId}` returns 200
       or 404 (both treated as success).
       Test: `<test_path>:<line>`
-- [ ] **Permission gate.** `location_manager` 403; `operator_admin`
+- [ ] **Permission gate.** `location_manager` 403; `operator_owner`
       200 on the connect / disconnect routes.
       Test: `<test_path>:<line>`
 - [ ] **Demo-mode flip.** First connect + first backfill commit
