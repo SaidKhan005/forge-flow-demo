@@ -569,10 +569,7 @@ class InMemoryMembersAdminGateway implements MembersAdminGateway {
             'to': nextDisplay,
           },
         if (nextEmail != null && nextEmail.isNotEmpty)
-          'email': <String, String>{
-            'from': prev.email,
-            'to': nextEmail,
-          },
+          'email': <String, String>{'from': prev.email, 'to': nextEmail},
       },
       adminReason: adminReason,
     );
@@ -848,8 +845,8 @@ Map<String, List<MemberAdminRow>> kDemoMembersByOperator({DateTime? at}) {
       MemberAdminRow(
         userId: 'demo-user-diner-manager',
         email: 'manager@demo-diner.test',
-        displayName: 'Mira Manager',
-        roleKey: 'operator_manager',
+        displayName: 'Mira General Manager',
+        roleKey: 'operator_general_manager',
         primaryLocationId: kDemoDinerLocationVancouver,
         primaryLocationName: 'Vancouver Robson',
         status: MemberStatus.active,
@@ -863,7 +860,7 @@ Map<String, List<MemberAdminRow>> kDemoMembersByOperator({DateTime? at}) {
         userId: 'demo-user-diner-supervisor',
         email: 'sup@demo-diner.test',
         displayName: 'Sam Supervisor',
-        roleKey: 'operator_supervisor',
+        roleKey: 'supervisor',
         primaryLocationId: kDemoDinerLocationToronto,
         primaryLocationName: 'Toronto Yorkville',
         status: MemberStatus.suspended,
@@ -877,8 +874,8 @@ Map<String, List<MemberAdminRow>> kDemoMembersByOperator({DateTime? at}) {
       MemberAdminRow(
         userId: 'demo-user-diner-staff-archived',
         email: 'archived@demo-diner.test',
-        displayName: 'Avery Archived',
-        roleKey: 'operator_staff',
+        displayName: 'Avery Supervisor',
+        roleKey: 'supervisor',
         primaryLocationId: kDemoDinerLocationToronto,
         primaryLocationName: 'Toronto Yorkville',
         status: MemberStatus.softDeleted,
@@ -908,8 +905,8 @@ Map<String, List<MemberAdminRow>> kDemoMembersByOperator({DateTime? at}) {
       MemberAdminRow(
         userId: 'demo-user-sunset-staff',
         email: 'staff@sunset-cafe.test',
-        displayName: 'Rae Staff',
-        roleKey: 'operator_staff',
+        displayName: 'Rae Supervisor',
+        roleKey: 'supervisor',
         primaryLocationId: kDemoSunsetLocationBrooklyn,
         primaryLocationName: 'Brooklyn Williamsburg',
         status: MemberStatus.dormant30,
@@ -931,7 +928,7 @@ Map<String, List<MemberInviteRow>> kDemoInvitesByOperator({DateTime? at}) {
         inviteId: 'demo-invite-diner-1',
         email: 'newhire@demo-diner.test',
         displayName: 'Nico Newhire',
-        roleKey: 'operator_staff',
+        roleKey: 'supervisor',
         primaryLocationId: kDemoDinerLocationToronto,
         primaryLocationName: 'Toronto Yorkville',
         invitedAt: ts.subtract(const Duration(days: 1)),

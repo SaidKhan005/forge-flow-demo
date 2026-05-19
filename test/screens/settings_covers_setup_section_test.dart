@@ -3,10 +3,8 @@
 // Verifies:
 //   * Form renders the covers field, daypart dropdown, business-date
 //     pill, and save button.
-//   * Primary-path framing when the active POS does NOT expose covers
-//     (Square / Clover).
-//   * Manual-override framing when the active POS DOES expose covers
-//     (Toast / Aloha / etc.).
+//   * Neutral covers-source framing that does not promise a one-off
+//     vendor override.
 //   * Save handler writes via the injected writer and clears the
 //     covers input on success.
 //   * Validation error renders when the operator hits Save without
@@ -73,27 +71,40 @@ void main() {
     expect(find.text('2026-05-10'), findsOneWidget);
   });
 
-  testWidgets('uses primary-path framing when active POS does not expose '
-      'covers (square)', (tester) async {
+  testWidgets('uses neutral covers-source framing when POS is missing covers', (
+    tester,
+  ) async {
     await tester.pumpWidget(harness(posVendorId: 'square'));
     await tester.pumpAndSettle();
 
-    expect(find.text("Type today's covers"), findsOneWidget);
-    expect(find.textContaining("doesn't send a cover count"), findsOneWidget);
+    expect(find.text('Record cover counts'), findsOneWidget);
+    expect(
+      find.textContaining('Covers source is set to Manual'),
+      findsOneWidget,
+    );
+    expect(
+      find.textContaining('POS does not send cover counts'),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('uses manual-override framing when active POS DOES expose '
-      'covers (toast)', (tester) async {
+  testWidgets('keeps the same neutral framing for vendors that send covers', (
+    tester,
+  ) async {
     await tester.pumpWidget(harness(posVendorId: 'toast'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Manual cover override'), findsOneWidget);
-    expect(find.textContaining('already sends covers'), findsOneWidget);
+    expect(find.text('Record cover counts'), findsOneWidget);
+    expect(
+      find.textContaining('Covers source is set to Manual'),
+      findsOneWidget,
+    );
+    expect(find.textContaining('override'), findsNothing);
   });
 
   testWidgets('renders hierarchy scope label per HP #11', (tester) async {
     await tester.pumpWidget(
-      harness(posVendorId: 'square', scopeLabel: 'Barrio Legado — St Johns'),
+      harness(posVendorId: 'square', scopeLabel: 'Barrio Legado: St Johns'),
     );
     await tester.pumpAndSettle();
 

@@ -23,10 +23,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   void sizeViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1280, 1024);
@@ -102,14 +102,9 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_publish_dialog')),
       findsOneWidget,
     );
+    expect(find.text('Publish the first default catalog?'), findsOneWidget);
     expect(
-      find.text('Publish the first default catalog?'),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key('admin_default_role_catalog_publish_blast_notice'),
-      ),
+      find.byKey(const Key('admin_default_role_catalog_publish_blast_notice')),
       findsOneWidget,
     );
 
@@ -143,9 +138,9 @@ void main() {
                   nextVersionNumber: 4,
                   proposedPayload: const <Object?>[
                     <String, Object?>{
-                      'role_key': 'operator_admin',
-                      'display_name': 'Operator Admin',
-                      'description': 'Admin role.',
+                      'role_key': 'operator_general_manager',
+                      'display_name': 'General Manager',
+                      'description': 'General manager role.',
                       'permissions': <Object?>[],
                     },
                   ],
@@ -161,17 +156,14 @@ void main() {
     await tester.pumpAndSettle();
 
     // Stage 1: awareness shows prior version + blast notice.
-    expect(
-      find.text('Publish a new default catalog version?'),
-      findsOneWidget,
-    );
+    expect(find.text('Publish a new default catalog version?'), findsOneWidget);
     expect(find.textContaining('version 3'), findsOneWidget);
     expect(find.textContaining('version 4'), findsOneWidget);
 
     // Fill optional notes.
     await tester.enterText(
       find.byKey(const Key('admin_default_role_catalog_publish_notes')),
-      'Added operator_admin role per ENG-123.',
+      'Added General Manager role per ENG-123.',
     );
     await tester.pump();
 
@@ -219,9 +211,7 @@ void main() {
     // Success stage.
     expect(find.textContaining('Published version 1'), findsOneWidget);
     expect(
-      find.byKey(
-        const Key('admin_default_role_catalog_publish_success_body'),
-      ),
+      find.byKey(const Key('admin_default_role_catalog_publish_success_body')),
       findsOneWidget,
     );
 
@@ -296,21 +286,14 @@ void main() {
     // Error stage.
     expect(find.text('Publish failed'), findsOneWidget);
     expect(
-      find.byKey(
-        const Key('admin_default_role_catalog_publish_error_text'),
-      ),
+      find.byKey(const Key('admin_default_role_catalog_publish_error_text')),
       findsOneWidget,
     );
     // Friendly translation of permission_denied.
-    expect(
-      find.textContaining('only ecosystem admins'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('only ecosystem admins'), findsOneWidget);
     // Retry returns to type-confirm stage.
     expect(
-      find.byKey(
-        const Key('admin_default_role_catalog_publish_error_retry'),
-      ),
+      find.byKey(const Key('admin_default_role_catalog_publish_error_retry')),
       findsOneWidget,
     );
     await tester.tap(
@@ -387,78 +370,77 @@ void main() {
     },
   );
 
-  testWidgets(
-    'B2.3 zero counts → plain-English fallback (no numeric counts)',
-    (tester) async {
-      sizeViewport(tester);
-      final prior = priorCurrent(versionNumber: 3);
-      // Default in-memory gateway returns zero counts for any version.
-      final gateway = InMemoryDefaultRoleCatalogAdminGateway();
-      // Seed the prior version into the in-memory store so the lookup
-      // succeeds (and returns zero counts via the orElse path).
-      await gateway.publishVersion(payload: prior.payload);
-      // The published version has a fresh versionId; we pass the
-      // original prior with a known id, so the in-memory gateway
-      // returns a 404 in `getBlastRadius` — but that's the error-chip
-      // path, not zero-counts. Use a configured seed instead:
-      final gatewayWithSeed = InMemoryDefaultRoleCatalogAdminGateway(
-        blastRadiusByVersionId: <String, DefaultRoleCatalogBlastRadius>{
-          prior.versionId: DefaultRoleCatalogBlastRadius(
-            versionId: prior.versionId,
-            versionNumber: 3,
-            operatorCount: 0,
-            locationCount: 0,
-            userCount: 0,
-          ),
-        },
-      );
-      await tester.pumpWidget(
-        wrap(
-          Builder(
-            builder: (context) => Center(
-              child: FilledButton(
-                key: const Key('open'),
-                onPressed: () async {
-                  await showDefaultRoleCatalogPublishDialog(
-                    context: context,
-                    gateway: gatewayWithSeed,
-                    priorCurrent: prior,
-                    nextVersionNumber: 4,
-                    proposedPayload: const <Object?>[
-                      <String, Object?>{
-                        'role_key': 'r',
-                        'display_name': 'R',
-                        'description': '',
-                        'permissions': <Object?>[],
-                      },
-                    ],
-                  );
-                },
-                child: const Text('open'),
-              ),
+  testWidgets('B2.3 zero counts → plain-English fallback (no numeric counts)', (
+    tester,
+  ) async {
+    sizeViewport(tester);
+    final prior = priorCurrent(versionNumber: 3);
+    // Default in-memory gateway returns zero counts for any version.
+    final gateway = InMemoryDefaultRoleCatalogAdminGateway();
+    // Seed the prior version into the in-memory store so the lookup
+    // succeeds (and returns zero counts via the orElse path).
+    await gateway.publishVersion(payload: prior.payload);
+    // The published version has a fresh versionId; we pass the
+    // original prior with a known id, so the in-memory gateway
+    // returns a 404 in `getBlastRadius` — but that's the error-chip
+    // path, not zero-counts. Use a configured seed instead:
+    final gatewayWithSeed = InMemoryDefaultRoleCatalogAdminGateway(
+      blastRadiusByVersionId: <String, DefaultRoleCatalogBlastRadius>{
+        prior.versionId: DefaultRoleCatalogBlastRadius(
+          versionId: prior.versionId,
+          versionNumber: 3,
+          operatorCount: 0,
+          locationCount: 0,
+          userCount: 0,
+        ),
+      },
+    );
+    await tester.pumpWidget(
+      wrap(
+        Builder(
+          builder: (context) => Center(
+            child: FilledButton(
+              key: const Key('open'),
+              onPressed: () async {
+                await showDefaultRoleCatalogPublishDialog(
+                  context: context,
+                  gateway: gatewayWithSeed,
+                  priorCurrent: prior,
+                  nextVersionNumber: 4,
+                  proposedPayload: const <Object?>[
+                    <String, Object?>{
+                      'role_key': 'r',
+                      'display_name': 'R',
+                      'description': '',
+                      'permissions': <Object?>[],
+                    },
+                  ],
+                );
+              },
+              child: const Text('open'),
             ),
           ),
         ),
-      );
-      await tester.tap(find.byKey(const Key('open')));
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.tap(find.byKey(const Key('open')));
+    await tester.pumpAndSettle();
 
-      // Plain-English fallback renders; no numeric counts.
-      expect(
-        find.byKey(const Key('admin_default_role_catalog_publish_headline')),
-        findsOneWidget,
-      );
-      expect(find.textContaining('0 businesses'), findsNothing);
-      expect(find.textContaining('replace the current default'), findsOneWidget);
-      // No error chip because the fetch resolved successfully.
-      expect(
-        find.byKey(
-          const Key('admin_default_role_catalog_publish_blast_error_chip'),
-        ),
-        findsNothing,
-      );
-    },
-  );
+    // Plain-English fallback renders; no numeric counts.
+    expect(
+      find.byKey(const Key('admin_default_role_catalog_publish_headline')),
+      findsOneWidget,
+    );
+    expect(find.textContaining('0 businesses'), findsNothing);
+    expect(find.textContaining('replace the current default'), findsOneWidget);
+    // No error chip because the fetch resolved successfully.
+    expect(
+      find.byKey(
+        const Key('admin_default_role_catalog_publish_blast_error_chip'),
+      ),
+      findsNothing,
+    );
+  });
 
   testWidgets(
     'B2.3 gateway error → plain-English fallback + error chip surfaces code',
@@ -512,7 +494,10 @@ void main() {
       await tester.pumpAndSettle();
 
       // Plain-English fallback renders.
-      expect(find.textContaining('replace the current default'), findsOneWidget);
+      expect(
+        find.textContaining('replace the current default'),
+        findsOneWidget,
+      );
       // Error chip renders the proxy error code.
       expect(
         find.byKey(
@@ -638,10 +623,7 @@ void main() {
       find.byKey(const Key('admin_default_role_catalog_publish_back')),
     );
     await tester.pumpAndSettle();
-    expect(
-      find.text('Publish a new default catalog version?'),
-      findsOneWidget,
-    );
+    expect(find.text('Publish a new default catalog version?'), findsOneWidget);
   });
 }
 

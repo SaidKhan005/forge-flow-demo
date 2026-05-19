@@ -193,10 +193,10 @@ class PermissionKeys {
   static const String teamHierarchyDelete = 'team.hierarchy.delete';
   static const String teamAuditLogView = 'team.audit_log.view';
   // Added 11W.5 (2026-05-06). Operator Web Audit Log CSV export gate.
-  // Default-granted to operator_owner + operator_admin only — pulling
-  // a full audit trail to CSV is a senior-role action per the parity
-  // contract (audit log Permission gate cheat sheet). Manager-tier
-  // and below do NOT get the grant by default.
+  // Default-granted to operator_owner and auditor_compliance among
+  // operator roles. Pulling a full audit trail to CSV is a senior or
+  // audit role action per the parity contract. GM-tier and below do
+  // NOT get the grant by default.
   static const String teamAuditLogExport = 'team.audit_log.export';
   static const String teamSessionForceLogout = 'team.session.force_logout';
 
@@ -232,7 +232,7 @@ class PermissionKeys {
   // admin surface (POS / labor / reservation). Distinct from the
   // per-vendor `integration.*` keys above which gate F&F-internal
   // provider key rotation in 11A.4. Granted to forge_admin and
-  // operator_admin / operator_owner; read-only for ff_support
+  // operator_owner; read-only for ff_support
   // (no mutate routes wired); denied to location_manager.
   static const String integrationsConfigure = 'integrations.configure';
 
@@ -401,8 +401,7 @@ class PermissionKeys {
   //   auditor_compliance        :323
   //   training_lead             :331
   //   team_admin                :340
-  static const String roleOperatorGeneralManager =
-      'operator_general_manager';
+  static const String roleOperatorGeneralManager = 'operator_general_manager';
   static const String roleLocationManager = 'location_manager';
   static const String roleSupervisor = 'supervisor';
   static const String roleFinanceAnalyst = 'finance_analyst';

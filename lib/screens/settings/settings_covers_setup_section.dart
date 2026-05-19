@@ -6,16 +6,10 @@
 // underneath the form so the round trip is visible without leaving
 // the screen.
 //
-// Vendor-fallback framing (per debug.md:287-289 + integration spine
-// contract):
-//   * When the active POS does NOT expose a covers field (Square,
-//     Clover) — manual entry is the **primary path**. The header
-//     copy and explainer surface that. F&F cannot recover covers any
-//     other way for these POS vendors.
-//   * When the active POS DOES expose a covers field (Toast, Aloha,
-//     Lightspeed K-Series, Oracle MICROS Simphony, Revel) — the form
-//     is still available but framed as a **manual override**, so the
-//     operator can correct a per-day count without re-syncing.
+// Covers-source framing:
+//   Manual entries are stored for the selected business date and
+//   service period. They become operative when Covers source is set to
+//   Manual, or when the POS connection does not send cover counts.
 //
 // Hierarchy-scope surfacing (HP #11): the section header shows the
 // active restaurant scope so the operator knows which location their
@@ -33,7 +27,6 @@ import '../../domain/models/service_period_definition.dart';
 import '../../domain/services/service_period_definition_resolver.dart';
 import '../../infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import '../../infrastructure/persistence/sqlite/sqlite_database.dart';
-import '../../services/integration/pos_covers_capability.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
@@ -79,9 +72,9 @@ class SettingsCoversSetupSection extends StatefulWidget {
   /// the section header per HP #11 (hierarchy-scoped settings).
   final String? scopeLabel;
 
-  /// Active POS vendor id (`'square'`, `'toast'`, …) used to decide
-  /// whether the form is framed as the primary path (POS missing
-  /// covers) or as a manual override.
+  /// Active POS vendor id retained for Settings host compatibility.
+  /// This section does not change copy by vendor because the host does
+  /// not reliably know the active POS connection today.
   final String? posVendorId;
 
   /// Loader hook. Production passes a SQLite-backed closure; tests
@@ -314,9 +307,6 @@ class _SettingsCoversSetupSectionState
 
   @override
   Widget build(BuildContext context) {
-    final exposes = posVendorExposesCovers(widget.posVendorId);
-    final primaryPath = exposes == false || exposes == null;
-
     // Styled to match the Business timing card on the same Setup tab:
     // plain SettingsCard (no left accent stripe), 14px inset on all
     // sides, and the section host (`_settingsSection`) supplies the
@@ -329,11 +319,7 @@ class _SettingsCoversSetupSectionState
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _Header(
-                scopeLabel: widget.scopeLabel,
-                primaryPath: primaryPath,
-                posVendorId: widget.posVendorId,
-              ),
+              _Header(scopeLabel: widget.scopeLabel),
               const SizedBox(height: 12),
               _FormRow(
                 label: 'Business date',
@@ -458,29 +444,27 @@ class _SettingsCoversSetupSectionState
 }
 
 class _Header extends StatelessWidget {
-  const _Header({
-    required this.scopeLabel,
-    required this.primaryPath,
-    required this.posVendorId,
-  });
+  const _Header({required this.scopeLabel});
 
   final String? scopeLabel;
-  final bool primaryPath;
-  final String? posVendorId;
 
   @override
   Widget build(BuildContext context) {
-    final title = primaryPath ? "Type today's covers" : 'Manual cover override';
-    final accent = primaryPath ? AppColors.sunset : AppColors.positive;
-    final explainer = primaryPath
-        ? _explainerWhenPrimary(posVendorId)
-        : _explainerWhenOverride(posVendorId);
+    const title = 'Record cover counts';
+    const explainer =
+        'Save manual covers for this business date and service '
+        'period. F&F uses them when Covers source is set to Manual, or when '
+        'your POS does not send cover counts.';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
           children: [
-            Icon(Icons.edit_note_outlined, size: 18, color: accent),
+            const Icon(
+              Icons.edit_note_outlined,
+              size: 18,
+              color: AppColors.sunset,
+            ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
@@ -508,47 +492,6 @@ class _Header extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  static String _explainerWhenPrimary(String? posVendorId) {
-    if (posVendorId == null) {
-      return "Your point-of-sale isn't connected yet, so F&F has no "
-          'covers to read. Type the count here and F&F will use it for '
-          "today's targets and benchmarks.";
-    }
-    return "Your point-of-sale (${_humanizeVendor(posVendorId)}) doesn't "
-        'send a cover count to F&F. Type the number of guests you '
-        "served and it lands here. F&F will use it where covers feed "
-        'today\'s targets.';
-  }
-
-  static String _explainerWhenOverride(String? posVendorId) {
-    final vendor = posVendorId == null
-        ? 'your point-of-sale'
-        : _humanizeVendor(posVendorId);
-    return "$vendor already sends covers to F&F. Use this form only "
-        'when you need to override a count for a specific shift.';
-  }
-
-  static String _humanizeVendor(String posVendorId) {
-    switch (posVendorId) {
-      case 'aloha':
-        return 'Aloha';
-      case 'clover':
-        return 'Clover';
-      case 'lightspeed_lsk':
-        return 'Lightspeed K-Series';
-      case 'oracle_micros_simphony':
-        return 'Oracle MICROS Simphony';
-      case 'revel':
-        return 'Revel';
-      case 'square':
-        return 'Square';
-      case 'toast':
-        return 'Toast';
-      default:
-        return posVendorId;
-    }
   }
 }
 

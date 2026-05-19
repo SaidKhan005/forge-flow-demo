@@ -199,8 +199,8 @@ abstract class RoleManagementPolicy {
       }
       // Owners may grant any other operator-scoped role within their
       // operator (the seeded-role-protection is on EDIT, not on
-      // GRANT — granting an existing seeded role like
-      // operator_supervisor to a user is fine).
+      // GRANT; granting an existing seeded role like supervisor to a
+      // user is fine).
       return RoleManagementDecision.allow(
         'operator_owner managing own operator',
       );

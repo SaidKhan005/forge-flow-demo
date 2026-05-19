@@ -281,7 +281,7 @@ void main() {
         );
         await gateway.editSeededRole(
           operatorId: kDemoDinerOperatorId,
-          roleId: 'role-seed-operator-supervisor',
+          roleId: 'role-seed-supervisor',
           permissionKeys: const <String>['team.users.view'],
           idempotencyKey: 'k-edit',
           actorUserId: 'demo-super-admin',
@@ -452,46 +452,45 @@ void main() {
       expect(event.payload['label'], equals('north'));
     });
 
-    test('rename org unit writes team.org_unit.rename with before/after',
-        () async {
-      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
-        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
-      );
-      final before = (await gateway.listOrgUnits(
-        operatorId: kDemoDinerOperatorId,
-      )).firstWhere((u) => u.orgUnitId == kDemoDinerOrgUnitRoot);
-      final renamed = await gateway.renameOrgUnit(
-        operatorId: kDemoDinerOperatorId,
-        orgUnitId: kDemoDinerOrgUnitRoot,
-        name: 'Renamed Business',
-        idempotencyKey: 'k-rename-org-unit',
-        actorUserId: 'demo-super-admin',
-        actorIsForgeAdmin: true,
-        adminReason: 'operator requested business label change',
-      );
+    test(
+      'rename org unit writes team.org_unit.rename with before/after',
+      () async {
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        );
+        final before = (await gateway.listOrgUnits(
+          operatorId: kDemoDinerOperatorId,
+        )).firstWhere((u) => u.orgUnitId == kDemoDinerOrgUnitRoot);
+        final renamed = await gateway.renameOrgUnit(
+          operatorId: kDemoDinerOperatorId,
+          orgUnitId: kDemoDinerOrgUnitRoot,
+          name: 'Renamed Business',
+          idempotencyKey: 'k-rename-org-unit',
+          actorUserId: 'demo-super-admin',
+          actorIsForgeAdmin: true,
+          adminReason: 'operator requested business label change',
+        );
 
-      // Corp root IS renameable (operator-facing Business label).
-      expect(renamed.orgUnitId, equals(kDemoDinerOrgUnitRoot));
-      expect(renamed.name, equals('Renamed Business'));
-      expect(renamed.parentOrgUnitId, isNull);
-      final event = gateway.capturedAuditEvents.single;
-      expect(event.action, equals('team.org_unit.rename'));
-      expect(event.targetKind, equals('org_unit'));
-      expect(event.targetId, equals(kDemoDinerOrgUnitRoot));
-      expect(
-        event.adminReason,
-        equals('operator requested business label change'),
-      );
-      expect(event.actorKind, equals('forge_admin'));
-      expect(
-        (event.payload['before'] as Map)['name'],
-        equals(before.name),
-      );
-      expect(
-        (event.payload['after'] as Map)['name'],
-        equals('Renamed Business'),
-      );
-    });
+        // Corp root IS renameable (operator-facing Business label).
+        expect(renamed.orgUnitId, equals(kDemoDinerOrgUnitRoot));
+        expect(renamed.name, equals('Renamed Business'));
+        expect(renamed.parentOrgUnitId, isNull);
+        final event = gateway.capturedAuditEvents.single;
+        expect(event.action, equals('team.org_unit.rename'));
+        expect(event.targetKind, equals('org_unit'));
+        expect(event.targetId, equals(kDemoDinerOrgUnitRoot));
+        expect(
+          event.adminReason,
+          equals('operator requested business label change'),
+        );
+        expect(event.actorKind, equals('forge_admin'));
+        expect((event.payload['before'] as Map)['name'], equals(before.name));
+        expect(
+          (event.payload['after'] as Map)['name'],
+          equals('Renamed Business'),
+        );
+      },
+    );
 
     test('rename org unit rejects a non-forge-admin actor', () async {
       final gateway = InMemoryRolesHierarchySessionsAdminGateway(
@@ -537,34 +536,36 @@ void main() {
       expect(gateway.capturedAuditEvents, isEmpty);
     });
 
-    test('rename org unit rejects a duplicate sibling name (locked copy)',
-        () async {
-      final gateway = InMemoryRolesHierarchySessionsAdminGateway(
-        orgUnitsByOperator: kDemoOrgUnitsByOperator(),
-      );
-      // Fixture already has 'East region' and 'West region' as siblings
-      // under the root. Renaming East onto West's name must be rejected
-      // with the locked duplicate copy.
-      await expectLater(
-        gateway.renameOrgUnit(
-          operatorId: kDemoDinerOperatorId,
-          orgUnitId: kDemoDinerOrgUnitEast,
-          name: 'West region',
-          idempotencyKey: 'k-dup-rename',
-          actorUserId: 'demo-super-admin',
-          actorIsForgeAdmin: true,
-          adminReason: 'r',
-        ),
-        throwsA(
-          isA<RolesHierarchySessionsGatewayError>().having(
-            (e) => e.message,
-            'message',
-            HierarchyValidationCopy.orgUnitNameDuplicate,
+    test(
+      'rename org unit rejects a duplicate sibling name (locked copy)',
+      () async {
+        final gateway = InMemoryRolesHierarchySessionsAdminGateway(
+          orgUnitsByOperator: kDemoOrgUnitsByOperator(),
+        );
+        // Fixture already has 'East region' and 'West region' as siblings
+        // under the root. Renaming East onto West's name must be rejected
+        // with the locked duplicate copy.
+        await expectLater(
+          gateway.renameOrgUnit(
+            operatorId: kDemoDinerOperatorId,
+            orgUnitId: kDemoDinerOrgUnitEast,
+            name: 'West region',
+            idempotencyKey: 'k-dup-rename',
+            actorUserId: 'demo-super-admin',
+            actorIsForgeAdmin: true,
+            adminReason: 'r',
           ),
-        ),
-      );
-      expect(gateway.capturedAuditEvents, isEmpty);
-    });
+          throwsA(
+            isA<RolesHierarchySessionsGatewayError>().having(
+              (e) => e.message,
+              'message',
+              HierarchyValidationCopy.orgUnitNameDuplicate,
+            ),
+          ),
+        );
+        expect(gateway.capturedAuditEvents, isEmpty);
+      },
+    );
 
     test('idempotent retry on renameOrgUnit returns the same row', () async {
       final gateway = InMemoryRolesHierarchySessionsAdminGateway(
@@ -868,9 +869,9 @@ void main() {
             jsonEncode(<String, Object?>{
               'roles': <Object?>[
                 <String, Object?>{
-                  'role_id': 'operator_staff',
-                  'role_key': 'operator_staff',
-                  'role_label': 'Operator staff',
+                  'role_id': 'supervisor',
+                  'role_key': 'supervisor',
+                  'role_label': 'Supervisor',
                   'is_seeded': true,
                   'permission_keys': <String>['team.users.view'],
                 },
@@ -926,8 +927,8 @@ void main() {
       );
       final sessions = await gateway.listSessions(operatorId: 'op-1');
 
-      expect(roles.single.roleKey, equals('operator_staff'));
-      expect(roles.single.displayName, equals('Operator staff'));
+      expect(roles.single.roleKey, equals('supervisor'));
+      expect(roles.single.displayName, equals('Supervisor'));
       expect(units.single.name, equals('Front'));
       expect(locations.single.name, equals('95 Water Street'));
       expect(locations.single.orgUnitId, equals('unit-1'));
