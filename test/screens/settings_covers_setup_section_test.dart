@@ -144,6 +144,50 @@ void main() {
     expect(find.textContaining('Org unit since 2026-05-01'), findsOneWidget);
   });
 
+  testWidgets('does not guess a source detail when no covers-source row exists', (
+    tester,
+  ) async {
+    await tester.pumpWidget(harness(posVendorId: 'square'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Vendor feed'), findsOneWidget);
+    expect(
+      find.byKey(const Key('settings_covers_setup_effective_source_detail')),
+      findsNothing,
+    );
+    expect(find.text('Default'), findsNothing);
+  });
+
+  testWidgets('does not guess a source detail when server metadata is absent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      harness(
+        coversSourceLoader: (_) async => <DataAccuracyServicePeriodSetting>[
+          DataAccuracyServicePeriodSetting(
+            id: 'setting-dinner',
+            operatorId: 'operator-1',
+            locationId: 'restaurant-1',
+            servicePeriodKey: 'dinner',
+            coversSource: ServicePeriodCoversSource.manual,
+            wageSource: ServicePeriodWageSource.vendorPerEmployee,
+            effectiveAtBusinessDate: '2026-05-01',
+            createdAt: DateTime.utc(2026, 5, 1),
+            updatedAt: DateTime.utc(2026, 5, 1),
+          ),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Manual entry'), findsOneWidget);
+    expect(
+      find.byKey(const Key('settings_covers_setup_effective_source_detail')),
+      findsNothing,
+    );
+    expect(find.textContaining('Last synced service-period setting'), findsNothing);
+  });
+
   testWidgets('renders hierarchy scope label per HP #11', (tester) async {
     await tester.pumpWidget(
       harness(posVendorId: 'square', scopeLabel: 'Barrio Legado: St Johns'),

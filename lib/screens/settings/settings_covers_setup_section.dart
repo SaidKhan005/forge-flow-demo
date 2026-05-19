@@ -291,15 +291,13 @@ class _SettingsCoversSetupSectionState
     if (best == null) {
       return const _CoversSourceStatus(
         label: 'Vendor feed',
-        sourceLabel: 'Default',
+        sourceLabel: null,
         effectiveAtBusinessDate: null,
       );
     }
     return _CoversSourceStatus(
       label: _coversSourceLabel(best.coversSource),
-      sourceLabel:
-          best.coversSourceSource?.label ??
-          'Last synced service-period setting',
+      sourceLabel: best.coversSourceSource?.label,
       effectiveAtBusinessDate: best.effectiveAtBusinessDate,
     );
   }
@@ -583,12 +581,12 @@ class _Header extends StatelessWidget {
 class _CoversSourceStatus {
   const _CoversSourceStatus({
     required this.label,
-    required this.sourceLabel,
     required this.effectiveAtBusinessDate,
+    this.sourceLabel,
   });
 
   final String label;
-  final String sourceLabel;
+  final String? sourceLabel;
   final String? effectiveAtBusinessDate;
 }
 
@@ -600,9 +598,12 @@ class _CoversSourcePill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final effective = status.effectiveAtBusinessDate;
-    final detail = effective == null
-        ? status.sourceLabel
-        : '${status.sourceLabel} since $effective';
+    final sourceLabel = status.sourceLabel;
+    final detail = sourceLabel == null
+        ? null
+        : effective == null
+        ? sourceLabel
+        : '$sourceLabel since $effective';
     return Container(
       key: const Key('settings_covers_setup_effective_source'),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -619,12 +620,14 @@ class _CoversSourcePill extends StatelessWidget {
             key: const Key('settings_covers_setup_effective_source_label'),
             style: AppTextStyles.body14(color: AppColors.textPrimary),
           ),
-          const SizedBox(height: 2),
-          Text(
-            detail,
-            key: const Key('settings_covers_setup_effective_source_detail'),
-            style: AppTextStyles.body12(color: AppColors.textMuted),
-          ),
+          if (detail != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              detail,
+              key: const Key('settings_covers_setup_effective_source_detail'),
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ],
         ],
       ),
     );
