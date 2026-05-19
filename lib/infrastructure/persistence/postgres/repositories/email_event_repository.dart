@@ -71,6 +71,7 @@ import 'dart:convert';
 
 import '../../../../services/email/sendgrid_event_payload.dart';
 import '../operator_scoped_repository.dart';
+import '../postgres_executor.dart';
 
 /// Outcome of an [EmailEventRepository.insertProviderEvent] call.
 sealed class EmailEventInsertResult {
@@ -200,6 +201,7 @@ class EmailEventRepository extends OperatorScopedRepository {
             'provider_message_id': event.providerMessageId,
           },
         );
+        await _markTerminalOutboxStatus(exec, event);
         if (rows.isEmpty) {
           // Duplicate by partial-index predicate. ON CONFLICT DO
           // NOTHING returns zero rows in RETURNING; the route layer
@@ -216,6 +218,42 @@ class EmailEventRepository extends OperatorScopedRepository {
       },
       reason: kInsertProviderEventReason,
     );
+  }
+
+  Future<void> _markTerminalOutboxStatus(
+    PostgresExecutor exec,
+    SendGridEvent event,
+  ) async {
+    final status = _terminalOutboxStatus(event.eventKind);
+    final providerMessageId = event.providerMessageId?.trim();
+    if (status == null ||
+        providerMessageId == null ||
+        providerMessageId.isEmpty) {
+      return;
+    }
+    await exec.query(
+      'update public.email_outbox '
+      'set status = @status, '
+      '    updated_at = now() '
+      'where provider_message_id = @provider_message_id '
+      "  and status = 'sent' "
+      'returning email_id::text as email_id',
+      parameters: <String, Object?>{
+        'status': status,
+        'provider_message_id': providerMessageId,
+      },
+    );
+  }
+
+  String? _terminalOutboxStatus(String eventKind) {
+    switch (eventKind) {
+      case 'bounced':
+        return 'bounced';
+      case 'complaint':
+        return 'complaint';
+      default:
+        return null;
+    }
   }
 
   /// Q-2a email soak harness read seam.
