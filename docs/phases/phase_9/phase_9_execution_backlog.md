@@ -176,12 +176,16 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605191830_canonical_fact_projection_retry_jobs.sql`
+  (canonical fact projection retry ledger: tenant-scoped durable retry
+  rows for post-commit projection failures, with operator-leading
+  indexes, bounded status, and replay payload checks). The prior cutoff
   `202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
   (Per-Daypart V1 / R7f Data Accuracy precedence and source parity:
   view repair that treats keyed service-period rows as base defaults,
   then lets business, org-unit, and location scoped overrides win per
   HP #11, with source metadata following the same winning scope). The
-  prior cutoff
+  earlier cutoff
   `202605190900_per_daypart_v1_r7e_data_accuracy_provenance.sql`
   (Per-Daypart V1 / R7e Data Accuracy provenance: additive view
   replace that appends server source metadata for covers, wage, and

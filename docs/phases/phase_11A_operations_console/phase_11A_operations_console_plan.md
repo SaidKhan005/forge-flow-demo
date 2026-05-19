@@ -152,12 +152,11 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605191000_per_daypart_v1_r7f_data_accuracy_precedence_fix.sql`
-(Per-Daypart V1 R7f Data Accuracy precedence and source parity: view
-repair that treats keyed service-period rows as base defaults, then lets
-business, org-unit, and location scoped overrides win per HP #11, with
-source metadata following the same winning scope), including the prior
-R7e provenance view and R7d hard drop plus the
+`202605191830_canonical_fact_projection_retry_jobs.sql`
+(canonical fact projection retry ledger: tenant-scoped durable retry rows
+for post-commit projection failures, with operator-leading indexes,
+bounded status, and replay payload checks), including the prior R7f
+precedence/source-parity view, R7e provenance view, and R7d hard drop plus the
 later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
 lifecycle, scoped Data Accuracy/Polling, lifecycle access hardening,
