@@ -8,8 +8,7 @@ later sections cross-reference rather than restate.
 Operator Communication Style ·
 Authority Order ·
 Hard Promises ·
-Workflow (Pattern · Routing · House rules · Agent-led slices ·
-Ceiling-raise rule) ·
+Workflow (Pattern · Routing · House rules · Orchestrator Support Loop · Doc Lean-Out & Archive Pass · Agent-led slices · Ceiling-raise rule) ·
 Shared Checkout Safety ·
 Cost & Convergence Discipline ·
 Review Loop ·
@@ -134,6 +133,51 @@ The orchestrator never idle-blocks on a running agent. While an agent works, it 
 5. Maintain a compaction-survivable in-flight ledger (agent id, scope, expected files, status).
 6. Pre-stage the next agent prompt.
 Any work that would touch a live agent's surface waits. Origin: 2026-05-19 workflow test; the recon step alone prevented a redundant agent dispatch.
+
+### Doc Lean-Out & Archive Pass (operator-triggered)
+
+Trigger: the operator says "full doc update", "lean out and archive",
+"update lean out and archive", or "doc lean out" (minor variants
+count). Run this fixed procedure. Do NOT rebuild the knowledge graph
+(graphify is manual-only, see "Knowledge Graph"); if
+`graphify-out/graph.json` already exists, use it read-only for signal.
+
+1. **Safety sweep first.** Per Shared Checkout Safety: scan every
+   worktree/branch for uncommitted or unpushed work; non-destructively
+   snapshot any dirty worktree to a pushed
+   `rescue/wt-snapshot/<base>-<UTC>` branch; confirm no committed work
+   is unpushed. Nothing else starts until this is clean.
+2. **Scope.** `PROJECT_TRACKER.md` + all of `docs/**` EXCEPT
+   `docs/archive/**`, `docs/business/**`, `docs/f&f Coaching/**`, and
+   `docs/ARCHITECTURE.md` (operator's personal study notes: redirect
+   references only; never open, edit, or move it or its generated
+   `docs/architecture_book/book.html`).
+3. **Signal.** Build the live docs tree + reference scan; use an
+   existing `graphify-out/graph.json` read-only for
+   orphan/repetition/staleness signal. Never rebuild the graph here.
+4. **Classify** each candidate KEEP / ARCHIVE / MERGE / REPOINT via a
+   read-only Explore agent (Cost & Convergence "reuse, don't
+   re-derive": verify landed / superseded / paused-not-stale /
+   intentional-pair status before acting).
+5. **Honest assessment.** Do not manufacture consolidation. Explicitly
+   flag false-positive "duplicates" (intentional source + plain-English
+   pairs, per-vendor integration templates, load-bearing indices,
+   paused-vendor docs) and say so plainly when the repo is already
+   lean.
+6. **Repoint-then-archive.** Repoint ALL inbound references first
+   (excluding `docs/archive/**`), THEN history-preserving `git mv`
+   into `docs/archive/**`. Nothing is ever deleted.
+7. **Waves + gates.** Execute agent-led in safe waves (worktree →
+   commit + push → PR → STOP per "Agent-led slices"); orchestrator
+   audits Pattern B and merges; binding / Authority-Order / contract /
+   auth / RLS / proxy doc moves need explicit operator approval; pause
+   at every real gate.
+8. **Verify landed.** Confirm each merged PR's content is actually on
+   `origin/master` ("MERGED" is not landed, Shared Checkout Safety #3).
+9. Report in plain English per Operator Communication Style.
+
+Origin: 2026-05-19 (8-wave consolidation + graph-verified re-run);
+binding form of a repeated operator workflow so it is never re-derived.
 
 ### Agent-led slices — hard rule
 
