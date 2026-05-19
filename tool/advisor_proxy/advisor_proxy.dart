@@ -9682,6 +9682,7 @@ Future<void> routeRequest(
             authGuard: authGuard,
             gateway: mobileOperationalSyncGateway,
             businessScopeGateway: businessScopeGateway,
+            idempotencyStore: adminRequestIdempotencyStore,
             target: mobileOperationalPath,
           );
           return;
@@ -17754,6 +17755,7 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   required ProxyRequestGuard authGuard,
   required MobileOperationalSyncProxyGateway? gateway,
   required BusinessScopeProxyGateway? businessScopeGateway,
+  required AdminRequestIdempotencyStore? idempotencyStore,
   required _MobileOperationalPath target,
 }) async {
   if (gateway == null) {
@@ -17843,6 +17845,41 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       operatorId: target.operatorId,
       locationId: target.locationId,
     );
+    if (target.resource == 'data_accuracy_settings/manual_covers') {
+      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+      if (idempotencyKey == null || idempotencyKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_missing',
+          'message': 'Idempotency-Key header is required',
+        });
+        return;
+      }
+      if (idempotencyKey.length > 200) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_too_long',
+          'message': 'Idempotency-Key header must be 200 characters or fewer',
+        });
+        return;
+      }
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'operator.data_accuracy.manual_covers.patch',
+        actorUserId: claims.userId,
+        requestBody: bodyResult.body!,
+        compute: () async {
+          final result = await gateway.upsertDataAccuracyManualCovers(
+            scope: writeScope,
+            operatorId: target.operatorId,
+            locationId: target.locationId,
+            body: bodyResult.body!,
+          );
+          return (statusCode: 200, payload: result);
+        },
+      );
+      return;
+    }
     final result = switch (target.resource) {
       'data_accuracy_service_period_settings' =>
         await gateway.upsertDataAccuracyServicePeriodSettings(
@@ -17866,6 +17903,11 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       ),
     };
     _writeJson(response, 200, result);
+  } on AdminIdempotencyKeyConflict catch (error) {
+    _writeJson(response, 409, <String, Object?>{
+      'error': 'idempotency_key_conflict',
+      'message': error.message,
+    });
   } on MobileOperationalSyncProxyGatewayException catch (error) {
     _writeJson(response, error.statusCode, <String, Object?>{
       'error': error.code,

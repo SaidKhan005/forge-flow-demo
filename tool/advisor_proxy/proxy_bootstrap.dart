@@ -3221,23 +3221,38 @@ class RepositoryMobileOperationalSyncProxyGateway
     });
   }
 
-  // Slice R7b: the per-service-period covers source no longer lives in
-  // the legacy data_accuracy_settings.covers_source_{lunch,dinner,
-  // late_night} scalar columns. It is sourced from the keyed table
-  // public.data_accuracy_service_period_settings, resolved through the
-  // HP #11 hierarchy by public.effective_data_accuracy_settings_v's
-  // covers_source_per_service_period jsonb output (R7a). This shared
-  // correlated subquery projects that jsonb for the row's
-  // (operator_id, location_id) so reads never touch a legacy scalar
-  // covers column. The legacy covers_source_{lunch,dinner,late_night}
-  // JSON wire keys are still emitted (derived from this map) so no
-  // existing mobile/admin client breaks.
-  static const String _coversPerPeriodSubquery =
-      '(select v.covers_source_per_service_period '
-      'from public.effective_data_accuracy_settings_v v '
-      'where v.operator_id = @operator_id::uuid '
-      'and v.location_id = @location_id::uuid) '
-      'as covers_source_per_service_period';
+  // Slice R7e: read the server-resolved effective view directly so
+  // value and provenance fields travel together. The legacy
+  // covers_source_{lunch,dinner,late_night} JSON keys are still
+  // emitted later by _dataAccuracyJson, derived from the keyed map.
+  static const String _effectiveDataAccuracySelectColumns =
+      'setting_id, '
+      'operator_id::text as operator_id, '
+      'location_id::text as location_id, '
+      'covers_source_per_service_period, '
+      'covers_manual_entries, wage_source, '
+      'walk_in_handling_mode, walk_in_manual_entries, '
+      'created_at, updated_at, updated_by, '
+      'covers_source_per_service_period_source, '
+      'wage_source_source, walk_in_handling_mode_source';
+
+  static Future<List<PostgresRow>> _fetchEffectiveDataAccuracyRows(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) {
+    return exec.query(
+      'select $_effectiveDataAccuracySelectColumns '
+      'from public.effective_data_accuracy_settings_v '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+  }
 
   @override
   Future<Map<String, Object?>> fetchDataAccuracySettings({
@@ -3246,22 +3261,10 @@ class RepositoryMobileOperationalSyncProxyGateway
     required String locationId,
   }) {
     return _tenantRead(scope, operatorId, locationId, (exec) async {
-      final rows = await exec.query(
-        'select setting_id::text as setting_id, '
-        'operator_id::text as operator_id, '
-        'location_id::text as location_id, '
-        '$_coversPerPeriodSubquery, '
-        'covers_manual_entries, wage_source, '
-        'walk_in_handling_mode, walk_in_manual_entries, '
-        'created_at, updated_at, updated_by '
-        'from public.data_accuracy_settings '
-        'where operator_id = @operator_id::uuid '
-        'and location_id = @location_id::uuid '
-        'limit 1',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-        },
+      final rows = await _fetchEffectiveDataAccuracyRows(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
       );
       return <String, Object?>{
         'data': rows.isEmpty ? null : _dataAccuracyJson(rows.single),
@@ -3374,20 +3377,16 @@ class RepositoryMobileOperationalSyncProxyGateway
         },
         updatedBy: scope.userId,
       );
-      final coversRow = await exec.query(
-        'select $_coversPerPeriodSubquery',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-        },
+      final effectiveRows = await _fetchEffectiveDataAccuracyRows(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
       );
-      final merged = <String, Object?>{
-        ...rows.single,
-        'covers_source_per_service_period': coversRow.isEmpty
-            ? null
-            : coversRow.single['covers_source_per_service_period'],
+      return <String, Object?>{
+        'data': _dataAccuracyJson(
+          effectiveRows.isEmpty ? rows.single : effectiveRows.single,
+        ),
       };
-      return <String, Object?>{'data': _dataAccuracyJson(merged)};
     });
   }
 
@@ -3442,20 +3441,16 @@ class RepositoryMobileOperationalSyncProxyGateway
           message: 'manual covers write returned no row',
         );
       }
-      final coversRow = await exec.query(
-        'select $_coversPerPeriodSubquery',
-        parameters: <String, Object?>{
-          'operator_id': operatorId,
-          'location_id': locationId,
-        },
+      final effectiveRows = await _fetchEffectiveDataAccuracyRows(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
       );
-      final merged = <String, Object?>{
-        ...rows.single,
-        'covers_source_per_service_period': coversRow.isEmpty
-            ? null
-            : coversRow.single['covers_source_per_service_period'],
+      return <String, Object?>{
+        'data': _dataAccuracyJson(
+          effectiveRows.isEmpty ? rows.single : effectiveRows.single,
+        ),
       };
-      return <String, Object?>{'data': _dataAccuracyJson(merged)};
     });
   }
 
@@ -3847,6 +3842,13 @@ class RepositoryMobileOperationalSyncProxyGateway
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],
+      'covers_source_per_service_period_source': _jsonMap(
+        row['covers_source_per_service_period_source'],
+      ),
+      'wage_source_source': _jsonMap(row['wage_source_source']),
+      'walk_in_handling_mode_source': _jsonMap(
+        row['walk_in_handling_mode_source'],
+      ),
     };
   }
 
@@ -5975,7 +5977,9 @@ class RepositoryDataAccuracyAdminProxyGateway
       'covers_source_per_service_period, '
       'covers_manual_entries, wage_source, '
       'walk_in_handling_mode, walk_in_manual_entries, '
-      'created_at, updated_at, updated_by '
+      'created_at, updated_at, updated_by, '
+      'covers_source_per_service_period_source, '
+      'wage_source_source, walk_in_handling_mode_source '
       'from effective_data_accuracy_settings_v '
       'where operator_id = @operator_id::uuid '
       'and location_id = @location_id::uuid',
@@ -6258,6 +6262,13 @@ class RepositoryDataAccuracyAdminProxyGateway
       'updated_at':
           _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
       'updated_by': row['updated_by'],
+      'covers_source_per_service_period_source': _jsonMap(
+        row['covers_source_per_service_period_source'],
+      ),
+      'wage_source_source': _jsonMap(row['wage_source_source']),
+      'walk_in_handling_mode_source': _jsonMap(
+        row['walk_in_handling_mode_source'],
+      ),
     };
   }
 

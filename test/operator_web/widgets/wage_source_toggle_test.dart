@@ -14,10 +14,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -76,10 +76,7 @@ void main() {
       find.byKey(const Key('data_accuracy_wage_source_card')),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const Key('wage_source_radio_vendor')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('wage_source_radio_vendor')), findsOneWidget);
     expect(
       find.byKey(const Key('wage_source_radio_manual_mix')),
       findsOneWidget,
@@ -90,98 +87,118 @@ void main() {
     );
   });
 
-  testWidgets(
-    'tapping manual mix calls onChanged with WageSource.manualMix',
-    (tester) async {
-      await sizeViewport(tester, const Size(1024, 800));
-      WageSource? captured;
+  testWidgets('source label renders when server metadata exists', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
 
-      await tester.pumpWidget(
-        wrap(
-          WageSourceToggle(
-            value: WageSource.vendor,
-            onChanged: (value) => captured = value,
-            bundle: null,
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.vendor,
+          onChanged: (_) {},
+          bundle: null,
+          source: const DataAccuracySettingSource(
+            scopeType: 'org_unit',
+            sourceKind: 'scoped_override',
+            overrideId: 'ovr-wage',
           ),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('wage_source_radio_manual_mix')));
-      await tester.pumpAndSettle();
+    expect(find.byKey(const Key('wage_source_source_label')), findsOneWidget);
+    expect(find.text('Source: Org unit'), findsOneWidget);
+  });
 
-      expect(captured, equals(WageSource.manualMix));
-    },
-  );
+  testWidgets('tapping manual mix calls onChanged with WageSource.manualMix', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
+    WageSource? captured;
 
-  testWidgets(
-    'round-trip: vendor → manual_mix → vendor',
-    (tester) async {
-      await sizeViewport(tester, const Size(1024, 800));
-      WageSource current = WageSource.vendor;
-
-      await tester.pumpWidget(
-        wrap(
-          StatefulBuilder(
-            builder: (context, setState) {
-              return WageSourceToggle(
-                value: current,
-                onChanged: (value) => setState(() => current = value),
-                bundle: null,
-              );
-            },
-          ),
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.vendor,
+          onChanged: (value) => captured = value,
+          bundle: null,
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      // vendor → manual_mix
-      await tester.tap(find.byKey(const Key('wage_source_radio_manual_mix')));
-      await tester.pumpAndSettle();
-      expect(current, equals(WageSource.manualMix));
+    await tester.tap(find.byKey(const Key('wage_source_radio_manual_mix')));
+    await tester.pumpAndSettle();
 
-      // manual_mix → vendor
-      await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
-      await tester.pumpAndSettle();
-      expect(current, equals(WageSource.vendor));
-    },
-  );
+    expect(captured, equals(WageSource.manualMix));
+  });
 
-  testWidgets(
-    'wage class label updates with connected labor vendor',
-    (tester) async {
-      await sizeViewport(tester, const Size(1024, 800));
+  testWidgets('round-trip: vendor → manual_mix → vendor', (tester) async {
+    await sizeViewport(tester, const Size(1024, 800));
+    WageSource current = WageSource.vendor;
 
-      // QuickBooks Time → perEmployeeWithRates per Lane .2's
-      // 2026-05-05 binding sidecar (rate × duration).
-      await tester.pumpWidget(
-        wrap(
-          WageSourceToggle(
-            value: WageSource.vendor,
-            onChanged: (_) {},
-            bundle: bundleWithLabor('quickbooks_time', 'QuickBooks Time'),
-          ),
+    await tester.pumpWidget(
+      wrap(
+        StatefulBuilder(
+          builder: (context, setState) {
+            return WageSourceToggle(
+              value: current,
+              onChanged: (value) => setState(() => current = value),
+              bundle: null,
+            );
+          },
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(anyTextContains('QuickBooks Time'), isTrue);
-      expect(anyTextContains('per-employee hourly rates'), isTrue);
+    // vendor → manual_mix
+    await tester.tap(find.byKey(const Key('wage_source_radio_manual_mix')));
+    await tester.pumpAndSettle();
+    expect(current, equals(WageSource.manualMix));
 
-      // Humanity → per-position pay rates.
-      await tester.pumpWidget(
-        wrap(
-          WageSourceToggle(
-            value: WageSource.vendor,
-            onChanged: (_) {},
-            bundle: bundleWithLabor('humanity', 'Humanity'),
-          ),
+    // manual_mix → vendor
+    await tester.tap(find.byKey(const Key('wage_source_radio_vendor')));
+    await tester.pumpAndSettle();
+    expect(current, equals(WageSource.vendor));
+  });
+
+  testWidgets('wage class label updates with connected labor vendor', (
+    tester,
+  ) async {
+    await sizeViewport(tester, const Size(1024, 800));
+
+    // QuickBooks Time → perEmployeeWithRates per Lane .2's
+    // 2026-05-05 binding sidecar (rate × duration).
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.vendor,
+          onChanged: (_) {},
+          bundle: bundleWithLabor('quickbooks_time', 'QuickBooks Time'),
         ),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(anyTextContains('Humanity'), isTrue);
-      expect(anyTextContains('per-position pay rates'), isTrue);
-    },
-  );
+    expect(anyTextContains('QuickBooks Time'), isTrue);
+    expect(anyTextContains('per-employee hourly rates'), isTrue);
+
+    // Humanity → per-position pay rates.
+    await tester.pumpWidget(
+      wrap(
+        WageSourceToggle(
+          value: WageSource.vendor,
+          onChanged: (_) {},
+          bundle: bundleWithLabor('humanity', 'Humanity'),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(anyTextContains('Humanity'), isTrue);
+    expect(anyTextContains('per-position pay rates'), isTrue);
+  });
 }

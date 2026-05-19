@@ -320,7 +320,24 @@ void main() {
                   '2026-05-05': <String, Object?>{'dinner': 120},
                 },
                 'wage_source': 'manual_mix',
+                'wage_source_source': <String, Object?>{
+                  'scope_type': 'business',
+                  'source_kind': 'scoped_override',
+                  'override_id': 'ovr-wage',
+                },
                 'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+                'walk_in_handling_mode_source': <String, Object?>{
+                  'scope_type': 'location',
+                  'source_kind': 'base_setting',
+                  'setting_id': 'setting-1',
+                },
+                'covers_source_per_service_period_source': <String, Object?>{
+                  'dinner': <String, Object?>{
+                    'scope_type': 'org_unit',
+                    'source_kind': 'scoped_override',
+                    'override_id': 'ovr-dinner',
+                  },
+                },
                 'walk_in_manual_entries': <String, Object?>{'2026-05-05': 14},
                 'updated_at': '2026-05-06T12:00:00Z',
               },
@@ -465,7 +482,13 @@ void main() {
     // ignored on parse. Per-period covers source flows via the keyed
     // service-period settings, asserted below as `keyedAccuracy`.
     expect(accuracy!.coversManualEntries['2026-05-05']!['dinner'], 120);
+    expect(
+      accuracy.coversSourcePerServicePeriodSources['dinner']!['scope_type'],
+      'org_unit',
+    );
+    expect(accuracy.wageSourceSource!['scope_type'], 'business');
     expect(accuracy.walkInHandlingMode, 'walk_ins_added_to_reservations');
+    expect(accuracy.walkInHandlingModeSource!['source_kind'], 'base_setting');
     expect(accuracy.walkInManualEntries['2026-05-05'], 14);
     expect(keyedAccuracy.single.servicePeriodKey, 'brunch');
     expect(keyedAccuracy.single.coversSource.wire, 'reservation_plus_walkin');
