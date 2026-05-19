@@ -771,6 +771,7 @@ void main() {
     );
     expect(find.textContaining('service period missing'), findsOneWidget);
     expect(find.textContaining('0 closed / 1 open'), findsOneWidget);
+    expect(find.textContaining('Before projector input'), findsOneWidget);
   });
 
   testWidgets('cloud run + route latency render on the cloud run tab', (

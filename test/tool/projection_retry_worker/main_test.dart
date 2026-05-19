@@ -220,6 +220,7 @@ CanonicalFactProjectionRetryJob _job({
     errorClass: record.errorClass,
     errorMessage: record.errorMessage,
     stackFirstFrame: record.stackFirstFrame,
+    failureStage: record.failureStage,
   );
 }
 

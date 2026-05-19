@@ -43,7 +43,13 @@ void main() {
 
       final recentFirst = recent.first as Map<String, Object?>;
       expect(recentFirst['status'], equals('pending'));
+      expect(recentFirst['failure_stage'], equals('post_input'));
       expect(recentFirst['job_id'], equals('active-0'));
+      expect(recentFirst['original_location_id'], equals(_locationA));
+      expect(
+        recentFirst['original_connection_id'],
+        equals('44444444-4444-4444-8444-000000000000'),
+      );
       expect(recentFirst['changed_period_count'], equals(1));
       expect(recentFirst['open_current_fact_count'], equals(2));
       expect(
@@ -55,6 +61,7 @@ void main() {
 
       final deadFirst = deadLettered.first as Map<String, Object?>;
       expect(deadFirst['status'], equals('dead_lettered'));
+      expect(deadFirst['failure_stage'], equals('pre_input'));
       expect(deadFirst['dead_lettered_at'], equals('2026-05-19T12:00:00.000Z'));
 
       final limits = projectionRetries['limits'] as Map<String, Object?>;
@@ -90,6 +97,10 @@ void main() {
         expect(
           query.parameters['location_ids'],
           equals(<String>[_locationA, _locationB]),
+        );
+        expect(
+          query.sql,
+          contains('coalesce(location_id::text, original_location_id::text)'),
         );
       }
       expect(
@@ -195,11 +206,16 @@ List<PostgresRow> _projectionRows({
         'job_id': '$prefix-$i',
         'operator_id': _operatorId,
         'location_id': i.isEven ? _locationA : _locationB,
+        'original_location_id': i.isEven ? _locationA : _locationB,
         'restaurant_id': 'restaurant-$i',
-        'connection_id': 'connection-$i',
+        'connection_id':
+            '44444444-4444-4444-8444-${i.toString().padLeft(12, '0')}',
+        'original_connection_id':
+            '44444444-4444-4444-8444-${i.toString().padLeft(12, '0')}',
         'vendor_id': 'toast',
         'category': 'pos',
         'status': status,
+        'failure_stage': deadLettered ? 'pre_input' : 'post_input',
         'fact_count': i + 1,
         'attempt_count': deadLettered ? 5 : 1,
         'changed_period_count': deadLettered ? 0 : 1,

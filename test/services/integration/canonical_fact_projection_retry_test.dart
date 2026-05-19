@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/services/integration/canonical_fact_post_commit_projector.dart';
@@ -18,6 +20,10 @@ void main() {
       final replay = record.toInput();
 
       expect(record.inputHash, hasLength(64));
+      expect(
+        record.failureStage,
+        CanonicalFactProjectionRetryFailureStage.postInput,
+      );
       expect(record.factCount, 2);
       expect(record.errorMessage, contains('projector down'));
       expect(replay.operatorId, input.operatorId);
@@ -53,8 +59,26 @@ void main() {
       expect(record.factCount, 1);
       expect(record.errorMessage, contains('business timing profile missing'));
       expect(record.canonicalFactMaps.single['occurred_at'], isA<String>());
+      expect(
+        deadLetter.failureStage,
+        CanonicalFactProjectionRetryFailureStage.preInput,
+      );
       expect(deadLetter.changedPeriods, isEmpty);
       expect(deadLetter.openCurrentFactMaps.single['fact_type'], 'cover_fact');
+    });
+
+    test('evidence migration labels failure stage and keeps hard-delete ids', () {
+      final sql = File(
+        'db/migrations/202605191900_canonical_fact_projection_retry_evidence.sql',
+      ).readAsStringSync();
+
+      expect(sql, contains('failure_stage text not null default'));
+      expect(sql, contains("failure_stage in ('post_input', 'pre_input')"));
+      expect(sql, contains('original_location_id uuid'));
+      expect(sql, contains('original_connection_id uuid'));
+      expect(sql, contains('on delete set null (location_id)'));
+      expect(sql, contains('on delete set null'));
+      expect(sql, contains('coalesce(location_id, original_location_id)'));
     });
   });
 
@@ -198,6 +222,7 @@ CanonicalFactProjectionRetryJob _job({int attemptCount = 1}) {
     errorClass: record.errorClass,
     errorMessage: record.errorMessage,
     stackFirstFrame: record.stackFirstFrame,
+    failureStage: record.failureStage,
   );
 }
 

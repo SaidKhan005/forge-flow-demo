@@ -28,9 +28,8 @@
 - Run the admin observability widget test.
 - Run changed-file Dart analysis if available.
 
-## Follow-Up Not In This Slice
+## Follow-Up Closed Later
 
-- Pre-input failures are currently dead-lettered without a durable
-  `failure_stage` column. The admin tab labels the dead-letter list
-  conservatively, but a future schema slice should expose explicit
-  replayability metadata.
+- Closed by `202605191900_canonical_fact_projection_retry_evidence.sql`:
+  pre-input failures now carry durable `failure_stage` metadata and the
+  admin tab renders the failure point directly.

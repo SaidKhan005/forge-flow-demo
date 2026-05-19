@@ -9277,10 +9277,14 @@ const List<String> _projectionRetryKnownStatuses = <String>[
 
 const String _projectionRetryScopeWhere = '''
 where (@operator_id::uuid is null or operator_id = @operator_id::uuid)
-  and (@location_id::uuid is null or location_id = @location_id::uuid)
+  and (
+    @location_id::uuid is null
+    or coalesce(location_id, original_location_id) = @location_id::uuid
+  )
   and (
     @location_ids::text[] is null
-    or location_id::text = any(@location_ids::text[])
+    or coalesce(location_id::text, original_location_id::text)
+      = any(@location_ids::text[])
   )
 ''';
 
@@ -9288,12 +9292,15 @@ const String _projectionRetryRowSelect = '''
 select
   job_id::text as job_id,
   operator_id::text as operator_id,
-  location_id::text as location_id,
+  coalesce(location_id::text, original_location_id::text) as location_id,
+  original_location_id::text as original_location_id,
   restaurant_id,
-  connection_id::text as connection_id,
+  coalesce(connection_id::text, original_connection_id::text) as connection_id,
+  original_connection_id::text as original_connection_id,
   vendor_id,
   category,
   status,
+  failure_stage,
   fact_count,
   attempt_count,
   jsonb_array_length(changed_periods) as changed_period_count,
@@ -9531,11 +9538,14 @@ Map<String, Object?> _projectionRetryRowJson(PostgresRow row) {
     'job_id': row['job_id']?.toString() ?? '',
     'operator_id': row['operator_id']?.toString() ?? '',
     'location_id': row['location_id']?.toString() ?? '',
+    'original_location_id': row['original_location_id']?.toString() ?? '',
     'restaurant_id': row['restaurant_id']?.toString() ?? '',
     'connection_id': row['connection_id']?.toString() ?? '',
+    'original_connection_id': row['original_connection_id']?.toString() ?? '',
     'vendor_id': row['vendor_id']?.toString() ?? '',
     'category': row['category']?.toString() ?? '',
     'status': row['status']?.toString() ?? '',
+    'failure_stage': row['failure_stage']?.toString() ?? 'post_input',
     'fact_count': _adminInt(row['fact_count']),
     'attempt_count': _adminInt(row['attempt_count']),
     'changed_period_count': _adminInt(row['changed_period_count']),

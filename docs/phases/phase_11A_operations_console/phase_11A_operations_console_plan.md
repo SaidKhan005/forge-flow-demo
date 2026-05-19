@@ -152,11 +152,12 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605191845_data_accuracy_cover_facts_nullable_covers.sql`
-(Data Accuracy covers truth: drops default/not-null from
-`public.cover_facts.covers` so NULL means the POS did not expose cover count
-and zero means a cover-capable POS sent zero), including the prior canonical
-fact projection retry ledger, R7f precedence/source-parity view, R7e
+`202605191900_canonical_fact_projection_retry_evidence.sql`
+(projection retry evidence hardening: explicit pre-input/post-input stage
+metadata plus immutable original location/connection ids so hard-delete
+cleanup does not erase terminal retry evidence), including the prior Data
+Accuracy covers-truth migration, canonical fact projection retry ledger,
+R7f precedence/source-parity view, R7e
 provenance view, and R7d hard drop plus the
 later cron
 maintenance, KMS flag seed, PII erasure, retention sweep, admin hierarchy
