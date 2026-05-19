@@ -462,12 +462,19 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       coversSourcePerServicePeriod: Map<String, CoversSource>.from(
         _coversSourcePerPeriod,
       ),
+      coversSourcePerServicePeriodSources:
+          Map<String, DataAccuracySettingSource>.from(
+            base?.coversSourcePerServicePeriodSources ??
+                const <String, DataAccuracySettingSource>{},
+          ),
       coversManualEntries: <String, Map<String, int>>{
         for (final e in _manualEntries.entries)
           e.key: Map<String, int>.from(e.value),
       },
       wageSource: _wageSource,
+      wageSourceSource: base?.wageSourceSource,
       walkInHandlingMode: _domainWalkInModeFromWidget(_walkInMode),
+      walkInHandlingModeSource: base?.walkInHandlingModeSource,
       walkInManualEntries: Map<String, int>.from(_walkInEntries),
       createdAt: base?.createdAt ?? now,
       updatedAt: now,

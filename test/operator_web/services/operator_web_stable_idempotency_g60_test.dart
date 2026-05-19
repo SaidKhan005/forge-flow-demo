@@ -395,9 +395,11 @@ void main() {
                       'setting_id': 'setting-1',
                       'operator_id': 'op-1',
                       'location_id': 'loc-1',
-                      'covers_source_lunch': 'manual',
-                      'covers_source_dinner': 'vendor',
-                      'covers_source_late_night': 'forecast',
+                      'covers_source_per_service_period': <String, Object?>{
+                        'lunch': 'manual',
+                        'dinner': 'vendor',
+                        'late_night': 'forecast',
+                      },
                       'covers_manual_entries': <String, Object?>{},
                       'wage_source': 'manual_mix',
                       'walk_in_handling_mode':

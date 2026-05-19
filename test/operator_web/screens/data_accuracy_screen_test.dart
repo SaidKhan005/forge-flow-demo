@@ -458,6 +458,163 @@ void main() {
     });
   });
 
+  group('DataAccuracyScreen source metadata', () {
+    testWidgets(
+      'custom service periods keep source labels through render and edit',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1800));
+
+        final configuredPeriods = <ServicePeriodDefinition>[
+          servicePeriodDefinition(
+            id: 'breakfast',
+            label: 'Breakfast',
+            sortOrder: 1,
+          ),
+          servicePeriodDefinition(id: 'lunch', label: 'Lunch', sortOrder: 2),
+          servicePeriodDefinition(id: 'dinner', label: 'Dinner', sortOrder: 3),
+          servicePeriodDefinition(
+            id: 'late_service',
+            label: 'Late service',
+            sortOrder: 4,
+          ),
+        ];
+        final saves = <DataAccuracySettings>[];
+        final gateway = gatewayWithBundle(
+          ownerSession,
+          bundleFor(
+            session: ownerSession,
+            pos: row(
+              vendorId: 'square',
+              displayName: 'Square',
+              category: VendorCategory.pos,
+            ),
+            reservation: row(
+              vendorId: 'libro',
+              displayName: 'Libro',
+              category: VendorCategory.reservation,
+            ),
+          ),
+        );
+        final initialSettings = DataAccuracySettings(
+          settingId: 'setting-sources',
+          operatorId: ownerSession.operatorId,
+          locationId: ownerSession.primaryLocationId ?? '',
+          coversSourcePerServicePeriod: const <String, CoversSource>{
+            'breakfast': CoversSource.vendor,
+            'lunch': CoversSource.manual,
+            'dinner': CoversSource.forecast,
+            'late_service': CoversSource.manual,
+          },
+          coversSourcePerServicePeriodSources:
+              <String, DataAccuracySettingSource>{
+                'breakfast': _source(
+                  scopeType: 'default',
+                  sourceKind: 'default',
+                ),
+                'lunch': _source(
+                  scopeType: 'location',
+                  sourceKind: 'service_period_setting',
+                  scopeId: ownerSession.primaryLocationId,
+                  settingId: 'period-lunch',
+                ),
+                'dinner': _source(
+                  scopeType: 'business',
+                  sourceKind: 'scoped_override',
+                  scopeId: ownerSession.operatorId,
+                  overrideId: 'override-dinner',
+                ),
+                'late_service': _source(
+                  scopeType: 'org_unit',
+                  sourceKind: 'scoped_override',
+                  scopeId: 'region-north',
+                  overrideId: 'override-late',
+                ),
+              },
+          coversManualEntries: const <String, Map<String, int>>{},
+          wageSource: WageSource.manualMix,
+          wageSourceSource: _source(
+            scopeType: 'business',
+            sourceKind: 'scoped_override',
+            scopeId: ownerSession.operatorId,
+            overrideId: 'override-wage',
+          ),
+          walkInHandlingMode:
+              DataAccuracyWalkInHandlingMode.walkInsAddedToReservations,
+          walkInHandlingModeSource: _source(
+            scopeType: 'location',
+            sourceKind: 'base_setting',
+            scopeId: ownerSession.primaryLocationId,
+            settingId: 'setting-sources',
+          ),
+          walkInManualEntries: const <String, int>{},
+          createdAt: DateTime.utc(2026, 5, 18),
+          updatedAt: DateTime.utc(2026, 5, 18),
+          updatedBy: 'user-1',
+        );
+
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              gateway: gateway,
+              initialSettings: initialSettings,
+              servicePeriodsLoader: () async => configuredPeriods,
+              onSaveSettings: saves.add,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          _textByKey(tester, const Key('covers_source_source_breakfast')),
+          'Source: Default',
+        );
+        expect(
+          _textByKey(tester, const Key('covers_source_source_lunch')),
+          'Source: Location setting',
+        );
+        expect(
+          _textByKey(tester, const Key('covers_source_source_dinner')),
+          'Source: Business',
+        );
+        expect(
+          _textByKey(tester, const Key('covers_source_source_late_service')),
+          'Source: Org unit',
+        );
+        expect(
+          _textByKey(tester, const Key('wage_source_source_label')),
+          'Source: Business',
+        );
+        expect(
+          _textByKey(tester, const Key('walk_in_handling_source_label')),
+          'Source: Location setting',
+        );
+
+        await tester.ensureVisible(
+          find.byKey(const Key('covers_source_chip_breakfast_manual')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('covers_source_chip_breakfast_manual')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(saves, isNotEmpty);
+        expect(
+          saves.last.coversSourcePerServicePeriodSources['breakfast']?.label,
+          'Default',
+        );
+        expect(saves.last.wageSourceSource?.label, 'Business');
+        expect(saves.last.walkInHandlingModeSource?.label, 'Location setting');
+        expect(
+          _textByKey(tester, const Key('covers_source_source_breakfast')),
+          'Source: Default',
+        );
+      },
+    );
+  });
+
   group('DataAccuracyScreen polling tier interaction', () {
     testWidgets('request tier change opens the ticket dialog', (tester) async {
       await sizeViewport(tester, const Size(1280, 1600));
@@ -1410,6 +1567,26 @@ DataAccuracySettings _settingsWithWage(WageSource wageSource) {
     createdAt: DateTime.utc(2026, 5, 13),
     updatedAt: DateTime.utc(2026, 5, 13),
   );
+}
+
+DataAccuracySettingSource _source({
+  required String scopeType,
+  required String sourceKind,
+  String? scopeId,
+  String? settingId,
+  String? overrideId,
+}) {
+  return DataAccuracySettingSource(
+    scopeType: scopeType,
+    sourceKind: sourceKind,
+    scopeId: scopeId,
+    settingId: settingId,
+    overrideId: overrideId,
+  );
+}
+
+String? _textByKey(WidgetTester tester, Key key) {
+  return tester.widget<Text>(find.byKey(key)).data;
 }
 
 WebVendorApplicabilityRow _vendorApplicabilityRow({

@@ -10,6 +10,7 @@ import 'package:forge_and_flow/auth/permission_cache.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_resolution.dart';
 import 'package:forge_and_flow/auth/role_management_policy.dart';
+import 'package:forge_and_flow/services/team/team_scope_visibility_policy.dart';
 
 const String _opA = '11111111-1111-1111-1111-111111111111';
 const String _opB = '22222222-2222-2222-2222-222222222222';
@@ -432,45 +433,84 @@ void main() {
       expect(decision.allowed, isFalse);
     });
 
-    test(
-      'operator_manager limited to operator_supervisor + operator_staff',
-      () {
-        final actorCtx = actor(roles: const <String>{'operator_manager'});
-        // Allowed sub-roles
-        for (final role in const <String>[
-          'operator_supervisor',
-          'operator_staff',
-        ]) {
-          expect(
-            RoleManagementPolicy.evaluateGrantAction(
-              actor: actorCtx,
-              action: RoleManagementAction.grantRole,
-              grant: grantTarget(roleKey: role),
-            ).allowed,
-            isTrue,
-            reason: role,
-          );
-        }
-        // Not allowed: anything else (e.g. operator_owner, super_admin)
-        for (final role in const <String>['operator_owner', 'super_admin']) {
-          expect(
-            RoleManagementPolicy.evaluateGrantAction(
-              actor: actorCtx,
-              action: RoleManagementAction.grantRole,
-              grant: grantTarget(roleKey: role),
-            ).allowed,
-            isFalse,
-            reason: role,
-          );
-        }
-      },
-    );
+    test('operator_general_manager grants active non-platform roles', () {
+      final actorCtx = actor(roles: const <String>{'operator_general_manager'});
+      for (final role in const <String>[
+        'location_manager',
+        'supervisor',
+        'team_admin',
+      ]) {
+        expect(
+          RoleManagementPolicy.evaluateGrantAction(
+            actor: actorCtx,
+            action: RoleManagementAction.grantRole,
+            grant: grantTarget(roleKey: role),
+          ).allowed,
+          isTrue,
+          reason: role,
+        );
+      }
+      for (final role in const <String>[
+        'operator_owner',
+        'super_admin',
+        'ff_support',
+        'operator_manager',
+      ]) {
+        expect(
+          RoleManagementPolicy.evaluateGrantAction(
+            actor: actorCtx,
+            action: RoleManagementAction.grantRole,
+            grant: grantTarget(roleKey: role),
+          ).allowed,
+          isFalse,
+          reason: role,
+        );
+      }
+    });
 
-    test('operator_manager refused if target location differs', () {
+    test('location_manager can grant supervisor at own location only', () {
+      final actorCtx = actor(roles: const <String>{'location_manager'});
+      expect(
+        RoleManagementPolicy.evaluateGrantAction(
+          actor: actorCtx,
+          action: RoleManagementAction.grantRole,
+          grant: grantTarget(roleKey: 'supervisor'),
+        ).allowed,
+        isTrue,
+      );
+      for (final role in const <String>['location_manager', 'team_admin']) {
+        expect(
+          RoleManagementPolicy.evaluateGrantAction(
+            actor: actorCtx,
+            action: RoleManagementAction.grantRole,
+            grant: grantTarget(roleKey: role),
+          ).allowed,
+          isFalse,
+          reason: role,
+        );
+      }
+    });
+
+    test('retired operator_manager has no grant privilege', () {
+      final actorCtx = actor(roles: const <String>{'operator_manager'});
+      for (final role in const <String>['supervisor', 'location_manager']) {
+        expect(
+          RoleManagementPolicy.evaluateGrantAction(
+            actor: actorCtx,
+            action: RoleManagementAction.grantRole,
+            grant: grantTarget(roleKey: role),
+          ).allowed,
+          isFalse,
+          reason: role,
+        );
+      }
+    });
+
+    test('location_manager refused if target location differs', () {
       final decision = RoleManagementPolicy.evaluateGrantAction(
-        actor: actor(roles: const <String>{'operator_manager'}),
+        actor: actor(roles: const <String>{'location_manager'}),
         action: RoleManagementAction.grantRole,
-        grant: grantTarget(locationId: _locB),
+        grant: grantTarget(locationId: _locB, roleKey: 'supervisor'),
       );
       expect(decision.allowed, isFalse);
       expect(decision.reason, contains('outside own location'));
@@ -492,6 +532,102 @@ void main() {
         grant: grantTarget(),
       );
       expect(decision.allowed, isFalse);
+    });
+  });
+
+  group('TeamScopeVisibilityPolicy v2 role gates', () {
+    TeamScopeActor actor({
+      required Set<String> roles,
+      Set<String> assignedLocations = const <String>{},
+      Set<String> permissions = const <String>{'team.users.view'},
+    }) {
+      return TeamScopeActor(
+        actorRoles: roles,
+        actorOperatorId: _opA,
+        actorAssignedLocationIds: assignedLocations,
+        actorPermissions: permissions,
+      );
+    }
+
+    const operatorWideTarget = TeamScopeTarget(targetOperatorId: _opA);
+    const locationTarget = TeamScopeTarget(
+      targetOperatorId: _opA,
+      targetLocationId: _locA,
+    );
+
+    test('operator_general_manager has business-scope Team access', () {
+      final actorCtx = actor(roles: const <String>{'operator_general_manager'});
+
+      expect(TeamScopeVisibilityPolicy.canSeeTeamNav(actorCtx), isTrue);
+      expect(
+        TeamScopeVisibilityPolicy.canViewTarget(
+          actor: actorCtx,
+          target: operatorWideTarget,
+        ),
+        isTrue,
+      );
+      expect(
+        TeamScopeVisibilityPolicy.canMutateTarget(
+          actor: actor(
+            roles: const <String>{'operator_general_manager'},
+            permissions: const <String>{'team.users.deactivate'},
+          ),
+          target: locationTarget,
+          requiredPermissionKey: 'team.users.deactivate',
+        ),
+        isTrue,
+      );
+    });
+
+    test('retired operator_manager is not treated as current GM', () {
+      final actorCtx = actor(
+        roles: const <String>{'operator_manager'},
+        assignedLocations: const <String>{_locA},
+      );
+
+      expect(TeamScopeVisibilityPolicy.canSeeTeamNav(actorCtx), isFalse);
+      expect(
+        TeamScopeVisibilityPolicy.canViewTarget(
+          actor: actorCtx,
+          target: locationTarget,
+        ),
+        isFalse,
+      );
+      expect(
+        TeamScopeVisibilityPolicy.canMutateTarget(
+          actor: actor(
+            roles: const <String>{'operator_manager'},
+            assignedLocations: const <String>{_locA},
+            permissions: const <String>{'team.users.deactivate'},
+          ),
+          target: locationTarget,
+          requiredPermissionKey: 'team.users.deactivate',
+        ),
+        isFalse,
+      );
+    });
+
+    test('location_manager keeps the assigned-location gate', () {
+      final actorCtx = actor(
+        roles: const <String>{'location_manager'},
+        assignedLocations: const <String>{_locA},
+      );
+
+      expect(TeamScopeVisibilityPolicy.canSeeTeamNav(actorCtx), isTrue);
+      expect(
+        TeamScopeVisibilityPolicy.canViewTarget(
+          actor: actorCtx,
+          target: locationTarget,
+        ),
+        isTrue,
+      );
+      expect(
+        TeamScopeVisibilityPolicy.canViewTarget(
+          actor: actorCtx,
+          target: operatorWideTarget,
+        ),
+        isFalse,
+      );
     });
   });
 
