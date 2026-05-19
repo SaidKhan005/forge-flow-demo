@@ -166,6 +166,59 @@ void main() {
       );
       expect(pool.transactions, isEmpty);
     });
+
+    test(
+      'covers metadata accepts custom service-period keys on write',
+      () async {
+        final pool = _RecordingPostgresPool();
+        final repository = VendorApplicabilityRepository(
+          TenantTransactionWrapper(pool),
+        );
+
+        final row = await repository.upsert(
+          settingKind: 'covers',
+          settingKey: 'covers_source',
+          vendorSlug: 'sevenrooms',
+          enabled: true,
+          metadata: const <String, Object?>{
+            'cover_filter': 'all_covers',
+            'service_periods': <String>['brunch', 'happy_hour'],
+          },
+          createdBy: adminUserId,
+          adminReason: 'test.vendor_applicability.custom_periods',
+        );
+
+        expect(row.settingKind, 'covers');
+        expect(row.metadata['service_periods'], <String>[
+          'brunch',
+          'happy_hour',
+        ]);
+        expect(pool.transactions, hasLength(1));
+      },
+    );
+
+    test('covers metadata rejects malformed service-period keys pre-tx', () {
+      final pool = _RecordingPostgresPool();
+      final repository = VendorApplicabilityRepository(
+        TenantTransactionWrapper(pool),
+      );
+
+      expect(
+        () => repository.upsert(
+          settingKind: 'covers',
+          settingKey: 'covers_source',
+          vendorSlug: 'sevenrooms',
+          enabled: true,
+          metadata: const <String, Object?>{
+            'service_periods': <String>['../brunch'],
+          },
+          createdBy: adminUserId,
+          adminReason: 'test.vendor_applicability.invalid_periods',
+        ),
+        throwsA(isA<Exception>()),
+      );
+      expect(pool.transactions, isEmpty);
+    });
   });
 }
 

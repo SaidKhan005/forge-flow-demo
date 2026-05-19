@@ -200,13 +200,16 @@ ApplicabilityMetadataValidationResult _validateServicePeriods(
       message: 'service_periods must be a non-empty string array',
     );
   }
-  const allowed = <String>{'breakfast', 'lunch', 'dinner', 'late_night'};
+  final seen = <String>{};
   for (final entry in value) {
-    if (entry is! String || !allowed.contains(entry)) {
-      return ApplicabilityMetadataValidationResult.invalid(
+    if (entry is! String ||
+        !_servicePeriodKeyPattern.hasMatch(entry) ||
+        !seen.add(entry)) {
+      return const ApplicabilityMetadataValidationResult.invalid(
         code: 'invalid_service_periods',
         message:
-            'service_periods entries must be one of: ${allowed.join(', ')}',
+            'service_periods entries must be unique service-period keys '
+            r'matching ^[a-z][a-z0-9_]{0,63}$',
       );
     }
   }
@@ -332,3 +335,4 @@ ApplicabilityMetadataValidationResult _optionalSlug(
 }
 
 final RegExp _slugPattern = RegExp(r'^[a-z][a-z0-9_]*$');
+final RegExp _servicePeriodKeyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
