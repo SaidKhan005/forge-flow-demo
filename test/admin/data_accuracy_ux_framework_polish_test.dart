@@ -260,9 +260,7 @@ void main() {
         // New per-period row renders with a human label and the
         // service period stated.
         expect(
-          find.text(
-            'Changed Covers source from Vendor feed to Manual entry',
-          ),
+          find.text('Changed Covers source from Vendor feed to Manual entry'),
           findsOneWidget,
         );
         expect(find.text('Set Service period to dinner'), findsOneWidget);
@@ -320,6 +318,61 @@ void main() {
       },
     );
 
+    testWidgets('data accuracy table shows server source labels', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyTable(
+            rows: <DataAccuracyAdminRow>[
+              DataAccuracyAdminRow(
+                operatorRef: ref,
+                settings: DataAccuracySettings(
+                  settingId: 'source-row',
+                  operatorId: 'op-1',
+                  locationId: 'loc-1',
+                  coversSourcePerServicePeriod: const <String, CoversSource>{
+                    'breakfast': CoversSource.manual,
+                  },
+                  coversSourcePerServicePeriodSources:
+                      const <String, DataAccuracySettingSource>{
+                        'breakfast': DataAccuracySettingSource(
+                          scopeType: 'business',
+                          sourceKind: 'scoped_override',
+                          overrideId: 'ovr-breakfast',
+                        ),
+                      },
+                  coversManualEntries: const <String, Map<String, int>>{},
+                  wageSource: WageSource.vendor,
+                  wageSourceSource: const DataAccuracySettingSource(
+                    scopeType: 'org_unit',
+                    sourceKind: 'scoped_override',
+                    overrideId: 'ovr-wage',
+                  ),
+                  walkInHandlingModeSource: const DataAccuracySettingSource(
+                    scopeType: 'default',
+                    sourceKind: 'default',
+                  ),
+                  createdAt: DateTime.utc(2026, 5, 1),
+                  updatedAt: DateTime.utc(2026, 5, 1),
+                ),
+              ),
+            ],
+            editingEnabled: false,
+            onEditRow: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Source: Business'), findsOneWidget);
+      expect(find.text('Source: Org unit'), findsOneWidget);
+      expect(find.text('Source: Default'), findsOneWidget);
+    });
+
     testWidgets('data accuracy table filters rows using vendor source', (
       tester,
     ) async {
@@ -336,8 +389,7 @@ void main() {
                   settingId: 'vendor-row',
                   operatorId: 'op-1',
                   locationId: 'loc-1',
-                  coversSourcePerServicePeriod:
-                      const <String, CoversSource>{},
+                  coversSourcePerServicePeriod: const <String, CoversSource>{},
                   coversManualEntries: const <String, Map<String, int>>{},
                   wageSource: WageSource.vendor,
                   createdAt: DateTime.utc(2026, 5, 1),

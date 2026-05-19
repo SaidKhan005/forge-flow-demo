@@ -169,6 +169,52 @@ void main() {
     },
   );
 
+  test('submitManualCovers patches scoped canonical covers route', () async {
+    late http.Request seen;
+    final client = HttpSyncProxyClient(
+      proxyBaseUri: Uri.parse('https://proxy.example/base/'),
+      idTokenProvider: () async => 'token-1',
+      httpClient: http_testing.MockClient((request) async {
+        seen = request;
+        return http.Response(
+          jsonEncode(<String, Object?>{
+            'data': <String, Object?>{'setting_id': 'setting-1'},
+          }),
+          200,
+          headers: <String, String>{'content-type': 'application/json'},
+        );
+      }),
+    );
+
+    await client.submitManualCovers(
+      operatorId: 'op',
+      locationId: 'loc',
+      restaurantId: 'restaurant-1',
+      businessDate: '2026-05-10',
+      servicePeriodKey: 'brunch',
+      covers: 84,
+      recordedAt: '2026-05-10T18:00:00Z',
+      idempotencyKey: 'manual-covers-idem-1',
+    );
+
+    expect(seen.method, 'PATCH');
+    expect(
+      seen.url.path,
+      '/base/v1/operators/op/locations/loc/'
+      'data_accuracy_settings/manual_covers',
+    );
+    expect(seen.headers['authorization'], 'Bearer token-1');
+    expect(seen.headers['idempotency-key'], 'manual-covers-idem-1');
+    final body = jsonDecode(seen.body) as Map<String, Object?>;
+    expect(body, <String, Object?>{
+      'restaurant_id': 'restaurant-1',
+      'business_date': '2026-05-10',
+      'service_period_key': 'brunch',
+      'covers': 84,
+      'recorded_at': '2026-05-10T18:00:00Z',
+    });
+  });
+
   test(
     'switchDemoModeToLive posts scoped route with idempotency key',
     () async {
@@ -274,7 +320,24 @@ void main() {
                   '2026-05-05': <String, Object?>{'dinner': 120},
                 },
                 'wage_source': 'manual_mix',
+                'wage_source_source': <String, Object?>{
+                  'scope_type': 'business',
+                  'source_kind': 'scoped_override',
+                  'override_id': 'ovr-wage',
+                },
                 'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+                'walk_in_handling_mode_source': <String, Object?>{
+                  'scope_type': 'location',
+                  'source_kind': 'base_setting',
+                  'setting_id': 'setting-1',
+                },
+                'covers_source_per_service_period_source': <String, Object?>{
+                  'dinner': <String, Object?>{
+                    'scope_type': 'org_unit',
+                    'source_kind': 'scoped_override',
+                    'override_id': 'ovr-dinner',
+                  },
+                },
                 'walk_in_manual_entries': <String, Object?>{'2026-05-05': 14},
                 'updated_at': '2026-05-06T12:00:00Z',
               },
@@ -419,7 +482,13 @@ void main() {
     // ignored on parse. Per-period covers source flows via the keyed
     // service-period settings, asserted below as `keyedAccuracy`.
     expect(accuracy!.coversManualEntries['2026-05-05']!['dinner'], 120);
+    expect(
+      accuracy.coversSourcePerServicePeriodSources['dinner']!['scope_type'],
+      'org_unit',
+    );
+    expect(accuracy.wageSourceSource!['scope_type'], 'business');
     expect(accuracy.walkInHandlingMode, 'walk_ins_added_to_reservations');
+    expect(accuracy.walkInHandlingModeSource!['source_kind'], 'base_setting');
     expect(accuracy.walkInManualEntries['2026-05-05'], 14);
     expect(keyedAccuracy.single.servicePeriodKey, 'brunch');
     expect(keyedAccuracy.single.coversSource.wire, 'reservation_plus_walkin');
@@ -673,7 +742,10 @@ void main() {
     expect(selected.nextCursor, 'selected-next');
     expect(cycles.cycles.single.cycle.cycleId, 'cycle-1');
     expect(cycles.cycles.single.cycle.managerOverrideUsed, isTrue);
-    expect(cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH, 0);
+    expect(
+      cycles.cycles.single.cycle.daypartFor('afternoon_tea')!.targetCPLH,
+      0,
+    );
     expect(cycles.cycles.single.cycle.daypartFor('supper_rush')!.targetPPA, 48);
     expect(cycles.cycles.single.cycle.daypartFor('legacy_lunch'), isNull);
     expect(cycles.nextCursor, 'cycle-next');
@@ -690,10 +762,7 @@ void main() {
           .daypartTargetPPA,
       48,
     );
-    expect(
-      profiles.profiles.single.profile.daypartFor('legacy_lunch'),
-      isNull,
-    );
+    expect(profiles.profiles.single.profile.daypartFor('legacy_lunch'), isNull);
     expect(versions.isUnavailable, isTrue);
     expect(versions.unavailableReason, 'target_profile_versions_not_projected');
     expect(requests.first.queryParameters['modified_since'], 'selected-cursor');

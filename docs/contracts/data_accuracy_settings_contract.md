@@ -354,6 +354,34 @@ Closed and live aggregators must persist/use the stable key captured from the
 timing profile in force at bucket time. Labels may change; keys and provenance
 must remain stable.
 
+## Effective Source Metadata
+
+`public.effective_data_accuracy_settings_v` is the server truth for final
+Data Accuracy values and their inherited source labels. The view must expose
+source metadata alongside effective values so Admin, Operator Web, and mobile
+clients do not guess inheritance in Flutter.
+
+Required source outputs:
+
+- `covers_source_per_service_period_source`: jsonb object keyed by
+  `service_period_key`. Each value describes the winning source for that
+  period's covers source.
+- `wage_source_source`: jsonb object describing the winning source for the
+  effective wage source.
+- `walk_in_handling_mode_source`: jsonb object describing the winning source
+  for the effective walk-in handling mode.
+
+Each source object is intentionally small and wire-safe:
+
+- `scope_type`: `business`, `org_unit`, `location`, or `default`.
+- `scope_id`: the winning scope id when one exists.
+- `source_kind`: `service_period_setting`, `scoped_override`, `base_setting`,
+  or `default`.
+- `setting_id` or `override_id`: included when the winning row has one.
+
+Clients may show labels only from this metadata. If metadata is absent, the
+client must hide the source label rather than infer one locally.
+
 ## Schema
 
 Two tables are required:

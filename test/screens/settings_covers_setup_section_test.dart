@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/manual_cover_entry_dao.dart';
 import 'package:forge_and_flow/screens/settings/settings_covers_setup_section.dart';
 
@@ -38,6 +39,8 @@ void main() {
             posVendorId: posVendorId,
             loader: loader ?? emptyLoader,
             writer: writer,
+            servicePeriodsLoader: (_) async =>
+                ServicePeriodDefinitionResolver.demoDefinitions,
             initialBusinessDate: DateTime.utc(2026, 5, 10),
           ),
         ),
@@ -76,10 +79,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text("Type today's covers"), findsOneWidget);
-    expect(
-      find.textContaining("doesn't send a cover count"),
-      findsOneWidget,
-    );
+    expect(find.textContaining("doesn't send a cover count"), findsOneWidget);
   });
 
   testWidgets('uses manual-override framing when active POS DOES expose '
@@ -88,41 +88,39 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Manual cover override'), findsOneWidget);
-    expect(
-      find.textContaining('already sends covers'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('already sends covers'), findsOneWidget);
   });
 
   testWidgets('renders hierarchy scope label per HP #11', (tester) async {
-    await tester.pumpWidget(harness(
-      posVendorId: 'square',
-      scopeLabel: 'Barrio Legado — St Johns',
-    ));
+    await tester.pumpWidget(
+      harness(posVendorId: 'square', scopeLabel: 'Barrio Legado — St Johns'),
+    );
     await tester.pumpAndSettle();
 
     expect(
       find.byKey(const Key('settings_covers_setup_scope_label')),
       findsOneWidget,
     );
-    expect(
-      find.textContaining('Barrio Legado'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('Barrio Legado'), findsOneWidget);
   });
 
-  testWidgets('validation error when save is hit with an empty covers field',
-      (tester) async {
+  testWidgets('validation error when save is hit with an empty covers field', (
+    tester,
+  ) async {
     var writes = 0;
-    await tester.pumpWidget(harness(
-      posVendorId: 'square',
-      writer: (entry) async {
-        writes += 1;
-      },
-    ));
+    await tester.pumpWidget(
+      harness(
+        posVendorId: 'square',
+        writer: (entry) async {
+          writes += 1;
+        },
+      ),
+    );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('settings_covers_setup_save_button')));
+    await tester.tap(
+      find.byKey(const Key('settings_covers_setup_save_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(
@@ -132,29 +130,34 @@ void main() {
     expect(writes, 0);
   });
 
-  testWidgets('save writes through the injected writer and clears the field',
-      (tester) async {
+  testWidgets('save writes through the injected writer and clears the field', (
+    tester,
+  ) async {
     ManualCoverEntry? captured;
     final entriesAfterWrite = <ManualCoverEntry>[];
     Future<List<ManualCoverEntry>> loader(String _) async {
       return entriesAfterWrite;
     }
 
-    await tester.pumpWidget(harness(
-      posVendorId: 'square',
-      loader: loader,
-      writer: (entry) async {
-        captured = entry;
-        entriesAfterWrite.add(entry);
-      },
-    ));
+    await tester.pumpWidget(
+      harness(
+        posVendorId: 'square',
+        loader: loader,
+        writer: (entry) async {
+          captured = entry;
+          entriesAfterWrite.add(entry);
+        },
+      ),
+    );
     await tester.pumpAndSettle();
 
     await tester.enterText(
       find.byKey(const Key('settings_covers_setup_covers_field')),
       '84',
     );
-    await tester.tap(find.byKey(const Key('settings_covers_setup_save_button')));
+    await tester.tap(
+      find.byKey(const Key('settings_covers_setup_save_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(captured, isNotNull);
@@ -183,15 +186,18 @@ void main() {
     );
   });
 
-  testWidgets('rejects negative / non-numeric covers gracefully',
-      (tester) async {
+  testWidgets('rejects negative / non-numeric covers gracefully', (
+    tester,
+  ) async {
     var writes = 0;
-    await tester.pumpWidget(harness(
-      posVendorId: 'square',
-      writer: (entry) async {
-        writes += 1;
-      },
-    ));
+    await tester.pumpWidget(
+      harness(
+        posVendorId: 'square',
+        writer: (entry) async {
+          writes += 1;
+        },
+      ),
+    );
     await tester.pumpAndSettle();
 
     // Numeric-only keyboard filter prevents typing letters, so test the
@@ -200,7 +206,9 @@ void main() {
       find.byKey(const Key('settings_covers_setup_covers_field')),
       '',
     );
-    await tester.tap(find.byKey(const Key('settings_covers_setup_save_button')));
+    await tester.tap(
+      find.byKey(const Key('settings_covers_setup_save_button')),
+    );
     await tester.pumpAndSettle();
 
     expect(

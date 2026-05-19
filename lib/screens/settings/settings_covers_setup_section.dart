@@ -21,10 +21,10 @@
 // active restaurant scope so the operator knows which location their
 // entry is landing against.
 //
-// Demo-mode invariant (HP #2): the writer here is the same DAO call
-// whether the restaurant is in demo or live mode. No `kDemoMode`
-// reader branch. The new `manual_cover_entries` table is the same
-// in both worlds.
+// Demo-mode invariant (HP #2): the section accepts an injected writer. Signed-
+// in live Settings wires the canonical proxy writer and then mirrors locally;
+// demo/unauth tests can keep the SQLite-only fallback without a `kDemoMode`
+// reader branch.
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
