@@ -15,6 +15,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_models.dart';
 import 'package:forge_and_flow/operator_web/auth/operator_web_auth_source.dart';
@@ -108,6 +110,21 @@ void main() {
     metadata: const <String, Object?>{},
   );
 
+  ServicePeriodDefinition servicePeriodDefinition({
+    required String id,
+    required String label,
+    required int sortOrder,
+  }) => ServicePeriodDefinition(
+    id: id,
+    label: label,
+    shortLabel: label.substring(0, 1),
+    sortOrder: sortOrder,
+    startLocalTime: '10:00',
+    endLocalTime: '14:00',
+    rollsPastMidnight: false,
+    applicableDays: const <int>[1, 2, 3, 4, 5, 6, 7],
+  );
+
   // ─── Acceptance item A — default render ──────────────────────────
 
   group('DataAccuracyScreen default render', () {
@@ -123,6 +140,8 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
+              servicePeriodsLoader: () async =>
+                  ServicePeriodDefinitionResolver.demoDefinitions,
             ),
           ),
         );
@@ -174,6 +193,8 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
+            servicePeriodsLoader: () async =>
+                ServicePeriodDefinitionResolver.demoDefinitions,
           ),
         ),
       );
@@ -414,6 +435,8 @@ void main() {
             session: ownerSession,
             locationId: ownerSession.primaryLocationId ?? '',
             gateway: InMemoryVendorConnectionsGateway(),
+            servicePeriodsLoader: () async =>
+                ServicePeriodDefinitionResolver.demoDefinitions,
           ),
         ),
       );
@@ -469,115 +492,115 @@ void main() {
     // renders the success toast. The gateway is the demo
     // in-memory variant so no network traffic happens.
     testWidgets(
-        'dialog submit invokes tier-email gateway and shows "emailed" toast',
-        (tester) async {
-      await sizeViewport(tester, const Size(1280, 1600));
-      final gateway = InMemoryOperatorWebTierEmailGateway();
+      'dialog submit invokes tier-email gateway and shows "emailed" toast',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1600));
+        final gateway = InMemoryOperatorWebTierEmailGateway();
 
-      await tester.pumpWidget(
-        wrap(
-          DataAccuracyScreen(
-            session: ownerSession,
-            locationId: ownerSession.primaryLocationId ?? '',
-            gateway: InMemoryVendorConnectionsGateway(),
-            tierEmailGateway: gateway,
-            tierEmailIdempotencyKeyFactory: () => 'idem-test-1',
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              gateway: InMemoryVendorConnectionsGateway(),
+              tierEmailGateway: gateway,
+              tierEmailIdempotencyKeyFactory: () => 'idem-test-1',
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.ensureVisible(
-        find.byKey(const Key('polling_tier_request_change_button')),
-      );
-      await tester.tap(
-        find.byKey(const Key('polling_tier_request_change_button')),
-      );
-      await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const Key('polling_tier_request_change_button')),
+        );
+        await tester.tap(
+          find.byKey(const Key('polling_tier_request_change_button')),
+        );
+        await tester.pumpAndSettle();
 
-      await tester.enterText(
-        find.byKey(const Key('polling_tier_change_request_reason_field')),
-        'Dinner rush needs faster numbers — please review.',
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('polling_tier_change_request_submit')),
-      );
-      await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('polling_tier_change_request_reason_field')),
+          'Dinner rush needs faster numbers — please review.',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('polling_tier_change_request_submit')),
+        );
+        await tester.pumpAndSettle();
 
-      expect(gateway.submissions, hasLength(1));
-      final submitted = gateway.submissions.single;
-      expect(submitted.currentTier, 'Standard');
-      expect(submitted.requestedCadence, 'Faster than current tier');
-      expect(
-        submitted.businessReason,
-        'Dinner rush needs faster numbers — please review.',
-      );
-      expect(gateway.idempotencyKeys, equals(<String>['idem-test-1']));
+        expect(gateway.submissions, hasLength(1));
+        final submitted = gateway.submissions.single;
+        expect(submitted.currentTier, 'Standard');
+        expect(submitted.requestedCadence, 'Faster than current tier');
+        expect(
+          submitted.businessReason,
+          'Dinner rush needs faster numbers — please review.',
+        );
+        expect(gateway.idempotencyKeys, equals(<String>['idem-test-1']));
 
-      expect(
-        find.byKey(const Key('polling_tier_email_toast_sent')),
-        findsOneWidget,
-      );
-      expect(
-        find.text('Request submitted and emailed to F&F support.'),
-        findsOneWidget,
-      );
-    });
+        expect(
+          find.byKey(const Key('polling_tier_email_toast_sent')),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Request submitted and emailed to F&F support.'),
+          findsOneWidget,
+        );
+      },
+    );
 
     // Wave 2 U-FU-tier-email — email failure path: the gateway is
     // wired but returns `emailFailed`. The dialog renders the muted
     // toast so the operator knows the request is durable even if
     // SendGrid did not accept the send.
-    testWidgets('dialog submit shows muted toast when gateway reports email failure',
-        (tester) async {
-      await sizeViewport(tester, const Size(1280, 1600));
-      final gateway = InMemoryOperatorWebTierEmailGateway(
-        defaultKind: OperatorTierEmailResultKind.emailFailed,
-      );
+    testWidgets(
+      'dialog submit shows muted toast when gateway reports email failure',
+      (tester) async {
+        await sizeViewport(tester, const Size(1280, 1600));
+        final gateway = InMemoryOperatorWebTierEmailGateway(
+          defaultKind: OperatorTierEmailResultKind.emailFailed,
+        );
 
-      await tester.pumpWidget(
-        wrap(
-          DataAccuracyScreen(
-            session: ownerSession,
-            locationId: ownerSession.primaryLocationId ?? '',
-            gateway: InMemoryVendorConnectionsGateway(),
-            tierEmailGateway: gateway,
-            tierEmailIdempotencyKeyFactory: () => 'idem-test-2',
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyScreen(
+              session: ownerSession,
+              locationId: ownerSession.primaryLocationId ?? '',
+              gateway: InMemoryVendorConnectionsGateway(),
+              tierEmailGateway: gateway,
+              tierEmailIdempotencyKeyFactory: () => 'idem-test-2',
+            ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      await tester.ensureVisible(
-        find.byKey(const Key('polling_tier_request_change_button')),
-      );
-      await tester.tap(
-        find.byKey(const Key('polling_tier_request_change_button')),
-      );
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const Key('polling_tier_change_request_reason_field')),
-        'A reason',
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('polling_tier_change_request_submit')),
-      );
-      await tester.pumpAndSettle();
+        await tester.ensureVisible(
+          find.byKey(const Key('polling_tier_request_change_button')),
+        );
+        await tester.tap(
+          find.byKey(const Key('polling_tier_request_change_button')),
+        );
+        await tester.pumpAndSettle();
+        await tester.enterText(
+          find.byKey(const Key('polling_tier_change_request_reason_field')),
+          'A reason',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const Key('polling_tier_change_request_submit')),
+        );
+        await tester.pumpAndSettle();
 
-      // The gateway was still invoked — audit-row write happens
-      // upstream, the email failure is the muted-toast case.
-      expect(gateway.submissions, hasLength(1));
-      expect(
-        find.byKey(const Key('polling_tier_email_toast_failed')),
-        findsOneWidget,
-      );
-      expect(
-        find.text('Request submitted to F&F support.'),
-        findsOneWidget,
-      );
-    });
+        // The gateway was still invoked — audit-row write happens
+        // upstream, the email failure is the muted-toast case.
+        expect(gateway.submissions, hasLength(1));
+        expect(
+          find.byKey(const Key('polling_tier_email_toast_failed')),
+          findsOneWidget,
+        );
+        expect(find.text('Request submitted to F&F support.'), findsOneWidget);
+      },
+    );
 
     // Wave 2 U-FU-tier-email — cancelling the dialog must NOT call
     // the gateway. The submit button stays disabled on empty input
@@ -705,6 +728,8 @@ void main() {
               session: ownerSession,
               locationId: ownerSession.primaryLocationId ?? '',
               gateway: InMemoryVendorConnectionsGateway(),
+              servicePeriodsLoader: () async =>
+                  ServicePeriodDefinitionResolver.demoDefinitions,
             ),
           ),
         );
@@ -993,11 +1018,15 @@ void main() {
     );
 
     testWidgets(
-      'add affordance round-trips a draft into saveServicePeriodSetting',
+      'add affordance selects a configured brunch period and saves it',
       (tester) async {
         await sizeViewport(tester, const Size(1280, 1400));
 
         final gateway = _RecordingDataAccuracyGateway();
+        final configuredPeriods = <ServicePeriodDefinition>[
+          servicePeriodDefinition(id: 'lunch', label: 'Lunch', sortOrder: 1),
+          servicePeriodDefinition(id: 'brunch', label: 'Brunch', sortOrder: 2),
+        ];
 
         await tester.pumpWidget(
           wrap(
@@ -1007,6 +1036,7 @@ void main() {
               gateway: InMemoryVendorConnectionsGateway(),
               dataAccuracyGateway: gateway,
               businessDateIso: '2026-05-08',
+              servicePeriodsLoader: () async => configuredPeriods,
             ),
           ),
         );
@@ -1032,10 +1062,10 @@ void main() {
         );
         expect(dateField.controller!.text, '2026-05-08');
 
-        await tester.enterText(
-          find.byKey(kKeyedServicePeriodAccuracyKeyFieldKey),
-          'breakfast',
-        );
+        await tester.tap(find.byKey(kKeyedServicePeriodAccuracyKeyFieldKey));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Brunch (brunch)').last);
+        await tester.pumpAndSettle();
 
         // Pick covers source = reservation_plus_walkin.
         await tester.tap(find.byKey(kKeyedServicePeriodAccuracyCoversFieldKey));
@@ -1054,7 +1084,7 @@ void main() {
 
         expect(gateway.servicePeriodSaveCalls, hasLength(1));
         final call = gateway.servicePeriodSaveCalls.single;
-        expect(call.servicePeriodKey, 'breakfast');
+        expect(call.servicePeriodKey, 'brunch');
         expect(
           call.coversSource,
           ServicePeriodCoversSource.reservationPlusWalkin,
@@ -1081,6 +1111,8 @@ void main() {
               gateway: InMemoryVendorConnectionsGateway(),
               dataAccuracyGateway: gateway,
               businessDateIso: '2026-05-08',
+              servicePeriodsLoader: () async =>
+                  const <ServicePeriodDefinition>[],
             ),
           ),
         );
@@ -1118,142 +1150,134 @@ void main() {
   // screen test only asserts the embed is mounted + wires through to
   // the gateway.
   group('DataAccuracyScreen embedded wage authority section', () {
-    testWidgets(
-      'wage authority section mounts inside the Data accuracy page',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 2400));
-        final wageGateway = _FakeWageAuthorityGateway()
-          ..seed(<WageRoleRowRecord>[
-            _wageRowFor(
-              id: 'row-foh',
-              roleName: 'Server',
-              laborBucket: 'foh',
-            ),
-            _wageRowFor(
-              id: 'row-mgr',
-              roleName: 'GM',
-              laborBucket: 'manager',
-              hourlyRate: 30.0,
-            ),
-          ]);
-
-        await tester.pumpWidget(
-          wrap(
-            DataAccuracyScreen(
-              session: ownerSession,
-              locationId: ownerSession.primaryLocationId ?? '',
-              gateway: InMemoryVendorConnectionsGateway(),
-              wageAuthorityGateway: wageGateway,
-            ),
+    testWidgets('wage authority section mounts inside the Data accuracy page', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 2400));
+      final wageGateway = _FakeWageAuthorityGateway()
+        ..seed(<WageRoleRowRecord>[
+          _wageRowFor(id: 'row-foh', roleName: 'Server', laborBucket: 'foh'),
+          _wageRowFor(
+            id: 'row-mgr',
+            roleName: 'GM',
+            laborBucket: 'manager',
+            hourlyRate: 30.0,
           ),
-        );
-        await tester.pumpAndSettle();
+        ]);
 
-        // The embedded wage section is mounted under Data accuracy.
-        expect(
-          find.byKey(
-            const Key('operator_web_data_accuracy_wage_authority_section'),
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+            wageAuthorityGateway: wageGateway,
           ),
-          findsOneWidget,
-        );
-        // S-1 blended-wage summary card renders inside the embed.
-        expect(
-          find.byKey(const Key('wage_authority_blended_summary_card')),
-          findsOneWidget,
-        );
-        // Three labor bands present.
-        expect(
-          find.byKey(const Key('wage_authority_bucket_foh')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('wage_authority_bucket_boh')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('wage_authority_bucket_manager')),
-          findsOneWidget,
-        );
-        // Seeded rows render in the right bands.
-        expect(
-          find.byKey(const Key('wage_authority_row_display_row-foh')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('wage_authority_row_display_row-mgr')),
-          findsOneWidget,
-        );
-        // S-1 hierarchy-scope notice (HP #11) renders at the top of
-        // the embedded section.
-        expect(
-          find.byKey(const Key('wage_authority_hierarchy_scope')),
-          findsOneWidget,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    testWidgets(
-      'wage authority embed saves through the supplied gateway',
-      (tester) async {
-        await sizeViewport(tester, const Size(1280, 2400));
-        final wageGateway = _FakeWageAuthorityGateway();
-        var idemSeq = 0;
+      // The embedded wage section is mounted under Data accuracy.
+      expect(
+        find.byKey(
+          const Key('operator_web_data_accuracy_wage_authority_section'),
+        ),
+        findsOneWidget,
+      );
+      // S-1 blended-wage summary card renders inside the embed.
+      expect(
+        find.byKey(const Key('wage_authority_blended_summary_card')),
+        findsOneWidget,
+      );
+      // Three labor bands present.
+      expect(
+        find.byKey(const Key('wage_authority_bucket_foh')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('wage_authority_bucket_boh')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('wage_authority_bucket_manager')),
+        findsOneWidget,
+      );
+      // Seeded rows render in the right bands.
+      expect(
+        find.byKey(const Key('wage_authority_row_display_row-foh')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('wage_authority_row_display_row-mgr')),
+        findsOneWidget,
+      );
+      // S-1 hierarchy-scope notice (HP #11) renders at the top of
+      // the embedded section.
+      expect(
+        find.byKey(const Key('wage_authority_hierarchy_scope')),
+        findsOneWidget,
+      );
+    });
 
-        await tester.pumpWidget(
-          wrap(
-            DataAccuracyScreen(
-              session: ownerSession,
-              locationId: ownerSession.primaryLocationId ?? '',
-              gateway: InMemoryVendorConnectionsGateway(),
-              wageAuthorityGateway: wageGateway,
-              wageAuthorityIdempotencyKeyFactory: () {
-                idemSeq += 1;
-                return 'test-idem-$idemSeq';
-              },
-            ),
+    testWidgets('wage authority embed saves through the supplied gateway', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 2400));
+      final wageGateway = _FakeWageAuthorityGateway();
+      var idemSeq = 0;
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+            wageAuthorityGateway: wageGateway,
+            wageAuthorityIdempotencyKeyFactory: () {
+              idemSeq += 1;
+              return 'test-idem-$idemSeq';
+            },
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        // Open the FOH add-row form inside the embedded section.
-        await tester.ensureVisible(
-          find.byKey(const Key('wage_authority_add_button_foh')),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const Key('wage_authority_add_button_foh')),
-        );
-        await tester.pumpAndSettle();
+      // Open the FOH add-row form inside the embedded section.
+      await tester.ensureVisible(
+        find.byKey(const Key('wage_authority_add_button_foh')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('wage_authority_add_button_foh')));
+      await tester.pumpAndSettle();
 
-        await tester.enterText(
-          find.byKey(const Key('wage_authority_form_role_name_add')),
-          'Server',
-        );
-        await tester.enterText(
-          find.byKey(const Key('wage_authority_form_hourly_rate_add')),
-          '18.50',
-        );
-        await tester.enterText(
-          find.byKey(const Key('wage_authority_form_weighted_hours_add')),
-          '32',
-        );
-        await tester.ensureVisible(
-          find.byKey(const Key('wage_authority_form_save_add')),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('wage_authority_form_save_add')));
-        await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('wage_authority_form_role_name_add')),
+        'Server',
+      );
+      await tester.enterText(
+        find.byKey(const Key('wage_authority_form_hourly_rate_add')),
+        '18.50',
+      );
+      await tester.enterText(
+        find.byKey(const Key('wage_authority_form_weighted_hours_add')),
+        '32',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('wage_authority_form_save_add')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('wage_authority_form_save_add')));
+      await tester.pumpAndSettle();
 
-        // Save round-tripped through the gateway with the embed's
-        // idempotency-key factory.
-        expect(wageGateway.upsertCalls, hasLength(1));
-        final call = wageGateway.upsertCalls.single;
-        expect(call.request.roleName, 'Server');
-        expect(call.request.laborBucket, 'foh');
-        expect(call.request.hourlyRate, 18.5);
-        expect(call.idempotencyKey, 'test-idem-1');
-      },
-    );
+      // Save round-tripped through the gateway with the embed's
+      // idempotency-key factory.
+      expect(wageGateway.upsertCalls, hasLength(1));
+      final call = wageGateway.upsertCalls.single;
+      expect(call.request.roleName, 'Server');
+      expect(call.request.laborBucket, 'foh');
+      expect(call.request.hourlyRate, 18.5);
+      expect(call.idempotencyKey, 'test-idem-1');
+    });
   });
 }
 
@@ -1282,9 +1306,7 @@ class _FakeWageAuthorityGateway implements OperatorWebWageAuthorityGateway {
     required String operatorId,
     required String locationId,
   }) async {
-    return List<WageRoleRowRecord>.unmodifiable(
-      _rows.where((r) => r.isActive),
-    );
+    return List<WageRoleRowRecord>.unmodifiable(_rows.where((r) => r.isActive));
   }
 
   @override
