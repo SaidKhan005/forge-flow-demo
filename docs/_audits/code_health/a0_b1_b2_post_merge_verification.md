@@ -1,7 +1,7 @@
 # A0 — B1+B2 Post-Merge Verification Probe
 
 **Slice:** A0 (Lane A — code health; orchestrator-owned)
-**Authority:** `docs/_execution/lane_a_code_health/03_execution_slices.md` "Slice A0".
+**Authority:** `docs/archive/_execution/lane_a_code_health/03_execution_slices.md` "Slice A0".
 **Verifier:** orchestrator (this Claude session).
 **Date:** 2026-05-12.
 **Master tip at verification:** `f1034d0a32cce022ce914f4015b90069fc494baa`.

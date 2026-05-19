@@ -29,7 +29,7 @@
 //
 // Authority:
 //   * docs/contracts/demo_mode_contract.md "Per-(O, L, C) runtime state"
-//   * docs/_execution/lane_b_features/01_product_rule_and_ia.md
+//   * docs/archive/_execution/lane_b_features/01_product_rule_and_ia.md
 //     "Redemption-Code Handoff (B11)" + addendum A1 — short opaque
 //     codes only, no JWT in URL parameters.
 //   * lib/state/demo_mode_state_notifier.dart — the snapshot source.

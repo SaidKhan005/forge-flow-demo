@@ -26,7 +26,7 @@
 //   * "Available"    - emit + delivery wired; toggle controls fanout.
 //   * "Coming soon"  - catalog entry exists but the emitter is not
 //                      yet shipped (per audit matrix
-//                      `docs/_execution/lane_c_parity/02_plumbing_audit_matrix.md`
+//                      `docs/archive/_execution/lane_c_parity/02_plumbing_audit_matrix.md`
 //                      section E4 and the FOLLOW-UP block at
 //                      `tool/advisor_proxy/email_dispatch/notification_event_fanout.dart:737-757`).
 //                      Toggles are disabled; subcopy explains why.
@@ -76,7 +76,7 @@ enum _NotifEventState {
 
 /// Per-event readiness map. Source of truth:
 ///   * Audit matrix E4 + O3 in
-///     `docs/_execution/lane_c_parity/02_plumbing_audit_matrix.md`.
+///     `docs/archive/_execution/lane_c_parity/02_plumbing_audit_matrix.md`.
 ///   * FOLLOW-UP comments at
 ///     `tool/advisor_proxy/email_dispatch/notification_event_fanout.dart:737-757`.
 ///   * Catalog comment on `notif.audit.anchor_failure` ("rare and

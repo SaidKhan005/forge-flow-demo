@@ -1,7 +1,7 @@
 # A3.1 — Advisor-Proxy Seam Map + Bleed-Stop Policy
 
 **Slice:** A3.1 (Lane A code-health, see
-`docs/_execution/lane_a_code_health/03_execution_slices.md` §"Slice
+`docs/archive/_execution/lane_a_code_health/03_execution_slices.md` §"Slice
 A3.1 — Monolith Seam-Map + Bleed-Stop Lint").
 
 **Authority:** `CLAUDE.md` Hard Promise #4 ("RLS-ready") + the

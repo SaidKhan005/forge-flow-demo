@@ -1,7 +1,7 @@
 // Pressure preview v1 — Slice A11.2 (R3 §3 quick-win) — file-descriptor
 // watcher for the long-running soak harnesses.
 //
-// Sprint authority: `docs/_execution/lane_a_code_health/03_execution_slices.md`
+// Sprint authority: `docs/archive/_execution/lane_a_code_health/03_execution_slices.md`
 // "Slice A11.2 - Soak Harness Durable Extensions". R3 §3 calls out
 // FD-leak detection as one of the cheapest signals to surface during a
 // multi-hour soak: the proxy and the harnesses both open `HttpClient`

@@ -1,7 +1,7 @@
 // Slice A11.1 — Production session-record gauge tests.
 //
 // Covers the gauge emission contract from
-// `docs/_execution/lane_a_code_health/03_execution_slices.md`
+// `docs/archive/_execution/lane_a_code_health/03_execution_slices.md`
 // "Slice A11.1 — Production Session-Record Gauge" + R3 §2 stretch goal:
 //
 //   1. Happy path — a tenant-scoped sign-in that returns a complete

@@ -205,7 +205,7 @@ class ProductionDefaultRoleCatalogAuditSink
 
   /// `auth_events_audit.event_type` for default-role-catalog publish.
   /// Mirrors the slice-spec wording in
-  /// `docs/_execution/lane_b_features/03_execution_slices.md` so a
+  /// `docs/archive/_execution/lane_b_features/03_execution_slices.md` so a
   /// dashboard query can correlate the catalog version with the
   /// publishing super_admin.
   static const String kEventType = 'auth.default_role_catalog.published';

@@ -673,7 +673,7 @@ class ProxyProductionBindings {
   /// when the response body fails
   /// [SessionRecordCompleteness.assertComplete]. Volatile across proxy
   /// restarts; the in-memory shape mirrors the HARD-B counters above.
-  /// Authority: docs/_execution/lane_a_code_health/03_execution_slices.md
+  /// Authority: docs/archive/_execution/lane_a_code_health/03_execution_slices.md
   /// "Slice A11.1 — Production Session-Record Gauge" + R3 §2 stretch.
   final SessionRecordIncompleteGauge sessionRecordIncompleteGauge;
 }

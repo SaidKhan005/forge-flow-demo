@@ -11,11 +11,11 @@
 // their existing import; the proxy uses this re-export.
 //
 // Authority anchors:
-//   - docs/_execution/lane_a_code_health/03_execution_slices.md
+//   - docs/archive/_execution/lane_a_code_health/03_execution_slices.md
 //     "Slice A11.1 — Production Session-Record Gauge"
-//   - docs/_execution/lane_a_code_health/01_product_rule_and_ia.md
+//   - docs/archive/_execution/lane_a_code_health/01_product_rule_and_ia.md
 //     R3 §2 stretch-goal recommendation #3
-//   - docs/_execution/lane_a_code_health/02_plumbing_audit_matrix.md
+//   - docs/archive/_execution/lane_a_code_health/02_plumbing_audit_matrix.md
 //     Lens 13 row "R3 §2 production gauge recommendation"
 //
 // The re-export is `export …`-style so dart-analyze treats this file

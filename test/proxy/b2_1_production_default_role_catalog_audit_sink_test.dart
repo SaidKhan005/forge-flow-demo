@@ -25,7 +25,7 @@
 //
 // Authority:
 //   * tool/advisor_proxy/admin_default_role_catalog_routes.dart
-//   * docs/_execution/lane_b_features/03_execution_slices.md (B2.1)
+//   * docs/archive/_execution/lane_b_features/03_execution_slices.md (B2.1)
 
 import 'package:flutter_test/flutter_test.dart';
 
