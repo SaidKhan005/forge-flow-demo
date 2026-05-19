@@ -80,7 +80,6 @@ class BusinessTimingEditorScreen extends StatefulWidget {
 class _BusinessTimingEditorScreenState
     extends State<BusinessTimingEditorScreen> {
   late ServicePeriodEditorController _periods;
-  late TextEditingController _ianaTimezone;
   late TextEditingController _businessDayStartLocal;
   late DateTime _effectiveAt;
 
@@ -134,9 +133,6 @@ class _BusinessTimingEditorScreenState
                 )
                 .toList(),
     );
-    _ianaTimezone = TextEditingController(
-      text: existing?.ianaTimezone ?? 'America/Toronto',
-    );
     final initialDayStart =
         existing?.businessDayStartLocal ??
         (widget.session.rolloverHour != null
@@ -167,7 +163,6 @@ class _BusinessTimingEditorScreenState
   void dispose() {
     _periods.removeListener(_handleEditorChange);
     _periods.dispose();
-    _ianaTimezone.dispose();
     _businessDayStartLocal.removeListener(_handleDayStartChanged);
     _businessDayStartLocal.dispose();
     _successTimer?.cancel();
@@ -249,6 +244,16 @@ class _BusinessTimingEditorScreenState
     final label = widget.locationName?.trim();
     if (label != null && label.isNotEmpty) return label;
     return widget.session.primaryLocationName;
+  }
+
+  String get _effectiveTimezone {
+    final existing = widget.existingProfile?.ianaTimezone.trim();
+    if (existing != null && existing.isNotEmpty) return existing;
+    final sessionTimezone = widget.session.primaryLocationTimezone?.trim();
+    if (sessionTimezone != null && sessionTimezone.isNotEmpty) {
+      return sessionTimezone;
+    }
+    return 'UTC';
   }
 
   /// Wave 2 H-2 — builds the visual hierarchy tree's node list from
@@ -342,7 +347,7 @@ class _BusinessTimingEditorScreenState
             scopeKind: _scopeKind,
             scopeId: _scopeId,
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
-            ianaTimezone: _ianaTimezone.text.trim(),
+            ianaTimezone: _effectiveTimezone,
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
             // Slice 2.5 / Gap 28: carry applicableDays / shortLabel /
@@ -370,7 +375,7 @@ class _BusinessTimingEditorScreenState
             scopeKind: _scopeKind,
             scopeId: _scopeId,
             effectiveAtBusinessDate: _formatBusinessDate(_effectiveAt),
-            ianaTimezone: _ianaTimezone.text.trim(),
+            ianaTimezone: _effectiveTimezone,
             weekStartDay: _weekStartDay,
             businessDayStartLocal: _businessDayStartLocal.text.trim(),
             // Slice 2.5 / Gap 28: same as createProfile above — the
@@ -513,7 +518,7 @@ class _BusinessTimingEditorScreenState
             locationLabel: _locationLabel,
             hasLocationScope: _locationId.isNotEmpty,
             effectiveAt: _effectiveAt,
-            ianaTimezoneController: _ianaTimezone,
+            timezoneLabel: _effectiveTimezone,
             businessDayStartController: _businessDayStartLocal,
             weekStartDay: _weekStartDay,
             enabled: widget.canEdit && !_submitting,
@@ -656,7 +661,7 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
     required this.locationLabel,
     required this.hasLocationScope,
     required this.effectiveAt,
-    required this.ianaTimezoneController,
+    required this.timezoneLabel,
     required this.businessDayStartController,
     required this.weekStartDay,
     required this.enabled,
@@ -674,7 +679,7 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
   final String locationLabel;
   final bool hasLocationScope;
   final DateTime effectiveAt;
-  final TextEditingController ianaTimezoneController;
+  final String timezoneLabel;
   final TextEditingController businessDayStartController;
   final String weekStartDay;
   final bool enabled;
@@ -762,15 +767,20 @@ class _ScopeAndEffectiveSection extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  key: const Key('operator_web_business_timing_editor_iana'),
-                  controller: ianaTimezoneController,
-                  enabled: enabled,
-                  decoration: const InputDecoration(
-                    labelText: 'Timezone (IANA, e.g. America/Toronto)',
-                    border: OutlineInputBorder(),
+                child: InputDecorator(
+                  key: const Key(
+                    'operator_web_business_timing_editor_timezone_readonly',
                   ),
-                  onChanged: (_) => onAnyTextChanged(),
+                  decoration: const InputDecoration(
+                    labelText: 'Location timezone',
+                    border: OutlineInputBorder(),
+                    helperText:
+                        'Change this in Account or the location record.',
+                  ),
+                  child: Text(
+                    timezoneLabel,
+                    style: AppTextStyles.body13(color: AppColors.textPrimary),
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
