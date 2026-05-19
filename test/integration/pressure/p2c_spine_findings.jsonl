@@ -1,1 +1,0 @@
-{"kind":"setup_skipped","vendor":"*","fixture_path":"*","detail":"no local Postgres available; vendor sink under lib/infrastructure/persistence/postgres/ exercised via an in-memory CanonicalSink fake","recorded_at":"2026-05-08T12:00:00.000Z"}
