@@ -42,9 +42,12 @@ Map<String, Object?> _settingsRow({
   String operatorId = _opA,
   String locationId = _locA,
   Map<String, Object?>? perPeriod,
+  Map<String, Object?>? perPeriodSource,
   Map<String, Object?>? manualEntries,
   String wageSource = 'vendor',
+  Map<String, Object?>? wageSourceSource,
   String walkInHandlingMode = 'reservations_only',
+  Map<String, Object?>? walkInHandlingModeSource,
   Map<String, Object?>? walkInManualEntries,
 }) {
   return <String, Object?>{
@@ -52,9 +55,13 @@ Map<String, Object?> _settingsRow({
     'operator_id': operatorId,
     'location_id': locationId,
     'covers_source_per_service_period': perPeriod ?? <String, Object?>{},
+    'covers_source_per_service_period_source':
+        perPeriodSource ?? <String, Object?>{},
     'covers_manual_entries': manualEntries ?? <String, Object?>{},
     'wage_source': wageSource,
+    'wage_source_source': wageSourceSource,
     'walk_in_handling_mode': walkInHandlingMode,
+    'walk_in_handling_mode_source': walkInHandlingModeSource,
     'walk_in_manual_entries': walkInManualEntries ?? <String, Object?>{},
     'created_at': DateTime.utc(2026, 5, 5, 10),
     'updated_at': DateTime.utc(2026, 5, 5, 11),
@@ -68,7 +75,33 @@ void main() {
         'tenant SET LOCAL flows operator A\'s GUC and the SELECT filters '
         'on operator_id::uuid + location_id::uuid', () async {
       final pool = _DataAccuracyPool(
-        existingRows: <PostgresRow>[_settingsRow(operatorId: _opA)],
+        existingRows: <PostgresRow>[
+          _settingsRow(
+            operatorId: _opA,
+            perPeriod: <String, Object?>{'breakfast': 'manual'},
+            perPeriodSource: <String, Object?>{
+              'breakfast': <String, Object?>{
+                'scope_type': 'org_unit',
+                'scope_id': 'org-1',
+                'source_kind': 'scoped_override',
+                'override_id': 'ovr-breakfast',
+              },
+            },
+            wageSource: 'manual_mix',
+            wageSourceSource: <String, Object?>{
+              'scope_type': 'business',
+              'scope_id': _opA,
+              'source_kind': 'scoped_override',
+              'override_id': 'ovr-wage',
+            },
+            walkInHandlingModeSource: <String, Object?>{
+              'scope_type': 'location',
+              'scope_id': _locA,
+              'source_kind': 'base_setting',
+              'setting_id': '99999999-9999-9999-9999-999999999999',
+            },
+          ),
+        ],
       );
       final repo = DataAccuracySettingsRepository(
         TenantTransactionWrapper(pool),
@@ -80,6 +113,14 @@ void main() {
       );
       expect(row.operatorId, equals(_opA));
       expect(row.locationId, equals(_locA));
+      expect(row.coversSourceFor('breakfast'), equals(CoversSource.manual));
+      expect(
+        row.coversSourceSourceFor('breakfast')?.sourceKind,
+        equals('scoped_override'),
+      );
+      expect(row.wageSource, equals(WageSource.manualMix));
+      expect(row.wageSourceSource?.scopeType, equals('business'));
+      expect(row.walkInHandlingModeSource?.sourceKind, equals('base_setting'));
 
       final tx = pool.transactions.single;
       final operatorSetCfg = tx.parameters.firstWhere(
@@ -91,13 +132,15 @@ void main() {
       );
       expect(locationSetCfg['value'], equals(_locA));
       final selectSql = tx.executedSql.firstWhere(
-        (s) => s.contains('from data_accuracy_settings das'),
+        (s) => s.contains('from public.effective_data_accuracy_settings_v'),
       );
-      expect(selectSql, contains('where das.operator_id = @operator_id::uuid'));
-      expect(selectSql, contains('and das.location_id = @location_id::uuid'));
-      // The keyed per-period covers source is projected from the keyed
-      // table, NOT the deprecated legacy columns.
-      expect(selectSql, contains('data_accuracy_service_period_settings'));
+      expect(selectSql, contains('where operator_id = @operator_id::uuid'));
+      expect(selectSql, contains('and location_id = @location_id::uuid'));
+      // The effective view carries hierarchy-resolved values and the
+      // provenance metadata clients display.
+      expect(selectSql, contains('covers_source_per_service_period_source'));
+      expect(selectSql, contains('wage_source_source'));
+      expect(selectSql, contains('walk_in_handling_mode_source'));
       expect(selectSql, isNot(contains('covers_source_lunch')));
     });
 
@@ -521,12 +564,21 @@ class _DataAccuracyTransaction extends PostgresTransaction {
     if (_finalized) throw StateError('transaction already finalized');
     executedSql.add(sql);
     this.parameters.add(parameters);
-    if (sql.contains('from data_accuracy_settings das')) {
+    if (sql.contains('from public.data_accuracy_settings das')) {
+      return existingRows.isEmpty
+          ? const <PostgresRow>[]
+          : <PostgresRow>[
+              <String, Object?>{'setting_id': existingRows.first['setting_id']},
+            ];
+    }
+    if (sql.contains('from public.effective_data_accuracy_settings_v')) {
       _selectsSeen += 1;
       // First SELECT returns the seeded existing row(s); a follow-up
       // SELECT (after readOrCreateDefault INSERT or _writeAndReturn
       // UPDATE) returns the created/mutated current row.
-      if (_selectsSeen == 1) return existingRows;
+      if (_selectsSeen == 1 && existingRows.isNotEmpty) {
+        return existingRows;
+      }
       if (_mutatedRow != null) return <PostgresRow>[_mutatedRow!];
       if (firstCreateRow != null) {
         return <PostgresRow>[firstCreateRow!];

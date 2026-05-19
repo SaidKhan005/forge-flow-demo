@@ -99,5 +99,20 @@ void main() {
       expect(find.textContaining('Set lunch and dinner'), findsNothing);
       expect(find.textContaining('late_night'), findsNothing);
     });
+
+    testWidgets('describes QuickBooks Time wages as configured rates', (
+      tester,
+    ) async {
+      await tester.pumpWidget(wrap(const DataAccuracyExplainerCard()));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining(
+          'QuickBooks Time reports hours and configured rates',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('per-employee dollars'), findsNothing);
+    });
   });
 }

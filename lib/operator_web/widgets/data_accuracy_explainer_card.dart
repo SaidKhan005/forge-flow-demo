@@ -83,10 +83,11 @@ class DataAccuracyExplainerCard extends StatelessWidget {
                 'F&F uses those. If not, F&F can substitute your wage '
                 'editor mix or your TargetCycle wage × hours.',
             example:
-                'Example: QuickBooks Time reports per-employee dollars, '
-                'so F&F uses them. If you switch to Humanity, F&F '
-                'multiplies Humanity\'s pay rates by scheduled hours '
-                'instead. Same outcome, different path.',
+                'Example: QuickBooks Time reports hours and configured '
+                'rates, so F&F multiplies rate by duration. If you '
+                'switch to Humanity, F&F multiplies Humanity\'s pay '
+                'rates by scheduled hours instead. Same outcome, '
+                'different path.',
           ),
           const SizedBox(height: 12),
           _ExplainerSection(
