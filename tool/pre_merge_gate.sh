@@ -63,9 +63,15 @@ echo "      changed Dart files: ${#DARTS[@]}  (test files: ${#TESTS[@]})"
 # 2. analyze changed Dart files
 if [ "${#DARTS[@]}" -gt 0 ]; then
   flutter pub get >/dev/null 2>&1
-  if dart analyze "${DARTS[@]}" 2>&1 | tee /tmp/_pmg_an.txt | grep -qE '^\s*error '; then
+  dart analyze "${DARTS[@]}" 2>&1 | tee /tmp/_pmg_an.txt
+  ANALYZE_STATUS=${PIPESTATUS[0]}
+  if grep -qE '^\s*error ' /tmp/_pmg_an.txt; then
     echo "[2/3] dart analyze: ERRORS  ✗"; grep -E '^\s*error ' /tmp/_pmg_an.txt | head -10
     echo "RESULT: NO-GO — analyzer errors in changed files."; exit 1
+  fi
+  if [ "$ANALYZE_STATUS" -ne 0 ]; then
+    echo "[2/3] dart analyze: FAILED  ✗"
+    echo "RESULT: NO-GO — analyzer exited with status $ANALYZE_STATUS."; exit 1
   fi
   echo "[2/3] dart analyze on changed files: clean  ✓"
 else
@@ -74,7 +80,10 @@ fi
 
 # 3. run changed test files
 if [ "${#TESTS[@]}" -gt 0 ]; then
-  if flutter test "${TESTS[@]}" --reporter expanded 2>&1 | tee /tmp/_pmg_t.txt | tail -3; then
+  flutter test "${TESTS[@]}" --reporter expanded 2>&1 | tee /tmp/_pmg_t.txt
+  TEST_STATUS=${PIPESTATUS[0]}
+  tail -3 /tmp/_pmg_t.txt
+  if [ "$TEST_STATUS" -eq 0 ]; then
     echo "[3/3] changed test files: PASS  ✓"
   else
     echo "[3/3] changed test files: FAIL  ✗"
