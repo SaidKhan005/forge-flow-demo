@@ -166,7 +166,7 @@ Per `memory/project_v1_lean_cut_2_2026_05_03.md`:
 | Webhook key rotation UI | operators won't use it at V1 | REJECT |
 | `parse_warnings` JSONB column / `parse_partial` flag | malformed payloads drop with one log row | REJECT |
 | 5-minute strict replay window | vendor retries commonly exceed 5min | REJECT (must be 24h) |
-| OAuth advisory locks (`pg_try_advisory_lock`) | low-cadence cron has no contention at V1 scale | REJECT |
+| OAuth advisory locks (`pg_try_advisory_lock`) | original V1-lean-cut-2 ban SUPERSEDED by the operator-approved J4 B2 race fix (two Cloud Run pods refreshing the same near-expiry token race the vendor endpoint; some vendors auto-revoke the earlier token) | SANCTIONED for the OAuth refresh cron only: per-`(operator_id, vendor_id)` transaction-scoped `pg_advisory_xact_lock` (lock id `8472002`, migration `db/migrations/202605080900_oauth_refresh_advisory_lock.sql`, runner `lib/services/integration/oauth_refresh_cron.dart`). Still REJECT advisory locks anywhere else in adapters. |
 | Custom SIGTERM graceful drain handler | watermark-per-batch makes restart resilient | REJECT |
 | Inbound webhook DLQ tile widget / mount | log rows + admin SQL is enough | REJECT |
 | Raw-payload sibling partitioned tables / pg_partman raw partitions | single JSONB column on canonical fact is enough | REJECT |

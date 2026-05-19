@@ -20,7 +20,8 @@ This is the handoff between:
 - `lib/infrastructure/persistence/postgres/` — new
   `advisor_proxy_usage_counter_store.dart`.
 - `tool/advisor_proxy/advisor_proxy.dart` — already holds
-  `RegistryProxyHealthCheckStore` (~line 3926) and `ProxyUsageGuard`.
+  `RegistryProxyHealthCheckStore` (class at `:5339`) and
+  `ProxyUsageGuard`.
 - [proxy_health_contract.md](proxy_health_contract.md) — wire-shape authority for
   `/health` envelope.
 
@@ -121,7 +122,7 @@ Acceptance:
 
 ## Required Behavior — Gemini Slot Visibility
 
-Startup diagnostics block (`main.dart:99–125`) must emit one line:
+Startup diagnostics block (`main.dart:~1849`) must emit one line:
 
 ```
 gemini_slot_enabled: <true|false>

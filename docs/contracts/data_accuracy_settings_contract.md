@@ -158,7 +158,12 @@ range:
   parameter; production wiring sources it from the per-vendor
   capability index.
 - **Framework maximum** is 3600s (1 hour) - beyond this the dashboard
-  feels broken. Resolver constant `kFrameworkMaximumCadenceSeconds`.
+  feels broken. The resolver receives this via the
+  `frameworkMaximumCadenceSeconds` parameter (an injected bound, not
+  a named resolver constant); production wiring supplies the 3600s
+  value. See `lib/services/integration/polling_cadence_resolver.dart:69`
+  (`PollingCadenceResolver.resolve` signature) and `:140`/`:155-163`
+  (the clamp + `cadence_clamped` emission).
 - A value outside the allowed range is clamped, NOT rejected. The
   resolver emits a `cadence_clamped` sync_log row carrying the
   requested + clamped values + the bound name (`vendor_minimum` /
@@ -722,7 +727,7 @@ Given (operator, location, vendor_id):
 
   tier = forge_flow_polling_tier_assignment.readCurrent(operator, location)
   vendor_minimum = capabilityProfile.minimumPollCadenceSeconds (e.g., Oracle = 300s)
-  framework_maximum = 3600s (kFrameworkMaximumCadenceSeconds)
+  framework_maximum = 3600s (injected frameworkMaximumCadenceSeconds parameter)
 
   if tier is null:
     // No tier assigned yet (new operator / onboarding gap).

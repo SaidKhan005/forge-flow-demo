@@ -15,8 +15,12 @@ list, centralizes the CORS helper, and adds explicit request-size handling.
 
 Handoff between:
 
-- `tool/advisor_proxy/advisor_proxy.dart` — CORS helpers at lines
-  9997, 10013, 10031, 10048, 10065 plus `routeRequest`.
+- `tool/advisor_proxy/advisor_proxy.dart` — the five historical
+  per-route admin CORS preflight sites were centralized into the
+  single `respondAdminCorsPreflight` helper (now at
+  `advisor_proxy.dart:19041`), invoked from `routeRequest`. (The
+  original handoff cited lines ~9997/10013/10031/10048/10065; the
+  proxy has grown ~9k lines since and those anchors are obsolete.)
 - `tool/advisor_proxy/proxy_bootstrap.dart` — config plumbing for
   allow-list source.
 - `tool/advisor_proxy/feature_flags_repository.dart` — runtime
@@ -70,8 +74,11 @@ New helper `respondAdminCorsPreflight(HttpRequest, allowList)` must:
 | `Access-Control-Max-Age` | `600` |
 | `Access-Control-Allow-Credentials` | omit (do not set; admin uses Bearer tokens, not cookies) |
 
-All five existing admin CORS helper sites (lines ~9997, 10013, 10031,
-10048, 10065) must be replaced by a single call to the new helper.
+All five historical per-route admin CORS preflight sites are replaced
+by a single call to the centralized `respondAdminCorsPreflight` helper
+(`advisor_proxy.dart:19041`). (The original ~9997/10013/10031/10048/10065
+line anchors are obsolete; the centralization itself is the binding
+guarantee, not the literal line numbers.)
 
 For non-preflight admin responses, every handler that emits a CORS-bearing
 response uses the same helper to set `Access-Control-Allow-Origin: <origin>`
