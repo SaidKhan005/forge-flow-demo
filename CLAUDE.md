@@ -104,9 +104,11 @@ quota on one and switch to the other; the workflow stays the same.
 - Forward plan: `docs/_indices/NEXT_WAVE_PLAN.md`.
 - **Active feature plan: `docs/phases/per_daypart_targets_v1/per_daypart_targets_v1_plan.md`** (Phase 2.5 per NEXT_WAVE_PLAN; output of Phase 2 mobile walkthrough; 9 slices; 44 gaps consolidated; reusable surface-coverage audit method appended).
 - Per-wave slice ledger: `docs/_indices/<wave>_EXECUTION_LEDGER.md`. Wave 1's `WAVE_EXECUTION_LEDGER.md` CLOSED 2026-05-13 (archived to `docs/archive/_indices/wave_1_closed_2026_05_13/`). Wave 2's `WAVE_2_LEDGER.md` operator-web + admin lanes CLOSED 2026-05-14; mobile lane closed for walkthrough 2026-05-15 (transitioned to Per-Daypart Targets V1 plan).
-- Paste-ready executor prompts: `docs/_indices/CLAUDE_HANDOFF_PROMPT.md` and
-  `docs/_indices/CODEX_HANDOFF_PROMPT.md`. Both encode the same workflow;
-  use whichever matches your active executor.
+- Prompt-shape canonical (live): `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
+  is the source of truth for executor/agent prompt shape. The wave-2-era
+  paste-ready handoff prompts are retained for reference only at
+  `docs/archive/_indices/wave_2_closeout_2026_05_15/` (`CLAUDE_HANDOFF_PROMPT.md`
+  + `CODEX_HANDOFF_PROMPT.md`); they are history, not a live workflow input.
 - Per-slice scope: `docs/_execution/<lane>/03_execution_slices.md` (or
   inline in the tracker if `< 1 week AND < 5 files`).
 - Prompt-shape rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` (named for
@@ -121,6 +123,17 @@ quota on one and switch to the other; the workflow stays the same.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked (see "Agent-led slices"). Report `Links updated: yes/no` if docs move.
 - Graphify is manual-only: see the "Knowledge Graph" section.
+
+### Orchestrator Support Loop (while agents run)
+
+The orchestrator never idle-blocks on a running agent. While an agent works, it runs a strictly non-conflicting loop (read-only or planning only; never edits a file a live agent may touch):
+1. Pre-flight recon for the next task, including a 'reuse, don't re-derive' check that the work is not already landed/superseded.
+2. Pin the audit baseline (origin/master SHA + expected changed-file set + reject rule) so the incoming PR audit is targeted, not a full re-read.
+3. Regression-watch recently merged PRs for drift.
+4. Conflict-map running worktrees for file overlap (serialize per Cost & Convergence #3 before they collide).
+5. Maintain a compaction-survivable in-flight ledger (agent id, scope, expected files, status).
+6. Pre-stage the next agent prompt.
+Any work that would touch a live agent's surface waits. Origin: 2026-05-19 workflow test; the recon step alone prevented a redundant agent dispatch.
 
 ### Agent-led slices — hard rule
 
@@ -170,6 +183,16 @@ Codex, orchestrator or executor):
    Non-destructively snapshot via `git stash create`, point a
    `rescue/<topic>` branch at the result, and `git push origin
    rescue/<topic>` — then report. Never destroy another session's work.
+5. **Stay-on-master + worktree-only execution.** The shared main checkout's
+   working tree STAYS on `master` at all times. No session, executor, agent,
+   or hook switches the shared checkout off `master`, commits feature/slice
+   work to it, or leaves it on a feature branch. ALL implementation work
+   happens in a dedicated worktree on a `claude/*` (or `codex/*`) branch. If
+   a post-merge hook or any process moves the shared checkout's HEAD off
+   `master`, restore it to `origin/master` immediately (after rescuing any
+   uncommitted content per rule 4). This is the positive form of rule 1
+   (own-worktree-only) and the direct fix for the repeated 2026-05-18/19
+   "HEAD landed on master mid-task" incidents.
 
 ## Cost & Convergence Discipline (binding — stops rework spend)
 
@@ -262,7 +285,7 @@ re-audited after every rebase, lost and redone. These rules cut that:
 
 ## Tooling: Codex skill + MCP servers + graphify
 
-- Codex `$forge-flow` skill at `~/.codex/skills/forge-flow` mirrors this file's authority order, phase routing, live-mutation boundaries, migration/runtime gates, walkthrough expectations, tracker closeout rules.
+- This file (`CLAUDE.md`) is the SINGLE SOURCE OF TRUTH for authority order, workflow, gates, and rules. The Codex `~/.codex/skills/forge-flow` skill MUST defer to it and MUST NOT restate those rules (restating creates silent drift — the failure mode this prevents). Because Codex does not auto-load `CLAUDE.md`, the Codex skill's first action is to locate the repo and read `CLAUDE.md` + `PROJECT_TRACKER.md`.
 - `.mcp.json` registers `forgeflow_docs` (read-only docs/contracts/runbooks search), `forgeflow_sqlite_schema` (read-only local SQLite schema), `graphify` (manually refreshed local code/docs graph).
 - `rg` first when symbol/filename/import path/literal text is known. Graphify usage is governed by the "Knowledge Graph" section.
 
