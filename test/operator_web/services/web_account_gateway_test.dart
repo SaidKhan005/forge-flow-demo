@@ -278,7 +278,7 @@ void main() {
       expect(json['businessName'], 'Brio Restaurants');
       expect(json['currencyCode'], 'USD');
       expect(json['localeTag'], 'en-US');
-      expect(json['weekStartDay'], 'monday');
+      expect(json.containsKey('weekStartDay'), isFalse);
       expect(json.containsKey('rolloverHour'), isFalse);
     });
 

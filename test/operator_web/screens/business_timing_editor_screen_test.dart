@@ -184,6 +184,14 @@ void main() {
       expect(create.scopeKind, 'org_unit');
       expect(create.scopeId, 'org-east');
       expect(find.textContaining('East Region'), findsWidgets);
+      expect(
+        find.textContaining('business, selected group, and location'),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('tree shows the business and the location'),
+        findsNothing,
+      );
       expect(find.textContaining('scope_kind'), findsNothing);
     },
   );

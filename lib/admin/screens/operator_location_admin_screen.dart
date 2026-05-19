@@ -3771,6 +3771,9 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
         }
         final effective = projection.effective;
         final sourceLabel = projection.provenance.detailLabel;
+        final timezoneValue = resolution.ianaTimezone?.trim().isNotEmpty == true
+            ? resolution.ianaTimezone!.trim()
+            : effective.businessTimezone;
         final periods = effective.servicePeriodDefinitions.toList()
           ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
         return Column(
@@ -3781,11 +3784,11 @@ class _AdminLocationTimingResolvedBody extends StatelessWidget {
               label: 'Effective from',
               value: projection.effectiveDateLabel,
             ),
-            _TimingDialogRow(
-              label: 'Effective timezone',
-              value: effective.businessTimezone,
+            _TimingDialogRow(label: 'Effective timezone', value: timezoneValue),
+            const _TimingDialogRow(
+              label: 'Timezone source',
+              value: 'Location timezone',
             ),
-            _TimingDialogRow(label: 'Timezone source', value: sourceLabel),
             _TimingDialogRow(
               label: 'Business day starts',
               value: effective.businessDayStartLocalTime,

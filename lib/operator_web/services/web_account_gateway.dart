@@ -538,6 +538,10 @@ class AccountIdentityPatch {
 
   final String? currencyCode;
   final String? localeTag;
+
+  /// Legacy compatibility field. Kept readable for older callers, but
+  /// [toJson] deliberately omits it because Business Timing owns
+  /// week-start writes.
   final String? weekStartDay;
 
   /// Legacy compatibility field. Kept so older call sites can still
@@ -555,7 +559,6 @@ class AccountIdentityPatch {
     }
     if (currencyCode != null) json['currencyCode'] = currencyCode;
     if (localeTag != null) json['localeTag'] = localeTag;
-    if (weekStartDay != null) json['weekStartDay'] = weekStartDay;
     return json;
   }
 }

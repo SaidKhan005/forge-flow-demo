@@ -142,7 +142,7 @@ class DemoBusinessTimingGateway implements BusinessTimingGateway {
         BusinessTimingInheritedValue(
           label: 'Timezone',
           value: 'America/Toronto',
-          sourceLabel: 'Location profile',
+          sourceLabel: 'Location timezone',
           inherited: false,
         ),
         BusinessTimingInheritedValue(
