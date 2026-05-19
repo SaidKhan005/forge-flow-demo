@@ -101,6 +101,7 @@ import '../advisor_proxy/advisor_proxy.dart'
 // dedicated file (not through `phase_8_production_binder.dart`) so the
 // worker compile graph stays clear of `proxy_bootstrap.dart`'s
 // admin-pool / Firebase / LLM machinery.
+import '../advisor_proxy/phase_8_projector_wiring.dart';
 import '../advisor_proxy/phase_8_vendor_integration_factories.dart'
     show
         Phase8VendorIntegrationFactories,
@@ -1286,6 +1287,7 @@ WorkerRuntime buildWorkerRuntime({
     wrapper,
     webhookPublicBaseUri: config.webhookPublicBaseUri,
   );
+  final projectorWiring = buildDefaultPhase8ProjectorWiring(wrapper);
   final factories = buildPhase8VendorIntegrationFactoriesFromCredentials(
     tenantTransactionWrapper: wrapper,
     broker: broker,
@@ -1295,6 +1297,9 @@ WorkerRuntime buildWorkerRuntime({
     alohaNcrVoyixCredentials: config.alohaNcrVoyixCredentials,
     squareAppCredentials: config.squareAppCredentials,
     cloverAppCredentials: config.cloverAppCredentials,
+    canonicalFactPostCommitProjector: projectorWiring.projector,
+    canonicalFactPeriodResolver: projectorWiring.periodResolver,
+    canonicalRestaurantIdResolver: projectorWiring.restaurantIdResolver,
   );
   final projectionCommitDrainer = CanonicalFactProjectionCommitDrainer(
     tapsByVendor: Map<String, CanonicalFactProjectionTap>.unmodifiable(
