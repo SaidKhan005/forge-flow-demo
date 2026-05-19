@@ -17845,64 +17845,61 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       operatorId: target.operatorId,
       locationId: target.locationId,
     );
-    if (target.resource == 'data_accuracy_settings/manual_covers') {
-      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
-      if (idempotencyKey == null || idempotencyKey.isEmpty) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'idempotency_key_missing',
-          'message': 'Idempotency-Key header is required',
-        });
-        return;
-      }
-      if (idempotencyKey.length > 200) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'idempotency_key_too_long',
-          'message': 'Idempotency-Key header must be 200 characters or fewer',
-        });
-        return;
-      }
-      await _runAdminIdempotent(
-        response: response,
-        store: idempotencyStore,
-        idempotencyKey: idempotencyKey,
-        requestType: 'operator.data_accuracy.manual_covers.patch',
-        actorUserId: claims.userId,
-        requestBody: bodyResult.body!,
-        compute: () async {
-          final result = await gateway.upsertDataAccuracyManualCovers(
+    final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+    if (idempotencyKey == null || idempotencyKey.isEmpty) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'idempotency_key_missing',
+        'message': 'Idempotency-Key header is required',
+      });
+      return;
+    }
+    if (idempotencyKey.length > 200) {
+      _writeJson(response, 400, <String, Object?>{
+        'error': 'idempotency_key_too_long',
+        'message': 'Idempotency-Key header must be 200 characters or fewer',
+      });
+      return;
+    }
+    final requestType = switch (target.resource) {
+      'data_accuracy_service_period_settings' =>
+        'operator.data_accuracy.service_period.patch',
+      'data_accuracy_settings/manual_covers' =>
+        'operator.data_accuracy.manual_covers.patch',
+      _ => 'operator.data_accuracy.settings.patch',
+    };
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: requestType,
+      actorUserId: claims.userId,
+      requestBody: bodyResult.body!,
+      compute: () async {
+        final result = switch (target.resource) {
+          'data_accuracy_service_period_settings' =>
+            await gateway.upsertDataAccuracyServicePeriodSettings(
+              scope: writeScope,
+              operatorId: target.operatorId,
+              locationId: target.locationId,
+              body: bodyResult.body!,
+            ),
+          'data_accuracy_settings/manual_covers' =>
+            await gateway.upsertDataAccuracyManualCovers(
+              scope: writeScope,
+              operatorId: target.operatorId,
+              locationId: target.locationId,
+              body: bodyResult.body!,
+            ),
+          _ => await gateway.upsertDataAccuracySettings(
             scope: writeScope,
             operatorId: target.operatorId,
             locationId: target.locationId,
             body: bodyResult.body!,
-          );
-          return (statusCode: 200, payload: result);
-        },
-      );
-      return;
-    }
-    final result = switch (target.resource) {
-      'data_accuracy_service_period_settings' =>
-        await gateway.upsertDataAccuracyServicePeriodSettings(
-          scope: writeScope,
-          operatorId: target.operatorId,
-          locationId: target.locationId,
-          body: bodyResult.body!,
-        ),
-      'data_accuracy_settings/manual_covers' =>
-        await gateway.upsertDataAccuracyManualCovers(
-          scope: writeScope,
-          operatorId: target.operatorId,
-          locationId: target.locationId,
-          body: bodyResult.body!,
-        ),
-      _ => await gateway.upsertDataAccuracySettings(
-        scope: writeScope,
-        operatorId: target.operatorId,
-        locationId: target.locationId,
-        body: bodyResult.body!,
-      ),
-    };
-    _writeJson(response, 200, result);
+          ),
+        };
+        return (statusCode: 200, payload: result);
+      },
+    );
   } on AdminIdempotencyKeyConflict catch (error) {
     _writeJson(response, 409, <String, Object?>{
       'error': 'idempotency_key_conflict',
