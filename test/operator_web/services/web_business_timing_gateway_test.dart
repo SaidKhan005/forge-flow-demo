@@ -29,29 +29,29 @@ void main() {
     Map<String, Object?> profilePayload({
       String profileId = 'profile-1',
       List<Map<String, Object?>>? periods,
-    }) =>
-        <String, Object?>{
-          'profileId': profileId,
-          'versionId': profileId,
-          'scopeKind': 'location',
-          'scopeId': 'location-1',
-          'effectiveAtBusinessDate': '2026-05-10',
-          'ianaTimezone': 'America/Toronto',
-          'weekStartDay': 'monday',
-          'businessDayStartLocal': '04:00',
-          'servicePeriods': periods ??
-              <Map<String, Object?>>[
-                <String, Object?>{
-                  'key': 'lunch',
-                  'label': 'Lunch',
-                  'startLocal': '11:00',
-                  'endLocal': '15:00',
-                  'rollsPastMidnight': false,
-                },
-              ],
-          'createdAt': '2026-05-06T18:00:00.000Z',
-          'updatedAt': '2026-05-06T18:00:00.000Z',
-        };
+    }) => <String, Object?>{
+      'profileId': profileId,
+      'versionId': profileId,
+      'scopeKind': 'location',
+      'scopeId': 'location-1',
+      'effectiveAtBusinessDate': '2026-05-10',
+      'ianaTimezone': 'America/Toronto',
+      'weekStartDay': 'monday',
+      'businessDayStartLocal': '04:00',
+      'servicePeriods':
+          periods ??
+          <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'lunch',
+              'label': 'Lunch',
+              'startLocal': '11:00',
+              'endLocal': '15:00',
+              'rollsPastMidnight': false,
+            },
+          ],
+      'createdAt': '2026-05-06T18:00:00.000Z',
+      'updatedAt': '2026-05-06T18:00:00.000Z',
+    };
 
     HttpWebBusinessTimingGateway buildGateway({
       List<Map<String, Object?>>? responses,
@@ -63,8 +63,8 @@ void main() {
       final mock = MockClient((request) async {
         capturedRequests.add(request);
         final status = (statuses ?? <int>[200])[index];
-        final body = (responses ?? <Map<String, Object?>>[profilePayload()])[
-            index];
+        final body =
+            (responses ?? <Map<String, Object?>>[profilePayload()])[index];
         index++;
         return http.Response(
           jsonEncode(body),
@@ -88,19 +88,29 @@ void main() {
         HttpWebBusinessTimingGateway.operatorProfilesPath,
         '/v1/operator/business-timing-profiles',
       );
-      expect(HttpWebBusinessTimingGateway.operatorProfilesPath
-          .contains('/admin/'), isFalse);
+      expect(
+        HttpWebBusinessTimingGateway.operatorProfilesPath.contains('/admin/'),
+        isFalse,
+      );
       final id = HttpWebBusinessTimingGateway.operatorProfilePath('p');
       expect(id, '/v1/operator/business-timing-profiles/p');
       expect(id.contains('/admin/'), isFalse);
-      final periods =
-          HttpWebBusinessTimingGateway.operatorServicePeriodsPath('p');
-      expect(periods, '/v1/operator/business-timing-profiles/p/service-periods');
+      final periods = HttpWebBusinessTimingGateway.operatorServicePeriodsPath(
+        'p',
+      );
+      expect(
+        periods,
+        '/v1/operator/business-timing-profiles/p/service-periods',
+      );
       expect(periods.contains('/admin/'), isFalse);
-      final period =
-          HttpWebBusinessTimingGateway.operatorServicePeriodPath('p', 'k');
-      expect(period,
-          '/v1/operator/business-timing-profiles/p/service-periods/k');
+      final period = HttpWebBusinessTimingGateway.operatorServicePeriodPath(
+        'p',
+        'k',
+      );
+      expect(
+        period,
+        '/v1/operator/business-timing-profiles/p/service-periods/k',
+      );
       expect(period.contains('/admin/'), isFalse);
     });
 
@@ -266,36 +276,40 @@ void main() {
     });
 
     // Slice 2.5 / Gap 28 — DTO carries the three new fields end-to-end.
-    test('ServicePeriodCreate.toJson emits applicableDays, shortLabel, sortOrder',
-        () {
-      const create = ServicePeriodCreate(
-        key: 'brunch',
-        label: 'Weekend Brunch',
-        startLocal: '10:00',
-        endLocal: '14:00',
-        applicableDays: <int>[6, 7],
-        shortLabel: 'B',
-        sortOrder: 2,
-      );
-      final json = create.toJson();
-      expect(json['applicableDays'], <int>[6, 7]);
-      expect(json['shortLabel'], 'B');
-      expect(json['sortOrder'], 2);
-    });
+    test(
+      'ServicePeriodCreate.toJson emits applicableDays, shortLabel, sortOrder',
+      () {
+        const create = ServicePeriodCreate(
+          key: 'brunch',
+          label: 'Weekend Brunch',
+          startLocal: '10:00',
+          endLocal: '14:00',
+          applicableDays: <int>[6, 7],
+          shortLabel: 'B',
+          sortOrder: 2,
+        );
+        final json = create.toJson();
+        expect(json['applicableDays'], <int>[6, 7]);
+        expect(json['shortLabel'], 'B');
+        expect(json['sortOrder'], 2);
+      },
+    );
 
-    test('ServicePeriodCreate.toJson defaults all 7 weekdays + 0 sort + empty short',
-        () {
-      const create = ServicePeriodCreate(
-        key: 'lunch',
-        label: 'Lunch',
-        startLocal: '11:00',
-        endLocal: '15:00',
-      );
-      final json = create.toJson();
-      expect(json['applicableDays'], <int>[1, 2, 3, 4, 5, 6, 7]);
-      expect(json['shortLabel'], '');
-      expect(json['sortOrder'], 0);
-    });
+    test(
+      'ServicePeriodCreate.toJson defaults all 7 weekdays + 1 sort + empty short',
+      () {
+        const create = ServicePeriodCreate(
+          key: 'lunch',
+          label: 'Lunch',
+          startLocal: '11:00',
+          endLocal: '15:00',
+        );
+        final json = create.toJson();
+        expect(json['applicableDays'], <int>[1, 2, 3, 4, 5, 6, 7]);
+        expect(json['shortLabel'], '');
+        expect(json['sortOrder'], 1);
+      },
+    );
 
     test('ServicePeriodPatch.toJson emits only present fields', () {
       const patch = ServicePeriodPatch(
@@ -362,7 +376,7 @@ void main() {
                 endLocal: '14:00',
                 applicableDays: <int>[6, 7],
                 shortLabel: 'B',
-                sortOrder: 0,
+                sortOrder: 2,
               ),
             ],
           ),
@@ -373,7 +387,7 @@ void main() {
         final first = periods.single as Map<String, Object?>;
         expect(first['applicableDays'], <int>[6, 7]);
         expect(first['shortLabel'], 'B');
-        expect(first['sortOrder'], 0);
+        expect(first['sortOrder'], 2);
       },
     );
   });

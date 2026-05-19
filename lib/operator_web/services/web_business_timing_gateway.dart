@@ -72,8 +72,8 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
   HttpWebBusinessTimingGateway({
     required OperatorWebProxyClient client,
     required Future<String?> Function() idTokenProvider,
-  })  : _client = client,
-        _idTokenProvider = idTokenProvider;
+  }) : _client = client,
+       _idTokenProvider = idTokenProvider;
 
   final OperatorWebProxyClient _client;
   final Future<String?> Function() _idTokenProvider;
@@ -127,8 +127,7 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
         else
           throw const OperatorWebProxyException(
             code: 'malformed_business_timing_profile_list',
-            message:
-                'The proxy returned a malformed business-timing profile.',
+            message: 'The proxy returned a malformed business-timing profile.',
           ),
     ];
   }
@@ -191,10 +190,10 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
       idToken: token,
       body: body,
       // G60 — caller-stable key scoped to the profile id + payload.
-      extraHeaders: _stableKeyHeader(
-        'timing-profile-update',
-        <Object?>[profileId, body],
-      ),
+      extraHeaders: _stableKeyHeader('timing-profile-update', <Object?>[
+        profileId,
+        body,
+      ]),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
   }
@@ -215,10 +214,10 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
       // G60 — caller-stable key scoped to the profile id + period
       // payload, so a retried add does NOT append a duplicate
       // service period.
-      extraHeaders: _stableKeyHeader(
-        'timing-service-period-add',
-        <Object?>[profileId, body],
-      ),
+      extraHeaders: _stableKeyHeader('timing-service-period-add', <Object?>[
+        profileId,
+        body,
+      ]),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
   }
@@ -239,10 +238,11 @@ class HttpWebBusinessTimingGateway implements WebBusinessTimingGateway {
       body: body,
       // G60 — caller-stable key scoped to the profile id + period
       // key + payload.
-      extraHeaders: _stableKeyHeader(
-        'timing-service-period-update',
-        <Object?>[profileId, key, body],
-      ),
+      extraHeaders: _stableKeyHeader('timing-service-period-update', <Object?>[
+        profileId,
+        key,
+        body,
+      ]),
     );
     return BusinessTimingProfileWriteResult.fromJson(response.body);
   }
@@ -339,15 +339,15 @@ class ServicePeriod {
   final int sortOrder;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'key': key,
-        'label': label,
-        'startLocal': startLocal,
-        'endLocal': endLocal,
-        'rollsPastMidnight': rollsPastMidnight,
-        'applicableDays': applicableDays,
-        'shortLabel': shortLabel,
-        'sortOrder': sortOrder,
-      };
+    'key': key,
+    'label': label,
+    'startLocal': startLocal,
+    'endLocal': endLocal,
+    'rollsPastMidnight': rollsPastMidnight,
+    'applicableDays': applicableDays,
+    'shortLabel': shortLabel,
+    'sortOrder': sortOrder,
+  };
 
   static ServicePeriod fromJson(Map<String, Object?> json) {
     final key = _readString(json['key']);
@@ -385,7 +385,7 @@ class ServicePeriodCreate {
     required this.endLocal,
     this.applicableDays = const <int>[1, 2, 3, 4, 5, 6, 7],
     this.shortLabel = '',
-    this.sortOrder = 0,
+    this.sortOrder = 1,
   });
 
   final String key;
@@ -397,14 +397,14 @@ class ServicePeriodCreate {
   final int sortOrder;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'key': key,
-        'label': label,
-        'startLocal': startLocal,
-        'endLocal': endLocal,
-        'applicableDays': applicableDays,
-        'shortLabel': shortLabel,
-        'sortOrder': sortOrder,
-      };
+    'key': key,
+    'label': label,
+    'startLocal': startLocal,
+    'endLocal': endLocal,
+    'applicableDays': applicableDays,
+    'shortLabel': shortLabel,
+    'sortOrder': sortOrder,
+  };
 }
 
 @immutable
@@ -458,15 +458,14 @@ class BusinessTimingProfileCreate {
   final List<ServicePeriodCreate> servicePeriods;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'scopeKind': scopeKind,
-        'scopeId': scopeId,
-        'effectiveAtBusinessDate': effectiveAtBusinessDate,
-        'ianaTimezone': ianaTimezone,
-        'weekStartDay': weekStartDay,
-        'businessDayStartLocal': businessDayStartLocal,
-        'servicePeriods':
-            servicePeriods.map((period) => period.toJson()).toList(),
-      };
+    'scopeKind': scopeKind,
+    'scopeId': scopeId,
+    'effectiveAtBusinessDate': effectiveAtBusinessDate,
+    'ianaTimezone': ianaTimezone,
+    'weekStartDay': weekStartDay,
+    'businessDayStartLocal': businessDayStartLocal,
+    'servicePeriods': servicePeriods.map((period) => period.toJson()).toList(),
+  };
 }
 
 @immutable
@@ -507,8 +506,9 @@ class BusinessTimingProfilePatch {
       json['businessDayStartLocal'] = businessDayStartLocal;
     }
     if (servicePeriods != null) {
-      json['servicePeriods'] =
-          servicePeriods!.map((period) => period.toJson()).toList();
+      json['servicePeriods'] = servicePeriods!
+          .map((period) => period.toJson())
+          .toList();
     }
     return json;
   }
@@ -547,8 +547,9 @@ class BusinessTimingProfileWriteResult {
     final versionId = _readString(json['versionId']);
     final scopeKind = _readString(json['scopeKind']);
     final scopeId = _readString(json['scopeId']);
-    final effectiveAtBusinessDate =
-        _readString(json['effectiveAtBusinessDate']);
+    final effectiveAtBusinessDate = _readString(
+      json['effectiveAtBusinessDate'],
+    );
     final ianaTimezone = _readString(json['ianaTimezone']);
     final weekStartDay = _readString(json['weekStartDay']);
     final businessDayStartLocal = _readString(json['businessDayStartLocal']);
@@ -631,9 +632,7 @@ class BusinessTimingResolutionCandidate {
   final String businessDayStartLocal;
   final List<ServicePeriod> servicePeriods;
 
-  static BusinessTimingResolutionCandidate fromJson(
-    Map<String, Object?> json,
-  ) {
+  static BusinessTimingResolutionCandidate fromJson(Map<String, Object?> json) {
     final profileId = _readString(json['profileId']);
     // The S1 record emits both `scopeType` and a back-compat
     // `scopeKind` alias; accept either so the consumer is decoupled
@@ -643,11 +642,11 @@ class BusinessTimingResolutionCandidate {
     final scopeId = _readString(json['scopeId']);
     final scopeLabel = _readString(json['scopeLabel']);
     final ianaTimezone = _readString(json['ianaTimezone']);
-    final effectiveAtBusinessDate =
-        _readString(json['effectiveAtBusinessDate']);
+    final effectiveAtBusinessDate = _readString(
+      json['effectiveAtBusinessDate'],
+    );
     final weekStartDay = _readString(json['weekStartDay']);
-    final businessDayStartLocal =
-        _readString(json['businessDayStartLocal']);
+    final businessDayStartLocal = _readString(json['businessDayStartLocal']);
     final periodsRaw = json['servicePeriods'];
     if (profileId == null ||
         scopeType == null ||
@@ -671,9 +670,7 @@ class BusinessTimingResolutionCandidate {
       scopeType: scopeType,
       scopeId: scopeId,
       scopeLabel: scopeLabel,
-      scopeDepthRank: rank is int
-          ? rank
-          : (rank is num ? rank.toInt() : 0),
+      scopeDepthRank: rank is int ? rank : (rank is num ? rank.toInt() : 0),
       ianaTimezone: ianaTimezone,
       effectiveAtBusinessDate: effectiveAtBusinessDate,
       weekStartDay: weekStartDay,

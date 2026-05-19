@@ -99,12 +99,14 @@ class _BusinessTimingEditorScreenState
                 label: 'Lunch',
                 startLocal: '11:00',
                 endLocal: '15:00',
+                sortOrder: 1,
               ),
               ServicePeriodDraft(
                 key: 'dinner',
                 label: 'Dinner',
                 startLocal: '17:00',
                 endLocal: '22:00',
+                sortOrder: 2,
               ),
             ]
           // Slice 2.5 / Gap 28: carry the three editor-side fields
