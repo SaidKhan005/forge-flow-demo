@@ -276,16 +276,6 @@ class _AccountScreenState extends State<AccountScreen> {
     _OptionPair('es-MX', 'Spanish (Mexico)'),
   ];
 
-  static const List<_OptionPair> _weekStartDays = <_OptionPair>[
-    _OptionPair('monday', 'Monday'),
-    _OptionPair('tuesday', 'Tuesday'),
-    _OptionPair('wednesday', 'Wednesday'),
-    _OptionPair('thursday', 'Thursday'),
-    _OptionPair('friday', 'Friday'),
-    _OptionPair('saturday', 'Saturday'),
-    _OptionPair('sunday', 'Sunday'),
-  ];
-
   // Wave 2 W-6 — North American + common European shortlist. Operators
   // outside this list can type any IANA tz name in the custom field;
   // the backend validates against the full tz database.
@@ -489,7 +479,6 @@ class _AccountScreenState extends State<AccountScreen> {
           clearLogo: _logoUrl.text.trim().isEmpty,
           currencyCode: _currencyCode,
           localeTag: _localeTag,
-          weekStartDay: _weekStartDay,
         );
         await gateway.patchAccount(patch);
       }
@@ -602,10 +591,6 @@ class _AccountScreenState extends State<AccountScreen> {
         !_submitting &&
         (scopeIsLocation || !scopeBelowBusiness);
     final regionEnabled =
-        widget.canEdit &&
-        !_submitting &&
-        (scopeIsLocation || !scopeBelowBusiness);
-    final businessDayEnabled =
         widget.canEdit &&
         !_submitting &&
         (scopeIsLocation || !scopeBelowBusiness);
@@ -725,14 +710,6 @@ class _AccountScreenState extends State<AccountScreen> {
           _BusinessDaySection(
             weekStartDay: _weekStartDay,
             rolloverHour: _rolloverHour,
-            weekStartDays: _weekStartDays,
-            // Wave 2 U-FU-hp11-account: week-start-day stays operator-
-            // wide (it has no override column in this slice); disable
-            // the picker at Location scope so the operator does not
-            // think they can edit it there.
-            weekStartEnabled: businessDayEnabled && !scopeIsLocation,
-            onWeekStartChanged: (value) =>
-                setState(() => _weekStartDay = value),
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
             inheritedLabel: businessDayInheritedLabel,
@@ -1332,9 +1309,6 @@ class _BusinessDaySection extends StatelessWidget {
   const _BusinessDaySection({
     required this.weekStartDay,
     required this.rolloverHour,
-    required this.weekStartDays,
-    required this.weekStartEnabled,
-    required this.onWeekStartChanged,
     required this.scopeLevel,
     required this.scopeName,
     this.inheritedLabel,
@@ -1343,14 +1317,6 @@ class _BusinessDaySection extends StatelessWidget {
 
   final String? weekStartDay;
   final int? rolloverHour;
-  final List<_OptionPair> weekStartDays;
-
-  /// Week-start-day picker enabled state. This slice does not add a
-  /// per-location override column for the first day of the week. At
-  /// Location scope this stays disabled with the implicit "inherits
-  /// from Business" copy.
-  final bool weekStartEnabled;
-  final ValueChanged<String?> onWeekStartChanged;
 
   /// HP #11 plumbing — see [_BusinessIdentitySection] for the long
   /// rationale.
@@ -1390,21 +1356,33 @@ class _BusinessDaySection extends StatelessWidget {
             backendOnlyExplainer: backendOnlyExplainer,
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String>(
+          Container(
             key: const Key('operator_web_account_week_start'),
-            initialValue: weekStartDay,
-            decoration: const InputDecoration(
-              labelText: 'First day of the business week',
-              border: OutlineInputBorder(),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.backgroundMid,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
+              borderRadius: BorderRadius.circular(6),
             ),
-            items: <DropdownMenuItem<String>>[
-              for (final option in weekStartDays)
-                DropdownMenuItem<String>(
-                  value: option.value,
-                  child: Text(option.label),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Business week start',
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
                 ),
-            ],
-            onChanged: weekStartEnabled ? onWeekStartChanged : null,
+                const SizedBox(height: 4),
+                Text(
+                  'Week starts $weekStartDisplay. Edit this in Business '
+                  'Timing so week start, business-day start, and service '
+                  'periods stay together.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           Container(

@@ -495,10 +495,12 @@ class _BusinessTimingEditorScreenState
             keyName: 'operator_web_business_timing_editor_hierarchy_tree',
             headline: 'Where this profile will land',
             nodes: _buildEditorHierarchyNodes(),
-            dataGapExplainer:
-                'Regions and brands will appear here once your hierarchy is '
-                'connected. Today the tree shows the business and the location '
-                'this profile applies to.',
+            dataGapExplainer: _hasOrgUnitScope
+                ? 'This tree shows the business, selected group, and location '
+                      'this profile applies to.'
+                : 'Groups will appear here once your hierarchy is connected. '
+                      'Today the tree shows the business and the location this '
+                      'profile applies to.',
           ),
           const SizedBox(height: 14),
           if (!_hasGateway) const _UnavailableBanner(),

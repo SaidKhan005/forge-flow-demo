@@ -16,6 +16,8 @@
 //    values — the deleted hardcoded 3-period / "Monday" / close-rule
 //    path could not have produced this.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/services/admin_business_timing_resolution_gateway.dart';
@@ -27,6 +29,14 @@ import 'package:forge_and_flow/domain/services/business_timing_profile_resolver.
 
 void main() {
   group('AdminBusinessTimingResolutionProjection', () {
+    test('admin Timing dialog labels timezone as location-owned', () {
+      final source =
+          File('lib/admin/screens/operator_location_admin_screen.dart')
+              .readAsStringSync();
+      expect(source, contains("label: 'Timezone source'"));
+      expect(source, contains("value: 'Location timezone'"));
+    });
+
     test('throws for an empty candidate chain (caller renders empty state)',
         () {
       final resolution = _resolution(

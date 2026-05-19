@@ -304,6 +304,7 @@ void main() {
 
     expect(gateway.calls, hasLength(1));
     expect(gateway.calls.single.businessName, 'Brio Restaurants');
+    expect(gateway.calls.single.weekStartDay, isNull);
     expect(gateway.calls.single.rolloverHour, isNull);
     expect(
       find.byKey(const Key('operator_web_account_success')),
@@ -735,6 +736,10 @@ void main() {
         ),
       );
       expect(find.textContaining('Week starts Monday'), findsWidgets);
+      expect(
+        find.textContaining('Edit this in Business Timing'),
+        findsOneWidget,
+      );
       expect(find.textContaining('Legacy rollover is'), findsWidgets);
       expect(find.textContaining('04:00 local'), findsWidgets);
       expect(

@@ -233,6 +233,8 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     // to the location (operator / org-unit), i.e. NOT a
     // location-specific override.
     final provenance = _provenanceForResolvedScope(effective);
+    final locationTimezone =
+        _clean(resolution.ianaTimezone) ?? effective.businessTimezone;
 
     final inheritance = <BusinessTimingScopeSummary>[
       for (final candidate in candidates)
@@ -252,9 +254,9 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
     final fields = <BusinessTimingInheritedValue>[
       BusinessTimingInheritedValue(
         label: 'Timezone',
-        value: effective.businessTimezone,
-        sourceLabel: provenance.sourceLabel,
-        inherited: provenance.inheritedFromAncestor,
+        value: locationTimezone,
+        sourceLabel: 'Location timezone',
+        inherited: false,
       ),
       BusinessTimingInheritedValue(
         label: 'Business day starts',
