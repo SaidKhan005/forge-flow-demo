@@ -57,7 +57,7 @@ The C-12 slice spec (`docs/_execution/lane_c_parity/03_execution_slices.md:227-2
 
 ### ✅ 1. Verify every gap in `02_plumbing_audit_matrix.md` is closed or documented as intentional
 
-The plumbing audit matrix's 6 template-only email rows are now fully resolved per the C-2 decision matrix (`docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`):
+The plumbing audit matrix's 6 template-only email rows are now fully resolved per the C-2 decision matrix (`docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`):
 - A1 `operator_admin_invite` — DELETED via A2.2 (PR #540)
 - A2 `operator_invite_first_admin` — PRESERVED as admin SendGrid test-connection fixture
 - B (alternative invite) — DEFERRED to code-health wave per addendum B4

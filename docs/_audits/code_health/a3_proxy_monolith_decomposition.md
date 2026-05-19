@@ -9,7 +9,7 @@ the Lane A lens-audit running in parallel.
 
 All file:line citations are from this worktree. Authority order:
 `CLAUDE.md` Proxy & API Conventions, the post-Codex wave decision lock
-(`docs/_decisions/post_codex_wave_decisions_2026-05-12.md`), the
+(`docs/archive/_decisions/post_codex_wave_decisions_2026-05-12.md`), the
 canonical Phase 7.55 architecture
 (`docs/contracts/core_app_architecture.md`), and the existing stub
 plan (`docs/phases/proxy_split/proxy_split_plan.md`) that this audit

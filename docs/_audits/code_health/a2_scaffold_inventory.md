@@ -5,7 +5,7 @@ inventory for every scaffolded-but-not-fully-wired surface in the
 Forge & Flow codebase, with per-surface wire-or-delete recommendation.
 This audit complements Lane A's parallel lens-audit (A1/A3/A4/A5/A6/A7/A8/A9/A10/A11)
 by going DEEP on scaffolds specifically per decision C4 in
-`docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`.
+`docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md`.
 
 **Original Step 4 audit was read-only.** Later A2 execution notes below
 record implementation updates after code changes land.

@@ -105,7 +105,7 @@ Production1 apply.
 ## P1 — B11.1 Idempotency-Store Convention (deep-audit follow-up)
 
 **Origin:** Wave completion deep audit 2026-05-13
-(`docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` finding #4).
+(`docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md` finding #4).
 B11.1 (PR #512, merged 2026-05-12) introduced `handoff_codes` — operator-scoped
 mint/redeem ledger with 60s TTL. The deep audit flagged that the
 **idempotency-store convention is not yet codified**: subsequent slices
@@ -140,7 +140,7 @@ the 6 invariants against the migration on every such slice.
 items (4) and P3 nits (2) do not warrant their own ledger rows; they get
 fixed opportunistically when someone is next in the relevant file.
 
-**Reference:** `docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
+**Reference:** `docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
 sections P2 + P3 (full enumeration with file:line + suggested action per
 item). Pick up alongside any unrelated slice that touches those files.
 
@@ -786,9 +786,9 @@ fixed in-tree before the Production1 apply.
 ## Advisory-lock posture — reconciled 2026-05-13
 
 Captured 2026-05-13 closing the C-12 wave closeout audit's finding O-5
-(`docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`) and the
+(`docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`) and the
 Migrations + Schema dimension's finding 5
-(`docs/_audits/post_codex_wave/wave_audit_migrations_schema.md`).
+(`docs/archive/_audits/post_codex_wave/wave_audit_migrations_schema.md`).
 
 **The finding:** V1 lean-cut #2 (project memory, locked 2026-05-03) listed
 "OAuth refresh advisory lock" under *"What got pulled back"* with the trim
@@ -829,7 +829,7 @@ have concrete contention evidence + migration-resident rationale.
 ## Refactor phase scope (queued from 2026-05-13 post-Codex wave closeout)
 
 Captured 2026-05-13 from the C-12 wave closeout audit
-(`docs/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`). Both
+(`docs/archive/_audits/post_codex_wave/c_12_lane_c_closeout_audit.md`). Both
 items are governance-level decisions plus extraction work that the
 post-Codex wave touched but did not resolve. The operator scoped them
 into an upcoming refactor phase rather than a standalone slice; this

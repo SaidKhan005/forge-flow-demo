@@ -34,7 +34,7 @@ When this addendum conflicts with the original `post_codex_wave_decisions_2026-0
 | **B2** | **Soak harness ships in the same slice as B1.** Specifically: extend `tool/pressure/p3*` with `p4_session_soak.dart` + `p4_operator_day_soak.dart`; add `SessionRecord.assertComplete()` predicate; add Postgres pool gauges via `/health`; add `pubsub_subscriber.ring_buffer_keys` gauge. Quick-win subset only (R3 §3 quick-wins, ~6 days). | The harness is the regression test for the bugs B1 fixes. Shipping them together means recurrence triggers a red CI run, not an operator outage. |
 | **B3** | **Fix the three silent email-failure paths immediately, in its own minimal slice.** Targets: `notif.backfill.complete`, `notif.backfill.failed`, `notif.audit.anchor_failure`. Action: register the missing template IDs in `EmailTemplateIds.all`, create the three Markdown templates under `tool/advisor_proxy/email_templates/`, add typed-catch + log line at the fanout swallow site so future template misses surface. | Stops the silent failure. Operators start receiving the three backfill / audit emails they were always supposed to. Pattern (catch + log at fanout) protects against future template misses. |
 | **B4** | **Defer the dual invite path decision** (Firebase password-reset-email reuse vs the unwired `operator_admin_invite` SendGrid template) **to the code-health wave** when invite flows get a holistic audit. No action until then. | Not blocking. Deserves a real look across the full auth/invite surface. |
-| **B5** | **Bundle all 6 research / audit briefs (R1, R2, R3, R4, A1, C) into one PR to master.** Path: `docs/_research/post_codex/r{1-4}_*.md` + `docs/_audits/code_health/{a1, c}_*.md`. | Keeps the doc system coherent. Single reference point for downstream prompts. |
+| **B5** | **Bundle all 6 research / audit briefs (R1, R2, R3, R4, A1, C) into one PR to master.** Path: `docs/archive/_research/post_codex/r{1-4}_*.md` + `docs/_audits/code_health/{a1, c}_*.md`. | Keeps the doc system coherent. Single reference point for downstream prompts. |
 
 ## Block C — Wave shaping
 
@@ -48,7 +48,7 @@ When this addendum conflicts with the original `post_codex_wave_decisions_2026-0
 ## Cross-references
 
 - The original lock doc: `post_codex_wave_decisions_2026-05-12.md` (same directory).
-- Research briefs informing this addendum: `docs/_research/post_codex/r1_ux_patterns.md`, `r2_engineering_patterns.md`, `r3_soak_pressure_testing.md`, `r4_email_notification_testing.md`.
+- Research briefs informing this addendum: `docs/archive/_research/post_codex/r1_ux_patterns.md`, `r2_engineering_patterns.md`, `r3_soak_pressure_testing.md`, `r4_email_notification_testing.md`.
 - Audit findings informing this addendum: `docs/_audits/code_health/a1_proxy_bug_root_cause.md`, `c_email_notification_scenario_inventory.md`.
 
 ## Change log

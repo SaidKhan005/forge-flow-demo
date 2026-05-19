@@ -7,7 +7,7 @@ or both run the same underlying pattern.
 `PROJECT_TRACKER.md` at repo root is the highest-level router; this
 directory is the second hop. Slice scope lives in
 `docs/_execution/`, phase plans in `docs/phases/`, audits in
-`docs/_audits/`, decision rationale in `docs/_decisions/`.
+`docs/_audits/`, decision rationale in `docs/archive/_decisions/`.
 
 ## Live files
 

@@ -3,9 +3,9 @@
 Status: implementation committed on `claude/b1-b2-proxy-soak-fix`; awaiting human audit before merge.
 Branch: `claude/b1-b2-proxy-soak-fix`
 Implementation commit: `c3f1ce0d` (10 files, +2096 / -24)
-Source decisions: `docs/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` (B1 + B2)
+Source decisions: `docs/archive/_decisions/post_codex_wave_decisions_addendum_2026-05-12.md` (B1 + B2)
 Source audit: `docs/_audits/code_health/a1_proxy_bug_root_cause.md`
-Source research: `docs/_research/post_codex/r3_soak_pressure_testing.md`
+Source research: `docs/archive/_research/post_codex/r3_soak_pressure_testing.md`
 
 ## Why this slice exists
 
