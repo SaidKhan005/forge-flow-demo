@@ -1,5 +1,32 @@
 # CLAUDE.md
 
+Normative repo rules. When this file and a higher tier conflict, the
+Authority Order below decides. Each binding rule is stated once;
+later sections cross-reference rather than restate.
+
+**Contents:**
+Operator Communication Style ·
+Authority Order ·
+Hard Promises ·
+Workflow (Pattern · Routing · House rules · Agent-led slices ·
+Ceiling-raise rule) ·
+Shared Checkout Safety ·
+Cost & Convergence Discipline ·
+Review Loop ·
+Service-Layer Split ·
+Architecture Guardrails ·
+Time Guardrails ·
+RLS-Ready Schema ·
+Proxy & API Conventions ·
+Testing ·
+Phase Doc Hygiene ·
+Tooling (Codex skill · MCP servers) ·
+Knowledge Graph (graphify) ·
+Commits & Push ·
+Session Handoff ·
+Demo Mode ·
+Flavors.
+
 ## Operator Communication Style (binding — applies to every reply)
 
 When reporting to the operator in chat (status, findings, summaries,
@@ -62,6 +89,7 @@ quota on one and switch to the other; the workflow stays the same.
   `branch → implement → self-audit → commit + push → open PR → STOP`.
 - **Worker agents** dispatched by either an executor or the orchestrator via
   the Agent tool use the same `worktree → PR → STOP` shape. No auto-merge.
+  Full hard rule + prohibitions: see "Agent-led slices" below.
 - **Audit** by the orchestrator against contracts + slice intent. Pattern B
   table (worker self-audit + executor independent audit, both with file:line
   citations) is non-negotiable in every PR body.
@@ -91,8 +119,8 @@ quota on one and switch to the other; the workflow stays the same.
 - Runtime acceptance (advisory pattern, not CI-enforced — reviewer judgment): `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_codex_acceptance_workflow.md` (named for legacy reasons; applies to whichever executor exercises browser flows).
 - Feature lens audit: use `docs/frameworks/FEATURE_IMPLEMENTATION_LENS_AUDIT_FRAMEWORK.md` before broad feature work, settings work, route/schema changes, runtime-exposed behavior, or any implementation where hidden plumbing may matter.
 - Main chat is read-only across worktrees when worktrees are running. Tracker/memory/coordination edits on master OK.
-- Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
-- Graph refresh (graphify) is manual-only when the operator asks for it.
+- Don't broaden scope. Don't update trackers during implementation unless asked (see "Agent-led slices"). Report `Links updated: yes/no` if docs move.
+- Graphify is manual-only: see the "Knowledge Graph" section.
 
 ### Agent-led slices — hard rule
 
@@ -175,7 +203,7 @@ re-audited after every rebase, lost and redone. These rules cut that:
    (touching `lib/**`, `db/migrations/**`, `tool/advisor_proxy/**`, auth,
    RLS, or proxy) — clean merge + analyzer + changed-tests GO/NO-GO. Plus
    `tool/verify_pr_landed.sh <PR>` after merge to confirm content actually
-   landed (squash orphans branch tips; "MERGED" ≠ on master).
+   landed (rationale: "MERGED" ≠ landed, see Shared Checkout Safety #3).
 
 ## Review Loop (user pastes an Execution Report)
 
@@ -236,19 +264,22 @@ re-audited after every rebase, lost and redone. These rules cut that:
 
 - Codex `$forge-flow` skill at `~/.codex/skills/forge-flow` mirrors this file's authority order, phase routing, live-mutation boundaries, migration/runtime gates, walkthrough expectations, tracker closeout rules.
 - `.mcp.json` registers `forgeflow_docs` (read-only docs/contracts/runbooks search), `forgeflow_sqlite_schema` (read-only local SQLite schema), `graphify` (manually refreshed local code/docs graph).
-- `rg` first when symbol/filename/import path/literal text is known. Use `graphify` only when the operator explicitly asks for graph context or confirms it was manually refreshed.
+- `rg` first when symbol/filename/import path/literal text is known. Graphify usage is governed by the "Knowledge Graph" section.
 
 ## Knowledge Graph
 
-- Manual-only for cost control. Do not auto-run `/graphify --update`, do not create `graphify-out/needs_update`, and do not treat a stale `needs_update` file as a required next-turn action.
-- The operator manually triggers graph refresh when needed. Until then, prefer authority docs, repo-local search, and code inspection.
+Single canonical statement on graphify (cross-referenced by House
+rules, Tooling, and Commits & Push):
+
+- Manual-only for cost control. Do not auto-run `/graphify --update`, do not create `graphify-out/needs_update`, and do not treat a stale `needs_update` file as a required next-turn action. Do not run graphify mid-session unless the operator explicitly requests a manual refresh.
+- The operator manually triggers graph refresh when needed. Until then, prefer authority docs, repo-local search, and code inspection. Use `graphify` only when the operator explicitly asks for graph context or confirms it was manually refreshed.
 
 ## Commits & Push
 
 - Commits at phase close, not slice close (unless asked).
 - Push is automatic on commit.
 - Local hooks are cheap guardrails only. Install with `scripts/install_git_hooks.ps1`; they do not run graphify, provider calls, cloud actions, browser QA, or full Flutter test suites.
-- Do not run graphify mid-session unless the operator explicitly requests a manual refresh.
+- Graphify is never run by hooks or mid-session: see "Knowledge Graph".
 
 ## Session Handoff (only when wrapping)
 
