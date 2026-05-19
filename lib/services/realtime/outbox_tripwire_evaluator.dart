@@ -22,7 +22,7 @@
 //
 // The thresholds are stored as constants but the evaluator accepts an
 // override map keyed by [OutboxTripwireMetric] so the demo
-// walkthrough (`docs/archive/_walkthroughs/10a.4.md`) can force a metric into
+// walkthrough (`docs/_walkthroughs/10a.4.md`) can force a metric into
 // the red band via env-var overrides without modifying the locked
 // production thresholds. Production callers pass `overrides: null`
 // which collapses to the locked Q22 values.
