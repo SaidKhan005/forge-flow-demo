@@ -9,7 +9,7 @@
 # backup on exit (Ctrl-C, error, or normal completion).
 #
 # The dev CSP added here matches the canonical block documented in
-# `docs/_audits/wave_2/phase_2_walkthrough_master_plan.md` -> Patch 1
+# `docs/archive/_audits/wave_2/phase_2_walkthrough_master_plan.md` -> Patch 1
 # (`'unsafe-inline' 'unsafe-eval'` + `ws://localhost:*` /
 # `http://localhost:*` in `connect-src`, drops
 # `upgrade-insecure-requests`).

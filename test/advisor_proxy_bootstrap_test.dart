@@ -493,7 +493,7 @@ void main() {
   // these gateways write must carry `actor_kind = 'forge_admin'` so
   // both `auth_events_audit` and (post-cutover) the hash-chained
   // `audit_logs` table record honest attribution. The deep audit
-  // (`docs/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
+  // (`docs/archive/_audits/post_codex_wave/wave_completion_deep_audit_2026_05_13.md`
   // finding #1) flagged the four sites:
   //   - `RepositoryPricingTierAdminProxyGateway._audit`
   //   - `RepositoryCorpusAdminProxyGateway._audit`

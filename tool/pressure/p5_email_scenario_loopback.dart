@@ -8,7 +8,7 @@
 //     C-11 (lines 209-225).
 //   * Inventory: `docs/_audits/code_health/c_email_notification_scenario_inventory.md`.
 //   * C-2 wire-or-delete decision matrix:
-//     `docs/_decisions/c_2_email_template_wire_or_delete_decisions.md`.
+//     `docs/archive/_decisions/c_2_email_template_wire_or_delete_decisions.md`.
 //   * Env-gated-inert precedent: `tool/pressure/p4_heap_snapshot_uploader.dart`.
 //
 // What this harness proves
