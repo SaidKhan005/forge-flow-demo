@@ -17,7 +17,12 @@
 > pre/post (validation, not scoping — scoping is what the debug.md audit
 > already did).
 >
-> **Status:** Active. 6-phase pipeline.
+> **Status:** Active. 6-phase pipeline. **Current position (refreshed
+> 2026-05-19): Phase 1 (Wave 2) CLOSED; Phase 2.5 (Per-Daypart Targets
+> V1) is the live phase, Slices 0 to 5 landed, later slices in flight.
+> No happy-state tag yet (Phase 2 tag drops only after Phase 2.5 exits +
+> walkthrough re-runs clean).** See "Wave 2 status snapshot" at the
+> bottom for the dated detail.
 > **Owner:** Operator drives sequencing; main orchestrator + second
 > Claude lane execute.
 
@@ -513,7 +518,55 @@ merges when it's back. **Use sparingly** — safety valve, not habit.
 
 ## Wave 2 status snapshot
 
-Updated as Phase 2 progresses. Detail: `docs/_indices/WAVE_2_LEDGER.md`.
+Updated as the pipeline progresses. Detail: `docs/_indices/WAVE_2_LEDGER.md`
+and `PROJECT_TRACKER.md`.
+
+### Status refresh 2026-05-19
+
+Pipeline position derived from `PROJECT_TRACKER.md` (Updated 2026-05-18)
+and `git log origin/master` (origin tip `690bf827`):
+
+- **Phase 1 (Wave 2) is CLOSED.** Operator-web + admin lanes closed
+  2026-05-14; the mobile lane closed for the walkthrough 2026-05-15 and
+  transitioned into Per-Daypart Targets V1 (PROJECT_TRACKER.md Indices
+  table, `WAVE_2_LEDGER.md` line on the closeouts). The dated lane table
+  below is preserved as the 2026-05-14 closeout-sweep snapshot, not the
+  current open-work picture (there is no open Wave 2 work left).
+- **Phase 2.5 (Per-Daypart Targets V1) is the live phase.** It is the
+  active feature work, surfaced by the Phase 2 mobile walkthrough
+  (PROJECT_TRACKER.md "Active work" + "Engineering still in scope").
+  **Slices 0 to 5 have landed**; later slices plus benchmark-rework
+  follow-ups are in flight (PROJECT_TRACKER.md "Engineering still in
+  scope" row). Landed evidence on `origin/master`: covers-source
+  per-period schema R5/R7a to R7d (#943 / #972 / #975 / #976 / #977,
+  with #977 schema-destructive), bottom-up locked weekly-plan snapshot
+  (#917 / #941), Slice 5 Variance non-closed rows read locked sub-rows
+  (#951), SA/SD/SE benchmark-rework + per-period verdict carry
+  (#907 / #919 / #926 / #934).
+- **No happy-state tag exists yet** (`git tag -l "happy-state*"` is
+  empty). Phase 2's TAG HAPPY STATE step is gated behind Phase 2.5
+  exiting and the Phase 2 mobile walkthrough re-running cleanly with
+  per-period targets visible on Benchmark / Plan / Shift / Variance.
+- **Next operator-gated step:** clear the 4 Per-Daypart V1 operator
+  decisions still queued (Gaps 42 / 31 / 36 / 35 in the Phase 2.5
+  section above), let the remaining V1 slices (later slices + Slice 6)
+  land, then re-run the Phase 2 walkthrough and tag happy state. V1
+  launch itself stays gated on the operator-blocked items in
+  PROJECT_TRACKER.md "Open Work" (Firebase Auth action-domain switch,
+  2 pending Production1 migrations, operator-authored T&C seed, trio
+  sandbox creds).
+- **Doc-house context (not pipeline state):** doc-consolidation
+  Waves 1 to 7 landed since 2026-05-14 (#988 to #1003 on
+  `origin/master`), so several cross-reference paths in this doc point
+  at archived locations. Pipeline cross-references in the body above
+  were intentionally left untouched per this refresh's narrow scope;
+  treat archived-path links as history pointers.
+
+### 2026-05-14 closeout sweep (historical snapshot)
+
+The lane table in this subsection reflects the 2026-05-14 closeout
+sweep only. Wave 2 has since fully closed (see Status refresh above);
+the table is retained for history, not as current open work.
 
 **2026-05-14 closeout sweep:** the bulk of Wave 2 is merged. Items 4
 (Roles screen UX), 6 (Cancel pending invite), 7 (Default Role Catalog
