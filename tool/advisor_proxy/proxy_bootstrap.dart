@@ -3291,7 +3291,6 @@ class RepositoryMobileOperationalSyncProxyGateway
       'covers_source_late_night',
       defaultValue: 'vendor',
     );
-    final coversPerServicePeriod = _bodyCoversSourcePerServicePeriod(body);
     final wageSource = _bodyWageSource(
       body,
       'wage_source',
@@ -3352,13 +3351,12 @@ class RepositoryMobileOperationalSyncProxyGateway
           message: 'data accuracy settings write returned no row',
         );
       }
-      // Route the keyed covers map into the keyed table. The legacy
-      // triplet is still accepted as compatibility input and then
-      // overlaid by covers_source_per_service_period so explicit keyed
-      // values win. effective_at_business_date is the 1970-01-01
-      // sentinel (matching the R5 backfill row identity) so this lands
-      // on the operator's per-location baseline keyed row and stays
-      // idempotent via the keyed UNIQUE
+      // Route the three legacy covers keys into the keyed table. The
+      // service_period_key for each hardcoded daypart is identical to
+      // the legacy column suffix; effective_at_business_date is the
+      // 1970-01-01 sentinel (matching the R5 backfill row identity) so
+      // this lands on the operator's per-location baseline keyed row
+      // and stays idempotent via the keyed UNIQUE
       // (operator_id, location_id, service_period_key,
       // effective_at_business_date) ON CONFLICT — only covers_source is
       // touched so an operator-set keyed wage_source is never clobbered.
@@ -3370,7 +3368,6 @@ class RepositoryMobileOperationalSyncProxyGateway
           'lunch': coversLunch,
           'dinner': coversDinner,
           'late_night': coversLateNight,
-          ...coversPerServicePeriod,
         },
         updatedBy: scope.userId,
       );
@@ -3885,44 +3882,6 @@ class RepositoryMobileOperationalSyncProxyGateway
     }
   }
 
-  static Map<String, String> _bodyCoversSourcePerServicePeriod(
-    Map<String, Object?> body,
-  ) {
-    const field = 'covers_source_per_service_period';
-    final raw = body[field];
-    if (raw == null) return const <String, String>{};
-    if (raw is! Map) {
-      throw const MobileOperationalSyncProxyGatewayException(
-        statusCode: 400,
-        code: 'invalid_covers_source_per_service_period',
-        message: 'covers_source_per_service_period must be an object',
-      );
-    }
-    final out = <String, String>{};
-    raw.forEach((key, value) {
-      if (key is! String || !_isServicePeriodKey(key.trim())) {
-        throw const MobileOperationalSyncProxyGatewayException(
-          statusCode: 400,
-          code: 'invalid_service_period_key',
-          message:
-              'service_period_key must start with a lowercase letter and '
-              'contain only lowercase letters, numbers, or underscores',
-        );
-      }
-      if (value is! String || value.trim().isEmpty) {
-        throw const MobileOperationalSyncProxyGatewayException(
-          statusCode: 400,
-          code: 'invalid_covers_source',
-          message:
-              'covers_source must be vendor, forecast, manual, or '
-              'reservation_plus_walkin',
-        );
-      }
-      out[key.trim()] = _servicePeriodCoversSourceFromWire(value.trim());
-    });
-    return out;
-  }
-
   static String _bodyWageSource(
     Map<String, Object?> body,
     String field, {
@@ -3973,7 +3932,8 @@ class RepositoryMobileOperationalSyncProxyGateway
 
   static String _bodyServicePeriodKey(Map<String, Object?> body) {
     final key = _bodyString(body, 'service_period_key');
-    if (key != null && _isServicePeriodKey(key)) return key;
+    final pattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+    if (key != null && pattern.hasMatch(key)) return key;
     throw const MobileOperationalSyncProxyGatewayException(
       statusCode: 400,
       code: 'invalid_service_period_key',
@@ -3997,14 +3957,6 @@ class RepositoryMobileOperationalSyncProxyGateway
 
   static String _bodyServicePeriodCoversSource(Map<String, Object?> body) {
     final value = _bodyString(body, 'covers_source') ?? 'vendor';
-    return _servicePeriodCoversSourceFromWire(value);
-  }
-
-  static bool _isServicePeriodKey(String value) {
-    return RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(value);
-  }
-
-  static String _servicePeriodCoversSourceFromWire(String value) {
     const allowed = <String>{
       'vendor',
       'forecast',
@@ -5063,7 +5015,6 @@ class RepositoryDataAccuracyAdminProxyGateway
     String? coversSourceLunch,
     String? coversSourceDinner,
     String? coversSourceLateNight,
-    Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -5072,7 +5023,6 @@ class RepositoryDataAccuracyAdminProxyGateway
     _validateCoversSource(coversSourceLunch, 'covers_source_lunch');
     _validateCoversSource(coversSourceDinner, 'covers_source_dinner');
     _validateCoversSource(coversSourceLateNight, 'covers_source_late_night');
-    _validateCoversPerServicePeriod(coversSourcePerServicePeriod);
     _validateWageSource(wageSource);
     _validateWalkInHandlingMode(walkInHandlingMode);
     return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
@@ -5124,16 +5074,13 @@ class RepositoryDataAccuracyAdminProxyGateway
         },
       );
       if (rows.isEmpty) return null;
-      // Route each supplied covers key to the keyed table. Legacy
-      // triplet fields are compatibility input and the keyed map
-      // overlays them, so explicit keyed values win. A null legacy
-      // param keeps the existing keyed value untouched (matching the
-      // prior coalesce(@covers_x, existing) admin semantics).
+      // Route each supplied legacy covers key to the keyed table. A
+      // null param keeps the existing keyed value untouched (matching
+      // the prior coalesce(@covers_x, existing) admin semantics).
       final suppliedCovers = <String, String>{
         if (coversSourceLunch != null) 'lunch': coversSourceLunch,
         if (coversSourceDinner != null) 'dinner': coversSourceDinner,
         if (coversSourceLateNight != null) 'late_night': coversSourceLateNight,
-        ...?coversSourcePerServicePeriod,
       };
       if (suppliedCovers.isNotEmpty) {
         await _writeLegacyCoversToKeyed(
@@ -5177,7 +5124,6 @@ class RepositoryDataAccuracyAdminProxyGateway
     String? coversSourceLunch,
     String? coversSourceDinner,
     String? coversSourceLateNight,
-    Map<String, String>? coversSourcePerServicePeriod,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -5191,7 +5137,6 @@ class RepositoryDataAccuracyAdminProxyGateway
     _validateCoversSource(coversSourceLunch, 'covers_source_lunch');
     _validateCoversSource(coversSourceDinner, 'covers_source_dinner');
     _validateCoversSource(coversSourceLateNight, 'covers_source_late_night');
-    _validateCoversPerServicePeriod(coversSourcePerServicePeriod);
     _validateWageSource(wageSource);
     _validateWalkInHandlingMode(walkInHandlingMode);
     return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
@@ -5207,17 +5152,14 @@ class RepositoryDataAccuracyAdminProxyGateway
       // data_accuracy_scoped_overrides (NOT the legacy
       // covers_source_{lunch,dinner,late_night} scalar columns). Each
       // supplied legacy covers key maps to its service_period_key
-      // ('lunch'/'dinner'/'late_night'), then the keyed map overlays
-      // those compatibility values. On conflict the supplied keys are
-      // merged into the existing map (`existing || @new`), so a null
-      // legacy param keeps that period's existing scoped value
-      // untouched, matching the prior per-column coalesce(@x, existing)
-      // semantics.
+      // ('lunch'/'dinner'/'late_night'). On conflict the supplied keys
+      // are merged into the existing map (`existing || @new`), so a
+      // null param keeps that period's existing scoped value untouched,
+      // matching the prior per-column coalesce(@x, existing) semantics.
       final scopedCovers = <String, String>{
         if (coversSourceLunch != null) 'lunch': coversSourceLunch,
         if (coversSourceDinner != null) 'dinner': coversSourceDinner,
         if (coversSourceLateNight != null) 'late_night': coversSourceLateNight,
-        ...?coversSourcePerServicePeriod,
       };
       final rows = await exec.query(
         'insert into data_accuracy_scoped_overrides ('
@@ -5288,8 +5230,6 @@ class RepositoryDataAccuracyAdminProxyGateway
               'covers_source_dinner': coversSourceDinner,
             if (coversSourceLateNight != null)
               'covers_source_late_night': coversSourceLateNight,
-            if (scopedCovers.isNotEmpty)
-              'covers_source_per_service_period': scopedCovers,
             if (wageSource != null) 'wage_source': wageSource,
             if (walkInHandlingMode != null)
               'walk_in_handling_mode': walkInHandlingMode,
@@ -6493,14 +6433,6 @@ class RepositoryDataAccuracyAdminProxyGateway
         message: '$field must be vendor, forecast, or manual',
       );
     }
-  }
-
-  static void _validateCoversPerServicePeriod(Map<String, String>? value) {
-    if (value == null) return;
-    value.forEach((key, coversSource) {
-      _validateServicePeriodKey(key);
-      _validateServicePeriodCoversSource(coversSource);
-    });
   }
 
   static void _validateWageSource(String? value) {
@@ -10086,7 +10018,7 @@ CloudRunAdminClient _buildCloudRunAdminClient({
 // console) — not operator-facing. Per lean cut 2 the 11A.6 DLQ tile
 // is deferred; V1 ops triage flow is logs + admin SQL against
 // `public.event_outbox_dead_letter`. The walkthrough at
-// `docs/archive/_walkthroughs/10a.2.md` documents the SQL queries and the
+// `docs/_walkthroughs/10a.2.md` documents the SQL queries and the
 // `/health` JSON shape an F&F engineer reads during a DLQ event.
 // `EventOutboxDeadLetterRepository.listByOperator` /
 // `countByOperator` stay available for any future tile or replay
