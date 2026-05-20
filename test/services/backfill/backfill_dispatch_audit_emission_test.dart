@@ -39,8 +39,6 @@
 @Tags(['postgres'])
 library;
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/connector_backfill_job_repository.dart';
@@ -50,6 +48,7 @@ import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/first_connection_backfill_job.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 
+import '../../_test_helpers/postgres_test_helpers.dart';
 import '../../../tool/integration_sync_worker/audit_emitting_backfill_job_store.dart';
 import '../../../tool/integration_sync_worker/audit_emitting_canonical_sink.dart';
 import '../../../tool/integration_sync_worker/backfill_dispatch.dart';
@@ -64,10 +63,7 @@ const String _locB = '00000000-0000-6000-9000-00000000ae12';
 const String _connB = '00000000-0000-6000-9000-00000000ae13';
 
 void main() {
-  const definedUrl = String.fromEnvironment('POSTGRES_TEST_URL');
-  final pgUrl = definedUrl.isNotEmpty
-      ? definedUrl
-      : (Platform.environment['POSTGRES_TEST_URL'] ?? '');
+  final pgUrl = readPostgresTestUrlOrDefine() ?? '';
   final hasDb = pgUrl.isNotEmpty;
 
   // ignore: avoid_print

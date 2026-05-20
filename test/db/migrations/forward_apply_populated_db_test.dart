@@ -26,6 +26,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 
+import '../../_test_helpers/postgres_test_helpers.dart';
 import '../../infrastructure/postgres_test_harness.dart';
 
 // UUIDs for pre-population data.
@@ -37,12 +38,7 @@ void main() {
   // Skipped when POSTGRES_TEST_URL is not set (default unit-test loop).
   // Tagged `postgres` so CI's `--tags=postgres` job (which sets the env
   // var to a live container) still picks these up.
-  final skipReason = (Platform.environment['POSTGRES_TEST_URL'] ?? '')
-          .trim()
-          .isEmpty
-      ? 'requires live Postgres (POSTGRES_TEST_URL not set); '
-            'run via `flutter test --tags=postgres`'
-      : null;
+  final skipReason = postgresSkipReasonOrNull();
 
   test(
     'Test 1: fresh DB — apply all pending migrations with no SQL errors',

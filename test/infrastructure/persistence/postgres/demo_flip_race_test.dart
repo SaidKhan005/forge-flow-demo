@@ -22,14 +22,13 @@
 //      the true regression guard. Counts the audit_log flip events and
 //      asserts exactly 1.
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/adp_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 
+import '../../../_test_helpers/postgres_test_helpers.dart';
 import '../../postgres_test_harness.dart';
 
 const String _opA = 'aaaa0000-0000-0000-0000-000000000001';
@@ -162,12 +161,7 @@ void main() {
   // Skipped when POSTGRES_TEST_URL is not set (default unit-test loop).
   // The `tags: ['postgres']` selector remains for CI's --tags=postgres
   // run, which sets POSTGRES_TEST_URL to a live container.
-  final skipReason = (Platform.environment['POSTGRES_TEST_URL'] ?? '')
-          .trim()
-          .isEmpty
-      ? 'requires live Postgres (POSTGRES_TEST_URL not set); '
-            'run via `flutter test --tags=postgres` with a container'
-      : null;
+  final skipReason = postgresSkipReasonOrNull(extraGuidance: 'with a container');
 
   group('Demo-flip race — live Postgres (regression guard)', () {
     test(
