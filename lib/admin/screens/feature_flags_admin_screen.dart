@@ -160,6 +160,39 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The screen renders inside a workspace pane whose vertical
+    // budget shrinks at compact viewports (the 800x600 widget-test
+    // viewport in particular, where the admin shell side nav leaves
+    // the function pane just ~282 dp tall). When the static header
+    // block (page header + hierarchy notice + banners) wrapped to
+    // multiple lines at that width the inner Column previously
+    // overflowed by ~15px at the bottom because the trailing
+    // `Expanded(child: list/loader)` could not absorb a negative
+    // slack. Pin only the page `_Header` to the top; everything else
+    // — hierarchy notice, banners, the body — lives inside a single
+    // scrollable region so the static content always has somewhere
+    // to overflow into. When there are flags, the list is the
+    // scrollable region; when there are not, a `SingleChildScrollView`
+    // takes over so the placeholder body shares the same scroll
+    // budget as the notice.
+    final hasListBody =
+        !_loading && _loadError == null && _flags.isNotEmpty;
+    final secondaryChildren = <Widget>[
+      if (widget.hierarchyScope != null)
+        AdminHierarchyScopeNotice(
+          message:
+              'Showing launch controls that apply to ${widget.hierarchyScope!.displayLabel}. Global controls still affect every business; business and location controls are limited to the selected hierarchy.',
+        ),
+      if (!widget.editingEnabled)
+        const _ReadOnlyBanner(
+          key: Key('admin_feature_flags_readonly_banner'),
+        ),
+      if (_actionError != null)
+        _ErrorBanner(
+          key: const Key('admin_feature_flags_action_error'),
+          message: _actionError!,
+        ),
+    ];
     return Container(
       key: const Key('admin_feature_flags_screen'),
       color: AppColors.backgroundDeep,
@@ -170,37 +203,39 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
           children: [
             const _Header(),
             const SizedBox(height: 14),
-            if (widget.hierarchyScope != null)
-              AdminHierarchyScopeNotice(
-                message:
-                    'Showing launch controls that apply to ${widget.hierarchyScope!.displayLabel}. Global controls still affect every business; business and location controls are limited to the selected hierarchy.',
-              ),
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_feature_flags_readonly_banner'),
-              ),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_feature_flags_action_error'),
-                message: _actionError!,
-              ),
-            Expanded(child: _buildBody()),
+            Expanded(
+              child: hasListBody
+                  ? _buildListBody(secondaryChildren)
+                  : SingleChildScrollView(
+                      key: const Key('admin_feature_flags_scroll'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          ...secondaryChildren,
+                          _buildPlaceholderBody(),
+                        ],
+                      ),
+                    ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBody() {
+  Widget _buildPlaceholderBody() {
     if (_loading) {
-      return const Center(
-        key: Key('admin_feature_flags_loading'),
-        child: SizedBox(
-          width: 28,
-          height: 28,
-          child: CircularProgressIndicator(
-            strokeWidth: 2,
-            color: AppColors.sunsetDark,
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          key: Key('admin_feature_flags_loading'),
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: AppColors.sunsetDark,
+            ),
           ),
         ),
       );
@@ -211,8 +246,9 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
         message: _loadError!,
       );
     }
-    if (_flags.isEmpty) {
-      return Center(
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 24),
+      child: Center(
         key: const Key('admin_feature_flags_empty'),
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 380),
@@ -235,15 +271,28 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
+
+  Widget _buildListBody(List<Widget> secondaryChildren) {
+    // Render the hierarchy notice + banners as a non-sticky list
+    // header so they share the ListView's scroll region with the
+    // flag tiles. This keeps the screen honest at narrow viewports
+    // (the static block alone overflows the column at 540x282) while
+    // matching the production UX: the page title stays pinned, the
+    // notice scrolls with the list.
+    final headerCount = secondaryChildren.length;
     return ListView.separated(
       key: const Key('admin_feature_flags_list'),
       padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: _flags.length,
+      itemCount: _flags.length + headerCount,
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
-        final row = _flags[index];
+        if (index < headerCount) {
+          return secondaryChildren[index];
+        }
+        final row = _flags[index - headerCount];
         return _FeatureFlagTile(
           row: row,
           editingEnabled: widget.editingEnabled,
