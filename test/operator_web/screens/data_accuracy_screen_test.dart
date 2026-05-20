@@ -1337,6 +1337,7 @@ void main() {
           ),
           findsOneWidget,
         );
+        expect(find.textContaining('wages:'), findsNothing);
         expect(gateway.servicePeriodLoadCalls, equals(1));
       },
     );
@@ -1377,6 +1378,10 @@ void main() {
           find.byKey(kKeyedServicePeriodAccuracyDialogKey),
           findsOneWidget,
         );
+        expect(
+          find.byKey(kKeyedServicePeriodAccuracyWageFieldKey),
+          findsNothing,
+        );
 
         // The dialog pre-fills the effective business date with the
         // screen's `businessDateIso` so the operator does not have to
@@ -1397,12 +1402,6 @@ void main() {
         await tester.tap(find.text('Reservations + walk-ins').last);
         await tester.pumpAndSettle();
 
-        // Pick wage source = target_substitution.
-        await tester.tap(find.byKey(kKeyedServicePeriodAccuracyWageFieldKey));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Target substitution').last);
-        await tester.pumpAndSettle();
-
         await tester.tap(find.byKey(kKeyedServicePeriodAccuracySubmitKey));
         await tester.pumpAndSettle();
 
@@ -1413,7 +1412,7 @@ void main() {
           call.coversSource,
           ServicePeriodCoversSource.reservationPlusWalkin,
         );
-        expect(call.wageSource, ServicePeriodWageSource.targetSubstitution);
+        expect(call.wageSource, ServicePeriodWageSource.vendorPerEmployee);
         expect(call.effectiveAtBusinessDateIso, '2026-05-08');
         expect(call.operatorId, ownerSession.operatorId);
         expect(call.locationId, ownerSession.primaryLocationId);

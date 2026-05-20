@@ -219,9 +219,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
                   widget.onEditTiming ??
                   () => _showSafeTimingDialog('Edit timing'),
               onSchedule: () => _showSafeTimingDialog('Schedule timing'),
-              onReset: bundle.hasLocationOverride
-                  ? () => _showSafeTimingDialog('Reset timing')
-                  : null,
+              onReset: null,
             )
           else
             const _ReadOnlyTimingBanner(),
@@ -293,12 +291,14 @@ List<HierarchyTreeNodeView> _hierarchyTreeNodesFromBundle(
         s.scopeKind.toLowerCase().contains('business'),
   );
   if (!hasOperatorRung) {
-    nodes.add(HierarchyTreeNodeView(
-      level: HierarchyTreeLevel.business,
-      name: bundle.operatorName,
-      subtitle: 'No operator default saved yet.',
-      inheritsFromHere: bundle.effectiveFields.any((f) => f.inherited),
-    ));
+    nodes.add(
+      HierarchyTreeNodeView(
+        level: HierarchyTreeLevel.business,
+        name: bundle.operatorName,
+        subtitle: 'No operator default saved yet.',
+        inheritsFromHere: bundle.effectiveFields.any((f) => f.inherited),
+      ),
+    );
   }
 
   // Render every REAL rung. The S1-backed live path returns only
@@ -320,23 +320,25 @@ List<HierarchyTreeNodeView> _hierarchyTreeNodesFromBundle(
     final scope = renderable[i];
     final isLast = i == renderable.length - 1;
     final level = levelFor(scope.scopeKind);
-    nodes.add(HierarchyTreeNodeView(
-      level: level,
-      name: scope.label.isNotEmpty
-          ? scope.label
-          : (level == HierarchyTreeLevel.location
-              ? bundle.locationName
-              : bundle.operatorName),
-      subtitle: scope.summary,
-      // The location rung is the scope the operator is editing here.
-      isCurrentScope: isLast && level == HierarchyTreeLevel.location,
-      // A rung "inherits from here" when a deeper rung in the chain
-      // does NOT override the effective value — i.e. at least one
-      // effective field is inherited from an ancestor and this is
-      // not the deepest rung.
-      inheritsFromHere:
-          !isLast && bundle.effectiveFields.any((f) => f.inherited),
-    ));
+    nodes.add(
+      HierarchyTreeNodeView(
+        level: level,
+        name: scope.label.isNotEmpty
+            ? scope.label
+            : (level == HierarchyTreeLevel.location
+                  ? bundle.locationName
+                  : bundle.operatorName),
+        subtitle: scope.summary,
+        // The location rung is the scope the operator is editing here.
+        isCurrentScope: isLast && level == HierarchyTreeLevel.location,
+        // A rung "inherits from here" when a deeper rung in the chain
+        // does NOT override the effective value — i.e. at least one
+        // effective field is inherited from an ancestor and this is
+        // not the deepest rung.
+        inheritsFromHere:
+            !isLast && bundle.effectiveFields.any((f) => f.inherited),
+      ),
+    );
   }
 
   return nodes;
@@ -404,12 +406,13 @@ class _TimingEditControls extends StatelessWidget {
             icon: const Icon(Icons.event_outlined, size: 15),
             label: const Text('Schedule timing'),
           ),
-          OutlinedButton.icon(
-            key: const Key('operator_web_business_timing_reset_button'),
-            onPressed: onReset,
-            icon: const Icon(Icons.undo_outlined, size: 15),
-            label: const Text('Reset timing'),
-          ),
+          if (onReset != null)
+            OutlinedButton.icon(
+              key: const Key('operator_web_business_timing_reset_button'),
+              onPressed: onReset,
+              icon: const Icon(Icons.undo_outlined, size: 15),
+              label: const Text('Reset timing'),
+            ),
         ],
       ),
     );

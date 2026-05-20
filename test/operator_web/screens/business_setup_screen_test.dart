@@ -46,10 +46,7 @@ void main() {
       find.byKey(const Key('operator_web_business_setup_nav_title')),
       findsOneWidget,
     );
-    expect(
-      find.text('Business setup • Demo Main Street'),
-      findsOneWidget,
-    );
+    expect(find.text('Business setup • Demo Main Street'), findsOneWidget);
     expect(
       find.byKey(const Key('operator_web_business_timing_inheritance_card')),
       findsOneWidget,
@@ -68,20 +65,21 @@ void main() {
     // screen, so it should be highlighted with the "You are here"
     // badge.
     expect(
-      find.byKey(const Key(
-        'operator_web_business_setup_hierarchy_tree_node_location_current_badge',
-      )),
+      find.byKey(
+        const Key(
+          'operator_web_business_setup_hierarchy_tree_node_location_current_badge',
+        ),
+      ),
       findsOneWidget,
     );
     // Header pill names the current scope in plain English.
+    expect(find.textContaining('Editing Location'), findsOneWidget);
     expect(
-      find.textContaining('Editing Location'),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key(
-        'operator_web_business_setup_hierarchy_tree_currently_editing_pill',
-      )),
+      find.byKey(
+        const Key(
+          'operator_web_business_setup_hierarchy_tree_currently_editing_pill',
+        ),
+      ),
       findsOneWidget,
     );
     expect(find.text('Inherited from Operator default'), findsWidgets);
@@ -90,6 +88,10 @@ void main() {
     expect(
       find.byKey(const Key('operator_web_business_timing_edit_controls')),
       findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('operator_web_business_timing_reset_button')),
+      findsNothing,
     );
 
     await tester.tap(
