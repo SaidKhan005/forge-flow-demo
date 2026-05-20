@@ -66,60 +66,80 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
   /// `business_date`.
   static const String _candidateChainSql =
       'with selected_location as ('
-        '  select '
-        '    loc.location_id, '
-        '    loc.timezone as location_timezone, '
-        '    loc.org_unit_path '
-        '  from public.locations loc '
-        '  where loc.operator_id = @operator_id::uuid '
-        '    and loc.location_id = @location_id::uuid'
-        '), candidate_scopes as ('
-        "  select 'operator'::text as scope_type, "
-        '         @operator_id::uuid as scope_id, '
-        '         0::integer as scope_depth '
-        '  union all '
-        "  select 'org_unit'::text as scope_type, "
-        '         ou.id as scope_id, '
-        '         nlevel(ou.path)::integer as scope_depth '
-        '  from public.org_units ou '
-        '  join selected_location loc on ou.path @> loc.org_unit_path '
-        '  where ou.operator_id = @operator_id::uuid '
-        '  union all '
-        "  select 'location'::text as scope_type, "
-        '         loc.location_id as scope_id, '
-        '         100000::integer as scope_depth '
-        '  from selected_location loc'
-        ') '
-        'select $_profileColumns, '
-        '       loc.location_timezone, '
-        '       $_periodJson '
-        'from public.business_timing_profiles p '
-        'join candidate_scopes scope '
-        '  on scope.scope_type = p.scope_type '
-        ' and scope.scope_id = p.scope_id '
-        'cross join selected_location loc '
-        'left join public.business_timing_service_periods sp '
-        '  on sp.operator_id = p.operator_id '
-        ' and sp.profile_id = p.profile_id '
-        'where p.operator_id = @operator_id::uuid '
-        '  and p.effective_from_business_date <= @business_date::date '
-        '  and ('
-        '    p.effective_until_business_date is null '
-        '    or @business_date::date < p.effective_until_business_date'
-        '  ) '
-        'group by '
-        '  p.profile_id, p.operator_id, p.scope_type, p.scope_id, '
-        '  p.display_name, p.business_day_start_local_time, '
-        '  p.week_start_day, p.close_authority, '
-        '  p.local_close_fallback_time, '
-        '  p.effective_from_business_date, '
-        '  p.effective_until_business_date, '
-        '  p.supersedes_profile_id, p.created_by, p.updated_by, '
-        '  p.created_at, p.updated_at, loc.location_timezone, '
-        '  scope.scope_depth '
-        'order by scope.scope_depth asc, '
-        '         p.effective_from_business_date asc, '
-        '         p.created_at asc';
+      '  select '
+      '    loc.location_id, '
+      '    coalesce('
+      '      location_override.iana_timezone, '
+      '      org_unit_override.iana_timezone, '
+      '      loc.timezone'
+      '    ) as location_timezone, '
+      '    loc.org_unit_path '
+      '  from public.locations loc '
+      '  left join public.location_account_overrides location_override '
+      '    on location_override.operator_id = loc.operator_id '
+      '   and location_override.location_id = loc.location_id '
+      '  left join lateral ('
+      '    select org_override.iana_timezone '
+      '    from public.org_unit_account_overrides org_override '
+      '    join public.org_units ou '
+      '      on ou.operator_id = org_override.operator_id '
+      '     and ou.id = org_override.org_unit_id '
+      '    where org_override.operator_id = loc.operator_id '
+      '      and ou.deleted_at is null '
+      '      and ou.path @> loc.org_unit_path '
+      '      and org_override.iana_timezone is not null '
+      '    order by nlevel(ou.path) desc '
+      '    limit 1'
+      '  ) org_unit_override on true '
+      '  where loc.operator_id = @operator_id::uuid '
+      '    and loc.location_id = @location_id::uuid'
+      '), candidate_scopes as ('
+      "  select 'operator'::text as scope_type, "
+      '         @operator_id::uuid as scope_id, '
+      '         0::integer as scope_depth '
+      '  union all '
+      "  select 'org_unit'::text as scope_type, "
+      '         ou.id as scope_id, '
+      '         nlevel(ou.path)::integer as scope_depth '
+      '  from public.org_units ou '
+      '  join selected_location loc on ou.path @> loc.org_unit_path '
+      '  where ou.operator_id = @operator_id::uuid '
+      '  union all '
+      "  select 'location'::text as scope_type, "
+      '         loc.location_id as scope_id, '
+      '         100000::integer as scope_depth '
+      '  from selected_location loc'
+      ') '
+      'select $_profileColumns, '
+      '       loc.location_timezone, '
+      '       $_periodJson '
+      'from public.business_timing_profiles p '
+      'join candidate_scopes scope '
+      '  on scope.scope_type = p.scope_type '
+      ' and scope.scope_id = p.scope_id '
+      'cross join selected_location loc '
+      'left join public.business_timing_service_periods sp '
+      '  on sp.operator_id = p.operator_id '
+      ' and sp.profile_id = p.profile_id '
+      'where p.operator_id = @operator_id::uuid '
+      '  and p.effective_from_business_date <= @business_date::date '
+      '  and ('
+      '    p.effective_until_business_date is null '
+      '    or @business_date::date < p.effective_until_business_date'
+      '  ) '
+      'group by '
+      '  p.profile_id, p.operator_id, p.scope_type, p.scope_id, '
+      '  p.display_name, p.business_day_start_local_time, '
+      '  p.week_start_day, p.close_authority, '
+      '  p.local_close_fallback_time, '
+      '  p.effective_from_business_date, '
+      '  p.effective_until_business_date, '
+      '  p.supersedes_profile_id, p.created_by, p.updated_by, '
+      '  p.created_at, p.updated_at, loc.location_timezone, '
+      '  scope.scope_depth '
+      'order by scope.scope_depth asc, '
+      '         p.effective_from_business_date asc, '
+      '         p.created_at asc';
 
   /// Lists profiles that can affect [locationId] on [businessDate], ordered in
   /// resolver precedence from operator default to org-unit ancestors to
@@ -183,28 +203,26 @@ class BusinessTimingProfilesRepository extends OperatorScopedRepository {
   /// `business_timing_profile_resolver.dart` are byte-unchanged; the
   /// admin client runs the ONE canonical pure resolver over these
   /// candidates exactly like S1.
-  Future<List<BusinessTimingProfileRow>> listCandidateProfilesForSystemLocation({
+  Future<List<BusinessTimingProfileRow>>
+  listCandidateProfilesForSystemLocation({
     required String operatorId,
     required String locationId,
     required String businessDate,
     required String reason,
   }) {
-    return withSystem<List<BusinessTimingProfileRow>>(
-      (exec) async {
-        final rows = await exec.query(
-          _candidateChainSql,
-          parameters: <String, Object?>{
-            'operator_id': operatorId,
-            'location_id': locationId,
-            'business_date': businessDate,
-          },
-        );
-        return <BusinessTimingProfileRow>[
-          for (final row in rows) _profileRowFromMap(row),
-        ];
-      },
-      reason: reason,
-    );
+    return withSystem<List<BusinessTimingProfileRow>>((exec) async {
+      final rows = await exec.query(
+        _candidateChainSql,
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'business_date': businessDate,
+        },
+      );
+      return <BusinessTimingProfileRow>[
+        for (final row in rows) _profileRowFromMap(row),
+      ];
+    }, reason: reason);
   }
 
   /// Creates one effective-dated profile plus its optional service-period

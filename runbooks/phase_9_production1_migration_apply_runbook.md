@@ -7,10 +7,20 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605201100_operator_account_contact_fields.sql`
+(operator account contact defaults: real Business-level contact email and
+phone columns that Brand, Region, District, Location group, and Location
+account overrides can inherit). The prior cutoff
+`202605201000_org_unit_account_overrides.sql`
+(org-unit account overrides: contact, currency, locale, and timezone override
+rows for Brand, Region, District, and Location group scopes). The earlier
+cutoff `202605200900_brand_org_unit_type.sql`
+(Brand hierarchy layer: allows `org_units.unit_type = brand` so Brand is a
+real hierarchy layer instead of only a UI label). The earlier cutoff
 `202605192200_data_accuracy_reset_delete_grants.sql`
 (Data Accuracy reset grant: DELETE on the keyed service-period settings
 table for `service_role` and `forge_admin`, so resets can remove local
-overrides and reveal inherited values). The prior cutoff
+overrides and reveal inherited values). The earlier cutoff
 `202605191900_canonical_fact_projection_retry_evidence.sql`
 (projection retry evidence hardening: explicit pre-input/post-input stage
 metadata plus immutable original location/connection ids so hard-delete
@@ -94,7 +104,7 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (63 migrations; staging status varies, Production1 pending):
+Pending follow-up scope (66 migrations; staging status varies, Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
@@ -161,6 +171,9 @@ Pending follow-up scope (63 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605191845_data_accuracy_cover_facts_nullable_covers.sql`
 - `db/migrations/202605191900_canonical_fact_projection_retry_evidence.sql`
 - `db/migrations/202605192200_data_accuracy_reset_delete_grants.sql`
+- `db/migrations/202605200900_brand_org_unit_type.sql`
+- `db/migrations/202605201000_org_unit_account_overrides.sql`
+- `db/migrations/202605201100_operator_account_contact_fields.sql`
 
 Out of scope:
 
@@ -171,7 +184,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605192200_data_accuracy_reset_delete_grants.sql`
+  `202605201100_operator_account_contact_fields.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

@@ -179,6 +179,80 @@ class _FakeAccountGateway implements WebAccountGateway {
   }
 }
 
+class _ScopedFakeAccountGateway extends _FakeAccountGateway
+    implements WebAccountScopeOverridesGateway {
+  _ScopedFakeAccountGateway();
+
+  final List<AccountOverrideScope> scopeGetCalls = <AccountOverrideScope>[];
+  final List<
+    ({AccountOverrideScope scope, LocationAccountOverridesPatchPayload patch})
+  >
+  scopePatchCalls =
+      <
+        ({
+          AccountOverrideScope scope,
+          LocationAccountOverridesPatchPayload patch,
+        })
+      >[];
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getAccountScopeOverrides({
+    required AccountOverrideScope scope,
+  }) async {
+    scopeGetCalls.add(scope);
+    return initialOverrides ?? _defaultOverridesEnvelopeForScope(scope.scopeId);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchAccountScopeOverrides({
+    required AccountOverrideScope scope,
+    required LocationAccountOverridesPatchPayload patch,
+  }) async {
+    scopePatchCalls.add((scope: scope, patch: patch));
+    final businessDefault =
+        (initialOverrides ?? _defaultOverridesEnvelopeForScope(scope.scopeId))
+            .businessDefault;
+    return LocationAccountOverridesEnvelope(
+      operatorId: 'op-1',
+      locationId: scope.scopeId,
+      effective: LocationAccountOverridesFieldSet(
+        ianaTimezone: patch.ianaTimezone ?? businessDefault.ianaTimezone,
+        localeCode: patch.localeCode ?? businessDefault.localeCode,
+        currencyCode: patch.currencyCode ?? businessDefault.currencyCode,
+        businessDayRolloverHour:
+            patch.businessDayRolloverHour ??
+            businessDefault.businessDayRolloverHour,
+        contactEmail: patch.contactEmail,
+        contactPhone: patch.contactPhone,
+      ),
+      override: LocationAccountOverridesFieldSet(
+        ianaTimezone: patch.ianaTimezone,
+        localeCode: patch.localeCode,
+        currencyCode: patch.currencyCode,
+        businessDayRolloverHour: patch.businessDayRolloverHour,
+        contactEmail: patch.contactEmail,
+        contactPhone: patch.contactPhone,
+      ),
+      businessDefault: businessDefault,
+      updatedAt: DateTime.utc(2026, 5, 14, 12),
+    );
+  }
+
+  LocationAccountOverridesEnvelope _defaultOverridesEnvelopeForScope(
+    String scopeId,
+  ) {
+    final base = _defaultOverridesEnvelope();
+    return LocationAccountOverridesEnvelope(
+      operatorId: base.operatorId,
+      locationId: scopeId,
+      effective: base.effective,
+      override: base.override,
+      businessDefault: base.businessDefault,
+      updatedAt: base.updatedAt,
+    );
+  }
+}
+
 OperatorWebSession sessionWithRole(
   String role, {
   String? primaryLocationTimezone = 'America/Toronto',
@@ -404,8 +478,8 @@ void main() {
     );
     const savedSourceLabel = 'Set here. Does not inherit from a higher scope.';
     const unsavedSourceLabel =
-        'Unsaved change here. Save timezone to set it at Location: '
-        'Brio Main.';
+        'Unsaved change here. Save timezone to set it at Business: '
+        'Brio Restaurants.';
     await tester.pumpWidget(
       wrap(AccountScreen(session: session, gateway: gateway)),
     );
@@ -549,6 +623,22 @@ void main() {
       label: 'Brio Main',
       helper: 'Location',
     );
+    const brandScope = OperatorWebManagementScopeOption(
+      key: 'orgUnit:brand-1',
+      kind: OperatorWebManagementScopeKind.orgUnit,
+      id: 'brand-1',
+      label: 'Harbour Brand',
+      helper: 'Brand',
+      unitType: 'brand',
+    );
+    const districtScope = OperatorWebManagementScopeOption(
+      key: 'orgUnit:district-1',
+      kind: OperatorWebManagementScopeKind.orgUnit,
+      id: 'district-1',
+      label: 'Metro District',
+      helper: 'District',
+      unitType: 'district',
+    );
 
     testWidgets('Business scope renders summary rows without inheritance', (
       tester,
@@ -624,7 +714,7 @@ void main() {
         // The summary rows show inheritance copy carrying the business default.
         expect(
           find.textContaining(
-            'Inherits the business default from Business:',
+            'Inherits from the nearest parent:',
             findRichText: true,
           ),
           findsNWidgets(3),
@@ -694,7 +784,7 @@ void main() {
       await _openScopeDetails(tester);
       expect(
         find.text(
-          'Unsaved change here. Save to set these region settings at '
+          'Unsaved change here. Save to set these formatting settings at '
           'Location: Brio Main.',
           findRichText: true,
         ),
@@ -901,7 +991,7 @@ void main() {
       // alongside the override.
       expect(
         find.textContaining(
-          'Business default: USD / en-US',
+          'Inherited value if cleared: USD / en-US',
           findRichText: true,
         ),
         findsWidgets,
@@ -925,6 +1015,90 @@ void main() {
       await _openScopeDetails(tester);
       expect(find.textContaining('Currency is USD'), findsWidgets);
       expect(find.textContaining('locale is en-US'), findsWidgets);
+    });
+
+    testWidgets('Brand scope uses a real scoped account override route', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final session = sessionWithRole('operator_owner');
+      final gateway = _ScopedFakeAccountGateway();
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: gateway,
+            selectedScope: brandScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openScopeDetails(tester);
+      expect(find.text('Selected scope', findRichText: true), findsWidgets);
+      expect(find.textContaining('Brand: Harbour Brand'), findsWidgets);
+      expect(gateway.scopeGetCalls.single.scopeType, 'org_unit');
+      expect(gateway.scopeGetCalls.single.scopeId, 'brand-1');
+
+      final businessNameField = tester.widget<TextField>(
+        find.byKey(const Key('operator_web_account_business_name')),
+      );
+      expect(businessNameField.enabled, isFalse);
+      final contactEmailField = tester.widget<TextField>(
+        find.byKey(const Key('operator_web_account_contact_email')),
+      );
+      expect(contactEmailField.enabled, isTrue);
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_contact_email')),
+      );
+      await tester.enterText(
+        find.byKey(const Key('operator_web_account_contact_email')),
+        'brand@brio.example',
+      );
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_save')),
+      );
+      await tester.tap(find.byKey(const Key('operator_web_account_save')));
+      await tester.pumpAndSettle();
+
+      expect(gateway.scopePatchCalls, hasLength(1));
+      expect(gateway.scopePatchCalls.single.scope.scopeType, 'org_unit');
+      expect(gateway.scopePatchCalls.single.scope.scopeId, 'brand-1');
+      expect(
+        gateway.scopePatchCalls.single.patch.contactEmail,
+        'brand@brio.example',
+      );
+      expect(gateway.calls, isEmpty);
+    });
+
+    testWidgets('District scope labels the hierarchy level correctly', (
+      tester,
+    ) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      final gateway = _ScopedFakeAccountGateway();
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: gateway,
+            selectedScope: districtScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _openScopeDetails(tester);
+      expect(find.textContaining('District: Metro District'), findsWidgets);
+      expect(
+        find.byKey(const Key('operator_web_account_scope_pill')),
+        findsOneWidget,
+      );
+      expect(gateway.scopeGetCalls.single.scopeId, 'district-1');
     });
 
     testWidgets('Business day scope row carries the current value summary', (

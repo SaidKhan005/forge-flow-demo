@@ -82,6 +82,7 @@ class OrgUnitsRepository extends OperatorScopedRepository {
   /// (e.g. [TenantContext]).
   static const Set<String> allowedUnitTypes = <String>{
     'corp',
+    'brand',
     'region',
     'district',
     'location_group',
@@ -1069,35 +1070,35 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       // using the org_unit's own path.
       final sql = scopeOrgUnitId == null
           ? 'select location_id::text as location_id, '
-              'parent_org_unit_id::text as parent_org_unit_id, '
-              'org_unit_path::text as org_unit_path, '
-              'name '
-              'from locations '
-              'where deleted_at is null '
-              'and not exists ('
-              'select 1 from org_units deleted_ancestor '
-              'where deleted_ancestor.operator_id = locations.operator_id '
-              'and deleted_ancestor.deleted_at is not null '
-              'and locations.org_unit_path <@ deleted_ancestor.path'
-              ') '
-              'order by org_unit_path, lower(name), location_id'
+                'parent_org_unit_id::text as parent_org_unit_id, '
+                'org_unit_path::text as org_unit_path, '
+                'name '
+                'from locations '
+                'where deleted_at is null '
+                'and not exists ('
+                'select 1 from org_units deleted_ancestor '
+                'where deleted_ancestor.operator_id = locations.operator_id '
+                'and deleted_ancestor.deleted_at is not null '
+                'and locations.org_unit_path <@ deleted_ancestor.path'
+                ') '
+                'order by org_unit_path, lower(name), location_id'
           : 'select l.location_id::text as location_id, '
-              'l.parent_org_unit_id::text as parent_org_unit_id, '
-              'l.org_unit_path::text as org_unit_path, '
-              'l.name '
-              'from locations l '
-              'join org_units scope '
-              'on scope.id = @scope_id::uuid '
-              'and scope.deleted_at is null '
-              'where l.deleted_at is null '
-              'and l.org_unit_path <@ scope.path '
-              'and not exists ('
-              'select 1 from org_units deleted_ancestor '
-              'where deleted_ancestor.operator_id = l.operator_id '
-              'and deleted_ancestor.deleted_at is not null '
-              'and l.org_unit_path <@ deleted_ancestor.path'
-              ') '
-              'order by l.org_unit_path, lower(l.name), l.location_id';
+                'l.parent_org_unit_id::text as parent_org_unit_id, '
+                'l.org_unit_path::text as org_unit_path, '
+                'l.name '
+                'from locations l '
+                'join org_units scope '
+                'on scope.id = @scope_id::uuid '
+                'and scope.deleted_at is null '
+                'where l.deleted_at is null '
+                'and l.org_unit_path <@ scope.path '
+                'and not exists ('
+                'select 1 from org_units deleted_ancestor '
+                'where deleted_ancestor.operator_id = l.operator_id '
+                'and deleted_ancestor.deleted_at is not null '
+                'and l.org_unit_path <@ deleted_ancestor.path'
+                ') '
+                'order by l.org_unit_path, lower(l.name), l.location_id';
       final rows = await exec.query(
         sql,
         parameters: scopeOrgUnitId == null
@@ -1259,9 +1260,8 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       ),
     ];
     childNodes.sort(
-      (a, b) => a.displayName.toLowerCase().compareTo(
-            b.displayName.toLowerCase(),
-          ),
+      (a, b) =>
+          a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
     );
     return InheritanceTreeNode(
       scopeKind: scopeKind,
@@ -1406,12 +1406,8 @@ class InheritanceTreeLocationRef {
   }
 
   @override
-  int get hashCode => Object.hash(
-        locationId,
-        displayName,
-        orgUnitPath,
-        parentOrgUnitId,
-      );
+  int get hashCode =>
+      Object.hash(locationId, displayName, orgUnitPath, parentOrgUnitId);
 
   @override
   String toString() {

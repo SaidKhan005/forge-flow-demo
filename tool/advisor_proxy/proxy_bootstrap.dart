@@ -49,6 +49,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_unit_account_overrides_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/selected_star_shift_repository.dart';
@@ -121,6 +122,7 @@ import 'operator_benchmark_overrides_routes.dart';
 import 'admin_integrations_routes.dart';
 import 'audit_log_hierarchy_routes.dart';
 import 'business_logo_upload_routes.dart';
+import 'operator_account_scope_overrides_routes.dart';
 import 'operator_location_account_overrides_routes.dart';
 import 'operator_location_timezone_routes.dart';
 import 'operator_web_audit_log_hierarchy_routes.dart';
@@ -990,6 +992,11 @@ ProxyProductionBindings buildProxyProductionBindings(
           repository: LocationAccountOverridesRepository(tenantWrapper),
         ),
       );
+  final accountScopeOverridesHandler = OperatorAccountScopeOverridesHandler(
+    gateway: _RepositoryAccountScopeOverridesWriteGateway(
+      repository: OrgUnitAccountOverridesRepository(tenantWrapper),
+    ),
+  );
   final operatorWriteRouter = OperatorWriteRouter(
     accountGateway: RepositoryOperatorAccountWriteGateway(
       repository: OperatorAccountRepository(tenantWrapper),
@@ -1000,6 +1007,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     businessLogoUploadHandler: businessLogoUploadHandler,
     locationTimezoneHandler: locationTimezoneHandler,
     locationAccountOverridesHandler: locationAccountOverridesHandler,
+    accountScopeOverridesHandler: accountScopeOverridesHandler,
   );
   final adminBusinessTimingRouter = AdminBusinessTimingRouter(
     businessTimingGateway: operatorBusinessTimingWriteGateway,
@@ -11678,6 +11686,103 @@ class _RepositoryLocationAccountOverridesWriteGateway
       LocationAccountOverridesRecord(
         operatorId: resolved.operatorId,
         locationId: resolved.locationId,
+        effective: _fieldSetFrom(resolved.effective),
+        override: _fieldSetFrom(resolved.override),
+        businessDefault: _fieldSetFrom(resolved.businessDefault),
+        updatedAt: resolved.updatedAt,
+      ),
+    );
+  }
+
+  LocationAccountOverridesFieldSet _fieldSetFrom(
+    LocationAccountOverridesDefaults defaults,
+  ) {
+    return LocationAccountOverridesFieldSet(
+      ianaTimezone: defaults.ianaTimezone,
+      localeCode: defaults.localeCode,
+      currencyCode: defaults.currencyCode,
+      businessDayRolloverHour: defaults.businessDayRolloverHour,
+      contactEmail: defaults.contactEmail,
+      contactPhone: defaults.contactPhone,
+    );
+  }
+}
+
+class _RepositoryAccountScopeOverridesWriteGateway
+    implements AccountScopeOverridesWriteGateway {
+  _RepositoryAccountScopeOverridesWriteGateway({
+    required OrgUnitAccountOverridesRepository repository,
+  }) : _repository = repository;
+
+  final OrgUnitAccountOverridesRepository _repository;
+
+  @override
+  Future<AccountScopeOverridesOutcome> loadOverrides({
+    required String operatorId,
+    required String actorUserId,
+    required String orgUnitId,
+    required String adminReason,
+  }) async {
+    final resolved = await _repository.loadEffective(
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      actorUserId: actorUserId,
+    );
+    return _outcomeFrom(resolved);
+  }
+
+  @override
+  Future<AccountScopeOverridesOutcome> patchOverrides({
+    required String operatorId,
+    required String actorUserId,
+    required String orgUnitId,
+    required ValidatedLocationAccountOverridesPatch patch,
+    required String adminReason,
+  }) async {
+    final prior = await _repository.loadEffective(
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      actorUserId: actorUserId,
+    );
+    if (prior == null || !prior.scopeFound) {
+      return const AccountScopeOverridesOutcome.scopeNotFound();
+    }
+    await _repository.upsertOverrides(
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      patch: LocationAccountOverridesPatch(
+        ianaTimezone: patch.ianaTimezone,
+        clearIanaTimezone: patch.clearIanaTimezone,
+        localeCode: patch.localeCode,
+        clearLocaleCode: patch.clearLocaleCode,
+        currencyCode: patch.currencyCode,
+        clearCurrencyCode: patch.clearCurrencyCode,
+        contactEmail: patch.contactEmail,
+        clearContactEmail: patch.clearContactEmail,
+        contactPhone: patch.contactPhone,
+        clearContactPhone: patch.clearContactPhone,
+      ),
+      actorUserId: actorUserId,
+    );
+    final resolved = await _repository.loadEffective(
+      operatorId: operatorId,
+      orgUnitId: orgUnitId,
+      actorUserId: actorUserId,
+    );
+    return _outcomeFrom(resolved);
+  }
+
+  AccountScopeOverridesOutcome _outcomeFrom(
+    OrgUnitAccountOverridesResolved? resolved,
+  ) {
+    if (resolved == null || !resolved.scopeFound) {
+      return const AccountScopeOverridesOutcome.scopeNotFound();
+    }
+    return AccountScopeOverridesOutcome.ok(
+      AccountScopeOverridesRecord(
+        operatorId: resolved.operatorId,
+        scopeType: 'org_unit',
+        scopeId: resolved.orgUnitId,
         effective: _fieldSetFrom(resolved.effective),
         override: _fieldSetFrom(resolved.override),
         businessDefault: _fieldSetFrom(resolved.businessDefault),

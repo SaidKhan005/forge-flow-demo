@@ -34,16 +34,12 @@ import '../theme/app_theme.dart';
 /// for B2.2, benchmark value for B6, audit-scope filter for B8). The
 /// widget passes the full [InheritanceTreeNode] so the builder can
 /// dispatch on `scopeKind`, read metadata, etc.
-typedef InheritanceTreeAnnotationBuilder = Widget Function(
-  BuildContext context,
-  InheritanceTreeNode node,
-);
+typedef InheritanceTreeAnnotationBuilder =
+    Widget Function(BuildContext context, InheritanceTreeNode node);
 
 /// Called when a node row is tapped. Null means the tree renders
 /// read-only (no tap region).
-typedef InheritanceTreeNodeTapped = void Function(
-  InheritanceTreeNode node,
-);
+typedef InheritanceTreeNodeTapped = void Function(InheritanceTreeNode node);
 
 /// Shared Inheritance Tree visualization. Pass a fully-assembled
 /// [rootNode] (e.g. from
@@ -167,10 +163,7 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
     final indent = node.depth * 18.0;
     final tap = onNodeTap;
     final row = Padding(
-      padding: EdgeInsets.only(
-        left: indent,
-        top: node.depth == 0 ? 0 : 6,
-      ),
+      padding: EdgeInsets.only(left: indent, top: node.depth == 0 ? 0 : 6),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
@@ -197,9 +190,7 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
                 ),
                 Text(
                   _scopeKindLabel(node),
-                  style: AppTextStyles.body12(
-                    color: AppColors.textMuted,
-                  ),
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
                 ),
               ],
             ),
@@ -254,6 +245,7 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
     // fall back to the generic hierarchy icon.
     final unitType = metadata['unit_type'];
     return switch (unitType) {
+      'brand' => Icons.sell_outlined,
       'region' => Icons.public,
       'district' => Icons.map_outlined,
       'location_group' => Icons.layers_outlined,
@@ -268,6 +260,7 @@ class _InheritanceTreeNodeRow extends StatelessWidget {
       case InheritanceTreeScopeKind.orgUnit:
         final unitType = node.metadata['unit_type'];
         return switch (unitType) {
+          'brand' => 'Brand',
           'region' => 'Region',
           'district' => 'District',
           'location_group' => 'Location group',
@@ -311,10 +304,7 @@ class _ToggleIcon extends StatelessWidget {
       onPressed: () => onToggleCollapsed(node.scopeId),
       visualDensity: VisualDensity.compact,
       padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(
-        minWidth: 28,
-        minHeight: 28,
-      ),
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
     );
   }
 }

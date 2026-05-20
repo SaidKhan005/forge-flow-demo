@@ -34,10 +34,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester, Size size) async {
     tester.view.physicalSize = size;
@@ -51,18 +51,17 @@ void main() {
   OperatorWebSession sessionWithRole(
     String role, {
     Set<String> permissions = const <String>{},
-  }) =>
-      OperatorWebSession(
-        uid: 'session-$role',
-        email: 'sam.owner@demobistro.test',
-        displayName: 'Sam Patel',
-        operatorId: kDemoOperatorIdFixture,
-        businessName: kDemoOperatorBusinessNameFixture,
-        primaryLocationId: 'demo-loc-downtown',
-        primaryLocationName: 'Downtown',
-        roles: <String>[role],
-        permissions: permissions,
-      );
+  }) => OperatorWebSession(
+    uid: 'session-$role',
+    email: 'sam.owner@demobistro.test',
+    displayName: 'Sam Patel',
+    operatorId: kDemoOperatorIdFixture,
+    businessName: kDemoOperatorBusinessNameFixture,
+    primaryLocationId: 'demo-loc-downtown',
+    primaryLocationName: 'Downtown',
+    roles: <String>[role],
+    permissions: permissions,
+  );
 
   Future<void> pumpScreen(
     WidgetTester tester, {
@@ -116,9 +115,7 @@ void main() {
       }
       for (final fixture in kDemoTeamLocationsFixture) {
         expect(
-          find.byKey(
-            Key('operator_web_location_card_${fixture.locationId}'),
-          ),
+          find.byKey(Key('operator_web_location_card_${fixture.locationId}')),
           findsOneWidget,
           reason: 'expected card for ${fixture.locationId}',
         );
@@ -143,8 +140,9 @@ void main() {
       );
     });
 
-    testWidgets('location_manager renders read-only (no add-child or move)',
-        (tester) async {
+    testWidgets('location_manager renders read-only (no add-child or move)', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       await pumpScreen(tester, session: sessionWithRole('location_manager'));
 
@@ -153,9 +151,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('operator_web_org_unit_add_child_demo-org-east'),
-        ),
+        find.byKey(const Key('operator_web_org_unit_add_child_demo-org-east')),
         findsNothing,
       );
       expect(
@@ -179,16 +175,12 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('operator_web_org_unit_add_child_demo-org-east'),
-        ),
+        find.byKey(const Key('operator_web_org_unit_add_child_demo-org-east')),
         findsNothing,
       );
       // Toggle is still present (read-only audience keeps interactivity).
       expect(
-        find.byKey(
-          const Key('operator_web_org_unit_toggle_demo-org-east'),
-        ),
+        find.byKey(const Key('operator_web_org_unit_toggle_demo-org-east')),
         findsOneWidget,
       );
     });
@@ -212,9 +204,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('operator_web_org_unit_add_child_demo-org-east'),
-        ),
+        find.byKey(const Key('operator_web_org_unit_add_child_demo-org-east')),
         findsOneWidget,
       );
     });
@@ -448,8 +438,9 @@ void main() {
   });
 
   group('HierarchyScreen move location', () {
-    testWidgets('move dialog repositions a location under a different unit',
-        (tester) async {
+    testWidgets('move dialog repositions a location under a different unit', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 1200));
       final gateway = DemoWebTeamHierarchyGateway();
       await pumpScreen(
@@ -521,10 +512,7 @@ void main() {
 
   group('HierarchyCopy locked strings', () {
     test('exposes the three locked validation strings verbatim', () {
-      expect(
-        HierarchyCopy.emptyOrgUnitName,
-        'Org unit name is required.',
-      );
+      expect(HierarchyCopy.emptyOrgUnitName, 'Org unit name is required.');
       expect(
         HierarchyCopy.duplicateOrgUnitName,
         'An org unit with this name already exists in this group.',
@@ -564,9 +552,7 @@ void main() {
         find.byKey(const Key('operator_web_location_move_dialog_target')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.text('East Region (demo_bistro.east_region)').last,
-      );
+      await tester.tap(find.text('East Region (demo_bistro.east_region)').last);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_location_move_dialog_submit')),
@@ -606,19 +592,14 @@ void main() {
         find.byKey(const Key('operator_web_location_move_dialog_target')),
       );
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.text('East Region (demo_bistro.east_region)').last,
-      );
+      await tester.tap(find.text('East Region (demo_bistro.east_region)').last);
       await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('operator_web_location_move_dialog_submit')),
       );
       await tester.pumpAndSettle();
 
-      expect(
-        find.text('Cannot move into a child of itself.'),
-        findsOneWidget,
-      );
+      expect(find.text('Cannot move into a child of itself.'), findsOneWidget);
     });
   });
 
@@ -637,9 +618,7 @@ void main() {
       );
       expect(
         find.descendant(
-          of: find.byKey(
-            const Key('operator_web_org_unit_type_demo-org-east'),
-          ),
+          of: find.byKey(const Key('operator_web_org_unit_type_demo-org-east')),
           matching: find.text('Region'),
         ),
         findsOneWidget,
@@ -659,6 +638,7 @@ void main() {
 
     test('unitTypeLabel maps each schema value to friendly copy', () {
       expect(HierarchyCopy.unitTypeLabel('corp'), 'Business');
+      expect(HierarchyCopy.unitTypeLabel('brand'), 'Brand');
       expect(HierarchyCopy.unitTypeLabel('region'), 'Region');
       expect(HierarchyCopy.unitTypeLabel('district'), 'District');
       expect(HierarchyCopy.unitTypeLabel('location_group'), 'Location group');
@@ -715,8 +695,9 @@ void main() {
       );
     });
 
-    testWidgets('parent one level below the cap still opens the dialog',
-        (tester) async {
+    testWidgets('parent one level below the cap still opens the dialog', (
+      tester,
+    ) async {
       await sizeViewport(tester, const Size(1280, 900));
       // Path is 5 labels deep: a child lands at exactly the cap (6),
       // so the dialog must open (mirrors org_units_repository.dart:241
@@ -761,8 +742,7 @@ void main() {
   });
 
   group('Em-dash regression', () {
-    test('11W.3-owned files contain zero em dashes in operator copy',
-        () async {
+    test('11W.3-owned files contain zero em dashes in operator copy', () async {
       const paths = <String>[
         'lib/operator_web/services/web_team_hierarchy_gateway.dart',
         'lib/operator_web/services/demo_team_hierarchy_gateway.dart',
@@ -785,9 +765,7 @@ void main() {
           // Comments are not string literals; this regex skips them.
           // We intentionally match em-dashes anywhere in the literal.
           if (literal.contains('—')) {
-            fail(
-              'em dash found in $path within literal: $literal',
-            );
+            fail('em dash found in $path within literal: $literal');
           }
         }
       }

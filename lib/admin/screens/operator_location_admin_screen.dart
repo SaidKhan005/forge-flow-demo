@@ -2640,6 +2640,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
                 border: OutlineInputBorder(),
               ),
               items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem<String>(value: 'brand', child: Text('Brand')),
                 DropdownMenuItem<String>(
                   value: 'region',
                   child: Text('Region'),

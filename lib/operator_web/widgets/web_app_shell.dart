@@ -62,6 +62,7 @@ class OperatorWebManagementScopeOption {
     required this.id,
     required this.label,
     required this.helper,
+    this.unitType,
     this.parentOrgUnitId,
   });
 
@@ -70,6 +71,7 @@ class OperatorWebManagementScopeOption {
   final String id;
   final String label;
   final String helper;
+  final String? unitType;
   final String? parentOrgUnitId;
 }
 

@@ -35,6 +35,25 @@ const String _parentRootId = '55555555-5555-5555-5555-555555555555';
 const String _orgUnitChildId = '66666666-6666-6666-6666-666666666666';
 
 void main() {
+  group('Brand org-unit follow-up migration', () {
+    final migrationFile = File(
+      'db/migrations/202605200900_brand_org_unit_type.sql',
+    );
+
+    String migration() => readSqlNormalized(migrationFile.path);
+
+    test('promotes brand into the org_units unit_type CHECK', () {
+      expect(migrationFile.existsSync(), isTrue);
+      final sql = migration();
+      expect(
+        sql,
+        contains('drop constraint if exists org_units_unit_type_check'),
+      );
+      expect(sql, contains("'brand'"));
+      expect(sql, contains("'location_group'"));
+    });
+  });
+
   group('Phase 9.0Σ.c migration shape', () {
     final migrationFile = File(
       'db/migrations/202604280002_phase_9_0sigma_c_org_units.sql',
@@ -93,10 +112,7 @@ void main() {
     test('parent_id FK is composite with operator_id (cross-tenant '
         'parent forbidden)', () {
       final sql = migration();
-      expect(
-        sql,
-        contains('constraint org_units_parent_same_operator_fk'),
-      );
+      expect(sql, contains('constraint org_units_parent_same_operator_fk'));
       expect(
         sql,
         contains(
@@ -106,12 +122,14 @@ void main() {
       );
     });
 
-    test('one-root-per-operator + composite uniqueness on (operator_id, id)',
-        () {
-      final sql = migration();
-      expect(sql, contains('unique (operator_id, id)'));
-      expect(sql, contains('unique (operator_id, path)'));
-    });
+    test(
+      'one-root-per-operator + composite uniqueness on (operator_id, id)',
+      () {
+        final sql = migration();
+        expect(sql, contains('unique (operator_id, id)'));
+        expect(sql, contains('unique (operator_id, path)'));
+      },
+    );
 
     test('every B-tree index leads with operator_id (RLS performance '
         'discipline)', () {
@@ -173,9 +191,7 @@ void main() {
       expect(sql, contains('org_units_set_updated_at'));
       expect(
         sql,
-        contains(
-          'execute function public.cloud_foundation_set_updated_at()',
-        ),
+        contains('execute function public.cloud_foundation_set_updated_at()'),
       );
     });
 
@@ -226,14 +242,10 @@ void main() {
       );
     });
 
-    test('does not introduce timestamp without time zone (storage rule)',
-        () {
+    test('does not introduce timestamp without time zone (storage rule)', () {
       final sql = migration().toLowerCase();
       expect(sql, isNot(contains('timestamp without time zone')));
-      expect(
-        sql,
-        isNot(matches(RegExp(r'\btimestamp\b(?!\s*with)'))),
-      );
+      expect(sql, isNot(matches(RegExp(r'\btimestamp\b(?!\s*with)'))));
     });
 
     test('policy body does not read tenant context via bare '
@@ -251,7 +263,8 @@ void main() {
       expect(
         result.isClean,
         isTrue,
-        reason: 'org_units policy must read operator context through '
+        reason:
+            'org_units policy must read operator context through '
             'the wrapper; violations: ${result.violations}',
       );
     });
@@ -283,8 +296,10 @@ void main() {
       expect(tx.executedSql[2], contains("set_config('app.user_id'"));
       // The repository SELECT runs inside the same transaction.
       expect(
-        tx.executedSql.any((sql) =>
-            sql.contains('from org_units') && sql.contains('order by path')),
+        tx.executedSql.any(
+          (sql) =>
+              sql.contains('from org_units') && sql.contains('order by path'),
+        ),
         isTrue,
       );
       expect(tx.commitCount, equals(1));
@@ -304,14 +319,8 @@ void main() {
       expect(result, isNull);
       final tx = pool.transactions.single;
       // id parameter is bound through the executor, not concatenated.
-      expect(
-        tx.parameters.last,
-        containsPair('id', _orgUnitChildId),
-      );
-      expect(
-        tx.executedSql.last,
-        contains('where id = @id::uuid'),
-      );
+      expect(tx.parameters.last, containsPair('id', _orgUnitChildId));
+      expect(tx.executedSql.last, contains('where id = @id::uuid'));
     });
 
     test('createRoot inserts a corp row with parent_id=null + binds '
@@ -333,15 +342,9 @@ void main() {
       expect(insertSql, contains("values (@operator_id::uuid, null, "));
       expect(insertSql, contains("'corp', @path::ltree"));
       expect(insertSql, contains('returning id::text'));
-      expect(
-        tx.parameters.last,
-        containsPair('operator_id', _operatorAId),
-      );
+      expect(tx.parameters.last, containsPair('operator_id', _operatorAId));
       expect(tx.parameters.last, containsPair('path', 'acme'));
-      expect(
-        tx.parameters.last,
-        containsPair('name', 'Acme Restaurants'),
-      );
+      expect(tx.parameters.last, containsPair('name', 'Acme Restaurants'));
     });
 
     test('createRoot ignores stray unitType arguments — always inserts '
@@ -357,7 +360,13 @@ void main() {
       // allowedUnitTypes set documents the contract.
       expect(
         OrgUnitsRepository.allowedUnitTypes,
-        equals(<String>{'corp', 'region', 'district', 'location_group'}),
+        equals(<String>{
+          'corp',
+          'brand',
+          'region',
+          'district',
+          'location_group',
+        }),
       );
       expect(repo, isNotNull);
     });
@@ -372,7 +381,7 @@ void main() {
           operatorId: _operatorAId,
           locationId: _locationId,
           parentId: _parentRootId,
-          unitType: 'brand',
+          unitType: 'venue_type',
           childLabel: 'east',
           name: 'East',
         );
@@ -421,72 +430,63 @@ void main() {
       );
     });
 
-    test('createChild SQL composes child path as parent.path || child_label',
-        () async {
-      // Parent depth defaults to 1 (root) so insert proceeds.
-      final pool = _RecordingPool();
-      final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+    test(
+      'createChild SQL composes child path as parent.path || child_label',
+      () async {
+        // Parent depth defaults to 1 (root) so insert proceeds.
+        final pool = _RecordingPool();
+        final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
 
-      final id = await repo.createChild(
-        operatorId: _operatorAId,
-        locationId: _locationId,
-        parentId: _parentRootId,
-        unitType: 'region',
-        childLabel: 'east',
-        name: 'East Region',
-      );
+        final id = await repo.createChild(
+          operatorId: _operatorAId,
+          locationId: _locationId,
+          parentId: _parentRootId,
+          unitType: 'region',
+          childLabel: 'east',
+          name: 'East Region',
+        );
 
-      expect(id, equals(_orgUnitChildId));
-      final tx = pool.transactions.single;
-      final insertSql = tx.executedSql.last;
-      expect(
-        insertSql,
-        contains('parent.path || @child_label::ltree'),
-      );
-      expect(
-        tx.parameters.last,
-        containsPair('child_label', 'east'),
-      );
-      expect(
-        tx.parameters.last,
-        containsPair('unit_type', 'region'),
-      );
-      expect(
-        tx.parameters.last,
-        containsPair('parent_id', _parentRootId),
-      );
-    });
+        expect(id, equals(_orgUnitChildId));
+        final tx = pool.transactions.single;
+        final insertSql = tx.executedSql.last;
+        expect(insertSql, contains('parent.path || @child_label::ltree'));
+        expect(tx.parameters.last, containsPair('child_label', 'east'));
+        expect(tx.parameters.last, containsPair('unit_type', 'region'));
+        expect(tx.parameters.last, containsPair('parent_id', _parentRootId));
+      },
+    );
 
-    test('listAllRootsAsAdmin runs through forge_admin BYPASSRLS path',
-        () async {
-      final pool = _RecordingPool();
-      final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
+    test(
+      'listAllRootsAsAdmin runs through forge_admin BYPASSRLS path',
+      () async {
+        final pool = _RecordingPool();
+        final repo = OrgUnitsRepository(TenantTransactionWrapper(pool));
 
-      final rows = await repo.listAllRootsAsAdmin(
-        adminReason: 'admin.org_units.audit_backfill',
-      );
+        final rows = await repo.listAllRootsAsAdmin(
+          adminReason: 'admin.org_units.audit_backfill',
+        );
 
-      expect(rows, hasLength(2));
-      expect(rows.map((r) => r.operatorId).toSet(),
-          equals(<String>{_operatorAId, _operatorBId}));
+        expect(rows, hasLength(2));
+        expect(
+          rows.map((r) => r.operatorId).toSet(),
+          equals(<String>{_operatorAId, _operatorBId}),
+        );
 
-      final tx = pool.transactions.single;
-      // First statement is the audit marker, second is SET LOCAL ROLE.
-      expect(
-        tx.executedSql[0],
-        contains("set_config('app.bypass_rls_audit'"),
-      );
-      expect(
-        tx.parameters[0]['value'],
-        equals('system:admin.org_units.audit_backfill'),
-      );
-      expect(tx.executedSql[1], equals('set local role forge_admin'));
-      // Body SELECTs roots only.
-      expect(
-        tx.executedSql.last,
-        contains('where parent_id is null'),
-      );
-    });
+        final tx = pool.transactions.single;
+        // First statement is the audit marker, second is SET LOCAL ROLE.
+        expect(
+          tx.executedSql[0],
+          contains("set_config('app.bypass_rls_audit'"),
+        );
+        expect(
+          tx.parameters[0]['value'],
+          equals('system:admin.org_units.audit_backfill'),
+        );
+        expect(tx.executedSql[1], equals('set local role forge_admin'));
+        // Body SELECTs roots only.
+        expect(tx.executedSql.last, contains('where parent_id is null'));
+      },
+    );
 
     test('listAllRootsAsAdmin rejects a blank reason', () async {
       final pool = _RecordingPool();
@@ -561,8 +561,7 @@ class _RecordingTransaction extends PostgresTransaction {
     }
 
     // 2. listAllRootsAsAdmin — SELECT … where parent_id is null
-    if (sql.contains('from org_units') &&
-        sql.contains('parent_id is null')) {
+    if (sql.contains('from org_units') && sql.contains('parent_id is null')) {
       return <PostgresRow>[
         _orgUnitsRow(
           id: _parentRootId,
@@ -592,10 +591,7 @@ class _RecordingTransaction extends PostgresTransaction {
     // 4. createChild parent depth lookup
     if (sql.contains('select path::text') && sql.contains('nlevel(path)')) {
       return <PostgresRow>[
-        <String, Object?>{
-          'path': 'acme',
-          'depth': parentDepthOverride ?? 1,
-        },
+        <String, Object?>{'path': 'acme', 'depth': parentDepthOverride ?? 1},
       ];
     }
 

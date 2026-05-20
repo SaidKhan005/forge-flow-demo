@@ -105,6 +105,8 @@ class HierarchyCopy {
     switch (unitType) {
       case 'corp':
         return 'Business';
+      case 'brand':
+        return 'Brand';
       case 'region':
         return 'Region';
       case 'district':
@@ -1059,6 +1061,7 @@ class _AddChildOrgUnitDialogState extends State<_AddChildOrgUnitDialog> {
                 isDense: true,
               ),
               items: const <DropdownMenuItem<String>>[
+                DropdownMenuItem(value: 'brand', child: Text('Brand')),
                 DropdownMenuItem(value: 'region', child: Text('Region')),
                 DropdownMenuItem(value: 'district', child: Text('District')),
                 DropdownMenuItem(

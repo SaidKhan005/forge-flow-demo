@@ -3,8 +3,8 @@
 // Thin HTTP client over the operator-scoped account write route. The
 // AccountScreen (business-identity editor) calls this gateway to
 // PATCH the operator's business name, logo URL, currency, locale,
-// and week-start day. Business day rollover values remain readable for
-// compatibility, but Business Timing owns business-day start edits.
+// contact details, and week-start day. Business day rollover values remain
+// readable for compatibility, but Business Timing owns business-day start edits.
 //
 // Route contract (operator-scoped, NOT /v1/admin/*):
 //   PATCH /v1/operator/account
@@ -88,6 +88,31 @@ abstract class WebAccountGateway {
   });
 }
 
+/// Optional gateway extension for hierarchy-scoped account settings.
+/// Demo and newer live gateways implement this so Account can edit
+/// org-unit scopes such as Brand, Region, and District without
+/// pretending they are locations.
+abstract class WebAccountScopeOverridesGateway {
+  Future<LocationAccountOverridesEnvelope> getAccountScopeOverrides({
+    required AccountOverrideScope scope,
+  });
+
+  Future<LocationAccountOverridesEnvelope> patchAccountScopeOverrides({
+    required AccountOverrideScope scope,
+    required LocationAccountOverridesPatchPayload patch,
+  });
+}
+
+@immutable
+class AccountOverrideScope {
+  const AccountOverrideScope({required this.scopeType, required this.scopeId});
+
+  final String scopeType;
+  final String scopeId;
+
+  String get wireKey => '$scopeType:$scopeId';
+}
+
 /// User-scoped account session surface for My Account. Reuses the
 /// existing Phase 9 active-session proxy routes; there is deliberately
 /// no My Account-only proxy route here.
@@ -106,7 +131,10 @@ abstract class WebAccountSessionGateway {
 /// so token, idempotency-key, and error-mapping logic is shared with
 /// the rest of the operator-web HTTP surface.
 class HttpWebAccountGateway
-    implements WebAccountGateway, WebAccountSessionGateway {
+    implements
+        WebAccountGateway,
+        WebAccountScopeOverridesGateway,
+        WebAccountSessionGateway {
   HttpWebAccountGateway({
     required OperatorWebProxyClient client,
     required Future<String?> Function() idTokenProvider,
@@ -161,6 +189,21 @@ class HttpWebAccountGateway
   /// path for [locationId].
   static String operatorLocationAccountOverridesPath(String locationId) =>
       '$operatorLocationAccountOverridesPathPrefix$locationId';
+
+  static const String operatorAccountScopeOverridesOrgUnitPathPrefix =
+      '/v1/operator/account-overrides/org-unit/';
+
+  static String operatorAccountScopeOverridesPath(AccountOverrideScope scope) {
+    if (scope.scopeType != 'org_unit') {
+      throw ArgumentError.value(
+        scope.scopeType,
+        'scope.scopeType',
+        'only org_unit account scope overrides use this route',
+      );
+    }
+    return '$operatorAccountScopeOverridesOrgUnitPathPrefix${scope.scopeId}';
+  }
+
   static const Duration _freshMfaWindow = Duration(hours: 1);
   static const String _freshMfaRedirectUri =
       '/auth/login?reason=fresh_mfa_required';
@@ -305,6 +348,46 @@ class HttpWebAccountGateway
         'location-account-overrides-patch',
         <Object?>[locationId, body],
       ),
+    );
+    return LocationAccountOverridesEnvelope.fromJson(response.body);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getAccountScopeOverrides({
+    required AccountOverrideScope scope,
+  }) async {
+    final path = operatorAccountScopeOverridesPath(scope);
+    if (path.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to load this hierarchy scope\'s account overrides.',
+    );
+    final response = await _client.getJson(path, idToken: token);
+    return LocationAccountOverridesEnvelope.fromJson(response.body);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchAccountScopeOverrides({
+    required AccountOverrideScope scope,
+    required LocationAccountOverridesPatchPayload patch,
+  }) async {
+    final path = operatorAccountScopeOverridesPath(scope);
+    if (path.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to update this hierarchy scope\'s account overrides.',
+    );
+    final body = patch.toJson();
+    final response = await _client.patchJson(
+      path,
+      idToken: token,
+      body: body,
+      extraHeaders: _stableKeyHeader('account-scope-overrides-patch', <Object?>[
+        scope.wireKey,
+        body,
+      ]),
     );
     return LocationAccountOverridesEnvelope.fromJson(response.body);
   }
@@ -524,6 +607,10 @@ class AccountIdentityPatch {
     this.clearLogo = false,
     this.currencyCode,
     this.localeTag,
+    this.contactEmail,
+    this.clearContactEmail = false,
+    this.contactPhone,
+    this.clearContactPhone = false,
     this.weekStartDay,
     this.rolloverHour,
   });
@@ -538,6 +625,10 @@ class AccountIdentityPatch {
 
   final String? currencyCode;
   final String? localeTag;
+  final String? contactEmail;
+  final bool clearContactEmail;
+  final String? contactPhone;
+  final bool clearContactPhone;
 
   /// Legacy compatibility field. Kept readable for older callers, but
   /// [toJson] deliberately omits it because Business Timing owns
@@ -559,6 +650,16 @@ class AccountIdentityPatch {
     }
     if (currencyCode != null) json['currencyCode'] = currencyCode;
     if (localeTag != null) json['localeTag'] = localeTag;
+    if (contactEmail != null) {
+      json['contactEmail'] = contactEmail;
+    } else if (clearContactEmail) {
+      json['contactEmail'] = null;
+    }
+    if (contactPhone != null) {
+      json['contactPhone'] = contactPhone;
+    } else if (clearContactPhone) {
+      json['contactPhone'] = null;
+    }
     return json;
   }
 }
@@ -602,7 +703,9 @@ class AccountLocationTimezone {
 
   static AccountLocationTimezone fromJson(Map<String, Object?> json) {
     final operatorId = AccountIdentity._readString(json['operatorId']);
-    final locationId = AccountIdentity._readString(json['locationId']);
+    final locationId =
+        AccountIdentity._readString(json['locationId']) ??
+        AccountIdentity._readString(json['scopeId']);
     final ianaTimezone = AccountIdentity._readString(json['ianaTimezone']);
     final updatedAtRaw = AccountIdentity._readString(json['updatedAt']);
     if (operatorId == null ||
@@ -635,6 +738,8 @@ class AccountIdentity {
     required this.weekStartDay,
     required this.rolloverHour,
     required this.updatedAt,
+    this.contactEmail,
+    this.contactPhone,
   });
 
   final String operatorId;
@@ -644,6 +749,8 @@ class AccountIdentity {
   final String localeTag;
   final String weekStartDay;
   final int rolloverHour;
+  final String? contactEmail;
+  final String? contactPhone;
   final DateTime updatedAt;
 
   static AccountIdentity fromJson(Map<String, Object?> json) {
@@ -674,6 +781,8 @@ class AccountIdentity {
       localeTag: localeTag,
       weekStartDay: weekStartDay,
       rolloverHour: rolloverHourRaw,
+      contactEmail: _readString(json['contactEmail']),
+      contactPhone: _readString(json['contactPhone']),
       updatedAt: DateTime.parse(updatedAtRaw).toUtc(),
     );
   }
@@ -933,7 +1042,9 @@ class LocationAccountOverridesEnvelope {
 
   static LocationAccountOverridesEnvelope fromJson(Map<String, Object?> json) {
     final operatorId = AccountIdentity._readString(json['operatorId']);
-    final locationId = AccountIdentity._readString(json['locationId']);
+    final locationId =
+        AccountIdentity._readString(json['locationId']) ??
+        AccountIdentity._readString(json['scopeId']);
     final updatedAtRaw = AccountIdentity._readString(json['updatedAt']);
     final effectiveRaw = json['effective'];
     final overrideRaw = json['override'];

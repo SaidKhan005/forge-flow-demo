@@ -167,10 +167,7 @@ class _OrgUnitNode extends StatelessWidget {
     final busy = busyOrgUnitIds.contains(unit.orgUnitId);
 
     return Padding(
-      padding: EdgeInsets.only(
-        left: indent,
-        top: depth == 0 ? 0 : 8,
-      ),
+      padding: EdgeInsets.only(left: indent, top: depth == 0 ? 0 : 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
@@ -180,9 +177,7 @@ class _OrgUnitNode extends StatelessWidget {
                 key: Key('operator_web_org_unit_toggle_${unit.orgUnitId}'),
                 icon: Icon(
                   hasContent
-                      ? (isCollapsed
-                          ? Icons.chevron_right
-                          : Icons.expand_more)
+                      ? (isCollapsed ? Icons.chevron_right : Icons.expand_more)
                       : Icons.remove,
                   size: 18,
                   color: hasContent
@@ -197,10 +192,7 @@ class _OrgUnitNode extends StatelessWidget {
                     : null,
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(
-                  minWidth: 28,
-                  minHeight: 28,
-                ),
+                constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
               ),
               Icon(
                 _iconFor(unit.unitType),
@@ -227,9 +219,7 @@ class _OrgUnitNode extends StatelessWidget {
               ),
               if (canMutate && onAddChildOrgUnit != null)
                 IconButton(
-                  key: Key(
-                    'operator_web_org_unit_add_child_${unit.orgUnitId}',
-                  ),
+                  key: Key('operator_web_org_unit_add_child_${unit.orgUnitId}'),
                   tooltip: 'Add child unit',
                   icon: const Icon(Icons.add_circle_outline, size: 18),
                   color: AppColors.sunsetDark,
@@ -272,6 +262,7 @@ class _OrgUnitNode extends StatelessWidget {
   static IconData _iconFor(String unitType) {
     return switch (unitType) {
       'corp' => Icons.apartment,
+      'brand' => Icons.sell_outlined,
       'region' => Icons.public,
       'district' => Icons.map_outlined,
       'location_group' => Icons.layers_outlined,
@@ -282,6 +273,7 @@ class _OrgUnitNode extends StatelessWidget {
   static String _unitTypeLabel(String unitType) {
     return switch (unitType) {
       'corp' => 'Operator',
+      'brand' => 'Brand',
       'region' => 'Region',
       'district' => 'District',
       'location_group' => 'Location group',

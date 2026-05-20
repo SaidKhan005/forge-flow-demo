@@ -313,27 +313,25 @@ on public.open_shift_snapshots (
         final gateway = RepositoryOperatorBusinessTimingWriteGateway(
           repository: repo,
         );
-        final validated = validateNewBusinessTimingProfile(
-          <String, Object?>{
-            'scopeKind': 'org_unit',
-            'scopeId': _orgUnitId,
-            'effectiveAtBusinessDate': '2026-05-06',
-            'ianaTimezone': 'America/St_Johns',
-            'weekStartDay': 'monday',
-            'businessDayStartLocal': '04:00',
-            'servicePeriods': <Map<String, Object?>>[
-              <String, Object?>{
-                'key': 'brunch',
-                'label': 'Weekend Brunch',
-                'startLocal': '09:00',
-                'endLocal': '13:00',
-                'applicableDays': <int>[6, 7],
-                'shortLabel': 'WB',
-                'sortOrder': 2,
-              },
-            ],
-          },
-        );
+        final validated = validateNewBusinessTimingProfile(<String, Object?>{
+          'scopeKind': 'org_unit',
+          'scopeId': _orgUnitId,
+          'effectiveAtBusinessDate': '2026-05-06',
+          'ianaTimezone': 'America/St_Johns',
+          'weekStartDay': 'monday',
+          'businessDayStartLocal': '04:00',
+          'servicePeriods': <Map<String, Object?>>[
+            <String, Object?>{
+              'key': 'brunch',
+              'label': 'Weekend Brunch',
+              'startLocal': '09:00',
+              'endLocal': '13:00',
+              'applicableDays': <int>[6, 7],
+              'shortLabel': 'WB',
+              'sortOrder': 2,
+            },
+          ],
+        });
 
         await gateway.createProfile(
           operatorId: _operatorId,
@@ -349,9 +347,8 @@ on public.open_shift_snapshots (
             'insert into public.business_timing_service_periods',
           ),
         );
-        final periodParams = tx.parameters[tx.executedSql.indexOf(
-          periodInsert,
-        )];
+        final periodParams =
+            tx.parameters[tx.executedSql.indexOf(periodInsert)];
         expect(periodParams['service_period_key'], equals('brunch'));
         expect(periodParams['label'], equals('Weekend Brunch'));
         expect(periodParams['applicable_weekdays'], equals(<int>[6, 7]));
@@ -361,7 +358,7 @@ on public.open_shift_snapshots (
     );
 
     test(
-      'listCandidateProfilesForLocation reads timezone from locations',
+      'listCandidateProfilesForLocation reads effective account timezone',
       () async {
         final pool = _RecordingPool(
           onQuery: (sql, _) {
@@ -390,7 +387,11 @@ on public.open_shift_snapshots (
 
         expect(rows.single.locationTimezone, equals('America/St_Johns'));
         final sql = pool.transactions.single.executedSql.last;
-        expect(sql, contains('loc.timezone as location_timezone'));
+        expect(sql, contains('location_override.iana_timezone'));
+        expect(sql, contains('org_unit_override.iana_timezone'));
+        expect(sql, contains('loc.timezone'));
+        expect(sql, contains('public.org_unit_account_overrides'));
+        expect(sql, contains('public.location_account_overrides'));
         expect(sql, contains('ou.path @> loc.org_unit_path'));
         expect(sql, contains('order by scope.scope_depth asc'));
         expect(sql, isNot(contains('p.timezone')));

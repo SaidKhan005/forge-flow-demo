@@ -454,7 +454,7 @@ void main() {
   });
 
   group('validateOperatorAccountPatch', () {
-    test('happy path with all six editable fields', () {
+    test('happy path with all editable fields', () {
       final result = validateOperatorAccountPatch(<String, Object?>{
         'businessName': 'Forge & Flow Demo',
         'logoUrl': 'https://example.com/logo.png',
@@ -462,11 +462,15 @@ void main() {
         'localeTag': 'en-CA',
         'weekStartDay': 'monday',
         'rolloverHour': 4,
+        'contactEmail': ' ops@example.com ',
+        'contactPhone': ' +1 555 0100 ',
       });
-      expect(result.changedFieldNames, hasLength(6));
+      expect(result.changedFieldNames, hasLength(8));
       expect(result.fields['business_name'], equals('Forge & Flow Demo'));
       expect(result.fields['preferred_currency'], equals('CAD'));
       expect(result.fields['rollover_hour'], equals(4));
+      expect(result.fields['contact_email'], equals('ops@example.com'));
+      expect(result.fields['contact_phone'], equals('+1 555 0100'));
     });
 
     test('invalid_business_name on empty string', () {
@@ -577,6 +581,52 @@ void main() {
             (e) => e.code,
             'code',
             'invalid_rollover_hour',
+          ),
+        ),
+      );
+    });
+
+    test('contactEmail null is allowed (clears the field)', () {
+      final result = validateOperatorAccountPatch(const <String, Object?>{
+        'contactEmail': null,
+      });
+      expect(result.fields['contact_email'], isNull);
+      expect(result.changedFieldNames, contains('contactEmail'));
+    });
+
+    test('invalid_contact_email on bad shape', () {
+      expect(
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'contactEmail': 'not-an-email',
+        }),
+        throwsA(
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_contact_email',
+          ),
+        ),
+      );
+    });
+
+    test('contactPhone null is allowed (clears the field)', () {
+      final result = validateOperatorAccountPatch(const <String, Object?>{
+        'contactPhone': null,
+      });
+      expect(result.fields['contact_phone'], isNull);
+      expect(result.changedFieldNames, contains('contactPhone'));
+    });
+
+    test('invalid_contact_phone on empty string', () {
+      expect(
+        () => validateOperatorAccountPatch(const <String, Object?>{
+          'contactPhone': ' ',
+        }),
+        throwsA(
+          isA<BusinessTimingValidationError>().having(
+            (e) => e.code,
+            'code',
+            'invalid_contact_phone',
           ),
         ),
       );

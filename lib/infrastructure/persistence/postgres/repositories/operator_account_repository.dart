@@ -4,7 +4,7 @@
 // settings page edit the editable identity fields:
 //
 //   business_name, logo_url, preferred_currency, locale_tag,
-//   week_start_day, rollover_hour
+//   week_start_day, rollover_hour, contact_email, contact_phone
 //
 // Runs under TenantContext SET LOCAL so RLS confines reads/writes to
 // the caller's operator. The proxy's repository pattern is the
@@ -44,6 +44,8 @@ class OperatorAccountRepository extends OperatorScopedRepository {
         '       locale_tag, '
         '       week_start_day, '
         '       rollover_hour, '
+        '       contact_email, '
+        '       contact_phone, '
         '       updated_at '
         '  from public.operators '
         ' where operator_id = @operator_id::uuid '
@@ -60,6 +62,8 @@ class OperatorAccountRepository extends OperatorScopedRepository {
         localeTag: row['locale_tag']! as String,
         weekStartDay: row['week_start_day']! as String,
         rolloverHour: (row['rollover_hour']! as num).toInt(),
+        contactEmail: row['contact_email'] as String?,
+        contactPhone: row['contact_phone'] as String?,
         updatedAt: row['updated_at']! as DateTime,
       );
     });
@@ -117,6 +121,8 @@ class OperatorAccountRepository extends OperatorScopedRepository {
         '       locale_tag, '
         '       week_start_day, '
         '       rollover_hour, '
+        '       contact_email, '
+        '       contact_phone, '
         '       updated_at '
         '  from public.operators '
         ' where operator_id = @operator_id::uuid '
@@ -133,6 +139,8 @@ class OperatorAccountRepository extends OperatorScopedRepository {
         localeTag: row['locale_tag']! as String,
         weekStartDay: row['week_start_day']! as String,
         rolloverHour: (row['rollover_hour']! as num).toInt(),
+        contactEmail: row['contact_email'] as String?,
+        contactPhone: row['contact_phone'] as String?,
         updatedAt: row['updated_at']! as DateTime,
       );
     });
@@ -148,6 +156,8 @@ class OperatorAccountRow {
     required this.localeTag,
     required this.weekStartDay,
     required this.rolloverHour,
+    required this.contactEmail,
+    required this.contactPhone,
     required this.updatedAt,
   });
 
@@ -158,5 +168,7 @@ class OperatorAccountRow {
   final String localeTag;
   final String weekStartDay;
   final int rolloverHour;
+  final String? contactEmail;
+  final String? contactPhone;
   final DateTime updatedAt;
 }

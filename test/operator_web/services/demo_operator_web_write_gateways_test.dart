@@ -142,14 +142,21 @@ void main() {
       expect(timezone.ianaTimezone, 'America/St_Johns');
 
       final identity = await gateway.patchAccount(
-        const AccountIdentityPatch(businessName: 'Demo Visual Audit Group'),
+        const AccountIdentityPatch(
+          businessName: 'Demo Visual Audit Group',
+          contactEmail: 'ops@example.com',
+          contactPhone: '+1 555 0123',
+        ),
       );
       expect(identity.businessName, 'Demo Visual Audit Group');
+      expect(identity.contactEmail, 'ops@example.com');
+      expect(identity.contactPhone, '+1 555 0123');
 
       final overrides = await gateway.getLocationAccountOverrides(
         locationId: 'demo-location',
       );
       expect(overrides.effective.ianaTimezone, 'America/St_Johns');
+      expect(overrides.businessDefault.contactEmail, 'ops@example.com');
     });
   });
 }
