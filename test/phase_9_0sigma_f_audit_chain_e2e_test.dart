@@ -279,9 +279,14 @@ void main() {
   //
   // KNOWN_FAILING tracking: docs/KNOWN_FAILING_TESTS.md (B.2 row).
   group('audit_logs receives auth-event family', () {
-    test('Login event → audit_logs row exists with actor_kind=user, '
-        'valid prev_row_hash (null on first row of the chain), and the '
-        'chain remains valid through AuditChainHasher.verifyChain', () async {
+    test('Login event → audit_logs row exists with '
+        'actor_kind=team_member (legacy "user" input is normalised by the '
+        '2026-05-13 audit_logs actor-reason contract widening: new '
+        'team/admin writes use "team_member", "forge_admin", '
+        '"service_principal"; "user" is retained as a legacy alias for '
+        '"team_member"), valid prev_row_hash (null on first row of the '
+        'chain), and the chain remains valid through '
+        'AuditChainHasher.verifyChain', () async {
       final harness = _AuthAuditChainHarness();
       final repo = AuthEventsAuditRepository(
         TenantTransactionWrapper(harness.pool),
@@ -289,7 +294,11 @@ void main() {
 
       // Real auth-gateway code path: identical event_type and actor
       // shape the production sign-in path emits via the same
-      // AuthEventsAuditRepository every gateway shares.
+      // AuthEventsAuditRepository every gateway shares. The legacy
+      // `'user'` input is preserved here on purpose — production
+      // normalises it to `'team_member'` per the audit-attribution
+      // contract, and asserting the normalised value below is exactly
+      // the regression guard we want.
       await repo.insertEvent(
         operatorId: _opA,
         locationId: _locA,
@@ -308,7 +317,10 @@ void main() {
         );
       }
       expect(rows, hasLength(1));
-      expect(rows.single.actorKind, equals('user'));
+      expect(rows.single.actorKind, equals('team_member'),
+          reason: 'audit_attribution_contract: new team/admin writes '
+              'use "team_member"; "user" is a legacy alias normalised on '
+              'write');
       expect(rows.single.actorUserId, equals(_userA));
       expect(rows.single.actorPrincipalId, isNull);
       expect(
@@ -323,11 +335,12 @@ void main() {
       expect(anchor.rowCount, equals(BigInt.from(rows.length)));
     });
 
-    test('MFA enroll event → audit_logs row exists with actor_kind=user, '
-        'prev_row_hash links to the prior row, and the chain stays valid. '
-        'Firebase boundary is mocked at the repository pool; everything '
-        'below — repository write, trigger semantics, hash chain — is '
-        'real', () async {
+    test('MFA enroll event → audit_logs row exists with '
+        'actor_kind=team_member (legacy "user" input normalised on write '
+        'per the 2026-05-13 audit_logs widening), prev_row_hash links to '
+        'the prior row, and the chain stays valid. Firebase boundary is '
+        'mocked at the repository pool; everything below — repository '
+        'write, trigger semantics, hash chain — is real', () async {
       final harness = _AuthAuditChainHarness();
       final repo = AuthEventsAuditRepository(
         TenantTransactionWrapper(harness.pool),
@@ -363,7 +376,9 @@ void main() {
       }
       final mfaRow = rows.last;
       expect(mfaRow.action, contains('mfa_totp_enrolled'));
-      expect(mfaRow.actorKind, equals('user'));
+      expect(mfaRow.actorKind, equals('team_member'),
+          reason: 'audit_attribution_contract: "user" input normalises '
+              'to "team_member" on write');
       expect(mfaRow.actorUserId, equals(_userA));
       expect(
         mfaRow.targetKind,
@@ -386,11 +401,11 @@ void main() {
     });
 
     test('Password change event → audit_logs row exists with '
-        'actor_kind=user, action matching the production gateway '
-        'event_type "auth.password_changed" '
-        '(RepositoryPasswordChangeGateway._audit), and target_kind/'
-        'target_id naming the user whose password rotated. Chain '
-        'remains valid.', () async {
+        'actor_kind=team_member (legacy "user" input normalised on '
+        'write), action matching the production gateway event_type '
+        '"auth.password_changed" (RepositoryPasswordChangeGateway._audit), '
+        'and target_kind/target_id naming the user whose password '
+        'rotated. Chain remains valid.', () async {
       final harness = _AuthAuditChainHarness();
       final repo = AuthEventsAuditRepository(
         TenantTransactionWrapper(harness.pool),
@@ -421,7 +436,9 @@ void main() {
         );
       }
       expect(rows, hasLength(1));
-      expect(rows.single.actorKind, equals('user'));
+      expect(rows.single.actorKind, equals('team_member'),
+          reason: 'audit_attribution_contract: "user" input normalises '
+              'to "team_member" on write');
       expect(rows.single.actorUserId, equals(_userA));
       expect(rows.single.action, equals('auth.password_changed'));
       expect(

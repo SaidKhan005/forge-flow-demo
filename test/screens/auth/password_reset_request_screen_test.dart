@@ -13,6 +13,23 @@ void main() {
       return MaterialApp(home: screen);
     }
 
+    // The default flutter_test surface is 800×600; after the
+    // PasswordResetRequestScreen grew an error banner / confirmation
+    // banner / rate-limited banner, the submit button gets pushed to
+    // y ≈ 619 — below the viewport — and `tester.tap(submit)` fails
+    // with "Offset is outside the bounds of the root of the render
+    // tree". Tests that exercise the multi-submit flows (idempotency
+    // reuse / rotate paths) hit this. Walk to the button via
+    // `ensureVisible` before tapping. Single-submit tests already
+    // have the button on-screen and don't need the walk.
+    Future<void> tapSubmit(WidgetTester tester) async {
+      final submit =
+          find.byKey(const Key('password_reset_request_submit_button'));
+      await tester.ensureVisible(submit);
+      await tester.pump();
+      await tester.tap(submit);
+    }
+
     testWidgets('shows the Forge & Flow logo above the request form', (
       tester,
     ) async {
@@ -238,9 +255,7 @@ void main() {
           find.byKey(const Key('password_reset_request_email_field')),
           'demo@forgeflow.test',
         );
-        await tester.tap(
-          find.byKey(const Key('password_reset_request_submit_button')),
-        );
+        await tapSubmit(tester);
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('password_reset_request_error_banner')),
@@ -248,9 +263,7 @@ void main() {
         );
 
         // Operator taps submit again with the same email — same key.
-        await tester.tap(
-          find.byKey(const Key('password_reset_request_submit_button')),
-        );
+        await tapSubmit(tester);
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('password_reset_request_confirmation_banner')),
@@ -269,9 +282,7 @@ void main() {
           find.byKey(const Key('password_reset_request_email_field')),
           'someone.else@forgeflow.test',
         );
-        await tester.tap(
-          find.byKey(const Key('password_reset_request_submit_button')),
-        );
+        await tapSubmit(tester);
         await tester.pumpAndSettle();
         expect(gateway.recordedKeys, hasLength(3));
         expect(gateway.recordedKeys[2], equals('idem-2'));
@@ -299,18 +310,14 @@ void main() {
         find.byKey(const Key('password_reset_request_email_field')),
         'demo@forgeflow.test',
       );
-      await tester.tap(
-        find.byKey(const Key('password_reset_request_submit_button')),
-      );
+      await tapSubmit(tester);
       await tester.pumpAndSettle();
       expect(find.textContaining('Too many reset requests'), findsOneWidget);
       expect(gateway.recordedKeys, equals(<String>['idem-1']));
 
       // Operator retries SAME email after waiting — key must
       // rotate because rate_limited is conceptually transient.
-      await tester.tap(
-        find.byKey(const Key('password_reset_request_submit_button')),
-      );
+      await tapSubmit(tester);
       await tester.pumpAndSettle();
       expect(
         find.byKey(const Key('password_reset_request_confirmation_banner')),

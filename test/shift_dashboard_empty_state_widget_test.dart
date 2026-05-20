@@ -21,10 +21,11 @@ void main() {
 
       expect(find.byType(CircularProgressIndicator), findsNothing);
       expect(find.text('NO DATA'), findsOneWidget);
-      expect(
-        find.text('No shifts or history found. Load demo data or connect a source.'),
-        findsOneWidget,
-      );
+      // Empty-state body comes from `AppDataStatus.noData.description`
+      // (lib/models/app_data_status.dart) — render is byte-identical to
+      // the constant. Pin to the constant so the next copy edit only
+      // touches one file.
+      expect(find.text(AppDataStatus.noData.description), findsOneWidget);
     });
 
     testWidgets('renders historical-only state instead of spinner',
