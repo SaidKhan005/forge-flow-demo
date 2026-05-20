@@ -201,7 +201,7 @@ date at the top of each fixture file.
 
 Every adapter slice ships a click-path walkthrough at
 `docs/_walkthroughs/<slice-id>.md` matching the bar set by
-`docs/archive/_walkthroughs/7.58.UX.5.md`:
+`docs/_walkthroughs/7.58.UX.5.md`:
 
 - Numbered steps (1, 2, 3...).
 - Each step names the user action ("tap X", "long-press Y").
