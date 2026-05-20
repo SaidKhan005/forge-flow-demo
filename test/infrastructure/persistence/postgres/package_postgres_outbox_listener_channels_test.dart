@@ -6,6 +6,8 @@
 //   3. Receives notifications on the correct channel when a row is inserted.
 //   4. Properly starts and stops all subscriptions.
 
+@Tags(['postgres'])
+library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:postgres/postgres.dart' as pg;
