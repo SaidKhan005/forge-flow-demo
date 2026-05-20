@@ -23,11 +23,28 @@
 // table — multi-location scope is multiple `restaurant_locations`
 // rows + `BusinessScope`; the org tree lives in the operator-web
 // fixture. Determinism: reseed yields the same rows.
+//
+// 2026-05-19 update: R6 ("Choose Star Shifts: 4-period demo operator",
+// PR #929) added a 5th `restaurant_locations` row —
+// `demo_restaurant_four_period`, the "Barrio Legado: Four-Period"
+// proof restaurant. It is intentionally NOT a `DemoScope.locations`
+// member (per-location replay/operational loops iterate
+// `DemoScope.locations` and skip it), but the SQLite
+// `restaurant_locations` table now seeds 4 §2c locations + 1 proof
+// location = 5 rows. The org-tree fixture (operator-web side) is
+// unchanged at 4 — four_period has no entry in
+// `kDemoTeamLocationsFixture` because it lives outside the §2c
+// hierarchy. Tests that count rows in `restaurant_locations` (or
+// query the scope-drawer that reads that table) must include
+// `demo_restaurant_four_period`; tests that count `DemoScope.locations`
+// stay at 4.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
 import 'package:forge_and_flow/state/restaurant_scope_notifier.dart';
+
+const String _kDemoFourPeriodRestaurantId = 'demo_restaurant_four_period';
 
 void main() {
   setUp(() async {
@@ -35,7 +52,9 @@ void main() {
   });
 
   group('Slice A — mobile multi-location seed (restaurant_locations)', () {
-    test('seeds exactly the 4 §2c locations incl. demo_restaurant_001',
+    test(
+        'seeds the 4 §2c locations incl. demo_restaurant_001 + the R6 '
+        'four-period proof location',
         () async {
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('restaurant_locations');
@@ -43,9 +62,11 @@ void main() {
         for (final r in rows) r['restaurant_id'] as String: r,
       };
 
-      expect(rows.length, 4,
+      expect(rows.length, 5,
           reason: '§2c demo hierarchy seeds 4 locations '
-              '(Downtown/North Loop/Riverside/Harbour)');
+              '(Downtown/North Loop/Riverside/Harbour) plus the R6 '
+              'four-period proof restaurant (not a DemoScope.locations '
+              'member, but seeded into the same table)');
       expect(
         byId.keys.toSet(),
         {
@@ -53,6 +74,7 @@ void main() {
           DemoScope.northLoopRestaurantId,
           DemoScope.riversideRestaurantId,
           DemoScope.harbourRestaurantId,
+          _kDemoFourPeriodRestaurantId,
         },
       );
 
@@ -70,13 +92,14 @@ void main() {
       );
     });
 
-    test('reseed is deterministic — same 4 rows, no duplicates', () async {
+    test('reseed is deterministic — same 5 rows, no duplicates', () async {
       await SqliteDatabase.instance.reseedDemo();
       await SqliteDatabase.instance.reseedDemo();
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('restaurant_locations');
-      expect(rows.length, 4,
-          reason: 'ConflictAlgorithm.ignore keeps the seed idempotent');
+      expect(rows.length, 5,
+          reason: 'ConflictAlgorithm.ignore keeps the seed idempotent '
+              '(4 §2c locations + four-period proof)');
     });
 
     // Regression (orchestrator audit fix): a demo DB that predates the
@@ -86,8 +109,9 @@ void main() {
     // backfilled and the scope drawer stayed a 1-item list forever.
     // The guard is now removed; `_seedDemoRestaurant` is idempotent, so
     // the ensure path must backfill the 3 missing rows on next reseed.
-    test('upgrade path: Downtown-only DB backfills all 4 locations',
-        () async {
+    test(
+        'upgrade path: Downtown-only DB backfills all 4 §2c locations + '
+        'the four-period proof', () async {
       final db = await SqliteDatabase.instance.database;
       // Simulate the stale pre-multi-location state.
       await db.delete(
@@ -115,24 +139,28 @@ void main() {
           DemoScope.northLoopRestaurantId,
           DemoScope.riversideRestaurantId,
           DemoScope.harbourRestaurantId,
+          _kDemoFourPeriodRestaurantId,
         },
-        reason: 'all 4 §2c locations restored for an existing demo user',
+        reason: 'all 4 §2c locations + the four-period proof location '
+            'restored for an existing demo user',
       );
     });
   });
 
   group('Slice A — scope drawer becomes a real switcher', () {
     test(
-        'RestaurantScopeNotifier.availableScopes surfaces all 4 locations '
-        'with Downtown still the default active scope', () async {
+        'RestaurantScopeNotifier.availableScopes surfaces all 5 seeded '
+        'locations with Downtown still the default active scope',
+        () async {
       final notifier = RestaurantScopeNotifier();
       addTearDown(notifier.dispose);
       await notifier.refresh();
 
       final scopes = notifier.availableScopes;
-      expect(scopes.length, 4,
+      expect(scopes.length, 5,
           reason: 'drawer must list every seeded location so it is a '
-              'true switcher (§1.6)');
+              'true switcher (§1.6) — includes the four-period proof '
+              'restaurant alongside the 4 §2c locations');
       expect(
         scopes.map((s) => s.locationId).toSet(),
         {
@@ -140,6 +168,7 @@ void main() {
           DemoScope.northLoopRestaurantId,
           DemoScope.riversideRestaurantId,
           DemoScope.harbourRestaurantId,
+          _kDemoFourPeriodRestaurantId,
         },
       );
       expect(scopes.every((s) => s.isLocationScope), isTrue);
