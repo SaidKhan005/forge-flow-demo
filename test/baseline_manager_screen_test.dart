@@ -216,10 +216,12 @@ Future<void> _toggleWholeDayService(
 /// assertions must be scoped here, not to a bare `find.text`.
 Finder _selectedShiftsValue() {
   return find.descendant(
-    of: find.ancestor(
-      of: find.text('SELECTED SHIFTS'),
-      matching: find.byType(Column),
-    ).first,
+    of: find
+        .ancestor(
+          of: find.text('SELECTED SHIFTS'),
+          matching: find.byType(Column),
+        )
+        .first,
     matching: find.byType(Text),
   );
 }
@@ -241,11 +243,26 @@ void _expectSelectedShiftsCount(WidgetTester tester, String count) {
 Finder _doneButton() => find.textContaining('Done ·');
 
 Future<Set<String>> _commitDoneAndReadKeys(WidgetTester tester) async {
-  return (await tester.runAsync(() async {
+  await tester.runAsync(() async {
     await tester.tap(_doneButton());
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    return DatabaseHelper.instance.getBaselineSelectedRecordKeys();
-  }))!;
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+  });
+  await tester.pumpAndSettle();
+  final continueButton = find.text('Continue');
+  if (continueButton.evaluate().isNotEmpty) {
+    await tester.runAsync(() async {
+      await tester.tap(continueButton);
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+    await tester.pumpAndSettle();
+  } else {
+    await tester.runAsync(() async {
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+    });
+  }
+  return (await tester.runAsync(
+    DatabaseHelper.instance.getBaselineSelectedRecordKeys,
+  ))!;
 }
 
 void main() {
@@ -291,18 +308,21 @@ void main() {
       // R8: Done button label includes the live draft count.
       expect(_doneButton(), findsOneWidget);
       // R8: app-bar RESET pill + once-per-cycle caption above the bar.
-      expect(find.byKey(const ValueKey<String>('reset_pill')),
-          findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('reset_pill')), findsOneWidget);
       expect(find.text('ONE OVERRIDE PER 60 DAY CYCLE'), findsOneWidget);
       // R8: calendar legend pills + count caption.
-      expect(find.byKey(const ValueKey<String>('cal_legend_closed')),
-          findsOneWidget);
-      expect(find.byKey(const ValueKey<String>('cal_legend_selected')),
-          findsOneWidget);
       expect(
-          find.byKey(
-              const ValueKey<String>('cal_legend_count_caption')),
-          findsOneWidget);
+        find.byKey(const ValueKey<String>('cal_legend_closed')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('cal_legend_selected')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('cal_legend_count_caption')),
+        findsOneWidget,
+      );
       // R8: STAR SHIFT SELECTION section label above the band.
       expect(find.text('STAR SHIFT SELECTION'), findsOneWidget);
       // Target standard cells
@@ -402,10 +422,7 @@ void main() {
         // empty-state sentinel count covers the plan-impact cells too.
         await _expandPlanImpact(tester);
         // 5 target standard cells + 6 plan impact cells = 11
-        expect(
-          find.text('--', skipOffstage: false),
-          findsNWidgets(11),
-        );
+        expect(find.text('--', skipOffstage: false), findsNWidgets(11));
       },
     );
   });
@@ -572,6 +589,47 @@ void main() {
   });
 
   group('F - Done with non-empty draft commits selection', () {
+    testWidgets(
+      'Done warns before saving when a selectable period has no star shift',
+      (tester) async {
+        await tester.pumpWidget(
+          _wrap(
+            BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        await _clearAllDraft(tester);
+        await _tapCalendarDate(tester, '2026-03-02');
+        await _toggleWholeDayService(tester, 'Lunch');
+        await _closeSheet(tester);
+
+        await tester.tap(_doneButton());
+        await tester.pumpAndSettle();
+
+        expect(find.text('Some periods have no star shifts'), findsOneWidget);
+        expect(
+          find.text(
+            'Periods without selected star shifts will keep their existing target fallback. Continue only if that is intentional.',
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Go back'));
+        await tester.pumpAndSettle();
+        final beforeContinue = await tester.runAsync(
+          DatabaseHelper.instance.getBaselineSelectedRecordKeys,
+        );
+        expect(beforeContinue, isEmpty);
+
+        final stored = await _commitDoneAndReadKeys(tester);
+        expect(stored, contains(_lunch1.recordKey));
+      },
+    );
+
     testWidgets('Done writes selected record key to DB', (tester) async {
       await tester.pumpWidget(
         _wrap(
@@ -1331,30 +1389,29 @@ void main() {
   // ── Q — Lever / date polish ──────────────────────────────────────────────
 
   group('Q - lever and date polish', () {
-    testWidgets(
-      'period-lens sheet shows full lever meaning, not raw id',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _leverTestCandidates,
-              initialDemandCovers: demandCovers,
-            ),
+    testWidgets('period-lens sheet shows full lever meaning, not raw id', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _leverTestCandidates,
+            initialDemandCovers: demandCovers,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        await _tapLensChip(tester, 'dinner');
-        await _tapCalendarDate(tester, '2026-03-02');
+      await _tapLensChip(tester, 'dinner');
+      await _tapCalendarDate(tester, '2026-03-02');
 
-        // _dinnerSplhDown on 2026-03-02 under the dinner lens.
-        expect(
-          find.text('SPLH below target', skipOffstage: false),
-          findsAtLeastNWidgets(1),
-        );
-        expect(find.text('splh_down', skipOffstage: false), findsNothing);
-      },
-    );
+      // _dinnerSplhDown on 2026-03-02 under the dinner lens.
+      expect(
+        find.text('SPLH below target', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+      expect(find.text('splh_down', skipOffstage: false), findsNothing);
+    });
 
     testWidgets('whole-day sheet shows human-friendly date, not raw week-id', (
       tester,
@@ -1778,136 +1835,130 @@ void main() {
       ),
     ];
 
-    testWidgets(
-      'a) lens options derive from the configured 4-period config',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('a) lens options derive from the configured 4-period config', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        expect(find.text('WHOLE DAY'), findsOneWidget);
-        expect(find.text('BREAKFAST'), findsOneWidget);
-        expect(find.text('LUNCH'), findsOneWidget);
-        expect(find.text('DINNER'), findsOneWidget);
-        expect(find.text('LATE NIGHT'), findsOneWidget);
-        expect(
-          find.byKey(const ValueKey<String>('lens_late_night')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey<String>('lens_breakfast')),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(find.text('WHOLE DAY'), findsOneWidget);
+      expect(find.text('BREAKFAST'), findsOneWidget);
+      expect(find.text('LUNCH'), findsOneWidget);
+      expect(find.text('DINNER'), findsOneWidget);
+      expect(find.text('LATE NIGHT'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('lens_late_night')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('lens_breakfast')),
+        findsOneWidget,
+      );
+    });
 
-    testWidgets(
-      'b) calendar 2-state cell filters by the active lens period',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _withPreSelected,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('b) calendar 2-state cell filters by the active lens period', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _withPreSelected,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
+        ),
+      );
+      await tester.pump();
+
+      BoxDecoration decoFor(String date) {
+        final container = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byKey(ValueKey<String>('cal_$date')),
+                matching: find.byType(Container),
+              )
+              .first,
         );
-        await tester.pump();
+        return container.decoration! as BoxDecoration;
+      }
 
-        BoxDecoration decoFor(String date) {
-          final container = tester.widget<Container>(
-            find
-                .descendant(
-                  of: find.byKey(ValueKey<String>('cal_$date')),
-                  matching: find.byType(Container),
-                )
-                .first,
-          );
-          return container.decoration! as BoxDecoration;
-        }
+      final wholeDayDinnerBorder =
+          (decoFor('2026-03-06').border! as Border).top.color;
+      expect(wholeDayDinnerBorder, isNot(Colors.transparent));
 
-        final wholeDayDinnerBorder =
-            (decoFor('2026-03-06').border! as Border).top.color;
-        expect(wholeDayDinnerBorder, isNot(Colors.transparent));
+      await tester.tap(find.byKey(const ValueKey<String>('lens_lunch')));
+      await tester.pump();
+      final lunchLensDinnerBorder =
+          (decoFor('2026-03-06').border! as Border).top.color;
+      expect(lunchLensDinnerBorder, Colors.transparent);
 
-        await tester.tap(
-          find.byKey(const ValueKey<String>('lens_lunch')),
-        );
-        await tester.pump();
-        final lunchLensDinnerBorder =
-            (decoFor('2026-03-06').border! as Border).top.color;
-        expect(lunchLensDinnerBorder, Colors.transparent);
+      final lunchLensSelected =
+          (decoFor('2026-03-16').border! as Border).top.color;
+      expect(lunchLensSelected, isNot(Colors.transparent));
+    });
 
-        final lunchLensSelected =
-            (decoFor('2026-03-16').border! as Border).top.color;
-        expect(lunchLensSelected, isNot(Colors.transparent));
-      },
-    );
-
-    testWidgets(
-      'c) pre-commit gate disables commit before any selection',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: false,
-            ),
+    testWidgets('c) pre-commit gate disables commit before any selection', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: false,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        expect(
-          find.byKey(const ValueKey<String>('override_used_notice')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey<String>('done_disabled_gate')),
-          findsOneWidget,
-        );
-        expect(find.text('OVERRIDE USED'), findsOneWidget);
-        // R8: the live Done-with-count label is absent when gated.
-        expect(_doneButton(), findsNothing);
-      },
-    );
+      expect(
+        find.byKey(const ValueKey<String>('override_used_notice')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('done_disabled_gate')),
+        findsOneWidget,
+      );
+      expect(find.text('OVERRIDE USED'), findsOneWidget);
+      // R8: the live Done-with-count label is absent when gated.
+      expect(_doneButton(), findsNothing);
+    });
 
-    testWidgets(
-      'c) gate open: live commit, no disabled notice',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('c) gate open: live commit, no disabled notice', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
-        expect(
-          find.byKey(const ValueKey<String>('override_used_notice')),
-          findsNothing,
-        );
-        expect(
-          find.byKey(const ValueKey<String>('done_disabled_gate')),
-          findsNothing,
-        );
-        expect(_doneButton(), findsOneWidget);
-      },
-    );
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey<String>('override_used_notice')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('done_disabled_gate')),
+        findsNothing,
+      );
+      expect(_doneButton(), findsOneWidget);
+    });
   });
 
   // ── R2 - tap-day bottom sheet + whole-day rollup + per-service toggles ────
@@ -2079,75 +2130,71 @@ void main() {
       },
     );
 
-    testWidgets(
-      'b) whole-day rollup CPLH reconciles to the cover-weighted '
-      'combination of that day\'s 4 services',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              fourServiceDay,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('b) whole-day rollup CPLH reconciles to the cover-weighted '
+        'combination of that day\'s 4 services', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            fourServiceDay,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // Default lens is whole-day. Tap the 4-service day.
-        await _tapCalendarDate(tester, '2026-03-20');
+      // Default lens is whole-day. Tap the 4-service day.
+      await _tapCalendarDate(tester, '2026-03-20');
+      expect(
+        find.byKey(const ValueKey<String>('whole_day_rollup_card')),
+        findsOneWidget,
+      );
+
+      // Reconciliation: the rendered rollup CPLH must equal the
+      // cover-weighted combination computed independently here,
+      // mirroring TargetCycleDaypartPool.fromDayparts.
+      final totalCovers = fourServiceDay.fold<int>(0, (s, c) => s + c.covers);
+      double expectedCplh = 0;
+      for (final c in fourServiceDay) {
+        expectedCplh += c.cplh * (c.covers / totalCovers);
+      }
+      // Independent rollup model produces the same scalar.
+      final rollup = WholeDayRollup.fromShifts(
+        fourServiceDay,
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+      );
+      expect(rollup.cplh, closeTo(expectedCplh, 0.0001));
+      expect(rollup.totalCovers, equals(totalCovers));
+
+      // The rendered rollup card shows that same CPLH (2 dp) and the
+      // summed covers, proving the UI reconciles to per-service.
+      expect(
+        find.text(expectedCplh.toStringAsFixed(2), skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+      expect(
+        find.text('$totalCovers', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+
+      // Per-service breakdown: one row per configured period present,
+      // count + labels from the resolved defs (4 here).
+      final inSheet = find.byType(BottomSheet);
+      for (final label in const [
+        'Breakfast',
+        'Lunch',
+        'Dinner',
+        'Late Night',
+      ]) {
         expect(
-          find.byKey(const ValueKey<String>('whole_day_rollup_card')),
+          find.descendant(of: inSheet, matching: find.text(label)),
           findsOneWidget,
+          reason: '$label per-service row must render',
         );
-
-        // Reconciliation: the rendered rollup CPLH must equal the
-        // cover-weighted combination computed independently here,
-        // mirroring TargetCycleDaypartPool.fromDayparts.
-        final totalCovers =
-            fourServiceDay.fold<int>(0, (s, c) => s + c.covers);
-        double expectedCplh = 0;
-        for (final c in fourServiceDay) {
-          expectedCplh += c.cplh * (c.covers / totalCovers);
-        }
-        // Independent rollup model produces the same scalar.
-        final rollup = WholeDayRollup.fromShifts(
-          fourServiceDay,
-          fohWage: MeridianConfig.fohWage,
-          bohWage: MeridianConfig.bohWage,
-        );
-        expect(rollup.cplh, closeTo(expectedCplh, 0.0001));
-        expect(rollup.totalCovers, equals(totalCovers));
-
-        // The rendered rollup card shows that same CPLH (2 dp) and the
-        // summed covers, proving the UI reconciles to per-service.
-        expect(
-          find.text(expectedCplh.toStringAsFixed(2), skipOffstage: false),
-          findsAtLeastNWidgets(1),
-        );
-        expect(
-          find.text('$totalCovers', skipOffstage: false),
-          findsAtLeastNWidgets(1),
-        );
-
-        // Per-service breakdown: one row per configured period present,
-        // count + labels from the resolved defs (4 here).
-        final inSheet = find.byType(BottomSheet);
-        for (final label in const [
-          'Breakfast',
-          'Lunch',
-          'Dinner',
-          'Late Night',
-        ]) {
-          expect(
-            find.descendant(of: inSheet, matching: find.text(label)),
-            findsOneWidget,
-            reason: '$label per-service row must render',
-          );
-        }
-      },
-    );
+      }
+    });
 
     testWidgets(
       'c) toggling a service in the whole-day sheet mutates the draft '
@@ -2191,81 +2238,78 @@ void main() {
 
         // Commit proves the draft set carried the toggled keys.
         final stored = await _commitDoneAndReadKeys(tester);
-        expect(stored, containsAll(<String>[lShift.recordKey, dShift.recordKey]));
+        expect(
+          stored,
+          containsAll(<String>[lShift.recordKey, dShift.recordKey]),
+        );
         expect(stored, isNot(contains(bShift.recordKey)));
         expect(stored, isNot(contains(lnShift.recordKey)));
       },
     );
 
-    test(
-      'WholeDayRollup zero-covers fallback uses an unweighted mean '
-      '(mirrors TargetCycleDaypartPool)',
-      () {
-        const z1 = BaselineCandidateShift(
-          recordKey: 'z|Fri|lunch',
-          weekId: 'z',
-          weekLabel: 'z',
-          dayLabel: 'Fri',
-          daypart: 'lunch',
-          covers: 0,
-          cplh: 4.0,
-          splh: 100.0,
-          ppa: 30.0,
-          primaryLeverId: 'cplh_up',
-          isSelected: false,
-        );
-        const z2 = BaselineCandidateShift(
-          recordKey: 'z|Fri|dinner',
-          weekId: 'z',
-          weekLabel: 'z',
-          dayLabel: 'Fri',
-          daypart: 'dinner',
-          covers: 0,
-          cplh: 6.0,
-          splh: 200.0,
-          ppa: 50.0,
-          primaryLeverId: 'cplh_up',
-          isSelected: false,
-        );
-        final r = WholeDayRollup.fromShifts(
-          [z1, z2],
-          fohWage: MeridianConfig.fohWage,
-          bohWage: MeridianConfig.bohWage,
-        );
-        expect(r.totalCovers, equals(0));
-        expect(r.cplh, closeTo(5.0, 0.0001)); // (4+6)/2
-        expect(r.splh, closeTo(150.0, 0.0001)); // (100+200)/2
-        expect(r.ppa, closeTo(40.0, 0.0001)); // (30+50)/2
-      },
-    );
+    test('WholeDayRollup zero-covers fallback uses an unweighted mean '
+        '(mirrors TargetCycleDaypartPool)', () {
+      const z1 = BaselineCandidateShift(
+        recordKey: 'z|Fri|lunch',
+        weekId: 'z',
+        weekLabel: 'z',
+        dayLabel: 'Fri',
+        daypart: 'lunch',
+        covers: 0,
+        cplh: 4.0,
+        splh: 100.0,
+        ppa: 30.0,
+        primaryLeverId: 'cplh_up',
+        isSelected: false,
+      );
+      const z2 = BaselineCandidateShift(
+        recordKey: 'z|Fri|dinner',
+        weekId: 'z',
+        weekLabel: 'z',
+        dayLabel: 'Fri',
+        daypart: 'dinner',
+        covers: 0,
+        cplh: 6.0,
+        splh: 200.0,
+        ppa: 50.0,
+        primaryLeverId: 'cplh_up',
+        isSelected: false,
+      );
+      final r = WholeDayRollup.fromShifts(
+        [z1, z2],
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+      );
+      expect(r.totalCovers, equals(0));
+      expect(r.cplh, closeTo(5.0, 0.0001)); // (4+6)/2
+      expect(r.splh, closeTo(150.0, 0.0001)); // (100+200)/2
+      expect(r.ppa, closeTo(40.0, 0.0001)); // (30+50)/2
+    });
 
-    test(
-      'WholeDayRollup labor % uses the WHOLE-DAY wage on the '
-      'cover-weighted rates (display only, no per-period wage)',
-      () {
-        final r = WholeDayRollup.fromShifts(
-          fourServiceDay,
-          fohWage: MeridianConfig.fohWage,
-          bohWage: MeridianConfig.bohWage,
-        );
-        // Labor % is the existing whole-day shape: theoreticalLaborPct
-        // of the rolled-up (cover-weighted) rates with the single
-        // whole-day wage pair, never a per-period wage.
-        expect(
-          r.laborPct,
-          closeTo(
-            LaborModel.theoreticalLaborPct(
-              r.cplh,
-              r.splh,
-              r.ppa,
-              MeridianConfig.fohWage,
-              MeridianConfig.bohWage,
-            ),
-            0.0001,
+    test('WholeDayRollup labor % uses the WHOLE-DAY wage on the '
+        'cover-weighted rates (display only, no per-period wage)', () {
+      final r = WholeDayRollup.fromShifts(
+        fourServiceDay,
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+      );
+      // Labor % is the existing whole-day shape: theoreticalLaborPct
+      // of the rolled-up (cover-weighted) rates with the single
+      // whole-day wage pair, never a per-period wage.
+      expect(
+        r.laborPct,
+        closeTo(
+          LaborModel.theoreticalLaborPct(
+            r.cplh,
+            r.splh,
+            r.ppa,
+            MeridianConfig.fohWage,
+            MeridianConfig.bohWage,
           ),
-        );
-      },
-    );
+          0.0001,
+        ),
+      );
+    });
 
     test('WholeDayRollup labor % is an honest unknown without wage '
         'authority', () {
@@ -2415,9 +2459,7 @@ void main() {
         'dinner',
         'late_night',
       ]) {
-        final list = fourPeriodPool
-            .where((c) => c.daypart == period)
-            .toList()
+        final list = fourPeriodPool.where((c) => c.daypart == period).toList()
           ..sort((a, b) {
             final cmp = b.cplh.compareTo(a.cplh);
             return cmp != 0 ? cmp : a.recordKey.compareTo(b.recordKey);
@@ -2429,45 +2471,51 @@ void main() {
       return keys;
     }
 
-    test(
-      'a) each band tier derives top-N-per-period by CPLH for a '
-      '4-period config (not a hardcoded 3)',
-      () {
-        // Lean keeps the fewest, Generous the most. N is per period and
-        // applied across all FOUR configured periods.
-        final lean =
-            deriveBandSelection(fourPeriodPool, fourPeriodDefs, StarBand.lean);
-        final balanced = deriveBandSelection(
-            fourPeriodPool, fourPeriodDefs, StarBand.balanced);
-        final generous = deriveBandSelection(
-            fourPeriodPool, fourPeriodDefs, StarBand.generous);
+    test('a) each band tier derives top-N-per-period by CPLH for a '
+        '4-period config (not a hardcoded 3)', () {
+      // Lean keeps the fewest, Generous the most. N is per period and
+      // applied across all FOUR configured periods.
+      final lean = deriveBandSelection(
+        fourPeriodPool,
+        fourPeriodDefs,
+        StarBand.lean,
+      );
+      final balanced = deriveBandSelection(
+        fourPeriodPool,
+        fourPeriodDefs,
+        StarBand.balanced,
+      );
+      final generous = deriveBandSelection(
+        fourPeriodPool,
+        fourPeriodDefs,
+        StarBand.generous,
+      );
 
-        // Lean N=2 across 4 periods -> 8 keys, exactly the 2 strongest
-        // (highest CPLH) shifts in each period.
-        expect(lean.length, equals(StarBand.lean.nPerPeriod * 4));
-        expect(lean, equals(expectedTopN(StarBand.lean.nPerPeriod)));
-        // The weakest shift in every period (r0) is excluded by Lean.
-        for (final period in const [
-          'breakfast',
-          'lunch',
-          'dinner',
-          'late_night',
-        ]) {
-          expect(lean.contains('$period|r0'), isFalse);
-          expect(lean.contains('$period|r2'), isTrue); // strongest kept
-        }
+      // Lean N=2 across 4 periods -> 8 keys, exactly the 2 strongest
+      // (highest CPLH) shifts in each period.
+      expect(lean.length, equals(StarBand.lean.nPerPeriod * 4));
+      expect(lean, equals(expectedTopN(StarBand.lean.nPerPeriod)));
+      // The weakest shift in every period (r0) is excluded by Lean.
+      for (final period in const [
+        'breakfast',
+        'lunch',
+        'dinner',
+        'late_night',
+      ]) {
+        expect(lean.contains('$period|r0'), isFalse);
+        expect(lean.contains('$period|r2'), isTrue); // strongest kept
+      }
 
-        // Balanced N=4 but each period only has 3 shifts: take() caps at
-        // 3, so all 12 are kept (proves N is a cap, period-scoped, not a
-        // hardcoded count).
-        expect(balanced.length, equals(12));
-        expect(balanced, equals(fourPeriodPool.map((c) => c.recordKey).toSet()));
+      // Balanced N=4 but each period only has 3 shifts: take() caps at
+      // 3, so all 12 are kept (proves N is a cap, period-scoped, not a
+      // hardcoded count).
+      expect(balanced.length, equals(12));
+      expect(balanced, equals(fourPeriodPool.map((c) => c.recordKey).toSet()));
 
-        // Generous keeps at least as many as Balanced (here also all 12).
-        expect(generous.length, greaterThanOrEqualTo(balanced.length));
-        expect(generous, equals(fourPeriodPool.map((c) => c.recordKey).toSet()));
-      },
-    );
+      // Generous keeps at least as many as Balanced (here also all 12).
+      expect(generous.length, greaterThanOrEqualTo(balanced.length));
+      expect(generous, equals(fourPeriodPool.map((c) => c.recordKey).toSet()));
+    });
 
     testWidgets(
       'a) applying a band in the screen only mutates the draft set and '
@@ -2526,93 +2574,89 @@ void main() {
       },
     );
 
-    test(
-      'b) per-period preview uses the period\'s OWN candidate covers '
-      '(not a split) and whole-day reconciles to the cover-weighted '
-      'rollup of the per-period pieces',
-      () {
-        // Select every shift so each period contributes its full pool.
-        final selected = fourPeriodPool;
+    test('b) per-period preview uses the period\'s OWN candidate covers '
+        '(not a split) and whole-day reconciles to the cover-weighted '
+        'rollup of the per-period pieces', () {
+      // Select every shift so each period contributes its full pool.
+      final selected = fourPeriodPool;
 
-        // Per-period preview for one period: covers are the SUM of that
-        // period\'s selected shifts\' own covers, never a /N split or the
-        // demand-context forecast number.
-        final dinnerSelected =
-            selected.where((c) => c.daypart == 'dinner').toList();
-        final dinnerCovers =
-            dinnerSelected.fold<int>(0, (s, c) => s + c.covers);
-        final dinnerPreview = ManagerOverridePlanPreview.forPeriod(
-          dinnerSelected,
+      // Per-period preview for one period: covers are the SUM of that
+      // period\'s selected shifts\' own covers, never a /N split or the
+      // demand-context forecast number.
+      final dinnerSelected = selected
+          .where((c) => c.daypart == 'dinner')
+          .toList();
+      final dinnerCovers = dinnerSelected.fold<int>(0, (s, c) => s + c.covers);
+      final dinnerPreview = ManagerOverridePlanPreview.forPeriod(
+        dinnerSelected,
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+      );
+      expect(dinnerPreview, isNotNull);
+      expect(dinnerPreview!.forecastCovers, equals(dinnerCovers));
+
+      // Cover-weighted period PPA computed independently here; sales
+      // must be period covers * period cover-weighted PPA.
+      double dinnerPpa = 0;
+      for (final c in dinnerSelected) {
+        final w = c.covers / dinnerCovers;
+        dinnerPpa += c.ppa * w;
+      }
+      expect(
+        dinnerPreview.forecastSales,
+        closeTo(dinnerCovers * dinnerPpa, 0.0001),
+      );
+
+      // Reconciliation: the whole-day cover-weighted rollup of ALL
+      // selected shifts equals the cover-weighted combination of the
+      // per-period pieces. The per-period factory and the existing
+      // WholeDayRollup share the same cover-weighting shape, so rolling
+      // the per-period covers + cover-weighted rates back up reproduces
+      // the whole-day rollup scalar (one truth, not a second one).
+      final rollup = WholeDayRollup.fromShifts(
+        selected,
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+      );
+
+      final periodIds = selected.map((c) => c.daypart).toSet().toList();
+      var sumCovers = 0;
+      double wCplh = 0;
+      double wSplh = 0;
+      double wPpa = 0;
+      for (final pid in periodIds) {
+        final ps = selected.where((c) => c.daypart == pid).toList();
+        final pPrev = ManagerOverridePlanPreview.forPeriod(
+          ps,
           fohWage: MeridianConfig.fohWage,
           bohWage: MeridianConfig.bohWage,
-        );
-        expect(dinnerPreview, isNotNull);
-        expect(dinnerPreview!.forecastCovers, equals(dinnerCovers));
-
-        // Cover-weighted period PPA computed independently here; sales
-        // must be period covers * period cover-weighted PPA.
-        double dinnerPpa = 0;
-        for (final c in dinnerSelected) {
-          final w = c.covers / dinnerCovers;
-          dinnerPpa += c.ppa * w;
+        )!;
+        // Recover the per-period cover-weighted rates from the period
+        // pool (the factory keeps them internally; covers are exposed).
+        final pc = pPrev.forecastCovers;
+        double pCplh = 0;
+        double pSplh = 0;
+        double pPpa = 0;
+        for (final c in ps) {
+          final w = c.covers / pc;
+          pCplh += c.cplh * w;
+          pSplh += c.splh * w;
+          pPpa += c.ppa * w;
         }
-        expect(
-          dinnerPreview.forecastSales,
-          closeTo(dinnerCovers * dinnerPpa, 0.0001),
-        );
+        sumCovers += pc;
+        wCplh += pCplh * pc;
+        wSplh += pSplh * pc;
+        wPpa += pPpa * pc;
+      }
+      wCplh /= sumCovers;
+      wSplh /= sumCovers;
+      wPpa /= sumCovers;
 
-        // Reconciliation: the whole-day cover-weighted rollup of ALL
-        // selected shifts equals the cover-weighted combination of the
-        // per-period pieces. The per-period factory and the existing
-        // WholeDayRollup share the same cover-weighting shape, so rolling
-        // the per-period covers + cover-weighted rates back up reproduces
-        // the whole-day rollup scalar (one truth, not a second one).
-        final rollup = WholeDayRollup.fromShifts(
-          selected,
-          fohWage: MeridianConfig.fohWage,
-          bohWage: MeridianConfig.bohWage,
-        );
-
-        final periodIds =
-            selected.map((c) => c.daypart).toSet().toList();
-        var sumCovers = 0;
-        double wCplh = 0;
-        double wSplh = 0;
-        double wPpa = 0;
-        for (final pid in periodIds) {
-          final ps = selected.where((c) => c.daypart == pid).toList();
-          final pPrev = ManagerOverridePlanPreview.forPeriod(
-            ps,
-            fohWage: MeridianConfig.fohWage,
-            bohWage: MeridianConfig.bohWage,
-          )!;
-          // Recover the per-period cover-weighted rates from the period
-          // pool (the factory keeps them internally; covers are exposed).
-          final pc = pPrev.forecastCovers;
-          double pCplh = 0;
-          double pSplh = 0;
-          double pPpa = 0;
-          for (final c in ps) {
-            final w = c.covers / pc;
-            pCplh += c.cplh * w;
-            pSplh += c.splh * w;
-            pPpa += c.ppa * w;
-          }
-          sumCovers += pc;
-          wCplh += pCplh * pc;
-          wSplh += pSplh * pc;
-          wPpa += pPpa * pc;
-        }
-        wCplh /= sumCovers;
-        wSplh /= sumCovers;
-        wPpa /= sumCovers;
-
-        expect(sumCovers, equals(rollup.totalCovers));
-        expect(wCplh, closeTo(rollup.cplh, 0.0001));
-        expect(wSplh, closeTo(rollup.splh, 0.0001));
-        expect(wPpa, closeTo(rollup.ppa, 0.0001));
-      },
-    );
+      expect(sumCovers, equals(rollup.totalCovers));
+      expect(wCplh, closeTo(rollup.cplh, 0.0001));
+      expect(wSplh, closeTo(rollup.splh, 0.0001));
+      expect(wPpa, closeTo(rollup.ppa, 0.0001));
+    });
 
     testWidgets(
       'b) period lens shows the per-period preview; whole-day lens keeps '
@@ -2632,8 +2676,9 @@ void main() {
 
         // Select everything via the Generous band. R8 moved the band
         // below the summary card, so ensure it is on-screen first.
-        final generousChip =
-            find.byKey(const ValueKey<String>('band_generous'));
+        final generousChip = find.byKey(
+          const ValueKey<String>('band_generous'),
+        );
         await tester.ensureVisible(generousChip);
         await tester.pumpAndSettle();
         await tester.tap(generousChip);
@@ -2646,8 +2691,7 @@ void main() {
 
         // Whole-day lens (default): FORECAST COVERS is the existing
         // demand-context plan number (read from the unchanged plumbing).
-        final wholeDayPreview =
-            ManagerOverridePlanPreview.fromDraftSelection(
+        final wholeDayPreview = ManagerOverridePlanPreview.fromDraftSelection(
           fourPeriodPool,
           historicalWeeklyAvgCovers: demandCovers,
           fohWage: MeridianConfig.fohWage,
@@ -2655,8 +2699,7 @@ void main() {
         );
         expect(wholeDayPreview, isNotNull);
         expect(
-          find.text('${wholeDayPreview!.forecastCovers}',
-              skipOffstage: false),
+          find.text('${wholeDayPreview!.forecastCovers}', skipOffstage: false),
           findsAtLeastNWidgets(1),
         );
 
@@ -2664,10 +2707,10 @@ void main() {
         // the per-period covers (sum of that period\'s own candidate
         // covers), which differs from the whole-day demand number.
         await _tapLensChip(tester, 'lunch');
-        final lunchSelected =
-            fourPeriodPool.where((c) => c.daypart == 'lunch').toList();
-        final lunchCovers =
-            lunchSelected.fold<int>(0, (s, c) => s + c.covers);
+        final lunchSelected = fourPeriodPool
+            .where((c) => c.daypart == 'lunch')
+            .toList();
+        final lunchCovers = lunchSelected.fold<int>(0, (s, c) => s + c.covers);
         expect(
           find.text('$lunchCovers', skipOffstage: false),
           findsAtLeastNWidgets(1),
@@ -2678,50 +2721,44 @@ void main() {
       },
     );
 
-    test(
-      'c) per-period labor dollars use the SINGLE whole-day wage pair '
-      '(no per-period / cover-weighted wage)',
-      () {
-        final lunch =
-            fourPeriodPool.where((c) => c.daypart == 'lunch').toList();
-        final p = ManagerOverridePlanPreview.forPeriod(
-          lunch,
-          fohWage: MeridianConfig.fohWage,
-          bohWage: MeridianConfig.bohWage,
-        )!;
-        // Labor % is theoreticalLaborPct of the period cover-weighted
-        // rates with the ONE whole-day wage pair, never a per-period wage.
-        final covers = lunch.fold<int>(0, (s, c) => s + c.covers);
-        double cplh = 0;
-        double splh = 0;
-        double ppa = 0;
-        for (final c in lunch) {
-          final w = c.covers / covers;
-          cplh += c.cplh * w;
-          splh += c.splh * w;
-          ppa += c.ppa * w;
-        }
-        expect(
-          p.theoreticalLaborPct,
-          closeTo(
-            LaborModel.theoreticalLaborPct(
-              cplh,
-              splh,
-              ppa,
-              MeridianConfig.fohWage,
-              MeridianConfig.bohWage,
-            ),
-            0.0001,
+    test('c) per-period labor dollars use the SINGLE whole-day wage pair '
+        '(no per-period / cover-weighted wage)', () {
+      final lunch = fourPeriodPool.where((c) => c.daypart == 'lunch').toList();
+      final p = ManagerOverridePlanPreview.forPeriod(
+        lunch,
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+      )!;
+      // Labor % is theoreticalLaborPct of the period cover-weighted
+      // rates with the ONE whole-day wage pair, never a per-period wage.
+      final covers = lunch.fold<int>(0, (s, c) => s + c.covers);
+      double cplh = 0;
+      double splh = 0;
+      double ppa = 0;
+      for (final c in lunch) {
+        final w = c.covers / covers;
+        cplh += c.cplh * w;
+        splh += c.splh * w;
+        ppa += c.ppa * w;
+      }
+      expect(
+        p.theoreticalLaborPct,
+        closeTo(
+          LaborModel.theoreticalLaborPct(
+            cplh,
+            splh,
+            ppa,
+            MeridianConfig.fohWage,
+            MeridianConfig.bohWage,
           ),
-        );
-      },
-    );
+          0.0001,
+        ),
+      );
+    });
 
     test('forPeriod returns null when no shifts are selected', () {
       expect(
-        ManagerOverridePlanPreview.forPeriod(
-          const <BaselineCandidateShift>[],
-        ),
+        ManagerOverridePlanPreview.forPeriod(const <BaselineCandidateShift>[]),
         isNull,
       );
     });
@@ -2809,45 +2846,42 @@ void main() {
       svc('late_night', 3.0),
     ];
 
-    testWidgets(
-      'a) opens with Balanced applied: non-empty draft + populated '
-      'preview, and NO persistence call on open',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              fourServiceDay,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('a) opens with Balanced applied: non-empty draft + populated '
+        'preview, and NO persistence call on open', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            fourServiceDay,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        final expected = deriveBandSelection(
-          fourServiceDay,
-          fourPeriodDefs,
-          StarBand.balanced,
-        );
-        expect(expected, isNotEmpty);
-        _expectSelectedShiftsCount(tester, '${expected.length}');
-        expect(find.text('--'), findsNothing);
-        expect(
-          find.byKey(const ValueKey<String>('band_balanced')),
-          findsOneWidget,
-        );
+      final expected = deriveBandSelection(
+        fourServiceDay,
+        fourPeriodDefs,
+        StarBand.balanced,
+      );
+      expect(expected, isNotEmpty);
+      _expectSelectedShiftsCount(tester, '${expected.length}');
+      expect(find.text('--'), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('band_balanced')),
+        findsOneWidget,
+      );
 
-        final stored = await tester.runAsync(
-          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
-        );
-        expect(
-          stored,
-          isEmpty,
-          reason: 'opening the screen must not persist anything',
-        );
-      },
-    );
+      final stored = await tester.runAsync(
+        () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+      );
+      expect(
+        stored,
+        isEmpty,
+        reason: 'opening the screen must not persist anything',
+      );
+    });
 
     testWidgets(
       'b) section render order is lens, scope tag, summary, STAR SHIFT '
@@ -2873,8 +2907,7 @@ void main() {
         );
         await tester.pump();
 
-        double topOf(Finder f) =>
-            tester.getTopLeft(f.first).dy;
+        double topOf(Finder f) => tester.getTopLeft(f.first).dy;
 
         // Anchors for each section, top-to-bottom.
         final lensDy = topOf(
@@ -2906,37 +2939,31 @@ void main() {
       },
     );
 
-    testWidgets(
-      'c) Done label includes the live draft count',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              fourServiceDay,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('c) Done label includes the live draft count', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            fourServiceDay,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        final expected = deriveBandSelection(
-          fourServiceDay,
-          fourPeriodDefs,
-          StarBand.balanced,
-        );
-        // Default Balanced count is reflected in the action label.
-        expect(
-          find.text('Done · ${expected.length}'),
-          findsOneWidget,
-        );
+      final expected = deriveBandSelection(
+        fourServiceDay,
+        fourPeriodDefs,
+        StarBand.balanced,
+      );
+      // Default Balanced count is reflected in the action label.
+      expect(find.text('Done · ${expected.length}'), findsOneWidget);
 
-        // Clearing the draft updates the label to the new count.
-        await _clearAllDraft(tester);
-        expect(find.text('Done · 0'), findsOneWidget);
-      },
-    );
+      // Clearing the draft updates the label to the new count.
+      await _clearAllDraft(tester);
+      expect(find.text('Done · 0'), findsOneWidget);
+    });
 
     testWidgets(
       'd) calendar shows the Closed / Selected legend + count caption, '
@@ -2964,17 +2991,12 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(
-            const ValueKey<String>('cal_legend_count_caption'),
-          ),
+          find.byKey(const ValueKey<String>('cal_legend_count_caption')),
           findsOneWidget,
         );
         expect(find.text('Closed'), findsOneWidget);
         expect(find.text('Selected'), findsOneWidget);
-        expect(
-          find.text('Count = services kept that day'),
-          findsOneWidget,
-        );
+        expect(find.text('Count = services kept that day'), findsOneWidget);
 
         // Default Balanced selects all four services on 2026-03-20, so
         // the badge total is the day's configured service-period count
@@ -3000,187 +3022,176 @@ void main() {
   //     the Done count is live, and saveSelection is only called on Done.
 
   group('R9 - single continuous scroll + PLAN IMPACT dropdown', () {
-    testWidgets(
-      'a) the body is a single scroll: one SingleChildScrollView, '
-      'calendar is non-scrollable and not in Expanded/Flexible',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-            ),
+    testWidgets('a) the body is a single scroll: one SingleChildScrollView, '
+        'calendar is non-scrollable and not in Expanded/Flexible', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // Exactly ONE vertical page scroll between the fixed app bar
-        // and the fixed bottom bar (the prototype's single `.scl`). The
-        // lens chip row is a deliberate HORIZONTAL SingleChildScrollView
-        // (the prototype's `.lens` strip) and is not a second page
-        // scroll, so the page-scroll assertion is scoped to vertical.
-        final verticalPageScroll = find.byWidgetPredicate(
-          (w) =>
-              w is SingleChildScrollView &&
-              w.scrollDirection == Axis.vertical,
-        );
-        expect(verticalPageScroll, findsOneWidget);
+      // Exactly ONE vertical page scroll between the fixed app bar
+      // and the fixed bottom bar (the prototype's single `.scl`). The
+      // lens chip row is a deliberate HORIZONTAL SingleChildScrollView
+      // (the prototype's `.lens` strip) and is not a second page
+      // scroll, so the page-scroll assertion is scoped to vertical.
+      final verticalPageScroll = find.byWidgetPredicate(
+        (w) => w is SingleChildScrollView && w.scrollDirection == Axis.vertical,
+      );
+      expect(verticalPageScroll, findsOneWidget);
 
-        // The calendar is in the tree, inside that one vertical scroll.
-        final calendar = find.byType(CalendarGrid);
-        expect(calendar, findsOneWidget);
-        expect(
-          find.ancestor(of: calendar, matching: verticalPageScroll),
-          findsOneWidget,
-        );
+      // The calendar is in the tree, inside that one vertical scroll.
+      final calendar = find.byType(CalendarGrid);
+      expect(calendar, findsOneWidget);
+      expect(
+        find.ancestor(of: calendar, matching: verticalPageScroll),
+        findsOneWidget,
+      );
 
-        // The calendar is NOT its own scrollable: no Scrollable lives
-        // under CalendarGrid (it lays out at intrinsic height), so the
-        // single page scroll owns all scrolling, no nested conflict.
-        expect(
-          find.descendant(
+      // The calendar is NOT its own scrollable: no Scrollable lives
+      // under CalendarGrid (it lays out at intrinsic height), so the
+      // single page scroll owns all scrolling, no nested conflict.
+      expect(
+        find.descendant(of: calendar, matching: find.byType(Scrollable)),
+        findsNothing,
+      );
+
+      // The calendar is NOT flex-wrapped INSIDE the page scroll: the
+      // old `Expanded(child: CalendarGrid)` split-scroll region is
+      // gone. The body-level Expanded that holds the single scroll is
+      // the scroll's PARENT (correct, expected) so it is excluded by
+      // requiring the flex node to also be a descendant of the scroll.
+      // CalendarGrid's own internal cell Expandeds are descendants of
+      // the calendar, not ancestors, so they do not match here.
+      // Flexible is the superclass of Expanded, so this one predicate
+      // covers both.
+      final flexBetweenScrollAndCalendar = find.byWidgetPredicate(
+        (w) => w is Flexible,
+      );
+      expect(
+        find.descendant(
+          of: verticalPageScroll,
+          matching: find.ancestor(
             of: calendar,
-            matching: find.byType(Scrollable),
+            matching: flexBetweenScrollAndCalendar,
           ),
-          findsNothing,
-        );
+        ),
+        findsNothing,
+      );
+    });
 
-        // The calendar is NOT flex-wrapped INSIDE the page scroll: the
-        // old `Expanded(child: CalendarGrid)` split-scroll region is
-        // gone. The body-level Expanded that holds the single scroll is
-        // the scroll's PARENT (correct, expected) so it is excluded by
-        // requiring the flex node to also be a descendant of the scroll.
-        // CalendarGrid's own internal cell Expandeds are descendants of
-        // the calendar, not ancestors, so they do not match here.
-        // Flexible is the superclass of Expanded, so this one predicate
-        // covers both.
-        final flexBetweenScrollAndCalendar = find.byWidgetPredicate(
-          (w) => w is Flexible,
-        );
-        expect(
-          find.descendant(
-            of: verticalPageScroll,
-            matching: find.ancestor(
-              of: calendar,
-              matching: flexBetweenScrollAndCalendar,
-            ),
+    testWidgets('b) PLAN IMPACT is collapsed by default and toggles on tap', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
           ),
-          findsNothing,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pump();
 
-    testWidgets(
-      'b) PLAN IMPACT is collapsed by default and toggles on tap',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-            ),
+      // Header row is always present; metric cells are NOT in the
+      // tree while collapsed.
+      expect(
+        find.byKey(const ValueKey<String>('plan_impact_toggle')),
+        findsOneWidget,
+      );
+      expect(find.text('PLAN IMPACT'), findsOneWidget);
+      expect(find.text('FORECAST COVERS'), findsNothing);
+      expect(find.text('BLENDED WAGE'), findsNothing);
+
+      // Tap expands inline.
+      await _expandPlanImpact(tester);
+      expect(find.text('FORECAST COVERS'), findsOneWidget);
+      expect(find.text('FORECAST SALES'), findsOneWidget);
+      expect(find.text('FOH HRS'), findsOneWidget);
+      expect(find.text('BOH HRS'), findsOneWidget);
+      expect(find.text('LABOR %'), findsOneWidget);
+      expect(find.text('BLENDED WAGE'), findsOneWidget);
+
+      // Tapping again collapses it back.
+      final toggle = find.byKey(const ValueKey<String>('plan_impact_toggle'));
+      await tester.ensureVisible(toggle);
+      await tester.pumpAndSettle();
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+      expect(find.text('FORECAST COVERS'), findsNothing);
+      expect(find.text('PLAN IMPACT'), findsOneWidget);
+    });
+
+    testWidgets('c) no regression: opens populated, section order holds, Done '
+        'count is live, and Done is the only write path', (tester) async {
+      // Tall surface so the full single-scroll page lays out and
+      // absolute Y positions reflect the true top-to-bottom order.
+      tester.view.physicalSize = const Size(1200, 4000);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // Header row is always present; metric cells are NOT in the
-        // tree while collapsed.
-        expect(
-          find.byKey(const ValueKey<String>('plan_impact_toggle')),
-          findsOneWidget,
-        );
-        expect(find.text('PLAN IMPACT'), findsOneWidget);
-        expect(find.text('FORECAST COVERS'), findsNothing);
-        expect(find.text('BLENDED WAGE'), findsNothing);
+      // Opens populated (R8 default Balanced preserved).
+      final defs = ServicePeriodDefinitionResolver.demoDefinitions;
+      final expected = deriveBandSelection(
+        _allCandidates,
+        defs,
+        StarBand.balanced,
+      );
+      expect(expected, isNotEmpty);
+      _expectSelectedShiftsCount(tester, '${expected.length}');
+      expect(find.text('Done · ${expected.length}'), findsOneWidget);
 
-        // Tap expands inline.
-        await _expandPlanImpact(tester);
-        expect(find.text('FORECAST COVERS'), findsOneWidget);
-        expect(find.text('FORECAST SALES'), findsOneWidget);
-        expect(find.text('FOH HRS'), findsOneWidget);
-        expect(find.text('BOH HRS'), findsOneWidget);
-        expect(find.text('LABOR %'), findsOneWidget);
-        expect(find.text('BLENDED WAGE'), findsOneWidget);
+      // Opening the screen persists nothing.
+      final storedOnOpen = await tester.runAsync(
+        () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+      );
+      expect(storedOnOpen, isEmpty);
 
-        // Tapping again collapses it back.
-        final toggle =
-            find.byKey(const ValueKey<String>('plan_impact_toggle'));
-        await tester.ensureVisible(toggle);
-        await tester.pumpAndSettle();
-        await tester.tap(toggle);
-        await tester.pumpAndSettle();
-        expect(find.text('FORECAST COVERS'), findsNothing);
-        expect(find.text('PLAN IMPACT'), findsOneWidget);
-      },
-    );
+      // Section order top-to-bottom inside the single scroll:
+      // lens, scope tag, summary, STAR SHIFT SELECTION + band,
+      // calendar, then (fixed below) the override caption + CANCEL.
+      double topOf(Finder f) => tester.getTopLeft(f.first).dy;
+      final lensDy = topOf(
+        find.byKey(const ValueKey<String>('lens_$kWholeDayLensId')),
+      );
+      // R10: the scope label renders as an uppercase section header.
+      final scopeTagDy = topOf(find.text('WHOLE DAY TARGETS'));
+      final summaryDy = topOf(find.text('SELECTED SHIFTS'));
+      final bandLabelDy = topOf(find.text('STAR SHIFT SELECTION'));
+      final calendarDy = topOf(find.text('LAST 60 DAYS'));
+      final captionDy = topOf(
+        find.byKey(const ValueKey<String>('override_cycle_caption')),
+      );
+      final cancelDy = topOf(find.text('CANCEL'));
+      expect(lensDy, lessThan(scopeTagDy));
+      expect(scopeTagDy, lessThan(summaryDy));
+      expect(summaryDy, lessThan(bandLabelDy));
+      expect(bandLabelDy, lessThan(calendarDy));
+      expect(calendarDy, lessThan(captionDy));
+      expect(captionDy, lessThan(cancelDy));
 
-    testWidgets(
-      'c) no regression: opens populated, section order holds, Done '
-      'count is live, and Done is the only write path',
-      (tester) async {
-        // Tall surface so the full single-scroll page lays out and
-        // absolute Y positions reflect the true top-to-bottom order.
-        tester.view.physicalSize = const Size(1200, 4000);
-        tester.view.devicePixelRatio = 1.0;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              _allCandidates,
-              initialDemandCovers: demandCovers,
-            ),
-          ),
-        );
-        await tester.pump();
-
-        // Opens populated (R8 default Balanced preserved).
-        final defs = ServicePeriodDefinitionResolver.demoDefinitions;
-        final expected = deriveBandSelection(
-          _allCandidates,
-          defs,
-          StarBand.balanced,
-        );
-        expect(expected, isNotEmpty);
-        _expectSelectedShiftsCount(tester, '${expected.length}');
-        expect(find.text('Done · ${expected.length}'), findsOneWidget);
-
-        // Opening the screen persists nothing.
-        final storedOnOpen = await tester.runAsync(
-          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
-        );
-        expect(storedOnOpen, isEmpty);
-
-        // Section order top-to-bottom inside the single scroll:
-        // lens, scope tag, summary, STAR SHIFT SELECTION + band,
-        // calendar, then (fixed below) the override caption + CANCEL.
-        double topOf(Finder f) => tester.getTopLeft(f.first).dy;
-        final lensDy = topOf(
-          find.byKey(const ValueKey<String>('lens_$kWholeDayLensId')),
-        );
-        // R10: the scope label renders as an uppercase section header.
-        final scopeTagDy = topOf(find.text('WHOLE DAY TARGETS'));
-        final summaryDy = topOf(find.text('SELECTED SHIFTS'));
-        final bandLabelDy = topOf(find.text('STAR SHIFT SELECTION'));
-        final calendarDy = topOf(find.text('LAST 60 DAYS'));
-        final captionDy = topOf(
-          find.byKey(const ValueKey<String>('override_cycle_caption')),
-        );
-        final cancelDy = topOf(find.text('CANCEL'));
-        expect(lensDy, lessThan(scopeTagDy));
-        expect(scopeTagDy, lessThan(summaryDy));
-        expect(summaryDy, lessThan(bandLabelDy));
-        expect(bandLabelDy, lessThan(calendarDy));
-        expect(calendarDy, lessThan(captionDy));
-        expect(captionDy, lessThan(cancelDy));
-
-        // Done is still the only write path: tapping it persists the
-        // current draft keys (saveSelection unchanged, called on Done).
-        final stored = await _commitDoneAndReadKeys(tester);
-        expect(stored.toSet(), equals(expected));
-      },
-    );
+      // Done is still the only write path: tapping it persists the
+      // current draft keys (saveSelection unchanged, called on Done).
+      final stored = await _commitDoneAndReadKeys(tester);
+      expect(stored.toSet(), equals(expected));
+    });
   });
 
   // ── R10 - per-daypart mix-and-match band + scope label as header ─────────
@@ -3294,12 +3305,7 @@ void main() {
     // (N=6) each keep a different count. Used only by the lens-scoped
     // band test (b), which does not commit, so window validity is moot.
     final bandDistinctPool = <BaselineCandidateShift>[
-      for (final period in const [
-        'breakfast',
-        'lunch',
-        'dinner',
-        'late_night',
-      ])
+      for (final period in const ['breakfast', 'lunch', 'dinner', 'late_night'])
         for (var i = 0; i < 6; i++)
           BaselineCandidateShift(
             recordKey: '$period|d$i',
@@ -3333,48 +3339,47 @@ void main() {
       'late_night': StarBand.balanced,
     };
 
-    testWidgets(
-      'a) per-period band map defaults all 4 configured periods to '
-      'Balanced and opens populated with NO persistence call on open',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              windowValidPool,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('a) per-period band map defaults all 4 configured periods to '
+        'Balanced and opens populated with NO persistence call on open', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            windowValidPool,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // The on-open draft is exactly the union over all four periods
-        // of each period's Balanced strongest-N (the default map).
-        final expected = expectedFor(allBalanced);
-        expect(expected, isNotEmpty);
-        _expectSelectedShiftsCount(tester, '${expected.length}');
-        expect(find.text('--'), findsNothing);
+      // The on-open draft is exactly the union over all four periods
+      // of each period's Balanced strongest-N (the default map).
+      final expected = expectedFor(allBalanced);
+      expect(expected, isNotEmpty);
+      _expectSelectedShiftsCount(tester, '${expected.length}');
+      expect(find.text('--'), findsNothing);
 
-        // On the default Whole day lens every period shares Balanced, so
-        // the control highlights Balanced.
-        expect(
-          find.byKey(const ValueKey<String>('band_balanced')),
-          findsOneWidget,
-        );
+      // On the default Whole day lens every period shares Balanced, so
+      // the control highlights Balanced.
+      expect(
+        find.byKey(const ValueKey<String>('band_balanced')),
+        findsOneWidget,
+      );
 
-        // CRITICAL: opening must NOT persist anything. The per-period
-        // band map is ephemeral UI state; only Done writes.
-        final stored = await tester.runAsync(
-          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
-        );
-        expect(
-          stored,
-          isEmpty,
-          reason: 'opening must not persist; band map is ephemeral',
-        );
-      },
-    );
+      // CRITICAL: opening must NOT persist anything. The per-period
+      // band map is ephemeral UI state; only Done writes.
+      final stored = await tester.runAsync(
+        () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+      );
+      expect(
+        stored,
+        isEmpty,
+        reason: 'opening must not persist; band map is ephemeral',
+      );
+    });
 
     testWidgets(
       'b) a daypart lens sets ONLY that daypart\'s band; the Whole day '
@@ -3430,8 +3435,9 @@ void main() {
         // EVERY period's band to Generous, replacing the prior mixed
         // state. Derived draft == all-Generous union (4*6 = 24).
         await _tapLensChip(tester, kWholeDayLensId);
-        final generousChip =
-            find.byKey(const ValueKey<String>('band_generous'));
+        final generousChip = find.byKey(
+          const ValueKey<String>('band_generous'),
+        );
         await tester.ensureVisible(generousChip);
         await tester.pumpAndSettle();
         await tester.tap(generousChip);
@@ -3445,16 +3451,10 @@ void main() {
         };
         final expectedGenerous = expectedDistinctFor(allGenerous);
         _expectSelectedShiftsCount(tester, '${expectedGenerous.length}');
-        expect(
-          find.text('Done · ${expectedGenerous.length}'),
-          findsOneWidget,
-        );
+        expect(find.text('Done · ${expectedGenerous.length}'), findsOneWidget);
         // Bulk override touched ALL periods: strictly more than the
         // prior mixed state.
-        expect(
-          expectedGenerous.length,
-          greaterThan(expectedMixed.length),
-        );
+        expect(expectedGenerous.length, greaterThan(expectedMixed.length));
       },
     );
 
@@ -3501,105 +3501,93 @@ void main() {
       },
     );
 
-    testWidgets(
-      'd) saveSelection is still only called on DONE: the mixed '
-      'per-period draft lands via the unchanged write path',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              windowValidPool,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('d) saveSelection is still only called on DONE: the mixed '
+        'per-period draft lands via the unchanged write path', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            windowValidPool,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // Mix: Breakfast lens -> Lean. No persistence until Done.
-        await _tapLensChip(tester, 'breakfast');
-        final leanChip = find.byKey(const ValueKey<String>('band_lean'));
-        await tester.ensureVisible(leanChip);
-        await tester.pumpAndSettle();
-        await tester.tap(leanChip);
-        await tester.pumpAndSettle();
+      // Mix: Breakfast lens -> Lean. No persistence until Done.
+      await _tapLensChip(tester, 'breakfast');
+      final leanChip = find.byKey(const ValueKey<String>('band_lean'));
+      await tester.ensureVisible(leanChip);
+      await tester.pumpAndSettle();
+      await tester.tap(leanChip);
+      await tester.pumpAndSettle();
 
-        final preDone = await tester.runAsync(
-          () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
-        );
-        expect(
-          preDone,
-          isEmpty,
-          reason: 'band changes never persist before Done',
-        );
+      final preDone = await tester.runAsync(
+        () => DatabaseHelper.instance.getBaselineSelectedRecordKeys(),
+      );
+      expect(
+        preDone,
+        isEmpty,
+        reason: 'band changes never persist before Done',
+      );
 
-        // Done writes exactly the per-period mixed draft via the
-        // unchanged saveSelection path.
-        final mixed = <String, StarBand>{
-          'breakfast': StarBand.lean,
-          'lunch': StarBand.balanced,
-          'dinner': StarBand.balanced,
-          'late_night': StarBand.balanced,
-        };
-        final stored = await _commitDoneAndReadKeys(tester);
-        expect(stored, equals(expectedFor(mixed)));
-      },
-    );
+      // Done writes exactly the per-period mixed draft via the
+      // unchanged saveSelection path.
+      final mixed = <String, StarBand>{
+        'breakfast': StarBand.lean,
+        'lunch': StarBand.balanced,
+        'dinner': StarBand.balanced,
+        'late_night': StarBand.balanced,
+      };
+      final stored = await _commitDoneAndReadKeys(tester);
+      expect(stored, equals(expectedFor(mixed)));
+    });
 
-    testWidgets(
-      'e) the scope label is a non-interactive section header: no '
-      'button, no pill, no tap handler',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            BaselineManagerScreen.withCandidates(
-              windowValidPool,
-              initialDemandCovers: demandCovers,
-              initialDefs: fourPeriodDefs,
-              initialCanOverride: true,
-            ),
+    testWidgets('e) the scope label is a non-interactive section header: no '
+        'button, no pill, no tap handler', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          BaselineManagerScreen.withCandidates(
+            windowValidPool,
+            initialDemandCovers: demandCovers,
+            initialDefs: fourPeriodDefs,
+            initialCanOverride: true,
           ),
-        );
-        await tester.pump();
+        ),
+      );
+      await tester.pump();
 
-        // The scope label renders as an uppercase section header (the
-        // text content is still driven by the resolved defs / whole-day
-        // sentinel: "Whole day targets" upper-cased).
-        final headerFinder = find.text('WHOLE DAY TARGETS');
-        expect(headerFinder, findsOneWidget);
+      // The scope label renders as an uppercase section header (the
+      // text content is still driven by the resolved defs / whole-day
+      // sentinel: "Whole day targets" upper-cased).
+      final headerFinder = find.text('WHOLE DAY TARGETS');
+      expect(headerFinder, findsOneWidget);
 
-        // It is NOT wrapped in any tap/button affordance: no ancestor
-        // GestureDetector, InkWell, or button widget.
-        expect(
-          find.ancestor(
-            of: headerFinder,
-            matching: find.byType(GestureDetector),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.ancestor(
-            of: headerFinder,
-            matching: find.byType(InkWell),
-          ),
-          findsNothing,
-        );
-        expect(
-          find.ancestor(
-            of: headerFinder,
-            matching: find.byType(ButtonStyleButton),
-          ),
-          findsNothing,
-        );
+      // It is NOT wrapped in any tap/button affordance: no ancestor
+      // GestureDetector, InkWell, or button widget.
+      expect(
+        find.ancestor(of: headerFinder, matching: find.byType(GestureDetector)),
+        findsNothing,
+      );
+      expect(
+        find.ancestor(of: headerFinder, matching: find.byType(InkWell)),
+        findsNothing,
+      );
+      expect(
+        find.ancestor(
+          of: headerFinder,
+          matching: find.byType(ButtonStyleButton),
+        ),
+        findsNothing,
+      );
 
-        // It also re-scopes with the lens (text driven by resolved defs,
-        // never hardcoded): a daypart lens shows that period's label.
-        await _tapLensChip(tester, 'late_night');
-        expect(find.text('LATE NIGHT TARGETS'), findsOneWidget);
-        expect(find.text('WHOLE DAY TARGETS'), findsNothing);
-      },
-    );
+      // It also re-scopes with the lens (text driven by resolved defs,
+      // never hardcoded): a daypart lens shows that period's label.
+      await _tapLensChip(tester, 'late_night');
+      expect(find.text('LATE NIGHT TARGETS'), findsOneWidget);
+      expect(find.text('WHOLE DAY TARGETS'), findsNothing);
+    });
   });
 }
 

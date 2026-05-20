@@ -7,10 +7,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import '../services/baseline_manager_service.dart';
 import '../services/demand_forecast_context_service.dart';
 import '../services/star_target_selection_write_service.dart';
-import '../services/target_cycle_service.dart' show ManagerOverrideDeniedException;
+import '../services/target_cycle_service.dart'
+    show ManagerOverrideDeniedException;
 import '../state/active_target_profile_notifier.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';
@@ -126,8 +127,8 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     final defs = await BaselineManagerService.instance.resolveOperatorDefs();
     final candidates = await BaselineManagerService.instance
         .getCandidateShifts();
-    final canOverride =
-        await BaselineManagerService.instance.canManagerOverrideNow();
+    final canOverride = await BaselineManagerService.instance
+        .canManagerOverrideNow();
     if (!mounted) return;
     setState(() {
       _defs = defs;
@@ -188,9 +189,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
       // Defensive: no candidate has a period the band can rank. Keep the
       // screen honest with the previously-selected keys rather than
       // silently empty, and drop the per-period highlights.
-      _bandByPeriod = {
-        for (final id in _bandByPeriod.keys) id: null,
-      };
+      _bandByPeriod = {for (final id in _bandByPeriod.keys) id: null};
       return _candidates
           .where((c) => c.isSelected)
           .map((c) => c.recordKey)
@@ -391,6 +390,10 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     // consumed its override, a `ManagerOverrideDeniedException` is
     // thrown — surface it honestly and keep the draft intact so the
     // user sees why nothing landed.
+    if (_draftMissesSelectableServicePeriods) {
+      final proceed = await _confirmPartialServicePeriodTargetCoverage();
+      if (!proceed || !mounted) return;
+    }
     try {
       await BaselineManagerService.instance.saveSelection(_draftKeys);
     } on ManagerOverrideDeniedException catch (_) {
@@ -423,6 +426,55 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
     }
     if (!mounted) return;
     Navigator.of(context).pop();
+  }
+
+  bool get _draftMissesSelectableServicePeriods {
+    final configuredPeriodIds = _defs
+        .map((d) => d.id.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    if (configuredPeriodIds.isEmpty || _draftKeys.isEmpty) return false;
+
+    final selectablePeriodIds = _candidates
+        .map((c) => c.stableServicePeriodKey.trim())
+        .where((id) => id.isNotEmpty)
+        .where(configuredPeriodIds.contains)
+        .toSet();
+    if (selectablePeriodIds.isEmpty) return false;
+
+    final selectedPeriodIds = _draftSelected
+        .map((c) => c.stableServicePeriodKey.trim())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    return selectablePeriodIds.difference(selectedPeriodIds).isNotEmpty;
+  }
+
+  Future<bool> _confirmPartialServicePeriodTargetCoverage() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.backgroundMid,
+        title: Text(
+          'Some periods have no star shifts',
+          style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+        ),
+        content: Text(
+          'Periods without selected star shifts will keep their existing target fallback. Continue only if that is intentional.',
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Go back'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
   }
 
   String _serverWriteErrorMessage(StarTargetSelectionWriteException error) {
@@ -526,8 +578,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
                           onLensSelected: (id) =>
                               setState(() => _selectedLensId = id),
                         ),
-                        if (_canOverride == false)
-                          const _OverrideUsedNotice(),
+                        if (_canOverride == false) const _OverrideUsedNotice(),
                         BaselineManagerScopeTag(
                           defs: _defs,
                           selectedLensId: _selectedLensId,
