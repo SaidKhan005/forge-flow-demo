@@ -85,9 +85,42 @@
 - Graph signal used: `graphify-out/graph.json` was read only. Graphify was not rerun.
 - Mobile Covers Setup is not treated as a gap per operator decision. Mobile stays simple; full setup lives in Operator Web.
 - No new blocker remains in the data-accuracy, polling, or star-shift paths covered by this wave.
-- Remaining items are product or future-scope decisions, not bugs introduced by this patch:
+- Remaining items after the next sweep:
   - old alias retirement still needs a separate full-retirement pass before any compatibility route is removed,
-  - shift-close authority is still admin-only unless the operator decides it belongs in Operator Web,
-  - per-period walk-in split remains out of V1 scope,
-  - hidden admin-only server actions like heap snapshot capture and role-catalog publish should stay unsurfaced unless an admin workflow needs them,
+  - shift-close authority is already automatic in code: vendor-reliable rows use vendor finalization, unknown/unreliable rows fall back to the operator's business-day start,
+  - per-period walk-in split is now in scope for this follow-up,
+  - hidden admin-only server actions should be classified before any UI is added. Role-catalog publish already has an admin surface; heap snapshot capture remains an internal support/pressure route unless an admin workflow needs it,
   - star-target fallback behavior remains as-is with the simple warning/reminder approach.
+
+## Remaining audit action plan
+
+- Correct stale docs that still describe shift close as an open admin-only decision. In the app, shift close should not be a user setting.
+- Add walk-in support at service-period level without a schema migration:
+  - keep the existing `walk_in_manual_entries` jsonb object,
+  - keep old daily keys like `2026-05-06`,
+  - add optional per-period keys like `2026-05-06|dinner`,
+  - make the aggregator prefer the per-period value and split a legacy daily total across configured periods when no per-period value exists.
+- Update Operator Web Data Accuracy so, when the operator chooses "Add walk-ins to reservations", they can enter counts for each configured service period instead of one whole-day number only.
+- Keep mobile simple. Mobile can keep reading the same flat map; it does not need the full setup surface.
+- Add focused tests for:
+  - model parsing and per-period lookup,
+  - aggregator use of a per-period walk-in count,
+  - aggregator split of an old daily walk-in count,
+  - Operator Web saving per-period walk-in counts,
+  - gateway serialization of the new flat keys.
+
+## Remaining audit execution results
+
+- Shift close is not an app gap. It is already automatic:
+  - reliable POS vendors use vendor finalization,
+  - unknown or unreliable vendors fall back to the restaurant's business-day start,
+  - no operator/admin UI setting is needed.
+- Walk-ins are now per-period capable without a migration:
+  - old daily keys like `2026-05-06` still work,
+  - new keys like `2026-05-06|dinner` override the daily fallback for that period,
+  - old daily totals are split across configured periods instead of being copied into every period.
+- Operator Web Data Accuracy now lets an operator enter service-period walk-in counts when "Add walk-ins to reservations" is selected.
+- Mobile remains simple and compatible because it still reads the same flat `walk_in_manual_entries` map.
+- Hidden admin routes were classified:
+  - role-catalog publish already has an Admin surface,
+  - heap snapshot capture remains internal support/pressure tooling unless a real Admin workflow needs it.

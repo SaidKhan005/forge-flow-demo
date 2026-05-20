@@ -123,8 +123,9 @@ class DataAccuracySettingsSnapshot {
   final String walkInHandlingMode;
   final Map<String, Object?>? walkInHandlingModeSource;
 
-  /// Sparse map keyed by ISO `business_date`; each value is the
-  /// operator-entered walk-in count for that day.
+  /// Sparse flat walk-in map. Daily fallback keys use ISO
+  /// `business_date`; per-service-period keys use
+  /// `business_date|service_period_key`.
   final Map<String, int> walkInManualEntries;
 
   final DateTime updatedAt;

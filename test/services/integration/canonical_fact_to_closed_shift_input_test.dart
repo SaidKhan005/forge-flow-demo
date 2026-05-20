@@ -68,6 +68,17 @@ const Map<String, Object?> _manualDinnerCoversSourcePerServicePeriod =
 
 final DateTime _businessDate = DateTime.utc(2026, 5, 4);
 
+const ServicePeriodDefinition _lunchPeriod = ServicePeriodDefinition(
+  id: 'lunch',
+  label: 'Lunch',
+  shortLabel: 'L',
+  sortOrder: 1,
+  startLocalTime: '11:00',
+  endLocalTime: '16:00',
+  rollsPastMidnight: false,
+  applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+);
+
 // Period definition for "dinner" in America/Toronto (17:00–22:00 local).
 const ServicePeriodDefinition _dinnerPeriod = ServicePeriodDefinition(
   id: 'dinner',
@@ -79,6 +90,20 @@ const ServicePeriodDefinition _dinnerPeriod = ServicePeriodDefinition(
   rollsPastMidnight: false,
   applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
 );
+
+const ServicePeriodDefinition _lateNightPeriod = ServicePeriodDefinition(
+  id: 'late_night',
+  label: 'Late Night',
+  shortLabel: 'LN',
+  sortOrder: 3,
+  startLocalTime: '22:00',
+  endLocalTime: '02:00',
+  rollsPastMidnight: true,
+  applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+);
+
+const List<ServicePeriodDefinition> _standardPeriods =
+    <ServicePeriodDefinition>[_lunchPeriod, _dinnerPeriod, _lateNightPeriod];
 
 // 22:00 UTC = 18:00 EDT (America/Toronto, May 2026) → buckets to
 // dinner. Used by all three canonical fact tables.
@@ -1228,6 +1253,161 @@ void main() {
         'vendor_libro_seated_plus_operator_walk_in_count',
       );
     });
+
+    test('per-service-period walk-in count overrides daily fallback', () async {
+      final pool = _FakePool()..seedLocation(_opA, _locA);
+      pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+        'setting_id': 'das_walk_in_split',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
+        'covers_manual_entries': <String, Map<String, int>>{},
+        'wage_source': 'vendor',
+        'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+        'walk_in_manual_entries': <String, int>{
+          _businessDateIso: 30,
+          '$_businessDateIso|dinner': 7,
+        },
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': 'operator-admin',
+      };
+      pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+          <String, Object?>{
+            'id': 'das_walk_in_split_dinner',
+            'operator_id': _opA,
+            'location_id': _locA,
+            'service_period_key': 'dinner',
+            'covers_source': 'reservation_plus_walkin',
+            'wage_source': 'vendor_per_employee',
+            'effective_at_business_date': '2026-05-01',
+            'created_at': DateTime.utc(2026, 5, 1),
+            'updated_at': DateTime.utc(2026, 5, 1),
+            'updated_by': 'operator-admin',
+          };
+      pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+        <String, Object?>{
+          'vendor_id': 'square',
+          'vendor_entity_id': 'order_001',
+          'vendor_modified_at': _dinnerInstantUtc,
+          'covers': 0,
+          'covers_source': 'forecast_fallback',
+          'opened_at': _dinnerInstantUtc,
+          'closed_at': _dinnerInstantUtc,
+          'business_date': _businessDateIso,
+          'actual_sales': 525.00,
+        },
+      ];
+      pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+          [
+            <String, Object?>{
+              'vendor_id': 'libro',
+              'vendor_entity_id': 'res_001',
+              'reservation_at': _dinnerInstantUtc,
+              'party_size': 10,
+              'status': 'SEATED',
+              'seated_at': _dinnerInstantUtc,
+              'business_date': _businessDateIso,
+            },
+          ];
+
+      final result =
+          await CanonicalFactToClosedShiftInputAggregator(
+            TenantTransactionWrapper(pool),
+          ).aggregate(
+            operatorId: _opA,
+            locationId: _locA,
+            restaurantId: _restaurantA,
+            businessDate: _businessDate,
+            weekId: '2026-W18',
+            dayLabel: 'Mon',
+            servicePeriodId: 'dinner',
+            periodDefinition: _dinnerPeriod,
+            allServicePeriodDefinitions: _standardPeriods,
+          );
+
+      expect(result, isNotNull);
+      expect(result!.input.covers, 17);
+    });
+
+    test(
+      'legacy daily walk-in count is split across configured periods',
+      () async {
+        final pool = _FakePool()..seedLocation(_opA, _locA);
+        pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+          'setting_id': 'das_walk_in_daily_split',
+          'operator_id': _opA,
+          'location_id': _locA,
+          'covers_source_per_service_period':
+              _vendorCoversSourcePerServicePeriod,
+          'covers_manual_entries': <String, Map<String, int>>{},
+          'wage_source': 'vendor',
+          'walk_in_handling_mode': 'walk_ins_added_to_reservations',
+          'walk_in_manual_entries': <String, int>{_businessDateIso: 11},
+          'created_at': DateTime.utc(2026, 5, 1),
+          'updated_at': DateTime.utc(2026, 5, 4),
+          'updated_by': 'operator-admin',
+        };
+        pool.dataAccuracyServicePeriodSettingsByTenant['$_opA|$_locA|dinner'] =
+            <String, Object?>{
+              'id': 'das_walk_in_daily_split_dinner',
+              'operator_id': _opA,
+              'location_id': _locA,
+              'service_period_key': 'dinner',
+              'covers_source': 'reservation_plus_walkin',
+              'wage_source': 'vendor_per_employee',
+              'effective_at_business_date': '2026-05-01',
+              'created_at': DateTime.utc(2026, 5, 1),
+              'updated_at': DateTime.utc(2026, 5, 1),
+              'updated_by': 'operator-admin',
+            };
+        pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
+          <String, Object?>{
+            'vendor_id': 'square',
+            'vendor_entity_id': 'order_001',
+            'vendor_modified_at': _dinnerInstantUtc,
+            'covers': 0,
+            'covers_source': 'forecast_fallback',
+            'opened_at': _dinnerInstantUtc,
+            'closed_at': _dinnerInstantUtc,
+            'business_date': _businessDateIso,
+            'actual_sales': 525.00,
+          },
+        ];
+        pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
+            [
+              <String, Object?>{
+                'vendor_id': 'libro',
+                'vendor_entity_id': 'res_001',
+                'reservation_at': _dinnerInstantUtc,
+                'party_size': 10,
+                'status': 'SEATED',
+                'seated_at': _dinnerInstantUtc,
+                'business_date': _businessDateIso,
+              },
+            ];
+
+        final result =
+            await CanonicalFactToClosedShiftInputAggregator(
+              TenantTransactionWrapper(pool),
+            ).aggregate(
+              operatorId: _opA,
+              locationId: _locA,
+              restaurantId: _restaurantA,
+              businessDate: _businessDate,
+              weekId: '2026-W18',
+              dayLabel: 'Mon',
+              servicePeriodId: 'dinner',
+              periodDefinition: _dinnerPeriod,
+              allServicePeriodDefinitions: _standardPeriods,
+            );
+
+        expect(result, isNotNull);
+        // 11 daily walk-ins split by default 45/40/15 period weights:
+        // lunch 5, dinner 4, late night 2.
+        expect(result!.input.covers, 14);
+      },
+    );
 
     test('vendor preference does not silently use reservation facts', () async {
       final pool = _FakePool()..seedLocation(_opA, _locA);

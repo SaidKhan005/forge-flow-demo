@@ -419,7 +419,9 @@ create table if not exists public.data_accuracy_settings (
   -- ── Polling cadence (REVERSED 2026-05-05) ─────────────────────────
   -- Reservation demand / walk-in handling. Mobile reads this as
   -- server-owned truth; operators/admins write through the data accuracy
-  -- surfaces.
+  -- surfaces. walk_in_manual_entries stays one jsonb object for
+  -- compatibility: daily fallback keys are `YYYY-MM-DD`; per-period
+  -- keys are `YYYY-MM-DD|service_period_key` and win for that period.
   walk_in_handling_mode text not null default 'reservations_only'
     check (walk_in_handling_mode in (
       'reservations_only',

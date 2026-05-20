@@ -53,7 +53,10 @@ void main() {
             'scope_id': 'loc-1',
             'setting_id': 'setting-1',
           },
-          'walk_in_manual_entries': <String, Object?>{'2026-05-06': 8},
+          'walk_in_manual_entries': <String, Object?>{
+            '2026-05-06': 8,
+            '2026-05-06|dinner': 5,
+          },
           'created_at': '2026-05-06T12:00:00Z',
           'updated_at': '2026-05-06T12:01:00Z',
           'updated_by': 'user-1',
@@ -126,6 +129,10 @@ void main() {
       expect(settings!.coversSourceFor('lunch'), CoversSource.manual);
       expect(settings.wageSource, WageSource.manualMix);
       expect(settings.walkInCountFor('2026-05-06'), 8);
+      expect(
+        settings.walkInCountFor('2026-05-06', servicePeriodId: 'dinner'),
+        5,
+      );
       expect(
         settings.coversSourceSourceFor('lunch')?.label,
         'Location setting',
@@ -233,7 +240,10 @@ void main() {
           wageSource: WageSource.manualMix,
           walkInHandlingMode:
               DataAccuracyWalkInHandlingMode.walkInsAddedToReservations,
-          walkInManualEntries: const <String, int>{'2026-05-06': 8},
+          walkInManualEntries: const <String, int>{
+            '2026-05-06': 8,
+            '2026-05-06|dinner': 5,
+          },
           createdAt: DateTime.utc(2026, 5, 6, 12),
           updatedAt: DateTime.utc(2026, 5, 6, 12, 1),
           updatedBy: 'user-1',
@@ -258,6 +268,10 @@ void main() {
       expect(json.containsKey('covers_source_late_night'), isFalse);
       expect(json['wage_source'], 'manual_mix');
       expect(json['walk_in_handling_mode'], 'walk_ins_added_to_reservations');
+      expect(json['walk_in_manual_entries'], <String, Object?>{
+        '2026-05-06': 8,
+        '2026-05-06|dinner': 5,
+      });
       expect(request.headers['idempotency-key'], isNotNull);
     });
 

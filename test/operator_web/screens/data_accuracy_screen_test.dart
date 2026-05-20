@@ -372,6 +372,8 @@ void main() {
             gateway: gateway,
             businessDateIso: '2026-05-06',
             onSaveSettings: saves.add,
+            servicePeriodsLoader: () async =>
+                ServicePeriodDefinitionResolver.demoDefinitions,
           ),
         ),
       );
@@ -395,6 +397,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(saves.last.walkInManualEntries['2026-05-06'], 14);
+
+      final dinnerField = find.byKey(
+        const Key('walk_in_handling_period_count_field_dinner'),
+      );
+      await tester.ensureVisible(dinnerField);
+      await tester.pumpAndSettle();
+      await tester.enterText(dinnerField, '9');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(saves.last.walkInManualEntries['2026-05-06|dinner'], 9);
     });
 
     testWidgets('historical seed card surfaces for non-covers-exposing POS', (

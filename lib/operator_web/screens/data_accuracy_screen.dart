@@ -517,7 +517,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           seed?.walkInHandlingMode ??
               DataAccuracyWalkInHandlingMode.reservationsOnly,
         );
-    _walkInDailyCount = _walkInEntries[widget.businessDateIso];
+    _walkInDailyCount = seed?.dailyWalkInCountFor(widget.businessDateIso);
   }
 
   // ── Settings materialization ────────────────────────────────────
@@ -846,6 +846,36 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _emitSave();
   }
 
+  void _handleWalkInServicePeriodCountChanged(
+    String servicePeriodId,
+    int? value,
+  ) {
+    final key = DataAccuracySettings.walkInManualEntryKey(
+      widget.businessDateIso,
+      servicePeriodId,
+    );
+    setState(() {
+      if (value == null) {
+        _walkInEntries.remove(key);
+      } else {
+        _walkInEntries[key] = value;
+      }
+    });
+    _emitSave();
+  }
+
+  Map<String, int> _walkInCountsByServicePeriod() {
+    return <String, int>{
+      for (final period in _servicePeriods)
+        if (_walkInEntries[DataAccuracySettings.walkInManualEntryKey(
+              widget.businessDateIso,
+              period.id,
+            )]
+            case final count?)
+          period.id: count,
+    };
+  }
+
   Future<void> _handleRequestTierChange() async {
     final opener =
         widget.onRequestTierChange ??
@@ -1122,8 +1152,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               onModeChanged: _handleWalkInModeChanged,
               businessDateIso: widget.businessDateIso,
               dailyWalkInCount: _walkInDailyCount,
+              servicePeriods: _servicePeriods,
+              perPeriodWalkInCounts: _walkInCountsByServicePeriod(),
               source: settings.walkInHandlingModeSource,
               onDailyWalkInCountChanged: _handleWalkInCountChanged,
+              onPerPeriodWalkInCountChanged:
+                  _handleWalkInServicePeriodCountChanged,
             ),
           ],
           if (_showHistoricalSeedCard) ...[

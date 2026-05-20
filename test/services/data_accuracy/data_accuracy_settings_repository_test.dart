@@ -503,6 +503,48 @@ void main() {
       expect(decoded['2026-05-03'], equals(7));
       expect(decoded['2026-05-04'], equals(12));
     });
+
+    test(
+      'updateWalkInHandling can patch one service-period walk-in count',
+      () async {
+        final pool = _DataAccuracyPool(
+          existingRows: <PostgresRow>[
+            _settingsRow(
+              perPeriod: <String, Object?>{'dinner': 'reservation_plus_walkin'},
+              walkInHandlingMode: 'walk_ins_added_to_reservations',
+              walkInManualEntries: <String, Object?>{'2026-05-03': 7},
+            ),
+          ],
+        );
+        final repo = DataAccuracySettingsRepository(
+          TenantTransactionWrapper(pool),
+        );
+
+        final updated = await repo.updateWalkInHandling(
+          operatorId: _opA,
+          locationId: _locA,
+          mode: DataAccuracyWalkInHandlingMode.walkInsAddedToReservations,
+          businessDateIso: '2026-05-03',
+          servicePeriodId: 'dinner',
+          setWalkInCount: 5,
+          actorUserId: _userA,
+        );
+
+        expect(
+          updated.walkInCountFor('2026-05-03', servicePeriodId: 'dinner'),
+          equals(5),
+        );
+        final tx = pool.transactions.single;
+        final updateParams = tx.parameters.firstWhere(
+          (p) => p['walk_in_handling_mode'] == 'walk_ins_added_to_reservations',
+        );
+        final decoded =
+            jsonDecode(updateParams['walk_in_manual_entries'] as String)
+                as Map<String, Object?>;
+        expect(decoded['2026-05-03'], equals(7));
+        expect(decoded['2026-05-03|dinner'], equals(5));
+      },
+    );
   });
 }
 
