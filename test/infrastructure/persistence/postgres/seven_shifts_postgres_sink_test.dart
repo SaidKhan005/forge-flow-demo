@@ -26,6 +26,9 @@
 //      column list does NOT carry `actual_labor_dollars`, `regular_pay`,
 //      `overtime_pay` outside the `jsonEncode(rawPayload)` call.
 
+@Tags(['postgres'])
+library;
+
 import 'dart:convert';
 import 'dart:io';
 
