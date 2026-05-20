@@ -77,7 +77,7 @@ When a conflict actually fires during rebase:
 
 1. **Neither side wins by default.** Both prior intents must survive. If a conflict marker appears in `advisor_proxy.dart` between Codex's `+988` and the orchestrator's `+237` from PR #476, both semantics carry forward.
 2. **`git rerere`** is on. Resolutions replay on re-rebase.
-3. **Test gate before commit:** every conflicting file's test suite runs and passes. For the proxy: `flutter test test/advisor_proxy_test.dart` (218+ tests), `flutter test test/advisor_proxy_bootstrap_test.dart`, `flutter test test/auth_live_binding_test.dart`, `flutter test test/proxy_auth_session_ledger_writer_test.dart` (22+).
+3. **Test gate before commit:** every conflicting file's test suite runs and passes. For the proxy (post-PR-#1120 split): `flutter test test/advisor_proxy_config_test.dart test/advisor_proxy_token_and_guard_test.dart test/advisor_proxy_usage_and_migrations_test.dart test/advisor_proxy_jwt_verifier_test.dart test/advisor_proxy_http_and_admin_routes_test.dart` (218+ tests across 5 files), `flutter test test/advisor_proxy_bootstrap_test.dart`, `flutter test test/auth_live_binding_test.dart`, `flutter test test/proxy_auth_session_ledger_writer_test.dart` (22+).
 4. **HP re-verification post-merge.** HP #1, #2, #4, #11 from `CLAUDE.md` get a grep-based spot-check on the merged code, not just on the merger's intent.
 5. **Audit doc cross-references both diffs:** `git diff <pre-rebase>..<post-rebase>` AND `git diff <prior-merged-PR>..<post-rebase>` for every conflicting file. A clean verdict requires the diff to show both intents survived.
 
@@ -187,7 +187,7 @@ Every orchestrator-side fix must cite the specific authority doc + section that 
 ```
 | Finding | file:line | Authority anchor | Fix | Verification |
 |---|---|---|---|---|
-| §3.2 typed-catch missing at proxy line 12421 | tool/advisor_proxy/advisor_proxy.dart:12421 | A1 proxy bug audit §1.5 item #6; CLAUDE.md "Anti-patterns" bare-catch rule | Replace bare `catch (_)` with typed `catch (error, stack)` + structured log proxy.X.failed | flutter test test/advisor_proxy_test.dart pass + dart analyze clean |
+| §3.2 typed-catch missing at proxy line 12421 | tool/advisor_proxy/advisor_proxy.dart:12421 | A1 proxy bug audit §1.5 item #6; CLAUDE.md "Anti-patterns" bare-catch rule | Replace bare `catch (_)` with typed `catch (error, stack)` + structured log proxy.X.failed | flutter test test/advisor_proxy_{config,token_and_guard,usage_and_migrations,jwt_verifier,http_and_admin_routes}_test.dart pass + dart analyze clean |
 ```
 
 Authority order for anchors (earlier wins):

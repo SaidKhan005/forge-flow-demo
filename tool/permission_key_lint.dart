@@ -15,7 +15,8 @@
 // runtime checks against. This lint covers the Dart-side ↔ catalog-doc
 // pair; the Dart-side ↔ migration-seed pair is already covered by
 // `Phase 9 auth schema foundation migration (9.0)` in
-// `test/advisor_proxy_test.dart`.
+// `test/advisor_proxy_jwt_verifier_test.dart` (was previously in
+// `test/advisor_proxy_test.dart` before the PR #1120 split).
 //
 // Two declaration shapes are parsed:
 //
