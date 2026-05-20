@@ -48,6 +48,7 @@ import 'package:forge_and_flow/services/business_timing/business_timing_profile_
 import 'package:forge_and_flow/services/business_timing/operator_write_contracts.dart';
 
 import 'business_logo_upload_routes.dart';
+import 'operator_account_scope_overrides_routes.dart';
 import 'operator_location_account_overrides_routes.dart';
 import 'operator_location_timezone_routes.dart';
 
@@ -89,6 +90,18 @@ export 'operator_location_account_overrides_routes.dart'
         isOperatorLocationAccountOverridesPath,
         operatorLocationAccountOverridesIdOf,
         operatorLocationAccountOverridesPathPrefix;
+export 'operator_account_scope_overrides_routes.dart'
+    show
+        AccountScopeOverridesDecode,
+        AccountScopeOverridesOutcome,
+        AccountScopeOverridesOutcomeKind,
+        AccountScopeOverridesRecord,
+        AccountScopeOverridesWriteGateway,
+        OperatorAccountScopeOverridesHandler,
+        decodeAccountScopeOverridesPatchBody,
+        isOperatorAccountScopeOverridesPath,
+        operatorAccountScopeOverridesOrgUnitIdOf,
+        operatorAccountScopeOverridesOrgUnitPathPrefix;
 
 /// Route paths. Exported so the frontend gateway tests and the proxy
 /// dispatcher reference one canonical set of strings. The PATCH +
@@ -303,12 +316,14 @@ class OperatorWriteRouter {
     BusinessLogoUploadHandler? businessLogoUploadHandler,
     OperatorLocationTimezoneHandler? locationTimezoneHandler,
     OperatorLocationAccountOverridesHandler? locationAccountOverridesHandler,
+    OperatorAccountScopeOverridesHandler? accountScopeOverridesHandler,
   }) : _idempotencyCache = idempotencyCache ?? OperatorWriteIdempotencyCache(),
        _now = now ?? DateTime.now,
        _mutationListener = mutationListener,
        _businessLogoUploadHandler = businessLogoUploadHandler,
        _locationTimezoneHandler = locationTimezoneHandler,
-       _locationAccountOverridesHandler = locationAccountOverridesHandler;
+       _locationAccountOverridesHandler = locationAccountOverridesHandler,
+       _accountScopeOverridesHandler = accountScopeOverridesHandler;
 
   final OperatorAccountWriteGateway accountGateway;
   final OperatorBusinessTimingWriteGateway businessTimingGateway;
@@ -336,6 +351,11 @@ class OperatorWriteRouter {
   /// surface's "not configured" posture).
   final OperatorLocationAccountOverridesHandler?
   _locationAccountOverridesHandler;
+
+  /// Brand/account scope: optional org-unit account overrides handler.
+  /// When null, the `/v1/operator/account-overrides/org-unit/{org_unit_id}`
+  /// routes return the same calm 503 as the sibling location route.
+  final OperatorAccountScopeOverridesHandler? _accountScopeOverridesHandler;
 
   Future<void> _notifyTimingMutation({
     required String operatorId,
@@ -404,6 +424,10 @@ class OperatorWriteRouter {
         isOperatorLocationAccountOverridesPath(path)) {
       return true;
     }
+    if ((method == 'GET' || method == 'PATCH') &&
+        isOperatorAccountScopeOverridesPath(path)) {
+      return true;
+    }
     return false;
   }
 
@@ -414,6 +438,7 @@ class OperatorWriteRouter {
     if (path == operatorAccountPath) return true;
     if (path == operatorBusinessTimingProfilesPath) return true;
     if (isOperatorLocationAccountOverridesPath(path)) return true;
+    if (isOperatorAccountScopeOverridesPath(path)) return true;
     return false;
   }
 
@@ -546,6 +571,24 @@ class OperatorWriteRouter {
         actorUserId: actorUserId,
         actorKind: actorKind,
         locationId: locationId,
+        body: body,
+      );
+    }
+    if (isOperatorAccountScopeOverridesPath(path) &&
+        (method == 'GET' || method == 'PATCH')) {
+      final orgUnitId = operatorAccountScopeOverridesOrgUnitIdOf(path)!;
+      if (method == 'GET') {
+        return _handleAccountScopeOverridesGet(
+          operatorId: operatorId,
+          actorUserId: actorUserId,
+          orgUnitId: orgUnitId,
+        );
+      }
+      return _handleAccountScopeOverridesPatch(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        orgUnitId: orgUnitId,
         body: body,
       );
     }
@@ -1245,6 +1288,92 @@ class OperatorWriteRouter {
         eventKind: 'operator_location_account_overrides_updated',
         payload: <String, Object?>{
           'location_id': result.body['locationId'],
+          'override': override,
+          'business_default': businessDefault,
+          'effective': effective,
+        },
+        occurredAt: _now().toUtc(),
+      );
+    }
+    return result;
+  }
+
+  /// Brand/account scope: GET
+  /// /v1/operator/account-overrides/org-unit/{org_unit_id}. Read-only
+  /// resolver for Brand/Region/District account settings.
+  Future<({int statusCode, Map<String, Object?> body})>
+  _handleAccountScopeOverridesGet({
+    required String operatorId,
+    required String actorUserId,
+    required String orgUnitId,
+  }) async {
+    final handler = _accountScopeOverridesHandler;
+    if (handler == null) {
+      return (
+        statusCode: 503,
+        body: const <String, Object?>{
+          'error': 'operator_account_scope_overrides_not_configured',
+          'message':
+              'hierarchy account overrides are not available on this build; '
+              'please retry later.',
+        },
+      );
+    }
+    return handler.handleGet(
+      operatorId: operatorId,
+      actorUserId: actorUserId,
+      orgUnitId: orgUnitId,
+    );
+  }
+
+  /// Brand/account scope: PATCH
+  /// /v1/operator/account-overrides/org-unit/{org_unit_id}. Emits an
+  /// audit row on success so hierarchy-scope account edits are visible
+  /// in the operator audit log.
+  Future<({int statusCode, Map<String, Object?> body})>
+  _handleAccountScopeOverridesPatch({
+    required String operatorId,
+    required String actorUserId,
+    required String actorKind,
+    required String orgUnitId,
+    required Map<String, Object?> body,
+  }) async {
+    final handler = _accountScopeOverridesHandler;
+    if (handler == null) {
+      return (
+        statusCode: 503,
+        body: const <String, Object?>{
+          'error': 'operator_account_scope_overrides_not_configured',
+          'message':
+              'hierarchy account overrides are not available on this build; '
+              'please retry later.',
+        },
+      );
+    }
+    final result = await handler.handlePatch(
+      operatorId: operatorId,
+      actorUserId: actorUserId,
+      orgUnitId: orgUnitId,
+      body: body,
+    );
+    if (result.statusCode == 200) {
+      final override =
+          (result.body['override'] as Map?)?.cast<String, Object?>() ??
+          const <String, Object?>{};
+      final businessDefault =
+          (result.body['businessDefault'] as Map?)?.cast<String, Object?>() ??
+          const <String, Object?>{};
+      final effective =
+          (result.body['effective'] as Map?)?.cast<String, Object?>() ??
+          const <String, Object?>{};
+      await auditSink.record(
+        operatorId: operatorId,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        eventKind: 'operator_account_scope_overrides_updated',
+        payload: <String, Object?>{
+          'scope_type': result.body['scopeType'],
+          'scope_id': result.body['scopeId'],
           'override': override,
           'business_default': businessDefault,
           'effective': effective,

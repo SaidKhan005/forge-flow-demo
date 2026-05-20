@@ -26,19 +26,23 @@ void main() {
       }
     }
 
-    Future<({
-      HttpServer server,
-      HttpClient client,
-      Uri baseUri,
-      _RecordingAccountGateway accountGateway,
-      _RecordingTimingGateway timingGateway,
-      _RecordingAuditSink auditSink,
-    })> spinUp({
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _RecordingAccountGateway accountGateway,
+        _RecordingTimingGateway timingGateway,
+        _RecordingAuditSink auditSink,
+      })
+    >
+    spinUp({
       ProxyJwtClaims? initialClaims,
       bool routerConfigured = true,
     }) async {
       final verifier = _SettableVerifier();
-      verifier.claims = initialClaims ??
+      verifier.claims =
+          initialClaims ??
           const ProxyJwtClaims(
             userId: _kUser,
             operatorId: _kOpA,
@@ -98,12 +102,20 @@ void main() {
               'localeTag': 'en-US',
               'weekStartDay': 'monday',
               'rolloverHour': 4,
+              'contactEmail': 'hello@forge.test',
+              'contactPhone': '+1 555 0199',
             },
           );
           expect(response.statusCode, equals(200));
           final body = jsonDecode(response.body) as Map<String, Object?>;
           expect(body['operatorId'], equals(_kOpA));
           expect(body['businessName'], equals('Forge Test'));
+          expect(body['contactEmail'], equals('hello@forge.test'));
+          expect(body['contactPhone'], equals('+1 555 0199'));
+          expect(
+            ctx.accountGateway.lastPatch?.changedFieldNames,
+            containsAll(<String>['contactEmail', 'contactPhone']),
+          );
           expect(ctx.accountGateway.patchCalls, equals(1));
           expect(ctx.auditSink.records, hasLength(1));
           expect(
@@ -141,8 +153,9 @@ void main() {
       await withRealHttp(() async {
         final verifier = _SettableVerifier();
         verifier.claims = null;
-        verifier.error =
-            ProxyJwtVerificationError('token rejected by test verifier');
+        verifier.error = ProxyJwtVerificationError(
+          'token rejected by test verifier',
+        );
         final guard = ProxyRequestGuard(verifier: verifier);
         final router = OperatorWriteRouter(
           accountGateway: _RecordingAccountGateway(),
@@ -152,18 +165,15 @@ void main() {
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         // ignore: unawaited_futures
         server.listen((request) async {
-          await routeRequest(
-            request,
-            guard,
-            operatorWriteRouter: router,
-          );
+          await routeRequest(request, guard, operatorWriteRouter: router);
         });
         final client = HttpClient();
         try {
           final response = await _httpJson(
             client,
-            Uri.parse('http://${server.address.host}:${server.port}')
-                .resolve(operatorAccountPatchPath),
+            Uri.parse(
+              'http://${server.address.host}:${server.port}',
+            ).resolve(operatorAccountPatchPath),
             method: 'PATCH',
             authorization: 'Bearer fake.token',
             idempotencyKey: 'idem-001',
@@ -295,44 +305,45 @@ void main() {
       });
     });
 
-    test('idempotent replay with same body returns the same response',
-        () async {
-      await withRealHttp(() async {
-        final ctx = await spinUp();
-        try {
-          final firstResp = await _httpJson(
-            ctx.client,
-            ctx.baseUri.resolve(operatorAccountPatchPath),
-            method: 'PATCH',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-replay',
-            body: const <String, Object?>{'businessName': 'Replay Co'},
-          );
-          final secondResp = await _httpJson(
-            ctx.client,
-            ctx.baseUri.resolve(operatorAccountPatchPath),
-            method: 'PATCH',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-replay',
-            body: const <String, Object?>{'businessName': 'Replay Co'},
-          );
-          expect(firstResp.statusCode, equals(200));
-          expect(secondResp.statusCode, equals(200));
-          // Same status (replay does not bump 200 to 201).
-          expect(firstResp.body, equals(secondResp.body));
-          // Gateway saw the call exactly once.
-          expect(ctx.accountGateway.patchCalls, equals(1));
-          // Audit was emitted once (replay does not double-audit).
-          expect(ctx.auditSink.records, hasLength(1));
-        } finally {
-          ctx.client.close(force: true);
-          await ctx.server.close(force: true);
-        }
-      });
-    });
+    test(
+      'idempotent replay with same body returns the same response',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final firstResp = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(operatorAccountPatchPath),
+              method: 'PATCH',
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-replay',
+              body: const <String, Object?>{'businessName': 'Replay Co'},
+            );
+            final secondResp = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(operatorAccountPatchPath),
+              method: 'PATCH',
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-replay',
+              body: const <String, Object?>{'businessName': 'Replay Co'},
+            );
+            expect(firstResp.statusCode, equals(200));
+            expect(secondResp.statusCode, equals(200));
+            // Same status (replay does not bump 200 to 201).
+            expect(firstResp.body, equals(secondResp.body));
+            // Gateway saw the call exactly once.
+            expect(ctx.accountGateway.patchCalls, equals(1));
+            // Audit was emitted once (replay does not double-audit).
+            expect(ctx.auditSink.records, hasLength(1));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
 
-    test('409 idempotency_key_conflict on same key, different body',
-        () async {
+    test('409 idempotency_key_conflict on same key, different body', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();
         try {
@@ -362,74 +373,73 @@ void main() {
       });
     });
 
-    test('cross-tenant write impossible: gateway always sees JWT operator',
-        () async {
-      // Build two operator scopes; verify the gateway never sees
-      // operator B even though the router is shared.
-      await withRealHttp(() async {
-        final verifier = _SettableVerifier();
-        final accountGateway = _RecordingAccountGateway();
-        final guard = ProxyRequestGuard(verifier: verifier);
-        final router = OperatorWriteRouter(
-          accountGateway: accountGateway,
-          businessTimingGateway: _RecordingTimingGateway(),
-          auditSink: _RecordingAuditSink(),
-        );
-        final server =
-            await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-        // ignore: unawaited_futures
-        server.listen((request) async {
-          await routeRequest(
-            request,
-            guard,
-            operatorWriteRouter: router,
+    test(
+      'cross-tenant write impossible: gateway always sees JWT operator',
+      () async {
+        // Build two operator scopes; verify the gateway never sees
+        // operator B even though the router is shared.
+        await withRealHttp(() async {
+          final verifier = _SettableVerifier();
+          final accountGateway = _RecordingAccountGateway();
+          final guard = ProxyRequestGuard(verifier: verifier);
+          final router = OperatorWriteRouter(
+            accountGateway: accountGateway,
+            businessTimingGateway: _RecordingTimingGateway(),
+            auditSink: _RecordingAuditSink(),
           );
-        });
-        final client = HttpClient();
-        try {
-          // Operator A patches.
-          verifier.claims = const ProxyJwtClaims(
-            userId: _kUser,
-            operatorId: _kOpA,
-            locationId: _kLoc,
-            roles: <String>['operator_owner'],
-          );
-          final aResp = await _httpJson(
-            client,
-            Uri.parse('http://${server.address.host}:${server.port}')
-                .resolve(operatorAccountPatchPath),
-            method: 'PATCH',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-cross-a',
-            body: const <String, Object?>{'businessName': 'A Inc'},
-          );
-          expect(aResp.statusCode, equals(200));
-          expect(accountGateway.lastOperatorId, equals(_kOpA));
+          final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+          // ignore: unawaited_futures
+          server.listen((request) async {
+            await routeRequest(request, guard, operatorWriteRouter: router);
+          });
+          final client = HttpClient();
+          try {
+            // Operator A patches.
+            verifier.claims = const ProxyJwtClaims(
+              userId: _kUser,
+              operatorId: _kOpA,
+              locationId: _kLoc,
+              roles: <String>['operator_owner'],
+            );
+            final aResp = await _httpJson(
+              client,
+              Uri.parse(
+                'http://${server.address.host}:${server.port}',
+              ).resolve(operatorAccountPatchPath),
+              method: 'PATCH',
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-cross-a',
+              body: const <String, Object?>{'businessName': 'A Inc'},
+            );
+            expect(aResp.statusCode, equals(200));
+            expect(accountGateway.lastOperatorId, equals(_kOpA));
 
-          // Operator B patches; gateway must see B, not A.
-          verifier.claims = const ProxyJwtClaims(
-            userId: _kUser,
-            operatorId: _kOpB,
-            locationId: _kLoc,
-            roles: <String>['operator_owner'],
-          );
-          final bResp = await _httpJson(
-            client,
-            Uri.parse('http://${server.address.host}:${server.port}')
-                .resolve(operatorAccountPatchPath),
-            method: 'PATCH',
-            authorization: 'Bearer fake.token',
-            idempotencyKey: 'idem-cross-b',
-            body: const <String, Object?>{'businessName': 'B Inc'},
-          );
-          expect(bResp.statusCode, equals(200));
-          expect(accountGateway.lastOperatorId, equals(_kOpB));
-        } finally {
-          client.close(force: true);
-          await server.close(force: true);
-        }
-      });
-    });
+            // Operator B patches; gateway must see B, not A.
+            verifier.claims = const ProxyJwtClaims(
+              userId: _kUser,
+              operatorId: _kOpB,
+              locationId: _kLoc,
+              roles: <String>['operator_owner'],
+            );
+            final bResp = await _httpJson(
+              client,
+              Uri.parse(
+                'http://${server.address.host}:${server.port}',
+              ).resolve(operatorAccountPatchPath),
+              method: 'PATCH',
+              authorization: 'Bearer fake.token',
+              idempotencyKey: 'idem-cross-b',
+              body: const <String, Object?>{'businessName': 'B Inc'},
+            );
+            expect(bResp.statusCode, equals(200));
+            expect(accountGateway.lastOperatorId, equals(_kOpB));
+          } finally {
+            client.close(force: true);
+            await server.close(force: true);
+          }
+        });
+      },
+    );
   });
 }
 
@@ -472,12 +482,12 @@ class _RecordingAccountGateway implements OperatorAccountWriteGateway {
       businessName:
           (patch.fields['business_name'] as String?) ?? 'Recording Co',
       logoUrl: patch.fields['logo_url'] as String?,
-      currencyCode:
-          (patch.fields['preferred_currency'] as String?) ?? 'CAD',
+      currencyCode: (patch.fields['preferred_currency'] as String?) ?? 'CAD',
       localeTag: (patch.fields['locale_tag'] as String?) ?? 'en-CA',
-      weekStartDay:
-          (patch.fields['week_start_day'] as String?) ?? 'monday',
+      weekStartDay: (patch.fields['week_start_day'] as String?) ?? 'monday',
       rolloverHour: (patch.fields['rollover_hour'] as int?) ?? 4,
+      contactEmail: patch.fields['contact_email'] as String?,
+      contactPhone: patch.fields['contact_phone'] as String?,
       updatedAt: DateTime.utc(2026, 5, 7),
     );
   }
@@ -518,8 +528,7 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
   Future<OperatorBusinessTimingProfileRecord?> loadProfile({
     required String operatorId,
     required String profileId,
-  }) async =>
-      null;
+  }) async => null;
 
   @override
   Future<OperatorBusinessTimingResolutionResult> resolveForLocation({
@@ -556,8 +565,7 @@ class _RecordingTimingGateway implements OperatorBusinessTimingWriteGateway {
   @override
   Future<List<OperatorBusinessTimingProfileRecord>> listProfiles({
     required String operatorId,
-  }) async =>
-      const <OperatorBusinessTimingProfileRecord>[];
+  }) async => const <OperatorBusinessTimingProfileRecord>[];
 
   @override
   Future<OperatorBusinessTimingProfileRecord> replaceServicePeriodSet({

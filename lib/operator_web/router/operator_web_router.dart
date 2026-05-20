@@ -859,6 +859,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           id: unit.orgUnitId,
           label: unit.label,
           helper: _orgUnitHelper(unit.unitType),
+          unitType: unit.unitType,
           parentOrgUnitId: unit.parentOrgUnitId,
         ),
       );
@@ -1166,6 +1167,8 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         return 'Region';
       case 'district':
         return 'District';
+      case 'brand':
+        return 'Brand';
       case 'location_group':
         return 'Location group';
       default:

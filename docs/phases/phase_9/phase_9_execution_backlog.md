@@ -90,7 +90,12 @@ Do not re-open stale findings unless the repo regresses:
   `operator_owner` so the 11W.5 audit-log export gate has
   catalog parity); apply both on staging before claiming index hygiene parity
   or live audit-log export readiness, then carry into the next Production1
-  batch. The Hardening Wave B3 audit-anchor cron follow-up (punchlist §5) adds
+  batch. The account hierarchy follow-up now carries the shared migration
+  cutoff through `202605201100_operator_account_contact_fields.sql`: Brand is
+  a real `org_units.unit_type`, Brand/Region/District/Location-group account
+  overrides have their own table, and Business-level contact email/phone exist
+  on `public.operators` for inheritance. The Hardening Wave B3 audit-anchor
+  cron follow-up (punchlist §5) adds
   `202605061700_hardening_audit_anchor_daily_schedule.sql` (additive pg_cron
   schedule registration for `forge_audit_anchor_daily` at `0 2 * * *` UTC; the
   kickoff function `public.audit_anchor_run_daily()` is NOTIFY-only on channel

@@ -52,40 +52,34 @@ void main() {
   setUp(setUpSqliteDemo);
 
   group('Slice A — mobile multi-location seed (restaurant_locations)', () {
-    test(
-        'seeds the 4 §2c locations incl. demo_restaurant_001 + the R6 '
-        'four-period proof location',
-        () async {
+    test('seeds the 4 §2c locations incl. demo_restaurant_001 + the R6 '
+        'four-period proof location', () async {
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('restaurant_locations');
-      final byId = {
-        for (final r in rows) r['restaurant_id'] as String: r,
-      };
+      final byId = {for (final r in rows) r['restaurant_id'] as String: r};
 
-      expect(rows.length, 5,
-          reason: '§2c demo hierarchy seeds 4 locations '
-              '(Downtown/North Loop/Riverside/Harbour) plus the R6 '
-              'four-period proof restaurant (not a DemoScope.locations '
-              'member, but seeded into the same table)');
       expect(
-        byId.keys.toSet(),
-        {
-          DemoScope.downtownRestaurantId,
-          DemoScope.northLoopRestaurantId,
-          DemoScope.riversideRestaurantId,
-          DemoScope.harbourRestaurantId,
-          _kDemoFourPeriodRestaurantId,
-        },
+        rows.length,
+        5,
+        reason:
+            '§2c demo hierarchy seeds 4 locations '
+            '(Downtown/North Loop/Riverside/Harbour) plus the R6 '
+            'four-period proof restaurant (not a DemoScope.locations '
+            'member, but seeded into the same table)',
       );
+      expect(byId.keys.toSet(), {
+        DemoScope.downtownRestaurantId,
+        DemoScope.northLoopRestaurantId,
+        DemoScope.riversideRestaurantId,
+        DemoScope.harbourRestaurantId,
+        _kDemoFourPeriodRestaurantId,
+      });
 
       // Backward compat: Downtown stays demo_restaurant_001 with the
       // exact 'Barrio Legado' display name every existing
       // test/DemoScope assertion depends on.
       expect(DemoScope.downtownRestaurantId, 'demo_restaurant_001');
-      expect(
-        byId[DemoScope.restaurantId]!['display_name'],
-        'Barrio Legado',
-      );
+      expect(byId[DemoScope.restaurantId]!['display_name'], 'Barrio Legado');
       expect(
         byId[DemoScope.restaurantId]!['business_timezone'],
         'America/St_Johns',
@@ -97,9 +91,13 @@ void main() {
       await SqliteDatabase.instance.reseedDemo();
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('restaurant_locations');
-      expect(rows.length, 5,
-          reason: 'ConflictAlgorithm.ignore keeps the seed idempotent '
-              '(4 §2c locations + four-period proof)');
+      expect(
+        rows.length,
+        5,
+        reason:
+            'ConflictAlgorithm.ignore keeps the seed idempotent '
+            '(4 §2c locations + four-period proof)',
+      );
     });
 
     // Regression (orchestrator audit fix): a demo DB that predates the
@@ -109,8 +107,7 @@ void main() {
     // backfilled and the scope drawer stayed a 1-item list forever.
     // The guard is now removed; `_seedDemoRestaurant` is idempotent, so
     // the ensure path must backfill the 3 missing rows on next reseed.
-    test(
-        'upgrade path: Downtown-only DB backfills all 4 §2c locations + '
+    test('upgrade path: Downtown-only DB backfills all 4 §2c locations + '
         'the four-period proof', () async {
       final db = await SqliteDatabase.instance.database;
       // Simulate the stale pre-multi-location state.
@@ -127,8 +124,9 @@ void main() {
 
       // Routes through the now-unconditional `_seedDemoRestaurant`
       // (the guard site that previously skipped backfill).
-      await SqliteDatabase.instance
-          .reseedMockReplayForBusinessDate('2026-05-15');
+      await SqliteDatabase.instance.reseedMockReplayForBusinessDate(
+        '2026-05-15',
+      );
 
       final rows = await db.query('restaurant_locations');
       final ids = {for (final r in rows) r['restaurant_id'] as String};
@@ -141,36 +139,36 @@ void main() {
           DemoScope.harbourRestaurantId,
           _kDemoFourPeriodRestaurantId,
         },
-        reason: 'all 4 §2c locations + the four-period proof location '
+        reason:
+            'all 4 §2c locations + the four-period proof location '
             'restored for an existing demo user',
       );
     });
   });
 
   group('Slice A — scope drawer becomes a real switcher', () {
-    test(
-        'RestaurantScopeNotifier.availableScopes surfaces all 5 seeded '
-        'locations with Downtown still the default active scope',
-        () async {
+    test('RestaurantScopeNotifier.availableScopes surfaces all 5 seeded '
+        'locations with Downtown still the default active scope', () async {
       final notifier = RestaurantScopeNotifier();
       addTearDown(notifier.dispose);
       await notifier.refresh();
 
       final scopes = notifier.availableScopes;
-      expect(scopes.length, 5,
-          reason: 'drawer must list every seeded location so it is a '
-              'true switcher (§1.6) — includes the four-period proof '
-              'restaurant alongside the 4 §2c locations');
       expect(
-        scopes.map((s) => s.locationId).toSet(),
-        {
-          DemoScope.downtownRestaurantId,
-          DemoScope.northLoopRestaurantId,
-          DemoScope.riversideRestaurantId,
-          DemoScope.harbourRestaurantId,
-          _kDemoFourPeriodRestaurantId,
-        },
+        scopes.length,
+        5,
+        reason:
+            'drawer must list every seeded location so it is a '
+            'true switcher (§1.6) — includes the four-period proof '
+            'restaurant alongside the 4 §2c locations',
       );
+      expect(scopes.map((s) => s.locationId).toSet(), {
+        DemoScope.downtownRestaurantId,
+        DemoScope.northLoopRestaurantId,
+        DemoScope.riversideRestaurantId,
+        DemoScope.harbourRestaurantId,
+        _kDemoFourPeriodRestaurantId,
+      });
       expect(scopes.every((s) => s.isLocationScope), isTrue);
 
       // Downtown remains the resolved active location (backward
@@ -181,49 +179,57 @@ void main() {
   });
 
   group('Slice A — operator-web org tree matches §2c', () {
-    test('corp root + 2 regions + 1 district, 4 locations, aligned tree',
-        () {
-      final orgById = {
-        for (final o in kDemoTeamOrgUnitsFixture) o.orgUnitId: o,
-      };
-      // corp → 2 regions → 1 district = 4 org units.
-      expect(kDemoTeamOrgUnitsFixture.length, 4);
-      expect(
-        orgById.values.where((o) => o.unitType == 'corp').length,
-        1,
-      );
-      expect(
-        orgById.values.where((o) => o.unitType == 'region').length,
-        2,
-      );
-      final districts =
-          orgById.values.where((o) => o.unitType == 'district').toList();
-      expect(districts.length, 1);
+    test(
+      'corp root + brand + 2 regions + 1 district, 4 locations, aligned tree',
+      () {
+        final orgById = {
+          for (final o in kDemoTeamOrgUnitsFixture) o.orgUnitId: o,
+        };
+        // corp → 2 regions → 1 district = 4 org units.
+        expect(kDemoTeamOrgUnitsFixture.length, 5);
+        expect(orgById.values.where((o) => o.unitType == 'corp').length, 1);
+        expect(orgById.values.where((o) => o.unitType == 'region').length, 2);
+        final districts = orgById.values
+            .where((o) => o.unitType == 'district')
+            .toList();
+        expect(districts.length, 1);
+        final brands = orgById.values
+            .where((o) => o.unitType == 'brand')
+            .toList();
+        expect(brands.length, 1);
 
-      // Metro District nests under East Region (depth-3 path for §1.7
-      // inheritance demonstrability).
-      final metro = districts.single;
-      expect(metro.orgUnitId, 'demo-org-metro');
-      expect(metro.parentOrgUnitId, 'demo-org-east');
-      expect(metro.path, 'demo_bistro.east_region.metro_district');
+        // Metro District nests under East Region (depth-3 path for §1.7
+        // inheritance demonstrability).
+        final metro = districts.single;
+        expect(metro.orgUnitId, 'demo-org-metro');
+        expect(metro.parentOrgUnitId, 'demo-org-east');
+        expect(metro.path, 'demo_bistro.east_region.metro_district');
 
-      // 4 locations aligned with the mobile DemoScope.locations count.
-      expect(kDemoTeamLocationsFixture.length, 4);
-      expect(kDemoTeamLocationsFixture.length, DemoScope.locations.length);
-      final locByName = {
-        for (final l in kDemoTeamLocationsFixture) l.name: l,
-      };
-      expect(
-        locByName.keys.toSet(),
-        {'Downtown', 'North Loop', 'Riverside', 'Harbour'},
-      );
+        final harbourBrand = brands.single;
+        expect(harbourBrand.orgUnitId, 'demo-org-harbour-brand');
+        expect(harbourBrand.parentOrgUnitId, 'demo-org-west');
+        expect(harbourBrand.path, 'demo_bistro.west_region.harbour_brand');
 
-      // North Loop sits under Metro District; Harbour rolls straight
-      // up to West Region (the no-district inheritance path).
-      expect(locByName['North Loop']!.orgUnitId, 'demo-org-metro');
-      expect(locByName['Harbour']!.orgUnitId, 'demo-org-west');
-      expect(locByName['Downtown']!.orgUnitId, 'demo-org-east');
-      expect(locByName['Riverside']!.orgUnitId, 'demo-org-west');
-    });
+        // 4 locations aligned with the mobile DemoScope.locations count.
+        expect(kDemoTeamLocationsFixture.length, 4);
+        expect(kDemoTeamLocationsFixture.length, DemoScope.locations.length);
+        final locByName = {
+          for (final l in kDemoTeamLocationsFixture) l.name: l,
+        };
+        expect(locByName.keys.toSet(), {
+          'Downtown',
+          'North Loop',
+          'Riverside',
+          'Harbour',
+        });
+
+        // North Loop sits under Metro District; Harbour rolls straight
+        // up to West Region (the no-district inheritance path).
+        expect(locByName['North Loop']!.orgUnitId, 'demo-org-metro');
+        expect(locByName['Harbour']!.orgUnitId, 'demo-org-harbour-brand');
+        expect(locByName['Downtown']!.orgUnitId, 'demo-org-east');
+        expect(locByName['Riverside']!.orgUnitId, 'demo-org-west');
+      },
+    );
   });
 }

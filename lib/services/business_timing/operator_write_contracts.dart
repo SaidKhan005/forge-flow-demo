@@ -21,6 +21,8 @@ class OperatorAccountRecord {
     required this.weekStartDay,
     required this.rolloverHour,
     required this.updatedAt,
+    this.contactEmail,
+    this.contactPhone,
   });
 
   final String operatorId;
@@ -30,18 +32,22 @@ class OperatorAccountRecord {
   final String localeTag;
   final String weekStartDay;
   final int rolloverHour;
+  final String? contactEmail;
+  final String? contactPhone;
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'operatorId': operatorId,
-        'businessName': businessName,
-        'logoUrl': logoUrl,
-        'currencyCode': currencyCode,
-        'localeTag': localeTag,
-        'weekStartDay': weekStartDay,
-        'rolloverHour': rolloverHour,
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
-      };
+    'operatorId': operatorId,
+    'businessName': businessName,
+    'logoUrl': logoUrl,
+    'currencyCode': currencyCode,
+    'localeTag': localeTag,
+    'weekStartDay': weekStartDay,
+    'rolloverHour': rolloverHour,
+    'contactEmail': contactEmail,
+    'contactPhone': contactPhone,
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 class OperatorBusinessTimingServicePeriodRecord {
@@ -75,15 +81,15 @@ class OperatorBusinessTimingServicePeriodRecord {
   final List<int> applicableDays;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'key': key,
-        'label': label,
-        'startLocal': startLocal,
-        'endLocal': endLocal,
-        'rollsPastMidnight': rollsPastMidnight,
-        'shortLabel': shortLabel,
-        'sortOrder': sortOrder,
-        'applicableDays': List<int>.unmodifiable(applicableDays),
-      };
+    'key': key,
+    'label': label,
+    'startLocal': startLocal,
+    'endLocal': endLocal,
+    'rollsPastMidnight': rollsPastMidnight,
+    'shortLabel': shortLabel,
+    'sortOrder': sortOrder,
+    'applicableDays': List<int>.unmodifiable(applicableDays),
+  };
 }
 
 class OperatorBusinessTimingProfileRecord {
@@ -112,20 +118,20 @@ class OperatorBusinessTimingProfileRecord {
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'profileId': profileId,
-        'versionId': profileId,
-        'scopeKind': scopeKind,
-        'scopeId': scopeId,
-        'effectiveAtBusinessDate': effectiveAtBusinessDate,
-        'ianaTimezone': ianaTimezone,
-        'weekStartDay': weekStartDay,
-        'businessDayStartLocal': businessDayStartLocal,
-        'servicePeriods': <Map<String, Object?>>[
-          for (final period in servicePeriods) period.toJson(),
-        ],
-        'createdAt': createdAt.toUtc().toIso8601String(),
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
-      };
+    'profileId': profileId,
+    'versionId': profileId,
+    'scopeKind': scopeKind,
+    'scopeId': scopeId,
+    'effectiveAtBusinessDate': effectiveAtBusinessDate,
+    'ianaTimezone': ianaTimezone,
+    'weekStartDay': weekStartDay,
+    'businessDayStartLocal': businessDayStartLocal,
+    'servicePeriods': <Map<String, Object?>>[
+      for (final period in servicePeriods) period.toJson(),
+    ],
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 /// Fix #4 / S1 — one candidate in the location-scoped business-timing
@@ -182,26 +188,26 @@ class OperatorBusinessTimingResolutionCandidate {
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'profileId': profileId,
-        'versionId': profileId,
-        'scopeType': scopeType,
-        // Back-compat alias: existing operator-web records key on
-        // `scopeKind`; emit both so the read gateway can consume this
-        // record with the same field accessor as the list route.
-        'scopeKind': scopeType,
-        'scopeId': scopeId,
-        'scopeLabel': scopeLabel,
-        'scopeDepthRank': scopeDepthRank,
-        'ianaTimezone': ianaTimezone,
-        'effectiveAtBusinessDate': effectiveAtBusinessDate,
-        'weekStartDay': weekStartDay,
-        'businessDayStartLocal': businessDayStartLocal,
-        'servicePeriods': <Map<String, Object?>>[
-          for (final period in servicePeriods) period.toJson(),
-        ],
-        'createdAt': createdAt.toUtc().toIso8601String(),
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
-      };
+    'profileId': profileId,
+    'versionId': profileId,
+    'scopeType': scopeType,
+    // Back-compat alias: existing operator-web records key on
+    // `scopeKind`; emit both so the read gateway can consume this
+    // record with the same field accessor as the list route.
+    'scopeKind': scopeType,
+    'scopeId': scopeId,
+    'scopeLabel': scopeLabel,
+    'scopeDepthRank': scopeDepthRank,
+    'ianaTimezone': ianaTimezone,
+    'effectiveAtBusinessDate': effectiveAtBusinessDate,
+    'weekStartDay': weekStartDay,
+    'businessDayStartLocal': businessDayStartLocal,
+    'servicePeriods': <Map<String, Object?>>[
+      for (final period in servicePeriods) period.toJson(),
+    ],
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 /// Wire response for
@@ -230,14 +236,14 @@ class OperatorBusinessTimingResolutionResult {
   final List<OperatorBusinessTimingResolutionCandidate> candidates;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'operatorId': operatorId,
-        'locationId': locationId,
-        'businessDate': businessDate,
-        'ianaTimezone': ianaTimezone,
-        'candidates': <Map<String, Object?>>[
-          for (final candidate in candidates) candidate.toJson(),
-        ],
-      };
+    'operatorId': operatorId,
+    'locationId': locationId,
+    'businessDate': businessDate,
+    'ianaTimezone': ianaTimezone,
+    'candidates': <Map<String, Object?>>[
+      for (final candidate in candidates) candidate.toJson(),
+    ],
+  };
 }
 
 /// Repository-shaped exception the gateway throws to signal a typed
@@ -271,9 +277,7 @@ abstract class OperatorAccountWriteGateway {
   /// 11W.7 ops-debt — returns the resolved account row for
   /// [operatorId]. Returns null when the row is missing (router maps
   /// to 404). Read-only; no audit, no idempotency.
-  Future<OperatorAccountRecord?> loadAccount({
-    required String operatorId,
-  });
+  Future<OperatorAccountRecord?> loadAccount({required String operatorId});
 }
 
 /// Gateway for the four business-timing-profile write routes plus

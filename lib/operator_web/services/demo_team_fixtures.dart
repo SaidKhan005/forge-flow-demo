@@ -104,7 +104,7 @@ const List<DemoTeamLocationFixture> kDemoTeamLocationsFixture =
       DemoTeamLocationFixture(
         locationId: 'demo-loc-harbour',
         name: 'Harbour',
-        orgUnitId: 'demo-org-west',
+        orgUnitId: 'demo-org-harbour-brand',
       ),
     ];
 
@@ -146,6 +146,13 @@ const List<DemoTeamOrgUnitFixture> kDemoTeamOrgUnitsFixture =
         unitType: 'region',
         path: 'demo_bistro.west_region',
         parentOrgUnitId: 'demo-org-root',
+      ),
+      DemoTeamOrgUnitFixture(
+        orgUnitId: 'demo-org-harbour-brand',
+        name: 'Harbour Brand',
+        unitType: 'brand',
+        path: 'demo_bistro.west_region.harbour_brand',
+        parentOrgUnitId: 'demo-org-west',
       ),
     ];
 

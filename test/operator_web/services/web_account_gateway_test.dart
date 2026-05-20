@@ -259,6 +259,8 @@ void main() {
           businessName: 'Brio Restaurants',
           currencyCode: 'USD',
           localeTag: 'en-US',
+          contactEmail: 'hello@brio.test',
+          contactPhone: '+1 555 0100',
           weekStartDay: 'monday',
           rolloverHour: 4,
         ),
@@ -278,6 +280,8 @@ void main() {
       expect(json['businessName'], 'Brio Restaurants');
       expect(json['currencyCode'], 'USD');
       expect(json['localeTag'], 'en-US');
+      expect(json['contactEmail'], 'hello@brio.test');
+      expect(json['contactPhone'], '+1 555 0100');
       expect(json.containsKey('weekStartDay'), isFalse);
       expect(json.containsKey('rolloverHour'), isFalse);
     });
@@ -293,6 +297,8 @@ void main() {
       expect(json.containsKey('businessName'), isFalse);
       expect(json.containsKey('logoUrl'), isFalse);
       expect(json.containsKey('localeTag'), isFalse);
+      expect(json.containsKey('contactEmail'), isFalse);
+      expect(json.containsKey('contactPhone'), isFalse);
     });
 
     test('clearLogo serializes logoUrl: null distinct from omission', () async {
@@ -304,7 +310,40 @@ void main() {
       expect(json['logoUrl'], isNull);
     });
 
+    test(
+      'clear contact fields serialize null distinct from omission',
+      () async {
+        final gateway = buildGateway();
+        await gateway.patchAccount(
+          const AccountIdentityPatch(
+            clearContactEmail: true,
+            clearContactPhone: true,
+          ),
+        );
+        final json =
+            jsonDecode(capturedRequests.single.body) as Map<String, Object?>;
+        expect(json.containsKey('contactEmail'), isTrue);
+        expect(json['contactEmail'], isNull);
+        expect(json.containsKey('contactPhone'), isTrue);
+        expect(json['contactPhone'], isNull);
+      },
+    );
+
     test('parses 200 response into AccountIdentity', () async {
+      sequenceBodies = <Map<String, Object?>>[
+        <String, Object?>{
+          'operatorId': 'op-1',
+          'businessName': 'Brio Restaurants',
+          'logoUrl': 'https://cdn.brio.example/logo.png',
+          'currencyCode': 'USD',
+          'localeTag': 'en-US',
+          'weekStartDay': 'monday',
+          'rolloverHour': 4,
+          'contactEmail': 'hello@brio.test',
+          'contactPhone': '+1 555 0100',
+          'updatedAt': '2026-05-06T18:00:00.000Z',
+        },
+      ];
       final gateway = buildGateway();
       final identity = await gateway.patchAccount(const AccountIdentityPatch());
       expect(identity.operatorId, 'op-1');
@@ -314,6 +353,8 @@ void main() {
       expect(identity.localeTag, 'en-US');
       expect(identity.weekStartDay, 'monday');
       expect(identity.rolloverHour, 4);
+      expect(identity.contactEmail, 'hello@brio.test');
+      expect(identity.contactPhone, '+1 555 0100');
       expect(identity.updatedAt.isUtc, isTrue);
     });
 
@@ -637,6 +678,122 @@ void main() {
         isNot('idem-key-fixture'),
       );
     });
+
+    test(
+      'getAccountScopeOverrides issues a GET to the org-unit path',
+      () async {
+        sequenceBodies = <Map<String, Object?>>[
+          <String, Object?>{
+            'operatorId': 'op-1',
+            'scopeType': 'org_unit',
+            'scopeId': 'org-1',
+            'effective': <String, Object?>{
+              'ianaTimezone': 'America/Toronto',
+              'localeCode': 'en-CA',
+              'currencyCode': 'CAD',
+              'businessDayRolloverHour': null,
+              'contactEmail': 'region@example.com',
+              'contactPhone': null,
+            },
+            'override': <String, Object?>{
+              'ianaTimezone': 'America/Toronto',
+              'localeCode': null,
+              'currencyCode': null,
+              'businessDayRolloverHour': null,
+              'contactEmail': null,
+              'contactPhone': null,
+            },
+            'businessDefault': <String, Object?>{
+              'ianaTimezone': null,
+              'localeCode': 'en-CA',
+              'currencyCode': 'CAD',
+              'businessDayRolloverHour': null,
+              'contactEmail': 'region@example.com',
+              'contactPhone': null,
+            },
+            'updatedAt': '2026-05-20T12:00:00.000Z',
+          },
+        ];
+        final gateway = buildGateway();
+        final envelope = await gateway.getAccountScopeOverrides(
+          scope: const AccountOverrideScope(
+            scopeType: 'org_unit',
+            scopeId: 'org-1',
+          ),
+        );
+        expect(envelope.locationId, equals('org-1'));
+        expect(envelope.effective.ianaTimezone, equals('America/Toronto'));
+        expect(capturedRequests.single.method, equals('GET'));
+        expect(
+          capturedRequests.single.url.path,
+          equals('/v1/operator/account-overrides/org-unit/org-1'),
+        );
+      },
+    );
+
+    test(
+      'patchAccountScopeOverrides serialises scoped patch with stable key',
+      () async {
+        sequenceBodies = <Map<String, Object?>>[
+          <String, Object?>{
+            'operatorId': 'op-1',
+            'scopeType': 'org_unit',
+            'scopeId': 'org-1',
+            'effective': <String, Object?>{
+              'ianaTimezone': 'Europe/London',
+              'localeCode': 'en-GB',
+              'currencyCode': 'GBP',
+              'businessDayRolloverHour': null,
+              'contactEmail': null,
+              'contactPhone': null,
+            },
+            'override': <String, Object?>{
+              'ianaTimezone': 'Europe/London',
+              'localeCode': 'en-GB',
+              'currencyCode': 'GBP',
+              'businessDayRolloverHour': null,
+              'contactEmail': null,
+              'contactPhone': null,
+            },
+            'businessDefault': <String, Object?>{
+              'ianaTimezone': 'America/Toronto',
+              'localeCode': 'en-CA',
+              'currencyCode': 'CAD',
+              'businessDayRolloverHour': null,
+              'contactEmail': null,
+              'contactPhone': null,
+            },
+            'updatedAt': '2026-05-20T12:00:00.000Z',
+          },
+        ];
+        final gateway = buildGateway();
+        await gateway.patchAccountScopeOverrides(
+          scope: const AccountOverrideScope(
+            scopeType: 'org_unit',
+            scopeId: 'org-1',
+          ),
+          patch: const LocationAccountOverridesPatchPayload(
+            ianaTimezone: 'Europe/London',
+            localeCode: 'en-GB',
+            currencyCode: 'GBP',
+            clearContactPhone: true,
+          ),
+        );
+        expect(capturedRequests.single.method, equals('PATCH'));
+        final body =
+            jsonDecode(capturedRequests.single.body) as Map<String, Object?>;
+        expect(body['ianaTimezone'], equals('Europe/London'));
+        expect(body['localeCode'], equals('en-GB'));
+        expect(body['currencyCode'], equals('GBP'));
+        expect(body.containsKey('businessDayRolloverHour'), isFalse);
+        expect(body['contactPhone'], isNull);
+        expect(
+          capturedRequests.single.headers['idempotency-key'],
+          startsWith('op-web-account-scope-overrides-patch-'),
+        );
+        expect(capturedRequests.single.url.path.contains('/admin/'), isFalse);
+      },
+    );
   });
 
   group('OperatorWebAccountActions session freshness', () {

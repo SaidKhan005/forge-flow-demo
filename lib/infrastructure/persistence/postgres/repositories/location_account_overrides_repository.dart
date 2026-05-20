@@ -217,8 +217,7 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
           'location_id': locationId,
         },
       );
-      final priorRow =
-          existing.isEmpty ? null : _rowFromMap(existing.single);
+      final priorRow = existing.isEmpty ? null : _rowFromMap(existing.single);
       // Compute the merged column values: patch wins, then existing
       // wins, then NULL.
       final mergedIanaTimezone = patch.clearIanaTimezone
@@ -233,7 +232,7 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
       final mergedBusinessDayRolloverHour = patch.clearBusinessDayRolloverHour
           ? null
           : (patch.businessDayRolloverHour ??
-              priorRow?.businessDayRolloverHour);
+                priorRow?.businessDayRolloverHour);
       final mergedContactEmail = patch.clearContactEmail
           ? null
           : (patch.contactEmail ?? priorRow?.contactEmail);
@@ -274,9 +273,7 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
         },
       );
       if (rows.isEmpty) {
-        throw StateError(
-          'location_account_overrides upsert returned no row',
-        );
+        throw StateError('location_account_overrides upsert returned no row');
       }
       final merged = _rowFromMap(rows.single);
 
@@ -300,8 +297,7 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
           parameters: <String, Object?>{
             'operator_id': operatorId,
             'location_id': locationId,
-            'business_day_rollover_hour':
-                merged.businessDayRolloverHour,
+            'business_day_rollover_hour': merged.businessDayRolloverHour,
           },
         );
       }
@@ -403,17 +399,105 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
         return LocationAccountOverridesResolved._notFound();
       }
       final operatorRow = operatorRows.single;
+      final inheritedRows = await exec.query(
+        'select '
+        '  (select o.iana_timezone '
+        '   from public.org_unit_account_overrides o '
+        '   join public.org_units ou '
+        '     on ou.operator_id = o.operator_id '
+        '    and ou.id = o.org_unit_id '
+        '   join public.locations loc '
+        '     on loc.operator_id = o.operator_id '
+        '    and loc.location_id = @location_id::uuid '
+        '   where o.operator_id = @operator_id::uuid '
+        '     and loc.deleted_at is null '
+        '     and ou.deleted_at is null '
+        '     and ou.path @> loc.org_unit_path '
+        '     and o.iana_timezone is not null '
+        '   order by nlevel(ou.path) desc '
+        '   limit 1) as iana_timezone, '
+        '  (select o.locale_code '
+        '   from public.org_unit_account_overrides o '
+        '   join public.org_units ou '
+        '     on ou.operator_id = o.operator_id '
+        '    and ou.id = o.org_unit_id '
+        '   join public.locations loc '
+        '     on loc.operator_id = o.operator_id '
+        '    and loc.location_id = @location_id::uuid '
+        '   where o.operator_id = @operator_id::uuid '
+        '     and loc.deleted_at is null '
+        '     and ou.deleted_at is null '
+        '     and ou.path @> loc.org_unit_path '
+        '     and o.locale_code is not null '
+        '   order by nlevel(ou.path) desc '
+        '   limit 1) as locale_code, '
+        '  (select o.currency_code '
+        '   from public.org_unit_account_overrides o '
+        '   join public.org_units ou '
+        '     on ou.operator_id = o.operator_id '
+        '    and ou.id = o.org_unit_id '
+        '   join public.locations loc '
+        '     on loc.operator_id = o.operator_id '
+        '    and loc.location_id = @location_id::uuid '
+        '   where o.operator_id = @operator_id::uuid '
+        '     and loc.deleted_at is null '
+        '     and ou.deleted_at is null '
+        '     and ou.path @> loc.org_unit_path '
+        '     and o.currency_code is not null '
+        '   order by nlevel(ou.path) desc '
+        '   limit 1) as currency_code, '
+        '  (select o.contact_email '
+        '   from public.org_unit_account_overrides o '
+        '   join public.org_units ou '
+        '     on ou.operator_id = o.operator_id '
+        '    and ou.id = o.org_unit_id '
+        '   join public.locations loc '
+        '     on loc.operator_id = o.operator_id '
+        '    and loc.location_id = @location_id::uuid '
+        '   where o.operator_id = @operator_id::uuid '
+        '     and loc.deleted_at is null '
+        '     and ou.deleted_at is null '
+        '     and ou.path @> loc.org_unit_path '
+        '     and o.contact_email is not null '
+        '   order by nlevel(ou.path) desc '
+        '   limit 1) as contact_email, '
+        '  (select o.contact_phone '
+        '   from public.org_unit_account_overrides o '
+        '   join public.org_units ou '
+        '     on ou.operator_id = o.operator_id '
+        '    and ou.id = o.org_unit_id '
+        '   join public.locations loc '
+        '     on loc.operator_id = o.operator_id '
+        '    and loc.location_id = @location_id::uuid '
+        '   where o.operator_id = @operator_id::uuid '
+        '     and loc.deleted_at is null '
+        '     and ou.deleted_at is null '
+        '     and ou.path @> loc.org_unit_path '
+        '     and o.contact_phone is not null '
+        '   order by nlevel(ou.path) desc '
+        '   limit 1) as contact_phone',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      final inheritedRow = inheritedRows.isEmpty
+          ? const <String, Object?>{}
+          : inheritedRows.single;
       final businessDefault = LocationAccountOverridesDefaults(
-        ianaTimezone: locationTimezone,
-        localeCode: operatorRow['locale_tag'] as String?,
+        ianaTimezone:
+            _optionalString(inheritedRow, 'iana_timezone') ?? locationTimezone,
+        localeCode:
+            _optionalString(inheritedRow, 'locale_code') ??
+            operatorRow['locale_tag'] as String?,
         currencyCode:
+            _optionalString(inheritedRow, 'currency_code') ??
             (operatorRow['preferred_currency'] as String?)?.trim(),
-        businessDayRolloverHour:
-            operatorRow['rollover_hour'] is num
-                ? (operatorRow['rollover_hour']! as num).toInt()
-                : null,
-        contactEmail: null,
-        contactPhone: null,
+        businessDayRolloverHour: operatorRow['rollover_hour'] is num
+            ? (operatorRow['rollover_hour']! as num).toInt()
+            : null,
+        contactEmail: _optionalString(inheritedRow, 'contact_email'),
+        contactPhone: _optionalString(inheritedRow, 'contact_phone'),
       );
       // Override row (may be absent).
       final overrideRows = await exec.query(
@@ -427,27 +511,25 @@ class LocationAccountOverridesRepository extends OperatorScopedRepository {
           'location_id': locationId,
         },
       );
-      final overrideRow =
-          overrideRows.isEmpty ? null : _rowFromMap(overrideRows.single);
+      final overrideRow = overrideRows.isEmpty
+          ? null
+          : _rowFromMap(overrideRows.single);
       // If the override row doesn't carry a business_day_rollover_hour
       // but the legacy locations column does, expose the legacy value
       // as the "effective" (so historical per-location rollover settings
       // continue to surface even before an override row is written).
       // The override surface itself is null in that case.
-      final effectiveRolloverHour = overrideRow?.businessDayRolloverHour ??
+      final effectiveRolloverHour =
+          overrideRow?.businessDayRolloverHour ??
           locationRollover ??
           businessDefault.businessDayRolloverHour;
       final effective = LocationAccountOverridesDefaults(
-        ianaTimezone:
-            overrideRow?.ianaTimezone ?? businessDefault.ianaTimezone,
+        ianaTimezone: overrideRow?.ianaTimezone ?? businessDefault.ianaTimezone,
         localeCode: overrideRow?.localeCode ?? businessDefault.localeCode,
-        currencyCode:
-            overrideRow?.currencyCode ?? businessDefault.currencyCode,
+        currencyCode: overrideRow?.currencyCode ?? businessDefault.currencyCode,
         businessDayRolloverHour: effectiveRolloverHour,
-        contactEmail:
-            overrideRow?.contactEmail ?? businessDefault.contactEmail,
-        contactPhone:
-            overrideRow?.contactPhone ?? businessDefault.contactPhone,
+        contactEmail: overrideRow?.contactEmail ?? businessDefault.contactEmail,
+        contactPhone: overrideRow?.contactPhone ?? businessDefault.contactPhone,
       );
       return LocationAccountOverridesResolved._ok(
         operatorId: operatorId,
@@ -624,6 +706,5 @@ class LocationAccountOverridesInputError implements Exception {
   final String message;
 
   @override
-  String toString() =>
-      'LocationAccountOverridesInputError($field): $message';
+  String toString() => 'LocationAccountOverridesInputError($field): $message';
 }

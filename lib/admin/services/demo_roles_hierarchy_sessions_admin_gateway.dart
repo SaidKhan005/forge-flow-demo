@@ -1002,6 +1002,8 @@ class HierarchyValidationCopy {
     switch (unitType) {
       case 'corp':
         return 'Business';
+      case 'brand':
+        return 'Brand';
       case 'region':
         return 'Region';
       case 'district':

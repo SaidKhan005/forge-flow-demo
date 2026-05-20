@@ -861,6 +861,8 @@ const Map<String, String> _accountFieldToColumn = <String, String>{
   'localeTag': 'locale_tag',
   'weekStartDay': 'week_start_day',
   'rolloverHour': 'rollover_hour',
+  'contactEmail': 'contact_email',
+  'contactPhone': 'contact_phone',
 };
 
 /// Validates a PATCH /v1/operator/account body. Every field is
@@ -976,6 +978,56 @@ ValidatedOperatorAccountPatch validateOperatorAccountPatch(
     }
     fields['rollover_hour'] = value;
     changed.add('rolloverHour');
+  }
+
+  if (body.containsKey('contactEmail')) {
+    final value = body['contactEmail'];
+    if (value == null) {
+      fields['contact_email'] = null;
+    } else if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed.length > 320 || !trimmed.contains('@')) {
+        throw const BusinessTimingValidationError(
+          code: 'invalid_contact_email',
+          message:
+              'contactEmail must be a syntactically valid address and at most 320 characters',
+          path: '/contactEmail',
+        );
+      }
+      fields['contact_email'] = trimmed;
+    } else {
+      throw const BusinessTimingValidationError(
+        code: 'invalid_contact_email',
+        message: 'contactEmail must be null or a string',
+        path: '/contactEmail',
+      );
+    }
+    changed.add('contactEmail');
+  }
+
+  if (body.containsKey('contactPhone')) {
+    final value = body['contactPhone'];
+    if (value == null) {
+      fields['contact_phone'] = null;
+    } else if (value is String) {
+      final trimmed = value.trim();
+      if (trimmed.isEmpty || trimmed.length > 64) {
+        throw const BusinessTimingValidationError(
+          code: 'invalid_contact_phone',
+          message:
+              'contactPhone must be a non-empty phone string of at most 64 characters, or null',
+          path: '/contactPhone',
+        );
+      }
+      fields['contact_phone'] = trimmed;
+    } else {
+      throw const BusinessTimingValidationError(
+        code: 'invalid_contact_phone',
+        message: 'contactPhone must be null or a string',
+        path: '/contactPhone',
+      );
+    }
+    changed.add('contactPhone');
   }
 
   // Reject unknown fields so the frontend cannot smuggle column writes

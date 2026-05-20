@@ -320,7 +320,10 @@ class DemoOperatorWebBusinessTimingWriteGateway
 }
 
 class DemoOperatorWebAccountGateway
-    implements WebAccountGateway, WebAccountSessionGateway {
+    implements
+        WebAccountGateway,
+        WebAccountSessionGateway,
+        WebAccountScopeOverridesGateway {
   DemoOperatorWebAccountGateway({
     this.operatorId = 'demo-operator',
     this.locationId = 'demo-location',
@@ -330,6 +333,8 @@ class DemoOperatorWebAccountGateway
     String localeTag = 'en-CA',
     String weekStartDay = 'monday',
     int rolloverHour = 4,
+    String? contactEmail,
+    String? contactPhone,
     String ianaTimezone = 'America/Toronto',
   }) : _identity = AccountIdentity(
          operatorId: operatorId,
@@ -339,6 +344,8 @@ class DemoOperatorWebAccountGateway
          localeTag: localeTag,
          weekStartDay: weekStartDay,
          rolloverHour: rolloverHour,
+         contactEmail: contactEmail,
+         contactPhone: contactPhone,
          updatedAt: DateTime.now().toUtc(),
        ),
        _timezone = ianaTimezone;
@@ -347,8 +354,8 @@ class DemoOperatorWebAccountGateway
   final String locationId;
   AccountIdentity _identity;
   String _timezone;
-  LocationAccountOverridesFieldSet _override =
-      const LocationAccountOverridesFieldSet();
+  final Map<String, LocationAccountOverridesFieldSet> _overrides =
+      <String, LocationAccountOverridesFieldSet>{};
 
   @override
   Future<AccountIdentity> getAccount() async => _identity;
@@ -363,6 +370,12 @@ class DemoOperatorWebAccountGateway
       localeTag: patch.localeTag ?? _identity.localeTag,
       weekStartDay: patch.weekStartDay ?? _identity.weekStartDay,
       rolloverHour: patch.rolloverHour ?? _identity.rolloverHour,
+      contactEmail: patch.clearContactEmail
+          ? null
+          : patch.contactEmail ?? _identity.contactEmail,
+      contactPhone: patch.clearContactPhone
+          ? null
+          : patch.contactPhone ?? _identity.contactPhone,
       updatedAt: DateTime.now().toUtc(),
     );
     return _identity;
@@ -397,34 +410,53 @@ class DemoOperatorWebAccountGateway
   @override
   Future<LocationAccountOverridesEnvelope> getLocationAccountOverrides({
     required String locationId,
-  }) async => _envelope(locationId);
+  }) async => _envelope(
+    AccountOverrideScope(scopeType: 'location', scopeId: locationId),
+  );
 
   @override
   Future<LocationAccountOverridesEnvelope> patchLocationAccountOverrides({
     required String locationId,
     required LocationAccountOverridesPatchPayload patch,
+  }) async => patchAccountScopeOverrides(
+    scope: AccountOverrideScope(scopeType: 'location', scopeId: locationId),
+    patch: patch,
+  );
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getAccountScopeOverrides({
+    required AccountOverrideScope scope,
+  }) async => _envelope(scope);
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchAccountScopeOverrides({
+    required AccountOverrideScope scope,
+    required LocationAccountOverridesPatchPayload patch,
   }) async {
-    _override = LocationAccountOverridesFieldSet(
+    final prior =
+        _overrides[scope.wireKey] ?? const LocationAccountOverridesFieldSet();
+    final next = LocationAccountOverridesFieldSet(
       ianaTimezone: patch.clearIanaTimezone
           ? null
-          : patch.ianaTimezone ?? _override.ianaTimezone,
+          : patch.ianaTimezone ?? prior.ianaTimezone,
       localeCode: patch.clearLocaleCode
           ? null
-          : patch.localeCode ?? _override.localeCode,
+          : patch.localeCode ?? prior.localeCode,
       currencyCode: patch.clearCurrencyCode
           ? null
-          : patch.currencyCode ?? _override.currencyCode,
+          : patch.currencyCode ?? prior.currencyCode,
       businessDayRolloverHour: patch.clearBusinessDayRolloverHour
           ? null
-          : patch.businessDayRolloverHour ?? _override.businessDayRolloverHour,
+          : patch.businessDayRolloverHour ?? prior.businessDayRolloverHour,
       contactEmail: patch.clearContactEmail
           ? null
-          : patch.contactEmail ?? _override.contactEmail,
+          : patch.contactEmail ?? prior.contactEmail,
       contactPhone: patch.clearContactPhone
           ? null
-          : patch.contactPhone ?? _override.contactPhone,
+          : patch.contactPhone ?? prior.contactPhone,
     );
-    return _envelope(locationId);
+    _overrides[scope.wireKey] = next;
+    return _envelope(scope);
   }
 
   @override
@@ -450,28 +482,32 @@ class DemoOperatorWebAccountGateway
   }) async =>
       AccountSessionSignOutOthersResult(revokedCount: sessionIds.length);
 
-  LocationAccountOverridesEnvelope _envelope(String locationId) {
+  LocationAccountOverridesEnvelope _envelope(AccountOverrideScope scope) {
+    final override =
+        _overrides[scope.wireKey] ?? const LocationAccountOverridesFieldSet();
     final businessDefault = LocationAccountOverridesFieldSet(
       ianaTimezone: _timezone,
       localeCode: _identity.localeTag,
       currencyCode: _identity.currencyCode,
       businessDayRolloverHour: _identity.rolloverHour,
+      contactEmail: _identity.contactEmail,
+      contactPhone: _identity.contactPhone,
     );
     final effective = LocationAccountOverridesFieldSet(
-      ianaTimezone: _override.ianaTimezone ?? businessDefault.ianaTimezone,
-      localeCode: _override.localeCode ?? businessDefault.localeCode,
-      currencyCode: _override.currencyCode ?? businessDefault.currencyCode,
+      ianaTimezone: override.ianaTimezone ?? businessDefault.ianaTimezone,
+      localeCode: override.localeCode ?? businessDefault.localeCode,
+      currencyCode: override.currencyCode ?? businessDefault.currencyCode,
       businessDayRolloverHour:
-          _override.businessDayRolloverHour ??
+          override.businessDayRolloverHour ??
           businessDefault.businessDayRolloverHour,
-      contactEmail: _override.contactEmail,
-      contactPhone: _override.contactPhone,
+      contactEmail: override.contactEmail ?? businessDefault.contactEmail,
+      contactPhone: override.contactPhone ?? businessDefault.contactPhone,
     );
     return LocationAccountOverridesEnvelope(
       operatorId: operatorId,
-      locationId: locationId,
+      locationId: scope.scopeId,
       effective: effective,
-      override: _override,
+      override: override,
       businessDefault: businessDefault,
       updatedAt: DateTime.now().toUtc(),
     );

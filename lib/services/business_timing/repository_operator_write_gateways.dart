@@ -74,6 +74,8 @@ class RepositoryOperatorAccountWriteGateway
       localeTag: row.localeTag,
       weekStartDay: row.weekStartDay,
       rolloverHour: row.rolloverHour,
+      contactEmail: row.contactEmail,
+      contactPhone: row.contactPhone,
       updatedAt: row.updatedAt,
     );
   }

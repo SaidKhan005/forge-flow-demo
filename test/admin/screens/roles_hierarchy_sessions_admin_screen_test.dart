@@ -970,6 +970,7 @@ void main() {
 
     test('HierarchyValidationCopy.unitTypeLabel maps schema -> friendly', () {
       expect(HierarchyValidationCopy.unitTypeLabel('corp'), 'Business');
+      expect(HierarchyValidationCopy.unitTypeLabel('brand'), 'Brand');
       expect(HierarchyValidationCopy.unitTypeLabel('region'), 'Region');
       expect(HierarchyValidationCopy.unitTypeLabel('district'), 'District');
       expect(

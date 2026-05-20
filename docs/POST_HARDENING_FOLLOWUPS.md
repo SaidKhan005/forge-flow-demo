@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**65 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605192200_data_accuracy_reset_delete_grants.sql`;
+**68 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605201100_operator_account_contact_fields.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -103,8 +103,11 @@ Production1 apply.
 | `202605191845_data_accuracy_cover_facts_nullable_covers.sql` | Data Accuracy covers truth. Drops default/not-null from `public.cover_facts.covers` so NULL means the POS did not expose cover count and zero means a cover-capable POS sent zero. | code-ready |
 | `202605191900_canonical_fact_projection_retry_evidence.sql` | Projection retry evidence hardening. Adds explicit pre-input/post-input failure stage metadata, immutable original location/connection ids, and FK posture that nulls live pointers instead of deleting terminal retry evidence during hard-delete cleanup. Schema-touching and requires explicit operator approval before merge/apply. | code-ready |
 | `202605192200_data_accuracy_reset_delete_grants.sql` | Data Accuracy reset grant. Grants DELETE on `public.data_accuracy_service_period_settings` to `service_role` and `forge_admin` so explicit service-period resets can remove a local override and let inherited settings win again. | code-ready |
+| `202605200900_brand_org_unit_type.sql` | Operator hierarchy Brand layer. Allows `org_units.unit_type = brand` so Brand is a real hierarchy layer rather than a UI label only. | code-ready |
+| `202605201000_org_unit_account_overrides.sql` | Org-unit account overrides. Adds contact/currency/locale/timezone overrides for Brand, Region, District, and Location group scopes, inherited by child locations. | code-ready |
+| `202605201100_operator_account_contact_fields.sql` | Operator account contact defaults. Adds real Business-level contact email and phone columns so lower scopes inherit from the Business row instead of a missing server field. | code-ready |
 
-**Action:** apply all 64 in next Production1 event per
+**Action:** apply all 68 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
 + verified, the corresponding feature is **staging-ready only**.
 

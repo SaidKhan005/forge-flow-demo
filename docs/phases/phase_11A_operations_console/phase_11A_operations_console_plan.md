@@ -152,10 +152,9 @@ begin/callback flows. A1 idempotency rekey then queues
 `202605080600_phase_8_idempotency_location_id_rekey.sql`; it is not an 11A
 surface, but it adds `location_id` to the fact/webhook idempotency keys and
 the shared migration cutoff now continues through
-`202605192200_data_accuracy_reset_delete_grants.sql`
-(Data Accuracy reset grant: DELETE on the keyed service-period settings
-table for `service_role` and `forge_admin`, so resets can remove local
-overrides and reveal inherited values), including the prior projection
+`202605201100_operator_account_contact_fields.sql`
+(operator account contact defaults), including the Brand hierarchy layer,
+org-unit account override table, Data Accuracy reset grant, prior projection
 retry evidence hardening migration, Data
 Accuracy covers-truth migration, canonical fact projection retry ledger,
 R7f precedence/source-parity view, R7e
