@@ -310,7 +310,7 @@ files.
 ### Walkthrough specificity
 
 Every depth-wave walkthrough is at the click-path bar set by
-`docs/archive/_walkthroughs/7.58.UX.5.md` per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
+`docs/_walkthroughs/7.58.UX.5.md` per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Walkthrough Specificity". Each walkthrough names the demo seed
 shift, the rendered widgets, and the named values the test pins.
 
