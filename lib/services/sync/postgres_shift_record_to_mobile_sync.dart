@@ -211,7 +211,7 @@ class PostgresShiftRecordToMobileSync {
     SqliteWageRoleRowRepository? wageRoleRowRepository,
     SqliteDataAccuracyServicePeriodSettingsCacheRepository?
     dataAccuracyServicePeriodSettingsCacheRepository,
-    ManualCoverEntryDao? manualCoverEntryDao,
+    this.manualCoverEntryDao,
     AppRuntimeInvalidationBus? invalidationBus,
     // PF2 hardening: bumped from 200 → 500 rows per page.
     // Trade-off: each page is ≈2.5 MB of JSON on a 50 K-cover
@@ -246,7 +246,6 @@ class PostgresShiftRecordToMobileSync {
        dataAccuracyServicePeriodSettingsCacheRepository =
            dataAccuracyServicePeriodSettingsCacheRepository ??
            SqliteDataAccuracyServicePeriodSettingsCacheRepository.instance,
-       manualCoverEntryDao = manualCoverEntryDao,
        invalidationBus = invalidationBus ?? AppRuntimeInvalidationBus.instance,
        _onCursorViolation = onCursorViolation;
 
