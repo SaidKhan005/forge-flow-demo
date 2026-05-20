@@ -115,14 +115,16 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         key: const Key('operator_web_business_timing_safe_dialog'),
         backgroundColor: AppColors.backgroundSurface,
         title: Text(
-          'Timing changes are not live yet',
+          'Timing edits are read-only here',
           style: AppTextStyles.display20(color: AppColors.textPrimary),
         ),
         content: SizedBox(
           width: 420,
           child: Text(
-            '$actionLabel is available for owner/admin review in this '
-            'preview, but it is not connected to a timing write route yet. '
+            '$actionLabel is disabled in this demo preview. You can review '
+            'the timezone, business-day start, and service periods here, '
+            'but this demo run does not save Business setup timing changes. '
+            'Use a connected preview or staging run to test real saves. '
             'Nothing was changed.',
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
