@@ -220,11 +220,21 @@ void main() {
           VendorConnectionsScreen(
             session: adminSession,
             locationId: adminSession.primaryLocationId ?? '',
-            gateway: InMemoryVendorConnectionsGateway(),
+            gateway: InMemoryVendorConnectionsGateway(
+              seed: <String, VendorConnectionsBundle>{
+                'brio-operator/brio-chicago-loop':
+                    InMemoryVendorConnectionsGateway.demoFirstBackfillBundle(
+                      operatorId: adminSession.operatorId,
+                      locationId: adminSession.primaryLocationId ?? '',
+                      locationName: adminSession.primaryLocationName,
+                    ),
+              },
+            ),
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
 
       // The screen Key wraps the title + the shared-widget host.
       expect(
@@ -247,6 +257,19 @@ void main() {
       );
       expect(
         find.byKey(const Key('vendor_connections_section_labor')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('operator_web_vendor_connections_backfill_progress'),
+        ),
+        findsNothing,
+      );
+      expect(find.text('60 day benchmark data'), findsNothing);
+      expect(
+        find.byKey(
+          const Key('vendor_connections_first_backfill_toast_running'),
+        ),
         findsOneWidget,
       );
     });
