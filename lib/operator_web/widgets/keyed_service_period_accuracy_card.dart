@@ -76,6 +76,8 @@ const Key kKeyedServicePeriodAccuracyWageFieldKey = Key(
 const Key kKeyedServicePeriodAccuracySubmitKey = Key(
   'data_accuracy_keyed_service_period_submit',
 );
+const String kKeyedServicePeriodAccuracyResetButtonPrefix =
+    'data_accuracy_keyed_service_period_reset';
 const Key kKeyedServicePeriodAccuracyCancelKey = Key(
   'data_accuracy_keyed_service_period_cancel',
 );
@@ -92,6 +94,7 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
     required this.saveError,
     required this.editingEnabled,
     required this.onAddOrEdit,
+    required this.onReset,
     required this.onRetry,
     this.configuredServicePeriods = const <ServicePeriodDefinition>[],
     this.defaultEffectiveAtBusinessDateIso,
@@ -125,6 +128,9 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
   /// `null` if the dialog was cancelled.
   final Future<void> Function(KeyedServicePeriodAccuracyDraft draft)
   onAddOrEdit;
+
+  /// Clears all overrides for this service period so inheritance applies.
+  final Future<void> Function(DataAccuracyServicePeriodSetting row) onReset;
 
   /// Triggered when the operator presses "Retry" on a load error.
   final VoidCallback onRetry;
@@ -206,6 +212,7 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
                     row: rows[i],
                     editingEnabled: editingEnabled,
                     onEdit: () => _openDialog(context, existing: rows[i]),
+                    onReset: () => onReset(rows[i]),
                   ),
                   if (i != rows.length - 1)
                     const Divider(color: AppColors.borderSubtle, height: 14),
@@ -255,11 +262,13 @@ class _RowSummary extends StatelessWidget {
     required this.row,
     required this.editingEnabled,
     required this.onEdit,
+    required this.onReset,
   });
 
   final DataAccuracyServicePeriodSetting row;
   final bool editingEnabled;
   final VoidCallback onEdit;
+  final VoidCallback onReset;
 
   @override
   Widget build(BuildContext context) {
@@ -290,14 +299,30 @@ class _RowSummary extends StatelessWidget {
             ),
           ),
           if (editingEnabled)
-            OutlinedButton.icon(
-              key: Key(
-                'data_accuracy_keyed_service_period_edit_'
-                '${row.servicePeriodKey}_${row.effectiveAtBusinessDate}',
-              ),
-              onPressed: onEdit,
-              icon: const Icon(Icons.edit_outlined, size: 14),
-              label: const Text('Edit'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  key: Key(
+                    'data_accuracy_keyed_service_period_edit_'
+                    '${row.servicePeriodKey}_${row.effectiveAtBusinessDate}',
+                  ),
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 14),
+                  label: const Text('Edit'),
+                ),
+                OutlinedButton.icon(
+                  key: Key(
+                    '$kKeyedServicePeriodAccuracyResetButtonPrefix'
+                    '_${row.servicePeriodKey}',
+                  ),
+                  onPressed: onReset,
+                  icon: const Icon(Icons.undo_outlined, size: 14),
+                  label: const Text('Reset'),
+                ),
+              ],
             ),
         ],
       ),

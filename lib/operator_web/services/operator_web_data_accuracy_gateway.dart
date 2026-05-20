@@ -36,6 +36,12 @@ abstract class OperatorWebDataAccuracyGateway {
     required ServicePeriodWageSource wageSource,
     required String effectiveAtBusinessDateIso,
   });
+
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+  });
 }
 
 class OperatorWebHttpDataAccuracyGateway
@@ -267,6 +273,31 @@ class OperatorWebHttpDataAccuracyGateway
   /// actions / scopes / payloads => distinct keys. Exact parity with
   /// the #855/G60 `_stableKeyHeader` in `web_account_gateway.dart` and
   /// `web_business_timing_gateway.dart`.
+  @override
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+  }) async {
+    final token = await _requireToken();
+    final body = <String, Object?>{
+      'service_period_key': servicePeriodKey,
+      'clear': true,
+    };
+    await _client.patchJson(
+      dataAccuracyServicePeriodSettingsPath(
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+      idToken: token,
+      body: body,
+      extraHeaders: _stableKeyHeader(
+        'data-accuracy-service-period-reset',
+        <Object?>[operatorId, locationId, servicePeriodKey, body],
+      ),
+    );
+  }
+
   static Map<String, String> _stableKeyHeader(
     String action,
     List<Object?> parts,

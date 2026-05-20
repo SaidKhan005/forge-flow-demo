@@ -7561,6 +7561,13 @@ abstract class MobileOperationalSyncProxyGateway {
     required Map<String, Object?> body,
   });
 
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  });
+
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -7658,6 +7665,9 @@ abstract class DataAccuracyAdminProxyGateway {
     String? coversSourceDinner,
     String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
+    List<String>? clearCoversSourcePerServicePeriod,
+    bool clearWageSource = false,
+    bool clearWalkInHandlingMode = false,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -7679,6 +7689,15 @@ abstract class DataAccuracyAdminProxyGateway {
     required String coversSource,
     required String wageSource,
     required String effectiveAtBusinessDate,
+    required String reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriod({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
     required String reasonNote,
     required String adminReason,
   });
@@ -16614,6 +16633,31 @@ Future<void> _routeDataAccuracyAdmin({
       return;
     }
     final servicePeriodKey = _requireBodyString(body, 'service_period_key');
+    final clearServicePeriod = _optionalBodyBool(body, 'clear');
+    if (clearServicePeriod) {
+      final reasonNote = _requireBodyString(body, 'reason_note');
+      await _runAdminIdempotent(
+        response: response,
+        store: idempotencyStore,
+        idempotencyKey: idempotencyKey,
+        requestType: 'admin.data_accuracy.service_period_clear',
+        actorUserId: actorUserId,
+        requestBody: body,
+        compute: () async {
+          final result = await gateway.clearDataAccuracyServicePeriod(
+            actorUserId: actorUserId,
+            operatorId: pair.operatorId,
+            locationId: pair.locationId,
+            servicePeriodKey: servicePeriodKey,
+            reasonNote: reasonNote,
+            adminReason:
+                '$reasonPrefix:service_period_clear:${pair.operatorId}:${pair.locationId}:$servicePeriodKey',
+          );
+          return (statusCode: 200, payload: result);
+        },
+      );
+      return;
+    }
     final coversSource = _requireBodyString(body, 'covers_source');
     final wageSource = _requireBodyString(body, 'wage_source');
     final effectiveAtBusinessDate = _requireBodyString(
@@ -16721,6 +16765,15 @@ Future<void> _routeDataAccuracyAdmin({
       body,
       'covers_source_per_service_period',
     );
+    final clearCoversPerServicePeriod = _optionalBodyStringList(
+      body,
+      'clear_covers_source_per_service_period',
+    );
+    final clearWageSource = _optionalBodyBool(body, 'clear_wage_source');
+    final clearWalkInHandlingMode = _optionalBodyBool(
+      body,
+      'clear_walk_in_handling_mode',
+    );
     final wageSource = _optionalBodyString(body, 'wage_source');
     final walkInHandlingMode = _optionalBodyString(
       body,
@@ -16745,6 +16798,9 @@ Future<void> _routeDataAccuracyAdmin({
           coversSourceDinner: coversDinner,
           coversSourceLateNight: coversLateNight,
           coversSourcePerServicePeriod: coversPerServicePeriod,
+          clearCoversSourcePerServicePeriod: clearCoversPerServicePeriod,
+          clearWageSource: clearWageSource,
+          clearWalkInHandlingMode: clearWalkInHandlingMode,
           wageSource: wageSource,
           walkInHandlingMode: walkInHandlingMode,
           reasonNote: reasonNote,
@@ -17442,6 +17498,17 @@ bool _requireBodyBool(Map<String, Object?> body, String field) {
   );
 }
 
+bool _optionalBodyBool(Map<String, Object?> body, String field) {
+  if (!body.containsKey(field) || body[field] == null) return false;
+  final raw = body[field];
+  if (raw is bool) return raw;
+  throw _AdminInputError(
+    statusCode: 400,
+    code: 'invalid_$field',
+    message: '$field must be a boolean',
+  );
+}
+
 Map<String, Object?> _optionalBodyObject(
   Map<String, Object?> body,
   String field,
@@ -17584,6 +17651,31 @@ Map<String, String>? _optionalBodyStringMap(
     }
     out[key.trim()] = value.trim();
   });
+  return out;
+}
+
+List<String>? _optionalBodyStringList(Map<String, Object?> body, String field) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is! List) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an array of strings',
+    );
+  }
+  final out = <String>[];
+  for (final value in raw) {
+    if (value is! String || value.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field entries must be non-empty strings',
+      );
+    }
+    out.add(value.trim());
+  }
   return out;
 }
 
@@ -17878,7 +17970,10 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
   // malformed key or business date, and the operator-web client gets a
   // 400 envelope back before any gateway work.
   if (target.resource == 'data_accuracy_service_period_settings') {
-    final keyError = _validateServicePeriodWriteBody(bodyResult.body!);
+    final clearRaw = bodyResult.body!['clear'];
+    final keyError = clearRaw == true
+        ? _validateServicePeriodClearBody(bodyResult.body!)
+        : _validateServicePeriodWriteBody(bodyResult.body!);
     if (keyError != null) {
       _writeJson(response, keyError.$1, keyError.$2);
       return;
@@ -17912,9 +18007,14 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       });
       return;
     }
+    final clearServicePeriod =
+        target.resource == 'data_accuracy_service_period_settings' &&
+        bodyResult.body!['clear'] == true;
     final requestType = switch (target.resource) {
       'data_accuracy_service_period_settings' =>
-        'operator.data_accuracy.service_period.patch',
+        clearServicePeriod
+            ? 'operator.data_accuracy.service_period.clear'
+            : 'operator.data_accuracy.service_period.patch',
       'data_accuracy_settings/manual_covers' =>
         'operator.data_accuracy.manual_covers.patch',
       _ => 'operator.data_accuracy.settings.patch',
@@ -17932,12 +18032,19 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
       compute: () async {
         final result = switch (target.resource) {
           'data_accuracy_service_period_settings' =>
-            await gateway.upsertDataAccuracyServicePeriodSettings(
-              scope: writeScope,
-              operatorId: target.operatorId,
-              locationId: target.locationId,
-              body: bodyResult.body!,
-            ),
+            clearServicePeriod
+                ? await gateway.clearDataAccuracyServicePeriodSettings(
+                    scope: writeScope,
+                    operatorId: target.operatorId,
+                    locationId: target.locationId,
+                    body: bodyResult.body!,
+                  )
+                : await gateway.upsertDataAccuracyServicePeriodSettings(
+                    scope: writeScope,
+                    operatorId: target.operatorId,
+                    locationId: target.locationId,
+                    body: bodyResult.body!,
+                  ),
           'data_accuracy_settings/manual_covers' =>
             await gateway.upsertDataAccuracyManualCovers(
               scope: writeScope,
@@ -17993,6 +18100,17 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
 (int, Map<String, Object?>)? _validateServicePeriodWriteBody(
   Map<String, Object?> body,
 ) {
+  final clearRaw = body['clear'];
+  if (clearRaw != null && clearRaw is! bool) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_clear',
+        'message': 'clear must be true or false',
+      },
+    );
+  }
+  if (clearRaw == true) return _validateServicePeriodClearBody(body);
   final keyRaw = body['service_period_key'];
   if (keyRaw is! String ||
       !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
@@ -18056,6 +18174,60 @@ Future<void> _routeOperatorDataAccuracySettingsWrite({
         },
       );
     }
+  }
+  return null;
+}
+
+(int, Map<String, Object?>)? _validateServicePeriodClearBody(
+  Map<String, Object?> body,
+) {
+  final keyRaw = body['service_period_key'];
+  if (keyRaw is! String ||
+      !RegExp(r'^[a-z][a-z0-9_]{0,63}$').hasMatch(keyRaw)) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_service_period_key',
+        'message':
+            'service_period_key must start with a lowercase letter and contain '
+            'only lowercase letters, numbers, or underscores',
+      },
+    );
+  }
+  final clearRaw = body['clear'];
+  if (clearRaw is! bool) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_clear',
+        'message': 'clear must be true or false',
+      },
+    );
+  }
+  if (clearRaw != true) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_clear',
+        'message': 'clear must be true for reset requests',
+      },
+    );
+  }
+  const forbidden = <String>{
+    'covers_source',
+    'wage_source',
+    'effective_at_business_date',
+  };
+  final present = forbidden.where(body.containsKey).toList(growable: false);
+  if (present.isNotEmpty) {
+    return (
+      400,
+      <String, Object?>{
+        'error': 'invalid_service_period_clear',
+        'message':
+            'clear service-period requests must not include ${present.join(', ')}',
+      },
+    );
   }
   return null;
 }

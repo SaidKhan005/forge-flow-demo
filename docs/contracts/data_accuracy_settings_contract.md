@@ -530,10 +530,10 @@ create policy "data_accuracy_service_period_settings_per_tenant"
   );
 
 revoke all on public.data_accuracy_service_period_settings from public;
-grant select, insert, update on public.data_accuracy_service_period_settings
-  to service_role;
-grant select, insert, update on public.data_accuracy_service_period_settings
-  to forge_admin;
+grant select, insert, update, delete
+  on public.data_accuracy_service_period_settings to service_role;
+grant select, insert, update, delete
+  on public.data_accuracy_service_period_settings to forge_admin;
 ```
 
 ### Polling tier assignment table (NEW 2026-05-05)

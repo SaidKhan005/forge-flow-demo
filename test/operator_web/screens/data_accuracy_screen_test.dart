@@ -1475,6 +1475,56 @@ void main() {
       },
     );
 
+    testWidgets('service-period reset clears the row and refreshes settings', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1400));
+
+      final gateway = _RecordingDataAccuracyGateway()
+        ..seedServicePeriodRows = <DataAccuracyServicePeriodSetting>[
+          DataAccuracyServicePeriodSetting(
+            id: 'period-1',
+            operatorId: ownerSession.operatorId,
+            locationId: ownerSession.primaryLocationId ?? '',
+            servicePeriodKey: 'breakfast',
+            coversSource: ServicePeriodCoversSource.manual,
+            wageSource: ServicePeriodWageSource.vendorPerEmployee,
+            effectiveAtBusinessDate: '2026-05-07',
+            createdAt: DateTime.utc(2026, 5, 7),
+            updatedAt: DateTime.utc(2026, 5, 7),
+          ),
+        ];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final resetButton = find.byKey(
+        const Key('${kKeyedServicePeriodAccuracyResetButtonPrefix}_breakfast'),
+      );
+      await tester.ensureVisible(resetButton);
+      await tester.pumpAndSettle();
+      await tester.tap(resetButton, warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(gateway.servicePeriodResetCalls, hasLength(1));
+      expect(
+        gateway.servicePeriodResetCalls.single.servicePeriodKey,
+        'breakfast',
+      );
+      expect(gateway.servicePeriodLoadCalls, equals(2));
+      expect(gateway.settingsLoadCalls, equals(2));
+      expect(find.text('Breakfast'), findsNothing);
+    });
+
     testWidgets(
       'invalid service period key surfaces inline error and skips save',
       (tester) async {
@@ -1777,6 +1827,18 @@ class _ServicePeriodSaveCall {
   final String effectiveAtBusinessDateIso;
 }
 
+class _ServicePeriodResetCall {
+  const _ServicePeriodResetCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.servicePeriodKey,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String servicePeriodKey;
+}
+
 class _ManualCoverClearCall {
   const _ManualCoverClearCall({
     required this.operatorId,
@@ -1890,6 +1952,8 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   int servicePeriodLoadCalls = 0;
   final List<_ServicePeriodSaveCall> servicePeriodSaveCalls =
       <_ServicePeriodSaveCall>[];
+  final List<_ServicePeriodResetCall> servicePeriodResetCalls =
+      <_ServicePeriodResetCall>[];
   final List<DataAccuracySettings> settingsSaveCalls = <DataAccuracySettings>[];
   final List<_ManualCoverClearCall> manualCoverClearCalls =
       <_ManualCoverClearCall>[];
@@ -2050,5 +2114,25 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
       saved,
     ];
     return saved;
+  }
+
+  @override
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+  }) async {
+    servicePeriodResetCalls.add(
+      _ServicePeriodResetCall(
+        operatorId: operatorId,
+        locationId: locationId,
+        servicePeriodKey: servicePeriodKey,
+      ),
+    );
+    seedServicePeriodRows = <DataAccuracyServicePeriodSetting>[
+      ...seedServicePeriodRows.where(
+        (row) => row.servicePeriodKey != servicePeriodKey,
+      ),
+    ];
   }
 }

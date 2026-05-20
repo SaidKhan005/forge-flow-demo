@@ -1762,6 +1762,13 @@ class _StubDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
     createdAt: DateTime.utc(2026, 5, 16),
     updatedAt: DateTime.utc(2026, 5, 16),
   );
+
+  @override
+  Future<void> resetServicePeriodSetting({
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+  }) async {}
 }
 
 /// Minimal stub for the vendor-applicability gateway — empty rows.

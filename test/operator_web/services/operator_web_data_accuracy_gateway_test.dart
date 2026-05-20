@@ -339,6 +339,36 @@ void main() {
       expect(request.headers['idempotency-key'], isNotNull);
     });
 
+    test('resets service-period settings through PATCH clear', () async {
+      final gateway = buildGateway(
+        responses: const <Map<String, Object?>>[
+          <String, Object?>{
+            'data_accuracy_service_period_settings': <Map<String, Object?>>[],
+          },
+        ],
+      );
+
+      await gateway.resetServicePeriodSetting(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+        servicePeriodKey: 'breakfast',
+      );
+
+      final request = capturedRequests.single;
+      expect(request.method, 'PATCH');
+      expect(
+        request.url.path,
+        '/v1/operators/op-1/locations/loc-1/'
+        'data_accuracy_service_period_settings',
+      );
+      final json = jsonDecode(request.body) as Map<String, Object?>;
+      expect(json, <String, Object?>{
+        'service_period_key': 'breakfast',
+        'clear': true,
+      });
+      expect(request.headers['idempotency-key'], isNotNull);
+    });
+
     test('requires an id token', () async {
       final gateway = buildGateway(token: null);
       expect(
