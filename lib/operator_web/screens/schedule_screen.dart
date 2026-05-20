@@ -27,6 +27,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
 import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/operator_web_info_popover.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
 
@@ -197,6 +198,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 "own history and traffic, so it does not inherit from "
                 "a region or brand. Each location's plan stands on its "
                 "own.",
+            collapseBackendOnlyExplainer: true,
           ),
           if (!_hasReadRole) ...<Widget>[
             const SizedBox(height: 14),
@@ -279,17 +281,23 @@ class _Header extends StatelessWidget {
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
             ),
+            const OperatorWebInfoPopover(
+              keyPrefix: 'schedule_screen_header_help',
+              title: 'Plan',
+              tooltip: 'Explain this page',
+              bullets: <String>[
+                'This page shows the locked weekly plan for the selected location.',
+                'The daily table is the plan your team schedules against.',
+                'The forecast section explains the math only when you want the detail.',
+              ],
+            ),
           ],
         ),
         const SizedBox(height: 8),
         Text(
           range == null
-              ? 'Forge & Flow locks one weekly plan at a time per location. '
-                    "Once your forecasts run you'll see $locationName's locked "
-                    "plan here, plus a plain-English explainer for every "
-                    "number that shaped it."
-              : "Week of $range: $locationName's locked plan and the "
-                    "forecast inputs that built it.",
+              ? "Locked weekly plan for $locationName."
+              : "Week of $range: $locationName's locked plan.",
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -343,10 +351,26 @@ class _DailyPlanTable extends StatelessWidget {
       children: <Widget>[
         OperatorWebSectionHeading(
           title: 'Daily plan',
-          trailing: Text(
-            'Locked ${_formatLockedAt(snapshot.lockedAt)}',
-            key: const Key('schedule_screen_locked_at'),
-            style: AppTextStyles.body12(color: AppColors.textMuted),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              const OperatorWebInfoPopover(
+                keyPrefix: 'schedule_daily_plan_help',
+                title: 'Daily plan',
+                tooltip: 'Explain daily plan',
+                bullets: <String>[
+                  'Each row is one business day in the locked week.',
+                  'Forecast covers and sales size the expected demand.',
+                  'FOH and BOH hours are the staffing plan to compare against.',
+                ],
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Locked ${_formatLockedAt(snapshot.lockedAt)}',
+                key: const Key('schedule_screen_locked_at'),
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 10),

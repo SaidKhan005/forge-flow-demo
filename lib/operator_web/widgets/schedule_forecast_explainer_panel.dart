@@ -15,6 +15,7 @@ import 'package:flutter/material.dart';
 
 import '../services/operator_web_schedule_gateway.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_popover.dart';
 import 'operator_web_section_heading.dart';
 
 class ScheduleForecastExplainerPanel extends StatelessWidget {
@@ -31,7 +32,19 @@ class ScheduleForecastExplainerPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        const OperatorWebSectionHeading(title: 'Why these numbers?'),
+        const OperatorWebSectionHeading(
+          title: 'Why these numbers?',
+          trailing: OperatorWebInfoPopover(
+            keyPrefix: 'schedule_forecast_section_help',
+            title: 'Why these numbers?',
+            tooltip: 'Explain forecast math',
+            bullets: <String>[
+              "F&F builds the week's plan from closed-shift history.",
+              'The visible rows show the inputs and outputs at a glance.',
+              'Tap any row help icon to see the plain-English explanation.',
+            ],
+          ),
+        ),
         const SizedBox(height: 10),
         Container(
           key: const Key('schedule_forecast_explainer_panel'),
@@ -44,12 +57,6 @@ class ScheduleForecastExplainerPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              Text(
-                "Forge & Flow built this week's plan from your closed-shift "
-                "history. Here's every number that shaped it.",
-                style: AppTextStyles.body12(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 14),
               _ExplainerRow(
                 keyName: 'schedule_explainer_baseline',
                 label: '60-day baseline covers',
@@ -161,26 +168,30 @@ class _ExplainerRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: Key(keyName),
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 10),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[
           Expanded(
             flex: 4,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
               children: <Widget>[
-                Text(
-                  label,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
+                Flexible(
+                  child: Text(
+                    label,
+                    style: AppTextStyles.mono14(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  caption,
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                const SizedBox(width: 6),
+                OperatorWebInfoPopover(
+                  keyPrefix: '${keyName}_help',
+                  title: label,
+                  tooltip: 'Explain $label',
+                  alignment: OperatorWebInfoPopoverAlignment.start,
+                  bullets: <String>[caption],
                 ),
               ],
             ),
@@ -216,7 +227,18 @@ class _ThinHistoryBanner extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        const OperatorWebSectionHeading(title: 'Explain unavailable'),
+        const OperatorWebSectionHeading(
+          title: 'Explain unavailable',
+          trailing: OperatorWebInfoPopover(
+            keyPrefix: 'schedule_thin_history_help',
+            title: 'Explain unavailable',
+            tooltip: 'Explain unavailable forecast math',
+            bullets: <String>[
+              'Forecast math stays hidden until enough history exists.',
+              'Missing history shows as unavailable, never as zero.',
+            ],
+          ),
+        ),
         const SizedBox(height: 10),
         Container(
           key: const Key('schedule_forecast_explainer_thin_history'),

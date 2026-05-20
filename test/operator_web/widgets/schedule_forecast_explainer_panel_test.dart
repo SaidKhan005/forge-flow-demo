@@ -16,10 +16,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -60,46 +60,74 @@ void main() {
   }
 
   group('ScheduleForecastExplainerPanel', () {
-    testWidgets('renders all seven explainer fields when context has baseline',
-        (tester) async {
-      await sizeViewport(tester);
-      await tester.pumpWidget(
-        wrap(ScheduleForecastExplainerPanel(context: explainedContext())),
-      );
-      await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('schedule_forecast_explainer_panel')),
-        findsOneWidget,
-      );
-      // 7 explainer rows.
-      expect(find.byKey(const Key('schedule_explainer_baseline')), findsOneWidget);
-      expect(find.byKey(const Key('schedule_explainer_trend')), findsOneWidget);
-      expect(find.byKey(const Key('schedule_explainer_ppa')), findsOneWidget);
-      expect(
-        find.byKey(const Key('schedule_explainer_forecast_sales')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('schedule_explainer_required_foh')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('schedule_explainer_required_boh')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('schedule_explainer_theoretical_dollars')),
-        findsOneWidget,
-      );
-      // Plain-English values.
-      expect(find.text('1180 covers / week'), findsOneWidget);
-      expect(find.text('\$38'), findsOneWidget);
-      expect(find.text('\$46,740'), findsOneWidget);
-      expect(find.text('260 hrs / week'), findsOneWidget);
-      expect(find.text('188 hrs / week'), findsOneWidget);
-      expect(find.text('\$7,865'), findsOneWidget);
-      expect(find.text('18 covers / week up'), findsOneWidget);
-    });
+    testWidgets(
+      'renders all seven explainer fields when context has baseline',
+      (tester) async {
+        await sizeViewport(tester);
+        await tester.pumpWidget(
+          wrap(ScheduleForecastExplainerPanel(context: explainedContext())),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('schedule_forecast_explainer_panel')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_forecast_section_help_trigger')),
+          findsOneWidget,
+        );
+        // 7 explainer rows.
+        expect(
+          find.byKey(const Key('schedule_explainer_baseline')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_explainer_trend')),
+          findsOneWidget,
+        );
+        expect(find.byKey(const Key('schedule_explainer_ppa')), findsOneWidget);
+        expect(
+          find.byKey(const Key('schedule_explainer_forecast_sales')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_explainer_required_foh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_explainer_required_boh')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('schedule_explainer_theoretical_dollars')),
+          findsOneWidget,
+        );
+        // Plain-English values.
+        expect(find.text('1180 covers / week'), findsOneWidget);
+        expect(find.text('\$38'), findsOneWidget);
+        expect(find.text('\$46,740'), findsOneWidget);
+        expect(find.text('260 hrs / week'), findsOneWidget);
+        expect(find.text('188 hrs / week'), findsOneWidget);
+        expect(find.text('\$7,865'), findsOneWidget);
+        expect(find.text('18 covers / week up'), findsOneWidget);
+        expect(
+          find.textContaining('Average weekly covers across'),
+          findsNothing,
+        );
+        await tester.tap(
+          find.byKey(const Key('schedule_explainer_baseline_help_trigger')),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('schedule_explainer_baseline_help_popover')),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('Average weekly covers across'),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets(
       'renders the thin-history caveat when covers_source is unavailable',
@@ -122,10 +150,7 @@ void main() {
           find.byKey(const Key('schedule_forecast_explainer_thin_history')),
           findsOneWidget,
         );
-        expect(
-          find.textContaining('Need 60 days of history'),
-          findsOneWidget,
-        );
+        expect(find.textContaining('Need 60 days of history'), findsOneWidget);
         expect(find.textContaining('29 days'), findsOneWidget);
         // Never show zero for missing data.
         expect(find.text('0 covers / week'), findsNothing);
@@ -133,8 +158,9 @@ void main() {
       },
     );
 
-    testWidgets('renders the thin-history caveat when context is null',
-        (tester) async {
+    testWidgets('renders the thin-history caveat when context is null', (
+      tester,
+    ) async {
       await sizeViewport(tester);
       await tester.pumpWidget(
         wrap(const ScheduleForecastExplainerPanel(context: null)),
@@ -144,14 +170,12 @@ void main() {
         find.byKey(const Key('schedule_forecast_explainer_thin_history')),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('Need 60 days of history'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Need 60 days of history'), findsOneWidget);
     });
 
-    testWidgets('renders flat-trend copy when recent delta is zero',
-        (tester) async {
+    testWidgets('renders flat-trend copy when recent delta is zero', (
+      tester,
+    ) async {
       await sizeViewport(tester);
       await tester.pumpWidget(
         wrap(

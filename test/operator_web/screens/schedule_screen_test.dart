@@ -124,10 +124,18 @@ void main() {
       expect(find.byKey(const Key('schedule_screen')), findsOneWidget);
       expect(find.text('Plan'), findsOneWidget);
       expect(find.textContaining('Week of May 4'), findsOneWidget);
+      expect(
+        find.byKey(const Key('schedule_screen_header_help_trigger')),
+        findsOneWidget,
+      );
       expect(find.textContaining('Each row is the plan you'), findsNothing);
       // 7 daily rows + totals.
       expect(
         find.byKey(const Key('schedule_screen_daily_table')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('schedule_daily_plan_help_trigger')),
         findsOneWidget,
       );
       for (var i = 0; i < 7; i++) {
@@ -323,9 +331,18 @@ void main() {
           findsOneWidget,
         );
         // Backend-only carve-out explainer renders for forward-looking
-        // inheritance coverage.
+        // inheritance coverage, but is collapsed behind the header help
+        // icon on the dense Plan screen.
         expect(
           find.byKey(const Key('schedule_screen_hierarchy_scope_backend_only')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key(
+              'schedule_screen_hierarchy_scope_backend_only_help_trigger',
+            ),
+          ),
           findsOneWidget,
         );
         // Plain-English copy (no engineering jargon).

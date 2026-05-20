@@ -42,16 +42,12 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'operator_web_info_popover.dart';
 
 /// Hierarchy level at which the screen's values are currently scoped.
 /// Maps to the operator's `hierarchy_path` ltree depth on the proxy
 /// side; the wire labels stay plain-English here.
-enum HierarchyScopeLevel {
-  business,
-  region,
-  brand,
-  location,
-}
+enum HierarchyScopeLevel { business, region, brand, location }
 
 extension on HierarchyScopeLevel {
   String get label {
@@ -82,6 +78,7 @@ class HierarchyScopeNotice extends StatelessWidget {
     required this.effectiveValueSummary,
     this.inheritedFromLabel,
     this.backendOnlyExplainer,
+    this.collapseBackendOnlyExplainer = false,
   });
 
   /// Key prefix the widget stamps on its root container so screen tests
@@ -117,6 +114,10 @@ class HierarchyScopeNotice extends StatelessWidget {
   /// gated / incomplete").
   final String? backendOnlyExplainer;
 
+  /// When true, the backend-only explanation moves into the header help
+  /// popover so dense screens can keep the scope notice compact.
+  final bool collapseBackendOnlyExplainer;
+
   @override
   Widget build(BuildContext context) {
     final inheritedLabel = inheritedFromLabel;
@@ -150,6 +151,15 @@ class HierarchyScopeNotice extends StatelessWidget {
                   ),
                 ),
               ),
+              if (backendOnly != null && collapseBackendOnlyExplainer) ...[
+                OperatorWebInfoPopover(
+                  keyPrefix: '${keyName}_backend_only_help',
+                  title: 'Why location only?',
+                  tooltip: 'Explain location-only planning',
+                  bullets: <String>[backendOnly],
+                ),
+                const SizedBox(width: 6),
+              ],
               _ScopePill(
                 keyName: '${keyName}_scope_pill',
                 label: selectedScope.label,
@@ -166,7 +176,8 @@ class HierarchyScopeNotice extends StatelessWidget {
           _NoticeRow(
             keyName: '${keyName}_inherited_row',
             label: 'Inherited from',
-            value: inheritedLabel ??
+            value:
+                inheritedLabel ??
                 'Set here. Does not inherit from a higher scope.',
             muted: inheritedLabel == null,
           ),
@@ -176,7 +187,7 @@ class HierarchyScopeNotice extends StatelessWidget {
             label: 'Effective value',
             value: effectiveValueSummary,
           ),
-          if (backendOnly != null) ...<Widget>[
+          if (backendOnly != null && !collapseBackendOnlyExplainer) ...<Widget>[
             const SizedBox(height: 10),
             _BackendOnlyExplainer(
               keyName: '${keyName}_backend_only',
@@ -257,10 +268,7 @@ class _NoticeRow extends StatelessWidget {
 }
 
 class _BackendOnlyExplainer extends StatelessWidget {
-  const _BackendOnlyExplainer({
-    required this.keyName,
-    required this.message,
-  });
+  const _BackendOnlyExplainer({required this.keyName, required this.message});
 
   final String keyName;
   final String message;
@@ -272,10 +280,7 @@ class _BackendOnlyExplainer extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
-        border: Border.all(
-          color: AppColors.borderSubtle,
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
