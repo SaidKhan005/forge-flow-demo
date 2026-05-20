@@ -1,33 +1,33 @@
-// Phase 9.0Σ.k — rollups foundation tests.
+// Phase 9.0Σ.k — rollups foundation tests (split).
 //
-// Local framework slice (no live database). Five groups:
+// Bucket 5j of test-suite tightening audit 2026-05-20. The original
+// phase_9_0sigma_k_rollups_test.dart (2,012 lines, 8 top-level groups)
+// was split into two focused files. Filename prefix
+// `phase_9_0sigma_k_` is LOAD-BEARING per Authority Order — both
+// files keep that prefix so the migration / phase trace stays
+// grep-discoverable.
+//
+// This file: groups 1–6 (migration shape + worker + freshness).
 //
 //   1. Migration files exist with the pre-assigned 202604280010_a/b/c
 //      slot names so the rerun-safe contract holds.
-//
-//   2. aggregation_state migration shape — composite PK
-//      (rollup_table, grain), watermark, lease, retry, status,
-//      observability columns, locked grain CHECK, no
-//      TIMESTAMP WITHOUT TIME ZONE.
-//
+//   2. aggregation_state migration shape — composite PK, watermark,
+//      lease, retry, status, observability columns, locked grain
+//      CHECK, no TIMESTAMP WITHOUT TIME ZONE.
 //   3. Physical rollup tables migration shape — all seven grains
 //      exist as `create table` (NOT materialized views), wrapper-
 //      based RLS, tenant-leading indexes, freshness/status fields,
 //      deterministic UPSERT keys with NULLS NOT DISTINCT, no
 //      TIMESTAMP WITHOUT TIME ZONE, partition hooks, grants.
-//
 //   4. pg_cron migration shape — Azure cron-database topology,
 //      hot/cold-path SQL functions, guarded idempotent
 //      unschedule-then-schedule pattern, 60s/300s cadence.
-//
 //   5. RollupWorker fake-Postgres tests — claim bounded work, success
 //      advances watermark, failure does NOT advance and records
 //      reason, stale sweep flips status, ON CONFLICT shape matches
 //      migration unique index.
-//
-//   6. RLS lint against the two new operator-scoped migrations
-//      (aggregation_state has no RLS; rollup_tables has seven
-//      policies that must all pass the wrapper-only lint).
+//   5b. RollupFreshnessReporter — read-only health helper used by
+//       admin dashboards.
 
 import 'dart:convert';
 import 'dart:io';
@@ -37,8 +37,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/services/rollups/rollup_models.dart';
 import 'package:forge_and_flow/services/rollups/rollup_worker.dart';
-
-import '../tool/rls_policy_lint.dart';
 
 const String _operatorAId = '11111111-1111-1111-1111-111111111111';
 const String _orgUnitId = '22222222-2222-2222-2222-222222222222';
@@ -1791,97 +1789,6 @@ void main() {
         t.criticalAgeFor(RollupGrain.year),
         equals(t.coldCriticalAge),
       );
-    });
-  });
-
-  // ─── 6. RLS lint against the rollup migrations ────────────────────
-
-  group('Phase 9.0Σ.k RLS lint', () {
-    test('rollup_tables migration passes the policy-aware lint '
-        '(every per_tenant policy reads through the wrapper)', () {
-      final body = _readSqlNormalized(
-        'db/migrations/'
-        '202604280010_b_phase_9_0sigma_k_rollup_tables.sql',
-      );
-      final result = RlsPolicyLintRunner(
-        files: <String, String>{
-          '202604280010_b_phase_9_0sigma_k_rollup_tables.sql': body,
-        },
-        allowlist: const <String>{},
-      ).run();
-      expect(
-        result.isClean,
-        isTrue,
-        reason:
-            'every rollup_<grain>_per_tenant policy MUST read GUCs '
-            'through the 9.0Σ.b wrappers; violations: '
-            '${result.violations}',
-      );
-    });
-
-    test('aggregation_state migration has no CREATE POLICY (internal '
-        'infra, not operator-scoped) so the lint passes trivially', () {
-      final body = _readSqlNormalized(
-        'db/migrations/'
-        '202604280010_a_phase_9_0sigma_k_aggregation_state.sql',
-      );
-      final result = RlsPolicyLintRunner(
-        files: <String, String>{
-          '202604280010_a_phase_9_0sigma_k_aggregation_state.sql': body,
-        },
-        allowlist: const <String>{},
-      ).run();
-      expect(result.isClean, isTrue);
-      expect(body, isNot(contains('create policy')));
-      expect(body, isNot(contains('enable row level security')));
-    });
-  });
-
-  // ─── 7. Rebuild runbook contract ─────────────────────────────────
-
-  group('Phase 9.0Σ.k rebuild runbook', () {
-    final runbook = File(
-      'docs/phases/phase_9/phase_9_rollups_rebuild_runbook.md',
-    );
-
-    setUpAll(() {
-      expect(
-        runbook.existsSync(),
-        isTrue,
-        reason: 'rebuild runbook must accompany the worker + migrations',
-      );
-    });
-
-    test('documents the bounded rebuild scope axes (Q3.8)', () {
-      final body = runbook.readAsStringSync();
-      // Q3.8: bounded scope = operator + org_unit/location + metric
-      // family + date range + grain + rule_version.
-      for (final axis in const <String>[
-        'operator',
-        'org unit',
-        'location',
-        'metric family',
-        'date range',
-        'grain',
-        'rule_version',
-      ]) {
-        expect(
-          body.toLowerCase(),
-          contains(axis.toLowerCase()),
-          reason: 'runbook must list rebuild scope axis: $axis',
-        );
-      }
-    });
-
-    test('documents staging → validate → promote sequence (Q3.8) and '
-        'failure / freshness behaviour (Q3.9)', () {
-      final body = runbook.readAsStringSync().toLowerCase();
-      expect(body, contains('staging'));
-      expect(body, contains('validate'));
-      expect(body, contains('promote'));
-      // Q3.9 failure / Q3.7 freshness behaviour.
-      expect(body, contains('last known good'));
-      expect(body, contains('stale'));
     });
   });
 }
