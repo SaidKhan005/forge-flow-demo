@@ -22,6 +22,7 @@ import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
 import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dart';
 import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/screens/baseline_tracker.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
@@ -526,8 +527,21 @@ void main() {
       BaselineData.clearRecommendationSignals();
     });
 
+    // Mobile UX is the authority (operator decision 2026-05-20): the
+    // Benchmark-graph honest copy reads `signals.verdict` and maps it to
+    // the badge label per `_BaselineGraphHonesty` in
+    // `lib/services/baseline_authority_service.dart`. Old badge copy
+    // ('RANGE UNCONFIRMED' / 'RANGE TOO WIDE TO TEACH' / 'RANGE
+    // UNCERTAIN') was retired during the operator-scoped UX dial-in;
+    // the live labels are 'NOT ENOUGH SHIFTS YET' (verdict null /
+    // building_early), 'OPERATION RUNNING HOT' (running_hot),
+    // 'RANGE BUILDING' (building_flat), 'NOT ENOUGH STRONG SHIFTS'
+    // (building_few_strong), and 'GOOD OPZ RANGE' (teachable). Each
+    // test below pins the verdict explicitly so the badge mapping is
+    // a deliberate code path, not a stale-default leak.
+
     testWidgets(
-        'insufficient signals → RANGE UNCONFIRMED badge + honest fallback copy',
+        'insufficient signals → NOT ENOUGH SHIFTS YET badge + honest fallback copy',
         (tester) async {
       BaselineData.clearManagerOverride();
       BaselineData.applyRecommendationSignals(
@@ -539,18 +553,19 @@ void main() {
           rangeFloorCPLH: 3.5,
           rangeCeilingCPLH: 5.8,
           targetCPLH: 4.5,
+          // verdict left null on purpose — production's default branch
+          // ("predates a verdict" / insufficient writes) maps to
+          // 'NOT ENOUGH SHIFTS YET'.
         ),
       );
 
       await pumpBaseline(
           tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text(skipOffstage: false, 'RANGE UNCONFIRMED'), findsOneWidget);
-      expect(
-          find.textContaining('Not enough recent shifts yet'),
+      expect(find.text(skipOffstage: false, 'NOT ENOUGH SHIFTS YET'),
           findsOneWidget);
       expect(
-          find.textContaining('placeholder range until more shift history builds'),
+          find.textContaining('more closed shifts before we can set a number'),
           findsOneWidget);
       // The legacy GOOD OPZ RANGE badge must not leak through when
       // recommendation signals say insufficient.
@@ -563,7 +578,8 @@ void main() {
     });
 
     testWidgets(
-        'weak + wide union band → RANGE TOO WIDE TO TEACH badge + copy',
+        'weak + wide union band, running_hot verdict → OPERATION RUNNING '
+        'HOT badge + copy',
         (tester) async {
       BaselineData.clearManagerOverride();
       BaselineData.applyRecommendationSignals(
@@ -575,18 +591,17 @@ void main() {
           rangeFloorCPLH: 3.8,
           rangeCeilingCPLH: 5.2,
           targetCPLH: 4.5,
+          verdict: BenchmarkVerdict.runningHot,
         ),
       );
 
       await pumpBaseline(
           tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text(skipOffstage: false, 'RANGE TOO WIDE TO TEACH'), findsOneWidget);
-      expect(
-          find.textContaining('Lunch, dinner, and late night'),
+      expect(find.text(skipOffstage: false, 'OPERATION RUNNING HOT'),
           findsOneWidget);
       expect(
-          find.textContaining('Use this as a broad guide for now'),
+          find.textContaining('team running hot'),
           findsOneWidget);
       // Stale manager-override copy must not leak through.
       expect(
@@ -594,7 +609,9 @@ void main() {
           findsNothing);
     });
 
-    testWidgets('weak + narrow union band → RANGE UNCERTAIN badge + copy',
+    testWidgets(
+        'weak + narrow union band, building_flat verdict → RANGE BUILDING '
+        'badge + copy',
         (tester) async {
       BaselineData.clearManagerOverride();
       BaselineData.applyRecommendationSignals(
@@ -606,22 +623,23 @@ void main() {
           rangeFloorCPLH: 4.4,
           rangeCeilingCPLH: 4.8,
           targetCPLH: 4.6,
+          verdict: BenchmarkVerdict.buildingFlat,
         ),
       );
 
       await pumpBaseline(
           tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text(skipOffstage: false, 'RANGE UNCERTAIN'), findsOneWidget);
-      expect(
-          find.textContaining('clean operating range yet'),
+      expect(find.text(skipOffstage: false, 'RANGE BUILDING'),
           findsOneWidget);
       expect(
-          find.textContaining('benchmark will settle into a clearer working range'),
+          find.textContaining('not enough real variation between shifts yet'),
           findsOneWidget);
     });
 
-    testWidgets('strong signals → existing GOOD OPZ RANGE badge, no fallback',
+    testWidgets(
+        'strong signals, teachable verdict → existing GOOD OPZ RANGE '
+        'badge, no fallback',
         (tester) async {
       BaselineData.clearManagerOverride();
       BaselineData.applyRecommendationSignals(
@@ -633,6 +651,7 @@ void main() {
           rangeFloorCPLH: 4.30,
           rangeCeilingCPLH: 4.90,
           targetCPLH: 4.58,
+          verdict: BenchmarkVerdict.teachable,
         ),
       );
 
@@ -640,13 +659,19 @@ void main() {
           tester, const MaterialApp(home: BaselineTracker()));
 
       expect(find.text(skipOffstage: false, 'GOOD OPZ RANGE'), findsOneWidget);
-      expect(find.text(skipOffstage: false, 'RANGE UNCONFIRMED'), findsNothing);
-      expect(find.text(skipOffstage: false, 'RANGE UNCERTAIN'), findsNothing);
-      expect(find.text(skipOffstage: false, 'RANGE TOO WIDE TO TEACH'), findsNothing);
+      // Legacy badge labels — and the current degraded-state labels —
+      // must not leak through under a teachable verdict.
+      expect(find.text(skipOffstage: false, 'NOT ENOUGH SHIFTS YET'),
+          findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE BUILDING'), findsNothing);
+      expect(find.text(skipOffstage: false, 'OPERATION RUNNING HOT'),
+          findsNothing);
     });
 
-    testWidgets('manager override wins — graph shows STAR SHIFT RANGE '
-        'and legacy badge even when insufficient signals linger',
+    testWidgets(
+        'manager override wins — graph shows STAR SHIFT RANGE inner '
+        'label + "YOUR CHOSEN SHIFTS" badge, recommendation-signal '
+        'badges must not leak through',
         (tester) async {
       BaselineData.applyRecommendationSignals(
         const BaselineRecommendationSignals(
@@ -674,13 +699,23 @@ void main() {
       await pumpBaseline(
           tester, const MaterialApp(home: BaselineTracker()));
 
-      // Manager-override copy / STAR SHIFT RANGE inner label remain.
-      expect(find.text(skipOffstage: false, 'STAR SHIFT RANGE'), findsOneWidget);
-      expect(find.text(skipOffstage: false, 'GOOD OPZ RANGE'), findsOneWidget);
-      // Recommendation-signal badges must not fire in manager-override mode.
-      expect(find.text(skipOffstage: false, 'RANGE UNCONFIRMED'), findsNothing);
-      expect(find.text(skipOffstage: false, 'RANGE UNCERTAIN'), findsNothing);
-      expect(find.text(skipOffstage: false, 'RANGE TOO WIDE TO TEACH'), findsNothing);
+      // Manager override path (`if (hasManagerOverride)` in
+      // `_resolveGraphHonesty`): inner label STAR SHIFT RANGE + outer
+      // badge 'YOUR CHOSEN SHIFTS' — the mobile UX label since the
+      // 2026-05-20 dial-in. (Was 'GOOD OPZ RANGE' under the legacy
+      // labels.)
+      expect(find.text(skipOffstage: false, 'STAR SHIFT RANGE'),
+          findsOneWidget);
+      expect(find.text(skipOffstage: false, 'YOUR CHOSEN SHIFTS'),
+          findsOneWidget);
+      // Recommendation-signal badges must not fire in manager-override
+      // mode (per the `hasManagerOverride` short-circuit before the
+      // verdict switch).
+      expect(find.text(skipOffstage: false, 'NOT ENOUGH SHIFTS YET'),
+          findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE BUILDING'), findsNothing);
+      expect(find.text(skipOffstage: false, 'OPERATION RUNNING HOT'),
+          findsNothing);
     });
   });
 

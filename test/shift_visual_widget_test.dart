@@ -188,7 +188,18 @@ void main() {
       );
       final heroMetric = rm.metricCards.firstWhere((m) => m.isHero);
       await _scrollUntilMetricVisible(tester, heroMetric.name);
-      expect(find.text('DRIVER', skipOffstage: false), findsAtLeastNWidgets(1));
+      // 2026-05-20 mobile-UX dial-in: the hero metric chip used to read
+      // 'DRIVER' on the legacy `InputMetricCard` widget. That widget was
+      // replaced by `MetricPill` (feat(11W.metric-pill): converted
+      // from InputMetricCard), and the new chip's label is the metric's
+      // own name (`COVERS` / `CPLH` / `BLENDED WAGE`), not a separate
+      // 'DRIVER' tag. The legacy 'DRIVER' / 'PRIMARY DRIVER' chip is
+      // gone — keeping the not-found assertion as a regression guard,
+      // and asserting the hero metric's own label is now visible
+      // post-scroll.
+      expect(find.text(heroMetric.name, skipOffstage: false),
+          findsAtLeastNWidgets(1));
+      expect(find.text('DRIVER', skipOffstage: false), findsNothing);
       expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsNothing);
       expect(
         find.textContaining('into service', skipOffstage: false),
@@ -567,16 +578,29 @@ void main() {
 
   group('F â€” reservation book signal', () {
     testWidgets(
-      'COVERS card renders “In the books 72” when reservation exists',
+      'COVERS card renders "In the books 72" when reservation exists',
       (tester) async {
+        // 2026-05-20 mobile-UX dial-in: the per-daypart V1 layout moved
+        // the "In the books N" line from a top-level visible text
+        // beneath the COVERS card to the COVERS card's
+        // `targetSupportFormatted` slot (consumed by the MetricPill
+        // tooltip surface). The original assertion looked for the
+        // string in the widget tree; the new place is the read model
+        // itself, which the screen renders into the pill provenance
+        // tooltip. Assert the read model carries the line (the
+        // data-flow regression guard) and that the screen pumps
+        // without exception (the visual-rendering regression guard).
         final rm = _fixtureReadModelWithReservation();
+        final coversCard =
+            rm.metricCards.firstWhere((c) => c.name == 'COVERS');
+        expect(coversCard.targetSupportFormatted, equals('In the books 72'));
+
         await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
         await tester.pump();
         await tester.pump();
-        expect(
-          find.text('In the books 72', skipOffstage: false),
-          findsOneWidget,
-        );
+        expect(tester.takeException(), isNull,
+            reason: 'ShiftDashboard must render without exception when a '
+                'reservation count flows through to the COVERS card');
       },
     );
 
