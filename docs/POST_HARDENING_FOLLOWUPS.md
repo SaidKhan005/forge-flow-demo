@@ -1105,62 +1105,70 @@ The remaining findings are queued here, in no particular order,
 each with the audit-finding letter referenced so the audit doc
 remains the single source of truth.
 
-### P2 — Audit Finding E: SevenRooms credential bridge metadata persistence
+### ~~P2~~ RESOLVED — Audit Finding E: SevenRooms credential bridge metadata persistence
+
+**Status:** RESOLVED in PR #1067 (2026-05-19).
+
+Root cause turned out to be a test-code bug, not a vendor/OAuth-refresh
+issue. The test walks every bound parameter for the 3 identifier
+substrings and was falling through to `jsonEncode` on non-String
+values; one of those values was a `DateTime` (e.g. `expires_at`), which
+`jsonEncode` cannot serialize ("Converting object to an encodable
+object failed: Instance of 'DateTime'"). Replaced with `value.toString()`
+which handles DateTime, Map, primitives uniformly.
 
 **File:** `test/integrations/reservation/sevenrooms_credential_bridge_test.dart`
-**Failing test:** `persistIssuedBearerToken records client_id +
-client_secret + venue_id on metadata patch`.
+**Verify (now green):** `flutter test test/integrations/reservation/sevenrooms_credential_bridge_test.dart` → 3/3 ✅.
 
-SevenRooms uses an OAuth2 client-credentials exchange; the bridge
-persists the issued bearer token alongside `client_id`,
-`client_secret`, and `venue_id` so the renewer can re-mint on expiry.
-The current test reports the metadata patch is missing one or more
-identifiers. Failure means the persisted credential blob may be
-incomplete and credential renewal would fail silently at the next
-refresh window. Single-vendor, single-test; low V1 risk because no
-live SevenRooms operators are onboarded yet.
+### ~~P3~~ RESOLVED — Audit Finding F: Advisor proxy /healthz contract drift
 
-**Owner:** Whichever SevenRooms / OAuth-refresh lane is open next.
-**Verify:** `flutter test test/integrations/reservation/sevenrooms_credential_bridge_test.dart`.
+**Status:** RESOLVED in PR #1067 (2026-05-19).
 
-### P3 — Audit Finding F: Advisor proxy /healthz contract drift
+Root cause turned out to be a test-harness setup gap, not a `/healthz`
+contract drift. `TestWidgetsFlutterBinding` overrides `HttpOverrides.global`
+so every `HttpClient()` request returns HTTP 400 with no real network
+call — the test's in-process `HttpServer` was never being hit. Added a
+`_withRealHttpClient` helper that temporarily nulls `HttpOverrides.global`
+for the duration of the test body and restores it in `finally`
+(`HttpOverrides.runZoned` + `HttpClient(context:)` recurses infinitely;
+nulling the global is the stable pattern). The production `/healthz`
+shape, status mapping, and path-prefix behaviour are all unchanged.
 
 **File:** `test/services/advisor/advisor_model_config_service_test.dart`
-**Failing tests (3):** `probeForgeFlowProxyHealth` —
-- hits `/healthz` on the configured proxy and returns
-  `cannotCheck` when the proxy responds 2xx (catalog not exposed);
-- preserves a path prefix on `proxyBaseUri` when probing `/healthz`;
-- returns `cannotCheck` with the status code in the message on 5xx.
+**Verify (now green):** `flutter test test/services/advisor/advisor_model_config_service_test.dart` → 6/6 ✅.
 
-The advisor surface is read-only to the operator at V1; the
-`cannotCheck` state is the graceful-degradation behaviour. Likely
-the response shape, status mapping, or path-prefix behaviour drifted
-on the live `/healthz` route without updating the test expectations.
+### ~~P2~~ RESOLVED — Audit Finding C re-diagnosed (multi-location demo seed)
 
-**Owner:** Whichever advisor / proxy-health lane is open next.
-**Verify:** `flutter test test/services/advisor/advisor_model_config_service_test.dart`.
+**Status:** RESOLVED in PR #1067 (2026-05-19). Operator decision:
+re-pin tests to 5.
 
-### P2 — Audit Finding C re-diagnosed (multi-location demo seed)
+Confirmed intentional via git history: R6 ("Choose Star Shifts: 4-period
+demo operator", PR #929) added `demo_restaurant_four_period` — the
+"Barrio Legado: Four-Period" proof restaurant — which is intentionally
+NOT a `DemoScope.locations` member (per-location replay/operational
+loops iterate `DemoScope.locations` and skip it) but IS written into
+the standard `restaurant_locations` table. The R6 author flagged this
+would break "≥3 hard-asserted location-set tests".
 
-The audit's working theory was "the 4-location seed regressed."
-Live re-check on 2026-05-19 shows the opposite: the demo seed has
-**grown to 5 locations**, and the test still asserts exactly 4.
+Re-pin shape: tests counting rows in `restaurant_locations` (or the
+scope-drawer that reads it) bumped from 4 → 5 with the four_period id
+in the expected set. Tests counting `DemoScope.locations` stay at 4
+(four_period sits outside the §2c hierarchy). For per-table writer
+isolation: `shift_records` expected to include four_period (R6 seeds
+shift-level rows for the proof), `week_records` expected NOT to
+(R6 doesn't emit weekly rollups).
 
-```
-Expected: <4>
-Actual:   <5>
-```
+**Files (now green):**
+- `test/per_daypart_v1_demo_slice_a_hierarchy_test.dart`
+- `test/per_daypart_v1_demo_seed_per_location_data_test.dart`
+- `test/state/restaurant_scope_notifier_test.dart`
 
-So this is a **stale assertion / intentional production growth**,
-not a seed regression. Files: `test/per_daypart_v1_demo_slice_a_hierarchy_test.dart`
-+ siblings (`per_daypart_v1_demo_seed_per_location_data_test.dart`,
-`per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart`,
-`test/state/restaurant_scope_notifier_test.dart`).
+Note: `per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart`
+was in the audit's original Finding C file list, but on re-check its
+remaining failure is a date-arithmetic issue (`2026-W21` vs `2026-W20`),
+not a count mismatch — see Finding D below for the actual class.
 
-**Owner:** per-daypart V1 seed owner (Codex lane that grew the seed
-from 4 → 5 locations). Two paths: re-pin the assertions to the new
-count, or trim the seed back to 4 if the 5th location was an
-accident.
+**Verify (now green):** `flutter test test/per_daypart_v1_demo_slice_a_hierarchy_test.dart test/per_daypart_v1_demo_seed_per_location_data_test.dart test/state/restaurant_scope_notifier_test.dart` → 30/30 ✅.
 
 ### P2 — Audit Finding D re-diagnosed (NOT mock-replay drift)
 
@@ -1189,27 +1197,55 @@ between the test expectations and current production behaviour:
 test needs domain triage to decide which side is right (production
 or the test). Not safe to mass-fix without domain context.
 
-### P2 — Audit Finding G expanded (test-state pollution requires per-file teardown)
+### ~~P2~~ RESOLVED (partial) — Audit Finding G investigated; split into 3 classes
 
-The audit's flake hunt surfaced 6 tests that pass under fixed order
-and fail under random order. Adding generic teardowns risks
-breaking unrelated tests. Each of the 5 affected files needs a
-domain-aware reset:
+**Status:** RESOLVED in PR #1067 (2026-05-19) for the actually-leaky
+files. The audit framed all 5 files as one class ("test-state pollution
+requires per-file teardown"); investigation showed three distinct
+failure classes that do NOT all share a fix.
 
-- `test/per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart`
-- `test/restaurant_timing_config_repository_test.dart`
-- `test/screens/variance/variance_learn_tab_depth_test.dart`
-- `test/shift_service_close_shift_test.dart`
-- `test/target_cycle_service_test.dart`
+**Class 1 — Real within-file pollution (FIXED):**
 
-Most likely leak: `SqliteDatabase.instance` singleton state and
-`RestaurantScopeNotifier` cached state surviving across test files.
-Need to either: (a) introduce a shared `resetTestState()` helper that
-tears down both singletons + the mock_replay clock between tests, OR
-(b) move each test file onto an isolated DB factory so cross-file
-leakage cannot happen.
+- `test/restaurant_timing_config_repository_test.dart`: sibling tests
+  `saveTimingConfig` with mutated `applicableDays` (e.g. lunch
+  `[1,2,3,4,5]`). `reseedDemo()` uses `ConflictAlgorithm.ignore`, so
+  the canonical demo values never came back. Fix: setUp now
+  `delete('restaurant_timing_configs')` before reseed.
+- `test/target_cycle_service_test.dart`: `BaselineData` has
+  process-static state (`recommendationSignals`, `_runtimeRecords`)
+  and group-A's setUp wipes `target_cycles` while group-P expects
+  `getOrCreateActiveCycle` to write fresh signals. Fix: top-level
+  setUp now clears both `BaselineData` statics + always runs
+  `clearCycleBackedState()` (now extended to include
+  `target_cycle_dayparts`).
 
-**Owner:** test-infrastructure lane.
+Both now green under `flutter test --test-randomize-ordering-seed=12345`
+→ 98/98 ✅.
+
+**Class 2 — Parallel-mode concurrency artifact (NOT pollution):**
+
+- `test/screens/variance/variance_learn_tab_depth_test.dart`: passes
+  in isolation (7/7), passes alongside any single Finding G file in
+  default parallel mode, passes under `flutter test --concurrency=1`
+  with all 5 files. Only fails when all 5 files run together under
+  default parallel concurrency. This is a Flutter test runner
+  scheduling artifact, not singleton state leaking — no per-file
+  teardown will fix it.
+
+**Class 3 — Real isolated failure (Finding D territory):**
+
+- `test/per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart`:
+  fails in isolation with `Expected '2026-W21' / Actual '2026-W20'` —
+  off-by-one week in the cold-boot today injection. Belongs with
+  Finding D's date-arithmetic cluster, not Finding G.
+
+**Class 4 — Passes in all observed orderings:**
+
+- `test/shift_service_close_shift_test.dart`: not actually flaky under
+  any combination tested in this round.
+
+**Owner for the remaining real perloc failure:** per-daypart V1 /
+business-date lane (see Finding D); not test-infrastructure.
 
 ### P2 — Audit Finding A residual (7 spine smoke scenarios still red)
 
