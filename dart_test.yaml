@@ -1,13 +1,21 @@
 # dart_test.yaml — Forge & Flow test configuration.
 #
 # `postgres` tag: tests that require a live Postgres instance.
-# These are excluded from the default fast unit-test loop.
-# Run them explicitly with:
+# These are excluded from the default fast unit-test loop via
+# `exclude_tags: postgres` below; Dart's test runner does NOT skip
+# tagged tests automatically without this directive. Run them
+# explicitly with:
 #   flutter test --tags=postgres
 #
-# The CI workflow (`.github/workflows/ci.yml`) adds a `postgres-tests`
-# job that spins up a Postgres service container and runs:
-#   flutter test --tags=postgres
+# `--tags=postgres` overrides `exclude_tags` (explicit include wins),
+# so the CI workflow (`.github/workflows/ci.yml`) `postgres-tests` job
+# that spins up a Postgres service container and runs
+# `flutter test --tags=postgres` is unaffected.
+
+# Skip postgres-tagged tests by default so the fast unit-test loop on
+# developer machines + the default CI `test` job does not fail when
+# POSTGRES_TEST_URL is unset.
+exclude_tags: postgres
 
 tags:
   # Tests that connect to a real Postgres instance. Skipped by default.
