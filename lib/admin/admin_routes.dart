@@ -424,9 +424,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/data-accuracy',
     icon: Icons.fact_check_outlined,
     section: AdminRouteSection.operations,
-    badge: 'Read-only view',
+    badge: 'Support + override',
     subtitle:
-        'Operator edits live on Operator Web; this view is for F&F support.',
+        'Review effective covers, wages, and walk-ins; super admins can apply audited overrides.',
     builder: _buildDataAccuracy,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -461,9 +461,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/admin/vendor-integrations',
     icon: Icons.link_outlined,
     section: AdminRouteSection.operations,
-    badge: 'Read-only view',
+    badge: 'Support + actions',
     subtitle:
-        'Operator edits live on Operator Web; this support view is location-scoped.',
+        'Review location-scoped vendor connections; super admins can connect, test, disconnect, and inspect logs.',
     builder: _buildVendorIntegrations,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -474,7 +474,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/admin/timing',
     icon: Icons.schedule_outlined,
     section: AdminRouteSection.operations,
-    subtitle: 'Review effective timezone, business day, and service periods.',
+    subtitle:
+        'Review effective timezone, business day, and service periods. Normal timing edits stay in Operator Web; super admin repair routes are server-side.',
     builder: _buildTimingSetup,
     visibleInNav: false,
     navAnchorRouteId: kAdminOperatorsRouteId,
@@ -2870,8 +2871,8 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// [HttpAdminBusinessTimingResolutionGateway] here; demo /
   /// share-preview / widget tests leave it null so the admin timing
   /// surfaces fall back to the seeded in-memory gateway and render
-  /// without the Cloud Run admin proxy. Admin NEVER writes timing
-  /// cross-tenant (operator decision Q3) — read-only by contract.
+  /// without the Cloud Run admin proxy. This UI reads timing only;
+  /// server-side super admin repair routes exist for profile writes.
   final AdminBusinessTimingResolutionGateway? timingResolutionGateway;
 
   /// Phase 11A.2 - admin auth source. Optional for the same

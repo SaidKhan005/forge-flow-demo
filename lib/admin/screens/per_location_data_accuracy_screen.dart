@@ -302,8 +302,9 @@ class _PerLocationDataAccuracyScreenState
             if (widget.showPageHeader) ...[
               AdminPageHeader(
                 title: 'Covers and Wage Data Accuracy',
-                subtitle:
-                    'Operator edits live on Operator Web; this view is for F&F support to review covers, wages, walk-ins, and audit history.',
+                subtitle: widget.editingEnabled
+                    ? 'Review effective covers, wages, walk-ins, and audit history. Super admins can apply audited overrides.'
+                    : 'Review effective covers, wages, walk-ins, and audit history. Normal operator edits stay in Operator Web; override actions are hidden for this role.',
                 leading: widget.onBackToBusinessAccounts == null
                     ? null
                     : AdminBusinessAccountsBackButton(
@@ -1321,7 +1322,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Operator edits live on Operator Web; this view is for F&F support.',
+              'Support can review effective covers, wages, and walk-ins here. Normal operator edits stay in Operator Web; override actions are hidden for this role.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
