@@ -48,17 +48,21 @@ import 'operator_web_section_heading.dart';
 /// Hierarchy level at which the screen's values are currently scoped.
 /// Maps to the operator's `hierarchy_path` ltree depth on the proxy
 /// side; the wire labels stay plain-English here.
-enum HierarchyScopeLevel { business, region, brand, location }
+enum HierarchyScopeLevel { business, brand, region, district, group, location }
 
 extension on HierarchyScopeLevel {
   String get label {
     switch (this) {
       case HierarchyScopeLevel.business:
         return 'Business';
-      case HierarchyScopeLevel.region:
-        return 'Region';
       case HierarchyScopeLevel.brand:
         return 'Brand';
+      case HierarchyScopeLevel.region:
+        return 'Region';
+      case HierarchyScopeLevel.district:
+        return 'District';
+      case HierarchyScopeLevel.group:
+        return 'Location group';
       case HierarchyScopeLevel.location:
         return 'Location';
     }

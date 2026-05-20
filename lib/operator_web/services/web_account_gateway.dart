@@ -88,6 +88,31 @@ abstract class WebAccountGateway {
   });
 }
 
+/// Optional gateway extension for hierarchy-scoped account settings.
+/// Demo and newer live gateways implement this so Account can edit
+/// org-unit scopes such as Brand, Region, and District without
+/// pretending they are locations.
+abstract class WebAccountScopeOverridesGateway {
+  Future<LocationAccountOverridesEnvelope> getAccountScopeOverrides({
+    required AccountOverrideScope scope,
+  });
+
+  Future<LocationAccountOverridesEnvelope> patchAccountScopeOverrides({
+    required AccountOverrideScope scope,
+    required LocationAccountOverridesPatchPayload patch,
+  });
+}
+
+@immutable
+class AccountOverrideScope {
+  const AccountOverrideScope({required this.scopeType, required this.scopeId});
+
+  final String scopeType;
+  final String scopeId;
+
+  String get wireKey => '$scopeType:$scopeId';
+}
+
 /// User-scoped account session surface for My Account. Reuses the
 /// existing Phase 9 active-session proxy routes; there is deliberately
 /// no My Account-only proxy route here.
@@ -106,7 +131,10 @@ abstract class WebAccountSessionGateway {
 /// so token, idempotency-key, and error-mapping logic is shared with
 /// the rest of the operator-web HTTP surface.
 class HttpWebAccountGateway
-    implements WebAccountGateway, WebAccountSessionGateway {
+    implements
+        WebAccountGateway,
+        WebAccountSessionGateway,
+        WebAccountScopeOverridesGateway {
   HttpWebAccountGateway({
     required OperatorWebProxyClient client,
     required Future<String?> Function() idTokenProvider,
@@ -161,6 +189,17 @@ class HttpWebAccountGateway
   /// path for [locationId].
   static String operatorLocationAccountOverridesPath(String locationId) =>
       '$operatorLocationAccountOverridesPathPrefix$locationId';
+
+  /// Hierarchy-scoped account overrides. Newer than the location-only
+  /// route above; keeps Brand/Region/District writes explicit instead
+  /// of overloading a location id segment.
+  static const String operatorAccountScopeOverridesPathPrefix =
+      '/v1/operator/account-overrides/';
+
+  static String operatorAccountScopeOverridesPath(AccountOverrideScope scope) =>
+      '$operatorAccountScopeOverridesPathPrefix'
+      '${Uri.encodeComponent(scope.scopeType)}/'
+      '${Uri.encodeComponent(scope.scopeId)}';
   static const Duration _freshMfaWindow = Duration(hours: 1);
   static const String _freshMfaRedirectUri =
       '/auth/login?reason=fresh_mfa_required';
@@ -305,6 +344,47 @@ class HttpWebAccountGateway
         'location-account-overrides-patch',
         <Object?>[locationId, body],
       ),
+    );
+    return LocationAccountOverridesEnvelope.fromJson(response.body);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> getAccountScopeOverrides({
+    required AccountOverrideScope scope,
+  }) async {
+    final path = operatorAccountScopeOverridesPath(scope);
+    if (path.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to load these account settings.',
+    );
+    final response = await _client.getJson(path, idToken: token);
+    return LocationAccountOverridesEnvelope.fromJson(response.body);
+  }
+
+  @override
+  Future<LocationAccountOverridesEnvelope> patchAccountScopeOverrides({
+    required AccountOverrideScope scope,
+    required LocationAccountOverridesPatchPayload patch,
+  }) async {
+    final path = operatorAccountScopeOverridesPath(scope);
+    if (path.contains('/admin/')) {
+      throw const _AdminRouteForbidden();
+    }
+    final token = await _requireToken(
+      'Sign in again to update these account settings.',
+    );
+    final body = patch.toJson();
+    final response = await _client.patchJson(
+      path,
+      idToken: token,
+      body: body,
+      extraHeaders: _stableKeyHeader('account-scope-overrides-patch', <Object?>[
+        scope.scopeType,
+        scope.scopeId,
+        body,
+      ]),
     );
     return LocationAccountOverridesEnvelope.fromJson(response.body);
   }
@@ -602,7 +682,9 @@ class AccountLocationTimezone {
 
   static AccountLocationTimezone fromJson(Map<String, Object?> json) {
     final operatorId = AccountIdentity._readString(json['operatorId']);
-    final locationId = AccountIdentity._readString(json['locationId']);
+    final locationId =
+        AccountIdentity._readString(json['locationId']) ??
+        AccountIdentity._readString(json['scopeId']);
     final ianaTimezone = AccountIdentity._readString(json['ianaTimezone']);
     final updatedAtRaw = AccountIdentity._readString(json['updatedAt']);
     if (operatorId == null ||

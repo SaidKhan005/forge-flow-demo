@@ -136,6 +136,19 @@ class AccountScreen extends StatefulWidget {
     return scope.kind == OperatorWebManagementScopeKind.location;
   }
 
+  AccountOverrideScope? get accountOverrideScope {
+    final scope = selectedScope;
+    if (scope == null) return null;
+    switch (scope.kind) {
+      case OperatorWebManagementScopeKind.operator:
+        return null;
+      case OperatorWebManagementScopeKind.orgUnit:
+        return AccountOverrideScope(scopeType: 'org_unit', scopeId: scope.id);
+      case OperatorWebManagementScopeKind.location:
+        return AccountOverrideScope(scopeType: 'location', scopeId: scope.id);
+    }
+  }
+
   /// Wave 2 U-FU-hp11-account — location id the override route writes
   /// against. Null when the operator picked Business scope (no
   /// override surface) or when the selected scope is an org unit.
@@ -167,7 +180,17 @@ class AccountScreen extends StatefulWidget {
       case OperatorWebManagementScopeKind.operator:
         return HierarchyScopeLevel.business;
       case OperatorWebManagementScopeKind.orgUnit:
-        return HierarchyScopeLevel.region;
+        switch (scope.unitType) {
+          case 'brand':
+            return HierarchyScopeLevel.brand;
+          case 'district':
+            return HierarchyScopeLevel.district;
+          case 'location_group':
+            return HierarchyScopeLevel.group;
+          case 'region':
+          default:
+            return HierarchyScopeLevel.region;
+        }
       case OperatorWebManagementScopeKind.location:
         return HierarchyScopeLevel.location;
     }
@@ -195,12 +218,6 @@ class AccountScreen extends StatefulWidget {
     required String businessDefaultDisplay,
   }) {
     if (!scopeBelowBusiness) return null;
-    if (!scopeIsLocation) {
-      // Org-unit scope is not on the U-FU-hp11-account-schema slice
-      // (operator decision 2026-05-14). Fall back to the prior
-      // PUNT-mode inheritance line.
-      return 'Inherits the business default from Business.';
-    }
     if (overrideIsSet) {
       return 'Set here at $scopeName. '
           'Business default: $businessDefaultDisplay.';
@@ -214,12 +231,7 @@ class AccountScreen extends StatefulWidget {
   /// scope is NOT a location (because the location scope now supports
   /// real per-location overrides via this slice).
   String? backendOnlyExplainerForBusinessDefault() {
-    if (!scopeBelowBusiness) return null;
-    if (scopeIsLocation) return null;
-    return 'Per-org-unit overrides for this field are not on file yet. '
-        'Switch the Managing picker to Business to update the default '
-        'every location inherits, or pick a specific location to set '
-        'an override there.';
+    return null;
   }
 
   @override
@@ -339,9 +351,9 @@ class _AccountScreenState extends State<AccountScreen> {
     _contactPhone = TextEditingController();
     // Wave 2 U-FU-hp11-account — preload per-location overrides when
     // the router opens this screen at Location scope.
-    if (widget.scopeIsLocation && widget.gateway != null) {
+    if (widget.scopeBelowBusiness && widget.gateway != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _loadLocationOverrides();
+        if (mounted) _loadScopeOverrides();
       });
     }
   }
@@ -359,9 +371,9 @@ class _AccountScreenState extends State<AccountScreen> {
     // between scopes. Loading is a no-op at Business scope.
     if (oldWidget.selectedScope?.id != widget.selectedScope?.id ||
         oldWidget.selectedScope?.kind != widget.selectedScope?.kind) {
-      if (widget.scopeIsLocation && widget.gateway != null) {
+      if (widget.scopeBelowBusiness && widget.gateway != null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _loadLocationOverrides();
+          if (mounted) _loadScopeOverrides();
         });
       } else {
         setState(() {
@@ -374,18 +386,36 @@ class _AccountScreenState extends State<AccountScreen> {
     }
   }
 
-  Future<void> _loadLocationOverrides() async {
+  WebAccountScopeOverridesGateway? get _scopeOverridesGateway {
     final gateway = widget.gateway;
+    if (gateway is WebAccountScopeOverridesGateway) {
+      return gateway as WebAccountScopeOverridesGateway;
+    }
+    return null;
+  }
+
+  Future<void> _loadScopeOverrides() async {
+    final gateway = widget.gateway;
+    if (gateway == null) return;
+    final scopeGateway = _scopeOverridesGateway;
+    final scope = widget.accountOverrideScope;
     final locationId = widget.locationIdForOverride;
-    if (gateway == null || locationId == null) return;
+    if (widget.scopeBelowBusiness &&
+        scopeGateway == null &&
+        locationId == null) {
+      return;
+    }
+    if (scope == null) return;
+    if (scopeGateway == null && locationId == null) return;
     setState(() {
       _locationOverridesLoading = true;
       _locationOverridesLoadError = null;
     });
     try {
-      final envelope = await gateway.getLocationAccountOverrides(
-        locationId: locationId,
-      );
+      final useScopeGateway = scopeGateway != null && !widget.scopeIsLocation;
+      final envelope = useScopeGateway
+          ? await scopeGateway.getAccountScopeOverrides(scope: scope)
+          : await gateway.getLocationAccountOverrides(locationId: locationId!);
       if (!mounted) return;
       setState(() {
         _locationOverrides = envelope;
@@ -413,6 +443,11 @@ class _AccountScreenState extends State<AccountScreen> {
             envelope.override.contactPhone ??
             envelope.businessDefault.contactPhone ??
             '';
+        _savedTimezoneValue =
+            envelope.override.ianaTimezone ??
+            envelope.businessDefault.ianaTimezone ??
+            _savedTimezoneValue;
+        _seedTimezoneDraft(_savedTimezoneValue);
       });
     } on OperatorWebProxyException catch (error) {
       if (!mounted) return;
@@ -428,6 +463,18 @@ class _AccountScreenState extends State<AccountScreen> {
             'Could not load this location\'s account overrides: $error';
       });
     }
+  }
+
+  void _seedTimezoneDraft(String? value) {
+    final trimmed = value?.trim();
+    final hasInShortlist =
+        trimmed != null &&
+        trimmed.isNotEmpty &&
+        _timezoneShortlist.any((opt) => opt.value == trimmed);
+    _selectedTimezone = hasInShortlist
+        ? trimmed
+        : (trimmed == null || trimmed.isEmpty ? null : _timezoneCustomSentinel);
+    _timezoneCustomController.text = hasInShortlist ? '' : (trimmed ?? '');
   }
 
   @override
@@ -459,10 +506,14 @@ class _AccountScreenState extends State<AccountScreen> {
     switch (level) {
       case HierarchyScopeLevel.business:
         return 'Business';
-      case HierarchyScopeLevel.region:
-        return 'Region';
       case HierarchyScopeLevel.brand:
         return 'Brand';
+      case HierarchyScopeLevel.region:
+        return 'Region';
+      case HierarchyScopeLevel.district:
+        return 'District';
+      case HierarchyScopeLevel.group:
+        return 'Location group';
       case HierarchyScopeLevel.location:
         return 'Location';
     }
@@ -476,34 +527,47 @@ class _AccountScreenState extends State<AccountScreen> {
     // operator-level account row; Location scope writes to the per-
     // location override row.
     final locationId = widget.locationIdForOverride;
+    final scopeGateway = _scopeOverridesGateway;
+    final scope = widget.accountOverrideScope;
+    if (widget.scopeBelowBusiness &&
+        scopeGateway == null &&
+        locationId == null) {
+      return;
+    }
     setState(() {
       _submitting = true;
       _errorMessage = null;
       _successMessage = null;
     });
     try {
-      if (widget.scopeIsLocation && locationId != null) {
-        final envelope = await gateway.patchLocationAccountOverrides(
-          locationId: locationId,
-          patch: LocationAccountOverridesPatchPayload(
-            // Currency / locale ride along when set. Business-day
-            // start now lives in Business Timing, so Account saves do
-            // not write rollover overrides.
-            // Business display name + logo are operator-wide; the
-            // Identity card disables those fields at Location scope so
-            // they would not have changed.
-            currencyCode: _currencyCode,
-            localeCode: _localeTag,
-            contactEmail: _contactEmail.text.trim().isEmpty
-                ? null
-                : _contactEmail.text.trim(),
-            clearContactEmail: _contactEmail.text.trim().isEmpty,
-            contactPhone: _contactPhone.text.trim().isEmpty
-                ? null
-                : _contactPhone.text.trim(),
-            clearContactPhone: _contactPhone.text.trim().isEmpty,
-          ),
+      if (widget.scopeBelowBusiness && scope != null) {
+        final patch = LocationAccountOverridesPatchPayload(
+          // Currency / locale ride along when set. Business-day start
+          // now lives in Business Timing, so Account saves do not
+          // write rollover overrides. Business display name + logo
+          // are operator-wide; the Identity card disables those
+          // fields below Business scope.
+          currencyCode: _currencyCode,
+          localeCode: _localeTag,
+          contactEmail: _contactEmail.text.trim().isEmpty
+              ? null
+              : _contactEmail.text.trim(),
+          clearContactEmail: _contactEmail.text.trim().isEmpty,
+          contactPhone: _contactPhone.text.trim().isEmpty
+              ? null
+              : _contactPhone.text.trim(),
+          clearContactPhone: _contactPhone.text.trim().isEmpty,
         );
+        final useScopeGateway = scopeGateway != null && !widget.scopeIsLocation;
+        final envelope = useScopeGateway
+            ? await scopeGateway.patchAccountScopeOverrides(
+                scope: scope,
+                patch: patch,
+              )
+            : await gateway.patchLocationAccountOverrides(
+                locationId: locationId!,
+                patch: patch,
+              );
         if (!mounted) return;
         setState(() {
           _locationOverrides = envelope;
@@ -577,17 +641,34 @@ class _AccountScreenState extends State<AccountScreen> {
       _timezoneSuccessMessage = null;
     });
     try {
-      final savedTimezone = await gateway.patchLocationTimezone(
-        AccountLocationTimezonePatch(ianaTimezone: value),
-      );
+      String savedTimezoneValue;
+      final scopeGateway = _scopeOverridesGateway;
+      final scope = widget.accountOverrideScope;
+      if (widget.scopeBelowBusiness &&
+          scopeGateway != null &&
+          scope != null &&
+          !widget.scopeIsLocation) {
+        final envelope = await scopeGateway.patchAccountScopeOverrides(
+          scope: scope,
+          patch: LocationAccountOverridesPatchPayload(ianaTimezone: value),
+        );
+        if (!mounted) return;
+        _locationOverrides = envelope;
+        savedTimezoneValue = envelope.effective.ianaTimezone ?? value;
+      } else {
+        final savedTimezone = await gateway.patchLocationTimezone(
+          AccountLocationTimezonePatch(ianaTimezone: value),
+        );
+        savedTimezoneValue = savedTimezone.ianaTimezone.trim();
+      }
       if (!mounted) return;
-      final savedTimezoneValue = savedTimezone.ianaTimezone.trim();
       _timezoneSuccessTimer?.cancel();
       setState(() {
         _savedTimezoneValue = savedTimezoneValue;
         _timezoneSubmitting = false;
         _timezoneSuccessMessage =
-            'Saved. Daily timing now uses $savedTimezoneValue for this location.';
+            'Saved. Daily timing now uses $savedTimezoneValue for '
+            '${widget.scopeName}.';
       });
       _timezoneSuccessTimer = Timer(const Duration(seconds: 4), () {
         if (!mounted) return;
@@ -621,6 +702,10 @@ class _AccountScreenState extends State<AccountScreen> {
     // extends to org-unit scope in a future slice.
     final scopeBelowBusiness = widget.scopeBelowBusiness;
     final scopeIsLocation = widget.scopeIsLocation;
+    final lowerScopeEditable =
+        !scopeBelowBusiness ||
+        scopeIsLocation ||
+        _scopeOverridesGateway != null;
     // Business display name + logo are operator-wide (single business
     // name doctrine); the Identity card disables those two fields at
     // Location scope. Contact email + phone are the location-scoped
@@ -628,13 +713,8 @@ class _AccountScreenState extends State<AccountScreen> {
     final identityNameEnabled =
         widget.canEdit && !_submitting && !scopeBelowBusiness;
     final identityContactEnabled =
-        widget.canEdit &&
-        !_submitting &&
-        (scopeIsLocation || !scopeBelowBusiness);
-    final regionEnabled =
-        widget.canEdit &&
-        !_submitting &&
-        (scopeIsLocation || !scopeBelowBusiness);
+        widget.canEdit && !_submitting && lowerScopeEditable;
+    final regionEnabled = widget.canEdit && !_submitting && lowerScopeEditable;
     // Helpers for the Account scope summary source lines. At Business scope
     // the helper returns null (no inheritance), so the notice falls
     // back to "Set here. Does not inherit from a higher scope."
@@ -650,7 +730,7 @@ class _AccountScreenState extends State<AccountScreen> {
               overrides.businessDefault.contactPhone ??
               '';
     final identityDraftChanged =
-        scopeIsLocation &&
+        scopeBelowBusiness &&
         overrides != null &&
         (_draftDiffers(_contactEmail.text, savedIdentityContactEmail) ||
             _draftDiffers(_contactPhone.text, savedIdentityContactPhone));
@@ -680,7 +760,7 @@ class _AccountScreenState extends State<AccountScreen> {
               overrides.businessDefault.localeCode ??
               widget.session.localeTag;
     final regionDraftChanged =
-        scopeIsLocation &&
+        scopeBelowBusiness &&
         overrides != null &&
         (_draftDiffers(_currencyCode, savedRegionCurrency) ||
             _draftDiffers(_localeTag, savedRegionLocale));
@@ -709,7 +789,7 @@ class _AccountScreenState extends State<AccountScreen> {
         ? _unsavedSourceLabel('these contact details')
         : identityInheritedLabel;
     final regionInheritedLabel = regionDraftChanged
-        ? _unsavedSourceLabel('these region settings')
+        ? _unsavedSourceLabel('these formatting settings')
         : widget.inheritedLabelFor(
             overrideIsSet: regionOverrideSet,
             businessDefaultDisplay: regionBusinessDefault,
@@ -741,11 +821,11 @@ class _AccountScreenState extends State<AccountScreen> {
     final timezoneEffectiveValue = _effectiveTimezoneValue();
     final timezoneInheritedLabel =
         _draftDiffers(timezoneEffectiveValue, _savedTimezoneValue)
-        ? 'Unsaved change here. Save timezone to set it at Location: '
-              '${widget.session.primaryLocationName}.'
+        ? 'Unsaved change here. Save timezone to set it at '
+              '${_scopeLevelLabel(widget.scopeLevel)}: ${widget.scopeName}.'
         : null;
     final timezoneValueSummary = timezoneEffectiveValue.isNotEmpty
-        ? 'This location uses $timezoneEffectiveValue.'
+        ? '${widget.scopeName} uses $timezoneEffectiveValue.'
         : 'No timezone is on file. Set one to lock daily timing.';
     final backendOnlyExplainer = widget
         .backendOnlyExplainerForBusinessDefault();
@@ -782,7 +862,7 @@ class _AccountScreenState extends State<AccountScreen> {
               ),
               _AccountScopeSummaryRow(
                 keyName: 'operator_web_account_region_scope_summary',
-                title: 'Region and formatting',
+                title: 'Currency and locale',
                 source: _sourceLabel(regionInheritedLabel),
                 value: regionValueSummary,
               ),
@@ -811,11 +891,11 @@ class _AccountScreenState extends State<AccountScreen> {
                 : _logoUrl.text.trim(),
             nameAndLogoEnabled: identityNameEnabled,
             contactEnabled: identityContactEnabled,
-            scopeIsLocation: scopeIsLocation,
+            scopeIsLocation: scopeBelowBusiness,
             onChanged: () => setState(() {}),
             logoUploadGateway: widget.logoUploadGateway,
             logoFilePicker: widget.logoFilePicker,
-            logoUploadDisabledReason: scopeIsLocation
+            logoUploadDisabledReason: scopeBelowBusiness
                 ? 'Logo changes are set at the Business level. Switch '
                       'Managing to All locations to upload a PNG.'
                 : null,
@@ -847,12 +927,17 @@ class _AccountScreenState extends State<AccountScreen> {
           ),
           const SizedBox(height: 14),
           _LocationTimezoneSection(
-            session: widget.session,
+            scopeLabel: _scopeLevelLabel(widget.scopeLevel),
+            scopeName: widget.scopeName,
             selectedValue: _selectedTimezone,
             customController: _timezoneCustomController,
             shortlist: _timezoneShortlist,
             customSentinel: _timezoneCustomSentinel,
-            enabled: widget.canEdit && _hasGateway && !_timezoneSubmitting,
+            enabled:
+                widget.canEdit &&
+                _hasGateway &&
+                !_timezoneSubmitting &&
+                lowerScopeEditable,
             submitting: _timezoneSubmitting,
             errorMessage: _timezoneErrorMessage,
             successMessage: _timezoneSuccessMessage,
@@ -929,7 +1014,7 @@ class _AccountScreenState extends State<AccountScreen> {
                     widget.canEdit &&
                         _hasGateway &&
                         !_submitting &&
-                        (scopeIsLocation || !scopeBelowBusiness)
+                        lowerScopeEditable
                     ? _handleSave
                     : null,
                 style: FilledButton.styleFrom(
@@ -1200,10 +1285,14 @@ class _AccountScopeSummaryPanel extends StatelessWidget {
     switch (level) {
       case HierarchyScopeLevel.business:
         return 'Business';
-      case HierarchyScopeLevel.region:
-        return 'Region';
       case HierarchyScopeLevel.brand:
         return 'Brand';
+      case HierarchyScopeLevel.region:
+        return 'Region';
+      case HierarchyScopeLevel.district:
+        return 'District';
+      case HierarchyScopeLevel.group:
+        return 'Location group';
       case HierarchyScopeLevel.location:
         return 'Location';
     }
@@ -1732,7 +1821,7 @@ class _RegionSection extends StatelessWidget {
   Widget build(BuildContext context) {
     return _Card(
       cardKey: const Key('operator_web_account_section_region'),
-      title: 'Region and formatting',
+      title: 'Currency and locale',
       subtitle:
           'Currency drives every dollar amount you see. Locale drives '
           'date formats and number separators (1,234.56 versus '
@@ -1905,7 +1994,8 @@ class _BusinessDaySection extends StatelessWidget {
 /// reference frame, never the stored timestamps.
 class _LocationTimezoneSection extends StatelessWidget {
   const _LocationTimezoneSection({
-    required this.session,
+    required this.scopeLabel,
+    required this.scopeName,
     required this.selectedValue,
     required this.customController,
     required this.shortlist,
@@ -1919,7 +2009,8 @@ class _LocationTimezoneSection extends StatelessWidget {
     required this.onSave,
   });
 
-  final OperatorWebSession session;
+  final String scopeLabel;
+  final String scopeName;
   final String? selectedValue;
   final TextEditingController customController;
   final List<_OptionPair> shortlist;
@@ -1937,11 +2028,11 @@ class _LocationTimezoneSection extends StatelessWidget {
     final isCustom = selectedValue == customSentinel;
     return _Card(
       cardKey: const Key('operator_web_account_section_location_timezone'),
-      title: 'Location timezone',
+      title: '$scopeLabel timezone',
       subtitle:
           'Forge & Flow groups every shift, week, and weekly plan into '
-          'this location\'s local day. Changing the timezone changes how '
-          'business dates land for ${session.primaryLocationName} from '
+          'this scope\'s local day. Changing the timezone changes how '
+          'business dates land for $scopeName from '
           'this point forward; past data keeps the timezone it was '
           'recorded against.',
       child: Column(
@@ -2129,7 +2220,7 @@ class _Card extends StatelessWidget {
                       ),
                     ),
                   ),
-            ),
+          ),
           const SizedBox(height: 14),
           child,
         ],
