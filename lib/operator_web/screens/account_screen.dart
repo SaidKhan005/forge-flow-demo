@@ -250,6 +250,7 @@ class _AccountScreenState extends State<AccountScreen> {
   // they toggle the dropdown.
   late TextEditingController _timezoneCustomController;
   String? _selectedTimezone;
+  String? _savedTimezoneValue;
   bool _timezoneSubmitting = false;
   String? _timezoneErrorMessage;
   String? _timezoneSuccessMessage;
@@ -320,6 +321,7 @@ class _AccountScreenState extends State<AccountScreen> {
     // text field depending on whether it appears in
     // [_timezoneShortlist].
     final initialTimezone = widget.session.primaryLocationTimezone?.trim();
+    _savedTimezoneValue = initialTimezone;
     final hasInShortlist =
         initialTimezone != null &&
         initialTimezone.isNotEmpty &&
@@ -346,6 +348,12 @@ class _AccountScreenState extends State<AccountScreen> {
   @override
   void didUpdateWidget(AccountScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final previousSessionTimezone = oldWidget.session.primaryLocationTimezone
+        ?.trim();
+    final nextSessionTimezone = widget.session.primaryLocationTimezone?.trim();
+    if (previousSessionTimezone != nextSessionTimezone) {
+      _savedTimezoneValue = nextSessionTimezone;
+    }
     // Reload overrides when the operator flips the Managing picker
     // between scopes. Loading is a no-op at Business scope.
     if (oldWidget.selectedScope?.id != widget.selectedScope?.id ||
@@ -568,9 +576,23 @@ class _AccountScreenState extends State<AccountScreen> {
       _timezoneSuccessMessage = null;
     });
     try {
-      await gateway.patchLocationTimezone(
+      final savedTimezone = await gateway.patchLocationTimezone(
         AccountLocationTimezonePatch(ianaTimezone: value),
       );
+      if (!mounted) return;
+      final savedTimezoneValue = savedTimezone.ianaTimezone.trim();
+      _timezoneSuccessTimer?.cancel();
+      setState(() {
+        _savedTimezoneValue = savedTimezoneValue;
+        _timezoneSubmitting = false;
+        _timezoneSuccessMessage =
+            'Saved. Daily timing now uses $savedTimezoneValue for this location.';
+      });
+      _timezoneSuccessTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted) return;
+        setState(() => _timezoneSuccessMessage = null);
+      });
+      return;
     } on OperatorWebProxyException catch (error) {
       if (!mounted) return;
       setState(() {
@@ -587,17 +609,6 @@ class _AccountScreenState extends State<AccountScreen> {
       });
       return;
     }
-    if (!mounted) return;
-    _timezoneSuccessTimer?.cancel();
-    setState(() {
-      _timezoneSubmitting = false;
-      _timezoneSuccessMessage =
-          'Saved. Daily timing now uses $value for this location.';
-    });
-    _timezoneSuccessTimer = Timer(const Duration(seconds: 4), () {
-      if (!mounted) return;
-      setState(() => _timezoneSuccessMessage = null);
-    });
   }
 
   @override
@@ -793,10 +804,7 @@ class _AccountScreenState extends State<AccountScreen> {
             successMessage: _timezoneSuccessMessage,
             effectiveValue: _effectiveTimezoneValue(),
             inheritedLabel:
-                _draftDiffers(
-                  _effectiveTimezoneValue(),
-                  widget.session.primaryLocationTimezone,
-                )
+                _draftDiffers(_effectiveTimezoneValue(), _savedTimezoneValue)
                 ? 'Unsaved change here. Save timezone to set it at Location: '
                       '${widget.session.primaryLocationName}.'
                 : null,

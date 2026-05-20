@@ -380,51 +380,82 @@ void main() {
     },
   );
 
-  testWidgets(
-    'timezone save round-trips the picked value through the gateway',
-    (tester) async {
-      await _sizeViewport(tester);
-      final gateway = _FakeAccountGateway();
-      final session = sessionWithRole(
-        'operator_owner',
-        primaryLocationTimezone: 'America/Toronto',
-      );
-      await tester.pumpWidget(
-        wrap(AccountScreen(session: session, gateway: gateway)),
-      );
-      // Wave 2 U-FU-hp11-account — three new HP #11 notices pushed
-      // the timezone shortlist below the 1600px viewport; scroll it
-      // into view before driving the dropdown.
-      await tester.ensureVisible(
-        find.byKey(const Key('operator_web_account_timezone_shortlist')),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('timezone save refreshes the hierarchy source wording', (
+    tester,
+  ) async {
+    await _sizeViewport(tester);
+    final gateway = _FakeAccountGateway();
+    final session = sessionWithRole(
+      'operator_owner',
+      primaryLocationTimezone: 'America/Toronto',
+    );
+    const savedSourceLabel = 'Set here. Does not inherit from a higher scope.';
+    const unsavedSourceLabel =
+        'Unsaved change here. Save timezone to set it at Location: '
+        'Brio Main.';
+    await tester.pumpWidget(
+      wrap(AccountScreen(session: session, gateway: gateway)),
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('operator_web_account_timezone_scope')),
+        matching: find.text(savedSourceLabel),
+      ),
+      findsOneWidget,
+    );
+    // Wave 2 U-FU-hp11-account — three new HP #11 notices pushed
+    // the timezone shortlist below the 1600px viewport; scroll it
+    // into view before driving the dropdown.
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_account_timezone_shortlist')),
+    );
+    await tester.pumpAndSettle();
 
-      // Open the dropdown and pick a different shortlist option.
-      await tester.tap(
-        find.byKey(const Key('operator_web_account_timezone_shortlist')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('London / Dublin').last);
-      await tester.pumpAndSettle();
+    // Open the dropdown and pick a different shortlist option.
+    await tester.tap(
+      find.byKey(const Key('operator_web_account_timezone_shortlist')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('London / Dublin').last);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('operator_web_account_timezone_scope')),
+        matching: find.text(unsavedSourceLabel),
+      ),
+      findsOneWidget,
+    );
 
-      await tester.ensureVisible(
-        find.byKey(const Key('operator_web_account_timezone_save')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const Key('operator_web_account_timezone_save')),
-      );
-      await tester.pumpAndSettle();
+    await tester.ensureVisible(
+      find.byKey(const Key('operator_web_account_timezone_save')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const Key('operator_web_account_timezone_save')),
+    );
+    await tester.pumpAndSettle();
 
-      expect(gateway.timezoneCalls, hasLength(1));
-      expect(gateway.timezoneCalls.single.ianaTimezone, 'Europe/London');
-      expect(
-        find.byKey(const Key('operator_web_account_timezone_success')),
-        findsOneWidget,
-      );
-    },
-  );
+    expect(gateway.timezoneCalls, hasLength(1));
+    expect(gateway.timezoneCalls.single.ianaTimezone, 'Europe/London');
+    expect(
+      find.byKey(const Key('operator_web_account_timezone_success')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('operator_web_account_timezone_scope')),
+        matching: find.text(unsavedSourceLabel),
+      ),
+      findsNothing,
+    );
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('operator_web_account_timezone_scope')),
+        matching: find.text(savedSourceLabel),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets('timezone gateway error surfaces in the inline timezone banner', (
     tester,
