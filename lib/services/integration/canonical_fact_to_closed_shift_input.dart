@@ -608,7 +608,15 @@ class CanonicalFactToClosedShiftInputAggregator
     if (operatorPreference == _OperatorCoversPreference.reservationPlusWalkin) {
       final resolvedWalkInOverride =
           walkInOverride ??
-          _walkInOverrideFromSettings(settings, isoBusinessDate);
+          _walkInOverrideFromSettings(
+            settings,
+            isoBusinessDate,
+            dayLabel: dayLabel,
+            servicePeriodId: servicePeriodId,
+            periodDefinition: periodDefinition,
+            periodDefinitions: periodDefinitions,
+            distributionWeights: distributionWeights,
+          );
       if (reservationFacts.isNotEmpty && resolvedWalkInOverride != null) {
         final seatedSum = reservationFacts.fold<int>(0, (acc, row) {
           final raw = row['party_size'];
@@ -761,16 +769,58 @@ class CanonicalFactToClosedShiftInputAggregator
 
   static ReservationWalkInOverride? _walkInOverrideFromSettings(
     DataAccuracySettings settings,
-    String businessDateIso,
-  ) {
+    String businessDateIso, {
+    required String dayLabel,
+    required String servicePeriodId,
+    required ServicePeriodDefinition periodDefinition,
+    required List<ServicePeriodDefinition> periodDefinitions,
+    required ScheduleDistributionWeights? distributionWeights,
+  }) {
     switch (settings.walkInHandlingMode) {
       case DataAccuracyWalkInHandlingMode.reservationsOnly:
       case DataAccuracyWalkInHandlingMode.walkInsTrackedSeparately:
         return const ReservationWalkInOverride(operatorWalkInCount: 0);
       case DataAccuracyWalkInHandlingMode.walkInsAddedToReservations:
-        final count = settings.walkInCountFor(businessDateIso);
-        if (count == null) return null;
-        return ReservationWalkInOverride(operatorWalkInCount: count);
+        final periodCount = settings.perServicePeriodWalkInCountFor(
+          businessDateIso,
+          servicePeriodId,
+        );
+        if (periodCount != null) {
+          return ReservationWalkInOverride(operatorWalkInCount: periodCount);
+        }
+        final dailyCount = settings.dailyWalkInCountFor(businessDateIso);
+        if (dailyCount == null) return null;
+        if (dailyCount <= 0) {
+          return const ReservationWalkInOverride(operatorWalkInCount: 0);
+        }
+        // Legacy daily walk-in totals are now split with the same
+        // service-period allocation seam as forecast covers. That
+        // keeps old payloads working without cloning the whole daily
+        // number into every reservation+walk-in period.
+        // ignore: deprecated_member_use_from_same_package
+        final allocations = DaypartPlanAllocator.allocate(
+          day: dayLabel,
+          dayCovers: dailyCount,
+          daySales: 0,
+          dayFohHours: 0,
+          dayBohHours: 0,
+          definitions: periodDefinitions,
+          distributionWeights: distributionWeights,
+        );
+        final allocation = allocations.firstWhere(
+          (a) => a.daypartId == periodDefinition.id,
+          orElse: () => const DaypartAllocation(
+            daypartId: '',
+            label: '',
+            forecastCovers: 0,
+            forecastSales: 0,
+            requiredFohHours: 0,
+            requiredBohHours: 0,
+          ),
+        );
+        return ReservationWalkInOverride(
+          operatorWalkInCount: allocation.forecastCovers,
+        );
     }
   }
 

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 
 import '../../domain/models/open_shift_snapshot.dart';
 import '../../domain/models/business_scope.dart';
+import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../domain/models/service_period_definition.dart';
@@ -1086,6 +1087,9 @@ class HttpSyncProxyClient
       ),
       wageSource: ServicePeriodWageSourceWire.fromWire(
         _readString(json['wage_source']) ?? 'target_substitution',
+      ),
+      coversSourceSource: DataAccuracySettingSource.fromMap(
+        json['covers_source_source'],
       ),
       effectiveAtBusinessDate:
           _readString(json['effective_at_business_date']) ??

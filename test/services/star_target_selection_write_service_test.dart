@@ -56,6 +56,43 @@ void main() {
     },
   );
 
+  test(
+    'AuthSessionStarTargetSelectionWriter clears stable and legacy keys',
+    () async {
+      final client = _RecordingStarTargetSelectionWriteClient();
+      final writer = AuthSessionStarTargetSelectionWriter(
+        client: client,
+        authSessionProvider: () => _session(),
+      );
+
+      await writer.replaceSelection(
+        restaurantId: 'restaurant-1',
+        selectedCandidates: const <BaselineCandidateShift>[],
+        previouslySelectedCandidates: <BaselineCandidateShift>[
+          _candidate(
+            '2026-05-06|late_night',
+            selected: true,
+            daypart: 'late_night',
+            servicePeriodKey: 'late_night',
+          ),
+        ],
+      );
+
+      expect(client.calls, hasLength(2));
+      expect(
+        client.calls.map((call) => call.body['record_key']),
+        containsAllInOrder(<String>[
+          '2026-05-06|late_night',
+          '2026-W19|Wednesday|late_night',
+        ]),
+      );
+      expect(
+        client.calls.map((call) => call.action),
+        everyElement(StarTargetSelectionWriteAction.clear),
+      );
+    },
+  );
+
   test('AuthSessionStarTargetSelectionWriter requires auth session', () async {
     final writer = AuthSessionStarTargetSelectionWriter(
       client: _RecordingStarTargetSelectionWriteClient(),

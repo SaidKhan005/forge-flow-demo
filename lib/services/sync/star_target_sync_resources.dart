@@ -229,6 +229,7 @@ class SelectedStarShiftDecisionSyncRow {
     required this.recordKey,
     required this.isSelected,
     required this.isClear,
+    this.servicePeriodKey,
     this.operatorId,
     this.locationId,
     this.restaurantId,
@@ -239,6 +240,7 @@ class SelectedStarShiftDecisionSyncRow {
   final String recordKey;
   final bool isSelected;
   final bool isClear;
+  final String? servicePeriodKey;
   final String? operatorId;
   final String? locationId;
   final String? restaurantId;
@@ -250,7 +252,15 @@ class SelectedStarShiftDecisionSyncRow {
     final selectedFlag = _readBool(
       json['is_selected'] ?? json['selected'] ?? json['selected_star'],
     );
+    final servicePeriodKey =
+        _readString(json['service_period_key']) ??
+        _readString(json['service_period_id']) ??
+        _readString(json['servicePeriodId']);
     final recordKey =
+        _deriveStableRecordKey(
+          businessDate: _readDateString(json['business_date']),
+          servicePeriodKey: servicePeriodKey,
+        ) ??
         _readString(json['record_key']) ??
         _deriveRecordKey(
           weekId: _readString(json['week_id']),
@@ -281,6 +291,7 @@ class SelectedStarShiftDecisionSyncRow {
       recordKey: recordKey,
       isSelected: isSelected,
       isClear: isClear,
+      servicePeriodKey: servicePeriodKey,
       operatorId: _readString(json['operator_id']),
       locationId: _readString(json['location_id']),
       restaurantId: _readString(json['restaurant_id']),
@@ -459,6 +470,14 @@ String? starTargetUnavailableReason(Map<String, Object?> body) {
         'star_target_truth_unavailable';
   }
   return null;
+}
+
+String? _deriveStableRecordKey({
+  required String? businessDate,
+  required String? servicePeriodKey,
+}) {
+  if (businessDate == null || servicePeriodKey == null) return null;
+  return '$businessDate|$servicePeriodKey';
 }
 
 String? _deriveRecordKey({

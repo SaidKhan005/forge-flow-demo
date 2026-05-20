@@ -372,6 +372,8 @@ void main() {
             gateway: gateway,
             businessDateIso: '2026-05-06',
             onSaveSettings: saves.add,
+            servicePeriodsLoader: () async =>
+                ServicePeriodDefinitionResolver.demoDefinitions,
           ),
         ),
       );
@@ -395,6 +397,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(saves.last.walkInManualEntries['2026-05-06'], 14);
+
+      final dinnerField = find.byKey(
+        const Key('walk_in_handling_period_count_field_dinner'),
+      );
+      await tester.ensureVisible(dinnerField);
+      await tester.pumpAndSettle();
+      await tester.enterText(dinnerField, '9');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(saves.last.walkInManualEntries['2026-05-06|dinner'], 9);
     });
 
     testWidgets('historical seed card surfaces for non-covers-exposing POS', (
@@ -538,6 +551,79 @@ void main() {
           '2026-05-08': <String, int>{'lunch': 64},
           '2026-05-07': <String, int>{'dinner': 172},
         }),
+      );
+    });
+
+    testWidgets('saving manual covers uses narrow manual-cover write', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+
+      final gateway = _RecordingDataAccuracyGateway()
+        ..seedSettings = DataAccuracySettings(
+          settingId: 'setting-1',
+          operatorId: ownerSession.operatorId,
+          locationId: ownerSession.primaryLocationId ?? '',
+          coversSourcePerServicePeriod: const <String, CoversSource>{
+            'dinner': CoversSource.manual,
+          },
+          coversSourcePerServicePeriodSources:
+              <String, DataAccuracySettingSource>{
+                'dinner': DataAccuracySettingSource(
+                  scopeType: 'business',
+                  sourceKind: 'scoped_override',
+                  scopeId: 'business-1',
+                ),
+              },
+          coversManualEntries: const <String, Map<String, int>>{},
+          wageSource: WageSource.vendor,
+          walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+          walkInManualEntries: const <String, int>{},
+          createdAt: DateTime.utc(2026, 5, 8),
+          updatedAt: DateTime.utc(2026, 5, 8),
+        );
+      final periods = <ServicePeriodDefinition>[
+        servicePeriodDefinition(id: 'dinner', label: 'Dinner', sortOrder: 1),
+      ];
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+            businessDateIso: '2026-05-08',
+            servicePeriodsLoader: () async => periods,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final dinnerField = find.byKey(
+        const Key('covers_manual_entry_field_dinner'),
+      );
+      await tester.ensureVisible(dinnerField);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(dinnerField, '144');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(gateway.settingsSaveCalls, isEmpty);
+      expect(gateway.manualCoverSaveCalls, hasLength(1));
+      final call = gateway.manualCoverSaveCalls.single;
+      expect(call.operatorId, ownerSession.operatorId);
+      expect(call.locationId, ownerSession.primaryLocationId);
+      expect(call.businessDateIso, '2026-05-08');
+      expect(call.servicePeriodKey, 'dinner');
+      expect(call.covers, 144);
+      expect(
+        gateway
+            .seedSettings!
+            .coversSourcePerServicePeriodSources['dinner']
+            ?.scopeType,
+        'business',
       );
     });
   });
@@ -732,6 +818,101 @@ void main() {
   });
 
   group('DataAccuracyScreen polling tier interaction', () {
+    testWidgets('loads admin-set polling tier from the data gateway', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = _RecordingDataAccuracyGateway()
+        ..seedPollingTier = OperatorWebPollingTierSnapshot(
+          operatorId: ownerSession.operatorId,
+          locationId: ownerSession.primaryLocationId ?? '',
+          tierKey: 'premium',
+          pollingCadencePerVendorSeconds: const <String, int>{
+            'quickbooks_time': 120,
+          },
+          monthlyPriceCents: 2900,
+          effectiveAt: DateTime.utc(2026, 5, 20),
+        );
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Premium'), findsOneWidget);
+      expect(find.text('\$29.00/month'), findsOneWidget);
+      expect(find.textContaining('2 minutes'), findsOneWidget);
+    });
+
+    testWidgets('refreshes polling tier when the location changes', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 1600));
+      final gateway = _RecordingDataAccuracyGateway()
+        ..seedPollingTiersByLocation = <String, OperatorWebPollingTierSnapshot>{
+          ownerSession.primaryLocationId ?? '': OperatorWebPollingTierSnapshot(
+            operatorId: ownerSession.operatorId,
+            locationId: ownerSession.primaryLocationId ?? '',
+            tierKey: 'premium',
+            pollingCadencePerVendorSeconds: const <String, int>{
+              'quickbooks_time': 120,
+            },
+            monthlyPriceCents: 2900,
+            effectiveAt: DateTime.utc(2026, 5, 20),
+          ),
+          'second-location': OperatorWebPollingTierSnapshot(
+            operatorId: ownerSession.operatorId,
+            locationId: 'second-location',
+            tierKey: 'custom',
+            pollingCadencePerVendorSeconds: const <String, int>{
+              'quickbooks_time': 30,
+            },
+            monthlyPriceCents: 9900,
+            effectiveAt: DateTime.utc(2026, 5, 21),
+          ),
+        };
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: ownerSession.primaryLocationId ?? '',
+            businessDateIso: testBusinessDateIso,
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Premium'), findsOneWidget);
+
+      await tester.pumpWidget(
+        wrap(
+          DataAccuracyScreen(
+            session: ownerSession,
+            locationId: 'second-location',
+            businessDateIso: testBusinessDateIso,
+            gateway: InMemoryVendorConnectionsGateway(),
+            dataAccuracyGateway: gateway,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Premium'), findsNothing);
+      expect(find.text('Custom'), findsOneWidget);
+      expect(find.text('\$99.00/month'), findsOneWidget);
+    });
+
     testWidgets('request tier change opens the ticket dialog', (tester) async {
       await sizeViewport(tester, const Size(1280, 1600));
 
@@ -1865,6 +2046,22 @@ class _ServicePeriodResetCall {
   final String servicePeriodKey;
 }
 
+class _ManualCoverSaveCall {
+  const _ManualCoverSaveCall({
+    required this.operatorId,
+    required this.locationId,
+    required this.businessDateIso,
+    required this.servicePeriodKey,
+    required this.covers,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String businessDateIso;
+  final String servicePeriodKey;
+  final int covers;
+}
+
 class _ManualCoverClearCall {
   const _ManualCoverClearCall({
     required this.operatorId,
@@ -1973,6 +2170,9 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   List<DataAccuracyServicePeriodSetting> seedServicePeriodRows =
       const <DataAccuracyServicePeriodSetting>[];
   DataAccuracySettings? seedSettings;
+  OperatorWebPollingTierSnapshot? seedPollingTier;
+  Map<String, OperatorWebPollingTierSnapshot> seedPollingTiersByLocation =
+      const <String, OperatorWebPollingTierSnapshot>{};
 
   int settingsLoadCalls = 0;
   int servicePeriodLoadCalls = 0;
@@ -1981,6 +2181,8 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   final List<_ServicePeriodResetCall> servicePeriodResetCalls =
       <_ServicePeriodResetCall>[];
   final List<DataAccuracySettings> settingsSaveCalls = <DataAccuracySettings>[];
+  final List<_ManualCoverSaveCall> manualCoverSaveCalls =
+      <_ManualCoverSaveCall>[];
   final List<_ManualCoverClearCall> manualCoverClearCalls =
       <_ManualCoverClearCall>[];
 
@@ -2029,6 +2231,67 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
     settingsSaveCalls.add(settings);
     seedSettings = settings;
     return settings;
+  }
+
+  @override
+  Future<DataAccuracySettings> saveManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required int covers,
+  }) async {
+    manualCoverSaveCalls.add(
+      _ManualCoverSaveCall(
+        operatorId: operatorId,
+        locationId: locationId,
+        businessDateIso: businessDateIso,
+        servicePeriodKey: servicePeriodKey,
+        covers: covers,
+      ),
+    );
+    final base =
+        seedSettings ??
+        DataAccuracySettings(
+          settingId: 'setting-1',
+          operatorId: operatorId,
+          locationId: locationId,
+          coversSourcePerServicePeriod: const <String, CoversSource>{},
+          coversManualEntries: const <String, Map<String, int>>{},
+          wageSource: WageSource.vendor,
+          walkInHandlingMode: DataAccuracyWalkInHandlingMode.reservationsOnly,
+          walkInManualEntries: const <String, int>{},
+          createdAt: DateTime.utc(2026, 5, 8),
+          updatedAt: DateTime.utc(2026, 5, 8),
+        );
+    final nextManualEntries = <String, Map<String, int>>{
+      for (final entry in base.coversManualEntries.entries)
+        entry.key: Map<String, int>.from(entry.value),
+    };
+    final dayMap = nextManualEntries.putIfAbsent(
+      businessDateIso,
+      () => <String, int>{},
+    );
+    dayMap[servicePeriodKey] = covers;
+    final saved = DataAccuracySettings(
+      settingId: base.settingId,
+      operatorId: operatorId,
+      locationId: locationId,
+      coversSourcePerServicePeriod: base.coversSourcePerServicePeriod,
+      coversSourcePerServicePeriodSources:
+          base.coversSourcePerServicePeriodSources,
+      coversManualEntries: nextManualEntries,
+      wageSource: base.wageSource,
+      wageSourceSource: base.wageSourceSource,
+      walkInHandlingMode: base.walkInHandlingMode,
+      walkInHandlingModeSource: base.walkInHandlingModeSource,
+      walkInManualEntries: base.walkInManualEntries,
+      createdAt: base.createdAt,
+      updatedAt: DateTime.utc(2026, 5, 8, 0, manualCoverSaveCalls.length),
+      updatedBy: base.updatedBy,
+    );
+    seedSettings = saved;
+    return saved;
   }
 
   @override
@@ -2100,6 +2363,12 @@ class _RecordingDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
       seedServicePeriodRows,
     );
   }
+
+  @override
+  Future<OperatorWebPollingTierSnapshot?> loadPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  }) async => seedPollingTiersByLocation[locationId] ?? seedPollingTier;
 
   @override
   Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({

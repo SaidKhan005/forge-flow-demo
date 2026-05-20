@@ -6,8 +6,9 @@
 // Per-period target rows mirror the shape of ActiveTargetProfile.dayparts
 // so the Learn analyzer can sharpen pattern resolution to the period
 // underneath ("Friday dinner: covers down" vs "Friday: covers down").
-// Decision 13 — no UX overhaul in V1; analyzer narration update is a
-// follow-up after Slice 1's model layer lands.
+// Decision 13: no UX overhaul in V1. The analyzer now uses these rows
+// for period-specific narration when available, and falls back to
+// whole-day targets when a period row is missing.
 
 /// Per-period target row for [LearnBenchmarkContext].
 ///

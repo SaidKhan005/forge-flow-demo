@@ -254,9 +254,16 @@ class DataAccuracySettings {
   final DataAccuracyWalkInHandlingMode walkInHandlingMode;
   final DataAccuracySettingSource? walkInHandlingModeSource;
 
-  /// Sparse map keyed by ISO `YYYY-MM-DD` business_date string ->
-  /// walk-in count for that day. Used when [walkInHandlingMode] is
-  /// `walkInsAddedToReservations`.
+  /// Sparse map of operator-entered walk-in counts.
+  ///
+  /// Backward-compatible daily keys stay valid:
+  ///   * `2026-05-06` -> total walk-ins for the whole business day.
+  ///
+  /// Per-service-period keys refine the split without a schema change:
+  ///   * `2026-05-06|dinner` -> walk-ins for that service period only.
+  ///
+  /// Aggregators prefer the keyed value and split a daily fallback
+  /// across configured service periods when the keyed value is absent.
   final Map<String, int> walkInManualEntries;
 
   final DateTime createdAt;
@@ -289,8 +296,34 @@ class DataAccuracySettings {
     return dayMap[servicePeriodId];
   }
 
-  int? walkInCountFor(String businessDateIso) {
+  static String walkInManualEntryKey(
+    String businessDateIso,
+    String servicePeriodId,
+  ) {
+    return '$businessDateIso|$servicePeriodId';
+  }
+
+  int? dailyWalkInCountFor(String businessDateIso) {
     return walkInManualEntries[businessDateIso];
+  }
+
+  int? perServicePeriodWalkInCountFor(
+    String businessDateIso,
+    String servicePeriodId,
+  ) {
+    return walkInManualEntries[walkInManualEntryKey(
+      businessDateIso,
+      servicePeriodId,
+    )];
+  }
+
+  int? walkInCountFor(String businessDateIso, {String? servicePeriodId}) {
+    final period = servicePeriodId?.trim();
+    if (period != null && period.isNotEmpty) {
+      final keyed = perServicePeriodWalkInCountFor(businessDateIso, period);
+      if (keyed != null) return keyed;
+    }
+    return dailyWalkInCountFor(businessDateIso);
   }
 
   /// Project from a `data_accuracy_settings` row produced by the

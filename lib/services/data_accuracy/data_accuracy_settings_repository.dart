@@ -320,6 +320,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
     required DataAccuracyWalkInHandlingMode mode,
     String? actorUserId,
     String? businessDateIso,
+    String? servicePeriodId,
     int? setWalkInCount,
   }) {
     final ctx = TenantContext(
@@ -340,6 +341,7 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
         walkInEntries = _patchWalkInEntry(
           walkInEntries,
           businessDateIso,
+          servicePeriodId,
           setWalkInCount,
         );
       }
@@ -598,13 +600,20 @@ class DataAccuracySettingsRepository extends OperatorScopedRepository {
   static Map<String, int> _patchWalkInEntry(
     Map<String, int> current,
     String businessDateIso,
+    String? servicePeriodId,
     int? walkInCount,
   ) {
     final out = Map<String, int>.from(current);
+    final key = servicePeriodId == null || servicePeriodId.trim().isEmpty
+        ? businessDateIso
+        : DataAccuracySettings.walkInManualEntryKey(
+            businessDateIso,
+            servicePeriodId.trim(),
+          );
     if (walkInCount == null) {
-      out.remove(businessDateIso);
+      out.remove(key);
     } else {
-      out[businessDateIso] = walkInCount;
+      out[key] = walkInCount;
     }
     return out;
   }

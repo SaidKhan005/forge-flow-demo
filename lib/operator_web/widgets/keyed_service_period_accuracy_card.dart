@@ -21,9 +21,9 @@
 // orchestration; this card is presentation + dialog only.
 //
 // UX writing standard (`memory/project_ux_writing_standard.md`): plain
-// English. The dialog explains the four allowed covers sources and the
-// hidden wage wire value stays preserved until projection uses
-// per-period wage settings.
+// English. The dialog explains the four allowed covers sources; wage
+// settings stay on the separate Wage authority surface until
+// per-period wage projection is active.
 
 import 'package:flutter/material.dart';
 
@@ -34,8 +34,8 @@ import '../../theme/app_theme.dart';
 /// Pure value object the card emits when the operator submits the
 /// dialog. The screen forwards this into
 /// [OperatorWebDataAccuracyGateway.saveServicePeriodSetting]. The wage
-/// source is intentionally not editable in this dialog until
-/// per-period wage projection is wired.
+/// source field is carried for legacy call-shape compatibility only;
+/// Operator Web does not write hidden wage choices from this covers UI.
 class KeyedServicePeriodAccuracyDraft {
   const KeyedServicePeriodAccuracyDraft({
     required this.servicePeriodKey,
@@ -272,6 +272,7 @@ class _RowSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sourceLabel = row.coversSourceSource?.operatorFacingLabel;
     return Padding(
       key: Key(
         'data_accuracy_keyed_service_period_row_'
@@ -295,6 +296,13 @@ class _RowSummary extends StatelessWidget {
                   'covers: ${_coversLabel(row.coversSource)}',
                   style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
+                if (sourceLabel != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    'Source: $sourceLabel',
+                    style: AppTextStyles.body12(color: AppColors.textSecondary),
+                  ),
+                ],
               ],
             ),
           ),

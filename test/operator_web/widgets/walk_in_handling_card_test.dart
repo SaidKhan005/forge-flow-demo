@@ -1,12 +1,13 @@
 // Phase 8 spine-bridge Lane .B — WalkInHandlingCard widget tests.
 //
-// Cover acceptance item E: 3-mode picker + daily walk-in count entry
-// surfaces only in `walkInsAddedToReservations` mode (mode A).
+// Cover acceptance item E: 3-mode picker + walk-in count entries
+// surface only in `walkInsAddedToReservations` mode (mode A).
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/operator_web/widgets/walk_in_handling_card.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
@@ -268,6 +269,54 @@ void main() {
         find.byKey(const Key('walk_in_handling_daily_count_field')),
       );
       expect(field.controller!.text, equals('22'));
+    });
+
+    testWidgets('submitting service-period walk-in count emits period key', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final captured = <String, int?>{};
+
+      await tester.pumpWidget(
+        wrap(
+          WalkInHandlingCard(
+            mode: WalkInHandlingMode.walkInsAddedToReservations,
+            onModeChanged: (_) {},
+            businessDateIso: '2026-05-05',
+            dailyWalkInCount: null,
+            onDailyWalkInCountChanged: (_) {},
+            servicePeriods: const <ServicePeriodDefinition>[
+              ServicePeriodDefinition(
+                id: 'dinner',
+                label: 'Dinner',
+                shortLabel: 'D',
+                sortOrder: 2,
+                startLocalTime: '17:00',
+                endLocalTime: '22:00',
+                rollsPastMidnight: false,
+                applicableDays: <int>[1, 2, 3, 4, 5, 6, 7],
+              ),
+            ],
+            perPeriodWalkInCounts: const <String, int>{'dinner': 6},
+            onPerPeriodWalkInCountChanged: (period, value) {
+              captured[period] = value;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final field = find.byKey(
+        const Key('walk_in_handling_period_count_field_dinner'),
+      );
+      expect(field, findsOneWidget);
+      expect(tester.widget<TextField>(field).controller!.text, equals('6'));
+
+      await tester.enterText(field, '9');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pumpAndSettle();
+
+      expect(captured, equals(<String, int?>{'dinner': 9}));
     });
   });
 }

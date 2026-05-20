@@ -222,6 +222,30 @@ void main() {
       },
     );
 
+    test('POST select rejects display-label service-period keys', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final body = _selectBody()..['service_period_key'] = 'Late Night';
+          final response = await _httpJson(
+            ctx.client,
+            ctx.baseUri.resolve('$_basePath/select'),
+            method: 'POST',
+            idempotencyKey: 'idem-invalid-period-key',
+            body: body,
+          );
+
+          expect(response.statusCode, equals(400));
+          final json = jsonDecode(response.body) as Map<String, Object?>;
+          expect(json['error'], equals('invalid_service_period_key'));
+          expect(ctx.gateway.writes, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test(
       'POST clear records a clear decision without candidate fabrication',
       () async {
@@ -474,6 +498,81 @@ void main() {
             expect(command.standards.dayparts.first.targetCplh, 0);
             expect(command.standards.dayparts.first.coverCount, 0);
             expect(command.standards.dayparts.last.targetPpa, 48);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('POST manager projection rejects display-label period ids', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final body = _projectionBody(includeDayparts: true);
+          final standards = body['standards'] as Map<String, Object?>;
+          final dayparts = standards['target_cycle_dayparts'] as List<Object?>;
+          (dayparts.first as Map<String, Object?>)['service_period_id'] =
+              'Late Night';
+          final response = await _httpJson(
+            ctx.client,
+            ctx.baseUri.resolve(
+              '$_baseOperatorLocationPath/$targetCyclesResource/'
+              'project_manager_override',
+            ),
+            method: 'POST',
+            idempotencyKey: 'projection-invalid-period-key',
+            body: body,
+          );
+
+          expect(response.statusCode, equals(400));
+          final json = jsonDecode(response.body) as Map<String, Object?>;
+          expect(json['error'], equals('invalid_service_period_id'));
+          expect(ctx.gateway.projectionCommands, isEmpty);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'POST manager projection prefers canonical key over legacy alias',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final body = _projectionBody(includeDayparts: true);
+            final standards = body['standards'] as Map<String, Object?>;
+            final dayparts =
+                standards['target_cycle_dayparts'] as List<Object?>;
+            final first = dayparts.first as Map<String, Object?>;
+            first['service_period_id'] = 'Late Night';
+            first['service_period_key'] = 'late_night';
+            final response = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '$_baseOperatorLocationPath/$targetCyclesResource/'
+                'project_manager_override',
+              ),
+              method: 'POST',
+              idempotencyKey: 'projection-canonical-period-key',
+              body: body,
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(
+              ctx
+                  .gateway
+                  .projectionCommands
+                  .single
+                  .standards
+                  .dayparts
+                  .first
+                  .servicePeriodId,
+              'late_night',
+            );
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);

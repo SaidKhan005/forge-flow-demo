@@ -386,10 +386,10 @@ class _PerLocationDataAccuracyTableState
         for (final period in sorted)
           _MiniFact(
             _servicePeriodLabelFor(row, period.servicePeriodKey),
-            _servicePeriodCoversLabel(period.coversSource),
+            _coversLabel(row.settings.coversSourceFor(period.servicePeriodKey)),
             sourceLabel: row.settings
                 .coversSourceSourceFor(period.servicePeriodKey)
-                ?.label,
+                ?.operatorFacingLabel,
           ),
       ];
     }
@@ -428,26 +428,13 @@ class _PerLocationDataAccuracyTableState
     if (keyedRow != null) {
       return _MiniFact(
         _servicePeriodLabelFor(row, key),
-        _servicePeriodCoversLabel(keyedRow.coversSource),
+        _coversLabel(row.settings.coversSourceFor(key)),
         sourceLabel: row.settings
             .coversSourceSourceFor(key)
             ?.operatorFacingLabel,
       );
     }
     return _MiniFact(_servicePeriodLabelFor(row, key), 'Vendor default');
-  }
-
-  static String _servicePeriodCoversLabel(ServicePeriodCoversSource source) {
-    switch (source) {
-      case ServicePeriodCoversSource.vendor:
-        return 'Vendor';
-      case ServicePeriodCoversSource.forecast:
-        return 'Forecast';
-      case ServicePeriodCoversSource.manual:
-        return 'Manual';
-      case ServicePeriodCoversSource.reservationPlusWalkin:
-        return 'Reservations + walk-ins';
-    }
   }
 
   static String _servicePeriodLabel(String key) {

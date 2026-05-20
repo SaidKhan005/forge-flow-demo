@@ -23,6 +23,8 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
+import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/service_period_definition_resolver.dart';
 import '../../services/auth/auth_operations_gateway.dart';
 import '../../services/auth/custom_role_validator.dart' show RoleScope;
 import '../../services/integration/iana_timezone_converter.dart';
@@ -347,6 +349,21 @@ Future<String> _dataAccuracyBusinessDateIso({
   return HttpBusinessTimingReadGateway.businessDateForInstant(
     resolution: resolution,
     instantUtc: instantUtc,
+  );
+}
+
+Future<List<ServicePeriodDefinition>> _dataAccuracyServicePeriods({
+  required String locationId,
+  required WebBusinessTimingGateway timingGateway,
+}) async {
+  final resolution = await timingGateway.resolveForLocation(
+    locationId: locationId,
+  );
+  final effective = HttpBusinessTimingReadGateway.effectiveProfileForResolution(
+    resolution,
+  );
+  return ServicePeriodDefinitionResolver.ordered(
+    effective.servicePeriodDefinitions,
   );
 }
 
@@ -1647,6 +1664,12 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
                 dataAccuracyGateway: _dataAccuracyGateway,
                 vendorApplicabilityGateway: _vendorApplicabilityGateway,
                 businessDateIso: businessDateIso,
+                servicePeriodsLoader: _webBusinessTimingGateway == null
+                    ? null
+                    : () => _dataAccuracyServicePeriods(
+                        locationId: locationScope.id,
+                        timingGateway: _webBusinessTimingGateway!,
+                      ),
                 // Wave 2 S-2 (`debug.md:220`, OW-13c) — the Wage
                 // Authority section now mounts inside Data Accuracy.
                 // Re-use the same gateway resolution the standalone

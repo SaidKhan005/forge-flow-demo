@@ -6,6 +6,7 @@ import 'package:http/testing.dart' as http_testing;
 import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/services/star_target_selection_write_service.dart';
 import 'package:forge_and_flow/services/sync/http_sync_proxy_client.dart';
+import 'package:forge_and_flow/services/sync/star_target_sync_resources.dart';
 
 void main() {
   test('fetchAccessibleBusinessScopes calls user-scoped route', () async {
@@ -840,6 +841,22 @@ void main() {
     expect(versions.unavailableReason, 'target_profile_versions_not_projected');
     expect(requests.first.queryParameters['modified_since'], 'selected-cursor');
     expect(requests.first.queryParameters['page_size'], '25');
+  });
+
+  test('selected-star sync rows prefer stable service-period identity', () {
+    final row = SelectedStarShiftDecisionSyncRow.fromJson(<String, Object?>{
+      'record_key': '2026-W18|Wed|Late Night',
+      'week_id': '2026-W18',
+      'day_label': 'Wed',
+      'daypart': 'Late Night',
+      'business_date': '2026-05-06',
+      'service_period_key': 'late_night',
+      'decision_type': 'manager_selected',
+    });
+
+    expect(row.recordKey, '2026-05-06|late_night');
+    expect(row.servicePeriodKey, 'late_night');
+    expect(row.isSelected, isTrue);
   });
 
   test('missing star-target proxy route reports unavailable page', () async {

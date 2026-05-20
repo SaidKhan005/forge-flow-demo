@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../domain/models/data_accuracy_settings.dart';
+import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
 
 enum WalkInHandlingMode {
@@ -33,6 +34,9 @@ class WalkInHandlingCard extends StatefulWidget {
     required this.businessDateIso,
     required this.dailyWalkInCount,
     required this.onDailyWalkInCountChanged,
+    this.servicePeriods = const <ServicePeriodDefinition>[],
+    this.perPeriodWalkInCounts = const <String, int>{},
+    this.onPerPeriodWalkInCountChanged,
     this.source,
   });
 
@@ -48,6 +52,11 @@ class WalkInHandlingCard extends StatefulWidget {
   /// Called on submit. `null` when the operator clears the field.
   final void Function(int?) onDailyWalkInCountChanged;
 
+  final List<ServicePeriodDefinition> servicePeriods;
+  final Map<String, int> perPeriodWalkInCounts;
+  final void Function(String servicePeriodId, int? value)?
+  onPerPeriodWalkInCountChanged;
+
   final DataAccuracySettingSource? source;
 
   @override
@@ -56,6 +65,8 @@ class WalkInHandlingCard extends StatefulWidget {
 
 class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
   late final TextEditingController _walkInController;
+  final Map<String, TextEditingController> _periodControllers =
+      <String, TextEditingController>{};
 
   @override
   void initState() {
@@ -63,6 +74,7 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
     _walkInController = TextEditingController(
       text: widget.dailyWalkInCount?.toString() ?? '',
     );
+    _syncPeriodControllers();
   }
 
   @override
@@ -75,12 +87,39 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
         TextPosition(offset: _walkInController.text.length),
       );
     }
+    _syncPeriodControllers();
   }
 
   @override
   void dispose() {
     _walkInController.dispose();
+    for (final controller in _periodControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
+  }
+
+  void _syncPeriodControllers() {
+    final activeIds = widget.servicePeriods.map((p) => p.id).toSet();
+    final removed = _periodControllers.keys
+        .where((id) => !activeIds.contains(id))
+        .toList(growable: false);
+    for (final id in removed) {
+      _periodControllers.remove(id)?.dispose();
+    }
+    for (final period in widget.servicePeriods) {
+      final next = widget.perPeriodWalkInCounts[period.id]?.toString() ?? '';
+      final controller = _periodControllers.putIfAbsent(
+        period.id,
+        () => TextEditingController(text: next),
+      );
+      if (controller.text != next) {
+        controller.text = next;
+        controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: controller.text.length),
+        );
+      }
+    }
   }
 
   void _commitWalkIn(String raw) {
@@ -92,6 +131,19 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
     final parsed = int.tryParse(trimmed);
     if (parsed == null || parsed < 0) return;
     widget.onDailyWalkInCountChanged(parsed);
+  }
+
+  void _commitPeriodWalkIn(String servicePeriodId, String raw) {
+    final callback = widget.onPerPeriodWalkInCountChanged;
+    if (callback == null) return;
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      callback(servicePeriodId, null);
+      return;
+    }
+    final parsed = int.tryParse(trimmed);
+    if (parsed == null || parsed < 0) return;
+    callback(servicePeriodId, parsed);
   }
 
   @override
@@ -152,9 +204,8 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
                 widget.mode == WalkInHandlingMode.walkInsAddedToReservations,
             label: 'Add walk-ins to reservations',
             body:
-                'F&F asks you to type a daily walk-in count. Total covers '
-                '= reservations + walk-ins for that day. Best when '
-                'walk-in volume varies day to day.',
+                'F&F asks you to type a daily total or service-period '
+                'counts. Total covers = reservations + walk-ins.',
             onTap: () => widget.onModeChanged(
               WalkInHandlingMode.walkInsAddedToReservations,
             ),
@@ -183,46 +234,85 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
           ],
           if (widget.mode == WalkInHandlingMode.walkInsAddedToReservations) ...[
             const SizedBox(height: 14),
-            Container(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              decoration: BoxDecoration(
-                color: AppColors.cardGlow,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
-                borderRadius: BorderRadius.circular(6),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Walk-ins on ${widget.businessDateIso}',
-                      style: AppTextStyles.body14(color: AppColors.textPrimary),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 140,
-                    child: TextField(
-                      key: const Key('walk_in_handling_daily_count_field'),
-                      controller: _walkInController,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: false,
-                        signed: false,
-                      ),
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      onSubmitted: _commitWalkIn,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'e.g. 12',
-                        border: OutlineInputBorder(),
-                      ),
-                      style: AppTextStyles.body14(color: AppColors.textPrimary),
-                    ),
-                  ),
-                ],
-              ),
+            _CountRow(
+              label: 'Daily total on ${widget.businessDateIso}',
+              fieldKey: const Key('walk_in_handling_daily_count_field'),
+              controller: _walkInController,
+              onSubmitted: _commitWalkIn,
             ),
+            if (widget.servicePeriods.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              for (final period in widget.servicePeriods) ...[
+                _CountRow(
+                  label: period.label,
+                  fieldKey: Key(
+                    'walk_in_handling_period_count_field_${period.id}',
+                  ),
+                  controller: _periodControllers[period.id]!,
+                  onSubmitted: (raw) => _commitPeriodWalkIn(period.id, raw),
+                ),
+                if (period != widget.servicePeriods.last)
+                  const SizedBox(height: 8),
+              ],
+            ],
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CountRow extends StatelessWidget {
+  const _CountRow({
+    required this.label,
+    required this.fieldKey,
+    required this.controller,
+    required this.onSubmitted,
+  });
+
+  final String label;
+  final Key fieldKey;
+  final TextEditingController controller;
+  final ValueChanged<String> onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 140,
+            child: TextField(
+              key: fieldKey,
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: false,
+                signed: false,
+              ),
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              onSubmitted: onSubmitted,
+              decoration: const InputDecoration(
+                isDense: true,
+                hintText: 'e.g. 12',
+                border: OutlineInputBorder(),
+              ),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
+            ),
+          ),
         ],
       ),
     );

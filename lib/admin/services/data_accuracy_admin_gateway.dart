@@ -1541,10 +1541,9 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       ),
     );
     final prev = _readSettings(operatorId, locationId);
-    // Per-Daypart V1 Slice R5 (Gap 27/36): merge the legacy 3-daypart
-    // admin override onto the keyed per-period map. The admin wire
-    // vocabulary stays 3-daypart (hierarchy/proxy migration deferred);
-    // only the in-memory model shape changed.
+    // Legacy scalar inputs remain accepted for old tests and callers, but
+    // normal admin writes now use the keyed per-period map so custom service
+    // periods stay first-class.
     final prevLunch = prev.coversSourceFor('lunch');
     final prevDinner = prev.coversSourceFor('dinner');
     final prevLateNight = prev.coversSourceFor('late_night');

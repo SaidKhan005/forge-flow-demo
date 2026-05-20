@@ -21,10 +21,10 @@ Date: 2026-05-19
   records before validating a merge. Those adapters also needed to carry the
   existing metadata so a top-level patch or one-period patch does not strip the
   untouched rows.
-- Org-unit authoring is not cleanly reachable from the live Business setup
-  route yet. The shell has org-unit management-scope options, but Business
-  setup explicitly requires a location scope before mounting the timing editor,
-  and the editor only knows the operator and selected location anchors.
+- Org-unit authoring was originally not cleanly reachable from the live
+  Business setup route. A later parity fix closed that route gap by mounting
+  the timing editor on the selected org-unit management scope and preserving
+  `org_unit` writes through the editor tests.
 
 ## Scope
 
@@ -71,9 +71,9 @@ Date: 2026-05-19
   of deriving all-week or list-order values.
 - Updated route fakes and tests so they preserve metadata instead of masking the
   same problem as the production path.
-- Kept org-unit authoring documented only. Clean implementation requires a
-  Business setup route that can mount on an org-unit scope and provide the
-  editor with a real org-unit target.
+- Org-unit authoring route gap is now closed by the later Business setup
+  parity pass. The editor can mount on a real org-unit target and write
+  `org_unit` scope without borrowing a location route.
 
 ## Verification
 
@@ -86,7 +86,7 @@ Date: 2026-05-19
 - Existing persisted or fixture data that omits sort order can still revalidate
   through the legacy `0` fallback, but new writes persist the explicit 1..4
   value required by the timing table.
-- Org-unit timing authoring remains a product-route gap, not a validator or
-  repository blocker. The backend validator continues to accept `org_unit`
-  scope, and the route work should be done when Business setup can own an
-  org-unit target without borrowing the selected location route.
+- Org-unit timing authoring is no longer an open product-route gap in the
+  current branch. Router and screen tests now cover opening the editor at
+  org-unit management scope and writing `org_unit` scope with the selected
+  group id.

@@ -726,6 +726,14 @@ class _ServicePeriodRow extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (period.sourceLabel.trim().isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: _TimingStatusPill(
+                      label: 'Source: ${period.sourceLabel}',
+                      color: AppColors.textMuted,
+                    ),
+                  ),
               ],
             ),
           ),

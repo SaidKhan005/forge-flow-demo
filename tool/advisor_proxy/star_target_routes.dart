@@ -33,6 +33,8 @@ const String selectedStarShiftDecisionsPathPrefix = '/v1/operators/';
 
 const String selectedStarWritePermissionKey = 'forgeflow.baseline.override';
 
+final RegExp _servicePeriodKeyPattern = RegExp(r'^[a-z][a-z0-9_]{0,63}$');
+
 class SelectedStarTargetRouter {
   SelectedStarTargetRouter({
     required SelectedStarTargetGateway gateway,
@@ -756,7 +758,7 @@ SelectedStarShiftDecisionWrite _decisionWriteFromBody({
     dayLabel: _requiredString(body, 'day_label'),
     daypart: _requiredString(body, 'daypart'),
     businessDate: _requiredDateString(body, 'business_date'),
-    servicePeriodKey: _optionalString(body, 'service_period_key'),
+    servicePeriodKey: _optionalServicePeriodKey(body, 'service_period_key'),
     targetCycleId: _optionalString(body, 'target_cycle_id'),
     decisionType: decisionType,
     decisionSource: source,
@@ -817,10 +819,7 @@ ServerTargetCycleProjectionCommand _projectionCommandFromBody({
       bohWage: _requiredDouble(standards, body, 'boh_wage'),
       opzFloorCplh: _requiredDouble(standards, body, 'opz_floor_cplh'),
       opzCeilingCplh: _requiredDouble(standards, body, 'opz_ceiling_cplh'),
-      dayparts: _projectionDaypartsFromBody(
-        standards: standards,
-        body: body,
-      ),
+      dayparts: _projectionDaypartsFromBody(standards: standards, body: body),
     ),
     actorUserId: actorUserId,
     managerOverrideAt: _optionalDateTime(body, 'manager_override_at'),
@@ -864,10 +863,7 @@ ServerTargetDaypartStandards _projectionDaypartFromObject(Object? value) {
   final row = <String, Object?>{
     for (final entry in value.entries) entry.key.toString(): entry.value,
   };
-  final servicePeriodId =
-      _optionalString(row, 'service_period_id') ??
-      _optionalString(row, 'service_period_key') ??
-      _optionalString(row, 'servicePeriodId');
+  final servicePeriodId = _projectionServicePeriodKey(row);
   if (servicePeriodId == null) {
     throw const SelectedStarRouteRejected(
       code: 'missing_service_period_id',
@@ -945,6 +941,27 @@ String? _optionalString(Map<String, Object?> body, String key) {
   final value = body[key];
   if (value is String && value.trim().isNotEmpty) return value.trim();
   return null;
+}
+
+String? _optionalServicePeriodKey(Map<String, Object?> body, String key) {
+  final value = _optionalString(body, key);
+  if (value == null) return null;
+  if (_servicePeriodKeyPattern.hasMatch(value)) return value;
+  throw SelectedStarRouteRejected(
+    code: 'invalid_$key',
+    message:
+        '$key must be a stable lowercase service-period key such as '
+        'late_night',
+    statusCode: 400,
+  );
+}
+
+String? _projectionServicePeriodKey(Map<String, Object?> row) {
+  final canonical = _optionalServicePeriodKey(row, 'service_period_key');
+  if (canonical != null) return canonical;
+  final camel = _optionalServicePeriodKey(row, 'servicePeriodId');
+  if (camel != null) return camel;
+  return _optionalServicePeriodKey(row, 'service_period_id');
 }
 
 DateTime? _optionalDateTime(Map<String, Object?> body, String key) {

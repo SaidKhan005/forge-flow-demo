@@ -736,6 +736,7 @@ void main() {
     expect(find.text('04:00'), findsOneWidget);
     expect(find.text('Week starts'), findsOneWidget);
     expect(find.text('Monday'), findsOneWidget);
+    expect(find.text('Week-start source'), findsOneWidget);
     expect(find.text('Effective service periods'), findsOneWidget);
     expect(find.text('Lunch'), findsOneWidget);
     // Operator-only seeded chain => provenance is the resolver's

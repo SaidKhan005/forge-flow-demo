@@ -85,6 +85,8 @@ void main() {
     expect(find.text('Inherited from Operator default'), findsWidgets);
     expect(find.text('Lunch'), findsOneWidget);
     expect(find.text('Late night'), findsOneWidget);
+    expect(find.text('Source: Operator default'), findsWidgets);
+    expect(find.text('Shift close authority'), findsNothing);
     expect(
       find.byKey(const Key('operator_web_business_timing_edit_controls')),
       findsOneWidget,

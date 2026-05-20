@@ -337,13 +337,24 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
   /// lower-precedence row). Keyed the same way [_recomputeEffective]
   /// keys the map.
   WageRoleRowResolvedValue? _resolvedFor(WageRoleRowRecord row) {
-    return _effectiveByKey['${row.laborBucket} ${row.roleName}'];
+    final resolved = _effectiveByKey['${row.laborBucket} ${row.roleName}'];
+    if (resolved?.wageRoleRowId != row.wageRoleRowId) return null;
+    return resolved;
   }
 
   List<WageRoleRowRecord> _rowsForBucket(String wireBucket) {
+    final effectiveIds = <String>{
+      for (final resolved in _effectiveByKey.values)
+        if (resolved.wageRoleRowId != null) resolved.wageRoleRowId!,
+    };
     final list =
         _rowsById.values
-            .where((r) => r.laborBucket == wireBucket && r.isActive)
+            .where(
+              (r) =>
+                  r.laborBucket == wireBucket &&
+                  r.isActive &&
+                  effectiveIds.contains(r.wageRoleRowId),
+            )
             .toList()
           ..sort(
             (a, b) =>

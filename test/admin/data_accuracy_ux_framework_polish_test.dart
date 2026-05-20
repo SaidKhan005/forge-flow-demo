@@ -13,6 +13,7 @@ import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.da
 import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_service_period_setting.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
 import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
@@ -439,6 +440,70 @@ void main() {
       expect(find.text('Source: Default'), findsNothing);
     });
 
+    testWidgets('service-period rows use effective source label', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyTable(
+            rows: <DataAccuracyAdminRow>[
+              DataAccuracyAdminRow(
+                operatorRef: ref,
+                settings: DataAccuracySettings(
+                  settingId: 'effective-row',
+                  operatorId: 'op-1',
+                  locationId: 'loc-1',
+                  coversSourcePerServicePeriod: const <String, CoversSource>{
+                    'breakfast': CoversSource.manual,
+                  },
+                  coversSourcePerServicePeriodSources:
+                      const <String, DataAccuracySettingSource>{
+                        'breakfast': DataAccuracySettingSource(
+                          scopeType: 'business',
+                          sourceKind: 'scoped_override',
+                          overrideId: 'ovr-breakfast',
+                        ),
+                      },
+                  coversManualEntries: const <String, Map<String, int>>{},
+                  wageSource: WageSource.vendor,
+                  createdAt: DateTime.utc(2026, 5, 1),
+                  updatedAt: DateTime.utc(2026, 5, 1),
+                ),
+                servicePeriodSettings: <DataAccuracyServicePeriodSetting>[
+                  DataAccuracyServicePeriodSetting(
+                    id: 'period-breakfast',
+                    operatorId: 'op-1',
+                    locationId: 'loc-1',
+                    servicePeriodKey: 'breakfast',
+                    coversSource: ServicePeriodCoversSource.forecast,
+                    wageSource: ServicePeriodWageSource.targetSubstitution,
+                    coversSourceSource: const DataAccuracySettingSource(
+                      scopeType: 'location',
+                      sourceKind: 'service_period_setting',
+                      scopeId: 'loc-1',
+                      settingId: 'period-breakfast',
+                    ),
+                    effectiveAtBusinessDate: '2026-05-20',
+                    createdAt: DateTime.utc(2026, 5, 20),
+                    updatedAt: DateTime.utc(2026, 5, 20),
+                  ),
+                ],
+              ),
+            ],
+            editingEnabled: false,
+            onEditRow: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Source: Business'), findsOneWidget);
+      expect(find.text('Source: Location setting'), findsNothing);
+    });
+
     testWidgets('data accuracy table filters rows using vendor source', (
       tester,
     ) async {
@@ -536,6 +601,47 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('tier assignment rows show effective tier defaults', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final now = DateTime.utc(2026, 5, 20, 12);
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationTierAssignmentTable(
+            rows: <TierAssignmentAdminRow>[
+              TierAssignmentAdminRow(
+                operatorRef: ref,
+                assignment: ForgeFlowPollingTierAssignment(
+                  assignmentId: 'assignment-1',
+                  operatorId: ref.operatorId,
+                  locationId: ref.locationId,
+                  tierKey: PollingTierKey.standard,
+                  pollingCadencePerVendorSeconds: const <String, int>{},
+                  effectiveAt: now,
+                  createdAt: now,
+                ),
+              ),
+            ],
+            tierDefinitions: <TierDefinition>[
+              kDemoStandardTierDefinition(),
+              kDemoPremiumTierDefinition(),
+              kDemoCustomTierDefinition(),
+            ],
+            editingEnabled: false,
+            onAssign: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Tier default: \$99.00'), findsOneWidget);
+      expect(find.text('Tier default: \$12.00'), findsOneWidget);
+      expect(find.text('Tier default: 300s'), findsOneWidget);
     });
 
     testWidgets('tier assignment filters can be cleared in one action', (

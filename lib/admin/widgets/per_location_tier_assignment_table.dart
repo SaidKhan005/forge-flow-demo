@@ -211,6 +211,9 @@ class _PerLocationTierAssignmentTableState
 
   Widget _buildRow(TierAssignmentAdminRow row) {
     final assignment = row.assignment;
+    final definition = assignment == null
+        ? null
+        : _definitionFor(assignment.tierKey);
     final margin = assignment?.netMarginCents;
     final Color marginColor;
     if (margin == null || margin == 0) {
@@ -221,15 +224,15 @@ class _PerLocationTierAssignmentTableState
       marginColor = AppColors.negative;
     }
     final priceLabel = assignment?.monthlyPriceCents == null
-        ? 'Tier default'
+        ? _tierDefaultMoneyLabel(definition?.defaultMonthlyPriceCents)
         : formatCents(assignment!.monthlyPriceCents!);
     final costLabel = assignment?.vendorApiCostEstimateCentsMonthly == null
-        ? 'Tier default'
+        ? _tierDefaultMoneyLabel(definition?.vendorApiCostEstimateCentsMonthly)
         : formatCents(assignment!.vendorApiCostEstimateCentsMonthly!);
     final marginLabel = margin == null ? 'Not calculated' : formatCents(margin);
     final cadences = assignment?.pollingCadencePerVendorSeconds;
     final cadenceLabel = (cadences == null || cadences.isEmpty)
-        ? 'Tier default'
+        ? _tierDefaultCadenceLabel(definition?.pollingCadencePerVendorSeconds)
         : '${cadences.length} vendor(s) set';
     final notes = row.adminNotes ?? '';
     final notesLabel = notes.length > 30
@@ -322,6 +325,27 @@ class _PerLocationTierAssignmentTableState
         },
       ),
     );
+  }
+
+  TierDefinition? _definitionFor(PollingTierKey tierKey) {
+    for (final definition in widget.tierDefinitions) {
+      if (definition.tierKey == tierKey) return definition;
+    }
+    return null;
+  }
+
+  String _tierDefaultMoneyLabel(int? cents) {
+    if (cents == null) return 'Tier default';
+    return 'Tier default: ${formatCents(cents)}';
+  }
+
+  String _tierDefaultCadenceLabel(Map<String, int>? cadences) {
+    if (cadences == null || cadences.isEmpty) return 'Tier default';
+    final uniqueCadences = cadences.values.toSet();
+    if (uniqueCadences.length == 1) {
+      return 'Tier default: ${uniqueCadences.single}s';
+    }
+    return 'Tier default: ${cadences.length} vendors';
   }
 }
 

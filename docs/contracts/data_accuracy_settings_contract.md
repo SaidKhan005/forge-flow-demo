@@ -344,8 +344,11 @@ payload.
 Business timing makes service periods restaurant-configurable. Data Accuracy
 settings therefore resolve by stable `service_period_key`, not by display label
 or by the old canonical trio. The hardcoded `covers_source_lunch` /
-`covers_source_dinner` / `covers_source_late_night` shape is now a rejected
-legacy compatibility shape for new implementation work.
+`covers_source_dinner` / `covers_source_late_night` shape is now legacy
+wire compatibility only. New implementation work must use
+`covers_source_per_service_period`; compatibility routes may still accept the
+old fields until a staged retirement pass proves no active client path depends
+on them.
 
 The V1 implementation target for covers-source selection is a keyed child
 table:
@@ -416,7 +419,9 @@ create table if not exists public.data_accuracy_settings (
   -- ── Polling cadence (REVERSED 2026-05-05) ─────────────────────────
   -- Reservation demand / walk-in handling. Mobile reads this as
   -- server-owned truth; operators/admins write through the data accuracy
-  -- surfaces.
+  -- surfaces. walk_in_manual_entries stays one jsonb object for
+  -- compatibility: daily fallback keys are `YYYY-MM-DD`; per-period
+  -- keys are `YYYY-MM-DD|service_period_key` and win for that period.
   walk_in_handling_mode text not null default 'reservations_only'
     check (walk_in_handling_mode in (
       'reservations_only',

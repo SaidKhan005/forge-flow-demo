@@ -28,7 +28,9 @@ The 4 operator decisions that gated slice dispatch are resolved.
 Supersession note: Gap 36's old-column cleanup landed in the R7 series; active
 Covers source reads and writes use keyed service-period settings, and the old
 whole-day/daypart-specific `covers_source_*` columns are retained here only as
-the historical decision record.
+the historical decision record. The same names may still appear on server wire
+compatibility paths during staged retirement, but new client writes use
+`covers_source_per_service_period` so custom periods remain supported.
 
 ---
 
@@ -460,13 +462,13 @@ Gaps 1–18 are the planning-phase findings already mapped above. Gaps 19+ are t
 | 28 | **`ServicePeriodDraft` (operator-web editor) missing `applicableDays`, `shortLabel`, `sortOrder` fields.** Mobile read display shows these; canonical model carries them; operator-web write UI silently ignores them. Operator cannot define day-restricted periods (e.g. "Weekend Brunch Sat/Sun only"). | `lib/operator_web/widgets/service_period_editor.dart:28-62` vs `lib/domain/models/service_period_definition.dart:33-34`; mobile read at `settings_timing_authority_section.dart:43-57` | Plan assumes operator can fully configure their periods — the editor restricts what they can express. | **Slice 2.5** (new small slice) |
 | 29 | **Operator-web `data_accuracy_screen.dart` has NO `HierarchyScopeNotice`.** HP #11 explicitly names "data accuracy" as a hierarchy-scoped surface. No scope chip, no "inherited from Operator default" pill anywhere on the screen. | `lib/operator_web/screens/data_accuracy_screen.dart` (full file) | HP #11 violation. | Follow-up after V1 (small dedicated slice) |
 | 30 | **Mobile `settings_timing_authority_section.dart` and `settings_wage_authority_section.dart` missing scope chip.** Mobile is view-only but should still surface inheritance state per HP #11. | `lib/screens/settings/settings_timing_authority_section.dart:128-171`; `lib/screens/settings/settings_wage_authority_section.dart:115-229` | HP #11 violation (mobile). | Follow-up after V1 |
-| 31 | **`shift_close_authority` not operator-editable.** Mobile is view-only; operator-web business timing editor doesn't include it; only F&F Ops admin (`lib/admin/screens/operator_location_admin_screen.dart:3719`) writes it. Architecture says operator owns timing setup. | `restaurant_timing_configs.shift_close_authority` column; admin-only write path | Architectural inconsistency. Operator decision needed: expose on operator-web, or document the backend-only carve-out per HP #11. | Operator decision required; if expose → Slice 2.5 companion; if document → contract amendment |
+| 31 | **Resolved by auto-derived close authority.** Shift close is no longer an operator/admin setting. Vendor-reliable POS rows use vendor finalization; unknown/unreliable rows fall back to the operator's business-day-start. | `lib/services/integration/close_authority_capability.dart`; `lib/services/closed_truth_eligibility.dart`; `db/migrations/202605150400_per_daypart_v1_drop_close_authority.sql` | No UI gap remains. | Closed |
 | 32 | **Wage Authority hardcoded to `HierarchyScopeLevel.location`** — no business-default wages. Multi-location operators type the same FOH/BOH wages N times. | `lib/operator_web/screens/wage_authority_screen.dart:484` | Inconsistent with HP #11 (wages aren't an exception). Not blocking V1. | Follow-up after V1 |
 | 33 | **Hidden mobile `_WageMixEditorScreen` still in code.** `settings_screen.dart:363` passes `viewOnly: true`; ~400 lines of dead UI ships in the mobile binary. | `lib/screens/settings/settings_wage_authority_section.dart:254-663` | Code-health follow-up. | Follow-up cleanup |
 | 34 | **Wage Mix UI doesn't say "applies per-period".** After Decision 11 + Decision 14, operators see a single FOH wage but Variance Full Week Projection multiplies it by per-period required hours. Without a copy hint operators may expect to set a different lunch wage. | `lib/screens/settings/settings_wage_authority_section.dart` (no copy); `lib/operator_web/screens/wage_authority_screen.dart` (no copy) | Copy-only fix. | **Slice 2** (one-line copy add) |
 | 35 | **Operator-web Benchmarks override writes the pool layer directly.** `benchmarks_screen.dart` writes pooled `target_cplh/splh/ppa` scalars to `benchmark_overrides`. After Slice 1 those scalars become the derived rollup of per-period rows. An override that writes only the pool gets clobbered on the next cycle write (pool recomputed from periods). Risk flagged in plan as audit-time guard (Gap 14), but the WRITE seam itself isn't addressed. | `lib/operator_web/screens/benchmarks_screen.dart:128-184`; pool-consistency check in Slice 6 | Either make operator-web override per-period (mirror mobile Baseline Manager pattern) or add copy explaining the pool-write semantics. | **Slice 2** (decision + copy at minimum; if per-period: small extension) |
 | 36 | **Closed by the R7 old-column cleanup.** Historical issue: legacy `covers_source_lunch/dinner/late_night` columns coexisted with keyed `data_accuracy_service_period_settings`, leaving precedence ambiguous. Active behavior now uses keyed service-period settings. | Historical refs: `lib/domain/models/data_accuracy_settings.dart:207-214`; `lib/operator_web/widgets/keyed_service_period_accuracy_card.dart:7-9` | Historical ambiguity only; do not re-open from this row. | **Closed/superseded** |
-| 37 | **Walk-in handling per-period split missing.** Walk-in daily count is a single integer per `business_date_iso`. Walk-ins skew toward dinner; period split would improve covers attribution. | `lib/operator_web/widgets/walk_in_handling_card.dart`; `lib/domain/models/data_accuracy_settings.dart` (walk_in_handling_mode) | Out of scope V1 but worth documenting explicitly. | Out of scope (document in "What's deferred") |
+| 37 | **Walk-in handling per-period split.** Walk-in entries now support both daily fallback keys and per-period keys (`business_date|service_period_key`). Operator Web can enter period counts; the aggregator prefers the period count and splits old daily totals across configured periods. | `lib/operator_web/widgets/walk_in_handling_card.dart`; `lib/domain/models/data_accuracy_settings.dart`; `lib/services/integration/canonical_fact_to_closed_shift_input.dart` | Keeps old clients working while improving covers attribution. | Follow-up closed 2026-05-20 |
 | 38 | **Polling tier per-period split missing.** Tier-status surface is location-wide; lunch may demand faster cadence than late-night. | `lib/operator_web/widgets/polling_tier_status_card.dart` | Out of scope V1 (F&F Ops Console controls polling tiers). | Out of scope (document) |
 
 ## Whole-day target consumer gaps
@@ -551,12 +553,17 @@ Original sequence: Slice 0, 1, 2, 3, 4, 5, 6. Amended sequence after audit findi
 - Production wiring of `CanonicalFactPeriodResolver` + `CanonicalFactPostCommitProjector` (Gap 19) — production cutover precondition
 - `data_accuracy_screen.dart` HierarchyScopeNotice (Gap 29)
 - Mobile settings scope chips (Gap 30)
-- `shift_close_authority` operator-editing OR documented carve-out (Gap 31) — operator decision
-- Wage Authority business-default scope (Gap 32)
+- `shift_close_authority` stale decision row — closed by auto-derived close authority
+- Wage Authority business-default scope (Gap 32) - implemented in current
+  branch; continuation pass closed live-read source fields and shadowed-row
+  display.
 - Hidden `_WageMixEditorScreen` cleanup (Gap 33)
-- Walk-in handling per-period (Gap 37) — out of scope, documented
+- Walk-in handling per-period (Gap 37) — follow-up closed 2026-05-20
 - Polling tier per-period (Gap 38) — out of scope, documented
-- Learn analyzer narration per-period (Gap 39 narration layer)
+- Learn analyzer narration per-period (Gap 39 narration layer) - implemented
+  in analyzer copy and pinned with period-specific tests. Visible Learn card
+  body/action copy can be revisited later only if product wants the catalog
+  story text itself rewritten per service period.
 
 ---
 
