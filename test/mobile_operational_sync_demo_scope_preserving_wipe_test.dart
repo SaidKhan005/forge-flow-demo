@@ -47,6 +47,8 @@ import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/services/sync/mobile_operational_sync_runtime.dart';
 
+import '_test_helpers/cold_boot_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
@@ -83,10 +85,13 @@ void main() {
 
   setUp(() async {
     tmpDir = await Directory.systemTemp.createTemp('demo_preserve_wipe_');
+    // Bucket 4d (audit 2026-05-20): reset cold-boot overrides via
+    // `addTearDown` so the override can't leak between tests
+    // (PR #1091 bug shape). The `set` happens below in `coldBoot()`.
+    addTearDown(resetColdBootOverrides);
   });
 
   tearDown(() async {
-    SqliteDatabase.debugColdBootTodayOverride = null;
     await SqliteDatabase.instance.close();
     if (await tmpDir.exists()) {
       await tmpDir.delete(recursive: true);

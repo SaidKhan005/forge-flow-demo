@@ -24,6 +24,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/cold_boot_helpers.dart';
+
 void main() {
   // Fix A (operator decision 2026-05-16): a "none connected" demo
   // location (today Harbour) is honest-EMPTY — it carries NO
@@ -44,12 +46,15 @@ void main() {
     // stay deterministic and keep their pre-fix Dinner-open semantics.
     // The seeded business DATE is still the reseed/advance date — only
     // which period is "open" is anchored here.
-    SqliteDatabase.debugColdBootNowOverride = '2026-03-27T19:45:00';
+    //
+    // Bucket 4d (audit 2026-05-20): set+reset via ColdBootOverrideScope
+    // so the override can't leak between tests (PR #1091 bug shape).
+    final scope = ColdBootOverrideScope(now: '2026-03-27T19:45:00');
+    addTearDown(scope.dispose);
     await SqliteDatabase.instance.reseedDemo();
   });
 
   tearDown(() {
-    SqliteDatabase.debugColdBootNowOverride = null;
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
   });

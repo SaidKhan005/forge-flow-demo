@@ -40,6 +40,8 @@ import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
 import 'package:forge_and_flow/services/target_cycle_service.dart';
 
+import '_test_helpers/cold_boot_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
@@ -52,10 +54,13 @@ void main() {
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
     BaselineData.clearRecommendationSignals();
+    // Bucket 4d (audit 2026-05-20): reset cold-boot overrides via
+    // `addTearDown` so the override can't leak between tests
+    // (PR #1091 bug shape). The `set` happens below in `coldBoot()`.
+    addTearDown(resetColdBootOverrides);
   });
 
   tearDown(() async {
-    SqliteDatabase.debugColdBootTodayOverride = null;
     BenchmarkTrackerReadService.disableBridgeOnly();
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();

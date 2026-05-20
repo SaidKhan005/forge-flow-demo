@@ -43,6 +43,8 @@ import 'package:forge_and_flow/dev/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/dao/open_shift_snapshot_dao.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/cold_boot_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
@@ -63,18 +65,23 @@ void main() {
 
   setUp(() async {
     tmpDir = await Directory.systemTemp.createTemp('perloc_open_');
-  });
-
-  tearDown(() async {
-    // Reset BOTH cold-boot anchor seams between tests. `Fix B` sets
+    // Bucket 4d (audit 2026-05-20): reset BOTH cold-boot anchor seams
+    // between tests via `addTearDown(resetColdBootOverrides)` so the
+    // override can't leak between tests (PR #1091 bug shape). The
+    // `set` happens below in `coldBoot()` / `coldBootAtClock()`.
+    //
+    // Why both seams must be cleared: `Fix B` sets
     // `debugColdBootNowOverride` and the "real current date" test that
     // follows expects only `debugColdBootTodayOverride` to drive the
     // anchor — but `_coldBootAnchorIsoDate` checks `Now` FIRST, so a
     // leaked `Now` override silently wins and the seed anchors to last
-    // test's date (e.g. 2026-05-16 instead of today). Clearing both
-    // here keeps each test's clock pin hermetic.
-    SqliteDatabase.debugColdBootTodayOverride = null;
-    SqliteDatabase.debugColdBootNowOverride = null;
+    // test's date (e.g. 2026-05-16 instead of today).
+    // `resetColdBootOverrides` clears both, keeping each test's clock
+    // pin hermetic.
+    addTearDown(resetColdBootOverrides);
+  });
+
+  tearDown(() async {
     await SqliteDatabase.instance.close();
     if (await tmpDir.exists()) {
       await tmpDir.delete(recursive: true);
