@@ -1268,9 +1268,22 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     // the count when location scope goes away keeps the chip from
     // stale-rendering at business / org-unit scope where the Vendor
     // integrations row already shows a "Choose a location" body.
+    //
+    // Bundle-load dedupe (PR #1007 follow-up): when the operator is
+    // already on the Vendor integrations route, [VendorConnectionsScreen]
+    // mounts [VendorConnectionsWidget] which loads the same bundle for
+    // the screen body. Skipping the chip's redundant pre-fetch here
+    // keeps `gateway.loadBundle` called exactly once per route mount
+    // (contract pinned by `vendor_connections_screen_mount_test.dart`
+    // line 88). The chip's purpose is to surface outages on screens
+    // the operator is NOT currently looking at; the screen body is the
+    // truthful surface when they ARE looking. The chip count refreshes
+    // naturally on the next scope change or nav-away → nav-back.
     final outageKey = locationScope == null
         ? null
         : '${session.operatorId}|${locationScope.id}';
+    final onVendorConnectionsNav =
+        _selectedNavId == kOperatorWebNavVendorConnections;
     if (locationScope == null && _vendorOutageCount > 0) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1279,7 +1292,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           _vendorOutageCountKey = null;
         });
       });
-    } else if (locationScope != null && _vendorOutageCountKey != outageKey) {
+    } else if (locationScope != null &&
+        _vendorOutageCountKey != outageKey &&
+        !onVendorConnectionsNav) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         unawaited(
