@@ -29,11 +29,13 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/screens/schedule/schedule_forecast_notifier.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  const restaurantId = DemoScope.restaurantId;
+  const restaurantId = demoRestaurantId;
 
   // Default seeded business date: 2026-03-27 (Friday).
   // Monday-start week: 2026-03-23 to 2026-03-29.
@@ -63,9 +65,7 @@ void main() {
         builtAt: '',
       );
 
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   group('Slice 3 demo-seed — locked snapshot per-period + wage stamp', () {
     test(

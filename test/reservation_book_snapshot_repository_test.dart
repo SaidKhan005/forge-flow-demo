@@ -16,10 +16,10 @@ import 'package:forge_and_flow/domain/models/reservation_book_snapshot.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   test('reseed creates the demo reservation book — day sums to 72 / 18',
       () async {

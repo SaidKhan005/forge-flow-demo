@@ -8,12 +8,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/state/active_target_profile_notifier.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
+
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   setUp(() async {
     BaselineData.clearManagerOverride();
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
   });
 
   // â”€â”€ A: Notifier loads persisted active profile â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
