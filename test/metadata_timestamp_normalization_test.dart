@@ -137,15 +137,27 @@ void main() {
   // ── D: closeShift writes UTC created_at for target_profile_versions ───────
 
   group('D — closeShift target_profile_version created_at is UTC', () {
-    test('newly created version row has UTC created_at', () async {
+    test('version row locked at close has UTC created_at', () async {
       final db = await SqliteDatabase.instance.database;
 
-      // Count existing version rows before closing a shift.
-      final before = await db.query('target_profile_versions');
-      final countBefore = before.length;
-
-      // Close the Friday dinner shift.
-      await ShiftService.instance.closeShift(ClosedShiftInput(
+      // Close the Friday dinner shift. The closed `ShiftRecord` carries
+      // the `target_profile_version_id` that the close locked onto —
+      // we then verify that this version row's `created_at` is UTC.
+      //
+      // Note (2026-05-19): the older shape of this test asserted that
+      // `target_profile_versions` row count strictly increased after
+      // `closeShift`. That precondition is no longer valid in
+      // production: target_profile_version ids are now deterministic
+      // (`stableProfileVersionIdForCycle`, a SHA1 of the cycle id), the
+      // DAO insert uses `ConflictAlgorithm.ignore`, and the demo seed
+      // / `loadOrBootstrapProfile` projection already write the
+      // canonical version row for the active cycle before any close
+      // call. So `closeShift` legitimately re-targets an existing row
+      // instead of minting a new one. The intent of this test — "the
+      // version row a closed shift locks onto has a UTC timestamp" —
+      // is preserved by asserting the property directly on the row
+      // whose id the closed shift carries.
+      final closed = await ShiftService.instance.closeShift(ClosedShiftInput(
         businessDate: DateTime(2026, 3, 27),
         weekId: '2026-W13',
         dayLabel: 'Fri',
@@ -163,14 +175,20 @@ void main() {
         sourceShiftId: 'w13-fri-dinner-close',
       ));
 
-      // There should be at least one new version row.
-      final after = await db.query('target_profile_versions',
-          orderBy: 'created_at DESC');
-      expect(after.length, greaterThan(countBefore));
+      final lockedVersionId = closed.targetProfileVersionId;
+      expect(lockedVersionId, isNotNull,
+          reason: 'closeShift must lock the shift onto a version id');
+      expect(lockedVersionId, isNotEmpty);
 
-      // The newest row should have a UTC created_at.
-      final newest = after.first;
-      final createdAt = newest['created_at'] as String;
+      final lockedRows = await db.query(
+        'target_profile_versions',
+        where: 'target_profile_version_id = ?',
+        whereArgs: [lockedVersionId],
+        limit: 1,
+      );
+      expect(lockedRows, isNotEmpty,
+          reason: 'the version id the close locked onto must be persisted');
+      final createdAt = lockedRows.first['created_at'] as String;
       expect(_isUtcTimestamp(createdAt), isTrue,
           reason: 'Expected UTC created_at, got: $createdAt');
     });

@@ -5,7 +5,14 @@
 //   mostCommonLeakCount = 18
 //   sideLabel           = 'FOH ONLY'
 //   topLeakDayparts     = ['Thu Dinner', 'Tue Dinner']  (tie-break: label asc)
-//   benchmarkDayparts   = ['Wed Dinner', 'Fri Late Night']
+//   benchmarkDayparts   = ['Wed Dinner', 'Mon Dinner']  (tie-break: label asc)
+//
+// 2026-05-19 update: per-daypart V1 Slice 1.5 narrowed late-night
+// service-period applicability to Fri-Sat only (days 5-6, was all-week),
+// so the demo's historical Fri Late Night cohort dropped out of the
+// runner-up tie set. The new alphabetical winner of the remaining tie
+// set is `Mon Dinner`. `Wed Dinner` remains the top benchmark daypart;
+// the runner-up moved from `Fri Late Night` to `Mon Dinner`.
 //
 // Pinning history:
 //   pre-7.58.4 (fill shifts hard-coded as `ON_MODEL`):
@@ -62,9 +69,9 @@ void main() {
       );
     });
 
-    test('benchmarkDayparts contains both Wed Dinner and Fri Late Night', () {
+    test('benchmarkDayparts contains both Wed Dinner and Mon Dinner', () {
       expect(summary.benchmarkDayparts,
-          containsAll(['Wed Dinner', 'Fri Late Night']));
+          containsAll(['Wed Dinner', 'Mon Dinner']));
     });
 
     test('topLeakDayparts has exactly 2 entries', () {

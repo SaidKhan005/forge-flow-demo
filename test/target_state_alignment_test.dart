@@ -104,6 +104,44 @@ ClosedShiftInput _sunDinner() => ClosedShiftInput(
       actualBohLaborDollars: 936.5,
     );
 
+// Per-Daypart V1 Slice 1.5 (Gap 24): `ShiftService.closeShift` now
+// only writes a `WeekRecord` when the FULL week is closed
+// (`closedShifts.length == period_count × applicable_days_count`,
+// totalling 16 for the demo's 3-period timing config: 7 days lunch +
+// 7 days dinner + 2 days late_night). The demo seed leaves W13's
+// Sat lunch / Sun lunch as `projected` alongside the 5 dinner/late-
+// night slots, so closing only those 5 leaves 14 / 16 — under the
+// completion gate and no week_record is upserted. These two helpers
+// close the remaining Sat lunch + Sun lunch so the full week's
+// 16-shift gate fires.
+ClosedShiftInput _satLunch() => ClosedShiftInput(
+      businessDate: DateTime(2026, 3, 28),
+      weekId: '2026-W13',
+      dayLabel: 'Sat',
+      daypart: 'lunch',
+      covers: 174,
+      forecastCovers: 180,
+      actualSales: 7308.0,
+      actualFohHours: 39,
+      actualBohHours: 41,
+      actualFohLaborDollars: 685.0,
+      actualBohLaborDollars: 892.5,
+    );
+
+ClosedShiftInput _sunLunch() => ClosedShiftInput(
+      businessDate: DateTime(2026, 3, 29),
+      weekId: '2026-W13',
+      dayLabel: 'Sun',
+      daypart: 'lunch',
+      covers: 168,
+      forecastCovers: 170,
+      actualSales: 7056.0,
+      actualFohHours: 38,
+      actualBohHours: 40,
+      actualFohLaborDollars: 663.0,
+      actualBohLaborDollars: 870.5,
+    );
+
 void main() {
   final profileRepo = SqliteTargetProfileRepository.instance;
 
@@ -328,11 +366,30 @@ void main() {
   group('E â€” week truth stability', () {
     test('stored week target fields do not change after profile change',
         () async {
-      // Close all 5 remaining shifts to create a full week
+      // Clear operational open-shift state so the WeekRecord-completion
+      // gate inside `ShiftService.closeShift` counts every closed W13
+      // shift, not just the ones the closed-truth eligibility filter
+      // promotes. The eligibility filter excludes
+      // `appLocalCutoffFallback` shifts whose `businessDate` is not
+      // strictly less than the current operational business date
+      // (2026-03-27 in the demo) — so any W13 close on Fri 2026-03-27
+      // would not count for the gate. The eligibility-filter behaviour
+      // itself is exercised by its own dedicated tests; this test only
+      // needs the "16-of-16 → upsert WeekRecord" path to fire.
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('open_shift_snapshots');
+
+      // Close ALL remaining projected W13 shifts to complete the
+      // week (`ShiftService.closeShift` only writes the WeekRecord
+      // when every shift in the week is closed — see helper notes at
+      // top of file). Demo seed leaves 7 W13 slots projected; close
+      // all of them so the 16-of-16 completion gate fires.
       await ShiftService.instance.closeShift(_friDinner());
       await ShiftService.instance.closeShift(_friLateNight());
+      await ShiftService.instance.closeShift(_satLunch());
       await ShiftService.instance.closeShift(_satDinner());
       await ShiftService.instance.closeShift(_satLateNight());
+      await ShiftService.instance.closeShift(_sunLunch());
       await ShiftService.instance.closeShift(_sunDinner());
 
       // Read the stored week
