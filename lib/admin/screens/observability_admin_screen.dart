@@ -2010,11 +2010,11 @@ class _ProjectionRetriesTab extends StatelessWidget {
                   key: const Key(
                     'admin_observability_projection_retry_pending',
                   ),
-                  label: 'Waiting',
+                  label: 'Pending',
                   labelHelp:
-                      'Jobs ready for the retry worker once their next attempt time arrives.',
+                      'Rows not completed yet. Row labels show Ready or Waiting.',
                   value: '${counts.pending}',
-                  caption: 'Pending retry jobs',
+                  caption: 'Ready or waiting',
                   accent: counts.pending > 0
                       ? AppColors.warning
                       : AppColors.positive,
@@ -2023,11 +2023,10 @@ class _ProjectionRetriesTab extends StatelessWidget {
                   key: const Key(
                     'admin_observability_projection_retry_running',
                   ),
-                  label: 'Running',
-                  labelHelp:
-                      'Jobs currently claimed by a projection retry worker.',
+                  label: 'Claimed',
+                  labelHelp: 'Rows currently held by a retry worker.',
                   value: '${counts.running}',
-                  caption: 'Claimed retry jobs',
+                  caption: 'Worker-held rows',
                   accent: counts.running > 0
                       ? AppColors.warning
                       : AppColors.neutral,
@@ -2060,14 +2059,14 @@ class _ProjectionRetriesTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_projection_retry_active',
-            title: 'Recent active retry jobs',
+            title: 'Recent retry rows',
             subtitle:
-                'Bounded list of waiting or running rows. The worker drains these through tenant-scoped replay.',
+                'Bounded list of pending, failed, or claimed rows. Each row shows Ready, Waiting, or Claimed.',
             child: retries.recentActive.isEmpty
                 ? const _EmptyState(
                     keyName:
                         'admin_observability_projection_retry_active_empty',
-                    label: 'No waiting or running projection retry rows.',
+                    label: 'No pending or claimed projection retry rows.',
                   )
                 : _ProjectionRetryRows(
                     rows: retries.recentActive,
@@ -2143,11 +2142,7 @@ class _ProjectionRetryRowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final inputShape = _projectionRetryPayloadLabel(row);
     final failurePoint = _projectionRetryFailurePointLabel(row.failureStage);
-    final statusColor = row.isDeadLettered
-        ? AppColors.negative
-        : row.status == 'running'
-        ? AppColors.warning
-        : AppColors.textPrimary;
+    final statusColor = _projectionRetryClaimabilityColor(row);
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(10),
@@ -2173,8 +2168,10 @@ class _ProjectionRetryRowCard extends StatelessWidget {
               ),
               Expanded(
                 child: Text(
-                  row.status.replaceAll('_', ' '),
+                  row.claimabilityLabel,
                   textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.mono11(
                     color: statusColor,
                   ).copyWith(fontWeight: FontWeight.w700),
@@ -2514,6 +2511,21 @@ String _projectionRetryPayloadLabel(ProjectionRetryRow row) {
     return '${row.factCount} facts';
   }
   return '${closed ?? 0} closed / ${open ?? 0} open';
+}
+
+Color _projectionRetryClaimabilityColor(ProjectionRetryRow row) {
+  if (row.isClaimable) return AppColors.positive;
+  switch (row.claimabilityState) {
+    case 'dead_lettered':
+      return AppColors.negative;
+    case 'claimed':
+      return AppColors.warning;
+    case 'completed':
+      return AppColors.neutral;
+    case 'waiting':
+    default:
+      return AppColors.textPrimary;
+  }
 }
 
 String _projectionRetryFailurePointLabel(String failureStage) {

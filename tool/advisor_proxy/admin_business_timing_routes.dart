@@ -354,6 +354,12 @@ class AdminBusinessTimingRouter {
       );
     }
     final existingValidated = _toValidated(existing);
+    final immutableError = rejectBusinessTimingProfileImmutablePatchFields(
+      body,
+    );
+    if (immutableError != null) {
+      return (statusCode: 400, body: immutableError.toJson());
+    }
     final ValidatedBusinessTimingProfile merged;
     try {
       merged = validateProfilePatch(body: body, existing: existingValidated);

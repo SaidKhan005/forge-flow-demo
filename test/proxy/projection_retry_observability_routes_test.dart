@@ -52,6 +52,10 @@ void main() {
           );
           expect(projectionRetries['recent_active'], isA<List<Object?>>());
           expect(projectionRetries['dead_lettered'], isA<List<Object?>>());
+          final recent = projectionRetries['recent_active'] as List<Object?>;
+          final activeRow = recent.single as Map<String, Object?>;
+          expect(activeRow['claimability_label'], equals('Ready'));
+          expect(activeRow['is_claimable'], isTrue);
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);
@@ -183,6 +187,9 @@ class _RecordingObservabilityGateway implements ObservabilityAdminProxyGateway {
             'job_id': 'job-active',
             'status': 'pending',
             'failure_stage': 'post_input',
+            'claimability_state': 'ready',
+            'claimability_label': 'Ready',
+            'is_claimable': true,
           },
         ],
         'dead_lettered': const <Map<String, Object?>>[
@@ -190,6 +197,9 @@ class _RecordingObservabilityGateway implements ObservabilityAdminProxyGateway {
             'job_id': 'job-dead',
             'status': 'dead_lettered',
             'failure_stage': 'pre_input',
+            'claimability_state': 'dead_lettered',
+            'claimability_label': 'Dead-lettered',
+            'is_claimable': false,
           },
         ],
       },

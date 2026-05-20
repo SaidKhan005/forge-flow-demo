@@ -9214,13 +9214,16 @@ class RepositoryObservabilityAdminProxyGateway
     required TenantTransactionWrapper adminWrapper,
     String? cloudRunServiceName,
     String? cloudRunRevision,
+    DateTime Function()? now,
   }) : _adminWrapper = adminWrapper,
        _cloudRunServiceName = cloudRunServiceName,
-       _cloudRunRevision = cloudRunRevision;
+       _cloudRunRevision = cloudRunRevision,
+       _now = now ?? DateTime.now;
 
   final TenantTransactionWrapper _adminWrapper;
   final String? _cloudRunServiceName;
   final String? _cloudRunRevision;
+  final DateTime Function() _now;
 
   @override
   Future<Map<String, Object?>> fetch({
@@ -9233,7 +9236,7 @@ class RepositoryObservabilityAdminProxyGateway
     List<String>? locationIds,
   }) {
     return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
-      final asOf = DateTime.now().toUtc();
+      final asOf = _now().toUtc();
       final scopeParams = <String, Object?>{
         'operator_id': operatorId,
         'location_id': locationId,
@@ -9372,11 +9375,11 @@ class RepositoryObservabilityAdminProxyGateway
           ),
           'recent_active': <Map<String, Object?>>[
             for (final row in projectionRetryRecentRows)
-              _projectionRetryRowJson(row),
+              _projectionRetryRowJson(row, asOf: asOf),
           ],
           'dead_lettered': <Map<String, Object?>>[
             for (final row in projectionRetryDeadLetterRows)
-              _projectionRetryRowJson(row),
+              _projectionRetryRowJson(row, asOf: asOf),
           ],
           'limits': const <String, Object?>{
             'recent_active': _projectionRetryRecentLimit,
@@ -9574,6 +9577,8 @@ const List<String> _projectionRetryKnownStatuses = <String>[
   'succeeded',
   'dead_lettered',
 ];
+
+const Duration _projectionRetryClaimStaleAfter = Duration(minutes: 15);
 
 const String _projectionRetryScopeWhere = '''
 where (@operator_id::uuid is null or operator_id = @operator_id::uuid)
@@ -9832,8 +9837,89 @@ Map<String, Object?> _projectionRetryStatusCounts(List<PostgresRow> rows) {
   return counts;
 }
 
-Map<String, Object?> _projectionRetryRowJson(PostgresRow row) {
+class _ProjectionRetryClaimability {
+  const _ProjectionRetryClaimability({
+    required this.state,
+    required this.label,
+    required this.isClaimable,
+  });
+
+  final String state;
+  final String label;
+  final bool isClaimable;
+}
+
+_ProjectionRetryClaimability _projectionRetryClaimability(
+  PostgresRow row, {
+  required DateTime asOf,
+}) {
+  final status = row['status']?.toString().trim().toLowerCase() ?? '';
+  final claimedAt = _adminDateTimeOrNull(row['claimed_at']);
+  final nextAttemptAt = _adminDateTimeOrNull(row['next_attempt_at']);
+  final completedAt = _adminDateTimeOrNull(row['completed_at']);
+  final deadLetteredAt = _adminDateTimeOrNull(row['dead_lettered_at']);
+  final isDeadLettered = status == 'dead_lettered' || deadLetteredAt != null;
+  final isCompleted =
+      status == 'succeeded' || status == 'completed' || completedAt != null;
+  final staleClaimCutoff = asOf.toUtc().subtract(
+    _projectionRetryClaimStaleAfter,
+  );
+  final isFreshRunningClaim =
+      status == 'running' &&
+      claimedAt != null &&
+      !claimedAt.isBefore(staleClaimCutoff);
+  final isReclaimableRunning =
+      status == 'running' &&
+      (claimedAt == null || claimedAt.isBefore(staleClaimCutoff));
+  final isRetryEligibleStatus = status == 'pending' || isReclaimableRunning;
+  final isDue = nextAttemptAt == null || !nextAttemptAt.isAfter(asOf.toUtc());
+  final isClaimable =
+      isRetryEligibleStatus &&
+      !isCompleted &&
+      !isDeadLettered &&
+      isDue;
+
+  if (isDeadLettered) {
+    return const _ProjectionRetryClaimability(
+      state: 'dead_lettered',
+      label: 'Dead-lettered',
+      isClaimable: false,
+    );
+  }
+  if (isCompleted) {
+    return const _ProjectionRetryClaimability(
+      state: 'completed',
+      label: 'Completed',
+      isClaimable: false,
+    );
+  }
+  if (isFreshRunningClaim) {
+    return const _ProjectionRetryClaimability(
+      state: 'claimed',
+      label: 'Claimed',
+      isClaimable: false,
+    );
+  }
+  if (isClaimable) {
+    return const _ProjectionRetryClaimability(
+      state: 'ready',
+      label: 'Ready',
+      isClaimable: true,
+    );
+  }
+  return const _ProjectionRetryClaimability(
+    state: 'waiting',
+    label: 'Waiting',
+    isClaimable: false,
+  );
+}
+
+Map<String, Object?> _projectionRetryRowJson(
+  PostgresRow row, {
+  required DateTime asOf,
+}) {
   final stackFirstFrame = row['stack_first_frame']?.toString();
+  final claimability = _projectionRetryClaimability(row, asOf: asOf);
   return <String, Object?>{
     'job_id': row['job_id']?.toString() ?? '',
     'operator_id': row['operator_id']?.toString() ?? '',
@@ -9852,11 +9938,14 @@ Map<String, Object?> _projectionRetryRowJson(PostgresRow row) {
     'open_current_fact_count': _adminInt(row['open_current_fact_count']),
     'worker_id': row['worker_id']?.toString(),
     'claimed_at': _adminIsoOrNull(row['claimed_at']),
-    'next_attempt_at': _adminIso(row['next_attempt_at']),
+    'next_attempt_at': _adminIsoOrNull(row['next_attempt_at']),
     'created_at': _adminIso(row['created_at']),
     'updated_at': _adminIso(row['updated_at']),
     'completed_at': _adminIsoOrNull(row['completed_at']),
     'dead_lettered_at': _adminIsoOrNull(row['dead_lettered_at']),
+    'claimability_state': claimability.state,
+    'claimability_label': claimability.label,
+    'is_claimable': claimability.isClaimable,
     'input_hash': row['input_hash']?.toString() ?? '',
     'last_error_class': row['last_error_class']?.toString() ?? '',
     'last_error_message': row['last_error_message']?.toString() ?? '',
@@ -9869,11 +9958,14 @@ String _adminIso(Object? value) {
   return _adminIsoOrNull(value) ?? DateTime.utc(1970).toIso8601String();
 }
 
-String? _adminIsoOrNull(Object? value) {
+DateTime? _adminDateTimeOrNull(Object? value) {
   if (value == null) return null;
-  if (value is DateTime) return value.toUtc().toIso8601String();
-  final parsed = DateTime.tryParse(value.toString());
-  return parsed?.toUtc().toIso8601String();
+  if (value is DateTime) return value.toUtc();
+  return DateTime.tryParse(value.toString())?.toUtc();
+}
+
+String? _adminIsoOrNull(Object? value) {
+  return _adminDateTimeOrNull(value)?.toIso8601String();
 }
 
 int _adminInt(Object? value) {

@@ -571,6 +571,9 @@ class ProjectionRetryRow {
     required this.updatedAt,
     required this.completedAt,
     required this.deadLetteredAt,
+    required this.claimabilityState,
+    required this.claimabilityLabel,
+    required this.isClaimable,
     required this.inputHash,
     required this.lastErrorClass,
     required this.lastErrorMessage,
@@ -599,6 +602,9 @@ class ProjectionRetryRow {
   final DateTime? updatedAt;
   final DateTime? completedAt;
   final DateTime? deadLetteredAt;
+  final String claimabilityState;
+  final String claimabilityLabel;
+  final bool isClaimable;
   final String inputHash;
   final String lastErrorClass;
   final String lastErrorMessage;
@@ -607,6 +613,10 @@ class ProjectionRetryRow {
   bool get isDeadLettered => status == 'dead_lettered';
 
   factory ProjectionRetryRow.fromJson(Map<String, Object?> json) {
+    final claimabilityState = _projectionRetryClaimabilityState(
+      json['claimability_state'],
+      status: json['status'],
+    );
     return ProjectionRetryRow(
       jobId: (json['job_id'] as String?) ?? '',
       operatorId: (json['operator_id'] as String?) ?? '',
@@ -630,6 +640,13 @@ class ProjectionRetryRow {
       updatedAt: _parseUtc(json['updated_at']),
       completedAt: _parseUtc(json['completed_at']),
       deadLetteredAt: _parseUtc(json['dead_lettered_at']),
+      claimabilityState: claimabilityState,
+      claimabilityLabel: _projectionRetryClaimabilityLabel(
+        json['claimability_label'],
+        claimabilityState,
+      ),
+      isClaimable:
+          _parseBool(json['is_claimable']) ?? claimabilityState == 'ready',
       inputHash: (json['input_hash'] as String?) ?? '',
       lastErrorClass: (json['last_error_class'] as String?) ?? '',
       lastErrorMessage: (json['last_error_message'] as String?) ?? '',
@@ -854,6 +871,63 @@ double? _parseDouble(Object? raw) {
   if (raw is num) return raw.toDouble();
   if (raw is String) return double.tryParse(raw);
   return null;
+}
+
+bool? _parseBool(Object? raw) {
+  if (raw is bool) return raw;
+  if (raw is num) return raw != 0;
+  if (raw is String) {
+    final normalized = raw.trim().toLowerCase();
+    if (normalized == 'true') return true;
+    if (normalized == 'false') return false;
+  }
+  return null;
+}
+
+String _projectionRetryClaimabilityState(
+  Object? raw, {
+  required Object? status,
+}) {
+  final normalized = raw?.toString().trim().toLowerCase();
+  switch (normalized) {
+    case 'ready':
+    case 'waiting':
+    case 'claimed':
+    case 'dead_lettered':
+    case 'completed':
+      return normalized!;
+  }
+
+  final fallbackStatus = status?.toString().trim().toLowerCase();
+  switch (fallbackStatus) {
+    case 'dead_lettered':
+      return 'dead_lettered';
+    case 'succeeded':
+    case 'completed':
+      return 'completed';
+    case 'running':
+      return 'claimed';
+    default:
+      return 'waiting';
+  }
+}
+
+String _projectionRetryClaimabilityLabel(Object? raw, String state) {
+  final label = raw?.toString().trim();
+  if (label != null && label.isNotEmpty) return label;
+  switch (state) {
+    case 'ready':
+      return 'Ready';
+    case 'claimed':
+      return 'Claimed';
+    case 'dead_lettered':
+      return 'Dead-lettered';
+    case 'completed':
+      return 'Completed';
+    case 'waiting':
+    default:
+      return 'Waiting';
+  }
 }
 
 DateTime? _parseUtc(Object? raw) {

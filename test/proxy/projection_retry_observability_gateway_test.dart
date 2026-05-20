@@ -14,6 +14,7 @@ void main() {
       final pool = _ObservabilityPool();
       final gateway = RepositoryObservabilityAdminProxyGateway(
         adminWrapper: TenantTransactionWrapper(pool),
+        now: () => DateTime.utc(2026, 5, 19, 12),
       );
 
       final envelope = await gateway.fetch(
@@ -44,6 +45,9 @@ void main() {
       final recentFirst = recent.first as Map<String, Object?>;
       expect(recentFirst['status'], equals('pending'));
       expect(recentFirst['failure_stage'], equals('post_input'));
+      expect(recentFirst['claimability_state'], equals('ready'));
+      expect(recentFirst['claimability_label'], equals('Ready'));
+      expect(recentFirst['is_claimable'], isTrue);
       expect(recentFirst['job_id'], equals('active-0'));
       expect(recentFirst['original_location_id'], equals(_locationA));
       expect(
@@ -59,10 +63,30 @@ void main() {
       expect(recentFirst.containsKey('changed_periods'), isFalse);
       expect(recentFirst.containsKey('open_current_fact_maps'), isFalse);
 
+      final recentSecond = recent[1] as Map<String, Object?>;
+      expect(recentSecond['claimability_state'], equals('waiting'));
+      expect(recentSecond['claimability_label'], equals('Waiting'));
+      expect(recentSecond['is_claimable'], isFalse);
+
+      final recentThird = recent[2] as Map<String, Object?>;
+      expect(recentThird['status'], equals('running'));
+      expect(recentThird['claimability_state'], equals('claimed'));
+      expect(recentThird['claimability_label'], equals('Claimed'));
+      expect(recentThird['is_claimable'], isFalse);
+
+      final staleRunning = recent[3] as Map<String, Object?>;
+      expect(staleRunning['status'], equals('running'));
+      expect(staleRunning['claimability_state'], equals('ready'));
+      expect(staleRunning['claimability_label'], equals('Ready'));
+      expect(staleRunning['is_claimable'], isTrue);
+
       final deadFirst = deadLettered.first as Map<String, Object?>;
       expect(deadFirst['status'], equals('dead_lettered'));
       expect(deadFirst['failure_stage'], equals('pre_input'));
       expect(deadFirst['dead_lettered_at'], equals('2026-05-19T12:00:00.000Z'));
+      expect(deadFirst['claimability_state'], equals('dead_lettered'));
+      expect(deadFirst['claimability_label'], equals('Dead-lettered'));
+      expect(deadFirst['is_claimable'], isFalse);
 
       final limits = projectionRetries['limits'] as Map<String, Object?>;
       expect(limits['recent_active'], equals(25));
@@ -214,15 +238,27 @@ List<PostgresRow> _projectionRows({
             '44444444-4444-4444-8444-${i.toString().padLeft(12, '0')}',
         'vendor_id': 'toast',
         'category': 'pos',
-        'status': status,
+        'status': deadLettered
+            ? status
+            : i == 3
+            ? 'running'
+            : i == 2
+            ? 'running'
+            : status,
         'failure_stage': deadLettered ? 'pre_input' : 'post_input',
         'fact_count': i + 1,
         'attempt_count': deadLettered ? 5 : 1,
         'changed_period_count': deadLettered ? 0 : 1,
         'open_current_fact_count': deadLettered ? 1 : 2,
-        'worker_id': deadLettered ? null : 'worker-1',
-        'claimed_at': deadLettered ? null : base.subtract(Duration(minutes: i)),
-        'next_attempt_at': base.add(Duration(minutes: i)),
+        'worker_id': deadLettered || (i != 2 && i != 3) ? null : 'worker-1',
+        'claimed_at': deadLettered || (i != 2 && i != 3)
+            ? null
+            : i == 3
+            ? base.subtract(const Duration(minutes: 20))
+            : base.subtract(Duration(minutes: i)),
+        'next_attempt_at': deadLettered || i != 1
+            ? base
+            : base.add(const Duration(minutes: 15)),
         'created_at': base.subtract(Duration(hours: i + 1)),
         'updated_at': base.subtract(Duration(minutes: i)),
         'completed_at': null,

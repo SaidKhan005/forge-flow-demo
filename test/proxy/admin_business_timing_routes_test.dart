@@ -260,6 +260,37 @@ void main() {
       );
     });
 
+    for (final patchCase in const <({String field, Object? value})>[
+      (field: 'scopeKind', value: 'operator'),
+      (field: 'scopeId', value: _kOpA),
+      (field: 'ianaTimezone', value: 'America/Vancouver'),
+    ]) {
+      test('PATCH rejects immutable ${patchCase.field}', () async {
+        gateway.seed(_kOpA, _kProfile);
+        final result = await router.handle(
+          method: 'PATCH',
+          path:
+              '/v1/admin/operators/$_kOpA/business-timing-profiles/$_kProfile',
+          actorUserId: _kAdmin,
+          actorKind: 'user',
+          idempotencyKey: 'idem-admin-immutable-${patchCase.field}',
+          body: <String, Object?>{
+            'admin_reason': 'Support escalation',
+            patchCase.field: patchCase.value,
+          },
+        );
+        expect(result.statusCode, equals(400));
+        expect(
+          result.body['error'],
+          equals('immutable_business_timing_profile_field'),
+        );
+        expect(result.body['field'], equals(patchCase.field));
+        expect(gateway.updateCalls, equals(0));
+        expect(audit.records, isEmpty);
+        expect(listener.events, isEmpty);
+      });
+    }
+
     test('idempotent replay returns same response without re-running gateway',
         () async {
       final first = await router.handle(
