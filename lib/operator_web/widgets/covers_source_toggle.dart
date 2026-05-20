@@ -28,6 +28,7 @@ import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
 
 class CoversSourceToggle extends StatelessWidget {
@@ -62,26 +63,10 @@ class CoversSourceToggle extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.restaurant_menu_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Where covers come from, per service period',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+          const OperatorWebSectionHeading(
+            title: 'Where covers come from, per service period',
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             'Covers (number of guests served) drive the per-cover '
             'metrics on your dashboard. Pick where Forge & Flow should read '

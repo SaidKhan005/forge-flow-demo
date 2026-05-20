@@ -39,7 +39,7 @@ class OperatorWebSectionHeading extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  maxLines: 1,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.mono16(
                     color: AppColors.textPrimary,

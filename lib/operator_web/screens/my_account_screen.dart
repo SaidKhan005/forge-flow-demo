@@ -58,6 +58,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
+import '../widgets/operator_web_section_heading.dart';
 import 'edit_self_profile_dialog.dart';
 
 /// V1 My account screen. The router renders this at
@@ -708,7 +709,6 @@ class _SectionHeader extends StatelessWidget {
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
     required this.cardKey,
-    required this.icon,
     required this.title,
     this.headerExplainer,
     required this.child,
@@ -718,7 +718,6 @@ class _SectionCard extends StatelessWidget {
   });
 
   final Key cardKey;
-  final IconData icon;
   final String title;
   final String? headerExplainer;
   final Widget child;
@@ -742,18 +741,12 @@ class _SectionCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: AppColors.sunsetDark),
-              const SizedBox(width: 8),
               Expanded(
-                child: Text(
-                  title,
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
+                child: OperatorWebSectionHeading(
+                  title: title,
+                  trailing: statusBadge,
                 ),
               ),
-              if (statusBadge != null) statusBadge!,
             ],
           ),
           if (explainer != null) ...[
@@ -840,7 +833,6 @@ class _ProfileSection extends StatelessWidget {
     ];
     return _SectionCard(
       cardKey: const Key('account_section_profile'),
-      icon: Icons.badge_outlined,
       title: 'Profile',
       auditLinkKey: const Key('account_section_profile_audit_log_link'),
       onAuditLog: onAuditLog,
@@ -983,7 +975,6 @@ class _MfaSection extends StatelessWidget {
     final canPress = _canPressPrimary;
     return _SectionCard(
       cardKey: const Key('account_section_mfa'),
-      icon: Icons.shield_outlined,
       title: 'Two-factor sign-in',
       headerExplainer:
           'Two-factor sign-in means a one-time code is required at every '
@@ -1080,7 +1071,6 @@ class _SecuritySection extends StatelessWidget {
   Widget build(BuildContext context) {
     return _SectionCard(
       cardKey: const Key('account_section_security'),
-      icon: Icons.lock_outline,
       title: 'Security',
       headerExplainer:
           'A strong password and recent sign-in history help protect your '
@@ -1429,7 +1419,6 @@ class _ActiveSessionsSection extends StatelessWidget {
     );
     return _SectionCard(
       cardKey: const Key('account_section_active_sessions'),
-      icon: Icons.devices_other_outlined,
       title: 'Active Sessions',
       headerExplainer:
           'Review browsers and devices signed in to your operator account. '

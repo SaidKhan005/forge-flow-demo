@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 class CoversHistoricalSeedCard extends StatefulWidget {
   const CoversHistoricalSeedCard({
@@ -121,8 +122,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
     final parsed = int.tryParse(trimmed);
     if (parsed == null || parsed < 0) return;
     setState(() {
-      _draft.putIfAbsent(date, () => <String, int>{})[servicePeriodId] =
-          parsed;
+      _draft.putIfAbsent(date, () => <String, int>{})[servicePeriodId] = parsed;
     });
   }
 
@@ -173,9 +173,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
                     TextField(
                       controller: controller,
                       maxLines: 10,
-                      style: AppTextStyles.body14(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body14(color: AppColors.textPrimary),
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         hintText:
@@ -186,9 +184,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
                       const SizedBox(height: 8),
                       Text(
                         error!,
-                        style: AppTextStyles.body13(
-                          color: AppColors.negative,
-                        ),
+                        style: AppTextStyles.body13(color: AppColors.negative),
                       ),
                     ],
                   ],
@@ -245,10 +241,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
       if (line.isEmpty) continue;
-      final cells = line
-          .split(RegExp(r'[\t,]'))
-          .map((c) => c.trim())
-          .toList();
+      final cells = line.split(RegExp(r'[\t,]')).map((c) => c.trim()).toList();
       if (cells.length < 2) {
         return _BulkParseResult(
           error:
@@ -270,9 +263,7 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
           '${parsedDate.month.toString().padLeft(2, '0')}-'
           '${parsedDate.day.toString().padLeft(2, '0')}';
       final byPart = <String, int>{};
-      for (var col = 1;
-          col < cells.length && col <= periodIds.length;
-          col++) {
+      for (var col = 1; col < cells.length && col <= periodIds.length; col++) {
         final cell = cells[col];
         if (cell.isEmpty) continue;
         final parsed = int.tryParse(cell);
@@ -311,26 +302,10 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.history_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Backfill the last ${widget.dayCount} days of covers',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+          OperatorWebSectionHeading(
+            title: 'Backfill the last ${widget.dayCount} days of covers',
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             "Your POS doesn't expose covers, so F&F has nothing to learn "
             'from yet. Type your past covers (or paste them in) and F&F '
@@ -370,16 +345,13 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
                 const Spacer(),
                 FilledButton(
                   key: const Key('covers_historical_seed_apply'),
-                  onPressed:
-                      hasDraft ? () => widget.onApplySeed(_draft) : null,
+                  onPressed: hasDraft ? () => widget.onApplySeed(_draft) : null,
                   child: const Text('Apply seed'),
                 ),
               ],
             ),
             const SizedBox(height: 12),
-            _MatrixHeader(
-              periodLabels: [for (final p in _periods) p.label],
-            ),
+            _MatrixHeader(periodLabels: [for (final p in _periods) p.label]),
             const SizedBox(height: 6),
             LimitedBox(
               maxHeight: 360,

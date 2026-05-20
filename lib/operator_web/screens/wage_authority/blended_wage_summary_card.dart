@@ -19,6 +19,7 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../../theme/app_theme.dart';
+import '../../widgets/operator_web_section_heading.dart';
 import 'blended_wage_calculator.dart';
 
 /// Plain-English display name for each labor bucket. Keep in sync with
@@ -72,32 +73,14 @@ class BlendedWageSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Icon(
-                Icons.insights_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Blended wage mix',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+          const OperatorWebSectionHeading(title: 'Blended wage mix'),
+          const SizedBox(height: 10),
           Text(
             hasAny
                 ? "What an average hour of labor costs you across the rows "
-                    "below. Updates as you type, before you save."
+                      "below. Updates as you type, before you save."
                 : "Add a role with hours and a rate and Forge & Flow will "
-                    "show your average hourly labor cost here.",
+                      "show your average hourly labor cost here.",
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 14),
@@ -160,8 +143,8 @@ class _BucketBadgeRow extends StatelessWidget {
           _BucketBadge(
             keyName:
                 'wage_authority_blended_bucket_badge_${bucket.laborBucket}',
-            label: _kBucketDisplayNames[bucket.laborBucket] ??
-                bucket.laborBucket,
+            label:
+                _kBucketDisplayNames[bucket.laborBucket] ?? bucket.laborBucket,
             blendedHourlyRate: bucket.blendedHourlyRate!,
             totalWeightedHours: bucket.totalWeightedHours,
           ),

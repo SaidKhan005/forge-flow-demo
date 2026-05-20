@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 enum WalkInHandlingMode {
   reservationsOnly,
@@ -160,26 +161,8 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.groups_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Walk-ins handling',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+          const OperatorWebSectionHeading(title: 'Walk-ins handling'),
+          const SizedBox(height: 10),
           Text(
             "Your reservation system tracks reservations, but your POS "
             "doesn't track covers. Tell F&F how to handle walk-in guests "
