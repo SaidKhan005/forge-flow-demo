@@ -645,6 +645,16 @@ class _RecordingMobileSyncGateway implements MobileOperationalSyncProxyGateway {
   }) async => const <String, Object?>{};
 
   @override
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async => const <String, Object?>{
+    'data_accuracy_service_period_settings': <Map<String, Object?>>[],
+  };
+
+  @override
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,

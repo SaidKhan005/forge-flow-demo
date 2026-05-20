@@ -271,6 +271,73 @@ void main() {
       });
     });
 
+    test('PATCH service-period settings clears through owner scope', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final uri = ctx.baseUri.resolve(
+            '/v1/operators/op-1/locations/loc-1/'
+            'data_accuracy_service_period_settings',
+          );
+          final patch = await _httpRequest(
+            ctx.client,
+            'PATCH',
+            uri,
+            body: const <String, Object?>{
+              'service_period_key': 'breakfast',
+              'clear': true,
+            },
+            idempotencyKey: 'service-period-clear-key-1',
+          );
+          expect(patch.statusCode, 200);
+          final body = jsonDecode(patch.body) as Map<String, Object?>;
+          expect(
+            body['data_accuracy_service_period_settings'],
+            isA<List<Object?>>(),
+          );
+          expect(ctx.gateway.calls, <String>[
+            'data_accuracy_service_period_settings_clear:op-1:loc-1:breakfast',
+          ]);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      'PATCH service-period settings clear rejects mixed write fields',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpRequest(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve(
+                '/v1/operators/op-1/locations/loc-1/'
+                'data_accuracy_service_period_settings',
+              ),
+              body: const <String, Object?>{
+                'service_period_key': 'breakfast',
+                'clear': true,
+                'covers_source': 'manual',
+              },
+              idempotencyKey: 'service-period-clear-mixed-key',
+            );
+            expect(response.statusCode, 400);
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], 'invalid_service_period_clear');
+            expect(ctx.gateway.calls, isEmpty);
+            expect(ctx.idempotencyStore.reserveCalls, 0);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
     test(
       'PATCH service-period settings rejects missing Idempotency-Key',
       () async {
@@ -1709,6 +1776,22 @@ class _FakeMobileOperationalSyncGateway
         'updated_at': '2026-05-07T12:01:00Z',
         'updated_by': scope.userId,
       },
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) async {
+    calls.add(
+      'data_accuracy_service_period_settings_clear:$operatorId:$locationId:'
+      '${body['service_period_key']}',
+    );
+    return const <String, Object?>{
+      'data_accuracy_service_period_settings': <Map<String, Object?>>[],
     };
   }
 

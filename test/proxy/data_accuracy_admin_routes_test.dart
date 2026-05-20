@@ -203,6 +203,42 @@ void main() {
       },
     );
 
+    test('PUT scoped data accuracy passes explicit clear fields', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(customGateway: gateway);
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PUT',
+            ctx.baseUri.resolve(adminDataAccuracyScopedSettingsPath),
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'scope_type': 'location',
+              'location_id': 'loc-1',
+              'clear_covers_source_per_service_period': <String>['breakfast'],
+              'clear_wage_source': true,
+              'clear_walk_in_handling_mode': true,
+              'reason_note': 'Let this location inherit data accuracy',
+            },
+            idempotencyKey: 'data-accuracy-scope-clear-1',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.scopeOverrideCalls, equals(1));
+          expect(gateway.lastScopeType, equals('location'));
+          expect(
+            gateway.lastClearCoversSourcePerServicePeriod,
+            equals(<String>['breakfast']),
+          );
+          expect(gateway.lastClearWageSource, isTrue);
+          expect(gateway.lastClearWalkInHandlingMode, isTrue);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test(
       'PATCH data accuracy passes keyed covers map to admin gateway',
       () async {
@@ -390,6 +426,38 @@ void main() {
       });
     });
 
+    test('PATCH service-period settings clears keyed admin rows', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeDataAccuracyAdminGateway();
+        final ctx = await spinUp(customGateway: gateway);
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve(
+              '$adminDataAccuracyServicePeriodSettingsPrefix'
+              'op-1/loc-1',
+            ),
+            body: const <String, Object?>{
+              'service_period_key': 'breakfast',
+              'clear': true,
+              'reason_note': 'Remove breakfast override',
+            },
+            idempotencyKey: 'data-accuracy-service-period-clear-1',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.servicePeriodClearCalls, equals(1));
+          expect(gateway.servicePeriodOverrideCalls, equals(0));
+          expect(gateway.lastServicePeriodKey, equals('breakfast'));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['cleared_count'], equals(1));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
     test('PATCH service-period settings rejects ff_support callers', () async {
       await withRealHttp(() async {
         final gateway = _FakeDataAccuracyAdminGateway();
@@ -510,12 +578,16 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
   String? lastServicePeriodKey;
   String? lastCoversSourceLunch;
   Map<String, String>? lastCoversSourcePerServicePeriod;
+  List<String>? lastClearCoversSourcePerServicePeriod;
+  bool lastClearWageSource = false;
+  bool lastClearWalkInHandlingMode = false;
   int assignTierCalls = 0;
   int settingsOverrideCalls = 0;
   int scopeOverrideCalls = 0;
   int scopeAssignCalls = 0;
   int servicePeriodListCalls = 0;
   int servicePeriodOverrideCalls = 0;
+  int servicePeriodClearCalls = 0;
 
   @override
   Future<List<Map<String, Object?>>> listDataAccuracyRows({
@@ -569,6 +641,9 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     String? coversSourceDinner,
     String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
+    List<String>? clearCoversSourcePerServicePeriod,
+    bool clearWageSource = false,
+    bool clearWalkInHandlingMode = false,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -578,6 +653,9 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
     lastScopeType = scopeType;
     lastCoversSourceLunch = coversSourceLunch;
     lastCoversSourcePerServicePeriod = coversSourcePerServicePeriod;
+    lastClearCoversSourcePerServicePeriod = clearCoversSourcePerServicePeriod;
+    lastClearWageSource = clearWageSource;
+    lastClearWalkInHandlingMode = clearWalkInHandlingMode;
     scopeOverrideCalls += 1;
     return <String, Object?>{
       'scope_type': scopeType,
@@ -626,6 +704,28 @@ class _FakeDataAccuracyAdminGateway implements DataAccuracyAdminProxyGateway {
       wageSource: wageSource,
       effectiveAtBusinessDate: effectiveAtBusinessDate,
     );
+  }
+
+  @override
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriod({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String reasonNote,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastServicePeriodKey = servicePeriodKey;
+    servicePeriodClearCalls += 1;
+    return <String, Object?>{
+      'operator_ref': <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+      'cleared_count': 1,
+      'data_accuracy_service_period_settings': const <Map<String, Object?>>[],
+    };
   }
 
   @override

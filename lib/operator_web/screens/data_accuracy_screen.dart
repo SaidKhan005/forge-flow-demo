@@ -572,6 +572,41 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     }
   }
 
+  Future<void> _resetKeyedServicePeriod(
+    DataAccuracyServicePeriodSetting row,
+  ) async {
+    final gateway = widget.dataAccuracyGateway;
+    if (gateway == null) return;
+    final generation = ++_servicePeriodSaveGeneration;
+    setState(() {
+      _savingServicePeriod = true;
+      _servicePeriodSaveError = null;
+    });
+    try {
+      await gateway.resetServicePeriodSetting(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+        servicePeriodKey: row.servicePeriodKey,
+      );
+      if (!mounted || generation != _servicePeriodSaveGeneration) return;
+      setState(() {
+        _savingServicePeriod = false;
+        _servicePeriodSaveError = null;
+      });
+      await Future.wait(<Future<void>>[
+        _loadServicePeriodSettings(),
+        _loadSettings(),
+      ]);
+    } catch (error) {
+      if (!mounted || generation != _servicePeriodSaveGeneration) return;
+      setState(() {
+        _savingServicePeriod = false;
+        _servicePeriodSaveError =
+            'Could not reset service-period override: $error';
+      });
+    }
+  }
+
   Future<void> _saveSettings(
     OperatorWebDataAccuracyGateway gateway,
     DataAccuracySettings settings,
@@ -1012,6 +1047,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
               configuredServicePeriods: _servicePeriods,
               defaultEffectiveAtBusinessDateIso: widget.businessDateIso,
               onAddOrEdit: _saveKeyedServicePeriod,
+              onReset: _resetKeyedServicePeriod,
               onRetry: _loadServicePeriodSettings,
             ),
           ],

@@ -176,10 +176,14 @@ Do not re-open stale findings unless the repo regresses:
   pure additive expand, no RLS change, no new index).
   Apply on staging first, then carry into the next Production1 batch.
   The current Production1 follow-up cutoff is therefore
+  `202605192200_data_accuracy_reset_delete_grants.sql`
+  (Data Accuracy reset grant: DELETE on the keyed service-period
+  settings table for `service_role` and `forge_admin`, so resets can
+  remove local overrides and reveal inherited values). The prior cutoff
   `202605191900_canonical_fact_projection_retry_evidence.sql`
   (projection retry evidence hardening: explicit pre-input/post-input
   stage metadata plus immutable original location/connection ids so
-  hard-delete cleanup does not erase terminal retry evidence). The prior
+  hard-delete cleanup does not erase terminal retry evidence). The earlier
   cutoff `202605191845_data_accuracy_cover_facts_nullable_covers.sql`
   (Data Accuracy covers truth: drops default/not-null from
   `public.cover_facts.covers` so NULL means the POS did not expose cover

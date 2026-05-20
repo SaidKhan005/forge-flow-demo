@@ -7,10 +7,14 @@ migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
 applied 2026-05-03. The current follow-up cutoff is
+`202605192200_data_accuracy_reset_delete_grants.sql`
+(Data Accuracy reset grant: DELETE on the keyed service-period settings
+table for `service_role` and `forge_admin`, so resets can remove local
+overrides and reveal inherited values). The prior cutoff
 `202605191900_canonical_fact_projection_retry_evidence.sql`
 (projection retry evidence hardening: explicit pre-input/post-input stage
 metadata plus immutable original location/connection ids so hard-delete
-cleanup does not erase terminal retry evidence). The prior cutoff
+cleanup does not erase terminal retry evidence). The earlier cutoff
 `202605191845_data_accuracy_cover_facts_nullable_covers.sql`
 (Data Accuracy covers truth: drops default/not-null from
 `public.cover_facts.covers` so NULL means the POS did not expose cover
@@ -156,6 +160,7 @@ Pending follow-up scope (63 migrations; staging status varies, Production1 pendi
 - `db/migrations/202605191830_canonical_fact_projection_retry_jobs.sql`
 - `db/migrations/202605191845_data_accuracy_cover_facts_nullable_covers.sql`
 - `db/migrations/202605191900_canonical_fact_projection_retry_evidence.sql`
+- `db/migrations/202605192200_data_accuracy_reset_delete_grants.sql`
 
 Out of scope:
 
@@ -166,7 +171,7 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   the pending follow-up migrations belong to the next follow-up batch;
   anything later than
-  `202605191900_canonical_fact_projection_retry_evidence.sql`
+  `202605192200_data_accuracy_reset_delete_grants.sql`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 

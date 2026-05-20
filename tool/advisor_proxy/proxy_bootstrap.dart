@@ -3668,6 +3668,59 @@ class RepositoryMobileOperationalSyncProxyGateway
   }
 
   @override
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriodSettings({
+    required OperatorContext scope,
+    required String operatorId,
+    required String locationId,
+    required Map<String, Object?> body,
+  }) {
+    final servicePeriodKey = _bodyServicePeriodKey(body);
+    final clear = _bodyBool(body, 'clear') ?? false;
+    if (!clear) {
+      throw const MobileOperationalSyncProxyGatewayException(
+        statusCode: 400,
+        code: 'invalid_clear',
+        message: 'clear must be true for service-period reset requests',
+      );
+    }
+    return _tenantRead(scope, operatorId, locationId, (exec) async {
+      await exec.query(
+        'delete from public.data_accuracy_service_period_settings '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and service_period_key = @service_period_key',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'service_period_key': servicePeriodKey,
+        },
+      );
+      final rows = await exec.query(
+        'select id::text as id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'service_period_key, covers_source, wage_source, '
+        'effective_at_business_date::text as effective_at_business_date, '
+        'created_at, updated_at, updated_by '
+        'from public.data_accuracy_service_period_settings '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'order by service_period_key asc, '
+        'effective_at_business_date desc',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      return <String, Object?>{
+        'data_accuracy_service_period_settings': <Map<String, Object?>>[
+          for (final row in rows) _dataAccuracyServicePeriodJson(row),
+        ],
+      };
+    });
+  }
+
+  @override
   Future<Map<String, Object?>> fetchDataAccuracyServicePeriodSettings({
     required OperatorContext scope,
     required String operatorId,
@@ -5591,6 +5644,9 @@ class RepositoryDataAccuracyAdminProxyGateway
     String? coversSourceDinner,
     String? coversSourceLateNight,
     Map<String, String>? coversSourcePerServicePeriod,
+    List<String>? clearCoversSourcePerServicePeriod,
+    bool clearWageSource = false,
+    bool clearWalkInHandlingMode = false,
     String? wageSource,
     String? walkInHandlingMode,
     String? reasonNote,
@@ -5605,8 +5661,27 @@ class RepositoryDataAccuracyAdminProxyGateway
     _validateCoversSource(coversSourceDinner, 'covers_source_dinner');
     _validateCoversSource(coversSourceLateNight, 'covers_source_late_night');
     _validateCoversPerServicePeriod(coversSourcePerServicePeriod);
+    final clearCovers = _normalizedServicePeriodKeys(
+      clearCoversSourcePerServicePeriod,
+    );
     _validateWageSource(wageSource);
     _validateWalkInHandlingMode(walkInHandlingMode);
+    if (clearWageSource && wageSource != null) {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'ambiguous_wage_source_clear',
+        message: 'clear_wage_source cannot be combined with wage_source',
+      );
+    }
+    if (clearWalkInHandlingMode && walkInHandlingMode != null) {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'ambiguous_walk_in_handling_mode_clear',
+        message:
+            'clear_walk_in_handling_mode cannot be combined with '
+            'walk_in_handling_mode',
+      );
+    }
     return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
       await _assertScopeExists(
         exec,
@@ -5632,43 +5707,112 @@ class RepositoryDataAccuracyAdminProxyGateway
         if (coversSourceLateNight != null) 'late_night': coversSourceLateNight,
         ...?coversSourcePerServicePeriod,
       };
+      for (final key in scopedCovers.keys) {
+        if (clearCovers.contains(key)) {
+          throw DataAccuracyAdminGatewayValidationError(
+            statusCode: 400,
+            code: 'ambiguous_covers_source_clear',
+            message:
+                'clear_covers_source_per_service_period cannot include a key '
+                'also set by covers_source_per_service_period',
+          );
+        }
+      }
+      final writesConfigured =
+          scopedCovers.isNotEmpty ||
+          wageSource != null ||
+          walkInHandlingMode != null;
+      final clearsConfigured =
+          clearCovers.isNotEmpty || clearWageSource || clearWalkInHandlingMode;
+      if (!writesConfigured && !clearsConfigured) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 400,
+          code: 'data_accuracy_scope_no_changes',
+          message:
+              'at least one scoped data accuracy value must be set or cleared',
+        );
+      }
+      final clearCoversJson = jsonEncode(clearCovers.toList()..sort());
+      final coversJson = jsonEncode(scopedCovers);
       final rows = await exec.query(
-        'insert into data_accuracy_scoped_overrides ('
-        'operator_id, scope_type, org_unit_id, location_id, '
-        'covers_source_per_service_period, wage_source, '
-        'walk_in_handling_mode, updated_by) values ('
-        '@operator_id::uuid, @scope_type, @org_unit_id::uuid, '
-        '@location_id::uuid, @covers_per_period::jsonb, @wage_source, '
-        '@walk_in_handling_mode, @updated_by) '
-        'on conflict ('
-        'operator_id, scope_type, '
-        'coalesce(org_unit_id, '
-        "'00000000-0000-0000-0000-000000000000'::uuid), "
-        'coalesce(location_id, '
-        "'00000000-0000-0000-0000-000000000000'::uuid)) "
-        'do update set '
-        'covers_source_per_service_period = coalesce('
-        'data_accuracy_scoped_overrides.covers_source_per_service_period, '
-        "'{}'::jsonb) || @covers_per_period::jsonb, "
-        'wage_source = coalesce('
-        '@wage_source, data_accuracy_scoped_overrides.wage_source), '
-        'walk_in_handling_mode = coalesce('
-        '@walk_in_handling_mode, '
-        'data_accuracy_scoped_overrides.walk_in_handling_mode), '
-        'updated_at = now(), updated_by = @updated_by '
-        'returning override_id::text as override_id',
+        writesConfigured
+            ? 'insert into data_accuracy_scoped_overrides ('
+                  'operator_id, scope_type, org_unit_id, location_id, '
+                  'covers_source_per_service_period, wage_source, '
+                  'walk_in_handling_mode, updated_by) values ('
+                  '@operator_id::uuid, @scope_type, @org_unit_id::uuid, '
+                  '@location_id::uuid, @covers_per_period::jsonb, '
+                  '@wage_source, @walk_in_handling_mode, @updated_by) '
+                  'on conflict ('
+                  'operator_id, scope_type, '
+                  'coalesce(org_unit_id, '
+                  "'00000000-0000-0000-0000-000000000000'::uuid), "
+                  'coalesce(location_id, '
+                  "'00000000-0000-0000-0000-000000000000'::uuid)) "
+                  'do update set '
+                  'covers_source_per_service_period = ('
+                  'select nullif(coalesce(jsonb_object_agg(e.key, e.value), '
+                  "'{}'::jsonb), '{}'::jsonb) "
+                  'from jsonb_each(coalesce('
+                  'data_accuracy_scoped_overrides.'
+                  'covers_source_per_service_period, '
+                  "'{}'::jsonb) || @covers_per_period::jsonb) e "
+                  'where e.key not in ('
+                  'select value from jsonb_array_elements_text('
+                  '@clear_covers_per_period::jsonb)))'
+                  ', wage_source = case '
+                  'when @clear_wage_source then null '
+                  'else coalesce('
+                  '@wage_source, data_accuracy_scoped_overrides.wage_source) '
+                  'end, '
+                  'walk_in_handling_mode = case '
+                  'when @clear_walk_in_handling_mode then null '
+                  'else coalesce(@walk_in_handling_mode, '
+                  'data_accuracy_scoped_overrides.walk_in_handling_mode) '
+                  'end, '
+                  'updated_at = now(), updated_by = @updated_by '
+                  'returning override_id::text as override_id'
+            : 'update data_accuracy_scoped_overrides set '
+                  'covers_source_per_service_period = ('
+                  'select nullif(coalesce(jsonb_object_agg(e.key, e.value), '
+                  "'{}'::jsonb), '{}'::jsonb) "
+                  'from jsonb_each(coalesce('
+                  'data_accuracy_scoped_overrides.'
+                  'covers_source_per_service_period, '
+                  "'{}'::jsonb)) e "
+                  'where e.key not in ('
+                  'select value from jsonb_array_elements_text('
+                  '@clear_covers_per_period::jsonb)))'
+                  ', wage_source = case '
+                  'when @clear_wage_source then null else wage_source end, '
+                  'walk_in_handling_mode = case '
+                  'when @clear_walk_in_handling_mode then null '
+                  'else walk_in_handling_mode end, '
+                  'updated_at = now(), updated_by = @updated_by '
+                  'where operator_id = @operator_id::uuid '
+                  'and scope_type = @scope_type '
+                  'and ('
+                  '(@org_unit_id::uuid is null and org_unit_id is null) '
+                  'or org_unit_id = @org_unit_id::uuid) '
+                  'and ('
+                  '(@location_id::uuid is null and location_id is null) '
+                  'or location_id = @location_id::uuid) '
+                  'returning override_id::text as override_id',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'scope_type': scopeType,
           'org_unit_id': orgUnitId,
           'location_id': locationId,
-          'covers_per_period': jsonEncode(scopedCovers),
+          'covers_per_period': coversJson,
+          'clear_covers_per_period': clearCoversJson,
+          'clear_wage_source': clearWageSource,
+          'clear_walk_in_handling_mode': clearWalkInHandlingMode,
           'wage_source': wageSource,
           'walk_in_handling_mode': walkInHandlingMode,
           'updated_by': actorUserId,
         },
       );
-      if (rows.isEmpty) {
+      if (rows.isEmpty && writesConfigured) {
         throw const DataAccuracyAdminGatewayValidationError(
           statusCode: 503,
           code: 'scoped_data_accuracy_write_failed',
@@ -5703,9 +5847,14 @@ class RepositoryDataAccuracyAdminProxyGateway
               'covers_source_late_night': coversSourceLateNight,
             if (scopedCovers.isNotEmpty)
               'covers_source_per_service_period': scopedCovers,
+            if (clearCovers.isNotEmpty)
+              'clear_covers_source_per_service_period': clearCovers.toList()
+                ..sort(),
             if (wageSource != null) 'wage_source': wageSource,
+            if (clearWageSource) 'clear_wage_source': true,
             if (walkInHandlingMode != null)
               'walk_in_handling_mode': walkInHandlingMode,
+            if (clearWalkInHandlingMode) 'clear_walk_in_handling_mode': true,
           },
           if (reasonNote != null) 'reason_note': reasonNote,
           'admin_reason': adminReason,
@@ -5864,6 +6013,82 @@ class RepositoryDataAccuracyAdminProxyGateway
         },
       );
       return after;
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>> clearDataAccuracyServicePeriod({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+    required String reasonNote,
+    required String adminReason,
+  }) {
+    _validateServicePeriodKey(servicePeriodKey);
+    if (reasonNote.trim().isEmpty) {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'reason_note_required',
+        message: 'reason_note is required for service-period reset',
+      );
+    }
+    return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) {
+        throw const DataAccuracyAdminGatewayValidationError(
+          statusCode: 404,
+          code: 'unknown_operator_location',
+          message: 'operator/location pair not found',
+        );
+      }
+      final before = await _servicePeriodSettingsForKey(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        servicePeriodKey: servicePeriodKey,
+      );
+      await exec.query(
+        'delete from public.data_accuracy_service_period_settings '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and service_period_key = @service_period_key',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'service_period_key': servicePeriodKey,
+        },
+      );
+      final after = await _servicePeriodSettingsForLocation(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.data_accuracy.service_period_clear',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': <String, Object?>{
+            'service_period_key': servicePeriodKey,
+            'cleared_count': before.length,
+          },
+          'reason_note': reasonNote.trim(),
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{
+        'operator_ref': ref,
+        'cleared_count': before.length,
+        'data_accuracy_service_period_settings': after,
+      };
     }, reason: adminReason);
   }
 
@@ -6344,6 +6569,59 @@ class RepositoryDataAccuracyAdminProxyGateway
     );
     if (rows.isEmpty) return null;
     return _servicePeriodSettingJson(rows.single);
+  }
+
+  Future<List<Map<String, Object?>>> _servicePeriodSettingsForLocation(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final rows = await exec.query(
+      'select id::text as id, operator_id::text as operator_id, '
+      'location_id::text as location_id, service_period_key, '
+      'covers_source, wage_source, '
+      'effective_at_business_date::text as effective_at_business_date, '
+      'created_at, updated_at, updated_by '
+      'from public.data_accuracy_service_period_settings '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'order by service_period_key asc, effective_at_business_date desc',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    return <Map<String, Object?>>[
+      for (final row in rows) _servicePeriodSettingJson(row),
+    ];
+  }
+
+  Future<List<Map<String, Object?>>> _servicePeriodSettingsForKey(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+    required String servicePeriodKey,
+  }) async {
+    final rows = await exec.query(
+      'select id::text as id, operator_id::text as operator_id, '
+      'location_id::text as location_id, service_period_key, '
+      'covers_source, wage_source, '
+      'effective_at_business_date::text as effective_at_business_date, '
+      'created_at, updated_at, updated_by '
+      'from public.data_accuracy_service_period_settings '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and service_period_key = @service_period_key '
+      'order by effective_at_business_date desc',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'service_period_key': servicePeriodKey,
+      },
+    );
+    return <Map<String, Object?>>[
+      for (final row in rows) _servicePeriodSettingJson(row),
+    ];
   }
 
   Future<Map<String, Object?>?> _currentTierAssignment(
@@ -6932,6 +7210,17 @@ class RepositoryDataAccuracyAdminProxyGateway
       _validateServicePeriodKey(key);
       _validateServicePeriodCoversSource(coversSource);
     });
+  }
+
+  static Set<String> _normalizedServicePeriodKeys(List<String>? values) {
+    if (values == null) return const <String>{};
+    final out = <String>{};
+    for (final value in values) {
+      final key = value.trim();
+      _validateServicePeriodKey(key);
+      out.add(key);
+    }
+    return out;
   }
 
   static void _validateWageSource(String? value) {

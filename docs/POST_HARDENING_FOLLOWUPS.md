@@ -31,8 +31,8 @@ proposal + 9-leak-site inventory: `docs/archive/_execution/2026-05-09_security_f
 
 ## P0 — Production1 Migration Apply Gap
 
-**64 migrations pending Production1 apply** (chronological). The queue now
-runs through `202605191900_canonical_fact_projection_retry_evidence.sql`;
+**65 migrations pending Production1 apply** (chronological). The queue now
+runs through `202605192200_data_accuracy_reset_delete_grants.sql`;
 staging/preview apply evidence must stay attached to the runbook before any
 Production1 apply.
 
@@ -102,6 +102,7 @@ Production1 apply.
 | `202605191830_canonical_fact_projection_retry_jobs.sql` | Canonical fact projection retry ledger. Adds `public.canonical_fact_projection_retry_jobs` so post-commit projection failures can be replayed from saved projector input without re-running vendor writes. Tenant-scoped RLS, operator-leading indexes, bounded retry state, and JSON payload checks. Schema-touching and requires explicit operator approval before merge/apply. | code-ready |
 | `202605191845_data_accuracy_cover_facts_nullable_covers.sql` | Data Accuracy covers truth. Drops default/not-null from `public.cover_facts.covers` so NULL means the POS did not expose cover count and zero means a cover-capable POS sent zero. | code-ready |
 | `202605191900_canonical_fact_projection_retry_evidence.sql` | Projection retry evidence hardening. Adds explicit pre-input/post-input failure stage metadata, immutable original location/connection ids, and FK posture that nulls live pointers instead of deleting terminal retry evidence during hard-delete cleanup. Schema-touching and requires explicit operator approval before merge/apply. | code-ready |
+| `202605192200_data_accuracy_reset_delete_grants.sql` | Data Accuracy reset grant. Grants DELETE on `public.data_accuracy_service_period_settings` to `service_role` and `forge_admin` so explicit service-period resets can remove a local override and let inherited settings win again. | code-ready |
 
 **Action:** apply all 64 in next Production1 event per
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until applied
