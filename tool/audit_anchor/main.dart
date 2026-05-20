@@ -627,10 +627,17 @@ class ShutdownSignals {
       wrapper._signalShutdown(signal.toString());
     }
 
-    try {
-      signals.add(ProcessSignal.sigterm.watch().listen(onSignal));
-    } catch (_) {
-      // SIGTERM is unsupported on some platforms (Windows); skip.
+    // SIGTERM is not deliverable to Dart isolates on Windows; the
+    // `_StreamImpl.listen` call raises SignalException synchronously
+    // there. `Platform.isWindows` is a static check that lets the CLI
+    // be runnable from a Windows dev machine while staying production-
+    // equivalent on Linux (Cloud Run).
+    if (!Platform.isWindows) {
+      try {
+        signals.add(ProcessSignal.sigterm.watch().listen(onSignal));
+      } catch (_) {
+        // SIGTERM may still be unsupported on other unusual hosts.
+      }
     }
     try {
       signals.add(ProcessSignal.sigint.watch().listen(onSignal));
