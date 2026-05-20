@@ -137,7 +137,7 @@ Lower-priority splits (do if Bucket 5 lands clean):
 - `test/phase_9_0sigma_f_audit_logs_test.dart` (2,144 → 2) — LANDED (PR #1124)
 - `test/admin_operator_location_screen_test.dart` (2,129 → 3) — LANDED (PR #1125); pairs with P1 flake-risk fix
 - `test/proxy/mobile_operational_sync_routes_test.dart` (2,067 → 3) — LANDED (PR #1126)
-- `test/phase_9_0sigma_k_rollups_test.dart` (2,012 → 2) — split pending
+- `test/phase_9_0sigma_k_rollups_test.dart` (2,012 → 2) — LANDED (PR #1127); split into `test/phase_9_0sigma_k_migration_and_schema_shape_test.dart` + `test/phase_9_0sigma_k_rls_and_rebuild_runbook_test.dart`
 
 ## What deliberately stays
 
