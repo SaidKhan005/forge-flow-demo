@@ -1,11 +1,24 @@
 # Surface Parity Gap Execution Plan
 
-Status: first execution slice implemented locally
+Status: closed/superseded after follow-up cleanup
 Created: 2026-05-18
 Updated: 2026-05-19
 Owner: Codex orchestrator
 Worktree: `.codex_worktrees/per-daypart-server-parity`
 Branch: `codex/surface-parity-gap-plan`
+
+## Supersession Note (2026-05-20)
+
+- This plan is historical execution context. Do not dispatch new lanes from it.
+- The proxy keyed Data Accuracy write gap is closed: live routes now parse
+  `covers_source_per_service_period`, and the old lunch/dinner/late-night keys
+  are compatibility input only.
+- The old lunch/dinner/late-night database columns are already retired. The
+  remaining cleanup question is old JSON/API field compatibility.
+- Mobile Covers Setup is intentionally simple usage, not the full setup
+  surface. Full setup lives in Operator Web.
+- Provenance labels remain a real follow-up because labels must come from
+  server winning-scope metadata, not local guesses.
 
 ## Plain English Summary
 
@@ -43,9 +56,12 @@ Fix plan:
 
 ### 2. Operator Web sends keyed covers, but proxy still drops custom keys
 
+Status: closed by the later keyed-write pass. Kept here as historical context.
+
 - Operator Web sends `covers_source_per_service_period`.
-- The proxy settings PATCH still reads only `covers_source_lunch`,
-  `covers_source_dinner`, and `covers_source_late_night`.
+- At the time of this audit, the proxy settings PATCH still read only
+  `covers_source_lunch`, `covers_source_dinner`, and
+  `covers_source_late_night`.
 - Breakfast, brunch, happy hour, or any fourth configured service period can be
   ignored on save.
 
@@ -81,6 +97,9 @@ Fix plan:
 - Keep old triplet inputs as compatibility only.
 
 ### 4. Mobile Covers Setup is local-only
+
+Status: superseded by product decision. Mobile is simple usage; full setup is
+via Operator Web.
 
 - Mobile Settings exposes editable manual covers.
 - The current write path stores local `ManualCoverEntry` rows.
@@ -233,12 +252,8 @@ Fix plan:
 
 - Provenance gap remains: effective Data Accuracy values still need per-key
   "set here" / "inherited from ..." source labels from proxy to UI.
-- Mobile covers gap remains: mobile manual covers are still local-only until a
-  product decision chooses canonical proxy write or read-only Operator Web
-  handoff.
-- Operator Web service-period UX still allows free-text keys in the keyed
-  override dialog; it should prefer configured service periods once provenance
-  and response shape are complete.
+- Legacy wire-key cleanup remains: old lunch/dinner/late-night JSON keys are
+  still accepted/emitted as compatibility fields even though storage is keyed.
 
 ## Verification Gates
 
