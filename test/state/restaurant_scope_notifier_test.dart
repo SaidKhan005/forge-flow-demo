@@ -292,19 +292,28 @@ void main() {
         );
         // The actual regression: without the fix, _availableScopes
         // is empty here because nothing on the no-session boot path
-        // populated it.
+        // populated it. 2026-05-19: reseedDemo() now seeds 4 §2c
+        // locations + the R6 four-period proof restaurant = 5 rows
+        // in `restaurant_locations`; the boot seed must surface all of
+        // them so the drawer renders every seeded location, with
+        // Downtown remaining the default active scope.
         expect(
           notifier.availableScopes,
-          hasLength(1),
+          hasLength(5),
           reason: 'drawer-seed follow-up — _load() must also seed the '
-              'available-scopes list so the drawer renders the active '
-              'location in demo (where session stays null forever)',
+              'available-scopes list so the drawer renders every '
+              'seeded location in demo (where session stays null '
+              'forever)',
         );
-        final scope = notifier.availableScopes.single;
-        expect(scope.scopeType, 'location');
-        expect(scope.locationId, 'demo_restaurant_001');
-        expect(scope.label, 'Barrio Legado');
-        expect(scope.businessTimezone, 'America/St_Johns');
+        final downtown = notifier.availableScopes.firstWhere(
+          (scope) => scope.locationId == 'demo_restaurant_001',
+          orElse: () => throw StateError(
+              'expected Downtown (demo_restaurant_001) in availableScopes'),
+        );
+        expect(downtown.scopeType, 'location');
+        expect(downtown.locationId, 'demo_restaurant_001');
+        expect(downtown.label, 'Barrio Legado');
+        expect(downtown.businessTimezone, 'America/St_Johns');
         expect(
           notifier.activeScope?.stableKey,
           'location:demo_restaurant_001',
@@ -325,9 +334,16 @@ void main() {
         // seed must not durably block the production replacement.
         final notifier = RestaurantScopeNotifier();
         await _waitForLoad(notifier);
-        expect(notifier.availableScopes, hasLength(1));
+        // Boot path seeds all 5 locations from restaurant_locations
+        // (4 §2c + four-period proof). The manual call below replaces
+        // the list with whatever the session-scoped reader returns.
+        expect(notifier.availableScopes, hasLength(5));
 
-        // Now simulate a session arriving with a real operatorId.
+        // Now simulate a session arriving with a real operatorId. The
+        // reader returns Downtown only — that proves the fallback path
+        // overwrites the boot-time multi-location seed with whatever
+        // the session-scoped reader returns (this is the production
+        // shape: a real operator with a single accessible location).
         await notifier.seedAvailableScopesFromLocal(
           userId: 'real-user',
           operatorId: 'real-operator-id',

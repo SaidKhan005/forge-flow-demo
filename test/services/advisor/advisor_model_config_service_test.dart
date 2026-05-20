@@ -44,9 +44,10 @@ void main() {
         },
       );
       try {
-        final result = await probeForgeFlowProxyHealth(
-          proxyBaseUri: Uri.parse('http://${server.address.host}:${server.port}'),
-        );
+        final result = await _withRealHttpClient(() => probeForgeFlowProxyHealth(
+              proxyBaseUri: Uri.parse(
+                  'http://${server.address.host}:${server.port}'),
+            ));
         expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
         expect(result.message, contains('reachable'));
         // The probe must hit /healthz, NOT any vendor endpoint.
@@ -78,9 +79,10 @@ void main() {
         },
       );
       try {
-        final result = await probeForgeFlowProxyHealth(
-          proxyBaseUri: Uri.parse('http://${server.address.host}:${server.port}'),
-        );
+        final result = await _withRealHttpClient(() => probeForgeFlowProxyHealth(
+              proxyBaseUri: Uri.parse(
+                  'http://${server.address.host}:${server.port}'),
+            ));
         expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
         expect(result.message, contains('503'));
         // 5xx is NOT online — must not return `available`.
@@ -92,10 +94,10 @@ void main() {
 
     test('returns cannotCheck when proxy is unreachable', () async {
       // Use a port we have not bound; the connect attempt fails fast.
-      final result = await probeForgeFlowProxyHealth(
-        proxyBaseUri: Uri.parse('http://127.0.0.1:1'),
-        timeout: const Duration(seconds: 2),
-      );
+      final result = await _withRealHttpClient(() => probeForgeFlowProxyHealth(
+            proxyBaseUri: Uri.parse('http://127.0.0.1:1'),
+            timeout: const Duration(seconds: 2),
+          ));
       expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
     });
 
@@ -114,10 +116,10 @@ void main() {
         // away a base prefix ("/api/") and probe "/healthz" at root.
         // Guard the documented `replace`-based behavior: probe the
         // exact `/healthz` path on the configured host.
-        await probeForgeFlowProxyHealth(
-          proxyBaseUri: Uri.parse(
-              'http://${server.address.host}:${server.port}/api'),
-        );
+        await _withRealHttpClient(() => probeForgeFlowProxyHealth(
+              proxyBaseUri: Uri.parse(
+                  'http://${server.address.host}:${server.port}/api'),
+            ));
         expect(captured, hasLength(1));
         expect(captured.single.path, equals('/healthz'));
       } finally {
@@ -139,6 +141,25 @@ void main() {
       expect(result.status, equals(AnthropicModelCheckStatus.cannotCheck));
     });
   });
+}
+
+/// Runs [body] with the global `HttpOverrides` temporarily cleared so
+/// `HttpClient()` returns a REAL HttpClient, bypassing the
+/// `TestWidgetsFlutterBinding`'s default override that makes every
+/// request return HTTP 400 with no network call. Using
+/// `HttpOverrides.runZoned(..., createHttpClient: HttpClient(...))`
+/// stack-overflows because the closure recursively re-enters the same
+/// override; nulling the global for the duration of [body] is the
+/// stable pattern. The previous override is restored in the `finally`
+/// block so other tests are not affected.
+Future<T> _withRealHttpClient<T>(Future<T> Function() body) async {
+  final previous = HttpOverrides.current;
+  HttpOverrides.global = null;
+  try {
+    return await body();
+  } finally {
+    HttpOverrides.global = previous;
+  }
 }
 
 /// Starts a minimal in-process `HttpServer` on a random localhost port.

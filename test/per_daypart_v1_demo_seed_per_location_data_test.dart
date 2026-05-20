@@ -22,6 +22,14 @@ import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dar
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 
+// The R6 four-period proof restaurant (PR #929). NOT a
+// `DemoScope.locations` member — per-location operational loops iterate
+// `DemoScope.locations` and skip it — but it has its own seeded
+// `shift_records` / `week_records` rows under this id, so the
+// cross-location isolation assertion below must include it as a known
+// per-location-scoped writer (HP #4 compliant: no cross-write).
+const String _kDemoFourPeriodRestaurantId = 'demo_restaurant_four_period';
+
 void main() {
   final allDemoIds =
       DemoScope.locations.map((l) => l.restaurantId).toList();
@@ -37,6 +45,9 @@ void main() {
       .toList();
   // North Loop / Riverside (connected, non-Downtown).
   final newIds = demoIds.skip(1).toList();
+  // All location ids expected to own rows in `shift_records` /
+  // `week_records`: connected DemoScope.locations + four-period proof.
+  final allWriterIds = <String>{...demoIds, _kDemoFourPeriodRestaurantId};
 
   group('Demo-data Slice C — per-location operational data', () {
     setUp(() async {
@@ -185,13 +196,25 @@ void main() {
     test('per-(operator,location) isolation — no cross-location rows '
         '(HP #4)', () async {
       final db = await SqliteDatabase.instance.database;
-      for (final table in ['shift_records', 'week_records']) {
+      // shift_records: connected DemoScope.locations + the four-period
+      // proof restaurant (its R6 cohort writes shift_records).
+      // week_records: connected DemoScope.locations only — the
+      // four-period seed does not emit weekly rollups (the proof is at
+      // the shift / daypart level, not the week level).
+      final expectedIdsByTable = <String, Set<String>>{
+        'shift_records': allWriterIds,
+        'week_records': demoIds.toSet(),
+      };
+      for (final entry in expectedIdsByTable.entries) {
+        final table = entry.key;
+        final expected = entry.value;
         final rows = await db.rawQuery(
             'SELECT DISTINCT restaurant_id AS r FROM $table');
         final ids = rows.map((m) => m['r'] as String).toSet();
-        expect(ids, equals(demoIds.toSet()),
-            reason: '$table must contain exactly the 4 demo '
-                'locations and never cross-write');
+        expect(ids, equals(expected),
+            reason: '$table must contain exactly the expected '
+                'restaurant_id set ($expected) and never cross-write '
+                'to an unrelated restaurant_id');
       }
       // Each new location owns its own cycle id (no shared/cloned id).
       final cycleIds = <String>{};

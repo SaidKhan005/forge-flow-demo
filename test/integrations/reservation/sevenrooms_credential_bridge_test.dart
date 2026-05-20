@@ -102,7 +102,28 @@ void main() {
     for (final tx in pool.transactions) {
       for (final paramMap in tx.parameters) {
         for (final value in paramMap.values) {
-          final searchable = value is String ? value : jsonEncode(value);
+          // The broker may bind metadata as:
+          //  - a JSON-encoded String (most common path),
+          //  - a Map<String, Object?> (some PG drivers convert
+          //    automatically),
+          //  - a DateTime (e.g. expires_at column),
+          //  - a primitive (int / num / bool / null).
+          // For substring matching we just need a String. `toString()`
+          // works for all of them (DateTime → ISO-ish, Map → {k: v,...},
+          // primitives → their literal form) and avoids jsonEncode's
+          // "Converting object to an encodable object failed" on
+          // DateTime values that are not directly JSON-serializable.
+          final String searchable;
+          if (value is String) {
+            searchable = value;
+          } else if (value is Map || value is List) {
+            // Maps/Lists may contain DateTimes (or other non-JSON types)
+            // nested inside. Use toString(), not jsonEncode, for the
+            // same DateTime-safety reason.
+            searchable = value.toString();
+          } else {
+            searchable = value?.toString() ?? '';
+          }
           for (final key in bindHits.keys) {
             if (searchable.contains(key)) {
               bindHits[key] = true;
