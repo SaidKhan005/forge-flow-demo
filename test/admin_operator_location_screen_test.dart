@@ -33,6 +33,46 @@ import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
+// never-settling timer flake (the dominant flake shape in this repo per
+// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
+// which exceeds the longest legitimate animation/route transition in
+// this screen's flow. If a future expectation needs more time, prefer a
+// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
+// rather than widening this default.
+Future<void> pumpEventually(
+  WidgetTester tester, {
+  int frames = 20,
+  Duration step = const Duration(milliseconds: 50),
+}) async {
+  for (int i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
+// Polling form: pumps until [condition] returns true, or fails loudly
+// with the exhausted-time budget once [maxIterations] is reached. Use
+// this when the test asserts a specific condition right after the
+// settle (e.g. a dialog has mounted, a snackbar has rendered).
+Future<void> pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  Duration step = const Duration(milliseconds: 50),
+  int maxIterations = 60,
+}) async {
+  for (int i = 0; i < maxIterations; i++) {
+    if (condition()) return;
+    await tester.pump(step);
+  }
+  expect(
+    condition(),
+    isTrue,
+    reason:
+        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
+        'budget waiting for condition.',
+  );
+}
+
 void main() {
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -146,19 +186,19 @@ void main() {
   ) async {
     final field = find.byKey(fieldKey);
     await tester.ensureVisible(field);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(field);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     await tester.enterText(
       find.byKey(const Key('admin_timezone_search_field')),
       timezone,
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final option = find.byKey(Key('admin_timezone_option_text_$timezone'));
     await tester.tap(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
   }
 
   Future<void> chooseScopePrompt(
@@ -178,9 +218,9 @@ void main() {
         '$operatorId|$scopeType|${orgUnitId ?? ''}|${locationId ?? ''}';
     final option = find.byKey(Key('admin_hierarchy_scope_option_$cacheKey'));
     await tester.ensureVisible(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
   }
 
   testWidgets('renders one row per seeded operator', (tester) async {
@@ -193,7 +233,7 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
@@ -343,15 +383,15 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final supportLogsTile = find.byKey(
       const Key('admin_business_setup_tile_support_logs'),
     );
     await tester.ensureVisible(supportLogsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(supportLogsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-support',
@@ -364,13 +404,13 @@ void main() {
       const Key('admin_hierarchy_location_loc-support'),
     );
     await tester.ensureVisible(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.ensureVisible(supportLogsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(supportLogsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-support',
@@ -424,15 +464,15 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final peopleTile = find.byKey(
       const Key('admin_business_setup_tile_people_access_roles'),
     );
     await tester.ensureVisible(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-workspace',
@@ -448,14 +488,14 @@ void main() {
       const Key('admin_hierarchy_org_unit_org-root'),
     );
     await tester.ensureVisible(orgUnitRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tapAt(tester.getTopLeft(orgUnitRow) + const Offset(24, 24));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     await tester.ensureVisible(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-workspace',
@@ -472,13 +512,13 @@ void main() {
       const Key('admin_hierarchy_location_loc-workspace'),
     );
     await tester.ensureVisible(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.ensureVisible(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-workspace',
@@ -511,16 +551,16 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final profileAction = find.descendant(
       of: find.byKey(const Key('admin_operator_profile_card')),
       matching: find.byKey(const Key('admin_operator_edit_button')),
     );
     await tester.ensureVisible(profileAction);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(profileAction);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final dialog = find.byKey(const Key('admin_edit_operator_dialog'));
     expect(dialog, findsOneWidget);
@@ -535,7 +575,7 @@ void main() {
       'contact@profile.test',
     );
     await tester.tap(find.byKey(const Key('admin_edit_submit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final operators = await gateway.listOperators();
     expect(operators.single.operator.ownerEmail, 'contact@profile.test');
@@ -557,22 +597,22 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final profileAction = find.descendant(
       of: find.byKey(const Key('admin_operator_profile_card')),
       matching: find.byKey(const Key('admin_operator_edit_button')),
     );
     await tester.ensureVisible(profileAction);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(profileAction);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.enterText(
       find.byKey(const Key('admin_edit_owner_email')),
       'taken@business.test',
     );
     await tester.tap(find.byKey(const Key('admin_edit_submit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.text('Contact email is already used by another account.'),
@@ -616,23 +656,23 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final locationRow = find.byKey(
       const Key('admin_hierarchy_location_loc-timing'),
     );
     await tester.ensureVisible(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final timingTile = find.byKey(
       const Key('admin_business_setup_tile_timing'),
     );
     await tester.ensureVisible(timingTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(timingTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-timing',
@@ -641,7 +681,7 @@ void main() {
     );
     // The resolved body is a FutureBuilder over the READ-ONLY S2
     // admin gateway; let it complete.
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
@@ -704,21 +744,21 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final timingTile = find.byKey(
       const Key('admin_business_setup_tile_timing'),
     );
     await tester.ensureVisible(timingTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(timingTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-business-timing',
       scopeType: 'business',
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_location_timing_dialog')),
@@ -769,30 +809,30 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final locationRow = find.byKey(
         const Key('admin_hierarchy_location_loc-timing-readonly'),
       );
       await tester.ensureVisible(locationRow);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(locationRow);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final timingTile = find.byKey(
         const Key('admin_business_setup_tile_timing'),
       );
       await tester.ensureVisible(timingTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(timingTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await chooseScopePrompt(
         tester,
         operatorId: 'op-timing-readonly',
         scopeType: 'location',
         locationId: 'loc-timing-readonly',
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_location_timing_dialog')),
@@ -833,13 +873,13 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     await tester.enterText(
       find.byKey(const Key('admin_operators_search_field')),
       'beta',
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operator_row_op-1')), findsNothing);
     expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
@@ -848,7 +888,7 @@ void main() {
       find.byKey(const Key('admin_operators_search_field')),
       'toronto',
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
     expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
@@ -857,7 +897,7 @@ void main() {
       find.byKey(const Key('admin_operators_search_field')),
       'zzzz',
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_no_matches')), findsOneWidget);
   });
@@ -879,7 +919,7 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_list')), findsOneWidget);
     expect(
@@ -896,7 +936,7 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_empty')), findsOneWidget);
     expect(find.text('No business accounts yet'), findsOneWidget);
@@ -909,10 +949,10 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     await tester.tap(find.byKey(const Key('admin_operators_new_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_onboard_operator_dialog')),
@@ -946,7 +986,7 @@ void main() {
       'America/Vancouver',
     );
     await tester.tap(find.byKey(const Key('admin_onboard_submit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final operators = await gateway.listOperators();
     expect(operators, hasLength(1));
@@ -965,21 +1005,21 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.text('suspended'), findsNothing);
 
     await tester.tap(find.byKey(const Key('admin_operator_suspend_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     expect(find.text('suspended'), findsWidgets);
 
     final reactivateButton = find.byKey(
       const Key('admin_operator_reactivate_button'),
     );
     await tester.ensureVisible(reactivateButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(reactivateButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     expect(find.text('suspended'), findsNothing);
   });
 
@@ -996,7 +1036,7 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final fadedLocation = tester.widget<Opacity>(
       find.byKey(const Key('admin_location_suspended_fade_loc-paused')),
@@ -1004,7 +1044,7 @@ void main() {
     expect(fadedLocation.opacity, lessThan(1));
 
     await tester.tap(find.byKey(const Key('admin_operator_reactivate_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final activeLocation = tester.widget<Opacity>(
       find.byKey(const Key('admin_location_suspended_fade_loc-paused')),
@@ -1021,7 +1061,7 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.text('Forge & Flow AI plan'), findsOneWidget);
     final detailRow = tester.widget<AdminDetailRow>(
@@ -1030,7 +1070,7 @@ void main() {
     expect(detailRow.muted, isTrue);
 
     await tester.tap(find.byKey(const Key('admin_operator_edit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_edit_operator_dialog')), findsOneWidget);
     expect(find.text('Forge & Flow AI plan'), findsWidgets);
@@ -1061,7 +1101,7 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final addButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_operator_add_location_button')),
@@ -1110,15 +1150,15 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final addChild = find.byKey(
       const Key('admin_hierarchy_org_unit_add_child_org-root'),
     );
     await tester.ensureVisible(addChild);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(addChild);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_hierarchy_add_child_org_unit_dialog')),
@@ -1139,7 +1179,7 @@ void main() {
     await tester.tap(
       find.byKey(const Key('admin_hierarchy_add_org_unit_submit')),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.text('North district'), findsOneWidget);
     final event = hierarchyGateway.capturedAuditEvents.single;
@@ -1192,13 +1232,13 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final moveButton = find.byKey(const Key('admin_location_move_loc-seed-1'));
     await tester.ensureVisible(moveButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(moveButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_hierarchy_move_location_dialog')),
@@ -1212,7 +1252,7 @@ void main() {
     await tester.tap(
       find.byKey(const Key('admin_hierarchy_move_location_submit')),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final moved = (await hierarchyGateway.listHierarchyLocations(
       operatorId: 'op-seed-1',
@@ -1280,7 +1320,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final rootMoveButton = tester.widget<IconButton>(
       find.byKey(const Key('admin_hierarchy_org_unit_move_org-root')),
@@ -1291,9 +1331,9 @@ void main() {
       const Key('admin_hierarchy_org_unit_move_org-east'),
     );
     await tester.ensureVisible(moveButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(moveButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_hierarchy_move_org_unit_dialog')),
@@ -1307,7 +1347,7 @@ void main() {
     await tester.tap(
       find.byKey(const Key('admin_hierarchy_move_org_unit_submit')),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final moved = (await hierarchyGateway.listOrgUnits(
       operatorId: 'op-seed-1',
@@ -1370,7 +1410,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final rootSuspend = tester.widget<IconButton>(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_org-root')),
@@ -1381,9 +1421,9 @@ void main() {
         const Key('admin_hierarchy_org_unit_suspend_org-east'),
       );
       await tester.ensureVisible(suspendButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(suspendButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_dialog')),
         findsOneWidget,
@@ -1395,7 +1435,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_hierarchy_org_unit_suspend_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Suspended branch'), findsOneWidget);
       final suspended = (await hierarchyGateway.listOrgUnits(
@@ -1415,9 +1455,9 @@ void main() {
         const Key('admin_hierarchy_org_unit_reactivate_org-east'),
       );
       await tester.ensureVisible(reactivateButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(reactivateButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_hierarchy_org_unit_reactivate_reason')),
         'district ready for use again',
@@ -1425,7 +1465,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_hierarchy_org_unit_reactivate_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final reactivated = (await hierarchyGateway.listOrgUnits(
         operatorId: 'op-seed-1',
@@ -1440,9 +1480,9 @@ void main() {
         const Key('admin_hierarchy_org_unit_delete_org-empty'),
       );
       await tester.ensureVisible(deleteButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(deleteButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_hierarchy_org_unit_delete_dialog')),
         findsOneWidget,
@@ -1454,7 +1494,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_hierarchy_org_unit_delete_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final units = await hierarchyGateway.listOrgUnits(
         operatorId: 'op-seed-1',
@@ -1558,7 +1598,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final primaryDelete = tester.widget<IconButton>(
         find.byKey(const Key('admin_location_remove_loc-primary')),
@@ -1569,9 +1609,9 @@ void main() {
         const Key('admin_location_suspend_loc-west'),
       );
       await tester.ensureVisible(suspendButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(suspendButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_hierarchy_location_suspend_dialog')),
         findsOneWidget,
@@ -1583,7 +1623,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_hierarchy_location_suspend_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Suspended location'), findsOneWidget);
       final suspended = (await hierarchyGateway.listHierarchyLocations(
@@ -1603,9 +1643,9 @@ void main() {
         const Key('admin_location_reactivate_loc-west'),
       );
       await tester.ensureVisible(reactivateButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(reactivateButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_hierarchy_location_reactivate_reason')),
         'location reopened',
@@ -1613,7 +1653,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_hierarchy_location_reactivate_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final reactivated = (await hierarchyGateway.listHierarchyLocations(
         operatorId: 'op-seed-1',
@@ -1628,9 +1668,9 @@ void main() {
         const Key('admin_location_remove_loc-west'),
       );
       await tester.ensureVisible(deleteButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(deleteButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_hierarchy_location_delete_dialog')),
         findsOneWidget,
@@ -1642,7 +1682,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_hierarchy_location_delete_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final locations = await hierarchyGateway.listHierarchyLocations(
         operatorId: 'op-seed-1',
@@ -1681,15 +1721,15 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final addButton = find.byKey(
       const Key('admin_operator_add_location_button'),
     );
     await tester.ensureVisible(addButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(addButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
     expect(find.byKey(const Key('admin_rollover_hour_dropdown')), findsNothing);
@@ -1713,7 +1753,7 @@ void main() {
       'America/Halifax',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final operators = await gateway.listOperators();
     final added = operators.single.locations.firstWhere(
@@ -1733,13 +1773,13 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final editButton = find.byKey(const Key('admin_location_edit_loc-seed-1'));
     await tester.ensureVisible(editButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(editButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_location_edit_dialog')), findsOneWidget);
     expect(find.byKey(const Key('admin_rollover_hour_dropdown')), findsNothing);
@@ -1758,7 +1798,7 @@ void main() {
       'America/St_Johns',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final operators = await gateway.listOperators();
     final location = operators.single.locations.single;
@@ -1783,7 +1823,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final removeButton = tester.widget<IconButton>(
       find.byKey(const Key('admin_location_remove_loc-x')),
@@ -1800,27 +1840,27 @@ void main() {
     await tester.pumpWidget(
       wrap(OperatorLocationAdminScreen(gateway: gateway)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final locationRow = find.byKey(
       const Key('admin_hierarchy_location_loc-seed-1'),
     );
     await tester.ensureVisible(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final integrationsTile = find.byKey(
       const Key('admin_business_setup_tile_integrations'),
     );
     await tester.ensureVisible(integrationsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(integrationsTile, findsOneWidget);
     expect(find.text('Integrations'), findsOneWidget);
 
     await tester.tap(integrationsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: 'op-seed-1',
@@ -1854,15 +1894,15 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final integrationsTile = find.byKey(
         const Key('admin_business_setup_tile_integrations'),
       );
       await tester.ensureVisible(integrationsTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(integrationsTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await chooseScopePrompt(
         tester,
         operatorId: 'op-integrations',
@@ -1879,19 +1919,19 @@ void main() {
       );
 
       await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final locationRow = find.byKey(
         const Key('admin_hierarchy_location_loc-integrations'),
       );
       await tester.ensureVisible(locationRow);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(locationRow);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.ensureVisible(integrationsTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(integrationsTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_hierarchy_scope_prompt')),
@@ -1920,7 +1960,7 @@ void main() {
         OperatorLocationAdminScreen(gateway: gateway, editingEnabled: false),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_operators_readonly_banner')),
@@ -1967,16 +2007,16 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     // Add a second location through the dialog.
     final addButton = find.byKey(
       const Key('admin_operator_add_location_button'),
     );
     await tester.ensureVisible(addButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(addButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.enterText(
       find.byKey(const Key('admin_location_name_field')),
       'West Coast',
@@ -1987,7 +2027,7 @@ void main() {
       'America/Vancouver',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final operators = await gateway.listOperators();
     expect(operators.single.locations, hasLength(2));
@@ -2000,12 +2040,12 @@ void main() {
       Key('admin_location_remove_${added.locationId}'),
     );
     await tester.ensureVisible(removeButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(removeButton);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     expect(find.byKey(const Key('admin_confirm_dialog')), findsOneWidget);
     await tester.tap(find.byKey(const Key('admin_confirm_confirm_button')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final after = await gateway.listOperators();
     expect(after.single.locations, hasLength(1));
@@ -2018,7 +2058,7 @@ void main() {
     final source = DemoAdminAuthSource.signedInAsNonAdmin();
     addTearDown(source.dispose);
     await tester.pumpWidget(AdminConsoleApp(authSource: source));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_forbidden_card')), findsOneWidget);
     expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
@@ -2046,10 +2086,10 @@ void main() {
           child: AdminConsoleApp(authSource: source),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
       expect(
@@ -2084,10 +2124,10 @@ void main() {
         child: AdminConsoleApp(authSource: source),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(
