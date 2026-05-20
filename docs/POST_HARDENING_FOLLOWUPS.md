@@ -193,7 +193,15 @@ that inert state is the safety guarantee until the Azure swap ships.
 **Not blocking:** A11.2's other deliverables (fd watcher, p3c CLI flags)
 are independent of this swap and stay live on master.
 
-## P1 — C-1 SendGrid Webhook: outbox-status flip on terminal events (PR #611 follow-up)
+## ~~P1~~ RESOLVED — C-1 SendGrid Webhook: outbox-status flip on terminal events (PR #611 follow-up)
+
+**Status: RESOLVED in PR `claude/sendgrid-outbox-status-flip` (2026-05-20).**
+`EmailEventRepository.insertProviderEvent` now flips
+`email_outbox.status` to the terminal kind (`bounced` / `complaint`)
+in the same `runAsSystem` transaction as the `email_event` INSERT,
+guarded against overwriting `{bounced, complaint, failed}` and
+against duplicate-event re-runs. The historical scope notes below
+are preserved for audit context.
 
 **Origin:** 2026-05-19 review of a rescued earlier SendGrid implementation
 (rescue branch `rescue/wt-snapshot/master-sendgrid-webhook-20260519-054323`)
