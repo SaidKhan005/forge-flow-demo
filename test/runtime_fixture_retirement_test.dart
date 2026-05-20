@@ -21,6 +21,7 @@ import 'package:forge_and_flow/forge_flow_app.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 import '_test_helpers/cold_boot_helpers.dart';
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   // Fix A (operator decision 2026-05-16): the "none connected" demo
@@ -63,9 +64,12 @@ void main() {
     setUp(() async {
       // Bucket 4d (audit 2026-05-20): set+reset via ColdBootOverrideScope
       // so the override can't leak between tests (PR #1091 bug shape).
+      // Bucket 4b Category C (audit 2026-05-20): reseed delegated to
+      // `setUpSqliteDemo`. Order matters — scope is constructed FIRST so
+      // the override is live when reseedDemo runs.
       final scope = ColdBootOverrideScope(now: '2026-03-27T19:45:00');
       addTearDown(scope.dispose);
-      await SqliteDatabase.instance.reseedDemo();
+      await setUpSqliteDemo();
     });
 
     test('shift_records carry mock_pos_labor_replay source', () async {

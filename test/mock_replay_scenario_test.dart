@@ -25,6 +25,7 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
 import '_test_helpers/cold_boot_helpers.dart';
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   // Fix A (operator decision 2026-05-16): a "none connected" demo
@@ -38,6 +39,12 @@ void main() {
       .toSet();
 
   setUp(() async {
+    // Strategy B (Bucket 4b Category C, audit 2026-05-20): only the
+    // reseed half is helper-driven via `setUpSqliteDemo`. The two
+    // `BaselineData.clear*` calls below stay inline — this file only
+    // clears 2 of the 3 baseline seams (intentional; tearDown matches),
+    // so `resetBaselineTestState`/`resetAllDemoTestState` (which clear
+    // all 3, including recommendation signals) would shift semantics.
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
     // QA fix (Change A): the open period is now clock-derived. Pin the
@@ -49,9 +56,11 @@ void main() {
     //
     // Bucket 4d (audit 2026-05-20): set+reset via ColdBootOverrideScope
     // so the override can't leak between tests (PR #1091 bug shape).
+    // Order matters — scope is constructed BEFORE the reseed so the
+    // override is live when reseedDemo runs.
     final scope = ColdBootOverrideScope(now: '2026-03-27T19:45:00');
     addTearDown(scope.dispose);
-    await SqliteDatabase.instance.reseedDemo();
+    await setUpSqliteDemo();
   });
 
   tearDown(() {
