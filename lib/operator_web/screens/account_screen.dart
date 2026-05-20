@@ -435,6 +435,30 @@ class _AccountScreenState extends State<AccountScreen> {
 
   bool get _hasGateway => widget.gateway != null;
 
+  bool _draftDiffers(String? draft, String? saved) {
+    final normalizedDraft = draft?.trim() ?? '';
+    final normalizedSaved = saved?.trim() ?? '';
+    return normalizedDraft != normalizedSaved;
+  }
+
+  String _unsavedSourceLabel(String settingLabel) {
+    return 'Unsaved change here. Save to set $settingLabel at '
+        '${_scopeLevelLabel(widget.scopeLevel)}: ${widget.scopeName}.';
+  }
+
+  String _scopeLevelLabel(HierarchyScopeLevel level) {
+    switch (level) {
+      case HierarchyScopeLevel.business:
+        return 'Business';
+      case HierarchyScopeLevel.region:
+        return 'Region';
+      case HierarchyScopeLevel.brand:
+        return 'Brand';
+      case HierarchyScopeLevel.location:
+        return 'Location';
+    }
+  }
+
   Future<void> _handleSave() async {
     final gateway = widget.gateway;
     if (gateway == null || !widget.canEdit) return;
@@ -603,6 +627,21 @@ class _AccountScreenState extends State<AccountScreen> {
     // the helper returns null (no inheritance), so the notice falls
     // back to "Set here. Does not inherit from a higher scope."
     final overrides = _locationOverrides;
+    final savedIdentityContactEmail = overrides == null
+        ? ''
+        : overrides.override.contactEmail ??
+              overrides.businessDefault.contactEmail ??
+              '';
+    final savedIdentityContactPhone = overrides == null
+        ? ''
+        : overrides.override.contactPhone ??
+              overrides.businessDefault.contactPhone ??
+              '';
+    final identityDraftChanged =
+        scopeIsLocation &&
+        overrides != null &&
+        (_draftDiffers(_contactEmail.text, savedIdentityContactEmail) ||
+            _draftDiffers(_contactPhone.text, savedIdentityContactPhone));
     final regionOverrideSet =
         overrides != null &&
         (overrides.override.currencyCode != null ||
@@ -618,6 +657,21 @@ class _AccountScreenState extends State<AccountScreen> {
               '${widget.session.localeTag ?? "no locale"}'
         : '${overrides.businessDefault.currencyCode ?? "no currency"} / '
               '${overrides.businessDefault.localeCode ?? "no locale"}';
+    final savedRegionCurrency = overrides == null
+        ? widget.session.currencyCode
+        : overrides.override.currencyCode ??
+              overrides.businessDefault.currencyCode ??
+              widget.session.currencyCode;
+    final savedRegionLocale = overrides == null
+        ? widget.session.localeTag
+        : overrides.override.localeCode ??
+              overrides.businessDefault.localeCode ??
+              widget.session.localeTag;
+    final regionDraftChanged =
+        scopeIsLocation &&
+        overrides != null &&
+        (_draftDiffers(_currencyCode, savedRegionCurrency) ||
+            _draftDiffers(_localeTag, savedRegionLocale));
     final businessDayOverrideSet =
         overrides != null && overrides.override.businessDayRolloverHour != null;
     final businessDayBusinessDefault = overrides == null
@@ -639,10 +693,12 @@ class _AccountScreenState extends State<AccountScreen> {
       overrideIsSet: identityOverrideSet,
       businessDefaultDisplay: identityBusinessDefault,
     );
-    final regionInheritedLabel = widget.inheritedLabelFor(
-      overrideIsSet: regionOverrideSet,
-      businessDefaultDisplay: regionBusinessDefault,
-    );
+    final regionInheritedLabel = regionDraftChanged
+        ? _unsavedSourceLabel('these region settings')
+        : widget.inheritedLabelFor(
+            overrideIsSet: regionOverrideSet,
+            businessDefaultDisplay: regionBusinessDefault,
+          );
     final businessDayInheritedLabel = widget.inheritedLabelFor(
       overrideIsSet: businessDayOverrideSet,
       businessDefaultDisplay: businessDayBusinessDefault,
@@ -692,7 +748,9 @@ class _AccountScreenState extends State<AccountScreen> {
             },
             scopeLevel: widget.scopeLevel,
             scopeName: widget.scopeName,
-            inheritedLabel: identityInheritedLabel,
+            inheritedLabel: identityDraftChanged
+                ? _unsavedSourceLabel('these contact details')
+                : identityInheritedLabel,
             backendOnlyExplainer: widget
                 .backendOnlyExplainerForBusinessDefault(),
           ),
@@ -734,6 +792,14 @@ class _AccountScreenState extends State<AccountScreen> {
             errorMessage: _timezoneErrorMessage,
             successMessage: _timezoneSuccessMessage,
             effectiveValue: _effectiveTimezoneValue(),
+            inheritedLabel:
+                _draftDiffers(
+                  _effectiveTimezoneValue(),
+                  widget.session.primaryLocationTimezone,
+                )
+                ? 'Unsaved change here. Save timezone to set it at Location: '
+                      '${widget.session.primaryLocationName}.'
+                : null,
             onShortlistChanged: (value) =>
                 setState(() => _selectedTimezone = value),
             onCustomChanged: () => setState(() {}),
@@ -1548,6 +1614,7 @@ class _LocationTimezoneSection extends StatelessWidget {
     required this.errorMessage,
     required this.successMessage,
     required this.effectiveValue,
+    this.inheritedLabel,
     required this.onShortlistChanged,
     required this.onCustomChanged,
     required this.onSave,
@@ -1563,6 +1630,7 @@ class _LocationTimezoneSection extends StatelessWidget {
   final String? errorMessage;
   final String? successMessage;
   final String effectiveValue;
+  final String? inheritedLabel;
   final ValueChanged<String?> onShortlistChanged;
   final VoidCallback onCustomChanged;
   final Future<void> Function() onSave;
@@ -1590,6 +1658,7 @@ class _LocationTimezoneSection extends StatelessWidget {
             effectiveValueSummary: hasEffective
                 ? 'This location uses $effectiveValue.'
                 : 'No timezone is on file. Set one to lock daily timing.',
+            inheritedFromLabel: inheritedLabel,
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(

@@ -600,6 +600,68 @@ void main() {
       },
     );
 
+    testWidgets('Location scope region source changes while draft is unsaved', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(1280, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+      final session = sessionWithRole('operator_owner');
+      final gateway = _FakeAccountGateway();
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: gateway,
+            selectedScope: locationScope,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_currency')),
+      );
+      await tester.tap(find.byKey(const Key('operator_web_account_currency')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Euro (EUR)').last);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Unsaved change here. Save to set these region settings at '
+          'Location: Brio Main.',
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('operator_web_account_region_scope')),
+          matching: find.text('Source'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_account_save')),
+      );
+      await tester.tap(find.byKey(const Key('operator_web_account_save')));
+      await tester.pumpAndSettle();
+
+      expect(gateway.overridesPatchCalls, hasLength(1));
+      expect(gateway.overridesPatchCalls.single.patch.currencyCode, 'EUR');
+      expect(
+        find.descendant(
+          of: find.byKey(const Key('operator_web_account_region_scope')),
+          matching: find.textContaining('Set here at Brio Main.'),
+        ),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('Location scope save round-trips an override patch through the '
         'gateway', (tester) async {
       // U-FU-hp11-account adds the contact-email + contact-phone

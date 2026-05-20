@@ -189,7 +189,7 @@ class HierarchyScopeNotice extends StatelessWidget {
               const SizedBox(height: 6),
               _NoticeRow(
                 keyName: '${keyName}_inherited_row',
-                label: 'Inherited from',
+                label: 'Source',
                 value:
                     inheritedLabel ??
                     'Set here. Does not inherit from a higher scope.',
