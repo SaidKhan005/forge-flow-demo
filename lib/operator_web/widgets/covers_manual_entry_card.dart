@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 class CoversManualEntryCard extends StatefulWidget {
@@ -157,13 +158,18 @@ class _CoversManualEntryCardState extends State<CoversManualEntryCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const OperatorWebSectionHeading(title: "Type today's covers"),
-          const SizedBox(height: 10),
-          Text(
-            'You set this service period to manual. Type how many guests '
-            "you served. Leave blank if you don't have the count yet. F&F "
-            "will show \"not yet available\" rather than make up a number.",
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: "Type today's covers",
+            trailing: OperatorWebInfoButton(
+              title: "Type today's covers",
+              tooltip: "Type today's covers",
+              body: Text(
+                'You set this service period to manual. Type how many guests '
+                "you served. Leave blank if you don't have the count yet. F&F "
+                "will show \"not yet available\" rather than make up a number.",
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           if (manualPeriods.isEmpty)

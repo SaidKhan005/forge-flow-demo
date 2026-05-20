@@ -55,6 +55,7 @@ import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../widgets/business_logo_upload_section.dart';
 import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/web_app_shell.dart';
 
@@ -2109,14 +2110,21 @@ class _Card extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(title: title),
-          if (subtitle.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              subtitle,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: title,
+            trailing: subtitle.isEmpty
+                ? null
+                : OperatorWebInfoButton(
+                    title: title,
+                    tooltip: title,
+                    body: Text(
+                      subtitle,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
             ),
-          ],
           const SizedBox(height: 14),
           child,
         ],

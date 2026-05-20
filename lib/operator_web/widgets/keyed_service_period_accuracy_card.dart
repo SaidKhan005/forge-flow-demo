@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 /// Pure value object the card emits when the operator submits the
@@ -156,25 +157,36 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
         children: [
           OperatorWebSectionHeading(
             title: 'Service-period overrides',
-            trailing: editingEnabled
-                ? FilledButton.icon(
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OperatorWebInfoButton(
+                  title: 'Service-period overrides',
+                  tooltip: 'Service-period overrides',
+                  body: Text(
+                    'Add an override for a specific service period (lunch, dinner, '
+                    'breakfast, brunch, late night, or any custom name your kitchen '
+                    'uses). Forge & Flow uses the most recent override at-or-before '
+                    'each closed shift’s business date, so future-dating an '
+                    'override stages it without overwriting history.',
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
+                if (editingEnabled) ...[
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
                     key: kKeyedServicePeriodAccuracyAddButtonKey,
                     onPressed: busy
                         ? null
                         : () => _openDialog(context, existing: null),
                     icon: const Icon(Icons.add, size: 14),
                     label: const Text('Add or supersede'),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Add an override for a specific service period (lunch, dinner, '
-            'breakfast, brunch, late night, or any custom name your kitchen '
-            'uses). Forge & Flow uses the most recent override at-or-before '
-            'each closed shift’s business date, so future-dating an '
-            'override stages it without overwriting history.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+                  ),
+                ],
+              ],
+            ),
           ),
           const SizedBox(height: 12),
           if (loadError != null)

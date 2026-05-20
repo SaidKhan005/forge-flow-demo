@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 class CoversHistoricalSeedCard extends StatefulWidget {
@@ -304,14 +305,17 @@ class _CoversHistoricalSeedCardState extends State<CoversHistoricalSeedCard> {
         children: [
           OperatorWebSectionHeading(
             title: 'Backfill the last ${widget.dayCount} days of covers',
-          ),
-          const SizedBox(height: 10),
-          Text(
-            "Your POS doesn't expose covers, so F&F has nothing to learn "
-            'from yet. Type your past covers (or paste them in) and F&F '
-            'will use them to forecast next week. You can come back and '
-            'edit any cell.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+            trailing: OperatorWebInfoButton(
+              title: 'Backfill the last ${widget.dayCount} days of covers',
+              tooltip: 'Backfill the last ${widget.dayCount} days of covers',
+              body: Text(
+                "Your POS doesn't expose covers, so F&F has nothing to learn "
+                'from yet. Type your past covers (or paste them in) and F&F '
+                'will use them to forecast next week. You can come back and '
+                'edit any cell.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           if (_periods.isEmpty)

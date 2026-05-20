@@ -19,6 +19,7 @@ import 'package:flutter/services.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 enum WalkInHandlingMode {
@@ -161,13 +162,18 @@ class _WalkInHandlingCardState extends State<WalkInHandlingCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const OperatorWebSectionHeading(title: 'Walk-ins handling'),
-          const SizedBox(height: 10),
-          Text(
-            "Your reservation system tracks reservations, but your POS "
-            "doesn't track covers. Tell F&F how to handle walk-in guests "
-            'so per-cover metrics stay honest.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: 'Walk-ins handling',
+            trailing: OperatorWebInfoButton(
+              title: 'Walk-ins handling',
+              tooltip: 'Walk-ins handling',
+              body: Text(
+                "Your reservation system tracks reservations, but your POS "
+                "doesn't track covers. Tell F&F how to handle walk-in guests "
+                'so per-cover metrics stay honest.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           _RadioRow(
@@ -352,14 +358,29 @@ class _RadioRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    label,
-                    style: AppTextStyles.body14(color: AppColors.textPrimary),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    body,
-                    style: AppTextStyles.body13(color: AppColors.textPrimary),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          label,
+                          style: AppTextStyles.body14(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OperatorWebInfoButton(
+                        title: label,
+                        tooltip: label,
+                        body: Text(
+                          body,
+                          style: AppTextStyles.body13(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

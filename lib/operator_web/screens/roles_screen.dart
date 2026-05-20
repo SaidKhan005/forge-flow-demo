@@ -34,6 +34,7 @@ import '../../services/auth/auth_operations_gateway.dart';
 import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import 'custom_role_editor_screen.dart';
 import 'permission_explainer_screen.dart';
@@ -533,14 +534,21 @@ class _RoleGroup extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        OperatorWebSectionHeading(title: title),
-        if (subtitleText != null) ...<Widget>[
-          const SizedBox(height: 6),
-          Text(
-            subtitleText,
-            style: AppTextStyles.body12(color: AppColors.textSecondary),
+        OperatorWebSectionHeading(
+          title: title,
+          trailing: subtitleText == null
+              ? null
+              : OperatorWebInfoButton(
+                  title: title,
+                  tooltip: title,
+                  body: Text(
+                    subtitleText,
+                    style: AppTextStyles.body13(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ),
           ),
-        ],
         const SizedBox(height: 10),
         for (final role in roles)
           _RoleTile(

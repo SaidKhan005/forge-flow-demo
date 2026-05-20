@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
 
@@ -475,11 +476,16 @@ class _DataAccuracyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(title: title),
-          const SizedBox(height: 10),
-          Text(
-            headerExplainer,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: title,
+            trailing: OperatorWebInfoButton(
+              title: title,
+              tooltip: title,
+              body: Text(
+                headerExplainer,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           child,

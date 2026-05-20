@@ -58,6 +58,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_account_gateway.dart';
 import '../services/web_security_gateway.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import 'edit_self_profile_dialog.dart';
 
@@ -728,6 +729,13 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final explainer = headerExplainer;
+    final trailing = explainer == null && statusBadge == null
+        ? null
+        : _SectionCardTrailing(
+            title: title,
+            explainer: explainer,
+            statusBadge: statusBadge,
+          );
     return Container(
       key: cardKey,
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -744,18 +752,11 @@ class _SectionCard extends StatelessWidget {
               Expanded(
                 child: OperatorWebSectionHeading(
                   title: title,
-                  trailing: statusBadge,
+                  trailing: trailing,
                 ),
               ),
             ],
           ),
-          if (explainer != null) ...[
-            const SizedBox(height: 6),
-            Text(
-              explainer,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ],
           const SizedBox(height: 14),
           child,
           const SizedBox(height: 14),
@@ -776,6 +777,38 @@ class _SectionCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _SectionCardTrailing extends StatelessWidget {
+  const _SectionCardTrailing({
+    required this.title,
+    required this.explainer,
+    required this.statusBadge,
+  });
+
+  final String title;
+  final String? explainer;
+  final Widget? statusBadge;
+
+  @override
+  Widget build(BuildContext context) {
+    final help = explainer == null
+        ? null
+        : OperatorWebInfoButton(
+            title: title,
+            tooltip: title,
+            body: Text(
+              explainer!,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          );
+    if (help == null) return statusBadge ?? const SizedBox.shrink();
+    if (statusBadge == null) return help;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [help, const SizedBox(width: 8), statusBadge!],
     );
   }
 }

@@ -53,6 +53,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/demo_team_fixtures.dart';
 import '../services/web_team_users_gateway.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import 'edit_member_dialog.dart';
 import 'invite_member_dialog.dart';
@@ -1608,12 +1609,17 @@ class _PendingInvitesPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const OperatorWebSectionHeading(title: 'Pending invites'),
-          const SizedBox(height: 6),
-          Text(
-            'Invites your team has sent that the new teammate has not '
-            'accepted yet.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: 'Pending invites',
+            trailing: OperatorWebInfoButton(
+              title: 'Pending invites',
+              tooltip: 'Pending invites',
+              body: Text(
+                'Invites your team has sent that the new teammate has not '
+                'accepted yet.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           for (final invite in invites)

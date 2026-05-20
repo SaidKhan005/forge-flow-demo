@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
 import '../widgets/hierarchy_tree_visualization.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
@@ -516,20 +517,22 @@ class _ServicePeriodsCard extends StatelessWidget {
     return _TimingPanel(
       keyName: 'operator_web_business_timing_periods_card',
       title: 'Service periods',
+      trailing: hasMidnightRollover
+          ? OperatorWebInfoButton(
+              title: 'Service periods',
+              tooltip: 'Service periods',
+              body: Text(
+                'One period runs past midnight, so its sales count toward the '
+                'business day it started in.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            )
+          : null,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final period in bundle.servicePeriods)
             _ServicePeriodRow(period: period),
-          if (hasMidnightRollover) ...[
-            const SizedBox(height: 8),
-            Text(
-              key: const Key('operator_web_business_timing_midnight_note'),
-              'One period runs past midnight, so its sales count toward the '
-              'business day it started in.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ],
         ],
       ),
     );
@@ -541,11 +544,13 @@ class _TimingPanel extends StatelessWidget {
     required this.keyName,
     required this.title,
     required this.child,
+    this.trailing,
   });
 
   final String keyName;
   final String title;
   final Widget child;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -560,7 +565,7 @@ class _TimingPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          OperatorWebSectionHeading(title: title),
+          OperatorWebSectionHeading(title: title, trailing: trailing),
           const SizedBox(height: 14),
           child,
         ],

@@ -46,6 +46,7 @@ import '../widgets/covers_source_toggle.dart';
 import '../widgets/data_accuracy_explainer_card.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/keyed_service_period_accuracy_card.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/polling_tier_status_card.dart';
 import '../widgets/vendor_relativity_label.dart';
 import '../widgets/wage_source_toggle.dart';
@@ -1518,17 +1519,26 @@ class _DataAccuracyGroupLabel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: AppTextStyles.mono12(
-            color: AppColors.textPrimary,
-            weight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          subtitle,
-          style: AppTextStyles.body12(color: AppColors.textSecondary),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              title,
+              style: AppTextStyles.mono12(
+                color: AppColors.textPrimary,
+                weight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(width: 6),
+            OperatorWebInfoButton(
+              title: title,
+              tooltip: title,
+              body: Text(
+                subtitle,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
+          ],
         ),
       ],
     );

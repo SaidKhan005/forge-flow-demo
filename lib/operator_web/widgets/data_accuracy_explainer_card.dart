@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 /// Static "What this page is for" explainer card. Renders 5
@@ -49,13 +50,18 @@ class DataAccuracyExplainerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const OperatorWebSectionHeading(title: 'What this page is for'),
-          const SizedBox(height: 10),
-          Text(
-            'These settings tell F&F where your most important numbers '
-            'come from when your vendors do not expose them directly. '
-            'Set them once and your dashboard stays honest.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: 'What this page is for',
+            trailing: OperatorWebInfoButton(
+              title: 'What this page is for',
+              tooltip: 'What this page is for',
+              body: Text(
+                'These settings tell F&F where your most important numbers '
+                'come from when your vendors do not expose them directly. '
+                'Set them once and your dashboard stays honest.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
           const _ExplainerSection(
@@ -192,16 +198,41 @@ class _ExplainerSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            heading,
-            style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-          ),
-          const SizedBox(height: 6),
-          Text(body, style: AppTextStyles.body13(color: AppColors.textPrimary)),
-          const SizedBox(height: 6),
-          Text(
-            example,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  heading,
+                  style: AppTextStyles.mono11(color: AppColors.sunsetDark),
+                ),
+              ),
+              const SizedBox(width: 8),
+              OperatorWebInfoButton(
+                title: heading,
+                tooltip: heading,
+                width: 360,
+                body: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      body,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      example,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

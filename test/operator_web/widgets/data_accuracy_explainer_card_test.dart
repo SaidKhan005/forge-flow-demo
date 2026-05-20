@@ -12,6 +12,16 @@ void main() {
     home: Scaffold(body: SingleChildScrollView(child: child)),
   );
 
+  Future<void> openHelp(WidgetTester tester, String tooltip) async {
+    await tester.tap(find.byTooltip(tooltip));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> closeHelp(WidgetTester tester) async {
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+  }
+
   const customPeriods = <ServicePeriodDefinition>[
     ServicePeriodDefinition(
       id: 'breakfast_service',
@@ -54,6 +64,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      await openHelp(tester, 'Where covers come from');
       expect(
         find.text(
           'Example: Square does not track covers. Set Breakfast service and '
@@ -62,6 +73,9 @@ void main() {
         ),
         findsOneWidget,
       );
+      await closeHelp(tester);
+
+      await openHelp(tester, '60-day backfill');
       expect(
         find.text(
           'Example: Paste a CSV with date, Breakfast service, Supper, '
@@ -80,6 +94,7 @@ void main() {
       await tester.pumpWidget(wrap(const DataAccuracyExplainerCard()));
       await tester.pumpAndSettle();
 
+      await openHelp(tester, 'Where covers come from');
       expect(
         find.text(
           'Example: Square does not track covers. Set any service period '
@@ -88,6 +103,9 @@ void main() {
         ),
         findsOneWidget,
       );
+      await closeHelp(tester);
+
+      await openHelp(tester, '60-day backfill');
       expect(
         find.text(
           'Example: Paste a CSV with one date column and one column for each '
@@ -106,6 +124,7 @@ void main() {
       await tester.pumpWidget(wrap(const DataAccuracyExplainerCard()));
       await tester.pumpAndSettle();
 
+      await openHelp(tester, 'How labor dollars are calculated');
       expect(
         find.textContaining(
           'QuickBooks Time reports hours and configured rates',

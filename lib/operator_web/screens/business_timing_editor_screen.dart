@@ -33,6 +33,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_proxy_client.dart';
 import '../services/web_business_timing_gateway.dart';
 import '../widgets/hierarchy_tree_visualization.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/service_period_editor.dart';
 
@@ -549,12 +550,17 @@ class _BusinessTimingEditorScreenState
             formatter: _formatBusinessDate,
           ),
           const SizedBox(height: 18),
-          const OperatorWebSectionHeading(title: 'Service periods'),
-          const SizedBox(height: 10),
-          Text(
-            'Use 15-minute increments. Periods cannot overlap, and only '
-            'one period can stretch past midnight.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: 'Service periods',
+            trailing: OperatorWebInfoButton(
+              title: 'Service periods',
+              tooltip: 'Service periods',
+              body: Text(
+                'Use 15-minute increments. Periods cannot overlap, and only '
+                'one period can stretch past midnight.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           ServicePeriodEditor(

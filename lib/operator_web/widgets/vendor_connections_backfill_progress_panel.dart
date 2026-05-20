@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 
 import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 /// Panel state machine — drives the rendered surface based on the
@@ -141,12 +142,17 @@ class _VendorConnectionsBackfillProgressPanelState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const OperatorWebSectionHeading(title: '60 day benchmark data'),
-          const SizedBox(height: 10),
-          Text(
-            'Forge & Flow imports the last 60 days of history from each '
-            'connection so dashboards have real numbers to show.',
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          OperatorWebSectionHeading(
+            title: '60 day benchmark data',
+            trailing: OperatorWebInfoButton(
+              title: '60 day benchmark data',
+              tooltip: '60 day benchmark data',
+              body: Text(
+                'Forge & Flow imports the last 60 days of history from each '
+                'connection so dashboards have real numbers to show.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           _buildBody(),
