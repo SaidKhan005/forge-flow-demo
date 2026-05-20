@@ -174,9 +174,8 @@ void main() {
       );
       expect(
         find.text(
-          'Vendor integrations are managed by your operator '
-          'admin or owner; ask them to set up integrations '
-          'for this location.',
+          'Your operator admin or owner can set up integrations for '
+          'this location.',
         ),
         findsOneWidget,
       );

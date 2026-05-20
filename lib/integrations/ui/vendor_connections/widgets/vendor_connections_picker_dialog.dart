@@ -159,11 +159,11 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
   String _introFor(VendorCategory category) {
     switch (category) {
       case VendorCategory.pos:
-        return 'Pick the system that owns sales, checks, and cover counts for this location.';
+        return 'Pick the system Forge & Flow should read for sales, checks, and cover counts for this location.';
       case VendorCategory.labor:
-        return 'Pick the system that owns schedules, punches, and role data for this location.';
+        return 'Pick the system Forge & Flow should read for schedules, punches, and role data for this location.';
       case VendorCategory.reservation:
-        return 'Pick the system that owns bookings, party sizes, and reservation pacing for this location.';
+        return 'Pick the system Forge & Flow should read for bookings, party sizes, and reservation pacing for this location.';
     }
   }
 

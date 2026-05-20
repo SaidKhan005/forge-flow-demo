@@ -1947,8 +1947,8 @@ class _BusinessDaySection extends StatelessWidget {
       cardKey: const Key('operator_web_account_section_business_day'),
       title: 'Business week',
       subtitle:
-          'Forge & Flow groups your data by business day. Business '
-          'Timing owns the business day start.',
+          'Forge & Flow groups your data by business day. You can edit '
+          'the business day start in Business Timing.',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [

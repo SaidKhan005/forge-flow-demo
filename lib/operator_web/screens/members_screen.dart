@@ -1709,7 +1709,7 @@ class _MembersForbiddenSurface extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Members is owner-managed',
+                      'Admin or owner access needed',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
@@ -1719,8 +1719,8 @@ class _MembersForbiddenSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Adding and removing teammates is managed by your operator '
-                'admin or owner. Ask them to add you to the right role if '
+                'Your operator admin or owner can add and remove teammates. '
+                'Ask them to add you to the right role if '
                 'you need to change who is on the team.',
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),

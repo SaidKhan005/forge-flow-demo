@@ -755,7 +755,7 @@ class _RolesForbiddenSurface extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Roles are owner-managed',
+                      'Admin or owner access needed',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
@@ -765,8 +765,8 @@ class _RolesForbiddenSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Building and assigning roles is managed by your operator '
-                'admin or owner. Ask them to update your role if you need '
+                'Your operator admin or owner can build and assign roles. '
+                'Ask them to update your role if you need '
                 'to change what your team can see and do.',
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),

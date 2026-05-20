@@ -1746,7 +1746,7 @@ class _ForbiddenSurface extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Data accuracy is admin-managed',
+                      'Admin or owner access needed',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
@@ -1756,8 +1756,7 @@ class _ForbiddenSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Data accuracy settings are managed by your operator '
-                'admin or owner; ask them to set up where your numbers '
+                'Your operator admin or owner can set up where your numbers '
                 'come from for this location.',
                 key: const Key('operator_web_data_accuracy_forbidden_body'),
                 style: AppTextStyles.body13(color: AppColors.textPrimary),

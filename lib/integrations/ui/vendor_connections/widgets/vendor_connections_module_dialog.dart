@@ -23,7 +23,7 @@ class _ModuleDisambiguationDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Text(
-              'This vendor has more than one product. Pick the one that owns scheduling and labor data for this location.',
+              'This vendor has more than one product. Pick the one Forge & Flow should read for scheduling and labor data for this location.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),

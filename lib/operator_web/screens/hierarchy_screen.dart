@@ -490,8 +490,8 @@ class _HierarchyScreenState extends State<HierarchyScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
-                'Read-only view. Hierarchy edits are managed by your '
-                'operator owner or admin.',
+                'Read-only view. Your operator owner or admin can edit the '
+                'hierarchy.',
                 key: const Key('operator_web_hierarchy_readonly_notice'),
                 style: AppTextStyles.body12(color: AppColors.textMuted),
               ),
@@ -917,7 +917,7 @@ class _HierarchyForbiddenSurface extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Locations is owner-managed',
+                      'Admin or owner access needed',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
@@ -927,9 +927,9 @@ class _HierarchyForbiddenSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Grouping locations under regions or districts is managed '
-                'by your operator owner or admin. Ask them to add you to '
-                'the right role if you need to change the layout.',
+                'Your operator owner or admin can group locations under '
+                'regions or districts. Ask them to add you to the right '
+                'role if you need to change the layout.',
                 style: AppTextStyles.body13(color: AppColors.textPrimary),
               ),
             ],

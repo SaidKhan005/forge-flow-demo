@@ -260,7 +260,7 @@ class _ForbiddenSurface extends StatelessWidget {
                   const SizedBox(width: 10),
                   Expanded(
                     child: Text(
-                      'Vendor integrations are admin-managed',
+                      'Admin or owner access needed',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
@@ -270,8 +270,7 @@ class _ForbiddenSurface extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Vendor integrations are managed by your operator '
-                'admin or owner; ask them to set up integrations '
+                'Your operator admin or owner can set up integrations '
                 'for this location.',
                 key: const Key(
                   'operator_web_vendor_connections_forbidden_body',
