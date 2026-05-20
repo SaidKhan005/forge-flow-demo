@@ -490,7 +490,7 @@ class _EditMemberDialogState extends State<EditMemberDialog> {
                   key: const Key('edit_member_dialog_scope_field'),
                   initialValue: _selectedScope,
                   decoration: const InputDecoration(
-                    labelText: 'Hierarchy scope',
+                    labelText: 'Where this applies',
                     border: OutlineInputBorder(),
                   ),
                   onChanged: _submitting
