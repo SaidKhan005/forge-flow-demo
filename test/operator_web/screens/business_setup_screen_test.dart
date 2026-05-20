@@ -105,7 +105,11 @@ void main() {
       find.byKey(const Key('operator_web_business_timing_safe_dialog')),
       findsOneWidget,
     );
-    expect(find.text('Timing changes are not live yet'), findsOneWidget);
+    expect(find.text('Timing edits are read-only here'), findsOneWidget);
+    expect(
+      find.textContaining('disabled in this demo preview'),
+      findsOneWidget,
+    );
     expect(find.textContaining('Nothing was changed'), findsOneWidget);
   });
 
