@@ -33,45 +33,7 @@ import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/in_memory_vendor_connections_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
-// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
-// never-settling timer flake (the dominant flake shape in this repo per
-// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
-// which exceeds the longest legitimate animation/route transition in
-// this screen's flow. If a future expectation needs more time, prefer a
-// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
-// rather than widening this default.
-Future<void> pumpEventually(
-  WidgetTester tester, {
-  int frames = 20,
-  Duration step = const Duration(milliseconds: 50),
-}) async {
-  for (int i = 0; i < frames; i++) {
-    await tester.pump(step);
-  }
-}
-
-// Polling form: pumps until [condition] returns true, or fails loudly
-// with the exhausted-time budget once [maxIterations] is reached. Use
-// this when the test asserts a specific condition right after the
-// settle (e.g. a dialog has mounted, a snackbar has rendered).
-Future<void> pumpUntil(
-  WidgetTester tester,
-  bool Function() condition, {
-  Duration step = const Duration(milliseconds: 50),
-  int maxIterations = 60,
-}) async {
-  for (int i = 0; i < maxIterations; i++) {
-    if (condition()) return;
-    await tester.pump(step);
-  }
-  expect(
-    condition(),
-    isTrue,
-    reason:
-        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
-        'budget waiting for condition.',
-  );
-}
+import '_test_helpers/widget_pump_helpers.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
