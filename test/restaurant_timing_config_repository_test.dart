@@ -20,6 +20,18 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 
 void main() {
   setUp(() async {
+    // Several tests below mutate the demo restaurant's timing config
+    // (lunch/dinner/late_night.applicableDays, rollsPastMidnight) and
+    // call `saveTimingConfig` to persist the mutation. `reseedDemo()`
+    // uses `ConflictAlgorithm.ignore`, so once the row is overwritten
+    // by a sibling test the reseed does NOT restore the original
+    // applicableDays / rollsPastMidnight values. Under randomized test
+    // ordering this surfaces as "lunch applies to all days 1-7"
+    // returning `[1,2,3,4,5]` (a sibling test's weekday-only fixture).
+    // Delete the timing-config rows first so `reseedDemo()` actually
+    // re-inserts the canonical demo values for every test.
+    final db = await SqliteDatabase.instance.database;
+    await db.delete('restaurant_timing_configs');
     await SqliteDatabase.instance.reseedDemo();
     SqliteRestaurantTimingConfigRepository.instance.resetDao();
   });

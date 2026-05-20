@@ -18,6 +18,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/services/baseline_authority_service.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'package:forge_and_flow/domain/constants/app_defaults.dart';
 import 'package:forge_and_flow/dev/demo_fixture_data.dart';
@@ -37,16 +38,30 @@ void main() {
 
   const restaurantId = DemoScope.restaurantId;
 
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
-
   Future<void> clearCycleBackedState() async {
     final db = await SqliteDatabase.instance.database;
     await db.delete('benchmark_selection_summaries');
     await db.delete('active_target_profiles');
     await db.delete('target_cycles');
+    await db.delete('target_cycle_dayparts');
   }
+
+  setUp(() async {
+    // Reset BaselineData's process-static state so tests do not leak
+    // recommendation signals / manager-override fixtures into each
+    // other.
+    BaselineData.clearRecommendationSignals();
+    BaselineData.clearManagerOverride();
+    await SqliteDatabase.instance.reseedDemo();
+    // Also wipe cycle-backed state every test. Several groups inside
+    // already do this in their own setUp, but under randomized test
+    // ordering a sibling test that PERSISTED a cycle would leave it
+    // behind — `getOrCreateActiveCycle` would then return the existing
+    // row and skip the signal-priming write, causing the
+    // "cycle write should set signals inline" assertion to find a null
+    // BaselineData.recommendationSignals.
+    await clearCycleBackedState();
+  });
 
   // ── A: Initial recommended cycle creation ───────────────────────────────
 
