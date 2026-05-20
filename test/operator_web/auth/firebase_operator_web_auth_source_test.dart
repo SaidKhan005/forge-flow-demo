@@ -90,6 +90,7 @@ void main() {
       expect(source, isA<OperatorWebTeamSessionsGatewayProvider>());
       expect(source, isA<OperatorWebTeamAuditLogGatewayProvider>());
       expect(source, isA<OperatorWebSecurityGatewayProvider>());
+      expect(source, isA<OperatorWebBusinessLogoUploadGatewayProvider>());
       expect(source, isA<OperatorWebAccountMfaFreshnessGate>());
       expect(source, isA<OperatorWebVendorConnectionsGatewayProvider>());
     });

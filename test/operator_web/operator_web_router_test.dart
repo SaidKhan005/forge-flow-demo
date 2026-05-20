@@ -25,6 +25,7 @@ import 'package:forge_and_flow/operator_web/services/demo_operator_web_write_gat
 import 'package:forge_and_flow/operator_web/services/http_business_timing_read_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
+import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
 import 'package:forge_and_flow/integrations/ui/vendor_connections/vendor_connections_gateway.dart';
@@ -231,6 +232,51 @@ void main() {
           find.byKey(const Key('operator_web_vendor_connections_screen')),
           findsNothing,
         );
+      },
+    );
+
+    testWidgets(
+      'Account logo upload surface is wired in demo and explains location scope',
+      (tester) async {
+        await sizeViewport(tester);
+        final source = _AccountLogoUploadWiredDemoSource();
+        addTearDown(source.dispose);
+
+        await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('operator_web_account_logo_upload_unavailable')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key('operator_web_account_logo_upload_disabled_reason'),
+          ),
+          findsOneWidget,
+        );
+        var pickButton = tester.widget<OutlinedButton>(
+          find.byKey(const Key('operator_web_account_logo_pick')),
+        );
+        expect(pickButton.onPressed, isNull);
+
+        await tester.tap(
+          find.byKey(const Key('operator_web_management_scope_picker')),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('All locations').last);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('operator_web_account_logo_upload_disabled_reason'),
+          ),
+          findsNothing,
+        );
+        pickButton = tester.widget<OutlinedButton>(
+          find.byKey(const Key('operator_web_account_logo_pick')),
+        );
+        expect(pickButton.onPressed, isNotNull);
       },
     );
 
@@ -1601,6 +1647,21 @@ class _HandoffDemoOperatorWebSource extends DemoOperatorWebAuthSource
 
   @override
   final OperatorWebHandoffRedeemGateway handoffRedeemGateway;
+}
+
+class _AccountLogoUploadWiredDemoSource extends DemoOperatorWebAuthSource
+    implements
+        OperatorWebAccountGatewayProvider,
+        OperatorWebBusinessLogoUploadGatewayProvider {
+  _AccountLogoUploadWiredDemoSource()
+    : super(initial: OperatorWebCompleted(session: kDemoOperatorWebSession));
+
+  @override
+  final WebAccountGateway accountGateway = DemoOperatorWebAccountGateway();
+
+  @override
+  final DemoBusinessLogoUploadGateway businessLogoUploadGateway =
+      DemoBusinessLogoUploadGateway();
 }
 
 class _FakeOperatorWebHandoffGateway

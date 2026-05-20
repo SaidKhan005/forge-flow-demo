@@ -40,6 +40,7 @@ class BusinessLogoUploadSection extends StatefulWidget {
     required this.gateway,
     required this.enabled,
     required this.onUploaded,
+    this.disabledReason,
     this.filePicker,
   });
 
@@ -51,6 +52,11 @@ class BusinessLogoUploadSection extends StatefulWidget {
   /// Disabled when the parent screen is submitting or the operator
   /// lacks edit permission.
   final bool enabled;
+
+  /// Optional plain-English reason shown when the parent disables this
+  /// control for a product rule, for example when logo edits belong
+  /// at Business scope while the operator is viewing a Location.
+  final String? disabledReason;
 
   /// Fires when the upload succeeds. The parent writes [logoUrl]
   /// into its existing controller so PATCH /v1/operator/account
@@ -184,8 +190,7 @@ class _BusinessLogoUploadSectionState extends State<BusinessLogoUploadSection> {
               children: [
                 OutlinedButton.icon(
                   key: const Key('operator_web_account_logo_pick'),
-                  onPressed:
-                      widget.enabled && !_uploading ? _handlePick : null,
+                  onPressed: widget.enabled && !_uploading ? _handlePick : null,
                   icon: const Icon(Icons.attach_file_outlined, size: 16),
                   label: Text(
                     picked == null ? 'Choose PNG' : 'Choose another PNG',
@@ -194,9 +199,7 @@ class _BusinessLogoUploadSectionState extends State<BusinessLogoUploadSection> {
                 const SizedBox(width: 8),
                 FilledButton.icon(
                   key: const Key('operator_web_account_logo_upload'),
-                  onPressed: picked != null &&
-                          widget.enabled &&
-                          !_uploading
+                  onPressed: picked != null && widget.enabled && !_uploading
                       ? _handleUpload
                       : null,
                   style: FilledButton.styleFrom(
@@ -220,6 +223,10 @@ class _BusinessLogoUploadSectionState extends State<BusinessLogoUploadSection> {
             if (picked != null) ...[
               const SizedBox(height: 10),
               _PickedFileTile(picked: picked),
+            ],
+            if (!widget.enabled && widget.disabledReason != null) ...[
+              const SizedBox(height: 10),
+              _DisabledNote(message: widget.disabledReason!),
             ],
           ],
           if (_errorMessage != null) ...[
@@ -332,16 +339,43 @@ class _UnavailableNote extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.info_outline,
-            size: 14,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               'File upload is not available on this build. Paste an '
               'https link below instead.',
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DisabledNote extends StatelessWidget {
+  const _DisabledNote({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('operator_web_account_logo_upload_disabled_reason'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
               style: AppTextStyles.body12(color: AppColors.textSecondary),
             ),
           ),
@@ -380,10 +414,7 @@ class _InlineBanner extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              message,
-              style: AppTextStyles.body12(color: color),
-            ),
+            child: Text(message, style: AppTextStyles.body12(color: color)),
           ),
         ],
       ),

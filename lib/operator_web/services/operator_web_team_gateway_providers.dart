@@ -14,6 +14,7 @@
 // Keep this file dependency-light: only the gateway interfaces these
 // providers expose. Concrete demo/live impls import from elsewhere.
 import 'business_timing_gateway.dart';
+import 'business_logo_upload_gateway.dart';
 import 'operator_web_data_accuracy_gateway.dart';
 import 'web_account_gateway.dart';
 import 'web_business_timing_gateway.dart';
@@ -153,6 +154,15 @@ abstract class OperatorWebBusinessTimingGatewayProvider {
 /// renders honest read-only state.
 abstract class OperatorWebAccountGatewayProvider {
   WebAccountGateway get accountGateway;
+}
+
+/// Sentinel the operator-web shell stamps on the auth source when it
+/// can supply a [BusinessLogoUploadGateway] for the Account logo
+/// uploader. Live wiring posts to the proxy logo route; demo wiring
+/// returns an in-memory data URL so the README visual audit can drive
+/// the same upload surface without a live blob store.
+abstract class OperatorWebBusinessLogoUploadGatewayProvider {
+  BusinessLogoUploadGateway get businessLogoUploadGateway;
 }
 
 /// Sentinel the operator-web shell stamps on the auth source when it

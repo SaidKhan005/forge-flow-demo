@@ -748,6 +748,10 @@ class _AccountScreenState extends State<AccountScreen> {
             onChanged: () => setState(() {}),
             logoUploadGateway: widget.logoUploadGateway,
             logoFilePicker: widget.logoFilePicker,
+            logoUploadDisabledReason: scopeIsLocation
+                ? 'Logo changes are set at the Business level. Switch '
+                      'Managing to All locations to upload a PNG.'
+                : null,
             onLogoUploaded: (url) {
               // Wave 2 W-5: the upload section uploaded the file to
               // Azure Blob and got back a URL. Drop it into the
@@ -1069,6 +1073,7 @@ class _BusinessIdentitySection extends StatelessWidget {
     required this.scopeName,
     this.logoUploadGateway,
     this.logoFilePicker,
+    this.logoUploadDisabledReason,
     this.inheritedLabel,
     this.backendOnlyExplainer,
   });
@@ -1101,6 +1106,7 @@ class _BusinessIdentitySection extends StatelessWidget {
   final ValueChanged<String> onLogoUploaded;
   final BusinessLogoUploadGateway? logoUploadGateway;
   final BusinessLogoFilePickerFn? logoFilePicker;
+  final String? logoUploadDisabledReason;
 
   /// HP #11 plumbing — current management scope level + display name.
   final HierarchyScopeLevel scopeLevel;
@@ -1175,6 +1181,7 @@ class _BusinessIdentitySection extends StatelessWidget {
             enabled: nameAndLogoEnabled,
             onUploaded: onLogoUploaded,
             filePicker: logoFilePicker,
+            disabledReason: logoUploadDisabledReason,
           ),
           const SizedBox(height: 10),
           const _AccountSubheading(
@@ -1189,9 +1196,9 @@ class _BusinessIdentitySection extends StatelessWidget {
               LengthLimitingTextInputFormatter(2048),
             ],
             decoration: const InputDecoration(
-              labelText: 'Logo URL (https only)',
+              labelText: 'Logo link',
               border: OutlineInputBorder(),
-              helperText: 'Leave empty to clear it.',
+              helperText: 'Use a public https link. Leave empty to clear it.',
             ),
             onChanged: (_) => onChanged(),
           ),

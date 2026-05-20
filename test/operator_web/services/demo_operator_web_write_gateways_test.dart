@@ -1,11 +1,51 @@
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/operator_web/services/business_logo_upload_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_operator_web_write_gateways.dart';
 import 'package:forge_and_flow/operator_web/services/http_business_timing_read_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_account_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
 
 void main() {
+  group('DemoBusinessLogoUploadGateway', () {
+    test('returns a temporary data URL for a picked PNG', () async {
+      final gateway = DemoBusinessLogoUploadGateway();
+
+      final result = await gateway.uploadLogo(
+        pngBytes: Uint8List.fromList(<int>[
+          0x89,
+          0x50,
+          0x4E,
+          0x47,
+          0x0D,
+          0x0A,
+          0x1A,
+          0x0A,
+          0x00,
+          0x01,
+        ]),
+        filename: 'demo-logo.png',
+      );
+
+      expect(result.logoUrl, startsWith('data:image/png;base64,'));
+      expect(result.sizeBytes, 10);
+    });
+
+    test('keeps the same PNG validation as the live gateway', () async {
+      final gateway = DemoBusinessLogoUploadGateway();
+
+      expect(
+        () => gateway.uploadLogo(
+          pngBytes: Uint8List.fromList(<int>[0x00, 0x01]),
+          filename: 'demo-logo.png',
+        ),
+        throwsA(isA<BusinessLogoValidationException>()),
+      );
+    });
+  });
+
   group('DemoOperatorWebBusinessTimingWriteGateway', () {
     test('creates temporary timing profiles without a proxy', () async {
       final gateway = DemoOperatorWebBusinessTimingWriteGateway();
