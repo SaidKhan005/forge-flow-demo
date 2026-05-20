@@ -132,6 +132,22 @@ void main() {
   test('trio chain: Oracle Simphony + QuickBooks Time + Libro fixture -> '
       'aggregator + writer + sync -> SQLite shift_records row carries '
       'vendor provenance', () async {
+    // The SQLite database is a process singleton (file-backed via
+    // sqflite_common_ffi). The trio test's read-back asserts that the
+    // single 2026-W18 row this sync writes is the only one for that
+    // (restaurant, week). Local re-runs in the same shell can leave
+    // prior W18 rows in the DB, so clear them explicitly before the
+    // sync writes — keeps the assertion deterministic without
+    // wiping unrelated demo seed history.
+    {
+      final db = await SqliteDatabase.instance.database;
+      await db.delete(
+        'shift_records',
+        where: 'restaurant_id = ? AND week_id = ?',
+        whereArgs: [_restaurantA, '2026-W18'],
+      );
+    }
+
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
 
     // Stage 1: canonical-fact dicts (what the per-vendor Postgres sinks
@@ -209,13 +225,21 @@ void main() {
     );
     expect(agg.input.actualSales, closeTo(124.85, 0.001));
     expect(agg.input.actualFohHours, 5);
-    expect(agg.input.actualBohHours, 6);
+    // Per-Daypart V1 Slice 1.5: hours and dollars are attributed to
+    // the period by overlap, not by total shift duration. The cook's
+    // 6-hour shift (17:00-23:00 local) overlaps dinner (17:00-22:00
+    // local) for 5 hours; the 22:00-23:00 hour falls outside the
+    // dinner period. So BOH hours = 5 (was the full 6 before the
+    // per-period split landed) and BOH labor dollars = 5 × $20 = $100
+    // (was 6 × 20 = 120). The FOH server's 5-hour shift fits entirely
+    // inside dinner so its 5h / $90 attribution is unchanged.
+    expect(agg.input.actualBohHours, 5);
     expect(
       agg.input.actualFohLaborDollars,
       closeTo(5 * 18.0, 0.001),
       reason: 'QBT perEmployeeWithRates: rate × duration',
     );
-    expect(agg.input.actualBohLaborDollars, closeTo(6 * 20.0, 0.001));
+    expect(agg.input.actualBohLaborDollars, closeTo(5 * 20.0, 0.001));
     expect(agg.input.sourceSystem, 'oracle_micros_simphony');
     expect(agg.provenance.coversProvenance, 'vendor_oracle_micros_simphony');
     expect(
@@ -328,9 +352,18 @@ void main() {
 
     // Stage 6: SQLite read-back.
     expect(result.recordsWritten, 1);
+    // The bus fires once per shift_record write
+    // (`notifyRuntimeWriteCompleted`) and once per import-completion
+    // observation that mutates persistent state — e.g. the timing-
+    // config sync, wage-role-rows replacement, and first-backfill
+    // status (`notifyImportCompletionPersisted`). The sync's aux
+    // pulls populate enough side state in this fixture that more than
+    // one fire is expected; assert at least one to keep the
+    // "writes cause invalidation" contract honest without over-pinning
+    // the exact count to an internal-aux-pull count that may grow.
     expect(
       invalidations.count,
-      1,
+      greaterThanOrEqualTo(1),
       reason:
           'AppRuntimeInvalidationBus fires per write -> dashboard '
           '/ variance / history / learn refresh',
@@ -546,6 +579,27 @@ void main() {
     'covers source = vendor_libro_seated_plus_operator_walk_in_count',
     () async {
       final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
+      // The aggregator's covers-resolver only takes the Pattern A
+      // (reservation seated + operator walk-in) path when the operator's
+      // effective `covers_source_per_service_period` setting names that
+      // path for the active period. A non-null `walkInOverride` parameter
+      // by itself does NOT switch the path — it only supplies the count
+      // when the path is already selected. Seed the
+      // `data_accuracy_settings` row so dinner's covers source = Pattern
+      // A; the explicit override below then supplies the 8 walk-ins.
+      pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+        'setting_id': 'das_001',
+        'operator_id': _opA,
+        'location_id': _locA,
+        'covers_source_per_service_period': <String, Object?>{
+          'dinner': 'reservation_plus_walkin',
+        },
+        'covers_manual_entries': <String, Map<String, int>>{},
+        'wage_source': 'vendor',
+        'created_at': DateTime.utc(2026, 5, 1),
+        'updated_at': DateTime.utc(2026, 5, 4),
+        'updated_by': null,
+      };
       pool.coverFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] = [
         <String, Object?>{
           'vendor_id': 'square',
@@ -612,6 +666,24 @@ void main() {
   test('Tock fixture without seated_at: aggregator buckets by '
       'reservation_at; SEATED party_size sums; NO_SHOW excluded', () async {
     final pool = _SmokeFakePool()..seedLocation(_opA, _locA);
+    // Same shape as the Square + Libro Pattern A test: the aggregator
+    // only takes the reservation-seated path when the operator's
+    // effective covers source for this period is
+    // `reservation_plus_walkin`. The explicit `walkInOverride: 0` below
+    // supplies the walk-in count; settings select the path.
+    pool.dataAccuracySettingsByTenant['$_opA|$_locA'] = <String, Object?>{
+      'setting_id': 'das_001',
+      'operator_id': _opA,
+      'location_id': _locA,
+      'covers_source_per_service_period': <String, Object?>{
+        'dinner': 'reservation_plus_walkin',
+      },
+      'covers_manual_entries': <String, Map<String, int>>{},
+      'wage_source': 'vendor',
+      'created_at': DateTime.utc(2026, 5, 1),
+      'updated_at': DateTime.utc(2026, 5, 4),
+      'updated_by': null,
+    };
     pool.reservationFactsByOperatorLocation['$_opA|$_locA|$_businessDateIso'] =
         [
           <String, Object?>{
@@ -730,9 +802,19 @@ void main() {
       servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
+    // Per-Daypart V1 Slice 1.5: labor dollars are computed from the
+    // per-period overlap minutes, not the full punch duration. The
+    // server (4h shift, fully inside dinner 17:00-22:00 local) gets
+    // 4h × $22 = $88 in FOH. The cook (5h shift, 18:00-23:00 local;
+    // dinner ends at 22:00) only overlaps dinner for 4 of its 5
+    // hours, so BOH attributes 4h × $24 = $96 to dinner (the 23:00
+    // hour falls outside the period and is not double-counted into
+    // any other period either). The provenance still names the
+    // vendor's per-position computation; this is the documented
+    // per-daypart behaviour.
     expect(result, isNotNull);
     expect(result!.input.actualFohLaborDollars, closeTo(4 * 22.0, 0.001));
-    expect(result.input.actualBohLaborDollars, closeTo(5 * 24.0, 0.001));
+    expect(result.input.actualBohLaborDollars, closeTo(4 * 24.0, 0.001));
     expect(
       result.provenance.laborDollarsProvenance,
       'vendor_humanity_per_position_actual_dollars',
@@ -807,9 +889,16 @@ void main() {
       servicePeriodId: 'dinner',
       periodDefinition: _dinnerPeriod,
     );
+    // Per-Daypart V1 Slice 1.5: vendor-supplied per-shift dollars
+    // (`actual_dollars` on each labor punch) are pro-rated to each
+    // period by the share of the punch that falls inside the period.
+    // The server (4h shift fully inside dinner) attributes its full
+    // $95.50. The cook (5h shift, 18:00-23:00 local; dinner ends at
+    // 22:00) overlaps dinner for 4 of its 5 hours, so BOH attributes
+    // $120 × (4/5) = $96 to dinner.
     expect(result, isNotNull);
     expect(result!.input.actualFohLaborDollars, closeTo(95.50, 0.001));
-    expect(result.input.actualBohLaborDollars, closeTo(120.00, 0.001));
+    expect(result.input.actualBohLaborDollars, closeTo(120.00 * 4 / 5, 0.001));
     expect(
       result.provenance.laborDollarsProvenance,
       'vendor_seven_shifts_per_employee_actual_dollars',
@@ -1140,7 +1229,19 @@ class _SmokeFakeTransaction implements PostgresTransaction {
       _captureSetConfig(sql, parameters);
       return const <PostgresRow>[];
     }
-    if (sql.contains('from data_accuracy_settings')) {
+    // Match BOTH SQL shapes:
+    //   (a) `from data_accuracy_settings` — legacy direct-table read used
+    //       by some older callers.
+    //   (b) `from public.effective_data_accuracy_settings_v` — the current
+    //       aggregator path (`_readDataAccuracySettings` in
+    //       `canonical_fact_to_closed_shift_input.dart`), which reads the
+    //       inheritance-resolved hierarchy view. The substring
+    //       `data_accuracy_settings` is shared by both, but the bare
+    //       `'from data_accuracy_settings'` matcher fails to hit
+    //       `from public.effective_data_accuracy_settings_v` because the
+    //       view is prefixed with `effective_` after `from public.`.
+    //       Match the bare table substring instead so both shapes resolve.
+    if (sql.contains('data_accuracy_settings')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool.dataAccuracySettingsByTenant['$operatorId|$locationId'];
