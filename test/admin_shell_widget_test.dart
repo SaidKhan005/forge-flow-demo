@@ -14,6 +14,46 @@ import 'package:forge_and_flow/admin/admin_shell.dart';
 import 'package:forge_and_flow/admin/widgets/admin_business_accounts_back_button.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
+// never-settling timer flake (the dominant flake shape in this repo per
+// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
+// which exceeds the longest legitimate animation/route transition in
+// this screen's flow. If a future expectation needs more time, prefer a
+// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
+// rather than widening this default.
+Future<void> pumpEventually(
+  WidgetTester tester, {
+  int frames = 20,
+  Duration step = const Duration(milliseconds: 50),
+}) async {
+  for (int i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
+// Polling form: pumps until [condition] returns true, or fails loudly
+// with the exhausted-time budget once [maxIterations] is reached. Use
+// this when the test asserts a specific condition right after the
+// settle (e.g. a dialog has mounted, a snackbar has rendered).
+Future<void> pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  Duration step = const Duration(milliseconds: 50),
+  int maxIterations = 60,
+}) async {
+  for (int i = 0; i < maxIterations; i++) {
+    if (condition()) return;
+    await tester.pump(step);
+  }
+  expect(
+    condition(),
+    isTrue,
+    reason:
+        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
+        'budget waiting for condition.',
+  );
+}
+
 void main() {
   const superAdmin = AdminAuthSession(
     uid: 'demo-super-admin',
@@ -45,9 +85,9 @@ void main() {
         '$operatorId|$scopeType|${orgUnitId ?? ''}|${locationId ?? ''}';
     final option = find.byKey(Key('admin_hierarchy_scope_option_$cacheKey'));
     await tester.ensureVisible(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
   }
 
   Future<void> chooseWorkspaceBusinessScope(
@@ -57,16 +97,16 @@ void main() {
   }) async {
     final option = find.byKey(Key('admin_setup_scope_business_$operatorId'));
     await tester.ensureVisible(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(option);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     if (functionTabLabel != null &&
         find
             .byKey(const Key('admin_setup_workspace_tabs'))
             .evaluate()
             .isNotEmpty) {
       await tester.tap(find.widgetWithText(Tab, functionTabLabel));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
     }
   }
 
@@ -80,9 +120,9 @@ void main() {
   }) async {
     final tile = find.byKey(tileKey);
     await tester.ensureVisible(tile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(tile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: '00000000-0000-4000-8000-000000000001',
@@ -94,7 +134,7 @@ void main() {
     expect(find.byKey(screenKey), findsOneWidget);
     expect(find.byKey(kAdminBusinessAccountsBackButtonKey), findsOneWidget);
     await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(find.byKey(screenKey), findsNothing);
   }
@@ -264,7 +304,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_side_nav')), findsNothing);
     expect(find.byKey(const Key('admin_compact_nav')), findsOneWidget);
@@ -297,7 +337,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_header_share_preview_pill')),
@@ -338,9 +378,9 @@ void main() {
       await tester.ensureVisible(
         find.byKey(const Key('admin_nav_item_observability')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_nav_item_observability')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_setup_workspace_scope_pane')),
@@ -414,7 +454,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_setup_workspace_scope_pane')),
@@ -445,9 +485,9 @@ void main() {
     );
 
     await tester.ensureVisible(find.byKey(const Key('admin_nav_item_debug')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     // The live Support logs route now starts in the shared hierarchy
     // workspace. The request table appears after a scope is selected.
@@ -478,15 +518,15 @@ void main() {
     await tester.pumpWidget(
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final logsTile = find.byKey(
       const Key('admin_business_setup_tile_support_logs'),
     );
     await tester.ensureVisible(logsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(logsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: '00000000-0000-4000-8000-000000000001',
@@ -521,7 +561,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     // 11A.1 promoted operators from placeholder to live.
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
@@ -539,7 +579,7 @@ void main() {
     expect(source.current, isA<AdminAuthAuthenticated>());
 
     await tester.tap(find.byKey(const Key('admin_header_signout')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(source.current, isA<AdminAuthUnauthenticated>());
   });
@@ -559,7 +599,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_setup_workspace_scope_pane')),
@@ -594,7 +634,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_setup_workspace_scope_pane')),
@@ -627,7 +667,7 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_nav_item_support-operator-view')),
@@ -655,7 +695,7 @@ void main() {
       await tester.pumpWidget(
         wrap(AdminShell(session: superAdmin, authSource: source)),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_nav_item_members')), findsNothing);
       expect(
@@ -672,7 +712,7 @@ void main() {
       );
       await tester.ensureVisible(peopleTile);
       await tester.tap(peopleTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await chooseScopePrompt(
         tester,
         operatorId: '00000000-0000-4000-8000-000000000001',
@@ -687,7 +727,7 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('admin_members_open_access')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_roles_hierarchy_sessions_screen')),
@@ -699,14 +739,14 @@ void main() {
       );
 
       await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final securityTile = find.byKey(
         const Key('admin_business_setup_tile_security_audit_sessions'),
       );
       await tester.ensureVisible(securityTile);
       await tester.tap(securityTile);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await chooseScopePrompt(
         tester,
         operatorId: '00000000-0000-4000-8000-000000000001',
@@ -741,15 +781,15 @@ void main() {
     await tester.pumpWidget(
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final supportLogsTile = find.byKey(
       const Key('admin_business_setup_tile_support_logs'),
     );
     await tester.ensureVisible(supportLogsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(supportLogsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: '00000000-0000-4000-8000-000000000001',
@@ -785,7 +825,7 @@ void main() {
     await tester.pumpWidget(
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     await openSetupTileAndReturn(
       tester,
@@ -830,15 +870,15 @@ void main() {
     await tester.pumpWidget(
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final peopleTile = find.byKey(
       const Key('admin_business_setup_tile_people_access_roles'),
     );
     await tester.ensureVisible(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: '00000000-0000-4000-8000-000000000001',
@@ -846,7 +886,7 @@ void main() {
     );
 
     await tester.tap(find.byKey(const Key('admin_members_open_access')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_roles_hierarchy_sessions_screen')),
@@ -854,7 +894,7 @@ void main() {
     );
     expect(find.byKey(kAdminBusinessAccountsBackButtonKey), findsOneWidget);
     await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(
@@ -879,15 +919,15 @@ void main() {
     await tester.pumpWidget(
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final integrationsTile = find.byKey(
       const Key('admin_business_setup_tile_integrations'),
     );
     await tester.ensureVisible(integrationsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(integrationsTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: '00000000-0000-4000-8000-000000000001',
@@ -902,7 +942,7 @@ void main() {
     );
     expect(find.byKey(kAdminBusinessAccountsBackButtonKey), findsOneWidget);
     await tester.tap(find.byKey(kAdminBusinessAccountsBackButtonKey));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(
@@ -927,7 +967,7 @@ void main() {
     await tester.pumpWidget(
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final locationRow = find.byKey(
       const Key(
@@ -935,17 +975,17 @@ void main() {
       ),
     );
     await tester.ensureVisible(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(locationRow);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     final peopleTile = find.byKey(
       const Key('admin_business_setup_tile_people_access_roles'),
     );
     await tester.ensureVisible(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await tester.tap(peopleTile);
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
     await chooseScopePrompt(
       tester,
       operatorId: '00000000-0000-4000-8000-000000000001',
@@ -958,7 +998,7 @@ void main() {
     expect(find.text('People, access, and roles'), findsWidgets);
     expect(find.byKey(const Key('admin_members_open_access')), findsOneWidget);
     await tester.tap(find.byKey(const Key('admin_members_open_access')));
-    await tester.pumpAndSettle();
+    await pumpEventually(tester);
 
     expect(
       find.byKey(const Key('admin_roles_hierarchy_sessions_screen')),
