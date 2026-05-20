@@ -66,7 +66,15 @@ void main() {
   });
 
   tearDown(() async {
+    // Reset BOTH cold-boot anchor seams between tests. `Fix B` sets
+    // `debugColdBootNowOverride` and the "real current date" test that
+    // follows expects only `debugColdBootTodayOverride` to drive the
+    // anchor — but `_coldBootAnchorIsoDate` checks `Now` FIRST, so a
+    // leaked `Now` override silently wins and the seed anchors to last
+    // test's date (e.g. 2026-05-16 instead of today). Clearing both
+    // here keeps each test's clock pin hermetic.
     SqliteDatabase.debugColdBootTodayOverride = null;
+    SqliteDatabase.debugColdBootNowOverride = null;
     await SqliteDatabase.instance.close();
     if (await tmpDir.exists()) {
       await tmpDir.delete(recursive: true);
