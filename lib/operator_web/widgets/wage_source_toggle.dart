@@ -23,6 +23,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
 
 class WageSourceToggle extends StatelessWidget {
@@ -54,7 +55,6 @@ class WageSourceToggle extends StatelessWidget {
         !vendorApplicabilityBound || applicableWageVendorSlugs.isNotEmpty;
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_wage_source_card'),
-      icon: Icons.payments_outlined,
       title: 'How labor dollars are calculated',
       headerExplainer:
           'Labor dollars on your dashboard are calculated one of two ways. '
@@ -140,14 +140,12 @@ class WageSourceToggle extends StatelessWidget {
 class _DataAccuracyCard extends StatelessWidget {
   const _DataAccuracyCard({
     required this.cardKey,
-    required this.icon,
     required this.title,
     required this.headerExplainer,
     required this.child,
   });
 
   final Key cardKey;
-  final IconData icon;
   final String title;
   final String headerExplainer;
   final Widget child;
@@ -165,22 +163,8 @@ class _DataAccuracyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.sunsetDark),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+          OperatorWebSectionHeading(title: title),
+          const SizedBox(height: 10),
           Text(
             headerExplainer,
             style: AppTextStyles.body13(color: AppColors.textSecondary),

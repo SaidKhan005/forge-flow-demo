@@ -45,9 +45,10 @@
 import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
+import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_sessions_gateway.dart';
-import '../../theme/app_theme.dart';
+import '../widgets/operator_web_section_heading.dart';
 
 /// Permission-key bound for the Team sessions section. Aliased to the
 /// frozen catalog constant in `lib/auth/permission_keys.dart`.
@@ -512,13 +513,7 @@ class _SessionsSection extends StatelessWidget {
         children: <Widget>[
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Text(
-              title,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
-            ),
+            child: OperatorWebSectionHeading(title: title),
           ),
           if (loadError != null)
             Padding(

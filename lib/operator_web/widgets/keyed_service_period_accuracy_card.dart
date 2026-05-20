@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models/data_accuracy_service_period_setting.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 /// Pure value object the card emits when the operator submits the
 /// dialog. The screen forwards this into
@@ -153,35 +154,20 @@ class KeyedServicePeriodAccuracyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.schedule_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Service-period overrides',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (editingEnabled)
-                FilledButton.icon(
-                  key: kKeyedServicePeriodAccuracyAddButtonKey,
-                  onPressed: busy
-                      ? null
-                      : () => _openDialog(context, existing: null),
-                  icon: const Icon(Icons.add, size: 14),
-                  label: const Text('Add or supersede'),
-                ),
-            ],
+          OperatorWebSectionHeading(
+            title: 'Service-period overrides',
+            trailing: editingEnabled
+                ? FilledButton.icon(
+                    key: kKeyedServicePeriodAccuracyAddButtonKey,
+                    onPressed: busy
+                        ? null
+                        : () => _openDialog(context, existing: null),
+                    icon: const Icon(Icons.add, size: 14),
+                    label: const Text('Add or supersede'),
+                  )
+                : null,
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           Text(
             'Add an override for a specific service period (lunch, dinner, '
             'breakfast, brunch, late night, or any custom name your kitchen '

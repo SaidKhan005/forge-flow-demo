@@ -49,6 +49,7 @@ import 'package:flutter/material.dart';
 import '../../domain/models/notification_event_catalog.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
+import '../widgets/operator_web_section_heading.dart';
 import '../../theme/app_theme.dart';
 
 /// Wiring-readiness state for one catalog entry, as surfaced on the
@@ -120,15 +121,14 @@ const Map<_NotifEventState, String> _kStateLabel = <_NotifEventState, String>{
 
 /// Plain-English subcopy per state. Explains what the operator can or
 /// cannot do, and why.
-const Map<_NotifEventState, String> _kStateSubcopy =
-    <_NotifEventState, String>{
+const Map<_NotifEventState, String> _kStateSubcopy = <_NotifEventState, String>{
   _NotifEventState.available: '',
   _NotifEventState.comingSoon:
       "We'll turn this on once the team launches it. "
-          "You can come back later to set how you'd like to be notified.",
+      "You can come back later to set how you'd like to be notified.",
   _NotifEventState.backendOnly:
       "Forge & Flow sends this no matter what - it's part of how we "
-          "keep your data safe. Open the audit log to see recent activity.",
+      "keep your data safe. Open the audit log to see recent activity.",
 };
 
 /// Operator Web Notifications screen. Pure render +
@@ -207,7 +207,8 @@ class _SettingsNotificationsScreenState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = "We couldn't load your notification settings. "
+        _loadError =
+            "We couldn't load your notification settings. "
             "Pull to refresh, or try again in a minute.";
       });
     }
@@ -223,10 +224,8 @@ class _SettingsNotificationsScreenState
   }
 
   bool _resolveEnabled(NotificationCatalogEntry event, String channel) {
-    final explicit = _explicit[_PrefKey(
-      eventKey: event.eventKey,
-      channel: channel,
-    )];
+    final explicit =
+        _explicit[_PrefKey(eventKey: event.eventKey, channel: channel)];
     if (explicit != null) return explicit;
     return event.defaultChannels.contains(channel);
   }
@@ -279,10 +278,14 @@ class _SettingsNotificationsScreenState
         child: CircularProgressIndicator(),
       );
     }
-    final visibleEvents = <NotificationCategory, List<NotificationCatalogEntry>>{};
+    final visibleEvents =
+        <NotificationCategory, List<NotificationCatalogEntry>>{};
     for (final entry in kNotificationCatalog) {
       if (!roleSatisfiesGate(entry.roleGate, widget.session.roles)) continue;
-      visibleEvents.putIfAbsent(entry.category, () => <NotificationCatalogEntry>[]);
+      visibleEvents.putIfAbsent(
+        entry.category,
+        () => <NotificationCatalogEntry>[],
+      );
       visibleEvents[entry.category]!.add(entry);
     }
     return SingleChildScrollView(
@@ -414,7 +417,8 @@ class _CategorySection extends StatelessWidget {
     required NotificationCatalogEntry event,
     required String channel,
     required bool currentlyEnabled,
-  })? onToggle;
+  })?
+  onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -429,12 +433,8 @@ class _CategorySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            kNotificationCategoryLabels[category] ?? category.name,
-            style: AppTextStyles.mono15(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
+          OperatorWebSectionHeading(
+            title: kNotificationCategoryLabels[category] ?? category.name,
           ),
           const SizedBox(height: 12),
           for (var i = 0; i < events.length; i++) ...[
@@ -468,7 +468,8 @@ class _EventRow extends StatelessWidget {
     required NotificationCatalogEntry event,
     required String channel,
     required bool currentlyEnabled,
-  })? onToggle;
+  })?
+  onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -496,10 +497,7 @@ class _EventRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  _StateBadge(
-                    eventKey: event.eventKey,
-                    state: state,
-                  ),
+                  _StateBadge(eventKey: event.eventKey, state: state),
                 ],
               ),
               const SizedBox(height: 4),
@@ -511,8 +509,7 @@ class _EventRow extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   subcopy,
-                  key: Key(
-                      'settings_notifications_subcopy_${event.eventKey}'),
+                  key: Key('settings_notifications_subcopy_${event.eventKey}'),
                   style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ],
@@ -570,8 +567,9 @@ class _StateBadge extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono10(color: fg)
-            .copyWith(fontWeight: FontWeight.w700),
+        style: AppTextStyles.mono10(
+          color: fg,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -592,7 +590,8 @@ class _ChannelToggle extends StatelessWidget {
     required NotificationCatalogEntry event,
     required String channel,
     required bool currentlyEnabled,
-  })? onToggle;
+  })?
+  onToggle;
 
   @override
   Widget build(BuildContext context) {
@@ -608,10 +607,10 @@ class _ChannelToggle extends StatelessWidget {
           onChanged: onToggle == null
               ? null
               : (_) => onToggle!(
-                    event: event,
-                    channel: channel,
-                    currentlyEnabled: enabled,
-                  ),
+                  event: event,
+                  channel: channel,
+                  currentlyEnabled: enabled,
+                ),
           activeThumbColor: AppColors.sunsetDark,
         ),
       ],

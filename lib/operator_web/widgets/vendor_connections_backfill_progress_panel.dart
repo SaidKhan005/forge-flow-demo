@@ -30,6 +30,7 @@ import 'package:flutter/material.dart';
 
 import '../services/operator_web_connector_backfill_jobs_gateway.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 /// Panel state machine — drives the rendered surface based on the
 /// gateway response (or absence of gateway).
@@ -140,21 +141,8 @@ class _VendorConnectionsBackfillProgressPanelState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.sync_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '60 day benchmark data',
-                style: AppTextStyles.body13(color: AppColors.textPrimary),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
+          const OperatorWebSectionHeading(title: '60 day benchmark data'),
+          const SizedBox(height: 10),
           Text(
             'Forge & Flow imports the last 60 days of history from each '
             'connection so dashboards have real numbers to show.',
@@ -214,9 +202,7 @@ class _VendorConnectionsBackfillProgressPanelState
         );
       case _BackfillProgressPanelState.hasJobs:
         return Column(
-          key: const Key(
-            'vendor_connections_backfill_progress_panel_has_jobs',
-          ),
+          key: const Key('vendor_connections_backfill_progress_panel_has_jobs'),
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final job in _jobs)
@@ -283,10 +269,7 @@ class _BackfillProgressRow extends StatelessWidget {
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.12),
                   border: Border.all(color: color.withValues(alpha: 0.4)),

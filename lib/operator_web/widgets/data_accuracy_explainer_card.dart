@@ -21,6 +21,7 @@ import 'package:flutter/material.dart';
 
 import '../../domain/models/service_period_definition.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 /// Static "What this page is for" explainer card. Renders 5
 /// sub-sections — one per setting (wage, covers, walk-in,
@@ -48,26 +49,8 @@ class DataAccuracyExplainerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.menu_book_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'What this page is for',
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+          const OperatorWebSectionHeading(title: 'What this page is for'),
+          const SizedBox(height: 10),
           Text(
             'These settings tell F&F where your most important numbers '
             'come from when your vendors do not expose them directly. '

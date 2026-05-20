@@ -41,6 +41,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_wage_authority_gateway.dart';
 import '../widgets/hierarchy_map_picker.dart';
 import '../widgets/hierarchy_tree_picker.dart';
+import '../widgets/operator_web_section_heading.dart';
 import '../../theme/app_theme.dart';
 import 'wage_authority/blended_wage_calculator.dart';
 import 'wage_authority/blended_wage_summary_card.dart';
@@ -842,35 +843,21 @@ class _BucketSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    Text(
-                      bucket.label,
-                      style: AppTextStyles.mono15(
-                        color: AppColors.textPrimary,
-                        weight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      bucket.helper,
-                      style: AppTextStyles.body12(color: AppColors.textMuted),
-                    ),
-                  ],
-                ),
-              ),
-              if (canWrite && !isAdding)
-                TextButton.icon(
-                  key: Key('wage_authority_add_button_${bucket.wire}'),
-                  onPressed: onStartAdd,
-                  icon: const Icon(Icons.add, size: 16),
-                  label: const Text('Add a role'),
-                ),
-            ],
+          OperatorWebSectionHeading(
+            title: bucket.label,
+            trailing: canWrite && !isAdding
+                ? TextButton.icon(
+                    key: Key('wage_authority_add_button_${bucket.wire}'),
+                    onPressed: onStartAdd,
+                    icon: const Icon(Icons.add, size: 16),
+                    label: const Text('Add a role'),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 6),
+          Text(
+            bucket.helper,
+            style: AppTextStyles.body12(color: AppColors.textMuted),
           ),
           const SizedBox(height: 12),
           if (rows.isEmpty && !isAdding)

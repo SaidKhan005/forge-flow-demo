@@ -36,6 +36,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/role_permission_picker.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
+import '../widgets/operator_web_section_heading.dart';
 
 /// Permission key validation rule. Mirrors the proxy-side
 /// `validation_failed/permission_key_unknown` error code so the
@@ -430,6 +431,7 @@ class _CustomRoleEditorScreenState extends State<CustomRoleEditorScreen> {
                 const SizedBox(height: 16),
                 RolePermissionPickerCard(
                   key: const Key('operator_web_custom_role_editor_permissions'),
+                  header: const OperatorWebSectionHeading(title: 'Permissions'),
                   selected: _selectedPermissions,
                   explicit: _explicitPermissions,
                   readOnly: widget.readOnly,
@@ -558,14 +560,8 @@ class _MetaCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Role details',
-            style: AppTextStyles.mono14(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
+          const OperatorWebSectionHeading(title: 'Role details'),
+          const SizedBox(height: 8),
           Text(
             'Pick a name and short description so your team knows what '
             'this role is for. Names show on Team members.',

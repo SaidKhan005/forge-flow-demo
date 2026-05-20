@@ -34,6 +34,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 
 /// Hierarchy level a node represents in the tree visualization. Mirrors
 /// the `HierarchyScopeLevel` enum used by `HierarchyScopeNotice` so the
@@ -43,12 +44,7 @@ import '../../theme/app_theme.dart';
 /// `region` and `brand` light up as intermediate levels when the
 /// underlying data exposes them; today the timing bundle exposes an
 /// "Org unit / Region" placeholder we can render as a region rung.
-enum HierarchyTreeLevel {
-  business,
-  region,
-  brand,
-  location,
-}
+enum HierarchyTreeLevel { business, region, brand, location }
 
 extension on HierarchyTreeLevel {
   String get label {
@@ -166,28 +162,12 @@ class HierarchyTreeVisualization extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Icon(
-                Icons.account_tree_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  headline ?? 'Hierarchy',
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              _CurrentlyEditingPill(
-                keyName: '${keyName}_currently_editing_pill',
-                nodes: nodes,
-              ),
-            ],
+          OperatorWebSectionHeading(
+            title: headline ?? 'Hierarchy',
+            trailing: _CurrentlyEditingPill(
+              keyName: '${keyName}_currently_editing_pill',
+              nodes: nodes,
+            ),
           ),
           const SizedBox(height: 10),
           for (int i = 0; i < nodes.length; i++)
@@ -199,10 +179,7 @@ class HierarchyTreeVisualization extends StatelessWidget {
             ),
           if (gap != null) ...<Widget>[
             const SizedBox(height: 10),
-            _DataGapNote(
-              keyName: '${keyName}_data_gap',
-              message: gap,
-            ),
+            _DataGapNote(keyName: '${keyName}_data_gap', message: gap),
           ],
         ],
       ),
@@ -213,10 +190,7 @@ class HierarchyTreeVisualization extends StatelessWidget {
 /// Renders the "Currently editing: Brand — Pizza Express" pill in the
 /// header. Reads the node list to find the highlighted scope.
 class _CurrentlyEditingPill extends StatelessWidget {
-  const _CurrentlyEditingPill({
-    required this.keyName,
-    required this.nodes,
-  });
+  const _CurrentlyEditingPill({required this.keyName, required this.nodes});
 
   final String keyName;
   final List<HierarchyTreeNodeView> nodes;
@@ -312,9 +286,7 @@ class _TreeNodeAndConnector extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         node.subtitle!,
-                        style: AppTextStyles.body13(
-                          color: AppColors.textMuted,
-                        ),
+                        style: AppTextStyles.body13(color: AppColors.textMuted),
                       ),
                     ],
                   ],
@@ -322,15 +294,11 @@ class _TreeNodeAndConnector extends StatelessWidget {
               ),
               if (node.inheritsFromHere) ...<Widget>[
                 const SizedBox(width: 8),
-                _InheritsBadge(
-                  keyName: '${keyName}_inherits_badge',
-                ),
+                _InheritsBadge(keyName: '${keyName}_inherits_badge'),
               ],
               if (isCurrent) ...<Widget>[
                 const SizedBox(width: 8),
-                _CurrentBadge(
-                  keyName: '${keyName}_current_badge',
-                ),
+                _CurrentBadge(keyName: '${keyName}_current_badge'),
               ],
             ],
           ),
@@ -349,10 +317,7 @@ class _TreeNodeAndConnector extends StatelessWidget {
 /// dashed when the row above marks `inheritsFromHere` so the operator
 /// can read the inheritance path visually.
 class _ConnectorLine extends StatelessWidget {
-  const _ConnectorLine({
-    required this.keyName,
-    required this.isInheritEdge,
-  });
+  const _ConnectorLine({required this.keyName, required this.isInheritEdge});
 
   final String keyName;
   final bool isInheritEdge;
@@ -456,10 +421,7 @@ class _InheritsBadge extends StatelessWidget {
 }
 
 class _DataGapNote extends StatelessWidget {
-  const _DataGapNote({
-    required this.keyName,
-    required this.message,
-  });
+  const _DataGapNote({required this.keyName, required this.message});
 
   final String keyName;
   final String message;
@@ -471,20 +433,13 @@ class _DataGapNote extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         color: AppColors.cardGlow,
-        border: Border.all(
-          color: AppColors.borderSubtle,
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Icon(
-            Icons.info_outline,
-            size: 14,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.info_outline, size: 14, color: AppColors.textMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

@@ -31,9 +31,10 @@ import 'package:flutter/material.dart';
 
 import '../../auth/permission_keys.dart';
 import '../../services/auth/auth_operations_gateway.dart';
+import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/web_team_roles_gateway.dart';
-import '../../theme/app_theme.dart';
+import '../widgets/operator_web_section_heading.dart';
 import 'custom_role_editor_screen.dart';
 import 'permission_explainer_screen.dart';
 
@@ -532,15 +533,9 @@ class _RoleGroup extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
-        Text(
-          title,
-          style: AppTextStyles.mono14(
-            color: AppColors.textPrimary,
-            weight: FontWeight.w700,
-          ),
-        ),
+        OperatorWebSectionHeading(title: title),
         if (subtitleText != null) ...<Widget>[
-          const SizedBox(height: 2),
+          const SizedBox(height: 6),
           Text(
             subtitleText,
             style: AppTextStyles.body12(color: AppColors.textSecondary),
@@ -612,9 +607,7 @@ class _RoleTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     shortDescription,
-                    style: AppTextStyles.body13(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                 ],
               ],
@@ -648,9 +641,7 @@ class _RoleTile extends StatelessWidget {
             TextButton(
               key: Key('operator_web_role_delete_${role.roleId}'),
               onPressed: busy ? null : () => onDelete?.call(role),
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.negative,
-              ),
+              style: TextButton.styleFrom(foregroundColor: AppColors.negative),
               child: const Text('Delete'),
             ),
           ],

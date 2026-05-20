@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 
 import '../../integrations/ui/vendor_connections/vendor_connections_models.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_section_heading.dart';
 import 'vendor_relativity_label.dart';
 
 /// Tier label keys. The display string + monthly price label come
@@ -87,7 +88,6 @@ class PollingTierStatusCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _DataAccuracyCard(
       cardKey: const Key('data_accuracy_polling_tier_status_card'),
-      icon: Icons.schedule_outlined,
       title: 'Your data freshness tier',
       headerExplainer:
           'Your plan tier sets how often Forge & Flow asks your vendors '
@@ -226,10 +226,7 @@ class _PerVendorCadenceList extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         for (final entry in entries) ...[
-          _VendorCadenceRow(
-            vendorId: entry.key,
-            cadenceSeconds: entry.value,
-          ),
+          _VendorCadenceRow(vendorId: entry.key, cadenceSeconds: entry.value),
           if (entry.key != entries.last.key) const SizedBox(height: 4),
         ],
       ],
@@ -401,9 +398,7 @@ class _PollingTierChangeRequestDialogState
                 hintStyle: AppTextStyles.body13(color: AppColors.textMuted),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
-                  borderSide: const BorderSide(
-                    color: AppColors.borderSubtle,
-                  ),
+                  borderSide: const BorderSide(color: AppColors.borderSubtle),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(6),
@@ -436,10 +431,7 @@ class _PollingTierChangeRequestDialogState
             backgroundColor: AppColors.sunsetDark,
             foregroundColor: AppColors.backgroundSurface,
             disabledBackgroundColor: AppColors.borderSubtle,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 18,
-              vertical: 10,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
           ),
           onPressed: _canSubmit
               ? () => Navigator.of(context).pop(_controller.text.trim())
@@ -460,14 +452,12 @@ class _PollingTierChangeRequestDialogState
 class _DataAccuracyCard extends StatelessWidget {
   const _DataAccuracyCard({
     required this.cardKey,
-    required this.icon,
     required this.title,
     required this.headerExplainer,
     required this.child,
   });
 
   final Key cardKey;
-  final IconData icon;
   final String title;
   final String headerExplainer;
   final Widget child;
@@ -485,22 +475,8 @@ class _DataAccuracyCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.sunsetDark),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTextStyles.mono15(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 6),
+          OperatorWebSectionHeading(title: title),
+          const SizedBox(height: 10),
           Text(
             headerExplainer,
             style: AppTextStyles.body13(color: AppColors.textSecondary),

@@ -24,8 +24,7 @@ import '../theme/app_theme.dart';
 
 /// Title Case English labels for each `productLabel` value the picker
 /// renders. Plain English per the UX writing standard.
-const Map<String, String> kRolePermissionPickerProductLabels =
-    <String, String>{
+const Map<String, String> kRolePermissionPickerProductLabels = <String, String>{
   'product': 'Product access',
   'forgeflow': 'Forge & Flow',
   'barrio': 'Barrio',
@@ -88,9 +87,9 @@ List<String> rolePermissionPickerRequiredBy(
     // includes `permissionKey`).
     for (final candidate in explicit) {
       if (candidate == permissionKey) continue;
-      final closure = PermissionKeyMetadataCatalog.expandImplies(
-        <String>[candidate],
-      );
+      final closure = PermissionKeyMetadataCatalog.expandImplies(<String>[
+        candidate,
+      ]);
       if (closure.contains(parent) && !pullers.contains(candidate)) {
         pullers.add(candidate);
       }
@@ -126,6 +125,7 @@ class RolePermissionPickerCard extends StatefulWidget {
     this.readOnly = false,
     this.barrioPlanIncluded = true,
     this.keyPrefix = 'role_permission_picker',
+    this.header,
   });
 
   /// Transitive `expandImplies` closure of [explicit]. Picker renders
@@ -147,6 +147,11 @@ class RolePermissionPickerCard extends StatefulWidget {
   /// Prefix for every widget Key the picker stamps. Lets two pickers
   /// coexist (e.g. one per admin draft row) without key collisions.
   final String keyPrefix;
+
+  /// Optional host-supplied title treatment. Operator Web uses this to
+  /// align the picker with its section heading system while other hosts
+  /// keep the default picker title.
+  final Widget? header;
 
   @override
   State<RolePermissionPickerCard> createState() =>
@@ -174,8 +179,7 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
       if (_filtersOrgWide && meta.scopeKind == PermissionScopeKind.orgWide) {
         return;
       }
-      if (query.isNotEmpty &&
-          !meta.humanLabel.toLowerCase().contains(query)) {
+      if (query.isNotEmpty && !meta.humanLabel.toLowerCase().contains(query)) {
         return;
       }
       out
@@ -186,10 +190,8 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
     for (final productMap in out.values) {
       for (final keys in productMap.values) {
         keys.sort((a, b) {
-          final la =
-              PermissionKeyMetadataCatalog.byKey[a]?.humanLabel ?? a;
-          final lb =
-              PermissionKeyMetadataCatalog.byKey[b]?.humanLabel ?? b;
+          final la = PermissionKeyMetadataCatalog.byKey[a]?.humanLabel ?? a;
+          final lb = PermissionKeyMetadataCatalog.byKey[b]?.humanLabel ?? b;
           return la.compareTo(lb);
         });
       }
@@ -204,8 +206,7 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
     PermissionKeyMetadataCatalog.byKey.forEach((key, meta) {
       if (!PermissionKeys.all.contains(key)) return;
       if (meta.scopeKind != PermissionScopeKind.orgWide) return;
-      if (query.isNotEmpty &&
-          !meta.humanLabel.toLowerCase().contains(query)) {
+      if (query.isNotEmpty && !meta.humanLabel.toLowerCase().contains(query)) {
         return;
       }
       out.add(key);
@@ -259,13 +260,14 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  'Permissions',
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
-                ),
+                widget.header ??
+                    Text(
+                      'Permissions',
+                      style: AppTextStyles.mono14(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
                 const SizedBox(height: 4),
                 Text(
                   'Browse by product. Picking a permission also turns on '
@@ -277,8 +279,7 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
                 TextField(
                   key: Key('${prefix}_search'),
                   controller: _searchController,
-                  onChanged: (value) =>
-                      setState(() => _searchQuery = value),
+                  onChanged: (value) => setState(() => _searchQuery = value),
                   decoration: InputDecoration(
                     isDense: true,
                     hintText: 'Search permissions',
@@ -305,9 +306,8 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
               keyPrefix: prefix,
               hiddenKeys: hiddenOrgWide,
               expanded: _showHiddenScope,
-              onToggle: () => setState(
-                () => _showHiddenScope = !_showHiddenScope,
-              ),
+              onToggle: () =>
+                  setState(() => _showHiddenScope = !_showHiddenScope),
             ),
           if (groups.isEmpty)
             Padding(
@@ -327,8 +327,7 @@ class _RolePermissionPickerCardState extends State<RolePermissionPickerCard> {
               productLabel: product,
               productDisplayLabel:
                   kRolePermissionPickerProductLabels[product] ?? product,
-              dormant:
-                  product == 'barrio' && !widget.barrioPlanIncluded,
+              dormant: product == 'barrio' && !widget.barrioPlanIncluded,
               categories: groups[product]!,
               selected: widget.selected,
               explicit: widget.explicit,
@@ -381,8 +380,7 @@ class _ScopeNotice extends StatelessWidget {
                 child: Text(
                   "Some permissions don't apply at the location level and "
                   'are not shown.',
-                  style:
-                      AppTextStyles.body12(color: AppColors.textSecondary),
+                  style: AppTextStyles.body12(color: AppColors.textSecondary),
                 ),
               ),
               TextButton(
@@ -410,8 +408,7 @@ class _ScopeNotice extends StatelessWidget {
                       child: Tooltip(
                         message: 'Not available at this scope',
                         child: Text(
-                          PermissionKeyMetadataCatalog
-                                  .byKey[key]?.humanLabel ??
+                          PermissionKeyMetadataCatalog.byKey[key]?.humanLabel ??
                               key,
                           key: Key('${keyPrefix}_scope_hidden_$key'),
                           style: AppTextStyles.body12(
@@ -535,8 +532,7 @@ class _CategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedInCategory =
-        permissionKeys.where(selected.contains).length;
+    final selectedInCategory = permissionKeys.where(selected.contains).length;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
@@ -605,9 +601,8 @@ class _PermissionRow extends StatelessWidget {
     final isAutoAdded = isSelected && requiredBy.isNotEmpty;
     final parentLabel = requiredBy.isEmpty
         ? null
-        : (PermissionKeyMetadataCatalog
-                .byKey[requiredBy.first]?.humanLabel ??
-            requiredBy.first);
+        : (PermissionKeyMetadataCatalog.byKey[requiredBy.first]?.humanLabel ??
+              requiredBy.first);
     final tooltipMessage = isAutoAdded
         ? 'Required because $parentLabel is selected'
         : null;
@@ -665,9 +660,7 @@ class _PermissionRow extends StatelessWidget {
                     ),
                     child: Text(
                       'Required',
-                      style: AppTextStyles.mono8(
-                        color: AppColors.textMuted,
-                      ),
+                      style: AppTextStyles.mono8(color: AppColors.textMuted),
                     ),
                   ),
                 ],
