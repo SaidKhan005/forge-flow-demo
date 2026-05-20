@@ -29,15 +29,14 @@ void main() {
   group('VendorLifecycleNotificationDispatcher.dispatchForVendor', () {
     test('empty pending list → zero outbox rows', () async {
       final notifications = _FakeNotificationRepo();
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
         contextResolver: _staticContextResolver(
           vendorDisplayName: 'Toast',
           businessName: 'Acme Bistro',
-          integrationConsoleUrl:
-              'https://app.forgeflow.app/admin/integrations',
+          integrationConsoleUrl: 'https://app.forgeflow.app/admin/integrations',
         ),
         now: () => DateTime.utc(2026, 5, 6, 12, 0),
       );
@@ -54,67 +53,65 @@ void main() {
       expect(notifications.markedNotified, isEmpty);
     });
 
-    test('three pending notifications → three outbox rows + three stamps',
-        () async {
-      final notifications = _FakeNotificationRepo()
-        ..seedPending('op-1', 'toast', <_FakePending>[
-          _FakePending(
-            id: 'n-1',
-            email: 'admin@acme.test',
-            displayName: null,
+    test(
+      'three pending notifications → three outbox rows + three stamps',
+      () async {
+        final notifications = _FakeNotificationRepo()
+          ..seedPending('op-1', 'toast', <_FakePending>[
+            _FakePending(
+              id: 'n-1',
+              email: 'admin@acme.test',
+              displayName: null,
+            ),
+            _FakePending(
+              id: 'n-2',
+              email: 'manager@acme.test',
+              displayName: 'Manager Pat',
+            ),
+            _FakePending(id: 'n-3', email: 'gm@acme.test', displayName: null),
+          ]);
+        final outbox = _FakeOutboxRepo(notifications);
+        final dispatcher = VendorLifecycleNotificationDispatcher(
+          notificationRepository: notifications,
+          outboxRepository: outbox,
+          contextResolver: _staticContextResolver(
+            vendorDisplayName: 'Toast',
+            businessName: 'Acme Bistro',
+            integrationConsoleUrl:
+                'https://app.forgeflow.app/admin/integrations',
           ),
-          _FakePending(
-            id: 'n-2',
-            email: 'manager@acme.test',
-            displayName: 'Manager Pat',
-          ),
-          _FakePending(
-            id: 'n-3',
-            email: 'gm@acme.test',
-            displayName: null,
-          ),
-        ]);
-      final outbox = _FakeOutboxRepo();
-      final dispatcher = VendorLifecycleNotificationDispatcher(
-        notificationRepository: notifications,
-        outboxRepository: outbox,
-        contextResolver: _staticContextResolver(
-          vendorDisplayName: 'Toast',
-          businessName: 'Acme Bistro',
-          integrationConsoleUrl:
-              'https://app.forgeflow.app/admin/integrations',
-        ),
-        now: () => DateTime.utc(2026, 5, 6, 12, 0),
-      );
-
-      final outcome = await dispatcher.dispatchForVendor(
-        vendorId: 'toast',
-        newLifecycleState: 'productionCredentialed',
-      );
-
-      expect(outcome.notificationsEnqueued, 3);
-      expect(outcome.notificationsSkipped, 0);
-      expect(outcome.operatorsTouched, 1);
-      expect(outbox.enqueued, hasLength(3));
-      expect(notifications.markedNotified, hasLength(3));
-      // All three rows now report `notified_at != null`.
-      for (final id in <String>['n-1', 'n-2', 'n-3']) {
-        expect(notifications.isNotified(id), isTrue);
-      }
-      // Operator id is preserved on every outbox row (per-tenant
-      // index leading column rule).
-      for (final row in outbox.enqueued) {
-        expect(row.operatorId, 'op-1');
-        expect(row.templateId, EmailTemplateIds.vendorNowAvailable);
-        expect(row.templateData['vendorName'], 'Toast');
-        expect(row.templateData['businessName'], 'Acme Bistro');
-        expect(
-          row.templateData['integrationConsoleUrl'],
-          'https://app.forgeflow.app/admin/integrations',
+          now: () => DateTime.utc(2026, 5, 6, 12, 0),
         );
-        expect(row.templateData['recipientName'], isNotEmpty);
-      }
-    });
+
+        final outcome = await dispatcher.dispatchForVendor(
+          vendorId: 'toast',
+          newLifecycleState: 'productionCredentialed',
+        );
+
+        expect(outcome.notificationsEnqueued, 3);
+        expect(outcome.notificationsSkipped, 0);
+        expect(outcome.operatorsTouched, 1);
+        expect(outbox.enqueued, hasLength(3));
+        expect(notifications.markedNotified, hasLength(3));
+        // All three rows now report `notified_at != null`.
+        for (final id in <String>['n-1', 'n-2', 'n-3']) {
+          expect(notifications.isNotified(id), isTrue);
+        }
+        // Operator id is preserved on every outbox row (per-tenant
+        // index leading column rule).
+        for (final row in outbox.enqueued) {
+          expect(row.operatorId, 'op-1');
+          expect(row.templateId, EmailTemplateIds.vendorNowAvailable);
+          expect(row.templateData['vendorName'], 'Toast');
+          expect(row.templateData['businessName'], 'Acme Bistro');
+          expect(
+            row.templateData['integrationConsoleUrl'],
+            'https://app.forgeflow.app/admin/integrations',
+          );
+          expect(row.templateData['recipientName'], isNotEmpty);
+        }
+      },
+    );
 
     test('re-dispatch is idempotent (no duplicate outbox rows)', () async {
       final notifications = _FakeNotificationRepo()
@@ -123,15 +120,14 @@ void main() {
           _FakePending(id: 'n-2', email: 'manager@acme.test'),
           _FakePending(id: 'n-3', email: 'gm@acme.test'),
         ]);
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
         contextResolver: _staticContextResolver(
           vendorDisplayName: 'Toast',
           businessName: 'Acme Bistro',
-          integrationConsoleUrl:
-              'https://app.forgeflow.app/admin/integrations',
+          integrationConsoleUrl: 'https://app.forgeflow.app/admin/integrations',
         ),
       );
 
@@ -150,6 +146,36 @@ void main() {
       expect(outbox.enqueued, hasLength(3));
     });
 
+    test(
+      'concurrent claim loss is treated as a no-op, not a skipped send',
+      () async {
+        final notifications = _FakeNotificationRepo()
+          ..seedPending('op-1', 'toast', <_FakePending>[
+            _FakePending(id: 'n-1', email: 'admin@acme.test'),
+          ]);
+        final outbox = _RejectingClaimOutboxRepo();
+        final dispatcher = VendorLifecycleNotificationDispatcher(
+          notificationRepository: notifications,
+          outboxRepository: outbox,
+          contextResolver: _staticContextResolver(
+            vendorDisplayName: 'Toast',
+            businessName: 'Acme Bistro',
+            integrationConsoleUrl:
+                'https://app.forgeflow.app/admin/integrations',
+          ),
+        );
+
+        final outcome = await dispatcher.dispatchForVendor(
+          vendorId: 'toast',
+          newLifecycleState: 'productionCredentialed',
+        );
+
+        expect(outcome.notificationsEnqueued, 0);
+        expect(outcome.notificationsSkipped, 0);
+        expect(notifications.isNotified('n-1'), isFalse);
+      },
+    );
+
     test('cross-tenant isolation: operator A → A only', () async {
       final notifications = _FakeNotificationRepo()
         ..seedPending('op-A', 'toast', <_FakePending>[
@@ -159,22 +185,21 @@ void main() {
         ..seedPending('op-B', 'toast', <_FakePending>[
           _FakePending(id: 'b-1', email: 'b@beta.test'),
         ]);
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
-        contextResolver: ({
-          required String operatorId,
-          required String vendorId,
-        }) async {
-          return VendorNotificationOperatorContext(
-            operatorBusinessName:
-                operatorId == 'op-A' ? 'Acme Bistro' : 'Beta Cafe',
-            vendorDisplayName: 'Toast',
-            integrationConsoleUrl:
-                'https://app.forgeflow.app/admin/integrations',
-          );
-        },
+        contextResolver:
+            ({required String operatorId, required String vendorId}) async {
+              return VendorNotificationOperatorContext(
+                operatorBusinessName: operatorId == 'op-A'
+                    ? 'Acme Bistro'
+                    : 'Beta Cafe',
+                vendorDisplayName: 'Toast',
+                integrationConsoleUrl:
+                    'https://app.forgeflow.app/admin/integrations',
+              );
+            },
       );
 
       final outcome = await dispatcher.dispatchForVendor(
@@ -185,20 +210,22 @@ void main() {
       expect(outcome.operatorsTouched, 2);
       expect(outcome.notificationsEnqueued, 3);
       // Per-operator stamps did not bleed across tenants.
-      final opARows =
-          outbox.enqueued.where((row) => row.operatorId == 'op-A').toList();
-      final opBRows =
-          outbox.enqueued.where((row) => row.operatorId == 'op-B').toList();
+      final opARows = outbox.enqueued
+          .where((row) => row.operatorId == 'op-A')
+          .toList();
+      final opBRows = outbox.enqueued
+          .where((row) => row.operatorId == 'op-B')
+          .toList();
       expect(opARows, hasLength(2));
       expect(opBRows, hasLength(1));
       expect(
-        opARows.every((row) =>
-            row.templateData['businessName'] == 'Acme Bistro'),
+        opARows.every(
+          (row) => row.templateData['businessName'] == 'Acme Bistro',
+        ),
         isTrue,
       );
       expect(
-        opBRows.every((row) =>
-            row.templateData['businessName'] == 'Beta Cafe'),
+        opBRows.every((row) => row.templateData['businessName'] == 'Beta Cafe'),
         isTrue,
       );
       // markedNotified records carry the matching operator id.
@@ -217,7 +244,7 @@ void main() {
         ..seedPending('op-1', 'toast', <_FakePending>[
           _FakePending(id: 'n-1', email: 'admin@acme.test'),
         ]);
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
@@ -235,10 +262,12 @@ void main() {
         'liveWithOperators',
         '',
       ]) {
-        earlierOutcomes.add(await dispatcher.dispatchForVendor(
-          vendorId: 'toast',
-          newLifecycleState: state,
-        ));
+        earlierOutcomes.add(
+          await dispatcher.dispatchForVendor(
+            vendorId: 'toast',
+            newLifecycleState: state,
+          ),
+        );
       }
 
       expect(
@@ -256,8 +285,9 @@ void main() {
       // the dispatcher test suite even though the renderer test
       // already iterates EmailTemplateIds.all.
       final templatesDir = Directory('tool/advisor_proxy/email_templates');
-      final wrapper =
-          File('${templatesDir.path}/_brand_wrapper.html').readAsStringSync();
+      final wrapper = File(
+        '${templatesDir.path}/_brand_wrapper.html',
+      ).readAsStringSync();
       final templates = <String, String>{};
       for (final id in EmailTemplateIds.all) {
         final file = File('${templatesDir.path}/$id.md');
@@ -305,40 +335,44 @@ void main() {
       expect(rendered.textBody, isNot(contains('—')));
     });
 
-    test('salutation falls back to email local-part when no display name',
-        () async {
-      final notifications = _FakeNotificationRepo()
-        ..seedPending('op-1', 'toast', <_FakePending>[
-          _FakePending(id: 'n-1', email: 'pat.manager@acme.test'),
-        ]);
-      final outbox = _FakeOutboxRepo();
-      final dispatcher = VendorLifecycleNotificationDispatcher(
-        notificationRepository: notifications,
-        outboxRepository: outbox,
-        contextResolver: _staticContextResolver(
-          vendorDisplayName: 'Toast',
-          businessName: 'Acme Bistro',
-          integrationConsoleUrl: 'https://app.forgeflow.app',
-        ),
-      );
+    test(
+      'salutation falls back to email local-part when no display name',
+      () async {
+        final notifications = _FakeNotificationRepo()
+          ..seedPending('op-1', 'toast', <_FakePending>[
+            _FakePending(id: 'n-1', email: 'pat.manager@acme.test'),
+          ]);
+        final outbox = _FakeOutboxRepo(notifications);
+        final dispatcher = VendorLifecycleNotificationDispatcher(
+          notificationRepository: notifications,
+          outboxRepository: outbox,
+          contextResolver: _staticContextResolver(
+            vendorDisplayName: 'Toast',
+            businessName: 'Acme Bistro',
+            integrationConsoleUrl: 'https://app.forgeflow.app',
+          ),
+        );
 
-      await dispatcher.dispatchForVendor(
-        vendorId: 'toast',
-        newLifecycleState: 'productionCredentialed',
-      );
+        await dispatcher.dispatchForVendor(
+          vendorId: 'toast',
+          newLifecycleState: 'productionCredentialed',
+        );
 
-      expect(outbox.enqueued.single.templateData['recipientName'],
-          'pat.manager');
-    });
+        expect(
+          outbox.enqueued.single.templateData['recipientName'],
+          'pat.manager',
+        );
+      },
+    );
 
-    test('per-row enqueue failure leaves the row pending for retry',
-        () async {
+    test('per-row enqueue failure leaves the row pending for retry', () async {
       final notifications = _FakeNotificationRepo()
         ..seedPending('op-1', 'toast', <_FakePending>[
           _FakePending(id: 'n-good', email: 'a@acme.test'),
           _FakePending(id: 'n-bad', email: 'b@acme.test'),
         ]);
       final outbox = _FakeOutboxRepo(
+        notifications,
         failOnRecipientEmails: <String>{'b@acme.test'},
       );
       final dispatcher = VendorLifecycleNotificationDispatcher(
@@ -377,7 +411,7 @@ void main() {
         ..seedPending('op-2', 'toast', <_FakePending>[
           _FakePending(id: 'n-2', email: 'admin@beta.test'),
         ]);
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final fanoutCalls = <_RecordedFanoutCall>[];
 
       final dispatcher = VendorLifecycleNotificationDispatcher(
@@ -388,24 +422,24 @@ void main() {
           businessName: 'Acme Bistro',
           integrationConsoleUrl: 'https://app.forgeflow.app',
         ),
-        eventFanout: ({
-          required String operatorId,
-          required NotificationEventEnvelope envelope,
-        }) async {
-          fanoutCalls.add(_RecordedFanoutCall(
-            operatorId: operatorId,
-            envelope: envelope,
-          ));
-          return NotificationFanoutOutcome(
-            eventKey: envelope.eventKey,
-            usersConsidered: 0,
-            usersGated: 0,
-            pushDispatched: 0,
-            emailDispatched: 0,
-            inboxDispatched: 0,
-            skipped: 0,
-          );
-        },
+        eventFanout:
+            ({
+              required String operatorId,
+              required NotificationEventEnvelope envelope,
+            }) async {
+              fanoutCalls.add(
+                _RecordedFanoutCall(operatorId: operatorId, envelope: envelope),
+              );
+              return NotificationFanoutOutcome(
+                eventKey: envelope.eventKey,
+                usersConsidered: 0,
+                usersGated: 0,
+                pushDispatched: 0,
+                emailDispatched: 0,
+                inboxDispatched: 0,
+                skipped: 0,
+              );
+            },
       );
 
       final outcome = await dispatcher.dispatchForVendor(
@@ -418,8 +452,9 @@ void main() {
       // Fanout fires once per operator that had pending email rows.
       expect(fanoutCalls, hasLength(2));
       expect(
-        fanoutCalls.every((c) =>
-            c.envelope.eventKey == 'notif.vendor.now_available'),
+        fanoutCalls.every(
+          (c) => c.envelope.eventKey == 'notif.vendor.now_available',
+        ),
         isTrue,
       );
       expect(
@@ -437,7 +472,7 @@ void main() {
         ..seedPending('op-1', 'toast', <_FakePending>[
           _FakePending(id: 'n-1', email: 'admin@acme.test'),
         ]);
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
@@ -446,12 +481,13 @@ void main() {
           businessName: 'Acme Bistro',
           integrationConsoleUrl: 'https://app.forgeflow.app',
         ),
-        eventFanout: ({
-          required String operatorId,
-          required NotificationEventEnvelope envelope,
-        }) async {
-          throw StateError('seeded fanout failure');
-        },
+        eventFanout:
+            ({
+              required String operatorId,
+              required NotificationEventEnvelope envelope,
+            }) async {
+              throw StateError('seeded fanout failure');
+            },
       );
 
       final outcome = await dispatcher.dispatchForVendor(
@@ -472,23 +508,21 @@ void main() {
         ..seedPending('op-healthy', 'toast', <_FakePending>[
           _FakePending(id: 'n-healthy-1', email: 'c@beta.test'),
         ]);
-      final outbox = _FakeOutboxRepo();
+      final outbox = _FakeOutboxRepo(notifications);
       final dispatcher = VendorLifecycleNotificationDispatcher(
         notificationRepository: notifications,
         outboxRepository: outbox,
-        contextResolver: ({
-          required String operatorId,
-          required String vendorId,
-        }) async {
-          if (operatorId == 'op-broken') {
-            throw StateError('vendor catalog miss');
-          }
-          return const VendorNotificationOperatorContext(
-            operatorBusinessName: 'Beta Cafe',
-            vendorDisplayName: 'Toast',
-            integrationConsoleUrl: 'https://app.forgeflow.app',
-          );
-        },
+        contextResolver:
+            ({required String operatorId, required String vendorId}) async {
+              if (operatorId == 'op-broken') {
+                throw StateError('vendor catalog miss');
+              }
+              return const VendorNotificationOperatorContext(
+                operatorBusinessName: 'Beta Cafe',
+                vendorDisplayName: 'Toast',
+                integrationConsoleUrl: 'https://app.forgeflow.app',
+              );
+            },
       );
 
       final outcome = await dispatcher.dispatchForVendor(
@@ -517,10 +551,7 @@ VendorNotificationContextResolver _staticContextResolver({
   required String businessName,
   required String integrationConsoleUrl,
 }) {
-  return ({
-    required String operatorId,
-    required String vendorId,
-  }) async {
+  return ({required String operatorId, required String vendorId}) async {
     return VendorNotificationOperatorContext(
       operatorBusinessName: businessName,
       vendorDisplayName: vendorDisplayName,
@@ -530,11 +561,7 @@ VendorNotificationContextResolver _staticContextResolver({
 }
 
 class _FakePending {
-  _FakePending({
-    required this.id,
-    required this.email,
-    this.displayName,
-  });
+  _FakePending({required this.id, required this.email, this.displayName});
 
   final String id;
   final String email;
@@ -553,8 +580,10 @@ class _FakeNotificationRepo
     String vendorId,
     List<_FakePending> rows,
   ) {
-    final byVendor =
-        _byOperator.putIfAbsent(operatorId, () => <String, List<_FakePending>>{});
+    final byVendor = _byOperator.putIfAbsent(
+      operatorId,
+      () => <String, List<_FakePending>>{},
+    );
     byVendor.putIfAbsent(vendorId, () => <_FakePending>[]).addAll(rows);
   }
 
@@ -563,6 +592,24 @@ class _FakeNotificationRepo
 
   Iterable<String> markedNotifiedFor(String operatorId) =>
       _markedByOperator[operatorId] ?? const <String>[];
+
+  bool tryClaim(PendingVendorNotification notification) {
+    final byVendor =
+        _byOperator[notification.operatorId] ??
+        const <String, List<_FakePending>>{};
+    final rows = byVendor[notification.vendorId] ?? const <_FakePending>[];
+    for (final row in rows) {
+      if (row.id == notification.notificationId) {
+        if (row.notified) return false;
+        row.notified = true;
+        _markedByOperator
+            .putIfAbsent(notification.operatorId, () => <String>[])
+            .add(notification.notificationId);
+        return true;
+      }
+    }
+    return false;
+  }
 
   bool isNotified(String notificationId) {
     for (final byVendor in _byOperator.values) {
@@ -598,35 +645,16 @@ class _FakeNotificationRepo
     final rows = _byOperator[operatorId]?[vendorId] ?? const <_FakePending>[];
     return rows
         .where((row) => !row.notified)
-        .map((row) => PendingVendorNotification(
-              notificationId: row.id,
-              operatorId: operatorId,
-              vendorId: vendorId,
-              recipientEmail: row.email,
-              recipientDisplayName: row.displayName,
-            ))
+        .map(
+          (row) => PendingVendorNotification(
+            notificationId: row.id,
+            operatorId: operatorId,
+            vendorId: vendorId,
+            recipientEmail: row.email,
+            recipientDisplayName: row.displayName,
+          ),
+        )
         .toList(growable: false);
-  }
-
-  @override
-  Future<void> markNotified({
-    required String operatorId,
-    required String notificationId,
-    required DateTime stampedAt,
-  }) async {
-    final byVendor =
-        _byOperator[operatorId] ?? const <String, List<_FakePending>>{};
-    for (final rows in byVendor.values) {
-      for (final row in rows) {
-        if (row.id == notificationId) {
-          row.notified = true;
-          _markedByOperator
-              .putIfAbsent(operatorId, () => <String>[])
-              .add(notificationId);
-          return;
-        }
-      }
-    }
   }
 }
 
@@ -653,29 +681,54 @@ class _RecordedEnqueue {
 }
 
 class _FakeOutboxRepo implements EmailOutboxEnqueueRepository {
-  _FakeOutboxRepo({Set<String> failOnRecipientEmails = const <String>{}})
-      : _failOnRecipientEmails = failOnRecipientEmails;
+  _FakeOutboxRepo(
+    _FakeNotificationRepo notifications, {
+    Set<String> failOnRecipientEmails = const <String>{},
+  }) : _notifications = notifications,
+       _failOnRecipientEmails = failOnRecipientEmails;
 
+  final _FakeNotificationRepo _notifications;
   final Set<String> _failOnRecipientEmails;
   final List<_RecordedEnqueue> enqueued = <_RecordedEnqueue>[];
 
   @override
-  Future<void> enqueue({
-    required String operatorId,
+  Future<bool> claimAndEnqueue({
+    required PendingVendorNotification notification,
     required String templateId,
-    required String recipientEmail,
     required String? recipientDisplayName,
     required Map<String, String> templateData,
+    required DateTime stampedAt,
   }) async {
-    if (_failOnRecipientEmails.contains(recipientEmail)) {
-      throw StateError('seeded enqueue failure for $recipientEmail');
+    if (_failOnRecipientEmails.contains(notification.recipientEmail)) {
+      throw StateError(
+        'seeded enqueue failure for ${notification.recipientEmail}',
+      );
     }
-    enqueued.add(_RecordedEnqueue(
-      operatorId: operatorId,
-      templateId: templateId,
-      recipientEmail: recipientEmail,
-      recipientDisplayName: recipientDisplayName,
-      templateData: Map<String, String>.from(templateData),
-    ));
+    if (!_notifications.tryClaim(notification)) {
+      return false;
+    }
+    enqueued.add(
+      _RecordedEnqueue(
+        operatorId: notification.operatorId,
+        templateId: templateId,
+        recipientEmail: notification.recipientEmail,
+        recipientDisplayName: recipientDisplayName,
+        templateData: Map<String, String>.from(templateData),
+      ),
+    );
+    return true;
+  }
+}
+
+class _RejectingClaimOutboxRepo implements EmailOutboxEnqueueRepository {
+  @override
+  Future<bool> claimAndEnqueue({
+    required PendingVendorNotification notification,
+    required String templateId,
+    required String? recipientDisplayName,
+    required Map<String, String> templateData,
+    required DateTime stampedAt,
+  }) async {
+    return false;
   }
 }

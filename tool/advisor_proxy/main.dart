@@ -77,6 +77,7 @@ import 'operator_web_audit_log_hierarchy_routes.dart';
 import 'advisor_response_cache.dart';
 import 'operator_benchmark_overrides_routes.dart';
 import 'operator_tier_email_routes.dart';
+import 'email_dispatch/vendor_lifecycle_promotion_routes.dart';
 import 'integration_oauth_routes.dart';
 import 'integration_oauth_state_store.dart';
 import 'log.dart';
@@ -1564,6 +1565,41 @@ Future<void> _runProxy(List<String> args) async {
     },
   );
 
+  // Phase 8 V1.E - server-only vendor lifecycle notification route.
+  // Handles POST
+  // /v1/admin/vendors/:vendor_id/lifecycle-promotion-notification
+  // before the monolithic dispatcher so the existing operator "Notify
+  // me" subscriptions can be fanned out when a live-rollout slice
+  // promotes a vendor to productionCredentialed. This remains a
+  // server/admin operation, not a visible Admin UI button.
+  final vendorLifecyclePromotionRouter = VendorLifecyclePromotionRouter(
+    dispatcher: productionBindings.vendorLifecycleNotificationDispatcher,
+    idempotencyStore:
+        productionBindings.vendorLifecyclePromotionIdempotencyStore,
+    authorizer: (request) async {
+      try {
+        final claims = await authGuard.requireVerifiedClaims(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+        return claims.roles.contains('super_admin');
+      } on ProxyAuthError {
+        return false;
+      }
+    },
+  );
+  log(
+    LogSeverity.info,
+    'startup.vendor_lifecycle_promotion_router',
+    fields: <String, Object?>{
+      'mounted': true,
+      'path_prefix': adminVendorLifecyclePromotionPathPrefix,
+      'path_suffix': adminVendorLifecyclePromotionPathSuffix,
+      'idempotency_store': 'admin_request_idempotency',
+    },
+  );
+
   // Wave 2 Q-1-FU — multi-pod heap-snapshot live capture endpoint.
   // Mounts the `/v1/admin/heap-snapshot/capture` POST as a pre-check
   // before `routeRequest`, mirroring the B6 / B8 sibling-file pattern
@@ -2060,6 +2096,17 @@ Future<void> _runProxy(List<String> args) async {
           // B6 benchmark-overrides + B8 audit-log-hierarchy mount
           // pattern.
           if (await operatorTierEmailRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
+          // region: phase_8_v1e_vendor_lifecycle_promotion
+          // Phase 8 V1.E - vendor-ready notification fan-out. Handles
+          // POST
+          // /v1/admin/vendors/:vendor_id/lifecycle-promotion-notification.
+          // The route gates on super_admin, requires Idempotency-Key,
+          // and fans out pending operator "Notify me" rows without
+          // touching the monolithic dispatcher.
+          if (await vendorLifecyclePromotionRouter.tryHandle(request)) {
             return;
           }
           // endregion

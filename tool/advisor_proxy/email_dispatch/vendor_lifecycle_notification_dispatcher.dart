@@ -13,12 +13,13 @@
 // `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`);
 // this dispatcher only owns the email fan-out half.
 //
-// Idempotency: pending rows are filtered on `notified_at IS NULL` and
-// every successful enqueue stamps `notified_at = now()` in the same
-// transactional flow. A retried call for the same `(operator_id,
-// vendor_id, new_lifecycle_state)` finds zero pending rows and is a
-// natural no-op. The dispatcher never inserts a second outbox row
-// for a notification it already processed.
+// Idempotency: pending rows are filtered on `notified_at IS NULL`, and
+// production claims each pending row and inserts its matching
+// `email_outbox` row in one database transaction. A retried call for
+// the same `(operator_id, vendor_id, new_lifecycle_state)` finds zero
+// pending rows and is a natural no-op. A concurrent call with a
+// different route idempotency key loses the row claim and also no-ops
+// that row.
 //
 // Tenant isolation: notifications and outbox rows are read / written
 // per operator. The dispatcher walks one operator at a time so the
@@ -45,11 +46,11 @@ import 'notification_event_fanout.dart';
 /// fanout. Production binds this to `NotificationEventFanout.fanOut`;
 /// tests pass a recording closure to assert the dispatcher emits the
 /// envelope without forcing tests to construct the full fanout.
-typedef VendorLifecycleEventFanoutSeam
-    = Future<NotificationFanoutOutcome> Function({
-  required String operatorId,
-  required NotificationEventEnvelope envelope,
-});
+typedef VendorLifecycleEventFanoutSeam =
+    Future<NotificationFanoutOutcome> Function({
+      required String operatorId,
+      required NotificationEventEnvelope envelope,
+    });
 
 /// One pending Notify-me subscription returned by
 /// [VendorLifecycleNotificationReadRepository.fetchPendingForVendor].
@@ -121,8 +122,11 @@ class VendorNotificationOperatorContext {
 /// fan-out. Production binds this to a Postgres-backed lookup that
 /// reads the operator's business name + the vendor catalog entry
 /// for the picker URL; tests pin a fixed map.
-typedef VendorNotificationContextResolver = Future<VendorNotificationOperatorContext>
-    Function({required String operatorId, required String vendorId});
+typedef VendorNotificationContextResolver =
+    Future<VendorNotificationOperatorContext> Function({
+      required String operatorId,
+      required String vendorId,
+    });
 
 /// Repository seam — read pending notifications. Production binds
 /// this to a Postgres query against `vendor_lifecycle_notification`
@@ -140,9 +144,7 @@ abstract class VendorLifecycleNotificationReadRepository {
   ///
   /// The dispatcher walks one operator at a time so the operator-
   /// leading index on the table stays engaged.
-  Future<List<String>> pendingOperatorIdsForVendor({
-    required String vendorId,
-  });
+  Future<List<String>> pendingOperatorIdsForVendor({required String vendorId});
 
   /// Returns every pending notification for `(operatorId, vendorId)`.
   /// Production query:
@@ -161,48 +163,40 @@ abstract class VendorLifecycleNotificationReadRepository {
     required String operatorId,
     required String vendorId,
   });
-
-  /// Stamp `notified_at = now()` on the row whose primary key matches
-  /// [notificationId]. The operator id is required so production can
-  /// run the UPDATE inside an `OperatorScopedRepository.withTenant`
-  /// transaction without a cross-tenant escape.
-  Future<void> markNotified({
-    required String operatorId,
-    required String notificationId,
-    required DateTime stampedAt,
-  });
 }
 
-/// Repository seam — enqueue rows into `email_outbox`. Production
-/// binds this to a Postgres INSERT that runs in the same transaction
-/// as the matching [VendorLifecycleNotificationReadRepository.markNotified]
-/// call so a partial failure rolls back both halves; tests pass an
-/// in-memory fake.
+/// Repository seam - claim a pending notification row and enqueue the
+/// matching `email_outbox` row. Production does both operations inside
+/// one transaction so concurrent promotion calls cannot duplicate an
+/// email for the same pending row.
 abstract class EmailOutboxEnqueueRepository {
-  /// Insert one row into `public.email_outbox`. The dispatcher fills
-  /// every column required for the send + the per-tenant claim index.
+  /// Claims [notification] by stamping `notified_at`, then inserts one
+  /// row into `public.email_outbox`. Returns false when another
+  /// concurrent caller already claimed the same pending notification.
+  ///
+  /// The dispatcher fills every column required for the send + the
+  /// per-tenant claim index.
   /// Production binds this to:
   ///
-  ///     INSERT INTO public.email_outbox (
-  ///       email_id, operator_id, recipient_email,
-  ///       recipient_display_name, template_id, template_data,
-  ///       scheduled_for, status, attempt_count
-  ///     ) VALUES (
-  ///       gen_random_uuid(), @operator_id, @recipient_email,
-  ///       @recipient_display_name, @template_id, @template_data,
-  ///       now(), 'pending', 0
-  ///     );
+  ///     UPDATE public.vendor_lifecycle_notification
+  ///        SET notified_at = @notified_at
+  ///      WHERE notification_id = @notification_id
+  ///        AND operator_id = @operator_id
+  ///        AND notified_at IS NULL
+  ///      RETURNING notification_id;
+  ///
+  ///     INSERT INTO public.email_outbox (...)
   ///
   /// The dispatcher does not block on the write; the
   /// `email_outbox_notify_trg` trigger on the table fires
   /// `pg_notify('email_outbox', ...)` and the existing
   /// [EmailOutboxDispatcher] picks up the row on the next claim.
-  Future<void> enqueue({
-    required String operatorId,
+  Future<bool> claimAndEnqueue({
+    required PendingVendorNotification notification,
     required String templateId,
-    required String recipientEmail,
     required String? recipientDisplayName,
     required Map<String, String> templateData,
+    required DateTime stampedAt,
   });
 }
 
@@ -233,11 +227,11 @@ class VendorLifecycleNotificationDispatchOutcome {
   final int notificationsSkipped;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'vendor_id': vendorId,
-        'operators_touched': operatorsTouched,
-        'notifications_enqueued': notificationsEnqueued,
-        'notifications_skipped': notificationsSkipped,
-      };
+    'vendor_id': vendorId,
+    'operators_touched': operatorsTouched,
+    'notifications_enqueued': notificationsEnqueued,
+    'notifications_skipped': notificationsSkipped,
+  };
 }
 
 /// Pure orchestrator. Construction is dependency-injected so tests
@@ -258,11 +252,11 @@ class VendorLifecycleNotificationDispatcher {
     required VendorNotificationContextResolver contextResolver,
     VendorLifecycleEventFanoutSeam? eventFanout,
     DateTime Function()? now,
-  })  : _notificationRepository = notificationRepository,
-        _outboxRepository = outboxRepository,
-        _contextResolver = contextResolver,
-        _eventFanout = eventFanout,
-        _now = now ?? DateTime.now;
+  }) : _notificationRepository = notificationRepository,
+       _outboxRepository = outboxRepository,
+       _contextResolver = contextResolver,
+       _eventFanout = eventFanout,
+       _now = now ?? DateTime.now;
 
   final VendorLifecycleNotificationReadRepository _notificationRepository;
   final EmailOutboxEnqueueRepository _outboxRepository;
@@ -312,8 +306,7 @@ class VendorLifecycleNotificationDispatcher {
     var totalSkipped = 0;
 
     for (final operatorId in operatorIds) {
-      final pending =
-          await _notificationRepository.fetchPendingForVendor(
+      final pending = await _notificationRepository.fetchPendingForVendor(
         operatorId: operatorId,
         vendorId: vendorId,
       );
@@ -355,22 +348,21 @@ class VendorLifecycleNotificationDispatcher {
               eventKey: kVendorNowAvailableEventKey,
               dedupeKeyPrefix:
                   'notif.vendor.now_available:$operatorId:$vendorId',
-              pushTitle: '${operatorContext.vendorDisplayName} is now '
+              pushTitle:
+                  '${operatorContext.vendorDisplayName} is now '
                   'available',
-              pushBody: 'You can connect '
+              pushBody:
+                  'You can connect '
                   '${operatorContext.vendorDisplayName} from the '
                   'integrations console.',
               emailTemplateId: EmailTemplateIds.vendorNowAvailable,
               emailTemplateData: <String, String>{
                 'vendorName': operatorContext.vendorDisplayName,
                 'businessName': operatorContext.operatorBusinessName,
-                'integrationConsoleUrl':
-                    operatorContext.integrationConsoleUrl,
+                'integrationConsoleUrl': operatorContext.integrationConsoleUrl,
               },
               deeplink: operatorContext.integrationConsoleUrl,
-              pushData: <String, Object?>{
-                'vendor_id': vendorId,
-              },
+              pushData: <String, Object?>{'vendor_id': vendorId},
             ),
           );
         } catch (_) {
@@ -392,23 +384,23 @@ class VendorLifecycleNotificationDispatcher {
         final perRowData = <String, String>{
           ...templateData,
           'recipientName': recipientName,
+          'idempotency_key':
+              'vendor_lifecycle_notification:${notification.notificationId}',
         };
 
         try {
-          await _outboxRepository.enqueue(
-            operatorId: operatorId,
+          final enqueued = await _outboxRepository.claimAndEnqueue(
+            notification: notification,
             templateId: EmailTemplateIds.vendorNowAvailable,
-            recipientEmail: notification.recipientEmail,
-            recipientDisplayName: notification.recipientDisplayName ??
+            recipientDisplayName:
+                notification.recipientDisplayName ??
                 operatorContext.recipientDisplayName,
             templateData: perRowData,
-          );
-          await _notificationRepository.markNotified(
-            operatorId: operatorId,
-            notificationId: notification.notificationId,
             stampedAt: _now().toUtc(),
           );
-          totalEnqueued += 1;
+          if (enqueued) {
+            totalEnqueued += 1;
+          }
         } catch (_) {
           // Any enqueue failure leaves notified_at NULL so the next
           // tick / call retries the row. A single bad row does not
@@ -444,8 +436,7 @@ class VendorLifecycleNotificationDispatcher {
     }
     final email = notification.recipientEmail;
     final atIndex = email.indexOf('@');
-    final localPart =
-        atIndex > 0 ? email.substring(0, atIndex) : email;
+    final localPart = atIndex > 0 ? email.substring(0, atIndex) : email;
     if (localPart.isEmpty) return 'there';
     return localPart;
   }
