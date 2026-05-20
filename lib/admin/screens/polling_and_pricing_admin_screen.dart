@@ -307,6 +307,28 @@ class _PollingAndPricingAdminScreenState
 
   String? get _scopeRestrictionCopy => _scopePolicy.restrictionCopy(_scope);
 
+  List<TierAssignmentAdminRow> get _selectedScopeAssignments {
+    final scope = _scope;
+    if (scope == null) return _assignments;
+    return _assignments
+        .where(
+          (row) => _includesOperatorLocation(
+            scope,
+            operatorId: row.operatorRef.operatorId,
+            locationId: row.operatorRef.locationId,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  int get _selectedScopeLocationCount {
+    final scope = _scope;
+    if (scope == null) return _assignments.length;
+    final scopeIds = widget.scopeLocationIds;
+    if (scopeIds != null && scopeIds.isNotEmpty) return scopeIds.length;
+    return _selectedScopeAssignments.length;
+  }
+
   /// Mirrors PR #485's `admin_timing_scope_inheritance_notice` gate
   /// (`admin_timing_setup_screen.dart:164-182`): at a non-location
   /// scope where exactly one location lives under the scope, return
@@ -318,20 +340,8 @@ class _PollingAndPricingAdminScreenState
   String? get _singleCoveredLocationName {
     final scope = _scope;
     if (scope == null || scope.isLocationScope) return null;
-    final scopedAssignments = _assignments
-        .where(
-          (row) => _includesOperatorLocation(
-            scope,
-            operatorId: row.operatorRef.operatorId,
-            locationId: row.operatorRef.locationId,
-          ),
-        )
-        .toList(growable: false);
-    final scopeIds = widget.scopeLocationIds;
-    final coveredCount = (scopeIds != null && scopeIds.isNotEmpty)
-        ? scopeIds.length
-        : scopedAssignments.length;
-    if (coveredCount != 1) return null;
+    final scopedAssignments = _selectedScopeAssignments;
+    if (_selectedScopeLocationCount != 1) return null;
     if (scopedAssignments.isEmpty) return null;
     return scopedAssignments.first.operatorRef.locationName;
   }
@@ -467,7 +477,7 @@ class _PollingAndPricingAdminScreenState
 
   Future<void> _onAssignSelectedScope() async {
     if (!_scopeMutationEnabled) return;
-    final rows = _filteredAssignments;
+    final rows = _selectedScopeAssignments;
     if (rows.isEmpty) return;
     final scope = _scope!;
     final result = await showDialog<_TierAssignmentDraft>(
@@ -476,7 +486,7 @@ class _PollingAndPricingAdminScreenState
         row: rows.first,
         definitions: _definitions,
         title: 'Assign polling setup to ${scope.displayLabel}',
-        scopeLocationCount: rows.length,
+        scopeLocationCount: _selectedScopeLocationCount,
       ),
     );
     if (result == null) return;
@@ -675,7 +685,7 @@ class _PollingAndPricingAdminScreenState
             const SizedBox(height: 16),
             _ScopedPollingActionCard(
               scope: _scope!,
-              locationCount: _filteredAssignments.length,
+              locationCount: _selectedScopeLocationCount,
               onPressed: _onAssignSelectedScope,
             ),
           ],
@@ -817,7 +827,7 @@ class _PollingAndPricingAdminScreenState
     return widget.editingEnabled &&
         scope != null &&
         !scope.isLocationScope &&
-        _filteredAssignments.isNotEmpty;
+        _selectedScopeAssignments.isNotEmpty;
   }
 
   AdminDataAccuracyMutationScopeType _mutationScopeType(

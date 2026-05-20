@@ -74,6 +74,12 @@ void main() {
         'service_period_key': servicePeriodKey,
         'covers_source': coversSource,
         'wage_source': wageSource,
+        'covers_source_source': <String, Object?>{
+          'scope_type': 'location',
+          'source_kind': 'service_period_setting',
+          'scope_id': 'loc-1',
+          'setting_id': 'period-setting-1',
+        },
         'effective_at_business_date': effectiveAtBusinessDate,
         'created_at': '2026-05-07T12:00:00Z',
         'updated_at': '2026-05-07T12:01:00Z',
@@ -160,6 +166,7 @@ void main() {
         ServicePeriodCoversSource.reservationPlusWalkin,
       );
       expect(setting.wageSource, ServicePeriodWageSource.targetSubstitution);
+      expect(setting.coversSourceSource?.label, 'Location setting');
       expect(setting.effectiveAtBusinessDate, '2026-05-07');
       final request = capturedRequests.single;
       expect(request.method, 'GET');
@@ -170,6 +177,40 @@ void main() {
       );
       expect(request.url.path.contains('/admin/'), isFalse);
       expect(request.headers['authorization'], 'Bearer demo-id-token');
+    });
+
+    test('loads effective polling tier from operator-scoped path', () async {
+      final gateway = buildGateway(
+        responses: <Map<String, Object?>>[
+          <String, Object?>{
+            'assignment': <String, Object?>{
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'tier_key': 'premium',
+              'polling_cadence_per_vendor_seconds': <String, Object?>{
+                'quickbooks_time': 120,
+              },
+              'monthly_price_cents': 2900,
+              'effective_at': '2026-05-20T12:00:00Z',
+            },
+          },
+        ],
+      );
+
+      final tier = await gateway.loadPollingTierAssignment(
+        operatorId: 'op-1',
+        locationId: 'loc-1',
+      );
+
+      expect(tier?.tierKey, 'premium');
+      expect(tier?.monthlyPriceCents, 2900);
+      expect(tier?.pollingCadencePerVendorSeconds['quickbooks_time'], 120);
+      final request = capturedRequests.single;
+      expect(request.method, 'GET');
+      expect(
+        request.url.path,
+        '/v1/operators/op-1/locations/loc-1/polling_tier_assignment',
+      );
     });
 
     test('saves full settings payload through PATCH', () async {
@@ -248,6 +289,40 @@ void main() {
           'clear': true,
         });
         expect(json.containsKey('covers'), isFalse);
+        expect(request.headers['idempotency-key'], isNotNull);
+      },
+    );
+
+    test(
+      'saves one manual covers slot through explicit PATCH intent',
+      () async {
+        final gateway = buildGateway(
+          responses: <Map<String, Object?>>[settingsPayload()],
+        );
+
+        await gateway.saveManualCovers(
+          operatorId: 'op-1',
+          locationId: 'loc-1',
+          businessDateIso: '2026-05-06',
+          servicePeriodKey: 'dinner',
+          covers: 118,
+        );
+
+        final request = capturedRequests.single;
+        expect(request.method, 'PATCH');
+        expect(
+          request.url.path,
+          '/v1/operators/op-1/locations/loc-1/data_accuracy_settings/'
+          'manual_covers',
+        );
+        final json = jsonDecode(request.body) as Map<String, Object?>;
+        expect(json, <String, Object?>{
+          'business_date': '2026-05-06',
+          'service_period_key': 'dinner',
+          'covers': 118,
+        });
+        expect(json.containsKey('covers_source_per_service_period'), isFalse);
+        expect(json.containsKey('covers_source_lunch'), isFalse);
         expect(request.headers['idempotency-key'], isNotNull);
       },
     );
@@ -334,7 +409,7 @@ void main() {
       final json = jsonDecode(request.body) as Map<String, Object?>;
       expect(json['service_period_key'], 'breakfast');
       expect(json['covers_source'], 'reservation_plus_walkin');
-      expect(json['wage_source'], 'target_substitution');
+      expect(json.containsKey('wage_source'), isFalse);
       expect(json['effective_at_business_date'], '2026-05-07');
       expect(request.headers['idempotency-key'], isNotNull);
     });

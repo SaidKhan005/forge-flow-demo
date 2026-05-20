@@ -21,6 +21,7 @@ import 'package:forge_and_flow/operator_web/services/demo_team_hierarchy_gateway
 import 'package:forge_and_flow/operator_web/services/demo_team_users_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/demo_vendor_connections_fixtures.dart';
 import 'package:forge_and_flow/operator_web/services/business_timing_gateway.dart';
+import 'package:forge_and_flow/operator_web/services/operator_web_data_accuracy_gateway.dart';
 import 'package:forge_and_flow/operator_web/services/operator_web_team_gateway_providers.dart';
 import 'package:forge_and_flow/operator_web/services/web_business_timing_gateway.dart';
 import 'package:forge_and_flow/operator_web/widgets/keyed_service_period_accuracy_card.dart';
@@ -1721,6 +1722,26 @@ class _StubDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
   ) async => settings;
 
   @override
+  Future<DataAccuracySettings> saveManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required int covers,
+  }) async => DataAccuracySettings(
+    settingId: 'stub-setting',
+    operatorId: operatorId,
+    locationId: locationId,
+    coversSourcePerServicePeriod: const <String, CoversSource>{},
+    coversManualEntries: <String, Map<String, int>>{
+      businessDateIso: <String, int>{servicePeriodKey: covers},
+    },
+    wageSource: WageSource.vendor,
+    createdAt: DateTime.utc(2026, 5, 16),
+    updatedAt: DateTime.utc(2026, 5, 16),
+  );
+
+  @override
   Future<DataAccuracySettings> clearManualCovers({
     required String operatorId,
     required String locationId,
@@ -1742,6 +1763,12 @@ class _StubDataAccuracyGateway implements OperatorWebDataAccuracyGateway {
     required String operatorId,
     required String locationId,
   }) async => const <DataAccuracyServicePeriodSetting>[];
+
+  @override
+  Future<OperatorWebPollingTierSnapshot?> loadPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  }) async => null;
 
   @override
   Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({
