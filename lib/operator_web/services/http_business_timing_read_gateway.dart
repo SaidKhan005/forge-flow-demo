@@ -290,7 +290,7 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
         effective.resolvedScope == BusinessTimingScope.location ||
         candidates.any((c) => c.scopeType == 'location');
     final deepest = candidates.last;
-    final effectiveDateLabel = 'Effective ${deepest.effectiveAtBusinessDate}';
+    final effectiveDateLabel = 'Active from ${deepest.effectiveAtBusinessDate}';
 
     return BusinessTimingBundle(
       operatorId: operatorId,
@@ -430,16 +430,16 @@ class HttpBusinessTimingReadGateway implements BusinessTimingGateway {
   }
 
   static String _scopeSummary(BusinessTimingResolutionCandidate c) {
-    final effective = 'Effective ${c.effectiveAtBusinessDate}.';
+    final activeFrom = 'Active from ${c.effectiveAtBusinessDate}.';
     switch (c.scopeType) {
       case 'operator':
-        return 'Default timing for the operator. $effective';
+        return 'Default timing for the operator. $activeFrom';
       case 'org_unit':
-        return 'Org-unit override. $effective';
+        return 'Org-unit override. $activeFrom';
       case 'location':
-        return 'Location override. $effective';
+        return 'Location override. $activeFrom';
     }
-    return effective;
+    return activeFrom;
   }
 
   static int _weekStartToInt(String value) {

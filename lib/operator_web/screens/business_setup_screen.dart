@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/business_timing_gateway.dart';
 import '../widgets/hierarchy_tree_visualization.dart';
+import '../widgets/operator_web_section_heading.dart';
 
 // G7d (spec §2.B/§3): v2 catalog constants. Phantom
 // `'operator_admin'` dropped (folded into `operator_owner`).
@@ -115,14 +116,14 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
         key: const Key('operator_web_business_timing_safe_dialog'),
         backgroundColor: AppColors.backgroundSurface,
         title: Text(
-          'Timing edits are read-only here',
+          'Timing changes are unavailable here',
           style: AppTextStyles.display20(color: AppColors.textPrimary),
         ),
         content: SizedBox(
           width: 420,
           child: Text(
             '$actionLabel is disabled in this demo preview. You can review '
-            'the timezone, business-day start, and service periods here, '
+            'the timezone, business day start, and service periods here, '
             'but this demo run does not save Business setup timing changes. '
             'Use a connected preview or staging run to test real saves. '
             'Nothing was changed.',
@@ -216,11 +217,10 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           const SizedBox(height: 18),
           if (widget._canEditTiming)
             _TimingEditControls(
-              bundle: bundle,
               onEdit:
                   widget.onEditTiming ??
                   () => _showSafeTimingDialog('Edit timing'),
-              onSchedule: () => _showSafeTimingDialog('Schedule timing'),
+              onSchedule: () => _showSafeTimingDialog('Schedule future timing'),
               onReset: null,
             )
           else
@@ -231,7 +231,7 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
           // for) the textual card below, per HP #11.
           HierarchyTreeVisualization(
             keyName: 'operator_web_business_setup_hierarchy_tree',
-            headline: 'Hierarchy for this location',
+            headline: 'Where this location sits',
             nodes: _hierarchyTreeNodesFromBundle(bundle),
             dataGapExplainer: _treeDataGapForBundle(bundle),
           ),
@@ -358,13 +358,11 @@ String? _treeDataGapForBundle(BusinessTimingBundle bundle) {
 
 class _TimingEditControls extends StatelessWidget {
   const _TimingEditControls({
-    required this.bundle,
     required this.onEdit,
     required this.onSchedule,
     required this.onReset,
   });
 
-  final BusinessTimingBundle bundle;
   final VoidCallback onEdit;
   final VoidCallback onSchedule;
   final VoidCallback? onReset;
@@ -380,16 +378,10 @@ class _TimingEditControls extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: 10,
+        runSpacing: 10,
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
-          _TimingStatusPill(
-            label: bundle.writesAvailable ? 'Live editor' : 'Read-only preview',
-            color: bundle.writesAvailable
-                ? AppColors.peacockDark
-                : AppColors.sunsetDark,
-          ),
           OutlinedButton.icon(
             key: const Key('operator_web_business_timing_edit_button'),
             onPressed: onEdit,
@@ -398,15 +390,21 @@ class _TimingEditControls extends StatelessWidget {
             ),
             icon: const Icon(Icons.edit_outlined, size: 20),
             label: Text(
-              'Edit Time Settings',
+              'Edit time settings',
               style: AppTextStyles.display16(color: AppColors.textPrimary),
             ),
           ),
           OutlinedButton.icon(
             key: const Key('operator_web_business_timing_schedule_button'),
             onPressed: onSchedule,
-            icon: const Icon(Icons.event_outlined, size: 15),
-            label: const Text('Schedule timing'),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+            ),
+            icon: const Icon(Icons.event_outlined, size: 20),
+            label: Text(
+              'Schedule future timing',
+              style: AppTextStyles.display16(color: AppColors.textPrimary),
+            ),
           ),
           if (onReset != null)
             OutlinedButton.icon(
@@ -440,7 +438,7 @@ class _ReadOnlyTimingBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'You can view effective timing. Operator owners and admins '
+              'You can view this location\'s timing. Operator owners and admins '
               'manage timing changes.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
@@ -460,8 +458,7 @@ class _InheritanceCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _TimingPanel(
       keyName: 'operator_web_business_timing_inheritance_card',
-      title: 'Inheritance',
-      icon: Icons.account_tree_outlined,
+      title: 'Where timing comes from',
       child: Column(
         children: [
           for (final scope in bundle.inheritanceChain) ...[
@@ -487,8 +484,7 @@ class _EffectiveTimingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return _TimingPanel(
       keyName: 'operator_web_business_timing_effective_card',
-      title: 'Effective timing',
-      icon: Icons.schedule_outlined,
+      title: 'Timing in use',
       child: Column(
         children: [
           for (final field in bundle.effectiveFields)
@@ -512,7 +508,6 @@ class _ServicePeriodsCard extends StatelessWidget {
     return _TimingPanel(
       keyName: 'operator_web_business_timing_periods_card',
       title: 'Service periods',
-      icon: Icons.segment_outlined,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -537,13 +532,11 @@ class _TimingPanel extends StatelessWidget {
   const _TimingPanel({
     required this.keyName,
     required this.title,
-    required this.icon,
     required this.child,
   });
 
   final String keyName;
   final String title;
-  final IconData icon;
   final Widget child;
 
   @override
@@ -559,20 +552,7 @@ class _TimingPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(icon, size: 18, color: AppColors.sunsetDark),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  style: AppTextStyles.sectionTitle(
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
+          OperatorWebSectionHeading(title: title),
           const SizedBox(height: 14),
           child,
         ],

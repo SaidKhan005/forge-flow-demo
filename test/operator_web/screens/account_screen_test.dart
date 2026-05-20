@@ -238,11 +238,15 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const Key('operator_web_account_legacy_rollover_readonly')),
+      find.byKey(
+        const Key('operator_web_account_business_day_rollover_readonly'),
+      ),
       findsOneWidget,
     );
     expect(
-      find.textContaining('Edit business-day start in Business Timing'),
+      find.byKey(
+        const Key('operator_web_account_rollover_business_timing_link'),
+      ),
       findsOneWidget,
     );
     expect(find.byKey(const Key('operator_web_account_save')), findsOneWidget);
@@ -737,15 +741,48 @@ void main() {
       );
       expect(find.textContaining('Week starts Monday'), findsWidgets);
       expect(
-        find.textContaining('Edit this in Business Timing'),
+        find.byKey(
+          const Key('operator_web_account_week_start_business_timing_link'),
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('Legacy rollover is'), findsWidgets);
+      expect(find.textContaining('Business day rollover is'), findsWidgets);
       expect(find.textContaining('04:00 local'), findsWidgets);
       expect(
-        find.textContaining('Edit business-day start in Business Timing'),
+        find.textContaining('Sales before that time count'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('Business Timing links call back to the router', (
+      tester,
+    ) async {
+      await _sizeViewport(tester);
+      final session = sessionWithRole('operator_owner');
+      var opened = 0;
+      await tester.pumpWidget(
+        wrap(
+          AccountScreen(
+            session: session,
+            gateway: _FakeAccountGateway(),
+            selectedScope: businessScope,
+            onOpenBusinessTiming: () => opened += 1,
+          ),
+        ),
+      );
+
+      await tester.ensureVisible(
+        find.byKey(
+          const Key('operator_web_account_rollover_business_timing_link'),
+        ),
+      );
+      await tester.tap(
+        find.byKey(
+          const Key('operator_web_account_rollover_business_timing_link'),
+        ),
+      );
+
+      expect(opened, 1);
     });
   });
 }
