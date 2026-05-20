@@ -16,6 +16,8 @@ import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 /// Returns true if [ts] looks like a UTC ISO 8601 string.
 ///
 /// Accepts both trailing 'Z' and '+00:00' offset forms.
@@ -29,9 +31,7 @@ void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // ── A: Shared helper returns a UTC ISO timestamp ──────────────────────────
 

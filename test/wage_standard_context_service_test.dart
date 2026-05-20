@@ -22,10 +22,10 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // ── A: Config fallback when no rows ─────────────────────────────────────
 

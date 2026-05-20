@@ -44,12 +44,12 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/operator_web/services/demo_team_fixtures.dart';
 import 'package:forge_and_flow/state/restaurant_scope_notifier.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 const String _kDemoFourPeriodRestaurantId = 'demo_restaurant_four_period';
 
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   group('Slice A — mobile multi-location seed (restaurant_locations)', () {
     test(

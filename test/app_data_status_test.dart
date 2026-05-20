@@ -18,10 +18,10 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // â”€â”€ A: no_data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

@@ -25,6 +25,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/models/current_week_state.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   Future<void> ensureCurrentWeekSnapshot() async {
     final snapshot = await WeeklyPlanSnapshotService.instance
@@ -38,9 +40,7 @@ void main() {
     );
   }
 
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // â”€â”€ A: Fixture replay seeds current/open state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

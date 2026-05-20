@@ -24,10 +24,10 @@ import 'package:forge_and_flow/domain/services/target_cycle_active_target_profil
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   group('Per-Daypart V1 demo fidelity — demo seed per-period cycle rows', () {
     test(

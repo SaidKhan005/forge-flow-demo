@@ -31,6 +31,8 @@ import 'package:forge_and_flow/dev/demo_vendor_integration_state_fixture.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   final allDemoIds = DemoScope.locations.map((l) => l.restaurantId).toList();
   // Fix A (operator decision 2026-05-16): a "none connected" demo
@@ -47,9 +49,7 @@ void main() {
   const downtown = DemoScope.restaurantId;
 
   group('Demo-data — per-location operational envelope', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('open_shift_snapshots — per-location historical closed coverage; '
         'every location has its own live open row', () async {

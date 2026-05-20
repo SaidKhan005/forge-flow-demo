@@ -22,13 +22,13 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
+import '_test_helpers/sqlite_demo_helpers.dart';
+
 void main() {
   // ── A: SQLite-backed read paths after reseed ──────────────────────────
 
   group('A — SQLite-backed read paths after reseed', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('getLiveWeekToDate reads from SQLite, not demo constants', () async {
       final wtd = await ShiftService.instance.getLiveWeekToDate();
@@ -84,9 +84,7 @@ void main() {
   // ── B: LiveShiftDataSource routes through ShiftService ──────────────────
 
   group('B — LiveShiftDataSource is the production path', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('LiveShiftDataSource.getWeekToDate delegates to ShiftService',
         () async {
@@ -193,9 +191,7 @@ void main() {
   // ── E: Replay reseed drives all surfaces through persisted state ────────
 
   group('E — reseed-driven persisted state integrity', () {
-    setUp(() async {
-      await SqliteDatabase.instance.reseedDemo();
-    });
+    setUp(setUpSqliteDemo);
 
     test('open_shift_snapshots populated after reseed', () async {
       final snapshots = await SqliteOpenShiftSnapshotRepository.instance

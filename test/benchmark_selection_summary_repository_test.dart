@@ -9,15 +9,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:forge_and_flow/domain/models/benchmark_selection_summary.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
+
+import '_test_helpers/sqlite_demo_helpers.dart';
 
 void main() {
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
-  setUp(() async {
-    await SqliteDatabase.instance.reseedDemo();
-  });
+  setUp(setUpSqliteDemo);
 
   // ── A: Basic repository CRUD ───────────────────────────────────────────
 
