@@ -25,6 +25,12 @@ const String _opA = '11111111-1111-1111-1111-111111111111';
 const String _locA = '22222222-2222-2222-2222-222222222222';
 const String _locB = '33333333-3333-3333-3333-333333333333';
 
+// Deterministic clock so the screen's default 7-day from/to window
+// always brackets the seeded row timestamps. Without this the test
+// drifts when run after 12:00 UTC on the 7-day rollover (the default
+// `from` shifts past the row's 12:00 UTC occurredAt).
+DateTime _testClock() => DateTime.utc(2026, 5, 14, 12);
+
 void main() {
   // Resize the surface for every test so the dense filter row +
   // results list have room to lay out without RenderFlex overflow
@@ -116,7 +122,7 @@ void main() {
       ],
     );
     await tester.pumpWidget(
-      wrap(AuditLogAdminScreen(gateway: gateway)),
+      wrap(AuditLogAdminScreen(gateway: gateway, clock: _testClock)),
     );
     await tester.enterText(
       find.byKey(const Key('admin_audit_log_admin_reason')),
@@ -244,7 +250,7 @@ void main() {
       ],
     );
     await tester.pumpWidget(
-      wrap(AuditLogAdminScreen(gateway: gateway)),
+      wrap(AuditLogAdminScreen(gateway: gateway, clock: _testClock)),
     );
     await tester.enterText(
       find.byKey(const Key('admin_audit_log_admin_reason')),

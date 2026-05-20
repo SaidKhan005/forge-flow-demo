@@ -210,11 +210,21 @@ void main() {
 
     test('Operator-web wage scope fixture mirrors the mobile HP #11 story',
         () {
+      // HP #11 hierarchy resolution: a location-scoped row wins; if no
+      // location-scoped row exists for the bucket, fall back to the
+      // operator-wide (business-default) cohort. The fixture stores
+      // the business default with `locationId == ''`.
       double blendFor(String locationId, String bucket) {
-        final rows = kDemoWageRoleRowScopeFixture
+        var rows = kDemoWageRoleRowScopeFixture
             .where((r) =>
                 r.locationId == locationId && r.laborBucket == bucket)
             .toList();
+        if (rows.isEmpty) {
+          // Inherit from operator-wide business default (locationId='').
+          rows = kDemoWageRoleRowScopeFixture
+              .where((r) => r.locationId == '' && r.laborBucket == bucket)
+              .toList();
+        }
         var n = 0.0;
         var d = 0.0;
         for (final r in rows) {
