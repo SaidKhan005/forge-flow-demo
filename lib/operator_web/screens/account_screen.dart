@@ -1546,7 +1546,12 @@ class _BusinessIdentitySection extends StatelessWidget {
           // route accepts both; the schema's NULL columns inherit
           // the business default.
           const SizedBox(height: 14),
-          const _AccountSubheading(title: 'Contact'),
+          _AccountSubheading(
+            title: 'Contact',
+            body: scopeIsLocation
+                ? 'If blank here, this location inherits the Business contact.'
+                : 'Locations inherit this contact unless they set their own.',
+          ),
           const SizedBox(height: 10),
           TextField(
             key: const Key('operator_web_account_contact_email'),
