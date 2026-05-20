@@ -20,6 +20,46 @@ import 'package:forge_and_flow/admin/services/demo_members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/demo_roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
+// never-settling timer flake (the dominant flake shape in this repo per
+// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
+// which exceeds the longest legitimate animation/route transition in
+// this screen's flow. If a future expectation needs more time, prefer a
+// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
+// rather than widening this default.
+Future<void> pumpEventually(
+  WidgetTester tester, {
+  int frames = 20,
+  Duration step = const Duration(milliseconds: 50),
+}) async {
+  for (int i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
+// Polling form: pumps until [condition] returns true, or fails loudly
+// with the exhausted-time budget once [maxIterations] is reached. Use
+// this when the test asserts a specific condition right after the
+// settle (e.g. a dialog has mounted, a snackbar has rendered).
+Future<void> pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  Duration step = const Duration(milliseconds: 50),
+  int maxIterations = 60,
+}) async {
+  for (int i = 0; i < maxIterations; i++) {
+    if (condition()) return;
+    await tester.pump(step);
+  }
+  expect(
+    condition(),
+    isTrue,
+    reason:
+        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
+        'budget waiting for condition.',
+  );
+}
+
 void main() {
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -84,7 +124,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_audited_support_actions_screen')),
@@ -142,7 +182,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_asa_audit_row_seed-diner-1')),
@@ -193,7 +233,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.text('Dana Owner - Owner - owner@demo-diner.test'),
@@ -217,7 +257,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final button = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
@@ -240,7 +280,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final button = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
@@ -262,7 +302,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final button = tester.widget<OutlinedButton>(
         find.byKey(const Key('admin_asa_action_erasure_btn')),
@@ -286,7 +326,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_asa_readonly_banner')),
@@ -338,15 +378,15 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final passwordResetButton = find.byKey(
         const Key('admin_asa_action_password_reset_btn'),
       );
       await tester.ensureVisible(passwordResetButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(passwordResetButton);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.text(
@@ -377,7 +417,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
@@ -385,7 +425,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Member picker opens.
         expect(
@@ -395,11 +435,11 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_asa_member_picker_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Reason dialog opens; submit empty first to assert the guard.
         await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         expect(find.text('Add a reason before continuing.'), findsOneWidget);
 
         await tester.enterText(
@@ -407,7 +447,7 @@ void main() {
           'walkthrough verification',
         );
         await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(gateway.capturedAdminActionLog, hasLength(1));
         final entry = gateway.capturedAdminActionLog.single;
@@ -441,18 +481,18 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.ensureVisible(
         find.byKey(const Key('admin_asa_action_reset_mfa_btn')),
       );
       await tester.tap(find.byKey(const Key('admin_asa_action_reset_mfa_btn')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_asa_member_picker_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_asa_reason_cancel')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(gateway.capturedAdminActionLog, isEmpty);
     });
@@ -473,7 +513,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(find.byKey(const Key('admin_asa_filter_actor')), findsOneWidget);
         expect(
@@ -521,7 +561,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.ensureVisible(
         find.byKey(
@@ -533,12 +573,12 @@ void main() {
           const Key('admin_asa_filter_action_admin.session.force_logout'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.ensureVisible(
         find.byKey(const Key('admin_asa_filter_apply')),
       );
       await tester.tap(find.byKey(const Key('admin_asa_filter_apply')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Only the admin.session.force_logout fixture row remains.
       expect(
@@ -569,7 +609,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Hidden by default.
       expect(
@@ -578,9 +618,9 @@ void main() {
       );
       // Open the time-window dropdown and pick Custom range.
       await tester.tap(find.byKey(const Key('admin_asa_filter_time_window')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('Custom range').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_asa_filter_custom_from')),
@@ -624,16 +664,16 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.ensureVisible(
         find.byKey(const Key('admin_asa_audit_row_copy_target_seed-diner-3')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(
         find.byKey(const Key('admin_asa_audit_row_copy_target_seed-diner-3')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(calls, equals(<String>['session-diner-owner-mobile']));
     });
@@ -652,7 +692,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Default: payload hidden.
       expect(
@@ -669,7 +709,7 @@ void main() {
           const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
@@ -684,7 +724,7 @@ void main() {
           const Key('admin_asa_audit_row_payload_toggle_seed-diner-3'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(
         find.byKey(const Key('admin_asa_audit_row_payload_seed-diner-3')),
         findsNothing,
@@ -732,7 +772,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // First page: 200 rows; Load more visible.
         expect(
@@ -758,7 +798,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_asa_audit_log_load_more')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // After Load more: row 200+ visible, button is gone (no more rows).
         expect(
@@ -838,7 +878,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Chip is hidden before any erasure runs.
       expect(
@@ -851,15 +891,15 @@ void main() {
         find.byKey(const Key('admin_asa_action_erasure_btn')),
       );
       await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_asa_member_picker_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_asa_reason_field')),
         'walkthrough verification',
       );
       await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Chip is mounted, label shows the countdown, and the
       // Reverse button is enabled while inside the window.
@@ -907,23 +947,23 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('admin_asa_action_erasure_btn')),
         );
         await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(
           find.byKey(const Key('admin_asa_member_picker_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.enterText(
           find.byKey(const Key('admin_asa_reason_field')),
           'walkthrough verification',
         );
         await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Chip mounted past the 24h boundary - shows "Erasure final"
         // and offers no reverse affordance.
@@ -963,23 +1003,23 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.ensureVisible(
           find.byKey(const Key('admin_asa_action_erasure_btn')),
         );
         await tester.tap(find.byKey(const Key('admin_asa_action_erasure_btn')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(
           find.byKey(const Key('admin_asa_member_picker_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.enterText(
           find.byKey(const Key('admin_asa_reason_field')),
           'walkthrough verification',
         );
         await tester.tap(find.byKey(const Key('admin_asa_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(gateway.reverseCallCount, equals(0));
         await tester.ensureVisible(
@@ -988,7 +1028,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_asa_grace_window_chip_reverse')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(gateway.reverseCallCount, equals(1));
         // Chip clears once the reverse outcome lands.
@@ -1039,7 +1079,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final texts = tester.widgetList<Text>(find.byType(Text));
       for (final t in texts) {
