@@ -104,6 +104,29 @@ const String operatorBusinessTimingProfilesPath =
 const String operatorBusinessTimingProfilePrefix =
     '$operatorBusinessTimingProfilesPath/';
 
+const Set<String> kImmutableBusinessTimingProfilePatchFields = <String>{
+  'scopeKind',
+  'scopeId',
+  'ianaTimezone',
+};
+
+BusinessTimingValidationError? rejectBusinessTimingProfileImmutablePatchFields(
+  Map<String, Object?> body,
+) {
+  for (final field in kImmutableBusinessTimingProfilePatchFields) {
+    if (!body.containsKey(field)) continue;
+    return BusinessTimingValidationError(
+      code: 'immutable_business_timing_profile_field',
+      message:
+          '$field cannot be changed via business timing profile PATCH; '
+          'use the dedicated route for that setting',
+      path: '/$field',
+      extras: <String, Object?>{'field': field},
+    );
+  }
+  return null;
+}
+
 /// Fix #4 / S1 — dedicated operator-web location-scoped business-timing
 /// resolution route. GET only, read-only, no Idempotency-Key. Returns
 /// the FULL canonical candidate chain (operator default -> org-unit
@@ -810,6 +833,12 @@ class OperatorWriteRouter {
       );
     }
     final existingValidated = _toValidated(existing);
+    final immutableError = rejectBusinessTimingProfileImmutablePatchFields(
+      body,
+    );
+    if (immutableError != null) {
+      return (statusCode: 400, body: immutableError.toJson());
+    }
     final ValidatedBusinessTimingProfile merged;
     try {
       merged = validateProfilePatch(body: body, existing: existingValidated);

@@ -521,6 +521,9 @@ const Map<String, Object?> kObservabilityAdminDemoEnvelope = <String, Object?>{
         'next_attempt_at': '2026-05-03T12:15:00.000Z',
         'created_at': '2026-05-03T11:45:00.000Z',
         'updated_at': '2026-05-03T12:00:00.000Z',
+        'claimability_state': 'waiting',
+        'claimability_label': 'Waiting',
+        'is_claimable': false,
         'input_hash':
             '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
         'last_error_class': 'StateError',
@@ -548,6 +551,9 @@ const Map<String, Object?> kObservabilityAdminDemoEnvelope = <String, Object?>{
         'dead_lettered_at': '2026-05-03T11:55:00.000Z',
         'created_at': '2026-05-03T09:00:00.000Z',
         'updated_at': '2026-05-03T11:55:00.000Z',
+        'claimability_state': 'dead_lettered',
+        'claimability_label': 'Dead-lettered',
+        'is_claimable': false,
         'input_hash':
             'abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789',
         'last_error_class': 'CanonicalFactProjectionPreInputFailure',

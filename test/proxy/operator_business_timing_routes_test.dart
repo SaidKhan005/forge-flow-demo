@@ -288,6 +288,42 @@ void main() {
       });
     });
 
+    for (final patchCase in const <({String field, Object? value})>[
+      (field: 'scopeKind', value: 'operator'),
+      (field: 'scopeId', value: _kOpA),
+      (field: 'ianaTimezone', value: 'America/Vancouver'),
+    ]) {
+      test('PATCH profile - 400 immutable ${patchCase.field}', () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            ctx.gateway.seedProfile(_kProfileA);
+            final response = await _httpJson(
+              ctx.client,
+              ctx.baseUri.resolve(
+                '$operatorBusinessTimingProfilePrefix$_kProfileA',
+              ),
+              method: 'PATCH',
+              idempotencyKey: 'idem-immutable-${patchCase.field}',
+              body: <String, Object?>{patchCase.field: patchCase.value},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['error'],
+              equals('immutable_business_timing_profile_field'),
+            );
+            expect(body['field'], equals(patchCase.field));
+            expect(ctx.gateway.updateCalls, equals(0));
+            expect(ctx.audit.records, isEmpty);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      });
+    }
+
     test('PATCH profile - 404 when profile does not exist', () async {
       await withRealHttp(() async {
         final ctx = await spinUp();

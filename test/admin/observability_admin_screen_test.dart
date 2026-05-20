@@ -769,6 +769,9 @@ void main() {
       ),
       findsOneWidget,
     );
+    expect(find.text('Pending'), findsOneWidget);
+    expect(find.text('Waiting'), findsWidgets);
+    expect(find.text('Dead-lettered'), findsWidgets);
     expect(find.textContaining('service period missing'), findsOneWidget);
     expect(find.textContaining('0 closed / 1 open'), findsOneWidget);
     expect(find.textContaining('Before projector input'), findsOneWidget);
