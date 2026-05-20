@@ -575,10 +575,24 @@ Future<void> _migrateToV38(Database db) async {
 }
 
 Future<void> _migrateToV39(Database db) async {
+  // V38-era caches that pre-date target_profile_versions /
+  // active_target_profiles never installed those tables; on those
+  // older shapes the cache schema upgrade is a no-op for V39 and the
+  // tables will be created in full at next initial-create or seed.
+  // Guard with _tableExists so the ALTER + UPDATE do not blow up.
+  if (!await _tableExists(db, 'target_profile_versions')) {
+    return;
+  }
   if (!await _columnExists(db, 'target_profile_versions', 'target_cycle_id')) {
     await db.execute(
       'ALTER TABLE target_profile_versions ADD COLUMN target_cycle_id TEXT',
     );
+  }
+  if (!await _tableExists(db, 'active_target_profiles')) {
+    // The cycle-id backfill JOINs active_target_profiles; if that
+    // companion table is absent the freshly-added column simply stays
+    // null until a new seed lands.
+    return;
   }
   await db.execute('''
     UPDATE target_profile_versions
@@ -601,6 +615,12 @@ Future<void> _migrateToV39(Database db) async {
 }
 
 Future<void> _migrateToV40(Database db) async {
+  // Skip when the upstream restaurant_timing_configs table does not
+  // exist on the legacy cache shape — initial create installs the
+  // table with the V40 columns already present.
+  if (!await _tableExists(db, 'restaurant_timing_configs')) {
+    return;
+  }
   const columns = <String>[
     'selected_scope_type TEXT',
     'selected_scope_id TEXT',

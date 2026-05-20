@@ -34,6 +34,16 @@ const String _prePopLocId = 'ee000000-0000-0000-0000-000000000002';
 const String _prePopUserId = 'ee000000-0000-0000-0000-000000000003';
 
 void main() {
+  // Skipped when POSTGRES_TEST_URL is not set (default unit-test loop).
+  // Tagged `postgres` so CI's `--tags=postgres` job (which sets the env
+  // var to a live container) still picks these up.
+  final skipReason = (Platform.environment['POSTGRES_TEST_URL'] ?? '')
+          .trim()
+          .isEmpty
+      ? 'requires live Postgres (POSTGRES_TEST_URL not set); '
+            'run via `flutter test --tags=postgres`'
+      : null;
+
   test(
     'Test 1: fresh DB — apply all pending migrations with no SQL errors',
     () async {
@@ -52,6 +62,7 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 5)),
     tags: <String>['postgres'],
+    skip: skipReason,
   );
 
   test(
@@ -111,6 +122,7 @@ void main() {
     },
     timeout: const Timeout(Duration(minutes: 10)),
     tags: <String>['postgres'],
+    skip: skipReason,
   );
 
   test(

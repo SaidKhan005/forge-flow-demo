@@ -29,6 +29,23 @@ import 'package:forge_and_flow/infrastructure/kms/kms_stub_provider.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
+  // Resize the surface so the full provider grid (Anthropic / Voyage /
+  // Azure DB / Gemini / SendGrid) fits without offscreen overflow.
+  // Without this the Gemini rotate button sits below the default test
+  // viewport and tester.tap() warns + misses.
+  setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    final dispatcher = TestWidgetsFlutterBinding.instance.platformDispatcher;
+    dispatcher.views.first.physicalSize = const Size(1600, 2400);
+    dispatcher.views.first.devicePixelRatio = 1.0;
+  });
+
+  tearDown(() {
+    final dispatcher = TestWidgetsFlutterBinding.instance.platformDispatcher;
+    dispatcher.views.first.resetPhysicalSize();
+    dispatcher.views.first.resetDevicePixelRatio();
+  });
+
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
     theme: AppTheme.themeData,

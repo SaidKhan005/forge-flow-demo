@@ -22,6 +22,8 @@
 //      the true regression guard. Counts the audit_log flip events and
 //      asserts exactly 1.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/adp_postgres_sink.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
@@ -157,6 +159,16 @@ void main() {
 
   // ── Live Postgres variant — actual concurrent transactions ──────────
 
+  // Skipped when POSTGRES_TEST_URL is not set (default unit-test loop).
+  // The `tags: ['postgres']` selector remains for CI's --tags=postgres
+  // run, which sets POSTGRES_TEST_URL to a live container.
+  final skipReason = (Platform.environment['POSTGRES_TEST_URL'] ?? '')
+          .trim()
+          .isEmpty
+      ? 'requires live Postgres (POSTGRES_TEST_URL not set); '
+            'run via `flutter test --tags=postgres` with a container'
+      : null;
+
   group('Demo-flip race — live Postgres (regression guard)', () {
     test(
       'two concurrent flip calls result in exactly ONE flip event in '
@@ -259,6 +271,7 @@ void main() {
       },
       tags: <String>['postgres'],
       timeout: const Timeout(Duration(minutes: 2)),
+      skip: skipReason,
     );
   });
 }

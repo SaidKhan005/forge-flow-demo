@@ -566,16 +566,24 @@ void main() {
   });
 
   group('Phase 10a plan alignment with event_outbox contract', () {
-    final plan = File(
+    // Phase 10a plan was archived (Wave 8 consolidation, 2026-05) once
+    // the design landed. The alignment assertions stay live against the
+    // archived doc so a future Phase 10a implementer cannot rebuild
+    // the old direct-NOTIFY bridge.
+    final activePlan = File(
       'docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md',
     );
+    final archivedPlan = File(
+      'docs/archive/phases/phase_10a/phase_10a_shared_state_v1_plan.md',
+    );
+    final plan = activePlan.existsSync() ? activePlan : archivedPlan;
 
     setUpAll(() {
       expect(
         plan.existsSync(),
         isTrue,
-        reason: 'Phase 10a plan doc must exist for the cross-doc '
-            'alignment check',
+        reason: 'Phase 10a plan doc must exist (live or archived) for '
+            'the cross-doc alignment check',
       );
     });
 
