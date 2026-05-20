@@ -148,6 +148,13 @@ void main() {
           findsOneWidget,
         );
         expect(
+          find.descendant(
+            of: find.byKey(const Key('operator_web_nav_item_schedule')),
+            matching: find.text('Plan'),
+          ),
+          findsOneWidget,
+        );
+        expect(
           find.byKey(const Key('operator_web_nav_item_business_setup')),
           findsOneWidget,
         );

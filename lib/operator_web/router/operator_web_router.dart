@@ -1309,7 +1309,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
     final navItems = <OperatorWebNavItem>[
       const OperatorWebNavItem(
         id: kOperatorWebNavSchedule,
-        title: 'Schedule',
+        title: 'Plan',
         icon: Icons.calendar_today_outlined,
         group: 'Operations',
       ),
@@ -1752,7 +1752,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             title: 'Choose a location',
             body:
                 'Forge & Flow locks one weekly plan per location. Use '
-                'Managing to pick the location whose schedule you want '
+                'Managing to pick the location whose plan you want '
                 'to see.',
             selectedScopeLabel: managementScope.label,
           );

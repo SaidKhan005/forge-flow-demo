@@ -19,10 +19,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   Future<void> sizeViewport(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1280, 900);
@@ -36,19 +36,18 @@ void main() {
   OperatorWebSession sessionWith({
     List<String> roles = const <String>['operator_owner'],
     Set<String> permissions = const <String>{},
-  }) =>
-      OperatorWebSession(
-        uid: 'demo-uid',
-        email: 'alex@brio-restaurants.com',
-        displayName: 'Alex Morrison',
-        operatorId: 'demo-operator',
-        businessName: 'Brio Restaurants',
-        primaryLocationId: 'demo-location',
-        primaryLocationName: 'Brio Main Street',
-        roles: roles,
-        permissions: permissions,
-        mfaEnrolled: false,
-      );
+  }) => OperatorWebSession(
+    uid: 'demo-uid',
+    email: 'alex@brio-restaurants.com',
+    displayName: 'Alex Morrison',
+    operatorId: 'demo-operator',
+    businessName: 'Brio Restaurants',
+    primaryLocationId: 'demo-location',
+    primaryLocationName: 'Brio Main Street',
+    roles: roles,
+    permissions: permissions,
+    mfaEnrolled: false,
+  );
 
   ScheduleSnapshot makeSnapshot({ScheduleForecastContext? context}) {
     final lockedAt = DateTime.utc(2026, 5, 3, 12);
@@ -72,15 +71,15 @@ void main() {
         for (var i = 0; i < 7; i++)
           ScheduleSnapshotDay(
             day: const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][i],
-            businessDate:
-                '2026-05-${(4 + i).toString().padLeft(2, '0')}',
+            businessDate: '2026-05-${(4 + i).toString().padLeft(2, '0')}',
             forecastCovers: 175,
             forecastSales: 6675.0,
             requiredFohHours: 36,
             requiredBohHours: 28,
           ),
       ],
-      forecastContext: context ??
+      forecastContext:
+          context ??
           ScheduleForecastContext(
             forecastContextId: 'ctx-1',
             weekStartDate: '2026-05-04',
@@ -105,57 +104,12 @@ void main() {
   }
 
   group('ScheduleScreen', () {
-    testWidgets(
-      'renders the week header, daily rows, and explainer panel',
-      (tester) async {
-        await sizeViewport(tester);
-        final session = sessionWith();
-        final gateway =
-            OperatorWebDemoScheduleGateway(seed: makeSnapshot());
-        await tester.pumpWidget(
-          wrap(
-            ScheduleScreen(
-              session: session,
-              locationId: session.primaryLocationId ?? '',
-              locationName: session.primaryLocationName,
-              gateway: gateway,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(find.byKey(const Key('schedule_screen')), findsOneWidget);
-        expect(find.textContaining('Week of May 4'), findsOneWidget);
-        // 7 daily rows + totals.
-        expect(
-          find.byKey(const Key('schedule_screen_daily_table')),
-          findsOneWidget,
-        );
-        for (var i = 0; i < 7; i++) {
-          final date = '2026-05-${(4 + i).toString().padLeft(2, '0')}';
-          expect(find.byKey(Key('schedule_screen_day_row_$date')), findsOneWidget);
-        }
-        expect(
-          find.byKey(const Key('schedule_screen_totals')),
-          findsOneWidget,
-        );
-        // Explainer renders the rich panel, not the thin-history fallback.
-        expect(
-          find.byKey(const Key('schedule_forecast_explainer_panel')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('schedule_forecast_explainer_thin_history')),
-          findsNothing,
-        );
-      },
-    );
-
-    testWidgets('renders permission-denied banner for actors without a read role',
-        (tester) async {
+    testWidgets('renders the week header, daily rows, and explainer panel', (
+      tester,
+    ) async {
       await sizeViewport(tester);
-      final session = sessionWith(roles: const <String>[]);
-      final gateway =
-          OperatorWebDemoScheduleGateway(seed: makeSnapshot());
+      final session = sessionWith();
+      final gateway = OperatorWebDemoScheduleGateway(seed: makeSnapshot());
       await tester.pumpWidget(
         wrap(
           ScheduleScreen(
@@ -167,18 +121,66 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('schedule_screen_permission_denied')),
-        findsOneWidget,
-      );
-      // Daily table must NOT render when permission is denied.
+      expect(find.byKey(const Key('schedule_screen')), findsOneWidget);
+      expect(find.text('Plan'), findsOneWidget);
+      expect(find.textContaining('Week of May 4'), findsOneWidget);
+      expect(find.textContaining('Each row is the plan you'), findsNothing);
+      // 7 daily rows + totals.
       expect(
         find.byKey(const Key('schedule_screen_daily_table')),
+        findsOneWidget,
+      );
+      for (var i = 0; i < 7; i++) {
+        final date = '2026-05-${(4 + i).toString().padLeft(2, '0')}';
+        expect(
+          find.byKey(Key('schedule_screen_day_row_$date')),
+          findsOneWidget,
+        );
+      }
+      expect(find.byKey(const Key('schedule_screen_totals')), findsOneWidget);
+      // Explainer renders the rich panel, not the thin-history fallback.
+      expect(
+        find.byKey(const Key('schedule_forecast_explainer_panel')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('schedule_forecast_explainer_thin_history')),
         findsNothing,
       );
     });
 
-    testWidgets('renders setup banner when no gateway is wired', (tester) async {
+    testWidgets(
+      'renders permission-denied banner for actors without a read role',
+      (tester) async {
+        await sizeViewport(tester);
+        final session = sessionWith(roles: const <String>[]);
+        final gateway = OperatorWebDemoScheduleGateway(seed: makeSnapshot());
+        await tester.pumpWidget(
+          wrap(
+            ScheduleScreen(
+              session: session,
+              locationId: session.primaryLocationId ?? '',
+              locationName: session.primaryLocationName,
+              gateway: gateway,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.byKey(const Key('schedule_screen_permission_denied')),
+          findsOneWidget,
+        );
+        // Daily table must NOT render when permission is denied.
+        expect(
+          find.byKey(const Key('schedule_screen_daily_table')),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets('renders setup banner when no gateway is wired', (
+      tester,
+    ) async {
       await sizeViewport(tester);
       final session = sessionWith();
       await tester.pumpWidget(
@@ -198,7 +200,9 @@ void main() {
       );
     });
 
-    testWidgets('renders empty banner when gateway returns null', (tester) async {
+    testWidgets('renders empty banner when gateway returns null', (
+      tester,
+    ) async {
       await sizeViewport(tester);
       final session = sessionWith();
       await tester.pumpWidget(
@@ -212,55 +216,51 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(
-        find.byKey(const Key('schedule_screen_empty')),
-        findsOneWidget,
-      );
+      expect(find.byKey(const Key('schedule_screen_empty')), findsOneWidget);
     });
 
-    testWidgets(
-      'renders thin-history fallback when context is unavailable',
-      (tester) async {
-        await sizeViewport(tester);
-        final session = sessionWith();
-        final snapshot = makeSnapshot(
-          context: ScheduleForecastContext(
-            forecastContextId: 'ctx-1',
-            weekStartDate: '2026-05-04',
-            weekEndDate: '2026-05-10',
-            coversSource: 'unavailable',
-            builtAt: DateTime.utc(2026, 5, 3, 12),
-            targetPpa: 0,
-            forecastSales: 0,
-            requiredFohHours: 0,
-            requiredBohHours: 0,
-            theoreticalLaborDollars: 0,
-            baselineWeeksRepresented: 14 / 7,
+    testWidgets('renders thin-history fallback when context is unavailable', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final session = sessionWith();
+      final snapshot = makeSnapshot(
+        context: ScheduleForecastContext(
+          forecastContextId: 'ctx-1',
+          weekStartDate: '2026-05-04',
+          weekEndDate: '2026-05-10',
+          coversSource: 'unavailable',
+          builtAt: DateTime.utc(2026, 5, 3, 12),
+          targetPpa: 0,
+          forecastSales: 0,
+          requiredFohHours: 0,
+          requiredBohHours: 0,
+          theoreticalLaborDollars: 0,
+          baselineWeeksRepresented: 14 / 7,
+        ),
+      );
+      final gateway = OperatorWebDemoScheduleGateway(seed: snapshot);
+      await tester.pumpWidget(
+        wrap(
+          ScheduleScreen(
+            session: session,
+            locationId: session.primaryLocationId ?? '',
+            locationName: session.primaryLocationName,
+            gateway: gateway,
           ),
-        );
-        final gateway = OperatorWebDemoScheduleGateway(seed: snapshot);
-        await tester.pumpWidget(
-          wrap(
-            ScheduleScreen(
-              session: session,
-              locationId: session.primaryLocationId ?? '',
-              locationName: session.primaryLocationName,
-              gateway: gateway,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('schedule_forecast_explainer_thin_history')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const Key('schedule_forecast_explainer_panel')),
-          findsNothing,
-        );
-        expect(find.textContaining('14 days'), findsOneWidget);
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('schedule_forecast_explainer_thin_history')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('schedule_forecast_explainer_panel')),
+        findsNothing,
+      );
+      expect(find.textContaining('14 days'), findsOneWidget);
+    });
 
     testWidgets('renders error banner when gateway throws', (tester) async {
       await sizeViewport(tester);
@@ -287,8 +287,9 @@ void main() {
         await sizeViewport(tester);
         final session = sessionWith();
         // Loaded state with a snapshot.
-        final loadedGateway =
-            OperatorWebDemoScheduleGateway(seed: makeSnapshot());
+        final loadedGateway = OperatorWebDemoScheduleGateway(
+          seed: makeSnapshot(),
+        );
         await tester.pumpWidget(
           wrap(
             ScheduleScreen(
@@ -310,19 +311,21 @@ void main() {
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('schedule_screen_hierarchy_scope_inherited_row')),
+          find.byKey(
+            const Key('schedule_screen_hierarchy_scope_inherited_row'),
+          ),
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('schedule_screen_hierarchy_scope_effective_row')),
+          find.byKey(
+            const Key('schedule_screen_hierarchy_scope_effective_row'),
+          ),
           findsOneWidget,
         );
         // Backend-only carve-out explainer renders for forward-looking
         // inheritance coverage.
         expect(
-          find.byKey(
-            const Key('schedule_screen_hierarchy_scope_backend_only'),
-          ),
+          find.byKey(const Key('schedule_screen_hierarchy_scope_backend_only')),
           findsOneWidget,
         );
         // Plain-English copy (no engineering jargon).
