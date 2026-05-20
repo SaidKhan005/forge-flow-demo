@@ -23,6 +23,46 @@ import 'package:forge_and_flow/admin/services/members_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/roles_hierarchy_sessions_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
+// Bounded pump loop: replaces unbounded `tester.pumpAndSettle()` to avoid
+// never-settling timer flake (the dominant flake shape in this repo per
+// docs/KNOWN_FAILING_TESTS.md). 20 frames * 50ms == 1s of virtual time,
+// which exceeds the longest legitimate animation/route transition in
+// this screen's flow. If a future expectation needs more time, prefer a
+// `pumpUntil(tester, () => find.X.evaluate().isNotEmpty)` polling form
+// rather than widening this default.
+Future<void> pumpEventually(
+  WidgetTester tester, {
+  int frames = 20,
+  Duration step = const Duration(milliseconds: 50),
+}) async {
+  for (int i = 0; i < frames; i++) {
+    await tester.pump(step);
+  }
+}
+
+// Polling form: pumps until [condition] returns true, or fails loudly
+// with the exhausted-time budget once [maxIterations] is reached. Use
+// this when the test asserts a specific condition right after the
+// settle (e.g. a dialog has mounted, a snackbar has rendered).
+Future<void> pumpUntil(
+  WidgetTester tester,
+  bool Function() condition, {
+  Duration step = const Duration(milliseconds: 50),
+  int maxIterations = 60,
+}) async {
+  for (int i = 0; i < maxIterations; i++) {
+    if (condition()) return;
+    await tester.pump(step);
+  }
+  expect(
+    condition(),
+    isTrue,
+    reason:
+        'pumpUntil exhausted ${maxIterations * step.inMilliseconds}ms '
+        'budget waiting for condition.',
+  );
+}
+
 void main() {
   Widget wrap(Widget child) => MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -67,7 +107,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.byKey(const Key('admin_members_table')), findsOneWidget);
       expect(
@@ -129,12 +169,12 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_members_filter_mfa')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('Not enrolled').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Owner has MFA on; everyone else (manager / supervisor / archived)
       // is unenrolled.
@@ -166,7 +206,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Type a multi-character query character-by-character (the
         // previous bug recreated the controller on every parent
@@ -182,10 +222,10 @@ void main() {
                     .text +
                 char,
           );
-          await tester.pumpAndSettle();
+          await pumpEventually(tester);
         }
         await tester.pump(const Duration(milliseconds: 350));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Final typed value matches and the table is filtered to the
         // single matching row.
@@ -222,13 +262,13 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_filter_search')),
         'Mira',
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_members_row_demo-user-diner-manager')),
@@ -257,7 +297,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(gateway.listMembersCalls, 1);
 
@@ -280,7 +320,7 @@ void main() {
       expect(gateway.listMembersCalls, 1);
 
       await tester.pump(const Duration(milliseconds: 350));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(gateway.listMembersCalls, 2);
       expect(gateway.searches.last, 'Mira');
@@ -309,7 +349,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // The archived row exposes Restore; active rows do NOT.
         expect(
@@ -346,7 +386,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(
           find.byKey(
@@ -408,20 +448,20 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(
         find.byKey(
           const Key('admin_members_action_override_role_demo-user-diner-owner'),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(
         find.byKey(const Key('admin_members_override_role_select')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('Floor Captain').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_members_override_role_reason')),
         'support-ticket-custom-role',
@@ -429,7 +469,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_members_override_role_submit')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         gateway.lastOverrideRoleId,
@@ -456,7 +496,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(
           find.byKey(const Key('admin_members_readonly_banner')),
@@ -521,14 +561,14 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(
           find.byKey(
             const Key('admin_members_action_suspend_demo-user-diner-owner'),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Reason dialog should be visible.
         expect(
@@ -538,7 +578,7 @@ void main() {
 
         // Submit empty - the locked validation copy renders.
         await tester.tap(find.byKey(const Key('admin_members_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         expect(find.text('Add a reason before continuing.'), findsOneWidget);
 
         await tester.enterText(
@@ -546,7 +586,7 @@ void main() {
           'support-ticket-1234',
         );
         await tester.tap(find.byKey(const Key('admin_members_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         final events = gateway.capturedAuditEvents;
         expect(events, hasLength(1));
@@ -580,14 +620,14 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(
           find.byKey(
             const Key('admin_members_action_edit_name_demo-user-diner-owner'),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         expect(
           find.byKey(const Key('admin_members_display_name_dialog')),
           findsOneWidget,
@@ -604,7 +644,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_members_display_name_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(find.text('Diner Owner Updated'), findsWidgets);
         final events = gateway.capturedAuditEvents;
@@ -640,14 +680,14 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(
           find.byKey(
             const Key('admin_members_action_edit_name_demo-user-diner-owner'),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         expect(
           find.byKey(const Key('admin_members_display_name_dialog')),
           findsOneWidget,
@@ -673,7 +713,7 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_members_display_name_submit')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         expect(find.text('Diner Owner Updated'), findsWidgets);
         expect(find.text('diner.new@example.test'), findsWidgets);
@@ -704,17 +744,17 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(
           find.byKey(
             const Key('admin_members_action_suspend_demo-user-diner-owner'),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(find.byKey(const Key('admin_members_reason_cancel')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Dialog dismissed without writing.
         expect(
@@ -742,10 +782,10 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.tap(find.byKey(const Key('admin_members_invite_button')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         await tester.enterText(
           find.byKey(const Key('admin_members_invite_email')),
@@ -756,21 +796,21 @@ void main() {
           'Casey Coach',
         );
         await tester.tap(find.byKey(const Key('admin_members_invite_role')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(find.text('General Manager').last);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(
           find.byKey(const Key('admin_members_invite_location')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(find.text('Toronto Yorkville').last);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.enterText(
           find.byKey(const Key('admin_members_invite_admin_reason')),
           'support-onboarding',
         );
         await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         final invites = await gateway.listInvites(
           operatorId: kDemoDinerOperatorId,
@@ -813,10 +853,10 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_members_invite_button')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
         'regional@demo-diner.test',
@@ -826,19 +866,19 @@ void main() {
         'Riley Regional',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('General Manager').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.byKey(const Key('admin_members_invite_location')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('Business / Demo Diner Co.').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_admin_reason')),
         'regional manager onboarding',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       final invites = await gateway.listInvites(
         operatorId: kDemoDinerOperatorId,
@@ -871,7 +911,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Demo seed has one pending invite for `newhire@demo-diner.test`.
         expect(
@@ -883,9 +923,9 @@ void main() {
           const Key('admin_members_invite_cancel_demo-invite-diner-1'),
         );
         await tester.ensureVisible(cancelButton);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.tap(cancelButton);
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Plain-English confirmation step + admin-reason gate fan
         // out the call only after the operator confirms intent and
@@ -894,13 +934,13 @@ void main() {
         await tester.tap(
           find.byKey(const Key('admin_members_cancel_invite_confirm_button')),
         );
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
         await tester.enterText(
           find.byKey(const Key('admin_members_reason_field')),
           'wrong email, resending',
         );
         await tester.tap(find.byKey(const Key('admin_members_reason_submit')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Row vanished from the pending list and the audit event
         // carries the proxy-pinned event name `invite.cancel` with
@@ -991,16 +1031,16 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_members_invite_button')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
         'owner@demo-diner.test',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.text(
@@ -1016,7 +1056,7 @@ void main() {
       await tester.tap(
         find.byKey(const Key('admin_members_invite_show_existing_email')),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_members_invite_dialog')),
@@ -1067,10 +1107,10 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('open_dialog')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Email address is required.'), findsOneWidget);
       expect(captured, isNull);
@@ -1100,14 +1140,14 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('open_dialog')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
         'taken@op.test',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.text(
@@ -1140,14 +1180,14 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('open_dialog')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
         'new@op.test',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Choose a role for this member.'), findsOneWidget);
     });
@@ -1193,7 +1233,7 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('open_dialog')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
@@ -1204,15 +1244,15 @@ void main() {
         'Business Invite',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('General Manager').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_admin_reason')),
         'support-onboarding',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(captured, isNotNull);
       expect(captured!.scopeType, equals('operator_wide'));
@@ -1264,7 +1304,7 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('open_dialog')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
@@ -1275,15 +1315,15 @@ void main() {
         'Regional Invite',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('General Manager').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_admin_reason')),
         'support-onboarding',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(captured, isNotNull);
       expect(captured!.scopeType, equals('org_unit'));
@@ -1336,7 +1376,7 @@ void main() {
           ),
         );
         await tester.tap(find.byKey(const Key('open_dialog')));
-        await tester.pumpAndSettle();
+        await pumpEventually(tester);
 
         // Picker mounts under the legacy location-field key so existing
         // tests + screen wiring keep working.
@@ -1418,7 +1458,7 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const Key('open_dialog')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_email')),
@@ -1429,23 +1469,23 @@ void main() {
         'Pat Location',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_role')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('General Manager').last);
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       // Pick Loc 2 in the hierarchy tree. Scroll it into view first
       // in case the dialog content has overflowed the test viewport.
       await tester.ensureVisible(find.text('Loc 2'));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       await tester.tap(find.text('Loc 2'));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       await tester.enterText(
         find.byKey(const Key('admin_members_invite_admin_reason')),
         'support-onboarding',
       );
       await tester.tap(find.byKey(const Key('admin_members_invite_submit')));
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(captured, isNotNull);
       expect(captured!.scopeType, equals('location'));
@@ -1480,7 +1520,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(
         find.byKey(const Key('admin_people_access_scope_card')),
@@ -1516,7 +1556,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
 
       expect(find.text('Selected org unit scope'), findsOneWidget);
       expect(find.text('Demo Diner Co. / East Region'), findsOneWidget);
@@ -1552,7 +1592,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await pumpEventually(tester);
       expect(tester.takeException(), isNull);
       // Both header buttons render side by side without collision.
       expect(
