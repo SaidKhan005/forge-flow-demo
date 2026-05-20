@@ -1287,7 +1287,7 @@ Migration count: **145**
   Q3.2 Locked: physical rollup tables are the operator-facing default
   storage form. Materialized views are internal helpers only and
   MUST NOT be exposed as operator-facing truth (the test in
-  `test/phase_9_0sigma_k_rollups_test.dart` asserts every grain in
+  `test/phase_9_0sigma_k_migration_and_schema_shape_test.dart` asserts every grain in
   this slice is a real table, not a materialized view).
 
   Q3.3 Locked: the grain set is `daypart`, `business_day`, `week`,

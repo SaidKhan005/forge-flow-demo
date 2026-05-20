@@ -1,7 +1,7 @@
 // Phase 9.0Σ.k — rollup worker models.
 //
 // Pure data shapes shared by `rollup_worker.dart` and the matching
-// test in `test/phase_9_0sigma_k_rollups_test.dart`. The file is
+// test in `test/phase_9_0sigma_k_migration_and_schema_shape_test.dart`. The file is
 // intentionally I/O-free and has no `package:postgres` import so it
 // can live above the persistence layer (CLAUDE.md: only files under
 // `lib/infrastructure/persistence/postgres/` may import the driver).
