@@ -1164,12 +1164,12 @@ as the MFA hardening sub-slice
 - `9.UX.0` **accepted** (commit `97b519c`) — auth + team + account
   shell: branded login, team management, account section, MFA challenge
   entry, permission resolution wiring across `forge_flow_app.dart` /
-  `barrio_app.dart`. Walkthrough: `docs/archive/_walkthroughs/9.UX.0.md`.
+  `barrio_app.dart`. Walkthrough: `docs/_walkthroughs/9.UX.0.md`.
 - `9.UX.1` **accepted** (commits `509e7bc`, `9cb1e42`, `3a11c57`,
   `78337de`, `b7b61f5`) — MFA self-enrollment + factor management via
   `settings_mfa_section.dart`. Recovery-code UX removed for launch;
   lost-authenticator support routes through admin reset. Walkthrough:
-  `docs/archive/_walkthroughs/9.UX.1.md`.
+  `docs/_walkthroughs/9.UX.1.md`.
 - `9.UX.1a` **accepted (folded into `9.UX.1`)** — MFA production
   hardening: backend-scheduled 24h removals, fresh-auth + opaque proof
   for self/admin reset, admin-help queued-false copy and cooldown, no
@@ -1182,7 +1182,7 @@ as the MFA hardening sub-slice
 - `9.UX.account-info` **accepted** (commits `0119025`, `57979b8`) —
   read-only My info tile in Account section; self-scoped
   `GET /v1/auth/account` contract; safe fallback while backend profile
-  refreshes. Walkthrough: `docs/archive/_walkthroughs/9.UX.account-info.md`.
+  refreshes. Walkthrough: `docs/_walkthroughs/9.UX.account-info.md`.
   Operational gate **satisfied** (2026-05-01) — staging proxy
   revision `forge-flow-staging-proxy-00032-lgs` reports
   `account_info: postgres` in its boot banner; runbook in
@@ -1194,30 +1194,30 @@ as the MFA hardening sub-slice
   `settings_role_editor.dart`. Consumes B17
   `/v1/admin/auth/roles`. Read-only fallback for `team.roles.view`-only
   actors. PATCH only sends changed permissions per contract test.
-  Walkthrough: `docs/archive/_walkthroughs/9.UX.2.md`.
+  Walkthrough: `docs/_walkthroughs/9.UX.2.md`.
 - `9.UX.3` **accepted** (commit `1eea31d`) — permission explainer
   in `settings_permission_explainer.dart`. Consumes real grant
   payload from `9.UX.grant-payload.0`; falls back to inferred
   `operator_wide` synthesis only when `target.grants` is empty.
   Calls `PermissionResolver.resolve()` for the authoritative final
-  pill. Walkthrough: `docs/archive/_walkthroughs/9.UX.3.md`.
+  pill. Walkthrough: `docs/_walkthroughs/9.UX.3.md`.
 - `9.UX.4` **accepted** (commit `e61a2ee`) — org hierarchy +
   location-scoped grants via `settings_org_hierarchy_section.dart`.
   Reads `org_units` from 9.0Σ.c; operator browses the location tree
   and grants per-location roles. Migration `202604290101`. Walkthrough:
-  `docs/archive/_walkthroughs/9.UX.4.md`.
+  `docs/_walkthroughs/9.UX.4.md`.
 - `9.UX.5` **accepted** (commit `b5345d4`) — active sessions viewer +
   sign-out-all-devices via `settings_active_sessions_section.dart`.
   `listActiveSessions` reads `auth_sessions` through proxy; revoke
   reuses existing B6 routes. Demo gateway with 3 fixture rows.
-  Walkthrough: `docs/archive/_walkthroughs/9.UX.5.md`.
+  Walkthrough: `docs/_walkthroughs/9.UX.5.md`.
 - `9.UX.6` **accepted** (commit `a56fdac`) — self-service Audit Log
   viewer in `settings_audit_log_section.dart`. Reads
   `auth_events_audit` actor-scoped via `listAuthEventsForActor` on
   the auth-operations gateway; demo fallback seeds 6 fixture rows.
   Repository pins `(operator_id, actor_user_id|target_user_id)`
   with `SET LOCAL app.user_id` for RLS defense. Walkthrough:
-  `docs/archive/_walkthroughs/9.UX.6.md`.
+  `docs/_walkthroughs/9.UX.6.md`.
 - `9.UX.7` **accepted** (commit `3b3b17d`) — self-service password
   reset across `password_reset_request_screen.dart`,
   `password_reset_confirm_screen.dart`,
@@ -1225,7 +1225,7 @@ as the MFA hardening sub-slice
   `web/auth/action/index.html`. Idempotency cache wraps proxy
   request/confirm routes; 350ms latency floor + system-actor audit
   row only on matched users (no email-existence oracle).
-  Walkthrough: `docs/archive/_walkthroughs/9.UX.7.md`. Operational gate
+  Walkthrough: `docs/_walkthroughs/9.UX.7.md`. Operational gate
   **satisfied** (2026-05-01) — staging proxy revision
   `forge-flow-staging-proxy-00032-lgs` reports
   `password_reset_confirm: postgres` in its boot banner; runbook in
@@ -1241,7 +1241,7 @@ as the MFA hardening sub-slice
   `TeamUserListEntry.locationId = coalesce(ur.location_id,
   u.primary_location_id)` is ambiguous between `location` scope and
   `operator_wide` + primary_location. Walkthrough:
-  `docs/archive/_walkthroughs/9.UX.inheritance-hint.0.md`.
+  `docs/_walkthroughs/9.UX.inheritance-hint.0.md`.
 - `9.UX.grant-payload.0` **accepted** (commit `7bc4f4e`) — extends
   the team-users gateway path to project per-grant
   `(scope_type, org_unit_id, location_id, effective_location_ids)`
