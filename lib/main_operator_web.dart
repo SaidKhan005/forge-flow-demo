@@ -42,6 +42,8 @@ import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
 import 'operator_web/demo/operator_web_demo_scenario.dart';
 import 'operator_web/operator_web_app.dart';
+import 'operator_web/services/business_timing_gateway.dart';
+import 'operator_web/services/demo_operator_web_write_gateways.dart';
 import 'operator_web/services/demo_security_gateway.dart';
 import 'operator_web/services/demo_team_audit_log_gateway.dart';
 import 'operator_web/services/demo_team_fixtures.dart';
@@ -49,8 +51,11 @@ import 'operator_web/services/demo_team_hierarchy_gateway.dart';
 import 'operator_web/services/demo_team_roles_gateway.dart';
 import 'operator_web/services/demo_team_sessions_gateway.dart';
 import 'operator_web/services/demo_team_users_gateway.dart';
+import 'operator_web/services/http_business_timing_read_gateway.dart';
 import 'operator_web/services/operator_web_proxy_client.dart';
 import 'operator_web/services/operator_web_team_gateway_providers.dart';
+import 'operator_web/services/web_account_gateway.dart';
+import 'operator_web/services/web_business_timing_gateway.dart';
 import 'operator_web/services/web_security_gateway.dart';
 import 'operator_web/services/web_team_audit_log_gateway.dart';
 import 'operator_web/services/web_team_hierarchy_gateway.dart';
@@ -196,7 +201,6 @@ Future<OperatorWebAuthSource> _resolveAuthSource() async {
   );
 }
 
-
 /// Demo flavor wrapper that mixes
 /// [OperatorWebTeamUsersGatewayProvider] +
 /// [OperatorWebTeamRolesGatewayProvider] +
@@ -222,7 +226,10 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
         OperatorWebTeamHierarchyGatewayProvider,
         OperatorWebTeamSessionsGatewayProvider,
         OperatorWebTeamAuditLogGatewayProvider,
-        OperatorWebSecurityGatewayProvider {
+        OperatorWebSecurityGatewayProvider,
+        OperatorWebAccountGatewayProvider,
+        OperatorWebBusinessTimingGatewayProvider,
+        OperatorWebBusinessTimingWriteGatewayProvider {
   factory _DemoOperatorWebAuthSourceWithTeamSurfaces({
     String scenario = kOperatorWebDemoScenarioDefault,
   }) {
@@ -239,6 +246,8 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
         delay: const Duration(hours: 18),
       );
     }
+    final businessTimingWriteGateway =
+        DemoOperatorWebBusinessTimingWriteGateway();
     return _DemoOperatorWebAuthSourceWithTeamSurfaces._(
       teamUsersGateway: DemoWebTeamUsersGateway(),
       teamRolesGateway: DemoWebTeamRolesGateway(),
@@ -246,6 +255,13 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
       teamSessionsGateway: DemoWebTeamSessionsGateway(),
       teamAuditLogGateway: DemoWebTeamAuditLogGateway(),
       securityGateway: securityGateway,
+      accountGateway: DemoOperatorWebAccountGateway(
+        logoUrl: kDemoOperatorWebPlaceholderLogoUrl,
+      ),
+      businessTimingGateway: HttpBusinessTimingReadGateway(
+        gateway: businessTimingWriteGateway,
+      ),
+      businessTimingWriteGateway: businessTimingWriteGateway,
       initial: initial,
       emitNeedsSignInOnSignOut: emitNeedsSignInOnSignOut,
     );
@@ -258,6 +274,9 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
     required this.teamSessionsGateway,
     required this.teamAuditLogGateway,
     required this.securityGateway,
+    required this.accountGateway,
+    required this.businessTimingGateway,
+    required this.businessTimingWriteGateway,
     required OperatorWebAuthState initial,
     required super.emitNeedsSignInOnSignOut,
   }) : super(initial: initial);
@@ -279,6 +298,15 @@ class _DemoOperatorWebAuthSourceWithTeamSurfaces
 
   @override
   final WebSecurityGateway securityGateway;
+
+  @override
+  final WebAccountGateway accountGateway;
+
+  @override
+  final BusinessTimingGateway businessTimingGateway;
+
+  @override
+  final WebBusinessTimingGateway businessTimingWriteGateway;
 
   /// Demo walkthrough pins the operator-web row to the fixture id so
   /// `(this session)` lights up on a known row. Live mode hydrates
