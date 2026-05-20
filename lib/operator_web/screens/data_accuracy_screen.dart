@@ -157,6 +157,7 @@ class DataAccuracyScreen extends StatefulWidget {
     this.ancestorOrgUnitIdsNearestFirst = const <String>[],
     this.businessName,
     this.servicePeriodsLoader,
+    this.scrollToWageAuthority = false,
   });
 
   final OperatorWebSession session;
@@ -238,6 +239,9 @@ class DataAccuracyScreen extends StatefulWidget {
   /// definitions only when no config is persisted yet.
   final Future<List<ServicePeriodDefinition>> Function()? servicePeriodsLoader;
 
+  /// When opened from Plan, start near the embedded Wage authority section.
+  final bool scrollToWageAuthority;
+
   bool get _canEditDataAccuracy =>
       session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
 
@@ -246,6 +250,7 @@ class DataAccuracyScreen extends StatefulWidget {
 }
 
 class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
+  final GlobalKey _wageAuthoritySectionKey = GlobalKey();
   late VendorConnectionsGateway _gateway;
   VendorConnectionsBundle? _bundle;
   PollingTierStatus? _loadedTierStatus;
@@ -299,10 +304,12 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   WalkInHandlingMode _walkInMode = WalkInHandlingMode.reservationsOnly;
   int? _walkInDailyCount;
   late Map<String, int> _walkInEntries;
+  late bool _pendingInitialWageAuthorityScroll;
 
   @override
   void initState() {
     super.initState();
+    _pendingInitialWageAuthorityScroll = widget.scrollToWageAuthority;
     _gateway = widget.gateway ?? InMemoryVendorConnectionsGateway();
     _applySettingsSeed(widget.initialSettings);
     _settingsLoading = widget.dataAccuracyGateway != null;
@@ -399,6 +406,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   @override
   void didUpdateWidget(covariant DataAccuracyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.scrollToWageAuthority && widget.scrollToWageAuthority) {
+      _pendingInitialWageAuthorityScroll = true;
+    }
     if (oldWidget.gateway != widget.gateway ||
         oldWidget.locationId != widget.locationId ||
         oldWidget.session.operatorId != widget.session.operatorId ||
@@ -431,6 +441,22 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       _loadServicePeriodSettings();
       _loadServicePeriods();
     }
+  }
+
+  void _scheduleWageAuthorityScrollIfNeeded() {
+    if (!_pendingInitialWageAuthorityScroll) return;
+    _pendingInitialWageAuthorityScroll = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final targetContext = _wageAuthoritySectionKey.currentContext;
+      if (targetContext == null) return;
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        alignment: 0.06,
+      );
+    });
   }
 
   Future<void> _loadSettings() async {
@@ -1062,6 +1088,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         (_tierLoading ? null : _kDefaultStandardTier(_bundle));
     final settings = _materialize();
     final locationLabel = _locationLabel();
+    _scheduleWageAuthorityScrollIfNeeded();
     return SingleChildScrollView(
       key: const Key('operator_web_data_accuracy_screen'),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
@@ -1211,25 +1238,31 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           // screen used.
           const _DataAccuracySectionHeading(title: 'Wage authority'),
           const SizedBox(height: 12),
-          Container(
-            key: const Key('operator_web_data_accuracy_wage_authority_section'),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            decoration: BoxDecoration(
-              color: AppColors.backgroundSurface,
-              border: Border.all(color: AppColors.borderSubtle, width: 1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: WageAuthoritySection(
-              session: widget.session,
-              locationId: widget.locationId,
-              locationName: locationLabel,
-              gateway: widget.wageAuthorityGateway,
-              idempotencyKeyFactory: widget.wageAuthorityIdempotencyKeyFactory,
-              hierarchyNodes: widget.hierarchyNodes,
-              ancestorOrgUnitIdsNearestFirst:
-                  widget.ancestorOrgUnitIdsNearestFirst,
-              businessName: widget.businessName,
-              showHeader: false,
+          KeyedSubtree(
+            key: _wageAuthoritySectionKey,
+            child: Container(
+              key: const Key(
+                'operator_web_data_accuracy_wage_authority_section',
+              ),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSurface,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: WageAuthoritySection(
+                session: widget.session,
+                locationId: widget.locationId,
+                locationName: locationLabel,
+                gateway: widget.wageAuthorityGateway,
+                idempotencyKeyFactory:
+                    widget.wageAuthorityIdempotencyKeyFactory,
+                hierarchyNodes: widget.hierarchyNodes,
+                ancestorOrgUnitIdsNearestFirst:
+                    widget.ancestorOrgUnitIdsNearestFirst,
+                businessName: widget.businessName,
+                showHeader: false,
+              ),
             ),
           ),
           const SizedBox(height: 14),

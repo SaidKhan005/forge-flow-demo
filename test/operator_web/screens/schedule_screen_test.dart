@@ -322,10 +322,12 @@ void main() {
           ),
           findsOneWidget,
         );
-        // Backend-only carve-out explainer renders for forward-looking
-        // inheritance coverage.
+        // Backend-only carve-out explainer is available from the heading
+        // help icon for forward-looking inheritance coverage.
         expect(
-          find.byKey(const Key('schedule_screen_hierarchy_scope_backend_only')),
+          find.byKey(
+            const Key('schedule_screen_hierarchy_scope_backend_only_help'),
+          ),
           findsOneWidget,
         );
         // Plain-English copy (no engineering jargon).

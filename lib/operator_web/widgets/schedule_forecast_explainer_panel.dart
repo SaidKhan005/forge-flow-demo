@@ -15,12 +15,18 @@ import 'package:flutter/material.dart';
 
 import '../services/operator_web_schedule_gateway.dart';
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
 import 'operator_web_section_heading.dart';
 
 class ScheduleForecastExplainerPanel extends StatelessWidget {
-  const ScheduleForecastExplainerPanel({super.key, required this.context});
+  const ScheduleForecastExplainerPanel({
+    super.key,
+    required this.context,
+    this.onOpenWageAuthority,
+  });
 
   final ScheduleForecastContext? context;
+  final VoidCallback? onOpenWageAuthority;
 
   @override
   Widget build(BuildContext buildContext) {
@@ -103,8 +109,12 @@ class ScheduleForecastExplainerPanel extends StatelessWidget {
                 label: 'Theoretical labor dollars',
                 value: _money(ctx.theoreticalLaborDollars),
                 caption:
-                    'Required hours costed at your wage authority averages. '
+                    'Required hours costed at your set wages here. '
                     'The dollar bar your actuals are measured against.',
+                captionWidget: const _TheoreticalLaborVisibleCaption(),
+                infoBody: _TheoreticalLaborInfoBody(
+                  onOpenWageAuthority: onOpenWageAuthority,
+                ),
                 isLast: true,
               ),
             ],
@@ -148,6 +158,8 @@ class _ExplainerRow extends StatelessWidget {
     required this.label,
     required this.value,
     required this.caption,
+    this.captionWidget,
+    this.infoBody,
     this.isLast = false,
   });
 
@@ -155,6 +167,8 @@ class _ExplainerRow extends StatelessWidget {
   final String label;
   final String value;
   final String caption;
+  final Widget? captionWidget;
+  final Widget? infoBody;
   final bool isLast;
 
   @override
@@ -170,18 +184,39 @@ class _ExplainerRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(
-                  label,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
+                Row(
+                  children: <Widget>[
+                    Flexible(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppTextStyles.mono14(
+                          color: AppColors.textPrimary,
+                          weight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    OperatorWebInfoButton(
+                      key: Key('${keyName}_help'),
+                      title: label,
+                      tooltip: label,
+                      body:
+                          infoBody ??
+                          Text(
+                            caption,
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  caption,
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                ),
+                if (captionWidget != null) ...<Widget>[
+                  const SizedBox(height: 2),
+                  captionWidget!,
+                ],
               ],
             ),
           ),
@@ -202,6 +237,64 @@ class _ExplainerRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TheoreticalLaborVisibleCaption extends StatelessWidget {
+  const _TheoreticalLaborVisibleCaption();
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      'The dollar bar your actuals are measured against.',
+      style: AppTextStyles.body12(color: AppColors.textMuted),
+    );
+  }
+}
+
+class _TheoreticalLaborInfoBody extends StatelessWidget {
+  const _TheoreticalLaborInfoBody({required this.onOpenWageAuthority});
+
+  final VoidCallback? onOpenWageAuthority;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = AppTextStyles.body12(color: AppColors.textMuted);
+    final linkStyle = style.copyWith(
+      color: AppColors.sunsetDark,
+      decoration: TextDecoration.underline,
+      decorationColor: AppColors.sunsetDark,
+    );
+    final opener = onOpenWageAuthority;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: <Widget>[
+            Text('Required hours costed at your ', style: style),
+            if (opener == null)
+              Text('set wages here.', style: style)
+            else
+              Semantics(
+                link: true,
+                button: true,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(3),
+                  onTap: opener,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 1),
+                    child: Text('set wages here.', style: linkStyle),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text('The dollar bar your actuals are measured against.', style: style),
+      ],
     );
   }
 }

@@ -27,6 +27,7 @@ import '../../theme/app_theme.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../services/operator_web_schedule_gateway.dart';
 import '../widgets/hierarchy_scope_notice.dart';
+import '../widgets/operator_web_info_button.dart';
 import '../widgets/operator_web_section_heading.dart';
 import '../widgets/schedule_forecast_explainer_panel.dart';
 
@@ -50,6 +51,7 @@ class ScheduleScreen extends StatefulWidget {
     required this.locationId,
     required this.locationName,
     this.gateway,
+    this.onOpenWageAuthority,
   });
 
   final OperatorWebSession session;
@@ -60,6 +62,9 @@ class ScheduleScreen extends StatefulWidget {
   /// banner explaining that the schedule is unavailable in the active
   /// session.
   final OperatorWebScheduleGateway? gateway;
+
+  /// Opens the wage source / wage authority area from the forecast explainer.
+  final VoidCallback? onOpenWageAuthority;
 
   @override
   State<ScheduleScreen> createState() => _ScheduleScreenState();
@@ -197,6 +202,8 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 "own history and traffic, so it does not inherit from "
                 "a region or brand. Each location's plan stands on its "
                 "own.",
+            backendOnlyHelpTitle: 'Forecasts and locked plans',
+            showBackendOnlyExplainer: false,
           ),
           if (!_hasReadRole) ...<Widget>[
             const SizedBox(height: 14),
@@ -243,7 +250,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             const SizedBox(height: 18),
             _DailyPlanTable(snapshot: _snapshot!),
             const SizedBox(height: 18),
-            ScheduleForecastExplainerPanel(context: _snapshot!.forecastContext),
+            ScheduleForecastExplainerPanel(
+              context: _snapshot!.forecastContext,
+              onOpenWageAuthority: widget.onOpenWageAuthority,
+            ),
           ],
         ],
       ),
@@ -343,10 +353,27 @@ class _DailyPlanTable extends StatelessWidget {
       children: <Widget>[
         OperatorWebSectionHeading(
           title: 'Daily plan',
-          trailing: Text(
-            'Locked ${_formatLockedAt(snapshot.lockedAt)}',
-            key: const Key('schedule_screen_locked_at'),
-            style: AppTextStyles.body12(color: AppColors.textMuted),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              OperatorWebInfoButton(
+                key: const Key('schedule_screen_daily_plan_help'),
+                title: 'Daily plan',
+                tooltip: 'Daily plan',
+                body: Text(
+                  "The plan is your location's intended staffing for the "
+                  'week. Forge & Flow locks it for one business week so '
+                  'actual results compare against the same plan later.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Locked ${_formatLockedAt(snapshot.lockedAt)}',
+                key: const Key('schedule_screen_locked_at'),
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 10),

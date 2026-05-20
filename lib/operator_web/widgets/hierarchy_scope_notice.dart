@@ -42,16 +42,13 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import 'operator_web_info_button.dart';
+import 'operator_web_section_heading.dart';
 
 /// Hierarchy level at which the screen's values are currently scoped.
 /// Maps to the operator's `hierarchy_path` ltree depth on the proxy
 /// side; the wire labels stay plain-English here.
-enum HierarchyScopeLevel {
-  business,
-  region,
-  brand,
-  location,
-}
+enum HierarchyScopeLevel { business, region, brand, location }
 
 extension on HierarchyScopeLevel {
   String get label {
@@ -82,6 +79,8 @@ class HierarchyScopeNotice extends StatelessWidget {
     required this.effectiveValueSummary,
     this.inheritedFromLabel,
     this.backendOnlyExplainer,
+    this.backendOnlyHelpTitle,
+    this.showBackendOnlyExplainer = true,
   });
 
   /// Key prefix the widget stamps on its root container so screen tests
@@ -117,74 +116,98 @@ class HierarchyScopeNotice extends StatelessWidget {
   /// gated / incomplete").
   final String? backendOnlyExplainer;
 
+  /// Optional heading help title for the backend-only explainer.
+  final String? backendOnlyHelpTitle;
+
+  /// Whether to show the backend-only explainer inline below the scope rows.
+  final bool showBackendOnlyExplainer;
+
   @override
   Widget build(BuildContext context) {
     final inheritedLabel = inheritedFromLabel;
     final backendOnly = backendOnlyExplainer;
-    return Container(
-      key: Key(keyName),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: <Widget>[
-              const Icon(
-                Icons.account_tree_outlined,
-                size: 18,
-                color: AppColors.sunsetDark,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Hierarchy scope',
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
-                  ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 360;
+        final helpButton = backendOnly != null && backendOnlyHelpTitle != null
+            ? OperatorWebInfoButton(
+                key: Key('${keyName}_backend_only_help'),
+                title: backendOnlyHelpTitle!,
+                tooltip: backendOnlyHelpTitle!,
+                body: Text(
+                  backendOnly,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
+              )
+            : null;
+        return Container(
+          key: Key(keyName),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          decoration: BoxDecoration(
+            color: AppColors.cardGlow,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              OperatorWebSectionHeading(
+                title: 'Hierarchy scope',
+                trailing: compact
+                    ? helpButton
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          if (helpButton != null) ...[
+                            helpButton,
+                            const SizedBox(width: 8),
+                          ],
+                          _ScopePill(
+                            keyName: '${keyName}_scope_pill',
+                            label: selectedScope.label,
+                          ),
+                        ],
+                      ),
               ),
-              _ScopePill(
-                keyName: '${keyName}_scope_pill',
-                label: selectedScope.label,
+              if (compact) ...[
+                const SizedBox(height: 8),
+                _ScopePill(
+                  keyName: '${keyName}_scope_pill',
+                  label: selectedScope.label,
+                ),
+              ],
+              const SizedBox(height: 12),
+              _NoticeRow(
+                keyName: '${keyName}_selected_row',
+                label: 'Selected scope',
+                value: '${selectedScope.label}: $scopeName',
               ),
+              const SizedBox(height: 6),
+              _NoticeRow(
+                keyName: '${keyName}_inherited_row',
+                label: 'Inherited from',
+                value:
+                    inheritedLabel ??
+                    'Set here. Does not inherit from a higher scope.',
+                muted: inheritedLabel == null,
+              ),
+              const SizedBox(height: 6),
+              _NoticeRow(
+                keyName: '${keyName}_effective_row',
+                label: 'Effective value',
+                value: effectiveValueSummary,
+              ),
+              if (backendOnly != null && showBackendOnlyExplainer) ...<Widget>[
+                const SizedBox(height: 10),
+                _BackendOnlyExplainer(
+                  keyName: '${keyName}_backend_only',
+                  message: backendOnly,
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 10),
-          _NoticeRow(
-            keyName: '${keyName}_selected_row',
-            label: 'Selected scope',
-            value: '${selectedScope.label}: $scopeName',
-          ),
-          const SizedBox(height: 6),
-          _NoticeRow(
-            keyName: '${keyName}_inherited_row',
-            label: 'Inherited from',
-            value: inheritedLabel ??
-                'Set here. Does not inherit from a higher scope.',
-            muted: inheritedLabel == null,
-          ),
-          const SizedBox(height: 6),
-          _NoticeRow(
-            keyName: '${keyName}_effective_row',
-            label: 'Effective value',
-            value: effectiveValueSummary,
-          ),
-          if (backendOnly != null) ...<Widget>[
-            const SizedBox(height: 10),
-            _BackendOnlyExplainer(
-              keyName: '${keyName}_backend_only',
-              message: backendOnly,
-            ),
-          ],
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -231,36 +254,51 @@ class _NoticeRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      key: Key(keyName),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        SizedBox(
-          width: 132,
-          child: Text(
-            label,
-            style: AppTextStyles.body12(color: AppColors.textMuted),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 420;
+        final valueText = Text(
+          value,
+          style: AppTextStyles.body13(
+            color: muted ? AppColors.textSecondary : AppColors.textPrimary,
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTextStyles.body13(
-              color: muted ? AppColors.textSecondary : AppColors.textPrimary,
+        );
+        if (compact) {
+          return Column(
+            key: Key(keyName),
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 2),
+              valueText,
+            ],
+          );
+        }
+        return Row(
+          key: Key(keyName),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            SizedBox(
+              width: 132,
+              child: Text(
+                label,
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
             ),
-          ),
-        ),
-      ],
+            const SizedBox(width: 8),
+            Expanded(child: valueText),
+          ],
+        );
+      },
     );
   }
 }
 
 class _BackendOnlyExplainer extends StatelessWidget {
-  const _BackendOnlyExplainer({
-    required this.keyName,
-    required this.message,
-  });
+  const _BackendOnlyExplainer({required this.keyName, required this.message});
 
   final String keyName;
   final String message;
@@ -272,10 +310,7 @@ class _BackendOnlyExplainer extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
-        border: Border.all(
-          color: AppColors.borderSubtle,
-          width: 1,
-        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
