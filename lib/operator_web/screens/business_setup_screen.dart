@@ -25,6 +25,7 @@ class BusinessSetupScreen extends StatefulWidget {
     this.locationName,
     this.gateway,
     this.onEditTiming,
+    this.onScheduleTiming,
   });
 
   final OperatorWebSession session;
@@ -38,6 +39,11 @@ class BusinessSetupScreen extends StatefulWidget {
   /// write gateway not provisioned), the read view shows the
   /// existing safe-dialog placeholder.
   final VoidCallback? onEditTiming;
+
+  /// Opens the effective-dated timing editor in schedule mode. When
+  /// null, the read view keeps the same non-mutating placeholder used
+  /// by builds without a timing write gateway.
+  final VoidCallback? onScheduleTiming;
 
   bool get _canEditTiming =>
       session.roles.any(kOperatorWebBusinessTimingEditRoles.contains) ||
@@ -220,7 +226,9 @@ class _BusinessSetupScreenState extends State<BusinessSetupScreen> {
               onEdit:
                   widget.onEditTiming ??
                   () => _showSafeTimingDialog('Edit timing'),
-              onSchedule: () => _showSafeTimingDialog('Schedule timing'),
+              onSchedule:
+                  widget.onScheduleTiming ??
+                  () => _showSafeTimingDialog('Schedule timing'),
               onReset: null,
             )
           else

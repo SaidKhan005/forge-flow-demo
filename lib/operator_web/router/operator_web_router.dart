@@ -40,6 +40,7 @@ import '../services/demo_team_hierarchy_gateway.dart';
 import '../services/demo_team_roles_gateway.dart';
 import '../services/demo_team_sessions_gateway.dart';
 import '../services/demo_team_users_gateway.dart';
+import '../services/operator_web_csv_download.dart';
 import '../services/operator_web_notification_preferences_gateway_provider.dart';
 import '../services/operator_web_team_gateway_providers.dart';
 import '../services/web_account_gateway.dart';
@@ -154,6 +155,13 @@ class _OperatorWebInitialRoute {
         scrollMyAccountSecurityOnFirstBuild: true,
       );
     }
+    final pathNavId = _navIdFromPath(normalizedPath);
+    if (pathNavId != null) {
+      return _OperatorWebInitialRoute(
+        navId: pathNavId,
+        scrollMyAccountSecurityOnFirstBuild: false,
+      );
+    }
     return _OperatorWebInitialRoute(
       navId: initialNavId,
       scrollMyAccountSecurityOnFirstBuild: false,
@@ -167,6 +175,15 @@ class _OperatorWebInitialRoute {
         ? path.substring(0, path.length - 1)
         : path;
   }
+}
+
+String? _navIdFromPath(String normalizedPath) {
+  final trimmed = normalizedPath.replaceFirst('/', '');
+  if (trimmed.isEmpty) return null;
+  final withoutOperatorPrefix = trimmed.startsWith('operator-web/')
+      ? trimmed.substring('operator-web/'.length)
+      : trimmed;
+  return _navIdFromRaw(withoutOperatorPrefix);
 }
 
 class _OperatorWebHandoffLanding {
@@ -407,6 +424,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
   /// instead of the read view. Set by tapping the Edit button on the
   /// read view; cleared by the editor's back button.
   bool _editingBusinessTiming = false;
+  bool _schedulingBusinessTiming = false;
 
   List<OperatorWebManagementScopeOption> _managementScopeOptions =
       const <OperatorWebManagementScopeOption>[];
@@ -526,6 +544,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         _selectedNavId = target.navId;
         _scrollMyAccountSecurityOnFirstBuild = target.scrollMyAccountSecurity;
         _editingBusinessTiming = target.editBusinessTiming;
+        _schedulingBusinessTiming = false;
         _handoffRedeemComplete = true;
         _handoffRedeemError = null;
       });
@@ -588,7 +607,34 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       // re-enter.
       if (id != kOperatorWebNavBusinessSetup) {
         _editingBusinessTiming = false;
+        _schedulingBusinessTiming = false;
       }
+    });
+  }
+
+  void _openAuditLog() {
+    setState(() {
+      _selectedNavId = kOperatorWebNavAuditLog;
+      _scrollMyAccountSecurityOnFirstBuild = false;
+      _scrollDataAccuracyWageAuthorityOnFirstBuild = false;
+      _rolesSubRoute = null;
+      _rolesEditTarget = null;
+      _editingBusinessTiming = false;
+      _schedulingBusinessTiming = false;
+    });
+  }
+
+  void _openBusinessTimingEditor({required bool scheduleMode}) {
+    setState(() {
+      _editingBusinessTiming = true;
+      _schedulingBusinessTiming = scheduleMode;
+    });
+  }
+
+  void _closeBusinessTimingEditor() {
+    setState(() {
+      _editingBusinessTiming = false;
+      _schedulingBusinessTiming = false;
     });
   }
 
@@ -600,6 +646,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       _rolesSubRoute = null;
       _rolesEditTarget = null;
       _editingBusinessTiming = false;
+      _schedulingBusinessTiming = false;
     });
   }
 
@@ -610,6 +657,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       // Changing scope while editing timing would make the write target
       // ambiguous, so return to the read view first.
       _editingBusinessTiming = false;
+      _schedulingBusinessTiming = false;
       // Wave 2 OW-4 — the Locations nav row only renders at business /
       // org-unit scope. If the operator drops into location scope while
       // standing on the Locations route, the body would mount but the
@@ -1424,6 +1472,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               session: session,
               actions: _accountActions,
               securityGateway: _securityGateway,
+              onOpenAuditLog: _openAuditLog,
               scrollToSecurityOnFirstBuild:
                   _scrollMyAccountSecurityOnFirstBuild,
             );
@@ -1473,7 +1522,11 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             orgUnitHelper: businessTimingOrgUnitScope?.helper,
             gateway: _webBusinessTimingGateway,
             existingProfile: _resolvedExistingTimingProfile(locationScope.id),
-            onClose: () => setState(() => _editingBusinessTiming = false),
+            scheduleMode: _schedulingBusinessTiming,
+            initialEffectiveAt: _schedulingBusinessTiming
+                ? DateTime.now().add(const Duration(days: 1))
+                : null,
+            onClose: _closeBusinessTimingEditor,
           );
         } else {
           body = BusinessSetupScreen(
@@ -1482,7 +1535,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             locationName: locationScope.label,
             gateway: _businessTimingGateway,
             onEditTiming: _webBusinessTimingGateway != null
-                ? () => setState(() => _editingBusinessTiming = true)
+                ? () => _openBusinessTimingEditor(scheduleMode: false)
+                : null,
+            onScheduleTiming: _webBusinessTimingGateway != null
+                ? () => _openBusinessTimingEditor(scheduleMode: true)
                 : null,
           );
         }
@@ -1585,6 +1641,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
               gateway: _teamAuditLogGateway,
               hierarchyGateway: _auditLogHierarchyGateway,
               teamHierarchyGateway: _teamHierarchyGateway,
+              onCsvReady: downloadOperatorWebCsv,
             );
         break;
       case kOperatorWebNavVendorConnections:

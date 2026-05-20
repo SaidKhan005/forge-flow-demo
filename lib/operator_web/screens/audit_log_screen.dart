@@ -343,9 +343,10 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
       if (!mounted) return;
       setState(() {
         _exporting = false;
-        _exportMessage =
-            'Copied audit log CSV to your clipboard. Paste it into a '
-            'spreadsheet to save the export.';
+        _exportMessage = downloader == null
+            ? 'Copied audit log CSV to your clipboard. Paste it into a '
+                  'spreadsheet to save the export.'
+            : 'Downloaded audit log CSV and copied it to your clipboard.';
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Audit log CSV ready (${export.filename}).')),
@@ -1340,9 +1341,9 @@ class AuditLogIntegrityBadge extends StatelessWidget {
           title: 'Audit chain delayed',
           body: ageLabel == null
               ? 'Anchor delayed past the daily 02:00 UTC cadence. F and F '
-                  'support is monitoring this.'
+                    'support is monitoring this.'
               : 'Anchor delayed. Last anchor was $ageLabel ago. F and F '
-                  'support is monitoring this.',
+                    'support is monitoring this.',
           foreground: const Color(0xFF8A5A00),
           background: const Color(0xFFFFF4DA),
           border: const Color(0xFFB58300),
@@ -1370,9 +1371,9 @@ class AuditLogIntegrityBadge extends StatelessWidget {
               : 'Audit chain status unknown',
           body: transient
               ? 'Audit chain status could not load. Refresh the page to try '
-                  'again. Daily anchoring runs at 02:00 UTC.'
+                    'again. Daily anchoring runs at 02:00 UTC.'
               : 'No anchor recorded yet. Daily anchoring runs at 02:00 UTC '
-                  'and this badge updates as soon as the first sweep lands.',
+                    'and this badge updates as soon as the first sweep lands.',
           foreground: AppColors.textSecondary,
           background: AppColors.backgroundSurface,
           border: AppColors.borderSubtle,
