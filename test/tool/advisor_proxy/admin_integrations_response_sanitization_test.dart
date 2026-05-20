@@ -13,9 +13,7 @@
 //     field so operators can correlate the failure with the
 //     structured-log breadcrumb.
 
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +21,7 @@ import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
 
 import '../../../tool/advisor_proxy/admin_integrations_routes.dart';
+import '../../_test_helpers/http_stubs.dart';
 
 const String _operatorId = '11111111-1111-4111-8111-111111111111';
 const String _locationId = '22222222-2222-4222-8222-222222222222';
@@ -78,7 +77,7 @@ void main() {
       'details and includes error_id',
       () async {
 
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/webhooks/lightspeed_lsk/$_operatorId/$_locationId',
@@ -138,7 +137,7 @@ void main() {
       'webhook 500 path: returns adapterError outcome label for '
       'the dispatch wrapper catch',
       () async {
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/webhooks/lightspeed_lsk/$_operatorId/$_locationId',
@@ -292,137 +291,3 @@ class _UnusedRoutesGateway implements IntegrationRoutesGateway {
       super.noSuchMethod(invocation);
 }
 
-// ─── Stub HttpRequest / HttpResponse (lifted from
-// admin_integrations_idempotency_test.dart so this file stays self-
-// contained). ───────────────────────────────────────────────────────
-
-class _StubHttpRequest extends Stream<Uint8List> implements HttpRequest {
-  _StubHttpRequest({
-    required this.method,
-    required Uri uri,
-    Map<String, Object?>? bodyJson,
-    Map<String, String> headers = const <String, String>{},
-  })  : _uri = uri,
-        _headers = _StubHttpHeaders(headers),
-        _body = bodyJson == null
-            ? Uint8List(0)
-            : Uint8List.fromList(utf8.encode(jsonEncode(bodyJson))),
-        response = _StubHttpResponse();
-
-  final Uri _uri;
-  final HttpHeaders _headers;
-  final Uint8List _body;
-
-  @override
-  final String method;
-
-  @override
-  final _StubHttpResponse response;
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  Uri get uri => _uri;
-
-  @override
-  Uri get requestedUri => _uri;
-
-  @override
-  StreamSubscription<Uint8List> listen(
-    void Function(Uint8List event)? onData, {
-    Function? onError,
-    void Function()? onDone,
-    bool? cancelOnError,
-  }) {
-    return Stream<Uint8List>.value(_body).listen(
-      onData,
-      onError: onError,
-      onDone: onDone,
-      cancelOnError: cancelOnError,
-    );
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
-}
-
-class _StubHttpHeaders implements HttpHeaders {
-  _StubHttpHeaders(this._values);
-  final Map<String, String> _values;
-
-  @override
-  String? value(String name) {
-    final lower = name.toLowerCase();
-    for (final entry in _values.entries) {
-      if (entry.key.toLowerCase() == lower) return entry.value;
-    }
-    return null;
-  }
-
-  // Mirrors `dart:io` `HttpHeaders.forEach((String, List<String>) => void)`.
-  // The dispatch wrapper sanitization path iterates request headers
-  // when building its structured-log breadcrumb, so the stub must
-  // satisfy the real typedef (was previously routed through
-  // noSuchMethod, which threw NoSuchMethodError once Dart began
-  // checking the closure signature).
-  @override
-  void forEach(void Function(String name, List<String> values) action) {
-    for (final entry in _values.entries) {
-      action(entry.key.toLowerCase(), <String>[entry.value]);
-    }
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
-}
-
-class _StubHttpResponse implements HttpResponse {
-  @override
-  int statusCode = 200;
-  final StringBuffer _body = StringBuffer();
-  final _StubResponseHeaders _headers = _StubResponseHeaders();
-  String get bodyText => _body.toString();
-
-  @override
-  void write(Object? object) {
-    _body.write(object);
-  }
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
-}
-
-class _StubResponseHeaders implements HttpHeaders {
-  final Map<String, String> _values = <String, String>{};
-  ContentType? _contentType;
-
-  @override
-  ContentType? get contentType => _contentType;
-
-  @override
-  set contentType(ContentType? value) {
-    _contentType = value;
-  }
-
-  @override
-  void set(String name, Object value, {bool preserveHeaderCase = false}) {
-    _values[name.toLowerCase()] = value.toString();
-  }
-
-  @override
-  String? value(String name) => _values[name.toLowerCase()];
-
-  @override
-  noSuchMethod(Invocation invocation) =>
-      super.noSuchMethod(invocation);
-}

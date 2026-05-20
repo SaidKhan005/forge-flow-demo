@@ -25,8 +25,6 @@
 //      factory is NOT registered (warn-and-disable surface). Other
 //      vendors (Toast, ADP, ...) still wire normally.
 
-import 'dart:io';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 
@@ -34,6 +32,7 @@ import '../../../tool/advisor_proxy/admin_integrations_routes.dart';
 import '../../../tool/advisor_proxy/advisor_proxy.dart';
 import '../../../tool/advisor_proxy/phase_8_production_binder.dart';
 import '../../../tool/advisor_proxy/proxy_bootstrap.dart';
+import '../../_test_helpers/http_stubs.dart';
 
 const String _operatorA = '11111111-1111-1111-1111-111111111111';
 const String _locationA = '22222222-2222-2222-2222-222222222222';
@@ -167,7 +166,9 @@ void main() {
       final actorResolver =
           Phase80IntegrationRoutes.globalBindings!.actorResolver;
       // Build a request with no Authorization header.
-      final request = _StubHttpRequest(headers: const <String, String>{});
+      final request = StubHttpRequest(
+        uri: Uri.parse('https://localhost/v1/admin/integrations/foo'),
+      );
       final ctx = await actorResolver(request);
       expect(
         ctx,
@@ -367,37 +368,3 @@ class _StubJwtVerifier implements ProxyJwtVerifier {
   }
 }
 
-class _StubHttpRequest implements HttpRequest {
-  _StubHttpRequest({required Map<String, String> headers})
-    : _headers = _StubHttpHeaders(headers);
-
-  final HttpHeaders _headers;
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  Uri get uri => Uri.parse('https://localhost/v1/admin/integrations/foo');
-
-  @override
-  String get method => 'GET';
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubHttpHeaders implements HttpHeaders {
-  _StubHttpHeaders(this._values);
-
-  final Map<String, String> _values;
-
-  @override
-  String? value(String name) => _values[name.toLowerCase()];
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}

@@ -13,10 +13,7 @@
 //      gateway invoked exactly once.
 //   3. Distinct keys → gateway invoked once per call.
 
-import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/integration/inbound_webhook_handler.dart';
@@ -27,6 +24,7 @@ import '../../../tool/advisor_proxy/advisor_proxy.dart'
         AdminIdempotencyKeyConflict,
         AdminRequestIdempotencyEntry,
         AdminRequestIdempotencyStore;
+import '../../_test_helpers/http_stubs.dart';
 
 const String _operatorId = '11111111-1111-4111-8111-111111111111';
 const String _locationId = '22222222-2222-4222-8222-222222222222';
@@ -67,7 +65,7 @@ void main() {
       'connect-key without Idempotency-Key → 400 missing_idempotency_key; '
       'gateway never invoked',
       () async {
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -94,7 +92,7 @@ void main() {
     test(
       'oauth/start without Idempotency-Key → 400 missing_idempotency_key',
       () async {
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/oauth/toast/start',
@@ -118,7 +116,7 @@ void main() {
     test(
       'test-connection without Idempotency-Key → 400 missing_idempotency_key',
       () async {
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/test-connection',
@@ -139,7 +137,7 @@ void main() {
     test(
       'disconnect without Idempotency-Key → 400 missing_idempotency_key',
       () async {
-        final request = _StubHttpRequest(
+        final request = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/disconnect',
@@ -168,7 +166,7 @@ void main() {
           'api_key': 'k',
         };
 
-        final firstRequest = _StubHttpRequest(
+        final firstRequest = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -185,7 +183,7 @@ void main() {
         expect(store.reserveCalls, 1);
 
         // Second request, same key + same body → cached replay.
-        final secondRequest = _StubHttpRequest(
+        final secondRequest = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -220,7 +218,7 @@ void main() {
           'api_key': 'k',
         };
 
-        final r1 = _StubHttpRequest(
+        final r1 = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -231,7 +229,7 @@ void main() {
         await routes.tryHandle(r1);
         expect(r1.response.statusCode, 200);
 
-        final r2 = _StubHttpRequest(
+        final r2 = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -250,7 +248,7 @@ void main() {
     test(
       'duplicate key with mismatched body → 409 idempotency_key_conflict',
       () async {
-        final firstRequest = _StubHttpRequest(
+        final firstRequest = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -265,7 +263,7 @@ void main() {
         await routes.tryHandle(firstRequest);
         expect(firstRequest.response.statusCode, 200);
 
-        final secondRequest = _StubHttpRequest(
+        final secondRequest = StubHttpRequest(
           method: 'POST',
           uri: Uri.parse(
             'http://localhost/v1/admin/integrations/toast/connect-key',
@@ -574,126 +572,3 @@ class _FakeInboundWebhookGateway implements InboundWebhookGateway {
   }) async => throw StateError('webhook gateway must not be invoked');
 }
 
-// ─── Stub HttpRequest / HttpResponse (mirrors integration_oauth_routes_test.dart)
-
-class _StubHttpRequest extends Stream<Uint8List> implements HttpRequest {
-  _StubHttpRequest({
-    required this.method,
-    required Uri uri,
-    Map<String, Object?>? bodyJson,
-    Map<String, String> headers = const <String, String>{},
-  })  : _uri = uri,
-        _headers = _StubHttpHeaders(headers),
-        _body = bodyJson == null
-            ? Uint8List(0)
-            : Uint8List.fromList(utf8.encode(jsonEncode(bodyJson))),
-        response = _StubHttpResponse();
-
-  final Uri _uri;
-  final HttpHeaders _headers;
-  final Uint8List _body;
-
-  @override
-  final String method;
-
-  @override
-  final _StubHttpResponse response;
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  Uri get uri => _uri;
-
-  @override
-  Uri get requestedUri => _uri;
-
-  @override
-  StreamSubscription<Uint8List> listen(
-    void Function(Uint8List event)? onData, {
-    Function? onError,
-    void Function()? onDone,
-    bool? cancelOnError,
-  }) {
-    return Stream<Uint8List>.value(_body).listen(
-      onData,
-      onError: onError,
-      onDone: onDone,
-      cancelOnError: cancelOnError,
-    );
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubHttpHeaders implements HttpHeaders {
-  _StubHttpHeaders(this._values);
-  final Map<String, String> _values;
-
-  @override
-  String? value(String name) {
-    final lower = name.toLowerCase();
-    for (final entry in _values.entries) {
-      if (entry.key.toLowerCase() == lower) return entry.value;
-    }
-    return null;
-  }
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubHttpResponse implements HttpResponse {
-  @override
-  int statusCode = 200;
-  final StringBuffer _body = StringBuffer();
-  final _StubResponseHeaders _headers = _StubResponseHeaders();
-  String get bodyText => _body.toString();
-
-  @override
-  void write(Object? object) {
-    _body.write(object);
-  }
-
-  @override
-  Future<void> close() async {}
-
-  @override
-  HttpHeaders get headers => _headers;
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
-
-class _StubResponseHeaders implements HttpHeaders {
-  final Map<String, String> _values = <String, String>{};
-  ContentType? _contentType;
-
-  @override
-  ContentType? get contentType => _contentType;
-
-  @override
-  set contentType(ContentType? value) {
-    _contentType = value;
-  }
-
-  @override
-  void set(String name, Object value, {bool preserveHeaderCase = false}) {
-    _values[name.toLowerCase()] = value.toString();
-  }
-
-  @override
-  String? value(String name) => _values[name.toLowerCase()];
-
-  @override
-  noSuchMethod(Invocation invocation) {
-    return super.noSuchMethod(invocation);
-  }
-}
