@@ -1094,3 +1094,147 @@ Engineering side of the sprint is closed. Remaining open items are
 all operator-led (preview Cloud Run config + pending migration apply
 + partner-portal escalations).
 
+
+## End-to-end pressure audit (2026-05-19) — follow-ups
+
+Spawned by `docs/_audits/code_health/end_to_end_pressure_audit_2026_05_19.md`.
+Findings A and B were landed by the same audit author in the same
+session (see commits on `claude/audit-fix-waves` → upstream PR).
+The remaining findings are queued here, in no particular order,
+each with the audit-finding letter referenced so the audit doc
+remains the single source of truth.
+
+### P2 — Audit Finding E: SevenRooms credential bridge metadata persistence
+
+**File:** `test/integrations/reservation/sevenrooms_credential_bridge_test.dart`
+**Failing test:** `persistIssuedBearerToken records client_id +
+client_secret + venue_id on metadata patch`.
+
+SevenRooms uses an OAuth2 client-credentials exchange; the bridge
+persists the issued bearer token alongside `client_id`,
+`client_secret`, and `venue_id` so the renewer can re-mint on expiry.
+The current test reports the metadata patch is missing one or more
+identifiers. Failure means the persisted credential blob may be
+incomplete and credential renewal would fail silently at the next
+refresh window. Single-vendor, single-test; low V1 risk because no
+live SevenRooms operators are onboarded yet.
+
+**Owner:** Whichever SevenRooms / OAuth-refresh lane is open next.
+**Verify:** `flutter test test/integrations/reservation/sevenrooms_credential_bridge_test.dart`.
+
+### P3 — Audit Finding F: Advisor proxy /healthz contract drift
+
+**File:** `test/services/advisor/advisor_model_config_service_test.dart`
+**Failing tests (3):** `probeForgeFlowProxyHealth` —
+- hits `/healthz` on the configured proxy and returns
+  `cannotCheck` when the proxy responds 2xx (catalog not exposed);
+- preserves a path prefix on `proxyBaseUri` when probing `/healthz`;
+- returns `cannotCheck` with the status code in the message on 5xx.
+
+The advisor surface is read-only to the operator at V1; the
+`cannotCheck` state is the graceful-degradation behaviour. Likely
+the response shape, status mapping, or path-prefix behaviour drifted
+on the live `/healthz` route without updating the test expectations.
+
+**Owner:** Whichever advisor / proxy-health lane is open next.
+**Verify:** `flutter test test/services/advisor/advisor_model_config_service_test.dart`.
+
+### P2 — Audit Finding C re-diagnosed (multi-location demo seed)
+
+The audit's working theory was "the 4-location seed regressed."
+Live re-check on 2026-05-19 shows the opposite: the demo seed has
+**grown to 5 locations**, and the test still asserts exactly 4.
+
+```
+Expected: <4>
+Actual:   <5>
+```
+
+So this is a **stale assertion / intentional production growth**,
+not a seed regression. Files: `test/per_daypart_v1_demo_slice_a_hierarchy_test.dart`
++ siblings (`per_daypart_v1_demo_seed_per_location_data_test.dart`,
+`per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart`,
+`test/state/restaurant_scope_notifier_test.dart`).
+
+**Owner:** per-daypart V1 seed owner (Codex lane that grew the seed
+from 4 → 5 locations). Two paths: re-pin the assertions to the new
+count, or trim the seed back to 4 if the 5th location was an
+accident.
+
+### P2 — Audit Finding D re-diagnosed (NOT mock-replay drift)
+
+The audit's working theory was "mock-replay anchor needs to roll
+forward." Live re-check shows the 6 failures in this cluster are
+unrelated to mock-replay clock drift; they are real semantic diffs
+between the test expectations and current production behaviour:
+
+- `business_date_authority_service_test.dart` (B), and
+  `demand_forecast_context_service_test.dart` (B, C, E): the
+  planning anchor / latest-closed comparison is off by exactly one
+  day. Looks like the production resolver now returns
+  `latestClosed + 1 day` (next-business-day semantics) while the
+  test still asserts equality.
+- `history_teaching_analyzer_test.dart`: canonical seed now emits
+  `['Wed Dinner', 'Mon Dinner']` where the test expects
+  `['Wed Dinner', 'Fri Late Night']`. Seed-data weekday change,
+  intentional or otherwise.
+- `metadata_timestamp_normalization_test.dart`: expected a count
+  greater than 6, actual is exactly 6 — threshold drift.
+- `target_state_alignment_test.dart` (E) and
+  `schedule_plan_read_service_test.dart` (E): same family, also
+  expect/actual mismatch requiring domain context to resolve.
+
+**Owner:** business-date / target / forecast lane owners — each
+test needs domain triage to decide which side is right (production
+or the test). Not safe to mass-fix without domain context.
+
+### P2 — Audit Finding G expanded (test-state pollution requires per-file teardown)
+
+The audit's flake hunt surfaced 6 tests that pass under fixed order
+and fail under random order. Adding generic teardowns risks
+breaking unrelated tests. Each of the 5 affected files needs a
+domain-aware reset:
+
+- `test/per_daypart_v1_demo_seed_perloc_current_week_open_shift_test.dart`
+- `test/restaurant_timing_config_repository_test.dart`
+- `test/screens/variance/variance_learn_tab_depth_test.dart`
+- `test/shift_service_close_shift_test.dart`
+- `test/target_cycle_service_test.dart`
+
+Most likely leak: `SqliteDatabase.instance` singleton state and
+`RestaurantScopeNotifier` cached state surviving across test files.
+Need to either: (a) introduce a shared `resetTestState()` helper that
+tears down both singletons + the mock_replay clock between tests, OR
+(b) move each test file onto an isolated DB factory so cross-file
+leakage cannot happen.
+
+**Owner:** test-infrastructure lane.
+
+### P2 — Audit Finding A residual (7 spine smoke scenarios still red)
+
+The audit-author landed the SQL-matcher infrastructure fix that
+recovered 2 of the 9 originally-red scenarios in
+`test/_execution/spine_bridge_v2_smoke_test.dart`. The remaining 7
+are real semantic divergences and should be triaged by the
+spine-bridge lane:
+
+- `7shifts post-.7S.upgrade` — expected
+  `actualBohLaborDollars = 120`, got `96`. Likely a daypart-bucketer
+  interaction with the new 3-day labor-punch window (Slice 1.5 /
+  Gaps 21, 26 in `canonical_fact_to_closed_shift_input.dart`).
+- `operator manual entry per daypart` — expected not null, got null.
+  Fixture-shape gap for the per-daypart operator-entry path.
+- `wage_source = manual_mix -> labor_dollars provenance = target_wage_substituted` —
+  expected provenance `target_wage_substituted`, got
+  `vendor_seven_shifts_per_employee_actual_dollars`. The manual_mix
+  override appears to not be honoured against the new 7shifts
+  perEmployeeWithDollars path.
+
+Plus a handful of architectural-compliance audit cases (`vendorProvidedForecast`
+enum absence, `open_shift_snapshots` write absence, Oracle Simphony
+Gen2 field path, ADP `webhookSupport`, aggregator provenance string
+template) — those likely re-green once the upstream semantic ones
+are addressed; verify under
+`flutter test test/_execution/spine_bridge_v2_smoke_test.dart` after.
+
+**Owner:** spine-bridge / Per-Daypart V1 lane.

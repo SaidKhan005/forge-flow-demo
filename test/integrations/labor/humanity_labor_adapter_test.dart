@@ -675,15 +675,26 @@ void main() {
       );
     });
 
-    test('adapter has no webhook signature verifier file '
-        '(pollOnly — N/A)', () {
+    test('adapter ships a webhook signature verifier file even though '
+        'webhookSupport = pollOnly (Phase 8.gap-1 framework parity)', () {
+      // Phase 8.gap-1 doctrine: every documented vendor adapter ships a
+      // signature verifier file even when `webhookSupport = pollOnly`,
+      // so the production binder boot path does not log a "missing
+      // verifier" warning for the poll-only roster and so a future
+      // Humanity webhook release has a documented landing surface
+      // mirroring every other vendor. The verifier itself is gated at
+      // runtime by `webhookSupport`; `handleWebhook` on the adapter
+      // throws under pollOnly regardless of whether the verifier file
+      // is on disk, so shipping the file is a doctrine + binder-warning
+      // hygiene matter, not a runtime gate.
       final verifier = File(
         'lib/integrations/labor/humanity_webhook_signature_verifier.dart',
       );
-      expect(verifier.existsSync(), false,
-          reason: 'pollOnly vendors do not ship a webhook signature '
-              'verifier; the file existing would contradict the '
-              'capability profile');
+      expect(verifier.existsSync(), true,
+          reason: 'Phase 8.gap-1 requires the verifier landing file for '
+              'every documented vendor, including poll-only roster '
+              'members. See the file header for the documented '
+              'algorithm + the gap-1.live.sandbox verification plan.');
     });
   });
 

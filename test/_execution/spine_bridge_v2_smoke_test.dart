@@ -1147,9 +1147,23 @@ class _SmokeFakeTransaction implements PostgresTransaction {
       if (row == null) return const <PostgresRow>[];
       return <PostgresRow>[row];
     }
-    if (sql.contains(
-      'select timezone, business_day_rollover_hour from public.locations',
-    )) {
+    // Two variants of the locations lookup SQL appear in the spine
+    // pipeline:
+    //   (a) Old shape: `select timezone, business_day_rollover_hour
+    //       from public.locations` (used by some legacy helpers).
+    //   (b) Current shape: `select timezone from public.locations`
+    //       (aggregator's `_readLocationTimezone` in
+    //       `canonical_fact_to_closed_shift_input.dart` reads just
+    //       `timezone` now). The seedLocation fake row carries both
+    //       fields, so either select shape resolves cleanly.
+    // Match on the table name + `select timezone` prefix instead of
+    // pinning the column list verbatim, so a future trim of the
+    // projection does not silently fail the matcher and re-trigger
+    // the "aggregator: locations row not found" StateError that
+    // failed all 9 of this file's vendor-spine scenarios on master
+    // before this fix.
+    if (sql.contains('from public.locations') &&
+        sql.contains('select timezone')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
       final row = pool.readLocation(operatorId, locationId);
@@ -1167,10 +1181,27 @@ class _SmokeFakeTransaction implements PostgresTransaction {
     if (sql.contains('from public.labor_punches')) {
       final operatorId = parameters['operator_id'] as String;
       final locationId = parameters['location_id'] as String;
-      final businessDate = parameters['business_date'] as String;
-      return pool
-              .laborPunchesByOperatorLocation['$operatorId|$locationId|$businessDate'] ??
-          const <PostgresRow>[];
+      // Per-Daypart V1 Slice 1.5 (Gaps 21, 26): the aggregator now reads a
+      // ±1 day window via @prior_business_date / @next_business_date so a
+      // punch that straddles the rollover boundary still anchors on the
+      // correct daypart. Older callers still pass a single @business_date.
+      // Honour both shapes — return any seeded rows whose stored
+      // business_date falls in the requested window.
+      final priorBusinessDate = parameters['prior_business_date'] as String?;
+      final nextBusinessDate = parameters['next_business_date'] as String?;
+      final singleBusinessDate = parameters['business_date'] as String?;
+      final prefix = '$operatorId|$locationId|';
+      final results = <PostgresRow>[];
+      for (final entry in pool.laborPunchesByOperatorLocation.entries) {
+        if (!entry.key.startsWith(prefix)) continue;
+        final keyDate = entry.key.substring(prefix.length);
+        final inWindow = priorBusinessDate != null && nextBusinessDate != null
+            ? (keyDate.compareTo(priorBusinessDate) >= 0 &&
+                  keyDate.compareTo(nextBusinessDate) <= 0)
+            : (singleBusinessDate != null && keyDate == singleBusinessDate);
+        if (inWindow) results.addAll(entry.value);
+      }
+      return results;
     }
     if (sql.contains('from public.reservation_facts')) {
       final operatorId = parameters['operator_id'] as String;
