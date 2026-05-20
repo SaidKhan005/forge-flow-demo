@@ -52,6 +52,20 @@ const String _restaurantA = 'demo_restaurant_001';
 const String _timingProfileA = '33333333-3333-4333-8333-333333333333';
 const String _timingProfileB = '44444444-4444-4444-8444-444444444444';
 
+const Map<String, Object?> _vendorCoversSourcePerServicePeriod =
+    <String, Object?>{
+      'lunch': 'vendor',
+      'dinner': 'vendor',
+      'late_night': 'vendor',
+    };
+
+const Map<String, Object?> _manualDinnerCoversSourcePerServicePeriod =
+    <String, Object?>{
+      'lunch': 'vendor',
+      'dinner': 'manual',
+      'late_night': 'vendor',
+    };
+
 final DateTime _businessDate = DateTime.utc(2026, 5, 4);
 
 // Period definition for "dinner" in America/Toronto (17:00–22:00 local).
@@ -503,9 +517,8 @@ void main() {
         'setting_id': 'das_001',
         'operator_id': _opA,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'manual',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period':
+            _manualDinnerCoversSourcePerServicePeriod,
         'covers_manual_entries': <String, Map<String, int>>{
           _businessDateIso: <String, int>{'dinner': 187},
         },
@@ -680,9 +693,8 @@ void main() {
           'setting_id': 'das_002',
           'operator_id': _opA,
           'location_id': _locA,
-          'covers_source_lunch': 'vendor',
-          'covers_source_dinner': 'vendor',
-          'covers_source_late_night': 'vendor',
+          'covers_source_per_service_period':
+              _vendorCoversSourcePerServicePeriod,
           'covers_manual_entries': <String, Map<String, int>>{
             _businessDateIso: <String, int>{'dinner': 500},
           },
@@ -804,9 +816,8 @@ void main() {
             'setting_id': 'das_003',
             'operator_id': _opA,
             'location_id': _locA,
-            'covers_source_lunch': 'vendor',
-            'covers_source_dinner': 'vendor',
-            'covers_source_late_night': 'vendor',
+            'covers_source_per_service_period':
+                _vendorCoversSourcePerServicePeriod,
             'covers_manual_entries': <String, Map<String, int>>{
               _businessDateIso: <String, int>{'dinner': 73},
             },
@@ -935,9 +946,8 @@ void main() {
             'setting_id': 'das_004',
             'operator_id': _opA,
             'location_id': _locA,
-            'covers_source_lunch': 'vendor',
-            'covers_source_dinner': 'vendor',
-            'covers_source_late_night': 'vendor',
+            'covers_source_per_service_period':
+                _vendorCoversSourcePerServicePeriod,
             'covers_manual_entries': <String, Map<String, int>>{
               _businessDateIso: <String, int>{'dinner': 41},
             },
@@ -1139,9 +1149,7 @@ void main() {
         'setting_id': 'das_walk_in',
         'operator_id': _opA,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'vendor',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
         'covers_manual_entries': <String, Map<String, int>>{},
         'wage_source': 'vendor',
         'walk_in_handling_mode': 'walk_ins_added_to_reservations',
@@ -1437,9 +1445,7 @@ void main() {
         'setting_id': 'das_001',
         'operator_id': _opA,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'vendor',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
         'covers_manual_entries': <String, Map<String, int>>{},
         'wage_source': 'manual_mix',
         'created_at': DateTime.utc(2026, 5, 1),
@@ -1776,9 +1782,7 @@ void main() {
         'setting_id': 'das_001',
         'operator_id': _opA,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'vendor',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
         'covers_manual_entries': <String, Map<String, int>>{
           _businessDateIso: <String, int>{'dinner': 142},
         },
@@ -2009,9 +2013,7 @@ void main() {
         'setting_id': 'das_001',
         'operator_id': _opA,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'vendor',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
         'covers_manual_entries': const <String, Map<String, int>>{},
         'wage_source': 'vendor',
         'created_at': DateTime.utc(2026, 5, 1),
@@ -2064,9 +2066,7 @@ void main() {
         'setting_id': 'das_001',
         'operator_id': _opA,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'vendor',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
         'covers_manual_entries': const <String, Map<String, int>>{},
         'wage_source': 'vendor',
         'created_at': DateTime.utc(2026, 5, 1),
@@ -2153,9 +2153,7 @@ void main() {
         'setting_id': 'das_002',
         'operator_id': _opB,
         'location_id': _locA,
-        'covers_source_lunch': 'vendor',
-        'covers_source_dinner': 'vendor',
-        'covers_source_late_night': 'vendor',
+        'covers_source_per_service_period': _vendorCoversSourcePerServicePeriod,
         'covers_manual_entries': const <String, Map<String, int>>{},
         'wage_source': 'vendor',
         'created_at': DateTime.utc(2026, 5, 1),
@@ -3639,8 +3637,8 @@ class _FakeTransaction implements PostgresTransaction {
       // jsonb (from the keyed table) instead of the legacy columns.
       // Synthesize it from any seeded keyed rows for this tenant so
       // the model's `coversSourceFor` resolves the same way the real
-      // keyed sub-SELECT would; the seeded legacy columns on the row
-      // remain as the backward-compat fallback fromRow honours.
+      // keyed sub-SELECT would. The model no longer consults the old
+      // lunch/dinner/late-night scalar columns.
       final perPeriod = <String, Object?>{};
       final prefix = '$operatorId|$locationId|';
       final businessDate = parameters['business_date'] as String?;
