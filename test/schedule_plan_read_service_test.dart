@@ -137,23 +137,36 @@ void main() {
   group('E — plan consumer agreement', () {
     test('ShiftService and shared plan produce same weekly covers/sales',
         () async {
-      final plan =
-          await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+      // Production note: as of `shift_service.dart` ("Resolve plan from
+      // the persisted locked weekly snapshot only. If the snapshot is
+      // missing, degrade honestly instead of silently swapping in the
+      // live plan."), `ShiftService.getShiftDashboard()` reads the
+      // forecast from `getExistingCurrentLockedWeeklyPlan()` — the
+      // snapshotted weekly plan locked at week start — NOT the live
+      // recomputed plan returned by `getCurrentWeeklyPlan()`. The two
+      // can drift when the active target profile changes mid-week (the
+      // locked snapshot intentionally freezes the in-force plan so the
+      // operator sees stable numbers). This test's contract is "shift
+      // dashboard's forecast covers comes from the same shared
+      // PLANNING source it commits to" — assert agreement with the
+      // locked plan, not the live one.
       await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final lockedPlan = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedWeeklyPlan();
       final shiftDashboard =
           await ShiftService.instance.getShiftDashboard();
 
-      expect(plan, isNotNull);
+      expect(lockedPlan, isNotNull,
+          reason: 'demo seed must have a current locked weekly plan');
       expect(shiftDashboard, isNotNull);
 
-      // Shift dashboard forecast comes from the matching day row of the
-      // same shared plan. Verify it is a valid day value from the plan.
-      final dayPlans = plan!.dayPlans;
+      final dayPlans = lockedPlan!.dayPlans;
       final matchingDay = dayPlans
           .where((d) => d.forecastCovers == shiftDashboard!.forecastCovers)
           .firstOrNull;
       expect(matchingDay, isNotNull,
-          reason: 'Shift dashboard forecast covers must match a day in the plan');
+          reason: 'Shift dashboard forecast covers must match a day in '
+              'the locked weekly plan (production source of truth).');
     });
 
   });
