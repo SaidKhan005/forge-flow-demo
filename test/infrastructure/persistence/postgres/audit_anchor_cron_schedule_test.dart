@@ -9,8 +9,9 @@
 // The pattern mirrors:
 //   * `test/services/realtime/event_outbox_retention_sweep_test.dart`
 //     ('pg_cron schedule registration is idempotent' group)
-//   * `test/phase_9_0sigma_k_rollups_test.dart`
-//     (forge_rollup_hot_path / forge_rollup_cold_path schedule shape)
+//   * `test/phase_9_0sigma_k_migration_and_schema_shape_test.dart`
+//     (forge_rollup_hot_path / forge_rollup_cold_path schedule shape,
+//     in the `pg_cron_jobs migration shape` group)
 //
 // The tests do NOT exercise the function — that requires a live
 // Postgres + pg_cron in the maintenance database, which lives in the
