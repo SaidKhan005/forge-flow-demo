@@ -205,6 +205,16 @@ class AuthSessionStarTargetSelectionWriter
         candidate: candidate,
         action: StarTargetSelectionWriteAction.clear,
       );
+      final legacyRecordKey = _legacyRecordKey(candidate);
+      if (_shouldAlsoClearLegacyKey(candidate, legacyRecordKey)) {
+        await _submit(
+          session: session,
+          restaurantId: restaurantId,
+          candidate: candidate,
+          action: StarTargetSelectionWriteAction.clear,
+          recordKeyOverride: legacyRecordKey,
+        );
+      }
     }
     for (final candidate in toSelect) {
       await _submit(
@@ -229,6 +239,7 @@ class AuthSessionStarTargetSelectionWriter
     required String restaurantId,
     required BaselineCandidateShift candidate,
     required StarTargetSelectionWriteAction action,
+    String? recordKeyOverride,
   }) {
     final businessDate = candidate.businessDate;
     if (businessDate == null || businessDate.trim().isEmpty) {
@@ -244,6 +255,7 @@ class AuthSessionStarTargetSelectionWriter
       candidate: candidate,
       businessDate: businessDate,
       action: action,
+      recordKeyOverride: recordKeyOverride,
     );
     return _client.submitSelectedStarDecision(
       operatorId: session.operatorId,
@@ -291,11 +303,12 @@ class AuthSessionStarTargetSelectionWriter
     required BaselineCandidateShift candidate,
     required String businessDate,
     required StarTargetSelectionWriteAction action,
+    String? recordKeyOverride,
   }) {
     final servicePeriodKey = candidate.stableServicePeriodKey;
     final base = <String, Object?>{
       'restaurant_id': restaurantId,
-      'record_key': candidate.recordKey,
+      'record_key': recordKeyOverride ?? candidate.recordKey,
       'week_id': candidate.weekId,
       'day_label': candidate.dayLabel,
       'daypart': candidate.daypart,
@@ -395,4 +408,23 @@ class AuthSessionStarTargetSelectionWriter
     }
     return value;
   }
+}
+
+String _legacyRecordKey(BaselineCandidateShift candidate) {
+  return '${candidate.weekId}|${candidate.dayLabel}|${candidate.daypart}';
+}
+
+bool _shouldAlsoClearLegacyKey(
+  BaselineCandidateShift candidate,
+  String legacyRecordKey,
+) {
+  final businessDate = candidate.businessDate?.trim();
+  final servicePeriodKey = candidate.stableServicePeriodKey.trim();
+  if (businessDate == null ||
+      businessDate.isEmpty ||
+      servicePeriodKey.isEmpty ||
+      candidate.recordKey == legacyRecordKey) {
+    return false;
+  }
+  return candidate.recordKey == '$businessDate|$servicePeriodKey';
 }

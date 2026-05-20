@@ -100,6 +100,28 @@ PollingTierStatus _kDefaultStandardTier(VendorConnectionsBundle? bundle) {
   );
 }
 
+PollingTierStatus _tierStatusFromSnapshot(OperatorWebPollingTierSnapshot row) {
+  final tier = switch (row.tierKey) {
+    'premium' => PollingTierLabel.premium,
+    'custom' => PollingTierLabel.custom,
+    _ => PollingTierLabel.standard,
+  };
+  final label = switch (tier) {
+    PollingTierLabel.standard => 'Standard',
+    PollingTierLabel.premium => 'Premium',
+    PollingTierLabel.custom => 'Custom',
+  };
+  final cents = row.monthlyPriceCents;
+  return PollingTierStatus(
+    tier: tier,
+    tierDisplayLabel: label,
+    monthlyPriceLabel: cents == null
+        ? 'Bundled with subscription'
+        : '\$${(cents / 100).toStringAsFixed(2)}/month',
+    perVendorCadenceSeconds: row.pollingCadencePerVendorSeconds,
+  );
+}
+
 /// Today's business date in restaurant-local. The screen takes a
 /// fixed string for testability — production wires
 /// [BusinessDayClock] in the follow-up.
@@ -226,6 +248,9 @@ class DataAccuracyScreen extends StatefulWidget {
 class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   late VendorConnectionsGateway _gateway;
   VendorConnectionsBundle? _bundle;
+  PollingTierStatus? _loadedTierStatus;
+  bool _tierLoading = false;
+  int _tierLoadGeneration = 0;
   bool _loading = true;
   String? _loadError;
   int _loadGeneration = 0;
@@ -283,7 +308,9 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     _settingsLoading = widget.dataAccuracyGateway != null;
     _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
     _servicePeriodsLoading = widget.dataAccuracyGateway != null;
+    _tierLoading = widget.dataAccuracyGateway != null;
     _loadBundle();
+    _loadTierStatus();
     _loadSettings();
     _loadWageApplicability();
     _loadServicePeriodSettings();
@@ -344,6 +371,31 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     }
   }
 
+  Future<void> _loadTierStatus() async {
+    final generation = ++_tierLoadGeneration;
+    final gateway = widget.dataAccuracyGateway;
+    if (gateway == null) {
+      _tierLoading = false;
+      return;
+    }
+    try {
+      final snapshot = await gateway.loadPollingTierAssignment(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+      );
+      if (!mounted || generation != _tierLoadGeneration) return;
+      setState(() {
+        _loadedTierStatus = snapshot == null
+            ? null
+            : _tierStatusFromSnapshot(snapshot);
+        _tierLoading = false;
+      });
+    } catch (_) {
+      if (!mounted || generation != _tierLoadGeneration) return;
+      setState(() => _tierLoading = false);
+    }
+  }
+
   @override
   void didUpdateWidget(covariant DataAccuracyScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -361,6 +413,8 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _settingsLoading = widget.dataAccuracyGateway != null;
         _settingsLoadError = null;
         _settingsSaveError = null;
+        _loadedTierStatus = null;
+        _tierLoading = widget.dataAccuracyGateway != null;
         _wageApplicabilityLoading = widget.vendorApplicabilityGateway != null;
         _wageApplicabilityError = null;
         _wageApplicabilityRows = const <WebVendorApplicabilityRow>[];
@@ -371,6 +425,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         _servicePeriods = const <ServicePeriodDefinition>[];
       });
       _loadBundle();
+      _loadTierStatus();
       _loadSettings();
       _loadWageApplicability();
       _loadServicePeriodSettings();
@@ -667,6 +722,40 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     }
   }
 
+  Future<void> _saveManualCovers(
+    OperatorWebDataAccuracyGateway gateway, {
+    required String businessDateIso,
+    required String servicePeriodId,
+    required int covers,
+  }) async {
+    final generation = ++_settingsSaveGeneration;
+    setState(() {
+      _savingSettings = true;
+      _settingsSaveError = null;
+    });
+    try {
+      final saved = await gateway.saveManualCovers(
+        operatorId: widget.session.operatorId,
+        locationId: widget.locationId,
+        businessDateIso: businessDateIso,
+        servicePeriodKey: servicePeriodId,
+        covers: covers,
+      );
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _applySettingsSeed(saved);
+        _savingSettings = false;
+        _settingsSaveError = null;
+      });
+    } catch (error) {
+      if (!mounted || generation != _settingsSaveGeneration) return;
+      setState(() {
+        _savingSettings = false;
+        _settingsSaveError = 'Could not save manual covers: $error';
+      });
+    }
+  }
+
   void _handleWageSourceChanged(WageSource value) {
     setState(() => _wageSource = value);
     _emitSave();
@@ -700,6 +789,17 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
           gateway,
           businessDateIso: today,
           servicePeriodId: servicePeriodId,
+        ),
+      );
+      return;
+    }
+    if (covers != null && gateway != null) {
+      unawaited(
+        _saveManualCovers(
+          gateway,
+          businessDateIso: today,
+          servicePeriodId: servicePeriodId,
+          covers: covers,
         ),
       );
       return;
@@ -767,7 +867,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
       );
       return;
     }
-    final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
+    final tier =
+        widget.tierStatus ??
+        _loadedTierStatus ??
+        _kDefaultStandardTier(_bundle);
     final idempotencyKey =
         widget.tierEmailIdempotencyKeyFactory?.call() ??
         _defaultTierEmailIdempotencyKey();
@@ -909,8 +1012,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
                       _loadError = null;
                       _settingsLoading = widget.dataAccuracyGateway != null;
                       _settingsLoadError = null;
+                      _tierLoading = widget.dataAccuracyGateway != null;
                     });
                     _loadBundle();
+                    _loadTierStatus();
                     _loadSettings();
                   },
                   child: const Text('Retry'),
@@ -921,7 +1026,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
         ),
       );
     }
-    final tier = widget.tierStatus ?? _kDefaultStandardTier(_bundle);
+    final tier =
+        widget.tierStatus ??
+        _loadedTierStatus ??
+        (_tierLoading ? null : _kDefaultStandardTier(_bundle));
     final settings = _materialize();
     final locationLabel = _locationLabel();
     return SingleChildScrollView(

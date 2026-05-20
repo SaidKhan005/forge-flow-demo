@@ -37,6 +37,7 @@ void main() {
       source,
       contains("'covers_source_per_service_period_source': _jsonMap("),
     );
+    expect(source, contains("'covers_source_source':"));
     expect(source, contains("'wage_source_source': _jsonMap("));
     expect(source, contains("'walk_in_handling_mode_source': _jsonMap("));
   });

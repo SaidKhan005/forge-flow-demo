@@ -3923,19 +3923,22 @@ class RepositoryMobileOperationalSyncProxyGateway
     final servicePeriodKey = _bodyServicePeriodKey(body);
     final effectiveAt = _bodyBusinessDate(body, 'effective_at_business_date');
     final coversSource = _bodyServicePeriodCoversSource(body);
-    final wageSource = _bodyServicePeriodWageSource(body);
+    final wageSource = _optionalBodyServicePeriodWageSource(body);
     return _tenantRead(scope, operatorId, locationId, (exec) async {
       final rows = await exec.query(
         'insert into public.data_accuracy_service_period_settings ('
         'operator_id, location_id, service_period_key, covers_source, '
         'wage_source, effective_at_business_date, updated_by) '
         'values (@operator_id::uuid, @location_id::uuid, '
-        '@service_period_key, @covers_source, @wage_source, '
+        '@service_period_key, @covers_source, '
+        "coalesce(@wage_source, 'vendor_per_employee'), "
         '@effective_at::date, @updated_by) '
         'on conflict (operator_id, location_id, service_period_key, '
         'effective_at_business_date) do update set '
         'covers_source = excluded.covers_source, '
-        'wage_source = excluded.wage_source, '
+        'wage_source = coalesce('
+        '@wage_source, public.data_accuracy_service_period_settings.wage_source'
+        '), '
         'updated_at = now(), '
         'updated_by = excluded.updated_by '
         'returning id::text as id, '
@@ -4177,7 +4180,7 @@ class RepositoryMobileOperationalSyncProxyGateway
         'location_id::text as location_id, tier_key, '
         'polling_cadence_per_vendor_seconds, monthly_price_cents, '
         'effective_at '
-        'from public.forge_flow_polling_tier_assignment '
+        'from public.effective_forge_flow_polling_tier_assignment_v '
         'where operator_id = @operator_id::uuid '
         'and location_id = @location_id::uuid '
         'and effective_until is null '
@@ -4506,11 +4509,28 @@ class RepositoryMobileOperationalSyncProxyGateway
       'created_at': _dateJson(row['created_at']) ?? _todayUtcInstant(),
       'updated_at': _dateJson(row['updated_at']) ?? _todayUtcInstant(),
       'updated_by': row['updated_by'],
+      'covers_source_source': _servicePeriodSettingSourceForRow(row),
       'scope_type': row['scope_type'] ?? 'location',
       'org_unit_id': row['org_unit_id'],
       'inherited_from_scope_id': row['inherited_from_scope_id'],
       'source_label': row['source_label'],
     };
+  }
+
+  static Map<String, Object?> _servicePeriodSettingSource(PostgresRow row) {
+    return <String, Object?>{
+      'scope_type': 'location',
+      'scope_id': row['location_id'],
+      'source_kind': 'service_period_setting',
+      'setting_id': row['id'],
+    };
+  }
+
+  static Map<String, Object?> _servicePeriodSettingSourceForRow(
+    PostgresRow row,
+  ) {
+    final source = _jsonMap(row['covers_source_source']);
+    return source.isEmpty ? _servicePeriodSettingSource(row) : source;
   }
 
   static Map<String, Object?> _wageRoleRowJson(PostgresRow row) {
@@ -4746,8 +4766,11 @@ class RepositoryMobileOperationalSyncProxyGateway
     );
   }
 
-  static String _bodyServicePeriodWageSource(Map<String, Object?> body) {
-    final value = _bodyString(body, 'wage_source') ?? 'vendor_per_employee';
+  static String? _optionalBodyServicePeriodWageSource(
+    Map<String, Object?> body,
+  ) {
+    final value = _bodyString(body, 'wage_source');
+    if (value == null) return null;
     const allowed = <String>{
       'vendor_per_employee',
       'vendor_per_position',
@@ -7232,6 +7255,7 @@ class RepositoryDataAccuracyAdminProxyGateway
       'updated_at':
           _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
       'updated_by': row['updated_by'],
+      'covers_source_source': _servicePeriodSettingSourceForRow(row),
       'covers_source_per_service_period_source': _jsonMap(
         row['covers_source_per_service_period_source'],
       ),
@@ -7240,6 +7264,24 @@ class RepositoryDataAccuracyAdminProxyGateway
         row['walk_in_handling_mode_source'],
       ),
     };
+  }
+
+  static Map<String, Object?> _servicePeriodSettingSource(
+    Map<String, Object?> row,
+  ) {
+    return <String, Object?>{
+      'scope_type': 'location',
+      'scope_id': row['location_id'],
+      'source_kind': 'service_period_setting',
+      'setting_id': row['id'],
+    };
+  }
+
+  static Map<String, Object?> _servicePeriodSettingSourceForRow(
+    Map<String, Object?> row,
+  ) {
+    final source = _jsonMap(row['covers_source_source']);
+    return source.isEmpty ? _servicePeriodSettingSource(row) : source;
   }
 
   static Map<String, Object?> _operatorRefJson(Map<String, Object?> row) {

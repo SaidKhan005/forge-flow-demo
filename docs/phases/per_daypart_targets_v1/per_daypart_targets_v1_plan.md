@@ -28,7 +28,9 @@ The 4 operator decisions that gated slice dispatch are resolved.
 Supersession note: Gap 36's old-column cleanup landed in the R7 series; active
 Covers source reads and writes use keyed service-period settings, and the old
 whole-day/daypart-specific `covers_source_*` columns are retained here only as
-the historical decision record.
+the historical decision record. The same names may still appear on server wire
+compatibility paths during staged retirement, but new client writes use
+`covers_source_per_service_period` so custom periods remain supported.
 
 ---
 

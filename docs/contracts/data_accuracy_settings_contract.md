@@ -344,8 +344,11 @@ payload.
 Business timing makes service periods restaurant-configurable. Data Accuracy
 settings therefore resolve by stable `service_period_key`, not by display label
 or by the old canonical trio. The hardcoded `covers_source_lunch` /
-`covers_source_dinner` / `covers_source_late_night` shape is now a rejected
-legacy compatibility shape for new implementation work.
+`covers_source_dinner` / `covers_source_late_night` shape is now legacy
+wire compatibility only. New implementation work must use
+`covers_source_per_service_period`; compatibility routes may still accept the
+old fields until a staged retirement pass proves no active client path depends
+on them.
 
 The V1 implementation target for covers-source selection is a keyed child
 table:

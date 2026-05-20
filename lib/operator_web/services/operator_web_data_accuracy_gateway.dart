@@ -16,6 +16,14 @@ abstract class OperatorWebDataAccuracyGateway {
 
   Future<DataAccuracySettings> saveSettings(DataAccuracySettings settings);
 
+  Future<DataAccuracySettings> saveManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required int covers,
+  });
+
   Future<DataAccuracySettings> clearManualCovers({
     required String operatorId,
     required String locationId,
@@ -24,6 +32,11 @@ abstract class OperatorWebDataAccuracyGateway {
   });
 
   Future<List<DataAccuracyServicePeriodSetting>> loadServicePeriodSettings({
+    required String operatorId,
+    required String locationId,
+  });
+
+  Future<OperatorWebPollingTierSnapshot?> loadPollingTierAssignment({
     required String operatorId,
     required String locationId,
   });
@@ -42,6 +55,24 @@ abstract class OperatorWebDataAccuracyGateway {
     required String locationId,
     required String servicePeriodKey,
   });
+}
+
+class OperatorWebPollingTierSnapshot {
+  const OperatorWebPollingTierSnapshot({
+    required this.operatorId,
+    required this.locationId,
+    required this.tierKey,
+    required this.pollingCadencePerVendorSeconds,
+    required this.monthlyPriceCents,
+    required this.effectiveAt,
+  });
+
+  final String operatorId;
+  final String locationId;
+  final String tierKey;
+  final Map<String, int> pollingCadencePerVendorSeconds;
+  final int? monthlyPriceCents;
+  final DateTime effectiveAt;
 }
 
 class OperatorWebHttpDataAccuracyGateway
@@ -69,6 +100,13 @@ class OperatorWebHttpDataAccuracyGateway
       '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
       '${Uri.encodeComponent(locationId)}/'
       'data_accuracy_service_period_settings';
+
+  static String pollingTierAssignmentPath({
+    required String operatorId,
+    required String locationId,
+  }) =>
+      '/v1/operators/${Uri.encodeComponent(operatorId)}/locations/'
+      '${Uri.encodeComponent(locationId)}/polling_tier_assignment';
 
   static String dataAccuracyManualCoversPath({
     required String operatorId,
@@ -126,6 +164,49 @@ class OperatorWebHttpDataAccuracyGateway
         settings.locationId,
         body,
       ]),
+    );
+    final raw = response.body['data'];
+    if (raw is! Map<Object?, Object?>) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_data_accuracy_settings',
+        message: 'The proxy returned malformed data accuracy settings.',
+      );
+    }
+    return _settingsFromJson(Map<String, Object?>.from(raw));
+  }
+
+  @override
+  Future<DataAccuracySettings> saveManualCovers({
+    required String operatorId,
+    required String locationId,
+    required String businessDateIso,
+    required String servicePeriodKey,
+    required int covers,
+  }) async {
+    final token = await _requireToken();
+    final body = <String, Object?>{
+      'business_date': businessDateIso,
+      'service_period_key': servicePeriodKey,
+      'covers': covers,
+    };
+    final response = await _client.patchJson(
+      dataAccuracyManualCoversPath(
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+      idToken: token,
+      body: body,
+      extraHeaders: _stableKeyHeader(
+        'data-accuracy-manual-cover-save',
+        <Object?>[
+          operatorId,
+          locationId,
+          businessDateIso,
+          servicePeriodKey,
+          covers,
+          body,
+        ],
+      ),
     );
     final raw = response.body['data'];
     if (raw is! Map<Object?, Object?>) {
@@ -220,6 +301,30 @@ class OperatorWebHttpDataAccuracyGateway
   }
 
   @override
+  Future<OperatorWebPollingTierSnapshot?> loadPollingTierAssignment({
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final token = await _requireToken();
+    final response = await _client.getJson(
+      pollingTierAssignmentPath(operatorId: operatorId, locationId: locationId),
+      idToken: token,
+    );
+    final raw =
+        response.body['polling_tier_assignment'] ??
+        response.body['assignment'] ??
+        response.body['data'];
+    if (raw == null) return null;
+    if (raw is! Map) {
+      throw const OperatorWebProxyException(
+        code: 'malformed_polling_tier_assignment',
+        message: 'The proxy returned malformed polling tier data.',
+      );
+    }
+    return _pollingTierSnapshotFromJson(Map<String, Object?>.from(raw));
+  }
+
+  @override
   Future<DataAccuracyServicePeriodSetting> saveServicePeriodSetting({
     required String operatorId,
     required String locationId,
@@ -232,7 +337,6 @@ class OperatorWebHttpDataAccuracyGateway
     final body = <String, Object?>{
       'service_period_key': servicePeriodKey,
       'covers_source': coversSource.wire,
-      'wage_source': wageSource.wire,
       'effective_at_business_date': effectiveAtBusinessDateIso,
     };
     final response = await _client.patchJson(
@@ -364,6 +468,24 @@ String? _readString(Object? value) {
   return null;
 }
 
+int? _readInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.tryParse(value.trim());
+  return null;
+}
+
+Map<String, int> _readIntMap(Object? value) {
+  if (value is! Map) return const <String, int>{};
+  final out = <String, int>{};
+  value.forEach((key, item) {
+    if (key is! String) return;
+    final parsed = _readInt(item);
+    if (parsed != null) out[key] = parsed;
+  });
+  return Map<String, int>.unmodifiable(out);
+}
+
 DateTime _dateTime(Object? value) {
   if (value is DateTime) return value.toUtc();
   if (value is String && value.trim().isNotEmpty) {
@@ -380,4 +502,19 @@ DataAccuracyServicePeriodSetting _servicePeriodSettingFromJson(
     'created_at': _dateTime(json['created_at']),
     'updated_at': _dateTime(json['updated_at']),
   });
+}
+
+OperatorWebPollingTierSnapshot _pollingTierSnapshotFromJson(
+  Map<String, Object?> json,
+) {
+  return OperatorWebPollingTierSnapshot(
+    operatorId: _readString(json['operator_id']) ?? '',
+    locationId: _readString(json['location_id']) ?? '',
+    tierKey: _readString(json['tier_key']) ?? 'standard',
+    pollingCadencePerVendorSeconds: _readIntMap(
+      json['polling_cadence_per_vendor_seconds'],
+    ),
+    monthlyPriceCents: _readInt(json['monthly_price_cents']),
+    effectiveAt: _dateTime(json['effective_at']),
+  );
 }

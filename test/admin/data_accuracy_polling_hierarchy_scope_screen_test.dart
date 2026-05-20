@@ -415,6 +415,41 @@ void main() {
     },
   );
 
+  testWidgets('Polling Setup scope assignment count ignores visible filters', (
+    tester,
+  ) async {
+    useWideViewport(tester);
+    const orgScope = AdminHierarchyScopeIntent.orgUnit(
+      operatorId: 'op-1',
+      orgUnitId: 'ou-north',
+      operatorName: 'Demo Diner Co.',
+      orgUnitName: 'North Region',
+    );
+
+    await tester.pumpWidget(
+      wrap(
+        PollingAndPricingAdminScreen(
+          gateway: gateway(),
+          actorUserId: 'demo-super-admin',
+          initialHierarchyScope: orgScope,
+          scopeLocationIds: const <String>{'loc-1a', 'loc-1b'},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('admin_operator_name_field')),
+      'Toronto',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Toronto Yorkville'), findsOneWidget);
+    expect(find.text('Vancouver Robson'), findsNothing);
+    expect(find.text('1 location'), findsOneWidget);
+    expect(find.textContaining('covered 2 locations inherit'), findsOneWidget);
+  });
+
   testWidgets(
     'Polling Setup scope assignment writes selected hierarchy scope',
     (tester) async {
