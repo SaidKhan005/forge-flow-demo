@@ -146,6 +146,16 @@ void main() {
 }
 
 // ─── helpers ──────────────────────────────────────────────────────────
+//
+// Note (Bucket 4e of the 2026-05-20 audit): this `_FakeHttpClient` is
+// intentionally NOT migrated to the shared
+// `test/_test_helpers/mock_http_client.dart`. That helper fakes
+// `package:http` `http.Client`, but `PepperResolver` defines its own
+// narrower `PepperHttpClient` seam (`Future<String> get(Uri, { required
+// String bearerToken })`) and the test tracks per-endpoint hit counts
+// (`activeGetCount`, `byIdGetCount`) that would require URL-shape pattern
+// matching to reconstruct on an `http.Client`-shaped fake. Left in place
+// as a deliberate divergence rather than forced into the shared shape.
 
 String _b64(String input) => base64Encode(utf8.encode(input));
 

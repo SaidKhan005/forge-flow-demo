@@ -5,22 +5,21 @@
 // against a fake `http.Client`. Live verification (real Lightspeed
 // sandbox / prod) is the `8.LSK.live.sandbox` slice's job.
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_pos_adapter.dart';
 import 'package:forge_and_flow/integrations/pos/lightspeed_lsk_pos_production_api_client.dart';
 
+import '../../_test_helpers/mock_http_client.dart';
 import 'fixtures/lightspeed_lsk_orders_fixture.dart';
 
 void main() {
   group('LightspeedLskProductionOrdersClient', () {
     test('happy path: GET /f/v2/business-location/{id}/sales returns mapped page',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'sales': lightspeedLskFiveRecordBatch(),
@@ -71,15 +70,15 @@ void main() {
 
     test('pagination: client passes nextPageToken on subsequent calls',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'sales': lightspeedLskFiveRecordBatch().take(3).toList(),
             'nextPageToken': 'page-2-token',
           }),
         ),
-        _FakeHttpResponse(
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'sales': lightspeedLskFiveRecordBatch().skip(3).toList(),
@@ -126,13 +125,13 @@ void main() {
 
     test('429 backoff: honors Retry-After then succeeds', () async {
       final waits = <Duration>[];
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 429,
           body: '{"error":"rate_limited"}',
           headers: <String, String>{'retry-after': '2'},
         ),
-        _FakeHttpResponse(
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'sales': <Map<String, Object?>>[],
@@ -165,8 +164,8 @@ void main() {
     });
 
     test('401 surfaces typed exception immediately (no retry)', () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 401,
           body: '{"error":"invalid_token"}',
         ),
@@ -197,12 +196,12 @@ void main() {
     });
 
     test('500 retries until budget exhausted', () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(statusCode: 500, body: '{"error":"server_error"}'),
-        _FakeHttpResponse(statusCode: 502, body: ''),
-        _FakeHttpResponse(statusCode: 503, body: ''),
-        _FakeHttpResponse(statusCode: 504, body: ''),
-        _FakeHttpResponse(statusCode: 500, body: '{"error":"persistent"}'),
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(statusCode: 500, body: '{"error":"server_error"}'),
+        FakeHttpResponse(statusCode: 502, body: ''),
+        FakeHttpResponse(statusCode: 503, body: ''),
+        FakeHttpResponse(statusCode: 504, body: ''),
+        FakeHttpResponse(statusCode: 500, body: '{"error":"persistent"}'),
       ]);
       final orders = LightspeedLskProductionOrdersClient(
         tokenResolver: InMemoryLightspeedLskAccessTokenResolver(
@@ -231,7 +230,7 @@ void main() {
     });
 
     test('timeout surfaces typed exception', () async {
-      final fakeClient = _FakeHttpClient.alwaysTimesOut();
+      final fakeClient = FakeHttpClient.alwaysTimesOut();
       final orders = LightspeedLskProductionOrdersClient(
         tokenResolver: InMemoryLightspeedLskAccessTokenResolver(
           <String, String>{'cred-1': 'access-token-bytes'},
@@ -260,8 +259,8 @@ void main() {
 
     test('schema roundtrip: sample order parses through adapter mapping',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'sales': <Map<String, Object?>>[lightspeedLskSampleOrder()],
@@ -296,8 +295,8 @@ void main() {
     });
 
     test('respects custom baseUri (sandbox override)', () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'sales': <Map<String, Object?>>[],
@@ -329,8 +328,8 @@ void main() {
   group('LightspeedLskProductionOAuthClient', () {
     test('completeAuthorization exchanges code for tokens, persists, returns ids',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'access_token': 'access-1',
@@ -408,8 +407,8 @@ void main() {
 
     test('refresh: posts grant_type=refresh_token using stored refresh token',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'access_token': 'access-2',
@@ -455,8 +454,8 @@ void main() {
     });
 
     test('revoke: posts to /oauth/revoke and tolerates empty body', () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(statusCode: 200, body: ''),
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(statusCode: 200, body: ''),
       ]);
       final oauth = LightspeedLskProductionOAuthClient(
         clientCredentials: LightspeedLskOAuthClientCredentials(
@@ -488,8 +487,8 @@ void main() {
 
     test('error response: typed exception with status + vendor code',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 400,
           body: '{"error":"invalid_grant"}',
         ),
@@ -528,8 +527,8 @@ void main() {
   group('LightspeedLskProductionWebhookClient', () {
     test('subscribe: PUTs registration body, returns subscription + secret id',
         () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'subscriptionId': 'sub-99',
@@ -580,8 +579,8 @@ void main() {
     });
 
     test('unregister: DELETE to /o/wh/1/webhook/{id}', () async {
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(statusCode: 204, body: ''),
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(statusCode: 204, body: ''),
       ]);
       final webhook = LightspeedLskProductionWebhookClient(
         tokenResolver: InMemoryLightspeedLskAccessTokenResolver(
@@ -609,13 +608,13 @@ void main() {
 
     test('429 backoff on subscribe', () async {
       final waits = <Duration>[];
-      final fakeClient = _FakeHttpClient(<_FakeHttpResponse>[
-        _FakeHttpResponse(
+      final fakeClient = FakeHttpClient.queue(<FakeHttpResponse>[
+        FakeHttpResponse(
           statusCode: 429,
           body: '',
           headers: <String, String>{'retry-after': '1'},
         ),
-        _FakeHttpResponse(
+        FakeHttpResponse(
           statusCode: 200,
           body: jsonEncode(<String, Object?>{
             'subscriptionId': 'sub-1',
@@ -700,76 +699,3 @@ final Uri _redirectUri = Uri.parse(
 );
 
 Future<void> _instantSleep(Duration delay) async {}
-
-// ─── Fake http.Client ─────────────────────────────────────────────────
-
-class _FakeHttpResponse {
-  _FakeHttpResponse({
-    required this.statusCode,
-    required this.body,
-    this.headers = const <String, String>{},
-  });
-
-  final int statusCode;
-  final String body;
-  final Map<String, String> headers;
-}
-
-class _CapturedRequest {
-  _CapturedRequest({
-    required this.method,
-    required this.url,
-    required this.headers,
-    required this.body,
-  });
-
-  final String method;
-  final Uri url;
-  final Map<String, String> headers;
-  final String body;
-}
-
-class _FakeHttpClient extends http.BaseClient {
-  _FakeHttpClient(List<_FakeHttpResponse> queue)
-      : _queue = List<_FakeHttpResponse>.of(queue),
-        _alwaysTimeout = false;
-
-  _FakeHttpClient.alwaysTimesOut()
-      : _queue = <_FakeHttpResponse>[],
-        _alwaysTimeout = true;
-
-  final List<_FakeHttpResponse> _queue;
-  final bool _alwaysTimeout;
-  final List<_CapturedRequest> requests = <_CapturedRequest>[];
-
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    String body = '';
-    if (request is http.Request) {
-      body = request.body;
-    }
-    requests.add(_CapturedRequest(
-      method: request.method,
-      url: request.url,
-      headers: Map<String, String>.from(request.headers),
-      body: body,
-    ));
-    if (_alwaysTimeout) {
-      // Never completes — caller's `.timeout(...)` raises a
-      // TimeoutException.
-      return Completer<http.StreamedResponse>().future;
-    }
-    if (_queue.isEmpty) {
-      throw StateError('FakeHttpClient: no canned response remaining');
-    }
-    final canned = _queue.removeAt(0);
-    final stream = Stream<List<int>>.fromIterable(<List<int>>[
-      utf8.encode(canned.body),
-    ]);
-    return http.StreamedResponse(
-      stream,
-      canned.statusCode,
-      headers: canned.headers,
-    );
-  }
-}
