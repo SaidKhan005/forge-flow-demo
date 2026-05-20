@@ -486,6 +486,62 @@ void main() {
       expect(find.byKey(const Key('account_section_security')), findsOneWidget);
     });
 
+    testWidgets('/audit-log deep link opens Audit log instead of Account', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialUri: Uri.parse('https://app.forgeflow.app/audit-log'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_audit_log_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('My account audit link opens Audit log in-place', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final source = DemoOperatorWebAuthSource.completed();
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(wrap(OperatorWebRouter(source: source)));
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('operator_web_nav_item_my_account')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('account_section_profile_audit_log_link')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_audit_log_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('operator_web_account_screen')),
+        findsNothing,
+      );
+    });
+
     testWidgets('/handoff redeems code and routes to returned target', (
       tester,
     ) async {
@@ -755,6 +811,43 @@ void main() {
         find.byKey(const Key('operator_web_business_timing_editor_screen')),
         findsOneWidget,
       );
+      expect(
+        find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('standard demo Schedule timing opens schedule mode editor', (
+      tester,
+    ) async {
+      await sizeViewport(tester);
+      final writeGateway = DemoOperatorWebBusinessTimingWriteGateway();
+      final source = _BusinessTimingHierarchyOperatorWebSource(writeGateway);
+      addTearDown(source.dispose);
+
+      await tester.pumpWidget(
+        wrap(
+          OperatorWebRouter(
+            source: source,
+            initialNavId: kOperatorWebNavBusinessSetup,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('operator_web_business_timing_schedule_button')),
+      );
+      await tester.tap(
+        find.byKey(const Key('operator_web_business_timing_schedule_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('operator_web_business_timing_editor_screen')),
+        findsOneWidget,
+      );
+      expect(find.text('Schedule timing change'), findsNWidgets(2));
       expect(
         find.byKey(const Key('operator_web_business_timing_safe_dialog')),
         findsNothing,

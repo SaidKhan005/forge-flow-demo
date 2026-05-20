@@ -97,6 +97,7 @@ void main() {
     WebTeamAuditLogGateway? gateway,
     String Function()? idempotencyKeyFactory,
     Future<void> Function(String value)? copyToClipboard,
+    Future<void> Function(WebAuditLogCsvExport export)? onCsvReady,
   }) async {
     final resolved = gateway ?? DemoWebTeamAuditLogGateway(clock: pinnedClock);
     await tester.pumpWidget(
@@ -106,6 +107,7 @@ void main() {
           gateway: resolved,
           idempotencyKeyFactory: idempotencyKeyFactory,
           copyToClipboard: copyToClipboard,
+          onCsvReady: onCsvReady,
         ),
       ),
     );
@@ -376,12 +378,14 @@ void main() {
       await sizeViewport(tester, const Size(1280, 1600));
       final gateway = DemoWebTeamAuditLogGateway(clock: pinnedClock);
       final clipboardWrites = <String>[];
+      final downloads = <WebAuditLogCsvExport>[];
       await pumpScreen(
         tester,
         session: sessionWithRole('operator_owner'),
         gateway: gateway,
         idempotencyKeyFactory: () => 'fixed-export-key-1',
         copyToClipboard: (value) async => clipboardWrites.add(value),
+        onCsvReady: (export) async => downloads.add(export),
       );
 
       await tester.ensureVisible(
@@ -395,6 +399,13 @@ void main() {
       // CSV body landed in the clipboard.
       expect(clipboardWrites, hasLength(1));
       expect(clipboardWrites.single, contains('action,actor_user_id'));
+      expect(downloads, hasLength(1));
+      expect(downloads.single.csv, clipboardWrites.single);
+      expect(downloads.single.filename, endsWith('.csv'));
+      expect(
+        find.text('Downloaded audit log CSV and copied it to your clipboard.'),
+        findsOneWidget,
+      );
 
       // The export-itself-audited row exists in the gateway ledger
       // and is idempotency-keyed off the screen value.

@@ -141,4 +141,33 @@ void main() {
       findsNothing,
     );
   });
+
+  testWidgets('schedule timing uses the router callback when available', (
+    tester,
+  ) async {
+    await sizeViewport(tester);
+    var openedScheduleTiming = false;
+
+    await tester.pumpWidget(
+      wrap(
+        BusinessSetupScreen(
+          session: kDemoOperatorWebSession,
+          locationId: 'demo-location',
+          onScheduleTiming: () => openedScheduleTiming = true,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('operator_web_business_timing_schedule_button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(openedScheduleTiming, isTrue);
+    expect(
+      find.byKey(const Key('operator_web_business_timing_safe_dialog')),
+      findsNothing,
+    );
+  });
 }

@@ -50,6 +50,8 @@ class BusinessTimingEditorScreen extends StatefulWidget {
     this.initialScopeKind,
     this.gateway,
     this.existingProfile,
+    this.initialEffectiveAt,
+    this.scheduleMode = false,
     this.onClose,
   });
 
@@ -62,6 +64,8 @@ class BusinessTimingEditorScreen extends StatefulWidget {
   final String? initialScopeKind;
   final WebBusinessTimingGateway? gateway;
   final BusinessTimingProfileWriteResult? existingProfile;
+  final DateTime? initialEffectiveAt;
+  final bool scheduleMode;
   final VoidCallback? onClose;
 
   // G7d (spec §2.B/§3): v2 catalog constant; phantom
@@ -146,7 +150,7 @@ class _BusinessTimingEditorScreenState
       if (!mounted) return;
       _periods.setBusinessDayStartLocal(initialDayStart);
     });
-    _effectiveAt = DateTime.now();
+    _effectiveAt = widget.initialEffectiveAt ?? DateTime.now();
     if (existing != null) {
       _scopeKind = existing.scopeKind;
       _weekStartDay = existing.weekStartDay;
@@ -431,6 +435,20 @@ class _BusinessTimingEditorScreenState
       '${dt.month.toString().padLeft(2, '0')}-'
       '${dt.day.toString().padLeft(2, '0')}';
 
+  String get _headingText {
+    if (widget.scheduleMode) return 'Schedule timing change';
+    return widget.existingProfile == null
+        ? 'New business timing profile'
+        : 'Edit business timing profile';
+  }
+
+  String get _saveButtonText {
+    if (widget.scheduleMode) return 'Schedule timing change';
+    return widget.existingProfile == null
+        ? 'Save new timing profile'
+        : 'Save timing changes';
+  }
+
   Future<void> _pickEffectiveDate() async {
     final selected = await showDatePicker(
       context: context,
@@ -472,9 +490,7 @@ class _BusinessTimingEditorScreenState
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  widget.existingProfile == null
-                      ? 'New business timing profile'
-                      : 'Edit business timing profile',
+                  _headingText,
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
               ),
@@ -638,11 +654,7 @@ class _BusinessTimingEditorScreenState
                           color: AppColors.backgroundSurface,
                         ),
                       )
-                    : Text(
-                        widget.existingProfile == null
-                            ? 'Save new timing profile'
-                            : 'Save timing changes',
-                      ),
+                    : Text(_saveButtonText),
               ),
             ),
           ),

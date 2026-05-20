@@ -45,6 +45,7 @@ class _OperatorWebAppState extends State<OperatorWebApp> {
       home: OperatorWebRouter(
         source: widget.authSource,
         initialNavId: widget.initialNavId,
+        initialUri: Uri.base,
       ),
     );
   }
